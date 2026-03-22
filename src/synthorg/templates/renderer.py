@@ -73,6 +73,8 @@ _JINJA_ENV.filters["auto"] = lambda value: value or ""
 def render_template(
     loaded: LoadedTemplate,
     variables: dict[str, Any] | None = None,
+    *,
+    locales: list[str] | None = None,
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
@@ -81,6 +83,8 @@ def render_template(
     Args:
         loaded: :class:`LoadedTemplate` from the loader.
         variables: User-supplied variable values (overrides defaults).
+        locales: Faker locale codes for auto-name generation.
+            Defaults to all Latin-script locales when ``None``.
 
     Returns:
         Validated, frozen :class:`RootConfig`.
@@ -94,7 +98,7 @@ def render_template(
         TEMPLATE_RENDER_START,
         source_name=loaded.source_name,
     )
-    config_dict = _render_to_dict(loaded, variables)
+    config_dict = _render_to_dict(loaded, variables, locales=locales)
 
     # Merge with defaults and validate.
     merged = deep_merge(default_config_dict(), config_dict)
@@ -110,6 +114,7 @@ def _render_to_dict(
     loaded: LoadedTemplate,
     variables: dict[str, Any] | None = None,
     *,
+    locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Render a template to a config dict, resolving inheritance.
@@ -117,6 +122,7 @@ def _render_to_dict(
     Args:
         loaded: Loaded template.
         variables: User-supplied variables.
+        locales: Faker locale codes for auto-name generation.
         _chain: Set of already-seen template identifiers for circular
             detection (internal use).
 
@@ -137,7 +143,12 @@ def _render_to_dict(
     rendered_data = _parse_rendered_yaml(rendered_text, loaded.source_name)
 
     # Build config dict from the rendered data.
-    child_config = _build_config_dict(rendered_data, template, vars_dict)
+    child_config = _build_config_dict(
+        rendered_data,
+        template,
+        vars_dict,
+        locales=locales,
+    )
 
     # If no inheritance, return child config directly.
     if template.extends is None:
@@ -148,6 +159,7 @@ def _render_to_dict(
         child_config=child_config,
         loaded=loaded,
         vars_dict=vars_dict,
+        locales=locales,
         _chain=_chain,
     )
 
@@ -157,6 +169,7 @@ def _resolve_inheritance(
     child_config: dict[str, Any],
     loaded: LoadedTemplate,
     vars_dict: dict[str, Any],
+    locales: list[str] | None = None,
     _chain: frozenset[str],
 ) -> dict[str, Any]:
     """Resolve template inheritance for a child config.
@@ -168,6 +181,7 @@ def _resolve_inheritance(
         child_config: Already-rendered child config dict.
         loaded: The child's :class:`LoadedTemplate`.
         vars_dict: Child's resolved variables.
+        locales: Faker locale codes for auto-name generation.
         _chain: Already-visited parent names for circular detection.
 
     Returns:
@@ -194,6 +208,7 @@ def _resolve_inheritance(
         child_config,
         vars_dict,
         _chain,
+        locales=locales,
     )
     logger.info(
         TEMPLATE_INHERIT_RESOLVE_SUCCESS,
@@ -241,6 +256,8 @@ def _render_and_merge_parent(
     child_config: dict[str, Any],
     vars_dict: dict[str, Any],
     _chain: frozenset[str],
+    *,
+    locales: list[str] | None = None,
 ) -> dict[str, Any]:
     """Load, render, and merge a parent template with a child config."""
     from synthorg.templates.loader import load_template  # noqa: PLC0415
@@ -253,6 +270,7 @@ def _render_and_merge_parent(
     parent_config = _render_to_dict(
         parent_loaded,
         parent_vars,
+        locales=locales,
         _chain=_chain | {parent_name},
     )
     return merge_template_configs(parent_config, child_config)
@@ -414,6 +432,8 @@ def _build_config_dict(
     rendered_data: dict[str, Any],
     template: CompanyTemplate,
     variables: dict[str, Any],
+    *,
+    locales: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a RootConfig-compatible dict from rendered template data.
 
@@ -421,6 +441,7 @@ def _build_config_dict(
         rendered_data: Parsed dict from the rendered YAML.
         template: Original template metadata (for fallback values).
         variables: Collected variables.
+        locales: Faker locale codes for auto-name generation.
 
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
@@ -442,6 +463,7 @@ def _build_config_dict(
     agents = _expand_agents(
         _validate_list(rendered_data, "agents"),
         has_extends=has_extends,
+        locales=locales,
     )
     departments = _build_departments(_validate_list(rendered_data, "departments"))
 
@@ -556,12 +578,14 @@ def _expand_agents(
     raw_agents: list[dict[str, Any]],
     *,
     has_extends: bool,
+    locales: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
     Args:
         raw_agents: List of agent dicts from rendered YAML.
         has_extends: Whether the template uses inheritance.
+        locales: Faker locale codes for auto-name generation.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
@@ -575,6 +599,7 @@ def _expand_agents(
                 idx,
                 used_names,
                 has_extends=has_extends,
+                locales=locales,
             ),
         )
     return expanded
@@ -586,6 +611,7 @@ def _expand_single_agent(
     used_names: set[str],
     *,
     has_extends: bool,
+    locales: list[str] | None = None,
 ) -> dict[str, Any]:
     """Expand a single template agent dict.
 
@@ -599,8 +625,8 @@ def _expand_single_agent(
         raise TemplateRenderError(msg)
     name = str(agent.get("name", "")).strip()
 
-    if not name or name.startswith("{{"):
-        name = generate_auto_name(role, seed=idx)
+    if not name or name.startswith("{{") or "__JINJA2__" in name:
+        name = generate_auto_name(role, seed=idx, locales=locales)
 
     base_name = name
     counter = 2

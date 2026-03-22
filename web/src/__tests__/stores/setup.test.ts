@@ -6,6 +6,8 @@ const mockListTemplates = vi.fn()
 const mockCompleteSetup = vi.fn()
 const mockGetAgents = vi.fn()
 const mockUpdateAgentModel = vi.fn()
+const mockGetNameLocales = vi.fn()
+const mockSaveNameLocales = vi.fn()
 
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: (...args: unknown[]) => mockGetSetupStatus(...args),
@@ -13,6 +15,8 @@ vi.mock('@/api/endpoints/setup', () => ({
   completeSetup: (...args: unknown[]) => mockCompleteSetup(...args),
   getAgents: (...args: unknown[]) => mockGetAgents(...args),
   updateAgentModel: (...args: unknown[]) => mockUpdateAgentModel(...args),
+  getNameLocales: (...args: unknown[]) => mockGetNameLocales(...args),
+  saveNameLocales: (...args: unknown[]) => mockSaveNameLocales(...args),
 }))
 
 import { useSetupStore } from '@/stores/setup'
@@ -35,6 +39,7 @@ describe('useSetupStore', () => {
         needs_admin: true,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: false,
         has_agents: false,
         min_password_length: 20,
@@ -50,6 +55,7 @@ describe('useSetupStore', () => {
         needs_admin: true,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: false,
         has_agents: false,
         min_password_length: 4,
@@ -90,6 +96,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: true,
+        has_name_locales: true,
         has_company: true,
         has_agents: false,
         min_password_length: 12,
@@ -100,6 +107,7 @@ describe('useSetupStore', () => {
 
       expect(store.isStepComplete('admin')).toBe(true)
       expect(store.isStepComplete('provider')).toBe(true)
+      expect(store.isStepComplete('names')).toBe(true)
       expect(store.isStepComplete('company')).toBe(true)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -109,6 +117,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: false,
         has_agents: false,
         min_password_length: 12,
@@ -126,6 +135,7 @@ describe('useSetupStore', () => {
         needs_admin: true,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: false,
         has_agents: false,
         min_password_length: 12,
@@ -143,6 +153,7 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('welcome')).toBe(false)
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -152,6 +163,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: true,
         has_agents: false,
         min_password_length: 12,
@@ -162,6 +174,7 @@ describe('useSetupStore', () => {
 
       expect(store.isStepComplete('admin')).toBe(true)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       // Company exists in backend but provider is missing, so
       // the stepper must not show company as done.
       expect(store.isStepComplete('company')).toBe(false)
@@ -173,6 +186,7 @@ describe('useSetupStore', () => {
         needs_admin: true,
         needs_setup: true,
         has_providers: true,
+        has_name_locales: true,
         has_company: true,
         has_agents: true,
         min_password_length: 12,
@@ -184,6 +198,7 @@ describe('useSetupStore', () => {
       // Nothing should be complete because admin is not done.
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -194,6 +209,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: true,
+        has_name_locales: true,
         has_company: false,
         has_agents: false,
         min_password_length: 12,
@@ -208,6 +224,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: false,
+        has_name_locales: false,
         has_company: false,
         has_agents: false,
         min_password_length: 12,
@@ -373,6 +390,7 @@ describe('useSetupStore', () => {
         needs_admin: false,
         needs_setup: true,
         has_providers: true,
+        has_name_locales: true,
         has_company: true,
         has_agents: true,
         min_password_length: 12,
@@ -428,6 +446,70 @@ describe('useSetupStore', () => {
       store.currentStep = 3
       store.setStep(0)
       expect(store.currentStep).toBe(0)
+    })
+  })
+
+  describe('fetchNameLocales', () => {
+    it('returns locales on success', async () => {
+      mockGetNameLocales.mockResolvedValue({ locales: ['en_US', 'fr_FR'] })
+
+      const store = useSetupStore()
+      const result = await store.fetchNameLocales()
+
+      expect(result).toEqual(['en_US', 'fr_FR'])
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error and re-throws on failure', async () => {
+      mockGetNameLocales.mockRejectedValue(new Error('Network error'))
+
+      const store = useSetupStore()
+      await expect(store.fetchNameLocales()).rejects.toThrow('Network error')
+
+      expect(store.error).toBe('Network error')
+    })
+  })
+
+  describe('fetchStatus error handling', () => {
+    it('sets error and keeps statusLoaded false on failure', async () => {
+      mockGetSetupStatus.mockRejectedValue(new Error('Server down'))
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      expect(store.error).toBe('Server down')
+      expect(store.statusLoaded).toBe(false)
+    })
+  })
+
+  describe('saveNameLocales', () => {
+    it('calls API and refreshes status on success', async () => {
+      mockSaveNameLocales.mockResolvedValue({ locales: ['en_US'] })
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: true,
+        has_name_locales: true,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.saveNameLocales(['en_US'])
+
+      expect(mockSaveNameLocales).toHaveBeenCalledWith({ locales: ['en_US'] })
+      expect(mockGetSetupStatus).toHaveBeenCalled()
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error and re-throws on failure', async () => {
+      mockSaveNameLocales.mockRejectedValue(new Error('Validation failed'))
+
+      const store = useSetupStore()
+      await expect(store.saveNameLocales(['invalid_XX'])).rejects.toThrow('Validation failed')
+
+      expect(store.error).toBe('Validation failed')
     })
   })
 })

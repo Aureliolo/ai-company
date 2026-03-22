@@ -35,6 +35,9 @@ TEMPLATE_MODEL_REQUIREMENT_INVALID: Final[str] = "template.model_requirement.inv
 TEMPLATE_MODEL_REQUIREMENT_PARSED: Final[str] = "template.model_requirement.parsed"
 TEMPLATE_MODEL_REQUIREMENT_RESOLVED: Final[str] = "template.model_requirement.resolved"
 
+# Name generation
+TEMPLATE_NAME_GEN_FAKER_ERROR: Final[str] = "template.name_generation.faker_error"
+
 # Model matching
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"

@@ -4,7 +4,6 @@ import pytest
 
 from synthorg.core.agent import PersonalityConfig
 from synthorg.templates.presets import (
-    _AUTO_NAMES,
     PERSONALITY_PRESETS,
     generate_auto_name,
     get_personality_preset,
@@ -87,14 +86,10 @@ class TestGetPersonalityPreset:
 
 @pytest.mark.unit
 class TestGenerateAutoName:
-    def test_known_role_returns_from_pool(self) -> None:
+    def test_returns_nonempty_string(self) -> None:
         name = generate_auto_name("CEO", seed=0)
         assert isinstance(name, str)
         assert len(name) > 0
-
-    def test_unknown_role_uses_default_pool(self) -> None:
-        name = generate_auto_name("Alien Commander", seed=0)
-        assert name.startswith("Agent ")
 
     def test_deterministic_with_seed(self) -> None:
         a = generate_auto_name("Backend Developer", seed=42)
@@ -103,27 +98,94 @@ class TestGenerateAutoName:
 
     def test_different_seeds_may_differ(self) -> None:
         names = {generate_auto_name("CEO", seed=i) for i in range(10)}
-        # With 4 names in the pool, at least 2 distinct names expected.
+        # With 57 locales, should get diverse names.
         assert len(names) >= 2
 
-    def test_case_insensitive_role(self) -> None:
-        a = generate_auto_name("ceo", seed=0)
-        b = generate_auto_name("CEO", seed=0)
-        assert a == b
+    def test_accepts_locale_list(self) -> None:
+        name = generate_auto_name("CEO", seed=42, locales=["en_US"])
+        assert isinstance(name, str)
+        assert len(name) > 0
 
-    def test_whitespace_stripped_from_role(self) -> None:
-        a = generate_auto_name("  CEO  ", seed=0)
-        b = generate_auto_name("CEO", seed=0)
+    def test_multiple_locales(self) -> None:
+        name = generate_auto_name(
+            "CEO",
+            seed=42,
+            locales=["en_US", "fr_FR", "de_DE"],
+        )
+        assert isinstance(name, str)
+        assert len(name) > 0
+
+    def test_no_seed_still_works(self) -> None:
+        name = generate_auto_name("CEO")
+        assert isinstance(name, str)
+        assert len(name) > 0
+
+    def test_role_does_not_affect_output(self) -> None:
+        """Role parameter is unused -- same seed produces same name."""
+        a = generate_auto_name("CEO", seed=42)
+        b = generate_auto_name("CFO", seed=42)
         assert a == b
 
 
 @pytest.mark.unit
-class TestAutoNameCoverage:
-    def test_auto_names_cover_all_builtin_roles(self) -> None:
-        """Every role in BUILTIN_ROLES has an auto-name pool."""
-        from synthorg.core.role_catalog import BUILTIN_ROLES
+class TestLocalesModule:
+    def test_all_latin_locales_nonempty(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES
 
-        pool_keys = {k for k in _AUTO_NAMES if k != "_default"}
-        role_keys = {r.name.lower() for r in BUILTIN_ROLES}
-        missing = role_keys - pool_keys
-        assert not missing, f"Roles missing auto-name pools: {sorted(missing)}"
+        assert len(ALL_LATIN_LOCALES) >= 50
+
+    def test_locale_regions_cover_all_locales(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, LOCALE_REGIONS
+
+        region_locales = {loc for locs in LOCALE_REGIONS.values() for loc in locs}
+        assert region_locales == set(ALL_LATIN_LOCALES)
+
+    def test_display_names_cover_all_locales(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, LOCALE_DISPLAY_NAMES
+
+        for loc in ALL_LATIN_LOCALES:
+            assert loc in LOCALE_DISPLAY_NAMES, f"Missing display name for {loc}"
+
+    def test_resolve_locales_all_sentinel(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, resolve_locales
+
+        result = resolve_locales(["__all__"])
+        assert result == list(ALL_LATIN_LOCALES)
+
+    def test_resolve_locales_none(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, resolve_locales
+
+        result = resolve_locales(None)
+        assert result == list(ALL_LATIN_LOCALES)
+
+    def test_resolve_locales_specific(self) -> None:
+        from synthorg.templates.locales import resolve_locales
+
+        result = resolve_locales(["en_US", "fr_FR"])
+        assert result == ["en_US", "fr_FR"]
+
+    def test_resolve_locales_filters_invalid(self) -> None:
+        from synthorg.templates.locales import resolve_locales
+
+        result = resolve_locales(["en_US", "invalid_XX", "fr_FR"])
+        assert result == ["en_US", "fr_FR"]
+
+    def test_no_deprecated_locales(self) -> None:
+        from synthorg.templates.locales import ALL_LATIN_LOCALES
+
+        # fr_QC is deprecated in Faker, should not be in our list
+        assert "fr_QC" not in ALL_LATIN_LOCALES
+
+    def test_resolve_locales_empty_list(self) -> None:
+        """Empty list is falsy, so resolve_locales returns all locales."""
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, resolve_locales
+
+        result = resolve_locales([])
+        assert result == list(ALL_LATIN_LOCALES)
+
+    def test_resolve_locales_all_invalid(self) -> None:
+        """All invalid locale codes are filtered out, returning empty list."""
+        from synthorg.templates.locales import resolve_locales
+
+        result = resolve_locales(["invalid_XX", "bogus_YY"])
+        assert result == []
