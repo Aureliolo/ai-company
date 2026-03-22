@@ -114,7 +114,7 @@ delegation rights, and typical model tier.
 
 Each department defines:
 
-- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments
+- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments.  When multiple agents share the same role name, use the companion ``head_id`` field (typically the agent's ``merge_id``) to disambiguate
 - **budget_percent** -- The share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
 - **teams** -- Named sub-groups within the department, each with a lead and members
 - **reporting_lines** -- Explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)

@@ -36,6 +36,7 @@ template:
     - name: "engineering"
       budget_percent: 35
       head_role: "Full-Stack Developer"
+      head_merge_id: "fullstack-senior"
       reporting_lines:
         - subordinate: "Frontend Developer"
           supervisor: "Full-Stack Developer"

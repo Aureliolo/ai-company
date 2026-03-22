@@ -31,6 +31,7 @@ template:
     - name: "engineering"
       budget_percent: 35
       head_role: "Backend Developer"
+      head_merge_id: "backend-senior"
       reporting_lines:
         - subordinate: "Backend Developer"
           subordinate_id: "backend-mid"

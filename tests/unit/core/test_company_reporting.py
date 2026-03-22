@@ -319,3 +319,22 @@ class TestDepartmentReportingLines:
             ),
         )
         assert len(dept.reporting_lines) == 2
+
+    def test_head_id_accepted(self) -> None:
+        """Accept optional head_id for disambiguating the department head."""
+        dept = Department(
+            name="eng",
+            head="Backend Developer",
+            head_id="backend-senior",
+        )
+        assert dept.head_id == "backend-senior"
+
+    def test_head_id_defaults_to_none(self) -> None:
+        """head_id defaults to None when omitted."""
+        dept = Department(name="eng", head="cto")
+        assert dept.head_id is None
+
+    def test_blank_head_id_rejected(self) -> None:
+        """Reject empty string head_id."""
+        with pytest.raises(ValidationError, match="at least 1 character"):
+            Department(name="eng", head="cto", head_id="")

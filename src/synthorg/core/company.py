@@ -325,6 +325,10 @@ class Department(BaseModel):
         head: Department head agent name, or ``None`` if the department
             has no designated head.  When absent, hierarchy resolution
             skips the team-lead-to-head link for this department.
+        head_id: Optional unique identifier for the department head.
+            When multiple agents share the same role name used in
+            ``head``, this disambiguates which agent is meant.
+            Templates typically use the agent's ``merge_id``.
         budget_percent: Percentage of company budget allocated (0-100).
         teams: Teams within this department.
         reporting_lines: Explicit reporting relationships.
@@ -339,6 +343,10 @@ class Department(BaseModel):
     head: NotBlankStr | None = Field(
         default=None,
         description="Department head agent name",
+    )
+    head_id: NotBlankStr | None = Field(
+        default=None,
+        description="Optional unique identifier for the department head",
     )
     budget_percent: float = Field(
         default=0.0,

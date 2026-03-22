@@ -783,11 +783,14 @@ def _build_departments(
                 detail="No head_role specified; using department name as placeholder",
             )
             head_role = dept_name or ""
+        head_merge_id = dept.get("head_merge_id", "")
         dept_dict: dict[str, Any] = {
             "name": dept_name,
             "head": head_role,
             "budget_percent": budget_pct,
         }
+        if head_merge_id:
+            dept_dict["head_id"] = head_merge_id
         reporting_lines = dept.get("reporting_lines")
         if reporting_lines is not None:
             if not isinstance(reporting_lines, list):
