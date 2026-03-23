@@ -287,6 +287,18 @@ class TestMatchAllAgents:
         results = match_all_agents(agents, providers)
         assert len(results) == 1
         assert results[0].tier == "large"
+        assert results[0].model_id == "big"
+
+    def test_invalid_model_requirement_dict_skipped(self) -> None:
+        """Malformed model_requirement dict logs warning and skips agent."""
+        agents = [{"model_requirement": {"tier": "invalid"}}]
+        providers = {
+            "p": _FakeProviderConfig(
+                models=(_make_model("m1", cost_input=0.01),),
+            ),
+        }
+        results = match_all_agents(agents, providers)
+        assert results == []
 
     def test_model_requirement_min_context_filtering(self) -> None:
         """ModelRequirement min_context filters out small-context models."""

@@ -107,8 +107,15 @@ def match_all_agents(
         **not** copied. This function only reads agent dicts.
 
     Args:
-        agents: List of expanded agent config dicts.  Each must have
-            ``tier`` (str) and optionally ``personality_preset`` (str).
+        agents: List of expanded agent config dicts.  Model requirement
+            resolution uses three paths (checked in order):
+
+            - ``model_requirement`` (``ModelRequirement``): used directly.
+            - ``model_requirement`` (dict): deserialized to
+              ``ModelRequirement`` via ``parse_model_requirement``.
+            - ``tier`` (str) + optional ``personality_preset`` (str):
+              resolved via ``resolve_model_requirement`` with
+              personality-based affinity defaults.
         providers: Provider name -> provider config mapping.  Each
             provider config must have a ``models`` attribute returning
             a tuple of ``ProviderModelConfig``.
@@ -122,6 +129,7 @@ def match_all_agents(
     """
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
         ModelRequirement,
+        parse_model_requirement,
         resolve_model_requirement,
     )
 
@@ -140,7 +148,15 @@ def match_all_agents(
             req = model_req
             tier: ModelTier = req.tier
         elif isinstance(model_req, dict):
-            req = ModelRequirement(**model_req)
+            try:
+                req = parse_model_requirement(model_req)
+            except ValidationError, ValueError:
+                logger.warning(
+                    TEMPLATE_MODEL_MATCH_SKIPPED,
+                    agent_index=idx,
+                    reason="invalid_model_requirement_dict",
+                )
+                continue
             tier = req.tier
         else:
             tier = agent.get("tier", "medium")

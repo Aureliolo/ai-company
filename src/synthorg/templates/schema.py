@@ -9,7 +9,6 @@ from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
-from synthorg.templates.model_requirements import parse_model_requirement
 
 logger = get_logger(__name__)
 
@@ -131,8 +130,14 @@ class TemplateAgentConfig(BaseModel):
         value: NotBlankStr | dict[str, Any],
     ) -> NotBlankStr | dict[str, Any]:
         """Validate model value: tier string or ModelRequirement dict."""
-        if isinstance(value, dict):
+        from synthorg.templates.model_requirements import (  # noqa: PLC0415
+            parse_model_requirement,
+        )
+
+        try:
             parse_model_requirement(value)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
         return value
 
     personality_preset: NotBlankStr | None = Field(

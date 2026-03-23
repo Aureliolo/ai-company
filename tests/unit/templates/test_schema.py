@@ -145,6 +145,14 @@ class TestTemplateAgentConfig:
                 model={"tier": "medium", "unknown_field": "x"},
             )
 
+    def test_dict_model_empty_uses_defaults(self) -> None:
+        a = TemplateAgentConfig(role="Dev", model={})
+        assert a.model == {}
+
+    def test_string_model_invalid_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="Dev", model="xlarge")
+
     def test_both_personality_and_preset_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Cannot specify both"):
             TemplateAgentConfig(

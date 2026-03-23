@@ -338,33 +338,33 @@ class TestParseRenderedYaml:
             _parse_rendered_yaml("template: just-a-string\n", "test-source")
 
 
-# ── _build_departments edge cases ────────────────────────────────
+# ── build_departments edge cases ────────────────────────────────
 
 
 @pytest.mark.unit
 class TestBuildDepartments:
     def test_invalid_budget_percent_raises(self) -> None:
-        from synthorg.templates.renderer import _build_departments
+        from synthorg.templates._render_helpers import build_departments
 
         with pytest.raises(TemplateRenderError, match="Invalid department budget"):
-            _build_departments(
+            build_departments(
                 [{"name": "eng", "budget_percent": "not-a-number"}],
             )
 
 
-# ── _validate_as_root_config edge cases ──────────────────────────
+# ── validate_as_root_config edge cases ──────────────────────────
 
 
 @pytest.mark.unit
 class TestValidateAsRootConfig:
     def test_validation_error_raises_template_validation_error(self) -> None:
+        from synthorg.templates._render_helpers import validate_as_root_config
         from synthorg.templates.errors import TemplateValidationError
-        from synthorg.templates.renderer import _validate_as_root_config
 
         with pytest.raises(
             TemplateValidationError, match="failed RootConfig validation"
         ):
-            _validate_as_root_config({"company_name": 123}, "test-source")
+            validate_as_root_config({"company_name": 123}, "test-source")
 
 
 # ── _collect_variables edge cases ────────────────────────────────
@@ -419,7 +419,7 @@ class TestInlinePersonality:
 class TestDepartmentPassthrough:
     def test_reporting_lines_passthrough(self) -> None:
         """Reporting lines from rendered data pass through to department dict."""
-        from synthorg.templates.renderer import _build_departments
+        from synthorg.templates._render_helpers import build_departments
 
         raw = [
             {
@@ -431,13 +431,13 @@ class TestDepartmentPassthrough:
                 ],
             },
         ]
-        result = _build_departments(raw)
+        result = build_departments(raw)
         assert "reporting_lines" in result[0]
         assert len(result[0]["reporting_lines"]) == 1
 
     def test_policies_passthrough(self) -> None:
         """Policies from rendered data pass through to department dict."""
-        from synthorg.templates.renderer import _build_departments
+        from synthorg.templates._render_helpers import build_departments
 
         raw = [
             {
@@ -449,7 +449,7 @@ class TestDepartmentPassthrough:
                 },
             },
         ]
-        result = _build_departments(raw)
+        result = build_departments(raw)
         assert "policies" in result[0]
 
     def test_workflow_handoffs_passthrough(self) -> None:
@@ -521,19 +521,19 @@ class TestMissingRoleError:
 class TestBuildDepartmentsTypeValidation:
     def test_non_list_reporting_lines_raises(self) -> None:
         """Non-list reporting_lines raises TemplateRenderError."""
-        from synthorg.templates.renderer import _build_departments
+        from synthorg.templates._render_helpers import build_departments
 
         with pytest.raises(TemplateRenderError, match="must be a list"):
-            _build_departments(
+            build_departments(
                 [{"name": "eng", "reporting_lines": "not-a-list"}],
             )
 
     def test_non_dict_policies_raises(self) -> None:
         """Non-dict policies raises TemplateRenderError."""
-        from synthorg.templates.renderer import _build_departments
+        from synthorg.templates._render_helpers import build_departments
 
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
-            _build_departments(
+            build_departments(
                 [{"name": "eng", "policies": ["not-a-dict"]}],
             )
 
