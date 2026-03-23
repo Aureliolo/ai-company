@@ -142,6 +142,8 @@ class TestEnumStringValues:
     def test_company_type_values(self) -> None:
         assert CompanyType.SOLO_FOUNDER.value == "solo_founder"
         assert CompanyType.STARTUP.value == "startup"
+        assert CompanyType.CONSULTANCY.value == "consultancy"
+        assert CompanyType.DATA_TEAM.value == "data_team"
         assert CompanyType.CUSTOM.value == "custom"
 
     def test_task_status_values(self) -> None:

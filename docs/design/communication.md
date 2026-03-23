@@ -86,8 +86,8 @@ The framework supports multiple communication patterns, configurable per company
     - **Meetings** for cross-team decisions and planning ceremonies
 
 Built-in templates select the communication pattern that fits their archetype (e.g.
-`event_driven` for Solo Builder and Research Lab, `hierarchical` for Agency and Enterprise Org,
-`meeting_based` for Product Studio). See the
+`event_driven` for Solo Builder, Research Lab, and Data Team, `hierarchical` for Agency,
+Enterprise Org, and Consultancy, `meeting_based` for Product Studio). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
 ---

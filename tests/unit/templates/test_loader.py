@@ -409,6 +409,20 @@ class TestBuiltinOperationalConfigs:
         assert tpl.workflow == workflow
 
 
+# -- builtin-to-enum sync ------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinEnumSync:
+    """Every non-CUSTOM CompanyType member must have a BUILTIN_TEMPLATES entry."""
+
+    def test_company_type_matches_builtin_templates(self) -> None:
+        from synthorg.core.enums import CompanyType
+
+        expected = {ct.value for ct in CompanyType if ct is not CompanyType.CUSTOM}
+        assert set(BUILTIN_TEMPLATES) == expected
+
+
 # -- builtin skill patterns -----------------------------------------------
 
 
