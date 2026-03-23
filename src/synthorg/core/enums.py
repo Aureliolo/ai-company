@@ -219,7 +219,6 @@ class DepartmentName(StrEnum):
     QUALITY_ASSURANCE = "quality_assurance"
     DATA_ANALYTICS = "data_analytics"
     OPERATIONS = "operations"
-    CONSULTING = "consulting"
     CREATIVE_MARKETING = "creative_marketing"
     SECURITY = "security"
 

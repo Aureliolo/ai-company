@@ -53,8 +53,8 @@ class TestEnumMemberCounts:
     def test_cost_tier_has_4_members(self) -> None:
         assert len(CostTier) == 4
 
-    def test_company_type_has_8_members(self) -> None:
-        assert len(CompanyType) == 8
+    def test_company_type_has_10_members(self) -> None:
+        assert len(CompanyType) == 10
 
     def test_skill_category_has_9_members(self) -> None:
         assert len(SkillCategory) == 9
