@@ -5,7 +5,7 @@
 - **What**: Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
-- **Layout**: `src/synthorg/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard), `cli/` (Go CLI binary)
+- **Layout**: `src/synthorg/` (src layout), `tests/` (unit/integration/e2e), `web/` (React 19 dashboard), `cli/` (Go CLI binary)
 - **Design**: [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)

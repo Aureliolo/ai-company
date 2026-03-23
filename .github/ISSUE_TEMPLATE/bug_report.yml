@@ -16,7 +16,7 @@ body:
       description: Which part of SynthOrg is affected?
       options:
         - Backend (Python API / engine)
-        - Dashboard (Vue web UI)
+        - Dashboard (React web UI)
         - CLI (Go binary / installer)
         - Docker (compose / containers)
         - Docs
