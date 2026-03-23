@@ -20,7 +20,10 @@ defineEmits<{
     leave-from-class="translate-y-0 opacity-100"
     leave-to-class="translate-y-4 opacity-0"
   >
-    <div v-if="count > 0" class="fixed bottom-6 right-6 z-50">
+    <div
+      v-if="count > 0"
+      class="fixed bottom-6 right-6 z-50"
+    >
       <Button
         :label="`Save All Modified (${count})`"
         icon="pi pi-save"

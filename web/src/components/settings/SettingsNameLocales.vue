@@ -68,7 +68,9 @@ onMounted(loadLocales)
   <div class="mt-6 rounded-lg border border-slate-800 p-4">
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h4 class="text-sm font-medium text-slate-300">Name Locales</h4>
+        <h4 class="text-sm font-medium text-slate-300">
+          Name Locales
+        </h4>
         <p class="mt-0.5 text-xs text-slate-500">
           Choose which regions agent names are generated from.
         </p>

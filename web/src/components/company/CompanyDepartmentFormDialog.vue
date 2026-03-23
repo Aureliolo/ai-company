@@ -137,7 +137,10 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label for="dept-name" class="mb-1 block text-xs text-slate-400">
+          <label
+            for="dept-name"
+            class="mb-1 block text-xs text-slate-400"
+          >
             Name <span class="text-red-400">*</span>
           </label>
           <InputText
@@ -149,12 +152,15 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="dept-head" class="mb-1 block text-xs text-slate-400">
+          <label
+            for="dept-head"
+            class="mb-1 block text-xs text-slate-400"
+          >
             Head (agent name)
           </label>
           <Select
-            input-id="dept-head"
             v-model="head"
+            input-id="dept-head"
             :options="agentNames ?? []"
             class="w-full"
             show-clear
@@ -162,10 +168,13 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="dept-budget" class="mb-1 block text-xs text-slate-400">Budget %</label>
+          <label
+            for="dept-budget"
+            class="mb-1 block text-xs text-slate-400"
+          >Budget %</label>
           <InputNumber
-            input-id="dept-budget"
             v-model="budgetPercent"
+            input-id="dept-budget"
             :min="0"
             :max="100"
             :use-grouping="false"
@@ -174,10 +183,13 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="dept-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
+          <label
+            for="dept-autonomy"
+            class="mb-1 block text-xs text-slate-400"
+          >Autonomy Level (optional)</label>
           <Select
-            input-id="dept-autonomy"
             v-model="autonomyLevel"
+            input-id="dept-autonomy"
             :options="AUTONOMY_LEVELS"
             class="w-full"
             placeholder="Inherit from company"
@@ -194,7 +206,11 @@ function handleSave() {
             <p class="mb-2 text-xs text-slate-400">
               Array of team objects with name, lead, and members fields.
             </p>
-            <CodeEditor v-model="teamsJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="teamsJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="reporting">
@@ -203,7 +219,11 @@ function handleSave() {
             <p class="mb-2 text-xs text-slate-400">
               Array of objects with subordinate and supervisor agent names.
             </p>
-            <CodeEditor v-model="reportingLinesJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="reportingLinesJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="policies">
@@ -212,13 +232,21 @@ function handleSave() {
             <p class="mb-2 text-xs text-slate-400">
               Object with review_requirements and approval_chains.
             </p>
-            <CodeEditor v-model="policiesJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="policiesJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
       </Accordion>
 
       <!-- JSON validation error -->
-      <div v-if="jsonError" role="alert" class="rounded bg-red-500/10 p-2 text-xs text-red-400">
+      <div
+        v-if="jsonError"
+        role="alert"
+        class="rounded bg-red-500/10 p-2 text-xs text-red-400"
+      >
         {{ jsonError }}
       </div>
     </div>

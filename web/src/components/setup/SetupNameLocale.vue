@@ -55,7 +55,9 @@ onMounted(fetchLocales)
 <template>
   <div class="mx-auto w-full max-w-3xl">
     <div class="mb-6 text-center">
-      <h2 class="text-2xl font-semibold text-slate-100">Name Generation</h2>
+      <h2 class="text-2xl font-semibold text-slate-100">
+        Name Generation
+      </h2>
       <p class="mt-1 text-sm text-slate-400">
         Choose where agent names are generated from.
         Select "All" for worldwide diversity, or pick specific regions.

@@ -233,7 +233,9 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-lg">
     <div class="mb-6 text-center">
-      <h2 class="text-2xl font-semibold text-slate-100">Configure LLM Provider</h2>
+      <h2 class="text-2xl font-semibold text-slate-100">
+        Configure LLM Provider
+      </h2>
       <p class="mt-1 text-sm text-slate-400">
         Connect an LLM provider so your agents can think and act.
       </p>
@@ -248,7 +250,9 @@ onMounted(async () => {
         </div>
         <div class="space-y-1 text-sm text-slate-300">
           <p>Name: <strong>{{ createdProviderName }}</strong></p>
-          <p v-if="createdProvider.base_url">URL: {{ createdProvider.base_url }}</p>
+          <p v-if="createdProvider.base_url">
+            URL: {{ createdProvider.base_url }}
+          </p>
           <p>Models: {{ createdProvider.models.length }} available</p>
         </div>
         <Button
@@ -308,7 +312,9 @@ onMounted(async () => {
                 class="text-[10px]"
               />
             </div>
-            <p class="text-xs leading-relaxed text-slate-400">{{ preset.description }}</p>
+            <p class="text-xs leading-relaxed text-slate-400">
+              {{ preset.description }}
+            </p>
           </button>
         </div>
       </template>
@@ -327,9 +333,15 @@ onMounted(async () => {
           </span>
         </div>
 
-        <form class="space-y-4" @submit.prevent="handleAddProvider">
+        <form
+          class="space-y-4"
+          @submit.prevent="handleAddProvider"
+        >
           <div>
-            <label for="sp-name" class="mb-1 block text-sm text-slate-300">Provider Name</label>
+            <label
+              for="sp-name"
+              class="mb-1 block text-sm text-slate-300"
+            >Provider Name</label>
             <InputText
               id="sp-name"
               v-model="providerName"
@@ -339,7 +351,10 @@ onMounted(async () => {
           </div>
 
           <div>
-            <label for="sp-base-url" class="mb-1 block text-sm text-slate-300">Base URL</label>
+            <label
+              for="sp-base-url"
+              class="mb-1 block text-sm text-slate-300"
+            >Base URL</label>
             <InputText
               id="sp-base-url"
               v-model="baseUrl"
@@ -347,8 +362,15 @@ onMounted(async () => {
               :disabled="probing"
               :placeholder="selectedPreset.default_base_url ?? 'https://api.example.com'"
             />
-            <div v-if="probing" aria-live="polite" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
-              <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+            <div
+              v-if="probing"
+              aria-live="polite"
+              class="mt-1 flex items-center gap-2 text-xs text-slate-400"
+            >
+              <i
+                class="pi pi-spin pi-spinner"
+                aria-hidden="true"
+              />
               <span>Detecting provider...</span>
             </div>
             <div
@@ -363,10 +385,13 @@ onMounted(async () => {
           </div>
 
           <div v-if="selectedPreset.auth_type === 'api_key'">
-            <label for="sp-api-key" class="mb-1 block text-sm text-slate-300">API Key</label>
+            <label
+              for="sp-api-key"
+              class="mb-1 block text-sm text-slate-300"
+            >API Key</label>
             <Password
-              inputId="sp-api-key"
               v-model="apiKey"
+              input-id="sp-api-key"
               :toggle-mask="true"
               :feedback="false"
               fluid

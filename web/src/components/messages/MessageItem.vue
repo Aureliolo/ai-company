@@ -13,7 +13,9 @@ defineProps<{
       <span class="text-sm font-medium text-brand-400">{{ message.sender }}</span>
       <span class="text-xs text-slate-500">{{ formatRelativeTime(message.timestamp) }}</span>
     </div>
-    <p class="text-sm text-slate-300 whitespace-pre-wrap">{{ message.content }}</p>
+    <p class="text-sm text-slate-300 whitespace-pre-wrap">
+      {{ message.content }}
+    </p>
     <span class="mt-1 inline-block text-xs text-slate-600">{{ message.channel }}</span>
   </div>
 </template>

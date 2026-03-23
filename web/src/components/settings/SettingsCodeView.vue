@@ -130,7 +130,11 @@ function handleSave() {
       min-height="300px"
     />
 
-    <div v-if="parseError" role="alert" class="rounded bg-red-500/10 p-2 text-xs text-red-400">
+    <div
+      v-if="parseError"
+      role="alert"
+      class="rounded bg-red-500/10 p-2 text-xs text-red-400"
+    >
       {{ parseError }}
     </div>
 
@@ -142,7 +146,10 @@ function handleSave() {
         :loading="saving"
         @click="handleSave"
       />
-      <span v-if="isDirty && !parseError" class="text-xs text-slate-400">
+      <span
+        v-if="isDirty && !parseError"
+        class="text-xs text-slate-400"
+      >
         {{ parsedChanges.length }} setting(s) modified
       </span>
     </div>

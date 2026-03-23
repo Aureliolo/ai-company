@@ -36,7 +36,10 @@ function navigate(to: string) {
       <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-sm font-bold text-white">
         S
       </div>
-      <span v-if="!collapsed" class="text-lg font-semibold text-slate-100">{{ APP_NAME }}</span>
+      <span
+        v-if="!collapsed"
+        class="text-lg font-semibold text-slate-100"
+      >{{ APP_NAME }}</span>
     </div>
 
     <!-- Navigation -->
@@ -67,7 +70,10 @@ function navigate(to: string) {
       :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
       @click="$emit('toggle')"
     >
-      <i :class="collapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'" aria-hidden="true" />
+      <i
+        :class="collapsed ? 'pi pi-angle-right' : 'pi pi-angle-left'"
+        aria-hidden="true"
+      />
     </button>
   </aside>
 </template>

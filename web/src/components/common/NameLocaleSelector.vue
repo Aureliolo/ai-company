@@ -115,9 +115,14 @@ onMounted(async () => {
 <template>
   <div>
     <!-- Loading -->
-    <div v-if="loading" class="text-center">
+    <div
+      v-if="loading"
+      class="text-center"
+    >
       <i class="pi pi-spin pi-spinner text-slate-400" />
-      <p class="mt-1 text-xs text-slate-500">Loading locales...</p>
+      <p class="mt-1 text-xs text-slate-500">
+        Loading locales...
+      </p>
     </div>
 
     <!-- Error -->
@@ -147,7 +152,10 @@ onMounted(async () => {
       </div>
 
       <!-- Region groups -->
-      <div v-show="!isAll" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        v-show="!isAll"
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      >
         <div
           v-for="(locales, region) in regions"
           :key="region"
@@ -184,7 +192,7 @@ onMounted(async () => {
                 :checked="isLocaleSelected(locale)"
                 :aria-label="displayNames[locale] || locale"
                 @change="toggleLocale(locale, ($event.target as HTMLInputElement).checked)"
-              />
+              >
               {{ displayNames[locale] || locale }}
             </label>
           </div>

@@ -277,7 +277,10 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
 
 <template>
   <AppShell>
-    <PageHeader :title="companyName" subtitle="Company configuration, agents, and departments">
+    <PageHeader
+      :title="companyName"
+      subtitle="Company configuration, agents, and departments"
+    >
       <template #actions>
         <EditModeToggle
           :model-value="companyEditMode"
@@ -287,95 +290,138 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="settingsStore.error" @retry="retryFetch">
-    <LoadingSkeleton v-if="loading" :lines="6" />
+    <ErrorBoundary
+      :error="settingsStore.error"
+      @retry="retryFetch"
+    >
+      <LoadingSkeleton
+        v-if="loading"
+        :lines="6"
+      />
 
-    <!-- Code view mode (JSON/YAML) -->
-    <SettingsCodeView
-      v-else-if="companyEditMode !== 'gui'"
-      :entries="companyEntries"
-      :mode="companyCodeMode"
-      :saving="settingsStore.savingKey !== null"
-      @save="handleCodeViewSave"
-    />
+      <!-- Code view mode (JSON/YAML) -->
+      <SettingsCodeView
+        v-else-if="companyEditMode !== 'gui'"
+        :entries="companyEntries"
+        :mode="companyCodeMode"
+        :saving="settingsStore.savingKey !== null"
+        @save="handleCodeViewSave"
+      />
 
-    <!-- GUI mode -->
-    <Tabs v-else v-model:value="activeTab">
-      <TabList>
-        <Tab value="general">General</Tab>
-        <Tab value="agents">Agents ({{ agents.length }})</Tab>
-        <Tab value="departments">Departments ({{ departments.length }})</Tab>
-      </TabList>
+      <!-- GUI mode -->
+      <Tabs
+        v-else
+        v-model:value="activeTab"
+      >
+        <TabList>
+          <Tab value="general">
+            General
+          </Tab>
+          <Tab value="agents">
+            Agents ({{ agents.length }})
+          </Tab>
+          <Tab value="departments">
+            Departments ({{ departments.length }})
+          </Tab>
+        </TabList>
 
-      <TabPanels>
-        <!-- General tab -->
-        <TabPanel value="general">
-          <CompanyGeneralForm
-            :entries="companyEntries"
-            :saving-key="settingsStore.savingKey"
-            @save="handleSettingSave"
-            @reset="handleSettingReset"
-            @dirty="handleDirty"
-          />
-        </TabPanel>
-
-        <!-- Agents tab -->
-        <TabPanel value="agents">
-          <div v-if="agentParseError" role="alert" class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
-            {{ agentParseError }}
-          </div>
-          <div class="mb-4">
-            <Button label="Add Agent" size="small" :disabled="!!agentParseError" @click="openAddAgent" />
-          </div>
-
-          <div
-            v-if="!agentParseError && agents.length === 0"
-            class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
-          >
-            <p class="text-sm text-slate-400">No agents configured. Add one to get started.</p>
-          </div>
-
-          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <CompanyAgentCard
-              v-for="(agent, index) in agents"
-              :key="agent.name"
-              :agent="agent"
-              :index="index"
-              @edit="openEditAgent"
-              @delete="deleteAgent"
+        <TabPanels>
+          <!-- General tab -->
+          <TabPanel value="general">
+            <CompanyGeneralForm
+              :entries="companyEntries"
+              :saving-key="settingsStore.savingKey"
+              @save="handleSettingSave"
+              @reset="handleSettingReset"
+              @dirty="handleDirty"
             />
-          </div>
-        </TabPanel>
+          </TabPanel>
 
-        <!-- Departments tab -->
-        <TabPanel value="departments">
-          <div v-if="deptParseError" role="alert" class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
-            {{ deptParseError }}
-          </div>
-          <div class="mb-4">
-            <Button label="Add Department" size="small" :disabled="!!deptParseError" @click="openAddDept" />
-          </div>
+          <!-- Agents tab -->
+          <TabPanel value="agents">
+            <div
+              v-if="agentParseError"
+              role="alert"
+              class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400"
+            >
+              {{ agentParseError }}
+            </div>
+            <div class="mb-4">
+              <Button
+                label="Add Agent"
+                size="small"
+                :disabled="!!agentParseError"
+                @click="openAddAgent"
+              />
+            </div>
 
-          <div
-            v-if="!deptParseError && departments.length === 0"
-            class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
-          >
-            <p class="text-sm text-slate-400">No departments configured. Add one to get started.</p>
-          </div>
+            <div
+              v-if="!agentParseError && agents.length === 0"
+              class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+            >
+              <p class="text-sm text-slate-400">
+                No agents configured. Add one to get started.
+              </p>
+            </div>
 
-          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <CompanyDepartmentCard
-              v-for="(dept, index) in departments"
-              :key="dept.name"
-              :department="dept"
-              :index="index"
-              @edit="openEditDept"
-              @delete="deleteDept"
-            />
-          </div>
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+            <div
+              v-else
+              class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+            >
+              <CompanyAgentCard
+                v-for="(agent, index) in agents"
+                :key="agent.name"
+                :agent="agent"
+                :index="index"
+                @edit="openEditAgent"
+                @delete="deleteAgent"
+              />
+            </div>
+          </TabPanel>
+
+          <!-- Departments tab -->
+          <TabPanel value="departments">
+            <div
+              v-if="deptParseError"
+              role="alert"
+              class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400"
+            >
+              {{ deptParseError }}
+            </div>
+            <div class="mb-4">
+              <Button
+                label="Add Department"
+                size="small"
+                :disabled="!!deptParseError"
+                @click="openAddDept"
+              />
+            </div>
+
+            <div
+              v-if="!deptParseError && departments.length === 0"
+              class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+            >
+              <p class="text-sm text-slate-400">
+                No departments configured. Add one to get started.
+              </p>
+            </div>
+
+            <div
+              v-else
+              class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+            >
+              <CompanyDepartmentCard
+                v-for="(dept, index) in departments"
+                :key="dept.name"
+                :department="dept"
+                :index="index"
+                @edit="openEditDept"
+                @delete="deleteDept"
+              />
+            </div>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </ErrorBoundary>
 
     <!-- Dialogs -->

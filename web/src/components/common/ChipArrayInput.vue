@@ -48,7 +48,10 @@ function handleKeydown(event: KeyboardEvent) {
 <template>
   <div>
     <!-- Chip display -->
-    <div v-if="modelValue.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+    <div
+      v-if="modelValue.length > 0"
+      class="mb-2 flex flex-wrap gap-1.5"
+    >
       <Tag
         v-for="(item, index) in modelValue"
         :key="item"
@@ -63,13 +66,19 @@ function handleKeydown(event: KeyboardEvent) {
           :aria-label="`Remove ${item}`"
           @click="removeItem(index)"
         >
-          <i class="pi pi-times text-[0.625rem]" aria-hidden="true" />
+          <i
+            class="pi pi-times text-[0.625rem]"
+            aria-hidden="true"
+          />
         </button>
       </Tag>
     </div>
 
     <!-- Add input -->
-    <div v-if="!disabled" class="flex gap-2">
+    <div
+      v-if="!disabled"
+      class="flex gap-2"
+    >
       <InputText
         v-model="inputValue"
         :placeholder="placeholder"

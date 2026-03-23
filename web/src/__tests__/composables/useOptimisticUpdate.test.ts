@@ -71,7 +71,7 @@ describe('useOptimisticUpdate', () => {
         () => Promise.reject(new Error('Server error')),
       )
 
-      expect(error.value).toBe('Server error')
+      expect(error.value).toBe('Server error (UI may be out of sync -- please refresh)')
       // Rollback errors are logged via getErrorMessage (string), not raw Error
       expect(consoleSpy).toHaveBeenCalledWith('Rollback failed:', 'Rollback boom')
     } finally {

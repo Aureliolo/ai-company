@@ -36,21 +36,34 @@ async function retryFetch() {
 
 <template>
   <AppShell>
-    <PageHeader title="Budget" subtitle="Monitor spending and cost allocation" />
+    <PageHeader
+      title="Budget"
+      subtitle="Monitor spending and cost allocation"
+    />
 
-    <ErrorBoundary :error="budgetStore.error" @retry="retryFetch">
-      <LoadingSkeleton v-if="budgetStore.loading && budgetStore.records.length === 0" :lines="6" />
+    <ErrorBoundary
+      :error="budgetStore.error"
+      @retry="retryFetch"
+    >
+      <LoadingSkeleton
+        v-if="budgetStore.loading && budgetStore.records.length === 0"
+        :lines="6"
+      />
       <template v-else>
         <div class="space-y-6">
           <BudgetConfigDisplay :config="budgetStore.config" />
 
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
-            <h3 class="mb-4 text-sm font-medium text-slate-300">Daily Spending</h3>
+            <h3 class="mb-4 text-sm font-medium text-slate-300">
+              Daily Spending
+            </h3>
             <SpendingChart :records="budgetStore.records" />
           </div>
 
           <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
-            <h3 class="mb-4 text-sm font-medium text-slate-300">Agent Spending</h3>
+            <h3 class="mb-4 text-sm font-medium text-slate-300">
+              Agent Spending
+            </h3>
             <AgentSpendingTable :records="budgetStore.records" />
           </div>
         </div>

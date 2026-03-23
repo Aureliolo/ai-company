@@ -142,7 +142,10 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label for="agent-name" class="mb-1 block text-xs text-slate-400">Name</label>
+          <label
+            for="agent-name"
+            class="mb-1 block text-xs text-slate-400"
+          >Name</label>
           <InputText
             id="agent-name"
             v-model="name"
@@ -152,7 +155,10 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="agent-role" class="mb-1 block text-xs text-slate-400">Role</label>
+          <label
+            for="agent-role"
+            class="mb-1 block text-xs text-slate-400"
+          >Role</label>
           <InputText
             id="agent-role"
             v-model="role"
@@ -161,11 +167,14 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="agent-department" class="mb-1 block text-xs text-slate-400">Department</label>
+          <label
+            for="agent-department"
+            class="mb-1 block text-xs text-slate-400"
+          >Department</label>
           <Select
             v-if="departments && departments.length > 0"
-            input-id="agent-department"
             v-model="department"
+            input-id="agent-department"
             :options="departments"
             class="w-full"
             editable
@@ -180,19 +189,25 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="agent-level" class="mb-1 block text-xs text-slate-400">Level</label>
+          <label
+            for="agent-level"
+            class="mb-1 block text-xs text-slate-400"
+          >Level</label>
           <Select
-            input-id="agent-level"
             v-model="level"
+            input-id="agent-level"
             :options="LEVELS"
             class="w-full"
           />
         </div>
         <div>
-          <label for="agent-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
+          <label
+            for="agent-autonomy"
+            class="mb-1 block text-xs text-slate-400"
+          >Autonomy Level (optional)</label>
           <Select
-            input-id="agent-autonomy"
             v-model="autonomyLevel"
+            input-id="agent-autonomy"
             :options="AUTONOMY_LEVELS"
             class="w-full"
             placeholder="Inherit from company"
@@ -206,37 +221,61 @@ function handleSave() {
         <AccordionPanel value="personality">
           <AccordionHeader>Personality</AccordionHeader>
           <AccordionContent>
-            <CodeEditor v-model="personalityJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="personalityJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="model">
           <AccordionHeader>Model</AccordionHeader>
           <AccordionContent>
-            <CodeEditor v-model="modelJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="modelJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="memory">
           <AccordionHeader>Memory</AccordionHeader>
           <AccordionContent>
-            <CodeEditor v-model="memoryJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="memoryJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="tools">
           <AccordionHeader>Tools</AccordionHeader>
           <AccordionContent>
-            <CodeEditor v-model="toolsJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="toolsJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="authority">
           <AccordionHeader>Authority</AccordionHeader>
           <AccordionContent>
-            <CodeEditor v-model="authorityJson" language="json" min-height="100px" />
+            <CodeEditor
+              v-model="authorityJson"
+              language="json"
+              min-height="100px"
+            />
           </AccordionContent>
         </AccordionPanel>
       </Accordion>
 
       <!-- JSON validation error -->
-      <div v-if="jsonError" role="alert" class="rounded bg-red-500/10 p-2 text-xs text-red-400">
+      <div
+        v-if="jsonError"
+        role="alert"
+        class="rounded bg-red-500/10 p-2 text-xs text-red-400"
+      >
         {{ jsonError }}
       </div>
     </div>

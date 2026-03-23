@@ -3,8 +3,9 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue(), tailwindcss()],
+  devtools: mode !== 'production',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -12,6 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    forwardConsole: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
@@ -20,4 +22,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

@@ -8,6 +8,11 @@ defineProps<{
 
 <template>
   <div class="space-y-3">
-    <Skeleton v-for="i in (lines ?? 3)" :key="i" height="1.5rem" class="bg-slate-800" />
+    <Skeleton
+      v-for="i in (lines ?? 3)"
+      :key="i"
+      height="1.5rem"
+      class="bg-slate-800"
+    />
   </div>
 </template>

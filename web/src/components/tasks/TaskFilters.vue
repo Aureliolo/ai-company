@@ -42,6 +42,12 @@ function updateFilter<K extends keyof TaskFilterType>(key: K, value: TaskFilterT
       class="w-40"
       @update:model-value="updateFilter('assigned_to', $event)"
     />
-    <Button label="Reset" icon="pi pi-filter-slash" text size="small" @click="$emit('reset')" />
+    <Button
+      label="Reset"
+      icon="pi pi-filter-slash"
+      text
+      size="small"
+      @click="$emit('reset')"
+    />
   </div>
 </template>

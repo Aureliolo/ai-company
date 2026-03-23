@@ -28,7 +28,7 @@ export function useOptimisticUpdate() {
     error.value = null
 
     // Capture rollback before any mutation so a partial throw is still reversible
-    let rollback: (() => void) | null = null
+    let rollback: () => void
     try {
       rollback = applyOptimistic()
     } catch (prepareErr) {
@@ -42,12 +42,15 @@ export function useOptimisticUpdate() {
       const result = await serverAction()
       return result
     } catch (err) {
+      let rollbackFailed = false
       try {
         rollback()
       } catch (rollbackErr) {
+        rollbackFailed = true
         console.error('Rollback failed:', getErrorMessage(rollbackErr))
       }
-      error.value = getErrorMessage(err)
+      const base = getErrorMessage(err)
+      error.value = rollbackFailed ? `${base} (UI may be out of sync -- please refresh)` : base
       console.error('Optimistic update failed:', error.value)
       return null
     } finally {

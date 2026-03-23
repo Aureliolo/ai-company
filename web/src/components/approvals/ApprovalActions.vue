@@ -51,13 +51,28 @@ function handleReject(id: string) {
 </script>
 
 <template>
-  <div v-if="status === 'pending' && canWrite" class="space-y-3">
+  <div
+    v-if="status === 'pending' && canWrite"
+    class="space-y-3"
+  >
     <div>
-      <label for="approval-comment" class="mb-1 block text-xs text-slate-400">Comment (optional)</label>
-      <Textarea id="approval-comment" v-model="comment" class="w-full" rows="2" placeholder="Add a comment..." />
+      <label
+        for="approval-comment"
+        class="mb-1 block text-xs text-slate-400"
+      >Comment (optional)</label>
+      <Textarea
+        id="approval-comment"
+        v-model="comment"
+        class="w-full"
+        rows="2"
+        placeholder="Add a comment..."
+      />
     </div>
 
-    <div v-if="!showReject" class="flex gap-2">
+    <div
+      v-if="!showReject"
+      class="flex gap-2"
+    >
       <Button
         label="Approve"
         icon="pi pi-check"
@@ -78,9 +93,22 @@ function handleReject(id: string) {
       />
     </div>
 
-    <div v-else class="space-y-2">
-      <label for="reject-reason" class="mb-1 block text-xs text-slate-400">Reason for rejection</label>
-      <Textarea id="reject-reason" v-model="rejectReason" class="w-full" rows="2" placeholder="Reason for rejection (required)" aria-required="true" />
+    <div
+      v-else
+      class="space-y-2"
+    >
+      <label
+        for="reject-reason"
+        class="mb-1 block text-xs text-slate-400"
+      >Reason for rejection</label>
+      <Textarea
+        id="reject-reason"
+        v-model="rejectReason"
+        class="w-full"
+        rows="2"
+        placeholder="Reason for rejection (required)"
+        aria-required="true"
+      />
       <div class="flex gap-2">
         <Button
           label="Confirm Reject"
@@ -91,7 +119,12 @@ function handleReject(id: string) {
           :loading="loading"
           @click="handleReject(approvalId)"
         />
-        <Button label="Back" text size="small" @click="showReject = false" />
+        <Button
+          label="Back"
+          text
+          size="small"
+          @click="showReject = false"
+        />
       </div>
     </div>
   </div>

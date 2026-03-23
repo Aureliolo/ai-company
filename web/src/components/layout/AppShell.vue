@@ -13,7 +13,10 @@ function toggleSidebar() {
 
 <template>
   <div class="flex h-screen overflow-hidden bg-slate-950">
-    <Sidebar :collapsed="sidebarCollapsed" @toggle="toggleSidebar" />
+    <Sidebar
+      :collapsed="sidebarCollapsed"
+      @toggle="toggleSidebar"
+    />
     <div class="flex flex-1 flex-col overflow-hidden">
       <Topbar @toggle-sidebar="toggleSidebar" />
       <ConnectionLostBanner />

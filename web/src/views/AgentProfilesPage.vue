@@ -34,17 +34,29 @@ function openAgent(agent: AgentConfig) {
 
 <template>
   <AppShell>
-    <PageHeader title="Agents" :subtitle="`${agentStore.total} agents in organization`" />
+    <PageHeader
+      title="Agents"
+      :subtitle="`${agentStore.total} agents in organization`"
+    />
 
-    <ErrorBoundary :error="agentStore.error" @retry="agentStore.fetchAgents()">
-      <LoadingSkeleton v-if="agentStore.loading && agentStore.agents.length === 0" :lines="6" />
+    <ErrorBoundary
+      :error="agentStore.error"
+      @retry="agentStore.fetchAgents()"
+    >
+      <LoadingSkeleton
+        v-if="agentStore.loading && agentStore.agents.length === 0"
+        :lines="6"
+      />
       <EmptyState
         v-else-if="agentStore.agents.length === 0"
         icon="pi pi-users"
         title="No agents"
         message="No agents are configured in this organization."
       />
-      <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div
+        v-else
+        class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+      >
         <AgentCard
           v-for="agent in agentStore.agents"
           :key="agent.name"

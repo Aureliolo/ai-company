@@ -10,7 +10,9 @@ defineProps<{
 
 <template>
   <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
-    <h3 class="mb-4 text-sm font-medium text-slate-300">System Status</h3>
+    <h3 class="mb-4 text-sm font-medium text-slate-300">
+      System Status
+    </h3>
 
     <div class="space-y-3">
       <!-- API Status -->
@@ -87,13 +89,19 @@ defineProps<{
       </div>
 
       <!-- Uptime -->
-      <div v-if="health" class="flex items-center justify-between border-t border-slate-800 pt-3">
+      <div
+        v-if="health"
+        class="flex items-center justify-between border-t border-slate-800 pt-3"
+      >
         <span class="text-sm text-slate-400">Uptime</span>
         <span class="text-sm text-slate-300">{{ formatUptime(health.uptime_seconds) }}</span>
       </div>
 
       <!-- Version -->
-      <div v-if="health" class="flex items-center justify-between">
+      <div
+        v-if="health"
+        class="flex items-center justify-between"
+      >
         <span class="text-sm text-slate-400">Version</span>
         <span class="text-sm text-slate-300">{{ health.version }}</span>
       </div>

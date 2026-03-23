@@ -98,41 +98,97 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
     class="w-[500px]"
     @update:visible="$emit('update:visible', $event)"
   >
-    <form class="space-y-4" @submit.prevent="handleSubmit">
+    <form
+      class="space-y-4"
+      @submit.prevent="handleSubmit"
+    >
       <div>
-        <label for="task-title" class="mb-1 block text-sm text-slate-300">Title</label>
-        <InputText id="task-title" v-model="title" class="w-full" placeholder="Task title" aria-required="true" />
+        <label
+          for="task-title"
+          class="mb-1 block text-sm text-slate-300"
+        >Title</label>
+        <InputText
+          id="task-title"
+          v-model="title"
+          class="w-full"
+          placeholder="Task title"
+          aria-required="true"
+        />
       </div>
       <div>
-        <label for="task-description" class="mb-1 block text-sm text-slate-300">Description</label>
-        <Textarea id="task-description" v-model="description" class="w-full" rows="3" placeholder="Describe the task" aria-required="true" />
+        <label
+          for="task-description"
+          class="mb-1 block text-sm text-slate-300"
+        >Description</label>
+        <Textarea
+          id="task-description"
+          v-model="description"
+          class="w-full"
+          rows="3"
+          placeholder="Describe the task"
+          aria-required="true"
+        />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label for="task-type" class="mb-1 block text-sm text-slate-300">Type</label>
-          <Dropdown input-id="task-type" v-model="type" :options="typeOptions" option-label="label" option-value="value" class="w-full" />
+          <label
+            for="task-type"
+            class="mb-1 block text-sm text-slate-300"
+          >Type</label>
+          <Dropdown
+            v-model="type"
+            input-id="task-type"
+            :options="typeOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full"
+          />
         </div>
         <div>
-          <label for="task-priority" class="mb-1 block text-sm text-slate-300">Priority</label>
-          <Dropdown input-id="task-priority" v-model="priority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
+          <label
+            for="task-priority"
+            class="mb-1 block text-sm text-slate-300"
+          >Priority</label>
+          <Dropdown
+            v-model="priority"
+            input-id="task-priority"
+            :options="priorityOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full"
+          />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label for="task-project" class="mb-1 block text-sm text-slate-300">Project</label>
-          <InputText id="task-project" v-model="project" class="w-full" placeholder="Project ID" aria-required="true" />
+          <label
+            for="task-project"
+            class="mb-1 block text-sm text-slate-300"
+          >Project</label>
+          <InputText
+            id="task-project"
+            v-model="project"
+            class="w-full"
+            placeholder="Project ID"
+            aria-required="true"
+          />
         </div>
         <div>
           <span class="mb-1 block text-sm text-slate-300">Created By</span>
-          <p class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">{{ auth.user?.username ?? '--' }}</p>
+          <p class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">
+            {{ auth.user?.username ?? '--' }}
+          </p>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label for="task-assignee" class="mb-1 block text-sm text-slate-300">Assign To</label>
+          <label
+            for="task-assignee"
+            class="mb-1 block text-sm text-slate-300"
+          >Assign To</label>
           <Dropdown
-            input-id="task-assignee"
             v-model="assignedTo"
+            input-id="task-assignee"
             :options="agents"
             placeholder="Select agent"
             show-clear
@@ -140,19 +196,48 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
           />
         </div>
         <div>
-          <label for="task-complexity" class="mb-1 block text-sm text-slate-300">Complexity</label>
-          <Dropdown input-id="task-complexity" v-model="complexity" :options="complexityOptions" option-label="label" option-value="value" class="w-full" />
+          <label
+            for="task-complexity"
+            class="mb-1 block text-sm text-slate-300"
+          >Complexity</label>
+          <Dropdown
+            v-model="complexity"
+            input-id="task-complexity"
+            :options="complexityOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full"
+          />
         </div>
       </div>
       <div>
-        <label for="task-budget" class="mb-1 block text-sm text-slate-300">Budget Limit (USD)</label>
-        <InputNumber input-id="task-budget" v-model="budgetLimit" mode="currency" currency="USD" :min="0" class="w-full" />
+        <label
+          for="task-budget"
+          class="mb-1 block text-sm text-slate-300"
+        >Budget Limit (USD)</label>
+        <InputNumber
+          v-model="budgetLimit"
+          input-id="task-budget"
+          mode="currency"
+          currency="USD"
+          :min="0"
+          class="w-full"
+        />
       </div>
     </form>
 
     <template #footer>
-      <Button label="Cancel" text @click="$emit('update:visible', false)" />
-      <Button label="Create" icon="pi pi-plus" :disabled="!isValid" @click="handleSubmit" />
+      <Button
+        label="Cancel"
+        text
+        @click="$emit('update:visible', false)"
+      />
+      <Button
+        label="Create"
+        icon="pi pi-plus"
+        :disabled="!isValid"
+        @click="handleSubmit"
+      />
     </template>
   </Dialog>
 </template>

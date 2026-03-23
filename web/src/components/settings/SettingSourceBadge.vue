@@ -22,5 +22,8 @@ const SOURCE_SEVERITY: Record<SettingSource, string> = {
 </script>
 
 <template>
-  <Tag :value="SOURCE_LABELS[source]" :severity="SOURCE_SEVERITY[source]" />
+  <Tag
+    :value="SOURCE_LABELS[source]"
+    :severity="SOURCE_SEVERITY[source]"
+  />
 </template>

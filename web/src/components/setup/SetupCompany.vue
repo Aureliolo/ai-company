@@ -88,7 +88,9 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-lg">
     <div class="mb-6 text-center">
-      <h2 class="text-2xl font-semibold text-slate-100">Create Your Company</h2>
+      <h2 class="text-2xl font-semibold text-slate-100">
+        Create Your Company
+      </h2>
       <p class="mt-1 text-sm text-slate-400">
         Name your synthetic organization and optionally start from a template.
       </p>
@@ -137,9 +139,15 @@ onMounted(async () => {
 
     <!-- Creation/edit form -->
     <template v-else>
-      <form class="space-y-6" @submit.prevent="handleCreate">
+      <form
+        class="space-y-6"
+        @submit.prevent="handleCreate"
+      >
         <div>
-          <label for="sc-name" class="mb-1 block text-sm text-slate-300">Company Name</label>
+          <label
+            for="sc-name"
+            class="mb-1 block text-sm text-slate-300"
+          >Company Name</label>
           <InputText
             id="sc-name"
             v-model="companyName"
@@ -149,7 +157,10 @@ onMounted(async () => {
         </div>
 
         <div>
-          <label for="sc-description" class="mb-1 block text-sm text-slate-300">
+          <label
+            for="sc-description"
+            class="mb-1 block text-sm text-slate-300"
+          >
             Description <span class="text-slate-500">(optional)</span>
           </label>
           <Textarea
@@ -164,8 +175,13 @@ onMounted(async () => {
 
         <!-- Template selector -->
         <div>
-          <p class="mb-3 text-sm text-slate-300">Choose a template (optional)</p>
-          <div class="grid gap-3" :class="setup.templates.length > 2 ? 'grid-cols-2' : 'grid-cols-1'">
+          <p class="mb-3 text-sm text-slate-300">
+            Choose a template (optional)
+          </p>
+          <div
+            class="grid gap-3"
+            :class="setup.templates.length > 2 ? 'grid-cols-2' : 'grid-cols-1'"
+          >
             <!-- Start blank option -->
             <button
               type="button"
@@ -177,8 +193,12 @@ onMounted(async () => {
               "
               @click="selectTemplate(null)"
             >
-              <div class="mb-1 text-sm font-medium text-slate-100">Start Blank</div>
-              <p class="text-xs text-slate-400">Begin with an empty organization.</p>
+              <div class="mb-1 text-sm font-medium text-slate-100">
+                Start Blank
+              </div>
+              <p class="text-xs text-slate-400">
+                Begin with an empty organization.
+              </p>
             </button>
 
             <!-- Template cards -->
@@ -194,8 +214,12 @@ onMounted(async () => {
               "
               @click="selectTemplate(tmpl.name)"
             >
-              <div class="mb-1 text-sm font-medium text-slate-100">{{ tmpl.display_name }}</div>
-              <p class="text-xs text-slate-400">{{ tmpl.description }}</p>
+              <div class="mb-1 text-sm font-medium text-slate-100">
+                {{ tmpl.display_name }}
+              </div>
+              <p class="text-xs text-slate-400">
+                {{ tmpl.description }}
+              </p>
             </button>
           </div>
         </div>

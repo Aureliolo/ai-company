@@ -149,10 +149,19 @@ function onNodeClick(event: { node: Node }) {
 
 <template>
   <AppShell>
-    <PageHeader title="Organization Chart" subtitle="Visual structure of departments, teams, and agents" />
+    <PageHeader
+      title="Organization Chart"
+      subtitle="Visual structure of departments, teams, and agents"
+    />
 
-    <ErrorBoundary :error="combinedError" @retry="retryFetch">
-      <LoadingSkeleton v-if="isLoading && !hasDepartments" :lines="6" />
+    <ErrorBoundary
+      :error="combinedError"
+      @retry="retryFetch"
+    >
+      <LoadingSkeleton
+        v-if="isLoading && !hasDepartments"
+        :lines="6"
+      />
       <EmptyState
         v-else-if="!hasDepartments"
         icon="pi pi-sitemap"
@@ -168,7 +177,10 @@ function onNodeClick(event: { node: Node }) {
           </RouterLink>
         </template>
       </EmptyState>
-      <div v-else class="h-[calc(100vh-200px)] rounded-lg border border-slate-800 bg-slate-900">
+      <div
+        v-else
+        class="h-[calc(100vh-200px)] rounded-lg border border-slate-800 bg-slate-900"
+      >
         <VueFlow
           :nodes="nodes"
           :edges="edges"

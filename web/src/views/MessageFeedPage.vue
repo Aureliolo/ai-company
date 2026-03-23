@@ -43,7 +43,10 @@ function handleChannelChange(channel: string | null) {
 
 <template>
   <AppShell>
-    <PageHeader title="Messages" subtitle="Real-time communication feed">
+    <PageHeader
+      title="Messages"
+      subtitle="Real-time communication feed"
+    >
       <template #actions>
         <ChannelSelector
           :model-value="messageStore.activeChannel"
@@ -53,15 +56,24 @@ function handleChannelChange(channel: string | null) {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="messageStore.error" @retry="() => messageStore.fetchMessages(messageStore.activeChannel ?? undefined)">
-      <LoadingSkeleton v-if="messageStore.loading && messageStore.messages.length === 0" :lines="6" />
+    <ErrorBoundary
+      :error="messageStore.error"
+      @retry="() => messageStore.fetchMessages(messageStore.activeChannel ?? undefined)"
+    >
+      <LoadingSkeleton
+        v-if="messageStore.loading && messageStore.messages.length === 0"
+        :lines="6"
+      />
       <EmptyState
         v-else-if="messageStore.messages.length === 0"
         icon="pi pi-comments"
         title="No messages"
         message="Messages from agents will appear here in real-time."
       />
-      <MessageList v-else :messages="messageStore.messages" />
+      <MessageList
+        v-else
+        :messages="messageStore.messages"
+      />
     </ErrorBoundary>
   </AppShell>
 </template>

@@ -41,7 +41,10 @@ function handleAdd(event: { item: HTMLElement & { _underlying_vm_?: Task } }) {
       @add="handleAdd"
     >
       <template #item="{ element }">
-        <TaskCard :task="element" @click="emit('task-click', element)" />
+        <TaskCard
+          :task="element"
+          @click="emit('task-click', element)"
+        />
       </template>
     </VueDraggable>
   </div>

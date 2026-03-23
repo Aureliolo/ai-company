@@ -31,24 +31,56 @@ defineEmits<{
     @row-click="$emit('task-click', $event.data)"
     @page="$emit('page', $event)"
   >
-    <Column field="title" header="Title" sortable class="max-w-xs truncate" />
-    <Column field="status" header="Status" sortable style="width: 120px">
+    <Column
+      field="title"
+      header="Title"
+      sortable
+      class="max-w-xs truncate"
+    />
+    <Column
+      field="status"
+      header="Status"
+      sortable
+      style="width: 120px"
+    >
       <template #body="{ data }">
         <StatusBadge :value="data.status" />
       </template>
     </Column>
-    <Column field="priority" header="Priority" sortable style="width: 100px">
+    <Column
+      field="priority"
+      header="Priority"
+      sortable
+      style="width: 100px"
+    >
       <template #body="{ data }">
-        <StatusBadge :value="data.priority" type="priority" />
+        <StatusBadge
+          :value="data.priority"
+          type="priority"
+        />
       </template>
     </Column>
-    <Column field="assigned_to" header="Assignee" style="width: 150px">
+    <Column
+      field="assigned_to"
+      header="Assignee"
+      style="width: 150px"
+    >
       <template #body="{ data }">
         <span class="text-slate-300">{{ data.assigned_to ?? '--' }}</span>
       </template>
     </Column>
-    <Column field="type" header="Type" sortable style="width: 100px" />
-    <Column field="updated_at" header="Updated" sortable style="width: 160px">
+    <Column
+      field="type"
+      header="Type"
+      sortable
+      style="width: 100px"
+    />
+    <Column
+      field="updated_at"
+      header="Updated"
+      sortable
+      style="width: 160px"
+    >
       <template #body="{ data }">
         <span class="text-slate-400">{{ formatDate(data.updated_at) }}</span>
       </template>

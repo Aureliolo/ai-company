@@ -177,9 +177,14 @@ onMounted(async () => {
   <div class="flex min-h-screen items-center justify-center bg-slate-950 p-4">
     <div class="w-full max-w-2xl">
       <!-- Loading state -->
-      <div v-if="setup.loading && !setup.status" class="text-center">
+      <div
+        v-if="setup.loading && !setup.status"
+        class="text-center"
+      >
         <i class="pi pi-spin pi-spinner text-2xl text-slate-400" />
-        <p class="mt-2 text-sm text-slate-400">Loading setup status...</p>
+        <p class="mt-2 text-sm text-slate-400">
+          Loading setup status...
+        </p>
       </div>
 
       <!-- Setup error -->
@@ -192,9 +197,14 @@ onMounted(async () => {
       </div>
 
       <!-- Needs login message -->
-      <div v-else-if="needsLogin" class="text-center">
+      <div
+        v-else-if="needsLogin"
+        class="text-center"
+      >
         <i class="pi pi-lock mb-4 text-3xl text-slate-500" />
-        <h2 class="mb-2 text-xl font-semibold text-slate-100">Authentication Required</h2>
+        <h2 class="mb-2 text-xl font-semibold text-slate-100">
+          Authentication Required
+        </h2>
         <p class="mb-4 text-sm text-slate-400">
           Please log in with your admin account to continue setup.
         </p>
@@ -219,7 +229,10 @@ onMounted(async () => {
       <template v-else-if="setup.status">
         <!-- Step indicator -->
         <div class="mb-8 flex items-center justify-center gap-2">
-          <template v-for="(step, index) in steps" :key="step.id">
+          <template
+            v-for="(step, index) in steps"
+            :key="step.id"
+          >
             <div
               data-testid="step-indicator"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors"

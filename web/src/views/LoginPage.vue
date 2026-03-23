@@ -55,14 +55,24 @@ function goToSetup() {
         <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-xl font-bold text-white">
           S
         </div>
-        <h1 class="text-2xl font-semibold text-slate-100">SynthOrg</h1>
-        <p class="mt-1 text-sm text-slate-400">Sign in to your dashboard</p>
+        <h1 class="text-2xl font-semibold text-slate-100">
+          SynthOrg
+        </h1>
+        <p class="mt-1 text-sm text-slate-400">
+          Sign in to your dashboard
+        </p>
       </div>
 
       <!-- Form -->
-      <form class="space-y-4" @submit.prevent="handleLogin">
+      <form
+        class="space-y-4"
+        @submit.prevent="handleLogin"
+      >
         <div>
-          <label for="username" class="mb-1 block text-sm text-slate-300">Username</label>
+          <label
+            for="username"
+            class="mb-1 block text-sm text-slate-300"
+          >Username</label>
           <InputText
             id="username"
             v-model="username"
@@ -73,10 +83,13 @@ function goToSetup() {
           />
         </div>
         <div>
-          <label for="password" class="mb-1 block text-sm text-slate-300">Password</label>
+          <label
+            for="password"
+            class="mb-1 block text-sm text-slate-300"
+          >Password</label>
           <Password
-            inputId="password"
             v-model="password"
+            input-id="password"
             :toggle-mask="true"
             :feedback="false"
             fluid
@@ -88,7 +101,12 @@ function goToSetup() {
           />
         </div>
 
-        <div v-if="error" id="login-error" role="alert" class="rounded bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          v-if="error"
+          id="login-error"
+          role="alert"
+          class="rounded bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {{ error }}
         </div>
 

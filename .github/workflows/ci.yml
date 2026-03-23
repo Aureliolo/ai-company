@@ -255,7 +255,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: npm run test -- --coverage
+      - run: npm run test -- --coverage --detect-async-leaks
         working-directory: web
 
   # ── Dashboard: Build ──

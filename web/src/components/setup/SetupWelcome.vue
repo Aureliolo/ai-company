@@ -14,7 +14,9 @@ const emit = defineEmits<{
     >
       S
     </div>
-    <h2 class="mb-3 text-3xl font-semibold text-slate-100">Welcome to SynthOrg</h2>
+    <h2 class="mb-3 text-3xl font-semibold text-slate-100">
+      Welcome to SynthOrg
+    </h2>
     <p class="mb-2 max-w-md text-sm leading-relaxed text-slate-400">
       SynthOrg lets you build a synthetic organization -- autonomous AI agents
       orchestrated as a virtual company, complete with roles, departments, and workflows.

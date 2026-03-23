@@ -99,7 +99,10 @@ async function filterByStatus() {
 
 <template>
   <AppShell>
-    <PageHeader title="Approval Queue" subtitle="Review and decide on pending approval requests">
+    <PageHeader
+      title="Approval Queue"
+      subtitle="Review and decide on pending approval requests"
+    >
       <template #actions>
         <Dropdown
           v-model="statusFilter"
@@ -115,8 +118,14 @@ async function filterByStatus() {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="approvalStore.error" @retry="approvalStore.fetchApprovals()">
-      <LoadingSkeleton v-if="approvalStore.loading && approvalStore.approvals.length === 0" :lines="6" />
+    <ErrorBoundary
+      :error="approvalStore.error"
+      @retry="approvalStore.fetchApprovals()"
+    >
+      <LoadingSkeleton
+        v-if="approvalStore.loading && approvalStore.approvals.length === 0"
+        :lines="6"
+      />
       <DataTable
         v-else
         :value="approvalStore.approvals"
@@ -127,20 +136,50 @@ async function filterByStatus() {
         class="text-sm"
         @row-click="openDetail($event.data)"
       >
-        <Column field="title" header="Title" sortable />
-        <Column field="status" header="Status" sortable style="width: 120px">
+        <Column
+          field="title"
+          header="Title"
+          sortable
+        />
+        <Column
+          field="status"
+          header="Status"
+          sortable
+          style="width: 120px"
+        >
           <template #body="{ data }">
             <StatusBadge :value="data.status" />
           </template>
         </Column>
-        <Column field="risk_level" header="Risk" sortable style="width: 100px">
+        <Column
+          field="risk_level"
+          header="Risk"
+          sortable
+          style="width: 100px"
+        >
           <template #body="{ data }">
-            <StatusBadge :value="data.risk_level" type="risk" />
+            <StatusBadge
+              :value="data.risk_level"
+              type="risk"
+            />
           </template>
         </Column>
-        <Column field="requested_by" header="Requested By" style="width: 150px" />
-        <Column field="action_type" header="Action" style="width: 140px" />
-        <Column field="created_at" header="Created" sortable style="width: 160px">
+        <Column
+          field="requested_by"
+          header="Requested By"
+          style="width: 150px"
+        />
+        <Column
+          field="action_type"
+          header="Action"
+          style="width: 140px"
+        />
+        <Column
+          field="created_at"
+          header="Created"
+          sortable
+          style="width: 160px"
+        >
           <template #body="{ data }">
             <span class="text-slate-400">{{ formatDate(data.created_at) }}</span>
           </template>
@@ -148,11 +187,19 @@ async function filterByStatus() {
       </DataTable>
     </ErrorBoundary>
 
-    <Sidebar :visible="detailVisible" position="right" class="w-[480px]" @update:visible="detailVisible = $event">
+    <Sidebar
+      :visible="detailVisible"
+      position="right"
+      class="w-[480px]"
+      @update:visible="detailVisible = $event"
+    >
       <template #header>
         <span class="text-lg font-semibold text-slate-100">Approval Details</span>
       </template>
-      <div v-if="selected" class="space-y-6">
+      <div
+        v-if="selected"
+        class="space-y-6"
+      >
         <ApprovalDetail :approval="selected" />
         <ApprovalActions
           :approval-id="selected.id"
