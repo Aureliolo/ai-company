@@ -44,14 +44,15 @@ type wipeContext struct {
 
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
-	Short: "Factory-reset: wipe all data and re-open the setup wizard",
+	Short: "Factory-reset: wipe all data with optional backup and restart",
 	Long: `Destroy all SynthOrg data (database, memory, settings) and start
 with a clean slate. You are prompted at each step:
 
   1. Whether to create a backup (default: yes)
   2. Whether to start containers for the backup (if needed)
-  3. Final confirmation before wiping
-  4. Whether to start containers after the wipe (default: yes)
+  3. Where to save the backup archive (if backing up)
+  4. Final confirmation before wiping
+  5. Whether to start containers after the wipe (default: yes)
 
 Requires an interactive terminal.`,
 	RunE: runWipe,
@@ -111,8 +112,8 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	return wc.confirmAndWipe()
 }
 
-// confirmAndWipe asks for final confirmation, then stops containers,
-// removes volumes, starts fresh, and opens the setup wizard.
+// confirmAndWipe asks for final confirmation, stops containers, removes
+// volumes, and optionally restarts the stack.
 func (wc *wipeContext) confirmAndWipe() error {
 	confirmed, err := wc.confirmWipe()
 	if err != nil {
@@ -136,8 +137,7 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 
 	if startAfter {
-		wc.out.Blank()
-		if err := pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut); err != nil {
+		if err := wc.startContainers(); err != nil {
 			return err
 		}
 	}
@@ -161,9 +161,10 @@ func (wc *wipeContext) confirmAndWipe() error {
 
 // runForm configures a huh form with the wipe context's I/O streams and runs it.
 func (wc *wipeContext) runForm(form *huh.Form) error {
-	form.WithInput(wc.cmd.InOrStdin())
-	form.WithOutput(wc.cmd.OutOrStdout())
-	return form.Run()
+	return form.
+		WithInput(wc.cmd.InOrStdin()).
+		WithOutput(wc.cmd.OutOrStdout()).
+		Run()
 }
 
 // confirmWipe prompts for final destructive-action confirmation.
@@ -249,6 +250,9 @@ func (wc *wipeContext) ensureRunningForBackup() error {
 	running, err := wc.containersRunning()
 	if err != nil {
 		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
+		return wc.askContinueWithoutBackup(
+			"Could not check container status. Continue with wipe anyway?",
+		)
 	}
 	if running {
 		wc.waitForBackendHealth()
@@ -260,10 +264,18 @@ func (wc *wipeContext) ensureRunningForBackup() error {
 		return err
 	}
 	if !startOK {
-		return wc.askContinueWithoutBackup()
+		return wc.askContinueWithoutBackup(
+			"Backup requires running containers. Continue with wipe anyway?",
+		)
 	}
 
-	return wc.startContainers()
+	if err := wc.startContainers(); err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Could not start containers for backup: %v", err))
+		return wc.askContinueWithoutBackup(
+			"Could not start containers for backup. Continue with wipe anyway?",
+		)
+	}
+	return nil
 }
 
 // promptStartForBackup asks whether to start containers so a backup
@@ -317,13 +329,12 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 	defaultPath := filepath.Join(homeDir, fmt.Sprintf("synthorg-backup-%s.tar.gz", time.Now().Format("20060102-150405")))
 
 	savePath := defaultPath
-	err = wc.runForm(huh.NewForm(huh.NewGroup(
+	if err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewInput().
 			Title("Save backup to").
 			Description("Path for the backup archive").
 			Value(&savePath),
-	)))
-	if err != nil {
+	))); err != nil {
 		if isUserAbort(err) {
 			wc.out.Hint("Wipe cancelled.")
 			return "", errWipeCancelled
@@ -357,7 +368,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	if err != nil {
 		sp.Error("Backup failed")
 		wc.errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
-		return wc.askContinueWithoutBackup()
+		return wc.askContinueWithoutBackup("Backup failed. Continue with wipe anyway?")
 	}
 	sp.Success("Backup created")
 
@@ -366,7 +377,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 		sp.Error("Failed to copy backup")
 		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
 		wc.errOut.Hint("The backup exists in the container but will be lost after wipe.")
-		return wc.askContinueWithoutBackup()
+		return wc.askContinueWithoutBackup("Backup failed. Continue with wipe anyway?")
 	}
 	sp.Success(fmt.Sprintf("Backup saved to %s", savePath))
 
@@ -455,17 +466,23 @@ func tarDirectory(srcDir, dstPath string) error {
 		_ = os.Remove(dstPath)
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(dstPath)
+		return fmt.Errorf("finalising archive: %w", err)
+	}
+	return nil
 }
 
 // askContinueWithoutBackup prompts whether to proceed with the wipe even
-// though the backup failed. Returns nil to continue, or errWipeCancelled
+// though the backup could not be created. The title parameter customises
+// the prompt to match the reason (e.g. user declined, Docker unreachable,
+// container start failure). Returns nil to continue, or errWipeCancelled
 // to abort the wipe cleanly.
-func (wc *wipeContext) askContinueWithoutBackup() error {
+func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	var proceed bool
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title("Backup failed. Continue with wipe anyway?").
+			Title(title).
 			Description("All data will be lost without a backup.").
 			Affirmative("Yes, continue").
 			Negative("Cancel").
