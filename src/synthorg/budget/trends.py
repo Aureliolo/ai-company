@@ -94,7 +94,9 @@ class BudgetForecast(BaseModel):
         projected_total_usd: Projected total spend at end of horizon.
         daily_projections: Per-day cumulative spend projections.
         days_until_exhausted: Days until budget exhaustion (None if
-            no budget set or zero daily spend).
+            no budget set or zero daily spend). Uses ceiling
+            rounding -- the budget survives at least this many
+            full days.
         confidence: Confidence score (0.0-1.0) based on data density.
         avg_daily_spend_usd: Average daily spend used for projection.
     """
@@ -125,6 +127,12 @@ class BudgetForecast(BaseModel):
 
 # ── Resolver helpers ───────────────────────────────────────────
 
+_PERIOD_TIMEDELTA: dict[TrendPeriod, timedelta] = {
+    TrendPeriod.SEVEN_DAYS: timedelta(days=7),
+    TrendPeriod.THIRTY_DAYS: timedelta(days=30),
+    TrendPeriod.NINETY_DAYS: timedelta(days=90),
+}
+
 
 def resolve_bucket_size(period: TrendPeriod) -> BucketSize:
     """Determine bucket granularity from period.
@@ -149,12 +157,7 @@ def period_to_timedelta(period: TrendPeriod) -> timedelta:
     Returns:
         Equivalent timedelta.
     """
-    mapping: dict[TrendPeriod, timedelta] = {
-        TrendPeriod.SEVEN_DAYS: timedelta(days=7),
-        TrendPeriod.THIRTY_DAYS: timedelta(days=30),
-        TrendPeriod.NINETY_DAYS: timedelta(days=90),
-    }
-    return mapping[period]
+    return _PERIOD_TIMEDELTA[period]
 
 
 # ── Bucketing helpers ──────────────────────────────────────────
@@ -175,7 +178,7 @@ def _bucket_key(ts: datetime, bucket_size: BucketSize) -> datetime:
     return ts.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _generate_bucket_starts(
+def generate_bucket_starts(
     start: datetime,
     end: datetime,
     bucket_size: BucketSize,
@@ -222,7 +225,7 @@ def bucket_cost_records(
     Returns:
         Sorted tuple of data points, one per bucket.
     """
-    bucket_starts = _generate_bucket_starts(start, end, bucket_size)
+    bucket_starts = generate_bucket_starts(start, end, bucket_size)
     sums: dict[datetime, list[float]] = defaultdict(list)
 
     for record in records:
@@ -236,7 +239,8 @@ def bucket_cost_records(
         TrendDataPoint(
             timestamp=bucket_start,
             value=round(
-                math.fsum(sums.get(bucket_start, [])), BUDGET_ROUNDING_PRECISION
+                math.fsum(sums.get(bucket_start, [])),
+                BUDGET_ROUNDING_PRECISION,
             ),
         )
         for bucket_start in bucket_starts
@@ -260,7 +264,7 @@ def bucket_task_completions(
     Returns:
         Sorted tuple of data points with task counts.
     """
-    bucket_starts = _generate_bucket_starts(start, end, bucket_size)
+    bucket_starts = generate_bucket_starts(start, end, bucket_size)
     counts: dict[datetime, int] = defaultdict(int)
 
     for record in records:
@@ -298,7 +302,7 @@ def bucket_success_rate(
     Returns:
         Sorted tuple of data points with success rates.
     """
-    bucket_starts = _generate_bucket_starts(start, end, bucket_size)
+    bucket_starts = generate_bucket_starts(start, end, bucket_size)
     totals: dict[datetime, int] = defaultdict(int)
     successes: dict[datetime, int] = defaultdict(int)
 
@@ -330,12 +334,69 @@ def bucket_success_rate(
 # ── Forecast ───────────────────────────────────────────────────
 
 
+def _compute_daily_spend(
+    records: Sequence[CostRecord],
+) -> tuple[float, float, int]:
+    """Compute average daily spend and confidence inputs.
+
+    Args:
+        records: Non-empty cost records.
+
+    Returns:
+        Tuple of (avg_daily_spend, confidence, lookback_days).
+    """
+    timestamps = sorted(r.timestamp for r in records)
+    lookback_days = max(
+        (timestamps[-1].date() - timestamps[0].date()).days,
+        1,
+    )
+    total_cost = round(
+        math.fsum(r.cost_usd for r in records),
+        BUDGET_ROUNDING_PRECISION,
+    )
+    avg_daily = round(total_cost / lookback_days, BUDGET_ROUNDING_PRECISION)
+    days_with_data = len({r.timestamp.date() for r in records})
+    confidence = round(
+        min(days_with_data / lookback_days, 1.0),
+        BUDGET_ROUNDING_PRECISION,
+    )
+    return avg_daily, confidence, lookback_days
+
+
+def _build_projections(
+    avg_daily: float,
+    horizon_days: int,
+    today: date,
+) -> tuple[ForecastPoint, ...]:
+    """Build cumulative daily projection points.
+
+    Args:
+        avg_daily: Average daily spend in USD.
+        horizon_days: Number of days to project.
+        today: Reference date for projection start.
+
+    Returns:
+        Tuple of forecast points, one per projected day.
+    """
+    return tuple(
+        ForecastPoint(
+            day=today + timedelta(days=i + 1),
+            projected_spend_usd=round(
+                avg_daily * (i + 1),
+                BUDGET_ROUNDING_PRECISION,
+            ),
+        )
+        for i in range(horizon_days)
+    )
+
+
 def project_daily_spend(
     records: Sequence[CostRecord],
     *,
     horizon_days: int,
     budget_total_monthly: float = 0.0,
     budget_remaining_usd: float = 0.0,
+    now: datetime | None = None,
 ) -> BudgetForecast:
     """Project future budget spend using average daily spend.
 
@@ -349,64 +410,37 @@ def project_daily_spend(
         horizon_days: Number of days to project forward.
         budget_total_monthly: Monthly budget total (0.0 if unset).
         budget_remaining_usd: Remaining budget (0.0 if unset).
+        now: Reference time (defaults to current UTC time).
 
     Returns:
         Budget forecast with daily projections.
     """
+    today = (now or datetime.now(UTC)).date()
+
     if not records:
-        today = datetime.now(UTC).date()
         return BudgetForecast(
             projected_total_usd=0.0,
-            daily_projections=tuple(
-                ForecastPoint(
-                    day=today + timedelta(days=i + 1), projected_spend_usd=0.0
-                )
-                for i in range(horizon_days)
-            ),
+            daily_projections=_build_projections(0.0, horizon_days, today),
             days_until_exhausted=None,
             confidence=0.0,
             avg_daily_spend_usd=0.0,
         )
 
-    # Compute lookback span and daily spend
-    timestamps = sorted(r.timestamp for r in records)
-    lookback_start = timestamps[0]
-    lookback_end = timestamps[-1]
-    lookback_days = max((lookback_end.date() - lookback_start.date()).days, 1)
-
-    total_cost = round(
-        math.fsum(r.cost_usd for r in records),
+    avg_daily, confidence, _ = _compute_daily_spend(records)
+    projections = _build_projections(avg_daily, horizon_days, today)
+    projected_total = round(
+        avg_daily * horizon_days,
         BUDGET_ROUNDING_PRECISION,
     )
-    avg_daily = round(total_cost / lookback_days, BUDGET_ROUNDING_PRECISION)
 
-    # Confidence from data density
-    days_with_data = len({r.timestamp.date() for r in records})
-    confidence = min(days_with_data / lookback_days, 1.0)
-
-    # Daily projections (cumulative from current spend)
-    today = datetime.now(UTC).date()
-    projections: list[ForecastPoint] = []
-    for i in range(horizon_days):
-        projected = round(avg_daily * (i + 1), BUDGET_ROUNDING_PRECISION)
-        projections.append(
-            ForecastPoint(
-                day=today + timedelta(days=i + 1),
-                projected_spend_usd=projected,
-            ),
-        )
-
-    projected_total = round(avg_daily * horizon_days, BUDGET_ROUNDING_PRECISION)
-
-    # Days until exhausted
     days_until: int | None = None
     if budget_total_monthly > 0 and avg_daily > 0:
-        days_until = max(int(budget_remaining_usd / avg_daily), 0)
+        days_until = max(math.ceil(budget_remaining_usd / avg_daily), 0)
 
     return BudgetForecast(
         projected_total_usd=projected_total,
-        daily_projections=tuple(projections),
+        daily_projections=projections,
         days_until_exhausted=days_until,
-        confidence=round(confidence, BUDGET_ROUNDING_PRECISION),
+        confidence=confidence,
         avg_daily_spend_usd=avg_daily,
     )

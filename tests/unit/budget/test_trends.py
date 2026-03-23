@@ -384,13 +384,15 @@ class TestProjectDailySpend:
 
     def test_days_until_exhausted(self) -> None:
         # Span: Mar 1 to Mar 2 = 1 day, total $20 -> $20/day
-        # $50 remaining / $20/day = 2 days
+        # $50 remaining / $20/day = 2.5 -> ceil = 3 days
         records = [
             _cost_record(
-                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
+                cost_usd=10.0,
             ),
             _cost_record(
-                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
+                timestamp=datetime(2026, 3, 2, 10, 0, 0, tzinfo=UTC),
+                cost_usd=10.0,
             ),
         ]
         result = project_daily_spend(
@@ -400,7 +402,7 @@ class TestProjectDailySpend:
             budget_remaining_usd=50.0,
         )
         assert result.avg_daily_spend_usd == pytest.approx(20.0)
-        assert result.days_until_exhausted == 2
+        assert result.days_until_exhausted == 3
 
     def test_no_budget_means_no_exhaustion(self) -> None:
         records = [

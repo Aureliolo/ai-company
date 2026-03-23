@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -24,6 +24,7 @@ from synthorg.budget.trends import (
     bucket_cost_records,
     bucket_success_rate,
     bucket_task_completions,
+    generate_bucket_starts,
     period_to_timedelta,
     project_daily_spend,
     resolve_bucket_size,
@@ -53,6 +54,7 @@ class OverviewMetrics(BaseModel):
         total_cost_usd: Total cost across all records.
         budget_remaining_usd: Remaining budget for the current period.
         budget_used_percent: Percentage of monthly budget used.
+            Values above 100.0 indicate budget overrun.
         cost_7d_trend: Daily spend sparkline for the last 7 days.
         active_agents_count: Number of active agents.
         idle_agents_count: Number of non-active agents.
@@ -72,13 +74,19 @@ class OverviewMetrics(BaseModel):
     )
     budget_used_percent: float = Field(
         ge=0.0,
-        description="Percentage of monthly budget used",
+        description="Percentage of monthly budget used (>100 = overrun)",
     )
     cost_7d_trend: tuple[TrendDataPoint, ...] = Field(
         description="Daily spend sparkline for the last 7 days",
     )
-    active_agents_count: int = Field(ge=0, description="Number of active agents")
-    idle_agents_count: int = Field(ge=0, description="Number of non-active agents")
+    active_agents_count: int = Field(
+        ge=0,
+        description="Number of active agents",
+    )
+    idle_agents_count: int = Field(
+        ge=0,
+        description="Number of non-active agents",
+    )
 
 
 class TrendsResponse(BaseModel):
@@ -93,9 +101,9 @@ class TrendsResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    period: str = Field(description="Lookback period (7d, 30d, 90d)")
-    metric: str = Field(description="Metric type queried")
-    bucket_size: str = Field(description="Bucket granularity (hour, day)")
+    period: TrendPeriod = Field(description="Lookback period")
+    metric: TrendMetric = Field(description="Metric type queried")
+    bucket_size: BucketSize = Field(description="Bucket granularity")
     data_points: tuple[TrendDataPoint, ...] = Field(
         description="Bucketed time-series data points",
     )
@@ -115,7 +123,7 @@ class ForecastResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    horizon_days: int = Field(ge=1, description="Projection horizon in days")
+    horizon_days: int = Field(ge=1, description="Projection horizon")
     projected_total_usd: float = Field(
         ge=0.0,
         description="Projected total additional spend",
@@ -135,6 +143,151 @@ class ForecastResponse(BaseModel):
     avg_daily_spend_usd: float = Field(
         ge=0.0,
         description="Average daily spend used for projection",
+    )
+
+
+# ── Helpers ────────────────────────────────────────────────────
+
+
+class _BudgetContext(NamedTuple):
+    """Resolved budget state for the current billing period."""
+
+    monthly: float
+    remaining: float
+    used_percent: float
+
+
+async def _resolve_budget_context(
+    app_state: AppState,
+    fallback_total_cost: float = 0.0,
+) -> _BudgetContext:
+    """Compute budget remaining and usage percentage.
+
+    Args:
+        app_state: Application state.
+        fallback_total_cost: Total cost to use if period query fails.
+
+    Returns:
+        Budget context with monthly, remaining, and used_percent.
+    """
+    budget_config = app_state.cost_tracker.budget_config
+    monthly = budget_config.total_monthly if budget_config else 0.0
+    if monthly <= 0 or budget_config is None:
+        return _BudgetContext(monthly=0.0, remaining=0.0, used_percent=0.0)
+
+    period_start = billing_period_start(budget_config.reset_day)
+    try:
+        period_cost = await app_state.cost_tracker.get_total_cost(
+            start=period_start,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="analytics.budget_context",
+            error="period_cost_query_failed",
+            exc_info=True,
+        )
+        period_cost = fallback_total_cost
+
+    used_pct = round(period_cost / monthly * 100, 2)
+    remaining = max(monthly - period_cost, 0.0)
+    return _BudgetContext(
+        monthly=monthly,
+        remaining=remaining,
+        used_percent=used_pct,
+    )
+
+
+async def _resolve_agent_counts(
+    app_state: AppState,
+    config_agent_count: int,
+) -> tuple[int, int]:
+    """Resolve active and idle agent counts.
+
+    Uses AgentRegistryService when available, falls back to
+    config_resolver count (all active, zero idle).
+
+    Args:
+        app_state: Application state.
+        config_agent_count: Fallback total from config.
+
+    Returns:
+        Tuple of (active_count, idle_count).
+    """
+    if app_state.has_agent_registry:
+        try:
+            active = await app_state.agent_registry.list_active()
+            total = await app_state.agent_registry.agent_count()
+            return len(active), max(total - len(active), 0)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="analytics.resolve_agent_counts",
+                error="agent_registry_query_failed",
+                exc_info=True,
+            )
+    return config_agent_count, 0
+
+
+async def _fetch_trend_data_points(
+    app_state: AppState,
+    metric: TrendMetric,
+    start: datetime,
+    now: datetime,
+    bucket_size: BucketSize,
+) -> tuple[TrendDataPoint, ...]:
+    """Fetch and bucket trend data points for a given metric.
+
+    Args:
+        app_state: Application state.
+        metric: Which metric to compute.
+        start: Period start.
+        now: Current time (period end).
+        bucket_size: Bucket granularity.
+
+    Returns:
+        Bucketed data points for the metric.
+    """
+    if metric == TrendMetric.SPEND:
+        records = await app_state.cost_tracker.get_records(start=start)
+        return bucket_cost_records(records, start, now, bucket_size)
+
+    if metric in (TrendMetric.TASKS_COMPLETED, TrendMetric.SUCCESS_RATE):
+        try:
+            task_metrics = app_state.performance_tracker.get_task_metrics(
+                since=start,
+            )
+        except ServiceUnavailableError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="analytics.trends",
+                error="performance_tracker_unavailable",
+                metric=metric.value,
+            )
+            return ()
+        if metric == TrendMetric.TASKS_COMPLETED:
+            return bucket_task_completions(
+                task_metrics,
+                start,
+                now,
+                bucket_size,
+            )
+        return bucket_success_rate(
+            task_metrics,
+            start,
+            now,
+            bucket_size,
+        )
+
+    # ACTIVE_AGENTS: flat line at current count
+    active_count, _ = await _resolve_agent_counts(app_state, 0)
+    return tuple(
+        TrendDataPoint(timestamp=bs, value=float(active_count))
+        for bs in generate_bucket_starts(start, now, bucket_size)
     )
 
 
@@ -168,10 +321,16 @@ class AnalyticsController(Controller):
 
         try:
             async with asyncio.TaskGroup() as tg:
-                t_tasks = tg.create_task(app_state.persistence.tasks.list_tasks())
-                t_cost = tg.create_task(app_state.cost_tracker.get_total_cost())
-                t_agents = tg.create_task(app_state.config_resolver.get_agents())
-                t_7d_records = tg.create_task(
+                t_tasks = tg.create_task(
+                    app_state.persistence.tasks.list_tasks(),
+                )
+                t_cost = tg.create_task(
+                    app_state.cost_tracker.get_total_cost(),
+                )
+                t_agents = tg.create_task(
+                    app_state.config_resolver.get_agents(),
+                )
+                t_7d = tg.create_task(
                     app_state.cost_tracker.get_records(
                         start=now - timedelta(days=7),
                     ),
@@ -188,41 +347,18 @@ class AnalyticsController(Controller):
         all_tasks = t_tasks.result()
         total_cost = t_cost.result()
         agents = t_agents.result()
-        records_7d = t_7d_records.result()
 
-        # Task status breakdown
         counts = Counter(t.status.value for t in all_tasks)
         by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
-        # Budget context
-        budget_config = app_state.cost_tracker.budget_config
-        budget_monthly = budget_config.total_monthly if budget_config else 0.0
-        if budget_monthly > 0 and budget_config is not None:
-            period_start = billing_period_start(budget_config.reset_day)
-            try:
-                period_cost = await app_state.cost_tracker.get_total_cost(
-                    start=period_start,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                period_cost = total_cost
-            budget_used_pct = round(period_cost / budget_monthly * 100, 2)
-            budget_remaining = max(budget_monthly - period_cost, 0.0)
-        else:
-            budget_used_pct = 0.0
-            budget_remaining = 0.0
-
-        # 7-day cost sparkline
-        cost_7d_trend = bucket_cost_records(
-            records_7d,
+        budget = await _resolve_budget_context(app_state, total_cost)
+        cost_7d = bucket_cost_records(
+            t_7d.result(),
             now - timedelta(days=7),
             now,
             BucketSize.DAY,
         )
-
-        # Agent counts
-        active_count, idle_count = await _resolve_agent_counts(
+        active, idle = await _resolve_agent_counts(
             app_state,
             len(agents),
         )
@@ -231,7 +367,7 @@ class AnalyticsController(Controller):
             ANALYTICS_OVERVIEW_QUERIED,
             total_tasks=len(all_tasks),
             total_cost_usd=total_cost,
-            active_agents=active_count,
+            active_agents=active,
         )
 
         return ApiResponse(
@@ -240,11 +376,11 @@ class AnalyticsController(Controller):
                 tasks_by_status=by_status,
                 total_agents=len(agents),
                 total_cost_usd=total_cost,
-                budget_remaining_usd=budget_remaining,
-                budget_used_percent=budget_used_pct,
-                cost_7d_trend=cost_7d_trend,
-                active_agents_count=active_count,
-                idle_agents_count=idle_count,
+                budget_remaining_usd=budget.remaining,
+                budget_used_percent=budget.used_percent,
+                cost_7d_trend=cost_7d,
+                active_agents_count=active,
+                idle_agents_count=idle,
             ),
         )
 
@@ -276,42 +412,13 @@ class AnalyticsController(Controller):
         start = now - period_to_timedelta(period)
         bucket_size = resolve_bucket_size(period)
 
-        data_points: tuple[TrendDataPoint, ...]
-
-        if metric == TrendMetric.SPEND:
-            records = await app_state.cost_tracker.get_records(start=start)
-            data_points = bucket_cost_records(records, start, now, bucket_size)
-
-        elif metric in (TrendMetric.TASKS_COMPLETED, TrendMetric.SUCCESS_RATE):
-            try:
-                task_metrics = app_state.performance_tracker.get_task_metrics(
-                    since=start,
-                )
-            except ServiceUnavailableError:
-                data_points = ()
-            else:
-                if metric == TrendMetric.TASKS_COMPLETED:
-                    data_points = bucket_task_completions(
-                        task_metrics,
-                        start,
-                        now,
-                        bucket_size,
-                    )
-                else:
-                    data_points = bucket_success_rate(
-                        task_metrics,
-                        start,
-                        now,
-                        bucket_size,
-                    )
-
-        else:
-            # ACTIVE_AGENTS: flat line at current count (no historical snapshots)
-            active_count, _ = await _resolve_agent_counts(app_state, 0)
-            data_points = tuple(
-                TrendDataPoint(timestamp=bucket_start, value=float(active_count))
-                for bucket_start in _generate_bucket_starts(start, now, bucket_size)
-            )
+        data_points = await _fetch_trend_data_points(
+            app_state,
+            metric,
+            start,
+            now,
+            bucket_size,
+        )
 
         logger.debug(
             ANALYTICS_TRENDS_QUERIED,
@@ -323,9 +430,9 @@ class AnalyticsController(Controller):
 
         return ApiResponse(
             data=TrendsResponse(
-                period=period.value,
-                metric=metric.value,
-                bucket_size=bucket_size.value,
+                period=period,
+                metric=metric,
+                bucket_size=bucket_size,
                 data_points=data_points,
             ),
         )
@@ -336,7 +443,11 @@ class AnalyticsController(Controller):
         state: State,
         horizon_days: Annotated[
             int,
-            Parameter(ge=1, le=90, description="Projection horizon in days"),
+            Parameter(
+                ge=1,
+                le=90,
+                description="Projection horizon in days",
+            ),
         ] = 14,
     ) -> ApiResponse[ForecastResponse]:
         """Return budget spend projection.
@@ -355,29 +466,17 @@ class AnalyticsController(Controller):
         now = datetime.now(UTC)
         lookback_start = now - timedelta(days=horizon_days)
 
-        records = await app_state.cost_tracker.get_records(start=lookback_start)
-
-        # Budget context for exhaustion calculation
-        budget_config = app_state.cost_tracker.budget_config
-        budget_monthly = budget_config.total_monthly if budget_config else 0.0
-        budget_remaining = 0.0
-        if budget_monthly > 0 and budget_config is not None:
-            period_start = billing_period_start(budget_config.reset_day)
-            try:
-                period_cost = await app_state.cost_tracker.get_total_cost(
-                    start=period_start,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                period_cost = 0.0
-            budget_remaining = max(budget_monthly - period_cost, 0.0)
+        records = await app_state.cost_tracker.get_records(
+            start=lookback_start,
+        )
+        budget = await _resolve_budget_context(app_state)
 
         forecast = project_daily_spend(
             records,
             horizon_days=horizon_days,
-            budget_total_monthly=budget_monthly,
-            budget_remaining_usd=budget_remaining,
+            budget_total_monthly=budget.monthly,
+            budget_remaining_usd=budget.remaining,
+            now=now,
         )
 
         logger.debug(
@@ -397,67 +496,3 @@ class AnalyticsController(Controller):
                 avg_daily_spend_usd=forecast.avg_daily_spend_usd,
             ),
         )
-
-
-# ── Helpers ────────────────────────────────────────────────────
-
-
-async def _resolve_agent_counts(
-    app_state: AppState,
-    config_agent_count: int,
-) -> tuple[int, int]:
-    """Resolve active and idle agent counts.
-
-    Uses AgentRegistryService when available, falls back to
-    config_resolver count (all active, zero idle).
-
-    Args:
-        app_state: Application state.
-        config_agent_count: Fallback total from config.
-
-    Returns:
-        Tuple of (active_count, idle_count).
-    """
-    if app_state.has_agent_registry:
-        try:
-            active = await app_state.agent_registry.list_active()
-            total = await app_state.agent_registry.agent_count()
-            return len(active), total - len(active)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="analytics.resolve_agent_counts",
-                error="agent_registry_query_failed",
-            )
-    return config_agent_count, 0
-
-
-def _generate_bucket_starts(
-    start: datetime,
-    end: datetime,
-    bucket_size: BucketSize,
-) -> list[datetime]:
-    """Generate bucket start times for active_agents flat line.
-
-    Delegates to the trends module's internal logic via
-    a minimal reimplementation to avoid importing private helpers.
-
-    Args:
-        start: Period start.
-        end: Period end.
-        bucket_size: Granularity.
-
-    Returns:
-        List of bucket start datetimes.
-    """
-    step = timedelta(hours=1) if bucket_size == BucketSize.HOUR else timedelta(days=1)
-    current = start.replace(minute=0, second=0, microsecond=0)
-    if bucket_size == BucketSize.DAY:
-        current = current.replace(hour=0)
-    buckets: list[datetime] = []
-    while current < end:
-        buckets.append(current)
-        current = current + step
-    return buckets
