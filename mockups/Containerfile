@@ -1,0 +1,12 @@
+FROM docker.io/library/nginx:alpine
+
+RUN rm -rf /usr/share/nginx/html/* /etc/nginx/conf.d/default.conf
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY direction-cd/dist/ /usr/share/nginx/html/cd/
+COPY direction-bd/dist/ /usr/share/nginx/html/bd/
+COPY direction-db/dist/ /usr/share/nginx/html/db/
+
+RUN chmod -R o+rX /usr/share/nginx/html/
+
+EXPOSE 80

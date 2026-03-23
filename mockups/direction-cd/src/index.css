@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --bg-base: #0a0a12;
+  --bg-surface: #0f0f1a;
+  --bg-card: #13131f;
+  --bg-card-hover: #181828;
+  --border: #1e1e2e;
+  --border-bright: #2a2a3e;
+  --accent: #22d3ee;
+  --accent-dim: #0891b2;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --green: #22d3ee;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-dim: #475569;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+@keyframes sparkline-draw {
+  from { stroke-dashoffset: 200; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(34, 211, 238, 0); }
+}
+
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+.card-hover {
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px rgba(34, 211, 238, 0.08);
+}
+
+.nav-item {
+  transition: background-color 200ms ease, color 200ms ease, border-left-color 200ms ease;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover {
+  background-color: rgba(255,255,255,0.04);
+  color: var(--text-primary);
+}
+.nav-item.active {
+  background-color: rgba(34, 211, 238, 0.06);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+@keyframes bar-fill {
+  from { width: 0; }
+}
+.bar-animated {
+  animation: bar-fill 900ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes task-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.task-current {
+  animation: task-pulse 2s ease-in-out infinite;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sparkline-path {
+  stroke-dasharray: 200;
+  stroke-dashoffset: 200;
+  animation: sparkline-draw 1s ease forwards;
+  animation-delay: 200ms;
+}
