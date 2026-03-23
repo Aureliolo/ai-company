@@ -20,7 +20,7 @@ function buildCompany(): Company {
   ).length
 
   const spentToday = departments.reduce((sum, d) => sum + d.cost, 0)
-  const todayEntry = budgetHistory.find((d) => d.day === "Mar 23")
+  const todayEntry = budgetHistory[22] // Mar 23 = index 22 (0-based)
   const totalSpent = todayEntry?.actual ?? 0
   const budget = 2400
 

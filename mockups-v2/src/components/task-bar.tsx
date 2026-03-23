@@ -17,8 +17,9 @@ interface TaskBarProps {
 }
 
 export function TaskBar({ task, maxEnd }: TaskBarProps) {
-  const leftPct = (task.start / maxEnd) * 100
-  const widthPct = Math.max((task.duration / maxEnd) * 100, 1.5)
+  const safeMaxEnd = maxEnd > 0 ? maxEnd : 1
+  const leftPct = (task.start / safeMaxEnd) * 100
+  const widthPct = Math.max((task.duration / safeMaxEnd) * 100, 1.5)
   const color = task.completed
     ? taskTypeColors[task.type] ?? "var(--theme-accent)"
     : "var(--theme-warning)"

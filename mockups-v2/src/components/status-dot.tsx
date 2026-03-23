@@ -6,7 +6,7 @@ const statusColors: Record<AgentStatus, string> = {
   idle: "var(--theme-text-muted)",
   warning: "var(--theme-warning)",
   error: "var(--theme-danger)",
-  onboarding: "#60a5fa",
+  onboarding: "var(--theme-accent-dim, #60a5fa)",
 }
 
 interface StatusDotProps {

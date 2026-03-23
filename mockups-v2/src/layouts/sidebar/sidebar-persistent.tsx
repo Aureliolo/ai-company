@@ -7,12 +7,8 @@ export function SidebarPersistent() {
   const theme = useTheme()
   const navItems = useNavItems()
 
-  // Add notification badges to more items for Signal variation
-  const enhancedItems = navItems.map((item) => {
-    if (item.label === "Messages") return { ...item, badge: 7 }
-    if (item.label === "Tasks") return { ...item, badge: 12 }
-    return item
-  })
+  // Signal variation: show badges on more items from shared data
+  const enhancedItems = navItems
 
   return (
     <aside

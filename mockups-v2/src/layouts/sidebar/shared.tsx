@@ -48,7 +48,7 @@ export function SidebarHeader({ compact }: { compact?: boolean }) {
     return (
       <div className="p-2 border-b border-border flex items-center justify-center">
         <div className="w-7 h-7 rounded-md bg-accent/[0.12] border border-accent/25 flex items-center justify-center">
-          <span className="text-accent text-xs font-bold font-mono">N</span>
+          <span className="text-accent text-xs font-bold font-mono">{company.name.charAt(0).toUpperCase()}</span>
         </div>
       </div>
     )
@@ -58,7 +58,7 @@ export function SidebarHeader({ compact }: { compact?: boolean }) {
     <div className="px-4 pt-4 pb-3 border-b border-border">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-md bg-accent/[0.12] border border-accent/25 flex items-center justify-center">
-          <span className="text-accent text-xs font-bold font-mono">N</span>
+          <span className="text-accent text-xs font-bold font-mono">{company.name.charAt(0).toUpperCase()}</span>
         </div>
         <div>
           <div className="text-xs font-semibold text-text-primary leading-tight">

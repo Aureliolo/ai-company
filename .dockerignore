@@ -27,6 +27,9 @@ _site/
 # Astro landing page (not needed by any Docker build)
 site/
 
+# Design exploration mockups (not needed by any Docker build)
+mockups-v2/
+
 # Virtual environments
 .venv/
 venv/

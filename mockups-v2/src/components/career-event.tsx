@@ -4,8 +4,8 @@ const typeColors: Record<string, string> = {
   hire: "var(--theme-success)",
   promote: "var(--theme-accent)",
   milestone: "var(--theme-warning)",
-  reassign: "#60a5fa",
-  "trust-upgrade": "#a78bfa",
+  reassign: "var(--theme-accent-dim)",
+  "trust-upgrade": "var(--theme-text-secondary)",
 }
 
 interface CareerEventProps {

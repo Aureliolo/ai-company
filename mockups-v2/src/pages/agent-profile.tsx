@@ -22,12 +22,13 @@ function AutonomyBadge({ level }: { level: string }) {
 }
 
 function AgentNotFound() {
+  const { variation } = useParams()
   const firstAgent = agents[0]
   return (
     <div className="p-6 flex flex-col items-center justify-center gap-4 min-h-[50vh]">
       <p className="text-text-secondary text-sm">Agent not found</p>
       <Link
-        to={`agent/${firstAgent?.id ?? "ceo"}`}
+        to={`/${variation}/agent/${firstAgent?.id ?? "ceo"}`}
         className="text-accent text-sm hover:underline"
       >
         View {firstAgent?.name ?? "CEO"}
@@ -39,7 +40,9 @@ function AgentNotFound() {
 function AgentProfileContent({ agent }: { agent: Agent }) {
   const theme = useTheme()
   const { density, animation } = theme
-  const maxEnd = Math.max(...agent.taskHistory.map((t) => t.start + t.duration))
+  const maxEnd = agent.taskHistory.length > 0
+    ? Math.max(...agent.taskHistory.map((t) => t.start + t.duration))
+    : 1
 
   const feedEvents = agent.recentActivity.map((a, i) => ({
     id: i,

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useTheme } from "@/themes/provider.tsx"
 import { NavItem } from "./nav-item.tsx"
 import { useNavItems, SidebarHeader, SidebarSearch } from "./shared.tsx"
@@ -9,6 +9,14 @@ export function SidebarHidden() {
   const theme = useTheme()
   const navItems = useNavItems()
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) setOpen(false)
+    }
+    document.addEventListener("keydown", handleEscape)
+    return () => document.removeEventListener("keydown", handleEscape)
+  }, [open])
 
   return (
     <>

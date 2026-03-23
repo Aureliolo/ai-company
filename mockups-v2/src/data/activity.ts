@@ -90,7 +90,7 @@ function buildActivityFeed(): FeedEvent[] {
     // Delegation target (only for delegate type)
     let to: string | null = null
     let toFull: string | null = null
-    if (eventType === "delegate") {
+    if (eventType === "delegate" && delegatableAgents.length > 0) {
       const target = pick(rng, delegatableAgents)
       to = target.shortName
       toFull = target.name

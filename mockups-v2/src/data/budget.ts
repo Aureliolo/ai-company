@@ -26,10 +26,10 @@ function buildBudgetHistory(): BudgetDay[] {
 
   for (let d = 1; d <= 30; d++) {
     const dayLabel = `Mar ${d}`
-    cumulativeActual += dailyActuals[d - 1]
 
     if (d < today) {
       // Past days: actual only
+      cumulativeActual += dailyActuals[d - 1]
       days.push({
         day: dayLabel,
         actual: Math.round(cumulativeActual * 100) / 100,
@@ -37,6 +37,7 @@ function buildBudgetHistory(): BudgetDay[] {
       })
     } else if (d === today) {
       // Today: both actual and forecast
+      cumulativeActual += dailyActuals[d - 1]
       days.push({
         day: dayLabel,
         actual: Math.round(cumulativeActual * 100) / 100,
@@ -64,11 +65,12 @@ export const budgetHistory: BudgetDay[] = buildBudgetHistory()
 // ---------------------------------------------------------------------------
 
 function buildBudgetSummary() {
-  const todayEntry = budgetHistory.find((d) => d.day === "Mar 23")
+  const today = 23
+  const todayEntry = budgetHistory[today - 1]
   const endEntry = budgetHistory[budgetHistory.length - 1]
   const totalSpent = todayEntry?.actual ?? 0
   const monthlyBudget = 2400
-  const daysLeft = 30 - 23
+  const daysLeft = 30 - today
   const projectedTotal = endEntry?.forecast ?? 0
 
   return {

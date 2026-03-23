@@ -1,3 +1,10 @@
+const colorClasses: Record<string, string> = {
+  accent: "text-accent",
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
+}
+
 interface PerfMetricProps {
   label: string
   value: string
@@ -11,7 +18,7 @@ export function PerfMetric({ label, value, unit, color = "accent" }: PerfMetricP
       <div className="text-[10px] text-text-muted mb-1 uppercase tracking-wide">
         {label}
       </div>
-      <div className={`text-xl font-bold font-mono leading-none text-${color}`}>
+      <div className={`text-xl font-bold font-mono leading-none ${colorClasses[color] ?? "text-accent"}`}>
         {value}
         {unit && (
           <span className="text-xs font-normal text-text-muted ml-0.5">

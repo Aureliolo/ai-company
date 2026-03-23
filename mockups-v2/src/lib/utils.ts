@@ -16,6 +16,7 @@ export function formatPercent(value: number): string {
 export function getInitials(name: string): string {
   return name
     .split(" ")
+    .filter(Boolean)
     .map((w) => w[0])
     .join("")
     .toUpperCase()
