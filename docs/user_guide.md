@@ -76,7 +76,7 @@ After the containers are running, open the web dashboard at [http://localhost:30
 
 The wizard shows seven steps (Welcome, then the five above, then Complete). All five substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
-To start fresh, use `synthorg wipe` (offers a backup, wipes all data, restarts with a clean slate, and re-opens the setup wizard) or delete the `api.setup_complete` setting via the settings API.
+To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
 
 !!! info "Active Development"
     SynthOrg is under active development. The web dashboard is available for monitoring and managing the organization. Templates and some features described here may evolve. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.
