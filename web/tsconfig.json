@@ -7,9 +7,6 @@
     },
     "types": ["vitest/globals"]
   },
-  "vueCompilerOptions": {
-    "strictSlotChildren": true
-  },
   "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
