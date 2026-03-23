@@ -178,6 +178,7 @@ class TestEventConstants:
     def test_all_domain_modules_discovered(self) -> None:
         """Every expected domain module is found by pkgutil discovery."""
         expected = {
+            "analytics",
             "api",
             "approval_gate",
             "autonomy",
