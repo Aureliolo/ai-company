@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.9](https://github.com/Aureliolo/synthorg/compare/v0.4.8...v0.4.9) (2026-03-23)
+
+
+### Features
+
+* add consultancy and data team template archetypes ([#764](https://github.com/Aureliolo/synthorg/issues/764)) ([81dc75f](https://github.com/Aureliolo/synthorg/commit/81dc75f58df87f176f2839b72227636f9c78c859))
+* add personality presets for new template archetypes ([#758](https://github.com/Aureliolo/synthorg/issues/758)) ([de4e661](https://github.com/Aureliolo/synthorg/commit/de4e661f2df1b5e5c3713f2197b1fc57f967c694))
+* improve wipe command UX with interactive prompts ([#759](https://github.com/Aureliolo/synthorg/issues/759)) ([bbd4d2d](https://github.com/Aureliolo/synthorg/commit/bbd4d2d0a82735840768a328f4b9e4d0e1e7e3ac))
+
+
+### Bug Fixes
+
+* stable channel detects update for dev builds ([#753](https://github.com/Aureliolo/synthorg/issues/753)) ([f53da9f](https://github.com/Aureliolo/synthorg/commit/f53da9f708f391eb4cb45dbd45a9ce553739fc3b))
+
+
+### Documentation
+
+* add version banner to docs header ([#761](https://github.com/Aureliolo/synthorg/issues/761)) ([8f8c1f8](https://github.com/Aureliolo/synthorg/commit/8f8c1f81b376fe5321f1bb3af72e2b22f17a2afc))
+
+
+### Maintenance
+
+* adopt new features from web dependency upgrades ([#763](https://github.com/Aureliolo/synthorg/issues/763)) ([1bb6336](https://github.com/Aureliolo/synthorg/commit/1bb6336112a08140bb930c8be52093c346ebde65))
+
 ## [0.4.8](https://github.com/Aureliolo/synthorg/compare/v0.4.7...v0.4.8) (2026-03-22)
 
 
