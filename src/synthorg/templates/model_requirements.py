@@ -123,6 +123,8 @@ _RAW_AFFINITY: dict[str, dict[str, Any]] = {
     "quality_guardian": {"priority": "quality"},
     "security_sentinel": {"priority": "quality"},
     "data_driven_optimizer": {"priority": "quality"},
+    "code_craftsman": {"priority": "quality"},
+    "devil_advocate": {"priority": "quality"},
     # Fast movers prefer speed.
     "eager_learner": {"priority": "speed"},
     "rapid_prototyper": {"priority": "speed"},
@@ -139,6 +141,7 @@ _RAW_AFFINITY: dict[str, dict[str, Any]] = {
     "user_advocate": {"priority": "balanced"},
     "process_optimizer": {"priority": "balanced"},
     "technical_communicator": {"priority": "balanced"},
+    "client_advisor": {"priority": "balanced"},
 }
 
 # Both the outer mapping and each inner mapping are read-only.
