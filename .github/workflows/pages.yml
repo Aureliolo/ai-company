@@ -48,12 +48,24 @@ jobs:
       - name: Install docs dependencies
         run: uv sync --group docs --no-dev
 
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              print(tomllib.load(f)['tool']['commitizen']['version'])
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Export OpenAPI schema
         run: uv run python scripts/export_openapi.py
 
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72
+        env:
+          SYNTHORG_VERSION: ${{ steps.version.outputs.version }}
         run: uv run zensical build
 
       # --- Astro (landing page at /) ---

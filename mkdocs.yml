@@ -144,6 +144,7 @@ nav:
 
 extra:
   homepage: /
+  synthorg_version: !ENV [SYNTHORG_VERSION, "dev"]
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/Aureliolo/synthorg
