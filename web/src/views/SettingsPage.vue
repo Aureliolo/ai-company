@@ -190,7 +190,10 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
 
 <template>
   <AppShell>
-    <PageHeader title="Settings" subtitle="Manage system and account settings">
+    <PageHeader
+      title="Settings"
+      subtitle="Manage system and account settings"
+    >
       <template #actions>
         <div class="flex items-center gap-4">
           <EditModeToggle
@@ -211,149 +214,189 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
       </template>
     </PageHeader>
 
-    <AdvancedBanner :visible="settingsStore.showAdvanced" class="mb-4" />
+    <AdvancedBanner
+      :visible="settingsStore.showAdvanced"
+      class="mb-4"
+    />
 
-    <ErrorBoundary :error="settingsStore.error" @retry="retryFetch">
-    <LoadingSkeleton v-if="loading" :lines="6" />
-    <Tabs v-else :value="activeTab" @update:value="activeTab = String($event)">
-      <TabList>
-        <Tab
-          v-for="ns in settingsStore.namespaces"
-          :key="ns"
-          :value="ns"
-          :disabled="auth.mustChangePassword"
-        >
-          {{ namespaceLabel(ns as SettingNamespace) }}
-        </Tab>
-        <Tab value="user">User</Tab>
-      </TabList>
+    <ErrorBoundary
+      :error="settingsStore.error"
+      @retry="retryFetch"
+    >
+      <LoadingSkeleton
+        v-if="loading"
+        :lines="6"
+      />
+      <Tabs
+        v-else
+        :value="activeTab"
+        @update:value="activeTab = String($event)"
+      >
+        <TabList>
+          <Tab
+            v-for="ns in settingsStore.namespaces"
+            :key="ns"
+            :value="ns"
+            :disabled="auth.mustChangePassword"
+          >
+            {{ namespaceLabel(ns as SettingNamespace) }}
+          </Tab>
+          <Tab value="user">
+            User
+          </Tab>
+        </TabList>
 
-      <TabPanels>
-        <!-- Dynamic namespace tabs -->
-        <TabPanel
-          v-for="ns in settingsStore.namespaces"
-          :key="ns"
-          :value="ns"
-        >
-          <!-- Per-tab edit mode override -->
-          <div class="mb-4 flex items-center justify-between">
-            <h3 class="text-sm font-medium text-slate-300">{{ namespaceLabel(ns as SettingNamespace) }} Settings</h3>
-            <EditModeToggle
-              :model-value="editMode.getEffectiveMode(ns).value"
-              size="small"
-              @update:model-value="editMode.setTabMode(ns, $event)"
+        <TabPanels>
+          <!-- Dynamic namespace tabs -->
+          <TabPanel
+            v-for="ns in settingsStore.namespaces"
+            :key="ns"
+            :value="ns"
+          >
+            <!-- Per-tab edit mode override -->
+            <div class="mb-4 flex items-center justify-between">
+              <h3 class="text-sm font-medium text-slate-300">
+                {{ namespaceLabel(ns as SettingNamespace) }} Settings
+              </h3>
+              <EditModeToggle
+                :model-value="editMode.getEffectiveMode(ns).value"
+                size="small"
+                @update:model-value="editMode.setTabMode(ns, $event)"
+              />
+            </div>
+
+            <!-- GUI mode -->
+            <template v-if="editMode.getEffectiveMode(ns).value === 'gui'">
+              <SettingGroupRenderer
+                :entries="settingsStore.entriesByNamespace(ns as SettingNamespace).filter((e) => !(ns === 'company' && e.definition.key === 'name_locales'))"
+                :show-advanced="settingsStore.showAdvanced"
+                :saving-key="settingsStore.savingKey"
+                @save="handleSettingSave"
+                @reset="handleSettingReset"
+                @dirty="handleDirty"
+              />
+
+              <!-- Custom name locale selector for company tab -->
+              <SettingsNameLocales
+                v-if="ns === 'company'"
+              />
+            </template>
+
+            <!-- JSON / YAML mode -->
+            <SettingsCodeView
+              v-else
+              :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
+              :mode="getCodeMode(ns)"
+              :saving="settingsStore.savingKey !== null"
+              @save="handleCodeViewSave"
             />
-          </div>
+          </TabPanel>
 
-          <!-- GUI mode -->
-          <template v-if="editMode.getEffectiveMode(ns).value === 'gui'">
-            <SettingGroupRenderer
-              :entries="settingsStore.entriesByNamespace(ns as SettingNamespace).filter((e) => !(ns === 'company' && e.definition.key === 'name_locales'))"
-              :show-advanced="settingsStore.showAdvanced"
-              :saving-key="settingsStore.savingKey"
-              @save="handleSettingSave"
-              @reset="handleSettingReset"
-              @dirty="handleDirty"
-            />
-
-            <!-- Custom name locale selector for company tab -->
-            <SettingsNameLocales
-              v-if="ns === 'company'"
-            />
-          </template>
-
-          <!-- JSON / YAML mode -->
-          <SettingsCodeView
-            v-else
-            :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
-            :mode="getCodeMode(ns)"
-            :saving="settingsStore.savingKey !== null"
-            @save="handleCodeViewSave"
-          />
-        </TabPanel>
-
-        <!-- User Settings -->
-        <TabPanel value="user">
-          <div class="max-w-md space-y-4">
-            <div class="rounded-lg border border-slate-800 p-4">
-              <h4 class="mb-3 text-sm font-medium text-slate-300">Account Info</h4>
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-slate-400">Username</span>
-                  <span class="text-slate-200">{{ auth.user?.username }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-slate-400">Role</span>
-                  <span class="text-slate-200">{{ auth.user?.role }}</span>
+          <!-- User Settings -->
+          <TabPanel value="user">
+            <div class="max-w-md space-y-4">
+              <div class="rounded-lg border border-slate-800 p-4">
+                <h4 class="mb-3 text-sm font-medium text-slate-300">
+                  Account Info
+                </h4>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-slate-400">Username</span>
+                    <span class="text-slate-200">{{ auth.user?.username }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-400">Role</span>
+                    <span class="text-slate-200">{{ auth.user?.role }}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="rounded-lg border border-slate-800 p-4">
-              <h4 class="mb-3 text-sm font-medium text-slate-300">Change Password</h4>
-              <form class="space-y-3" @submit.prevent="handleChangePassword">
-                <div>
-                  <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                  <Password
-                    inputId="current-password"
-                    v-model="currentPassword"
-                    :toggle-mask="true"
-                    :feedback="false"
-                    fluid
-                    placeholder="Current password"
-                    :input-props="{
-                      autocomplete: 'current-password',
-                      'aria-required': 'true',
-                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
-                    }"
+              <div class="rounded-lg border border-slate-800 p-4">
+                <h4 class="mb-3 text-sm font-medium text-slate-300">
+                  Change Password
+                </h4>
+                <form
+                  class="space-y-3"
+                  @submit.prevent="handleChangePassword"
+                >
+                  <div>
+                    <label
+                      for="current-password"
+                      class="mb-1 block text-xs text-slate-400"
+                    >Current Password</label>
+                    <Password
+                      v-model="currentPassword"
+                      input-id="current-password"
+                      :toggle-mask="true"
+                      :feedback="false"
+                      fluid
+                      placeholder="Current password"
+                      :input-props="{
+                        autocomplete: 'current-password',
+                        'aria-required': 'true',
+                        'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                      }"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="new-password"
+                      class="mb-1 block text-xs text-slate-400"
+                    >New Password</label>
+                    <Password
+                      v-model="newPassword"
+                      input-id="new-password"
+                      :toggle-mask="true"
+                      :feedback="false"
+                      fluid
+                      :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`"
+                      :input-props="{
+                        autocomplete: 'new-password',
+                        'aria-required': 'true',
+                        'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                      }"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="confirm-password"
+                      class="mb-1 block text-xs text-slate-400"
+                    >Confirm Password</label>
+                    <Password
+                      v-model="confirmPassword"
+                      input-id="confirm-password"
+                      :toggle-mask="true"
+                      :feedback="false"
+                      fluid
+                      placeholder="Confirm new password"
+                      :input-props="{
+                        autocomplete: 'new-password',
+                        'aria-required': 'true',
+                        'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                      }"
+                    />
+                  </div>
+                  <div
+                    v-if="pwdError"
+                    id="pwd-error"
+                    role="alert"
+                    class="rounded bg-red-500/10 p-2 text-sm text-red-400"
+                  >
+                    {{ pwdError }}
+                  </div>
+                  <Button
+                    type="submit"
+                    label="Change Password"
+                    size="small"
+                    :loading="auth.loading"
+                    :disabled="!currentPassword || !newPassword || !confirmPassword"
                   />
-                </div>
-                <div>
-                  <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                  <Password
-                    inputId="new-password"
-                    v-model="newPassword"
-                    :toggle-mask="true"
-                    :feedback="false"
-                    fluid
-                    :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`"
-                    :input-props="{
-                      autocomplete: 'new-password',
-                      'aria-required': 'true',
-                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
-                    }"
-                  />
-                </div>
-                <div>
-                  <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                  <Password
-                    inputId="confirm-password"
-                    v-model="confirmPassword"
-                    :toggle-mask="true"
-                    :feedback="false"
-                    fluid
-                    placeholder="Confirm new password"
-                    :input-props="{
-                      autocomplete: 'new-password',
-                      'aria-required': 'true',
-                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
-                    }"
-                  />
-                </div>
-                <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
-                <Button
-                  type="submit"
-                  label="Change Password"
-                  size="small"
-                  :loading="auth.loading"
-                  :disabled="!currentPassword || !newPassword || !confirmPassword"
-                />
-              </form>
+                </form>
+              </div>
             </div>
-          </div>
-        </TabPanel>
-      </TabPanels>
-    </Tabs>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </ErrorBoundary>
 
     <!-- Floating save all button -->

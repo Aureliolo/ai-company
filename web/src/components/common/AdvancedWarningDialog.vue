@@ -34,7 +34,10 @@ function handleCancel() {
   >
     <div class="space-y-3">
       <div class="flex items-start gap-3">
-        <i class="pi pi-exclamation-triangle mt-0.5 text-xl text-amber-400" aria-hidden="true" />
+        <i
+          class="pi pi-exclamation-triangle mt-0.5 text-xl text-amber-400"
+          aria-hidden="true"
+        />
         <p class="text-sm text-slate-300">
           Advanced settings can affect system stability and security.
           Only modify these if you understand their impact.

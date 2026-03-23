@@ -58,10 +58,19 @@ watch(() => props.name, fetchAgentData, { immediate: true })
       />
     </div>
 
-    <ErrorBoundary :error="error" @retry="fetchAgentData">
-      <LoadingSkeleton v-if="loading" :lines="8" />
+    <ErrorBoundary
+      :error="error"
+      @retry="fetchAgentData"
+    >
+      <LoadingSkeleton
+        v-if="loading"
+        :lines="8"
+      />
       <template v-else-if="agent">
-        <PageHeader :title="agent.name" :subtitle="agent.role" />
+        <PageHeader
+          :title="agent.name"
+          :subtitle="agent.role"
+        />
         <AgentMetrics :agent="agent" />
       </template>
     </ErrorBoundary>

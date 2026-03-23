@@ -75,9 +75,15 @@ onMounted(async () => {
 
 <template>
   <AppShell>
-    <PageHeader title="Dashboard" subtitle="Overview of your synthetic organization" />
+    <PageHeader
+      title="Dashboard"
+      subtitle="Overview of your synthetic organization"
+    />
 
-    <LoadingSkeleton v-if="loading" :lines="6" />
+    <LoadingSkeleton
+      v-if="loading"
+      :lines="6"
+    />
 
     <template v-else>
       <!-- Metric cards -->
@@ -117,7 +123,10 @@ onMounted(async () => {
           />
         </div>
         <div class="space-y-6">
-          <SystemStatus :health="health" :ws-connected="connected" />
+          <SystemStatus
+            :health="health"
+            :ws-connected="connected"
+          />
           <RecentApprovals :approvals="approvalStore.approvals" />
         </div>
       </div>

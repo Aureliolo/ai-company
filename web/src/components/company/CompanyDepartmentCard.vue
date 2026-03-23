@@ -18,9 +18,21 @@ defineEmits<{
   <div class="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
     <div class="mb-2 flex items-start justify-between">
       <div>
-        <h4 class="text-sm font-medium text-slate-200">{{ department.name }}</h4>
-        <p v-if="department.head" class="text-xs text-slate-400">Head: {{ department.head }}</p>
-        <p v-else class="text-xs text-amber-400">No head assigned</p>
+        <h4 class="text-sm font-medium text-slate-200">
+          {{ department.name }}
+        </h4>
+        <p
+          v-if="department.head"
+          class="text-xs text-slate-400"
+        >
+          Head: {{ department.head }}
+        </p>
+        <p
+          v-else
+          class="text-xs text-amber-400"
+        >
+          No head assigned
+        </p>
       </div>
       <div class="flex gap-1">
         <Button
@@ -55,7 +67,11 @@ defineEmits<{
         :value="`${department.teams.length} team(s)`"
         severity="secondary"
       />
-      <Tag v-if="department.autonomy_level" :value="department.autonomy_level" severity="warn" />
+      <Tag
+        v-if="department.autonomy_level"
+        :value="department.autonomy_level"
+        severity="warn"
+      />
     </div>
   </div>
 </template>

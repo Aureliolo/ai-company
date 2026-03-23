@@ -80,13 +80,23 @@ function handleDirty(payload: DirtyPayload) {
     v-if="basicEntries.length === 0 && advancedEntries.length === 0"
     class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
   >
-    <p class="text-sm text-slate-400">No settings available in this section.</p>
+    <p class="text-sm text-slate-400">
+      No settings available in this section.
+    </p>
   </div>
 
-  <div v-else class="space-y-6">
+  <div
+    v-else
+    class="space-y-6"
+  >
     <!-- Basic settings -->
-    <fieldset v-for="[groupName, groupEntries] in basicGroups" :key="groupName">
-      <legend class="mb-3 text-sm font-semibold text-slate-300">{{ groupName }}</legend>
+    <fieldset
+      v-for="[groupName, groupEntries] in basicGroups"
+      :key="groupName"
+    >
+      <legend class="mb-3 text-sm font-semibold text-slate-300">
+        {{ groupName }}
+      </legend>
       <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <SettingField
           v-for="entry in groupEntries"
@@ -104,12 +114,20 @@ function handleDirty(payload: DirtyPayload) {
     <!-- Advanced settings divider + section -->
     <template v-if="advancedEntries.length > 0">
       <div class="flex items-center gap-3 border-t-2 border-amber-500/50 pt-4">
-        <i class="pi pi-exclamation-triangle text-amber-400" aria-hidden="true" />
+        <i
+          class="pi pi-exclamation-triangle text-amber-400"
+          aria-hidden="true"
+        />
         <span class="text-sm font-semibold text-amber-400">Advanced Settings</span>
       </div>
 
-      <fieldset v-for="[groupName, groupEntries] in advancedGroups" :key="`adv-${groupName}`">
-        <legend class="mb-3 text-sm font-semibold text-amber-300/80">{{ groupName }}</legend>
+      <fieldset
+        v-for="[groupName, groupEntries] in advancedGroups"
+        :key="`adv-${groupName}`"
+      >
+        <legend class="mb-3 text-sm font-semibold text-amber-300/80">
+          {{ groupName }}
+        </legend>
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
           <SettingField
             v-for="entry in groupEntries"

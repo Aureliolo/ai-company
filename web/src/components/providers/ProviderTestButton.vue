@@ -68,10 +68,21 @@ async function handleTest() {
       @click="handleTest"
     />
     <template v-if="result">
-      <span v-if="result.success" role="status" aria-label="Connection successful" class="text-xs text-green-400">
+      <span
+        v-if="result.success"
+        role="status"
+        aria-label="Connection successful"
+        class="text-xs text-green-400"
+      >
         {{ result.latency_ms != null ? `${result.latency_ms}ms` : 'OK' }}
       </span>
-      <span v-else role="status" aria-label="Connection failed" class="max-w-[200px] truncate text-xs text-red-400" :title="result.error ?? undefined">
+      <span
+        v-else
+        role="status"
+        aria-label="Connection failed"
+        class="max-w-[200px] truncate text-xs text-red-400"
+        :title="result.error ?? undefined"
+      >
         {{ result.error ?? 'Failed' }}
       </span>
     </template>

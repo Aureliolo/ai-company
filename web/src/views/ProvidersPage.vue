@@ -250,65 +250,88 @@ async function handleCodeViewSave(
 
 <template>
   <AppShell>
-    <PageHeader title="Providers" subtitle="Manage LLM provider connections and routing" />
+    <PageHeader
+      title="Providers"
+      subtitle="Manage LLM provider connections and routing"
+    />
 
-    <ErrorBoundary :error="providerStore.error ?? settingsStore.error" @retry="retryFetch">
-    <LoadingSkeleton v-if="loading" :lines="6" />
-    <div v-else class="space-y-8">
-      <!-- Provider CRUD section -->
-      <section>
-        <div class="mb-4 flex items-center gap-2">
-          <Button label="Add Provider" size="small" @click="openCreateDialog" />
-        </div>
+    <ErrorBoundary
+      :error="providerStore.error ?? settingsStore.error"
+      @retry="retryFetch"
+    >
+      <LoadingSkeleton
+        v-if="loading"
+        :lines="6"
+      />
+      <div
+        v-else
+        class="space-y-8"
+      >
+        <!-- Provider CRUD section -->
+        <section>
+          <div class="mb-4 flex items-center gap-2">
+            <Button
+              label="Add Provider"
+              size="small"
+              @click="openCreateDialog"
+            />
+          </div>
 
-        <div
-          v-if="providerEntries.length === 0"
-          class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
-        >
-          <p class="text-sm text-slate-400">No providers configured. Add one to get started.</p>
-        </div>
+          <div
+            v-if="providerEntries.length === 0"
+            class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+          >
+            <p class="text-sm text-slate-400">
+              No providers configured. Add one to get started.
+            </p>
+          </div>
 
-        <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <ProviderCard
-            v-for="entry in providerEntries"
-            :key="entry.name"
-            :name="entry.name"
-            :config="entry.config"
-            @edit="openEditDialog"
-            @delete="handleDelete"
+          <div
+            v-else
+            class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+          >
+            <ProviderCard
+              v-for="entry in providerEntries"
+              :key="entry.name"
+              :name="entry.name"
+              :config="entry.config"
+              @edit="openEditDialog"
+              @delete="handleDelete"
+            />
+          </div>
+        </section>
+
+        <!-- Provider settings section -->
+        <section v-if="providerSettings.length > 0">
+          <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-sm font-medium text-slate-300">
+              Provider Settings
+            </h3>
+            <EditModeToggle
+              :model-value="providersEditMode"
+              size="small"
+              @update:model-value="editMode.setTabMode('providers', $event)"
+            />
+          </div>
+
+          <SettingGroupRenderer
+            v-if="providersEditMode === 'gui'"
+            :entries="providerSettings"
+            :show-advanced="settingsStore.showAdvanced"
+            :saving-key="settingsStore.savingKey"
+            @save="handleSettingSave"
+            @reset="handleSettingReset"
+            @dirty="handleDirty"
           />
-        </div>
-      </section>
-
-      <!-- Provider settings section -->
-      <section v-if="providerSettings.length > 0">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-sm font-medium text-slate-300">Provider Settings</h3>
-          <EditModeToggle
-            :model-value="providersEditMode"
-            size="small"
-            @update:model-value="editMode.setTabMode('providers', $event)"
+          <SettingsCodeView
+            v-else
+            :entries="providerSettings"
+            :mode="providersCodeMode"
+            :saving="settingsStore.savingKey !== null"
+            @save="handleCodeViewSave"
           />
-        </div>
-
-        <SettingGroupRenderer
-          v-if="providersEditMode === 'gui'"
-          :entries="providerSettings"
-          :show-advanced="settingsStore.showAdvanced"
-          :saving-key="settingsStore.savingKey"
-          @save="handleSettingSave"
-          @reset="handleSettingReset"
-          @dirty="handleDirty"
-        />
-        <SettingsCodeView
-          v-else
-          :entries="providerSettings"
-          :mode="providersCodeMode"
-          :saving="settingsStore.savingKey !== null"
-          @save="handleCodeViewSave"
-        />
-      </section>
-    </div>
+        </section>
+      </div>
     </ErrorBoundary>
 
     <ConfirmDialog />

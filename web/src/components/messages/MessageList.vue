@@ -25,7 +25,13 @@ watch(
 </script>
 
 <template>
-  <div ref="listRef" role="log" aria-live="polite" class="space-y-2 overflow-y-auto" style="max-height: calc(100vh - 280px)">
+  <div
+    ref="listRef"
+    role="log"
+    aria-live="polite"
+    class="space-y-2 overflow-y-auto"
+    style="max-height: calc(100vh - 280px)"
+  >
     <MessageItem
       v-for="msg in messages"
       :key="msg.id"

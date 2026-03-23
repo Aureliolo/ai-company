@@ -58,7 +58,9 @@ async function handleSetup() {
     <!-- Completed state: read-only summary -->
     <template v-if="isComplete">
       <div class="mb-6 text-center">
-        <h2 class="text-2xl font-semibold text-slate-100">Create Admin Account</h2>
+        <h2 class="text-2xl font-semibold text-slate-100">
+          Create Admin Account
+        </h2>
         <p class="mt-1 text-sm text-slate-400">
           Admin account has been created.
         </p>
@@ -91,15 +93,23 @@ async function handleSetup() {
     <!-- Creation form -->
     <template v-else>
       <div class="mb-6 text-center">
-        <h2 class="text-2xl font-semibold text-slate-100">Create Admin Account</h2>
+        <h2 class="text-2xl font-semibold text-slate-100">
+          Create Admin Account
+        </h2>
         <p class="mt-1 text-sm text-slate-400">
           Set up the first admin (CEO) account for your organization.
         </p>
       </div>
 
-      <form class="space-y-4" @submit.prevent="handleSetup">
+      <form
+        class="space-y-4"
+        @submit.prevent="handleSetup"
+      >
         <div>
-          <label for="setup-username" class="mb-1 block text-sm text-slate-300">Username</label>
+          <label
+            for="setup-username"
+            class="mb-1 block text-sm text-slate-300"
+          >Username</label>
           <InputText
             id="setup-username"
             v-model="username"
@@ -111,10 +121,13 @@ async function handleSetup() {
           />
         </div>
         <div>
-          <label for="setup-password" class="mb-1 block text-sm text-slate-300">Password</label>
+          <label
+            for="setup-password"
+            class="mb-1 block text-sm text-slate-300"
+          >Password</label>
           <Password
-            inputId="setup-password"
             v-model="password"
+            input-id="setup-password"
             :toggle-mask="true"
             :feedback="false"
             fluid
@@ -127,12 +140,15 @@ async function handleSetup() {
           />
         </div>
         <div>
-          <label for="setup-confirm" class="mb-1 block text-sm text-slate-300">
+          <label
+            for="setup-confirm"
+            class="mb-1 block text-sm text-slate-300"
+          >
             Confirm Password
           </label>
           <Password
-            inputId="setup-confirm"
             v-model="confirmPassword"
+            input-id="setup-confirm"
             :toggle-mask="true"
             :feedback="false"
             fluid

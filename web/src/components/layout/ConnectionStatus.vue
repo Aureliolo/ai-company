@@ -35,7 +35,11 @@ onMounted(start)
 </script>
 
 <template>
-  <div class="flex items-center gap-3 text-xs" role="status" aria-live="polite">
+  <div
+    class="flex items-center gap-3 text-xs"
+    role="status"
+    aria-live="polite"
+  >
     <!-- API Status -->
     <div
       class="flex items-center gap-1.5"

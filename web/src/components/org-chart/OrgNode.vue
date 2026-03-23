@@ -27,10 +27,26 @@ const borderClass = computed(() => {
   <div
     :class="['cursor-pointer rounded-lg border px-3 py-2 text-center transition-colors', borderClass]"
   >
-    <p class="text-sm font-medium text-slate-200">{{ data.label }}</p>
-    <p v-if="data.role" class="text-xs text-slate-400">{{ data.role }}</p>
-    <p v-if="data.level" class="text-xs text-slate-500">{{ formatLabel(data.level) }}</p>
-    <StatusBadge v-if="data.status" :value="data.status" class="mt-1" />
+    <p class="text-sm font-medium text-slate-200">
+      {{ data.label }}
+    </p>
+    <p
+      v-if="data.role"
+      class="text-xs text-slate-400"
+    >
+      {{ data.role }}
+    </p>
+    <p
+      v-if="data.level"
+      class="text-xs text-slate-500"
+    >
+      {{ formatLabel(data.level) }}
+    </p>
+    <StatusBadge
+      v-if="data.status"
+      :value="data.status"
+      class="mt-1"
+    />
     <span
       v-if="data.type === 'department'"
       class="mt-1 inline-block rounded bg-brand-600/20 px-1.5 py-0.5 text-xs text-brand-300"

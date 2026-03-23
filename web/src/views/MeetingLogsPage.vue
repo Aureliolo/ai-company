@@ -113,7 +113,10 @@ function formatTokens(record: MeetingRecord): string {
 
 <template>
   <AppShell>
-    <PageHeader title="Meeting Logs" subtitle="View agent meeting transcripts and outcomes">
+    <PageHeader
+      title="Meeting Logs"
+      subtitle="View agent meeting transcripts and outcomes"
+    >
       <template #actions>
         <Dropdown
           v-model="statusFilter"
@@ -137,8 +140,14 @@ function formatTokens(record: MeetingRecord): string {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="meetingStore.error" @retry="() => meetingStore.fetchMeetings()">
-      <LoadingSkeleton v-if="meetingStore.loading && meetingStore.meetings.length === 0" :lines="6" />
+    <ErrorBoundary
+      :error="meetingStore.error"
+      @retry="() => meetingStore.fetchMeetings()"
+    >
+      <LoadingSkeleton
+        v-if="meetingStore.loading && meetingStore.meetings.length === 0"
+        :lines="6"
+      />
       <DataTable
         v-else
         :value="meetingStore.meetings"
@@ -149,19 +158,40 @@ function formatTokens(record: MeetingRecord): string {
         class="text-sm"
         @row-click="openDetail($event.data)"
       >
-        <Column field="meeting_type_name" header="Type" sortable />
-        <Column field="protocol_type" header="Protocol" sortable class="w-[150px]" />
-        <Column field="status" header="Status" sortable class="w-[140px]">
+        <Column
+          field="meeting_type_name"
+          header="Type"
+          sortable
+        />
+        <Column
+          field="protocol_type"
+          header="Protocol"
+          sortable
+          class="w-[150px]"
+        />
+        <Column
+          field="status"
+          header="Status"
+          sortable
+          class="w-[140px]"
+        >
           <template #body="{ data }">
             <StatusBadge :value="data.status" />
           </template>
         </Column>
-        <Column header="Tokens" class="w-[160px]">
+        <Column
+          header="Tokens"
+          class="w-[160px]"
+        >
           <template #body="{ data }">
             <span class="text-slate-400 font-mono text-xs">{{ formatTokens(data) }}</span>
           </template>
         </Column>
-        <Column field="meeting_id" header="ID" class="w-[140px]">
+        <Column
+          field="meeting_id"
+          header="ID"
+          class="w-[140px]"
+        >
           <template #body="{ data }">
             <span class="text-slate-500 font-mono text-xs">{{ data.meeting_id }}</span>
           </template>
@@ -170,19 +200,31 @@ function formatTokens(record: MeetingRecord): string {
     </ErrorBoundary>
 
     <!-- Detail sidebar -->
-    <Sidebar :visible="detailVisible" position="right" class="w-[560px]" @update:visible="detailVisible = $event">
+    <Sidebar
+      :visible="detailVisible"
+      position="right"
+      class="w-[560px]"
+      @update:visible="detailVisible = $event"
+    >
       <template #header>
         <span class="text-lg font-semibold text-slate-100">Meeting Details</span>
       </template>
-      <div v-if="selected" class="space-y-4">
+      <div
+        v-if="selected"
+        class="space-y-4"
+      >
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span class="text-slate-500">Type</span>
-            <p class="text-slate-200">{{ selected.meeting_type_name }}</p>
+            <p class="text-slate-200">
+              {{ selected.meeting_type_name }}
+            </p>
           </div>
           <div>
             <span class="text-slate-500">Protocol</span>
-            <p class="text-slate-200">{{ selected.protocol_type }}</p>
+            <p class="text-slate-200">
+              {{ selected.protocol_type }}
+            </p>
           </div>
           <div>
             <span class="text-slate-500">Status</span>
@@ -190,40 +232,78 @@ function formatTokens(record: MeetingRecord): string {
           </div>
           <div>
             <span class="text-slate-500">Token Budget</span>
-            <p class="text-slate-200">{{ selected.token_budget.toLocaleString() }}</p>
+            <p class="text-slate-200">
+              {{ selected.token_budget.toLocaleString() }}
+            </p>
           </div>
         </div>
 
-        <div v-if="selected.error_message" class="rounded-lg bg-red-900/20 border border-red-800 p-3">
-          <p class="text-sm text-red-300">{{ selected.error_message }}</p>
+        <div
+          v-if="selected.error_message"
+          class="rounded-lg bg-red-900/20 border border-red-800 p-3"
+        >
+          <p class="text-sm text-red-300">
+            {{ selected.error_message }}
+          </p>
         </div>
 
         <!-- Minutes detail -->
         <template v-if="selected.minutes">
           <div class="border-t border-slate-700 pt-3">
-            <h3 class="text-sm font-semibold text-slate-300 mb-2">Summary</h3>
-            <p class="text-sm text-slate-400 whitespace-pre-wrap">{{ selected.minutes.summary || 'No summary' }}</p>
+            <h3 class="text-sm font-semibold text-slate-300 mb-2">
+              Summary
+            </h3>
+            <p class="text-sm text-slate-400 whitespace-pre-wrap">
+              {{ selected.minutes.summary || 'No summary' }}
+            </p>
           </div>
 
-          <div v-if="selected.minutes.decisions.length > 0" class="border-t border-slate-700 pt-3">
-            <h3 class="text-sm font-semibold text-slate-300 mb-2">Decisions</h3>
+          <div
+            v-if="selected.minutes.decisions.length > 0"
+            class="border-t border-slate-700 pt-3"
+          >
+            <h3 class="text-sm font-semibold text-slate-300 mb-2">
+              Decisions
+            </h3>
             <ul class="list-disc list-inside text-sm text-slate-400 space-y-1">
-              <li v-for="(decision, i) in selected.minutes.decisions" :key="i">{{ decision }}</li>
+              <li
+                v-for="(decision, i) in selected.minutes.decisions"
+                :key="i"
+              >
+                {{ decision }}
+              </li>
             </ul>
           </div>
 
-          <div v-if="selected.minutes.action_items.length > 0" class="border-t border-slate-700 pt-3">
-            <h3 class="text-sm font-semibold text-slate-300 mb-2">Action Items</h3>
-            <div v-for="(item, i) in selected.minutes.action_items" :key="i" class="mb-2 p-2 bg-slate-800 rounded text-sm">
-              <p class="text-slate-200">{{ item.description }}</p>
+          <div
+            v-if="selected.minutes.action_items.length > 0"
+            class="border-t border-slate-700 pt-3"
+          >
+            <h3 class="text-sm font-semibold text-slate-300 mb-2">
+              Action Items
+            </h3>
+            <div
+              v-for="(item, i) in selected.minutes.action_items"
+              :key="i"
+              class="mb-2 p-2 bg-slate-800 rounded text-sm"
+            >
+              <p class="text-slate-200">
+                {{ item.description }}
+              </p>
               <div class="flex gap-3 mt-1 text-xs text-slate-500">
                 <span v-if="item.assignee_id">Assignee: {{ item.assignee_id }}</span>
-                <StatusBadge :value="item.priority" type="priority" />
+                <StatusBadge
+                  :value="item.priority"
+                  type="priority"
+                />
               </div>
             </div>
           </div>
 
-          <div v-if="selected.minutes.contributions.length > 0" class="border-t border-slate-700 pt-3">
+          <div
+            v-if="selected.minutes.contributions.length > 0"
+            class="border-t border-slate-700 pt-3"
+          >
             <h3 class="text-sm font-semibold text-slate-300 mb-2">
               Contributions ({{ selected.minutes.contributions.length }})
             </h3>
@@ -236,7 +316,9 @@ function formatTokens(record: MeetingRecord): string {
                 <span class="text-brand-400 font-medium">{{ contrib.agent_id }}</span>
                 <span class="text-xs text-slate-500">{{ contrib.phase }} #{{ contrib.turn_number }}</span>
               </div>
-              <p class="text-slate-300 whitespace-pre-wrap">{{ contrib.content }}</p>
+              <p class="text-slate-300 whitespace-pre-wrap">
+                {{ contrib.content }}
+              </p>
               <div class="text-xs text-slate-600 mt-1">
                 {{ contrib.input_tokens + contrib.output_tokens }} tokens
               </div>
@@ -247,10 +329,18 @@ function formatTokens(record: MeetingRecord): string {
     </Sidebar>
 
     <!-- Trigger dialog -->
-    <Dialog v-model:visible="triggerDialogVisible" header="Trigger Event Meeting" :modal="true" class="w-96">
+    <Dialog
+      v-model:visible="triggerDialogVisible"
+      header="Trigger Event Meeting"
+      :modal="true"
+      class="w-96"
+    >
       <div class="space-y-4">
         <div>
-          <label for="eventName" class="block text-sm text-slate-400 mb-1">Event Name</label>
+          <label
+            for="eventName"
+            class="block text-sm text-slate-400 mb-1"
+          >Event Name</label>
           <InputText
             id="eventName"
             v-model="triggerEventName"
@@ -261,7 +351,12 @@ function formatTokens(record: MeetingRecord): string {
         </div>
       </div>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="triggerDialogVisible = false" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          text
+          @click="triggerDialogVisible = false"
+        />
         <Button
           label="Trigger"
           icon="pi pi-play"

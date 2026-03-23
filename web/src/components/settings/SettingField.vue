@@ -152,15 +152,27 @@ function formatJson() {
       <span class="text-sm font-medium text-slate-200">{{ def.key }}</span>
       <SettingSourceBadge :source="entry.source" />
       <SettingRestartBadge v-if="def.restart_required" />
-      <Tag v-if="def.level === 'advanced'" value="Advanced" severity="warn" />
+      <Tag
+        v-if="def.level === 'advanced'"
+        value="Advanced"
+        severity="warn"
+      />
     </div>
 
     <!-- Description -->
-    <p class="mb-3 text-xs text-slate-400">{{ def.description }}</p>
-    <p v-if="isSecuritySensitive" class="mb-2 text-xs text-red-400">
+    <p class="mb-3 text-xs text-slate-400">
+      {{ def.description }}
+    </p>
+    <p
+      v-if="isSecuritySensitive"
+      class="mb-2 text-xs text-red-400"
+    >
       Security-sensitive setting. Misconfiguration may expose protected endpoints.
     </p>
-    <p v-if="isEnvSourced" class="mb-2 text-xs text-amber-400">
+    <p
+      v-if="isEnvSourced"
+      class="mb-2 text-xs text-amber-400"
+    >
       Set via environment variable. Remove the variable to edit here.
     </p>
 
@@ -256,7 +268,11 @@ function formatJson() {
     </div>
 
     <!-- Validation error -->
-    <div v-if="validationError && isDirty" role="alert" class="mb-2 rounded bg-red-500/10 p-2 text-xs text-red-400">
+    <div
+      v-if="validationError && isDirty"
+      role="alert"
+      class="mb-2 rounded bg-red-500/10 p-2 text-xs text-red-400"
+    >
       {{ validationError }}
     </div>
 

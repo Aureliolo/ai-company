@@ -15,7 +15,10 @@ function reload() {
     role="alert"
     class="flex items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5"
   >
-    <i class="pi pi-exclamation-triangle text-amber-400" aria-hidden="true" />
+    <i
+      class="pi pi-exclamation-triangle text-amber-400"
+      aria-hidden="true"
+    />
     <span class="flex-1 text-sm text-amber-300">
       Connection lost -- real-time updates unavailable.
     </span>

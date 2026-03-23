@@ -3,5 +3,8 @@ import Tag from 'primevue/tag'
 </script>
 
 <template>
-  <Tag value="Restart Required" severity="warn" />
+  <Tag
+    value="Restart Required"
+    severity="warn"
+  />
 </template>

@@ -6,7 +6,10 @@ import EmptyState from '@/components/common/EmptyState.vue'
 
 <template>
   <AppShell>
-    <PageHeader title="Artifacts" subtitle="Browse files and outputs produced by agents" />
+    <PageHeader
+      title="Artifacts"
+      subtitle="Browse files and outputs produced by agents"
+    />
     <EmptyState
       icon="pi pi-file"
       title="Coming Soon"

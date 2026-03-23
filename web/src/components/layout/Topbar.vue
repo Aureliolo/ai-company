@@ -66,7 +66,11 @@ function toggleUserMenu(event: Event) {
         :aria-label="auth.user?.username ?? 'Open user menu'"
         @click="toggleUserMenu"
       />
-      <Menu ref="userMenu" :model="menuItems" :popup="true" />
+      <Menu
+        ref="userMenu"
+        :model="menuItems"
+        :popup="true"
+      />
     </div>
   </header>
 </template>

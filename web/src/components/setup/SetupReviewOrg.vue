@@ -215,7 +215,9 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-2xl">
     <div class="mb-6 text-center">
-      <h2 class="text-2xl font-semibold text-slate-100">Review Your Organization</h2>
+      <h2 class="text-2xl font-semibold text-slate-100">
+        Review Your Organization
+      </h2>
       <p class="mt-1 text-sm text-slate-400">
         Review the agents in your organization. Edit names, randomize them, and adjust model assignments.
       </p>
@@ -231,7 +233,10 @@ onMounted(async () => {
     </div>
 
     <!-- Agent list -->
-    <div v-if="hasAgents" class="mb-6 space-y-3">
+    <div
+      v-if="hasAgents"
+      class="mb-6 space-y-3"
+    >
       <div
         v-for="(agent, index) in setup.agents"
         :key="agent.name || `${agent.role}-${index}`"
@@ -282,15 +287,23 @@ onMounted(async () => {
     </div>
 
     <!-- Empty state (Start Blank) -->
-    <div v-else class="mb-6 text-center">
+    <div
+      v-else
+      class="mb-6 text-center"
+    >
       <p class="mb-4 text-sm text-slate-400">
         No agents yet. Add at least one agent to get started.
       </p>
     </div>
 
     <!-- Add agent form (for blank path) -->
-    <div v-if="showAddAgent" class="mb-6 rounded-lg border border-slate-700 bg-slate-900 p-4">
-      <h3 class="mb-3 text-sm font-medium text-slate-200">Add Agent</h3>
+    <div
+      v-if="showAddAgent"
+      class="mb-6 rounded-lg border border-slate-700 bg-slate-900 p-4"
+    >
+      <h3 class="mb-3 text-sm font-medium text-slate-200">
+        Add Agent
+      </h3>
       <div class="space-y-3">
         <InputText
           v-model="newAgentRole"

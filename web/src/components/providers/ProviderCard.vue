@@ -45,16 +45,30 @@ function authBadgeSeverity(authType: string): 'success' | 'info' | 'warn' | 'sec
   <div class="rounded-lg border border-slate-700 bg-slate-800/50 p-4 transition-colors hover:border-slate-600">
     <div class="mb-3 flex items-start justify-between">
       <div>
-        <h3 class="text-base font-medium text-slate-200">{{ name }}</h3>
+        <h3 class="text-base font-medium text-slate-200">
+          {{ name }}
+        </h3>
         <div class="mt-1 flex items-center gap-2">
-          <Tag :value="config.driver" severity="info" class="text-xs" />
-          <Tag :value="config.auth_type" :severity="authBadgeSeverity(config.auth_type)" class="text-xs" />
+          <Tag
+            :value="config.driver"
+            severity="info"
+            class="text-xs"
+          />
+          <Tag
+            :value="config.auth_type"
+            :severity="authBadgeSeverity(config.auth_type)"
+            class="text-xs"
+          />
         </div>
       </div>
       <span class="text-xs text-slate-500">{{ config.models.length }} model{{ config.models.length !== 1 ? 's' : '' }}</span>
     </div>
 
-    <div v-if="config.base_url" class="mb-3 truncate text-xs text-slate-400" :title="config.base_url">
+    <div
+      v-if="config.base_url"
+      class="mb-3 truncate text-xs text-slate-400"
+      :title="config.base_url"
+    >
       {{ config.base_url }}
     </div>
 

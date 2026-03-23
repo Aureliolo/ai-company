@@ -102,10 +102,10 @@ export const useAuthStore = defineStore('auth', () => {
         if (isAxiosError(fetchErr) && fetchErr.response?.status === 401) {
           // 401 during fetchUser means the just-issued token is already invalid
           clearAuth()
-          throw new Error(`${flowName} failed: invalid session. Please try again.`)
+          throw new Error(`${flowName} failed: invalid session. Please try again.`, { cause: fetchErr })
         }
         clearAuth()
-        throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`)
+        throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`, { cause: fetchErr })
       }
       // If fetchUser silently cleared auth (e.g. 401), the flow should not succeed
       if (!user.value) {
@@ -165,7 +165,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       return result
     } catch (err) {
-      throw new Error(getErrorMessage(err))
+      throw new Error(getErrorMessage(err), { cause: err })
     } finally {
       loading.value = false
     }

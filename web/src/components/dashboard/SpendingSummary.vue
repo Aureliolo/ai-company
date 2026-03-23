@@ -60,7 +60,9 @@ const chartOption = computed(() => {
 <template>
   <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
     <div class="mb-4 flex items-center justify-between">
-      <h3 class="text-sm font-medium text-slate-300">Spending</h3>
+      <h3 class="text-sm font-medium text-slate-300">
+        Spending
+      </h3>
       <span class="text-lg font-semibold text-slate-100">${{ totalCost.toFixed(4) }}</span>
     </div>
     <VChart
@@ -69,7 +71,10 @@ const chartOption = computed(() => {
       :style="{ height: '200px', width: '100%' }"
       autoresize
     />
-    <div v-else class="flex h-[200px] items-center justify-center text-sm text-slate-500">
+    <div
+      v-else
+      class="flex h-[200px] items-center justify-center text-sm text-slate-500"
+    >
       No spending data yet
     </div>
   </div>

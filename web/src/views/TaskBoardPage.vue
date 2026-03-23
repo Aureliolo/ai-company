@@ -139,7 +139,10 @@ async function handleFilterReset() {
 
 <template>
   <AppShell>
-    <PageHeader title="Tasks" subtitle="Manage and track tasks across your organization">
+    <PageHeader
+      title="Tasks"
+      subtitle="Manage and track tasks across your organization"
+    >
       <template #actions>
         <div class="flex items-center gap-3">
           <TaskFilters
@@ -148,7 +151,11 @@ async function handleFilterReset() {
             @update="handleFilterUpdate"
             @reset="handleFilterReset"
           />
-          <div class="flex rounded-lg border border-slate-700" role="group" aria-label="View mode">
+          <div
+            class="flex rounded-lg border border-slate-700"
+            role="group"
+            aria-label="View mode"
+          >
             <button
               :class="['px-3 py-1.5 text-xs', viewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-400']"
               :aria-pressed="viewMode === 'kanban'"
@@ -175,8 +182,14 @@ async function handleFilterReset() {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="taskStore.error ?? agentStore.error" @retry="() => { taskStore.fetchTasks(filters); agentStore.fetchAgents() }">
-      <LoadingSkeleton v-if="taskStore.loading && taskStore.tasks.length === 0" :lines="8" />
+    <ErrorBoundary
+      :error="taskStore.error ?? agentStore.error"
+      @retry="() => { taskStore.fetchTasks(filters); agentStore.fetchAgents() }"
+    >
+      <LoadingSkeleton
+        v-if="taskStore.loading && taskStore.tasks.length === 0"
+        :lines="8"
+      />
       <template v-else>
         <KanbanBoard
           v-if="viewMode === 'kanban'"

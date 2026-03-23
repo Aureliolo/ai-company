@@ -27,9 +27,14 @@ const generalEntries = computed(() =>
     v-if="generalEntries.length === 0"
     class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
   >
-    <p class="text-sm text-slate-400">No general company settings available.</p>
+    <p class="text-sm text-slate-400">
+      No general company settings available.
+    </p>
   </div>
-  <div v-else class="space-y-2">
+  <div
+    v-else
+    class="space-y-2"
+  >
     <p class="text-sm text-slate-400">
       Core company identity and operational defaults.
     </p>

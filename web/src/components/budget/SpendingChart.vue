@@ -62,7 +62,10 @@ const chartOption = computed(() => {
       :style="{ height: '300px', width: '100%' }"
       autoresize
     />
-    <div v-else class="flex h-[300px] items-center justify-center text-sm text-slate-500">
+    <div
+      v-else
+      class="flex h-[300px] items-center justify-center text-sm text-slate-500"
+    >
       No spending data available
     </div>
   </div>

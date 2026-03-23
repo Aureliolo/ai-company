@@ -23,8 +23,12 @@ defineEmits<{
   >
     <div class="mb-3 flex items-start justify-between">
       <div>
-        <h4 class="font-medium text-slate-200">{{ agent.name }}</h4>
-        <p class="text-sm text-slate-400">{{ agent.role }}</p>
+        <h4 class="font-medium text-slate-200">
+          {{ agent.name }}
+        </h4>
+        <p class="text-sm text-slate-400">
+          {{ agent.role }}
+        </p>
       </div>
       <StatusBadge :value="agent.status" />
     </div>

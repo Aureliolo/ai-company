@@ -28,7 +28,7 @@ export function useOptimisticUpdate() {
     error.value = null
 
     // Capture rollback before any mutation so a partial throw is still reversible
-    let rollback: (() => void) | null = null
+    let rollback: () => void
     try {
       rollback = applyOptimistic()
     } catch (prepareErr) {

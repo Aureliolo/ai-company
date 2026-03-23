@@ -44,15 +44,43 @@ const agentSummaries = computed<AgentSpendingSummary[]>(() => {
 </script>
 
 <template>
-  <DataTable :value="agentSummaries" striped-rows class="text-sm">
-    <Column field="agent_id" header="Agent" sortable />
-    <Column field="total_cost_usd" header="Total Cost" sortable style="width: 120px">
+  <DataTable
+    :value="agentSummaries"
+    striped-rows
+    class="text-sm"
+  >
+    <Column
+      field="agent_id"
+      header="Agent"
+      sortable
+    />
+    <Column
+      field="total_cost_usd"
+      header="Total Cost"
+      sortable
+      style="width: 120px"
+    >
       <template #body="{ data }">
         {{ formatCurrency(data.total_cost_usd) }}
       </template>
     </Column>
-    <Column field="record_count" header="Calls" sortable style="width: 80px" />
-    <Column field="total_input_tokens" header="Input Tokens" sortable style="width: 120px" />
-    <Column field="total_output_tokens" header="Output Tokens" sortable style="width: 120px" />
+    <Column
+      field="record_count"
+      header="Calls"
+      sortable
+      style="width: 80px"
+    />
+    <Column
+      field="total_input_tokens"
+      header="Input Tokens"
+      sortable
+      style="width: 120px"
+    />
+    <Column
+      field="total_output_tokens"
+      header="Output Tokens"
+      sortable
+      style="width: 120px"
+    />
   </DataTable>
 </template>

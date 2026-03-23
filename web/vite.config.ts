@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  devtools: true,
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -12,6 +13,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    forwardConsole: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

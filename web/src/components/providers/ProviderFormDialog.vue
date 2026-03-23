@@ -212,7 +212,10 @@ function handleSave() {
     <div class="space-y-4">
       <!-- Preset selector (create only) -->
       <div v-if="mode === 'create' && store.presets.length > 0">
-        <label for="pf-preset" class="mb-1 block text-xs text-slate-400">From Preset</label>
+        <label
+          for="pf-preset"
+          class="mb-1 block text-xs text-slate-400"
+        >From Preset</label>
         <Select
           v-model="selectedPreset"
           input-id="pf-preset"
@@ -225,19 +228,38 @@ function handleSave() {
 
       <!-- Name (create only) -->
       <div v-if="mode === 'create'">
-        <label for="pf-name" class="mb-1 block text-xs text-slate-400">Name</label>
-        <InputText id="pf-name" v-model="name" class="w-full" placeholder="my-provider" />
+        <label
+          for="pf-name"
+          class="mb-1 block text-xs text-slate-400"
+        >Name</label>
+        <InputText
+          id="pf-name"
+          v-model="name"
+          class="w-full"
+          placeholder="my-provider"
+        />
       </div>
 
       <!-- Driver -->
       <div>
-        <label for="pf-driver" class="mb-1 block text-xs text-slate-400">Driver</label>
-        <InputText id="pf-driver" v-model="driver" class="w-full" placeholder="litellm" />
+        <label
+          for="pf-driver"
+          class="mb-1 block text-xs text-slate-400"
+        >Driver</label>
+        <InputText
+          id="pf-driver"
+          v-model="driver"
+          class="w-full"
+          placeholder="litellm"
+        />
       </div>
 
       <!-- Auth Type -->
       <div>
-        <label for="pf-auth-type" class="mb-1 block text-xs text-slate-400">Auth Type</label>
+        <label
+          for="pf-auth-type"
+          class="mb-1 block text-xs text-slate-400"
+        >Auth Type</label>
         <Select
           v-model="authType"
           input-id="pf-auth-type"
@@ -250,55 +272,134 @@ function handleSave() {
 
       <!-- Base URL -->
       <div>
-        <label for="pf-base-url" class="mb-1 block text-xs text-slate-400">Base URL</label>
-        <InputText id="pf-base-url" v-model="baseUrl" class="w-full" placeholder="http://localhost:11434" />
+        <label
+          for="pf-base-url"
+          class="mb-1 block text-xs text-slate-400"
+        >Base URL</label>
+        <InputText
+          id="pf-base-url"
+          v-model="baseUrl"
+          class="w-full"
+          placeholder="http://localhost:11434"
+        />
       </div>
 
       <!-- API Key (api_key or oauth) -->
       <div v-if="authType === 'api_key' || authType === 'oauth'">
-        <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">
+        <label
+          for="pf-api-key"
+          class="mb-1 block text-xs text-slate-400"
+        >
           {{ authType === 'oauth' ? 'Access Token (pre-fetched)' : 'API Key' }}
         </label>
-        <Password inputId="pf-api-key" v-model="apiKey" :toggle-mask="true" :feedback="false" fluid placeholder="sk-..." :input-props="{ autocomplete: 'off' }" />
+        <Password
+          v-model="apiKey"
+          input-id="pf-api-key"
+          :toggle-mask="true"
+          :feedback="false"
+          fluid
+          placeholder="sk-..."
+          :input-props="{ autocomplete: 'off' }"
+        />
       </div>
 
       <!-- OAuth fields -->
       <template v-if="authType === 'oauth'">
         <div>
-          <label for="pf-oauth-url" class="mb-1 block text-xs text-slate-400">Token URL</label>
-          <InputText id="pf-oauth-url" v-model="oauthTokenUrl" class="w-full" placeholder="https://auth.example.com/token" />
+          <label
+            for="pf-oauth-url"
+            class="mb-1 block text-xs text-slate-400"
+          >Token URL</label>
+          <InputText
+            id="pf-oauth-url"
+            v-model="oauthTokenUrl"
+            class="w-full"
+            placeholder="https://auth.example.com/token"
+          />
         </div>
         <div>
-          <label for="pf-oauth-id" class="mb-1 block text-xs text-slate-400">Client ID</label>
-          <InputText id="pf-oauth-id" v-model="oauthClientId" class="w-full" />
+          <label
+            for="pf-oauth-id"
+            class="mb-1 block text-xs text-slate-400"
+          >Client ID</label>
+          <InputText
+            id="pf-oauth-id"
+            v-model="oauthClientId"
+            class="w-full"
+          />
         </div>
         <div>
-          <label for="pf-oauth-secret" class="mb-1 block text-xs text-slate-400">Client Secret</label>
-          <Password inputId="pf-oauth-secret" v-model="oauthClientSecret" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
+          <label
+            for="pf-oauth-secret"
+            class="mb-1 block text-xs text-slate-400"
+          >Client Secret</label>
+          <Password
+            v-model="oauthClientSecret"
+            input-id="pf-oauth-secret"
+            :toggle-mask="true"
+            :feedback="false"
+            fluid
+            :input-props="{ autocomplete: 'off' }"
+          />
         </div>
         <div>
-          <label for="pf-oauth-scope" class="mb-1 block text-xs text-slate-400">Scope (optional)</label>
-          <InputText id="pf-oauth-scope" v-model="oauthScope" class="w-full" placeholder="read write" />
+          <label
+            for="pf-oauth-scope"
+            class="mb-1 block text-xs text-slate-400"
+          >Scope (optional)</label>
+          <InputText
+            id="pf-oauth-scope"
+            v-model="oauthScope"
+            class="w-full"
+            placeholder="read write"
+          />
         </div>
       </template>
 
       <!-- Custom Header fields -->
       <template v-if="authType === 'custom_header'">
         <div>
-          <label for="pf-header-name" class="mb-1 block text-xs text-slate-400">Header Name</label>
-          <InputText id="pf-header-name" v-model="customHeaderName" class="w-full" placeholder="X-Api-Token" />
+          <label
+            for="pf-header-name"
+            class="mb-1 block text-xs text-slate-400"
+          >Header Name</label>
+          <InputText
+            id="pf-header-name"
+            v-model="customHeaderName"
+            class="w-full"
+            placeholder="X-Api-Token"
+          />
         </div>
         <div>
-          <label for="pf-header-value" class="mb-1 block text-xs text-slate-400">Header Value</label>
-          <Password inputId="pf-header-value" v-model="customHeaderValue" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
+          <label
+            for="pf-header-value"
+            class="mb-1 block text-xs text-slate-400"
+          >Header Value</label>
+          <Password
+            v-model="customHeaderValue"
+            input-id="pf-header-value"
+            :toggle-mask="true"
+            :feedback="false"
+            fluid
+            :input-props="{ autocomplete: 'off' }"
+          />
         </div>
       </template>
     </div>
 
     <template #footer>
       <div class="flex justify-end gap-2">
-        <Button label="Cancel" severity="secondary" text @click="emit('update:visible', false)" />
-        <Button :label="mode === 'create' ? 'Create' : 'Save'" :disabled="!isValid" @click="handleSave" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          text
+          @click="emit('update:visible', false)"
+        />
+        <Button
+          :label="mode === 'create' ? 'Create' : 'Save'"
+          :disabled="!isValid"
+          @click="handleSave"
+        />
       </div>
     </template>
   </Dialog>

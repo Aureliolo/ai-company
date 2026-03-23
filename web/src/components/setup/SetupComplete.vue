@@ -18,7 +18,9 @@ function goToDashboard() {
 <template>
   <div class="flex flex-col items-center text-center">
     <i class="pi pi-check-circle mb-4 text-5xl text-green-400" />
-    <h2 class="mb-3 text-3xl font-semibold text-slate-100">Setup Complete!</h2>
+    <h2 class="mb-3 text-3xl font-semibold text-slate-100">
+      Setup Complete!
+    </h2>
     <p class="mb-6 max-w-md text-sm leading-relaxed text-slate-400">
       Your synthetic organization is ready to go. Here is what was created:
     </p>
