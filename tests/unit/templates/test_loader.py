@@ -381,6 +381,8 @@ class TestBuiltinOperationalConfigs:
         ("agency", "supervised", "hierarchical", "kanban"),
         ("research_lab", "full", "event_driven", "kanban"),
         ("full_company", "supervised", "hierarchical", "agile_kanban"),
+        ("consultancy", "supervised", "hierarchical", "kanban"),
+        ("data_team", "full", "event_driven", "kanban"),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
@@ -391,15 +393,7 @@ class TestBuiltinOperationalConfigs:
     @pytest.mark.parametrize(
         ("name", "autonomy_level", "communication", "workflow"),
         _EXPECTED_CONFIGS,
-        ids=[
-            "solo_founder",
-            "startup",
-            "dev_shop",
-            "product_team",
-            "agency",
-            "research_lab",
-            "full_company",
-        ],
+        ids=[row[0] for row in _EXPECTED_CONFIGS],
     )
     def test_operational_config(
         self,
@@ -439,6 +433,8 @@ class TestBuiltinSkillPatterns:
             ),
         ),
         ("research_lab", ("generator", "inversion", "reviewer")),
+        ("consultancy", ("generator", "pipeline", "reviewer")),
+        ("data_team", ("generator", "reviewer", "tool_wrapper")),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:

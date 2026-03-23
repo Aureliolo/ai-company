@@ -56,6 +56,8 @@ BUILTIN_TEMPLATES: MappingProxyType[str, str] = MappingProxyType(
         "agency": "agency.yaml",
         "full_company": "full_company.yaml",
         "research_lab": "research_lab.yaml",
+        "consultancy": "consultancy.yaml",
+        "data_team": "data_team.yaml",
     }
 )
 
