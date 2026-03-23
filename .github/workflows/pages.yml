@@ -51,10 +51,15 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(python3 -c "
-          import tomllib
+          VERSION=$(uv run python -c "
+          import sys, tomllib
           with open('pyproject.toml', 'rb') as f:
-              print(tomllib.load(f)['tool']['commitizen']['version'])
+              data = tomllib.load(f)
+          try:
+              print(data['tool']['commitizen']['version'])
+          except KeyError:
+              print('::error::Missing [tool.commitizen].version in pyproject.toml', file=sys.stderr)
+              sys.exit(1)
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 

@@ -117,6 +117,7 @@ jobs:
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
         # https://github.com/zensical/backlog/issues/72
+        # SYNTHORG_VERSION intentionally omitted -- previews show "dev" banner
         run: uv run zensical build
 
       # --- Astro (landing page at /) ---

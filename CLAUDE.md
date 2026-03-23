@@ -232,7 +232,7 @@ site/             # Astro landing page (synthorg.io)
 
 - **Path filtering**: `dorny/paths-filter` -- jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
 - **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test/build/audit) run in parallel -> ci-pass gate
-- **Pages**: `pages.yml` -- OpenAPI export, Astro + Zensical docs build, GitHub Pages deploy on push to main
+- **Pages**: `pages.yml` -- version extraction from `pyproject.toml`, OpenAPI export, Astro + Zensical docs build (with version banner), GitHub Pages deploy on push to main
 - **PR Preview**: `pages-preview.yml` -- Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
 - **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`
 - **CLI**: `cli.yml` -- Go lint/test/build (cross-compile) + govulncheck + fuzz. GoReleaser release on `v*` tags with cosign signing + SLSA provenance

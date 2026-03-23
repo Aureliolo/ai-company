@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
 {% block announce %}
-  {% if config.extra.synthorg_version and config.extra.synthorg_version != "dev" %}
+  {% if config.extra.synthorg_version != "dev" %}
     Docs for
     <strong>v{{ config.extra.synthorg_version }}</strong>
     --
     <a href="https://github.com/Aureliolo/synthorg/releases">
       all releases
     </a>
-  {% elif config.extra.synthorg_version == "dev" %}
+  {% else %}
     You are viewing the <strong>development</strong> version of the docs.
   {% endif %}
 {% endblock %}
