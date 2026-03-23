@@ -87,9 +87,15 @@ Choose a pre-built organization template to get started quickly:
 
 | Template | Description |
 |----------|-------------|
+| `solo_founder` | Solo builder with full autonomy |
 | `startup` | CEO + small engineering team |
+| `dev_shop` | Engineering squad with quality gates |
+| `product_team` | Product-focused studio with design |
 | `agency` | Project manager + specialists |
-| `research-lab` | Lead researcher + research assistants |
+| `full_company` | Enterprise org with all departments |
+| `research_lab` | Lead researcher + research assistants |
+| `consultancy` | Client-facing advisory and delivery |
+| `data_team` | Analytics and ML-focused data team |
 
 Templates are selected through the dashboard during the setup wizard.
 

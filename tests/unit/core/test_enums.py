@@ -53,8 +53,8 @@ class TestEnumMemberCounts:
     def test_cost_tier_has_4_members(self) -> None:
         assert len(CostTier) == 4
 
-    def test_company_type_has_8_members(self) -> None:
-        assert len(CompanyType) == 8
+    def test_company_type_has_10_members(self) -> None:
+        assert len(CompanyType) == 10
 
     def test_skill_category_has_9_members(self) -> None:
         assert len(SkillCategory) == 9
@@ -142,6 +142,8 @@ class TestEnumStringValues:
     def test_company_type_values(self) -> None:
         assert CompanyType.SOLO_FOUNDER.value == "solo_founder"
         assert CompanyType.STARTUP.value == "startup"
+        assert CompanyType.CONSULTANCY.value == "consultancy"
+        assert CompanyType.DATA_TEAM.value == "data_team"
         assert CompanyType.CUSTOM.value == "custom"
 
     def test_task_status_values(self) -> None:

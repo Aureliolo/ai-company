@@ -18,6 +18,8 @@ SynthOrg provides pre-built company templates for common organizational patterns
 | **Agency** | 10-20 | supervised | hierarchical | kanban | Client work, multiple projects |
 | **Enterprise Org** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
 | **Research Lab** | 5-10 | full | event_driven | kanban | Research and analysis |
+| **Consultancy** | 4-6 | supervised | hierarchical | kanban | Client-facing advisory/delivery |
+| **Data Team** | 5-8 | full | event_driven | kanban | Analytics and ML pipelines |
 | **Custom** | Any | semi | hybrid | agile_kanban | Anything |
 
 See the [Template System](#template-system) section for details on how templates are defined,
@@ -48,6 +50,8 @@ Templates declare which patterns they exhibit via the `skill_patterns` metadata 
 | **Agency** | Pipeline, Generator, Reviewer |
 | **Enterprise Org** | Tool Wrapper, Generator, Reviewer, Inversion, Pipeline |
 | **Research Lab** | Inversion, Generator, Reviewer |
+| **Consultancy** | Generator, Pipeline, Reviewer |
+| **Data Team** | Generator, Reviewer, Tool Wrapper |
 
 Patterns compose naturally: a Pipeline can embed a Reviewer step at each gate, a Generator
 can begin with an Inversion phase to gather variables, and individual Pipeline stages can

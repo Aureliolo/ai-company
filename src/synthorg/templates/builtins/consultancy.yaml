@@ -1,0 +1,113 @@
+template:
+  name: "Consultancy"
+  description: >-
+    A client-facing advisory and delivery firm. Senior-heavy and
+    project-driven, structured around technical delivery with client
+    oversight. Distinct from agency (larger, creative/marketing scope).
+  version: "1.0.0"
+  min_agents: 4
+  max_agents: 6
+  tags:
+    - "consulting"
+    - "client-facing"
+    - "delivery"
+    - "senior-heavy"
+    - "project-driven"
+  skill_patterns:
+    - "generator"
+    - "pipeline"
+    - "reviewer"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your consultancy"
+      default: "Consultancy"
+    - name: "budget"
+      description: "Monthly budget in USD"
+      var_type: "float"
+      default: 60.0
+
+  company:
+    type: "consultancy"
+    budget_monthly: {{ budget | default(60.0) }}
+    autonomy:
+      level: "supervised"
+
+  departments:
+    - name: "consulting"
+      budget_percent: 65
+      head_role: "Software Architect"
+      reporting_lines:
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-1"
+          supervisor: "Software Architect"
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-2"
+          supervisor: "Software Architect"
+    - name: "operations"
+      budget_percent: 35
+      head_role: "Project Manager"
+      reporting_lines:
+        - subordinate: "Technical Writer"
+          supervisor: "Project Manager"
+
+  agents:
+    - role: "Software Architect"
+      name: ""
+      level: "principal"
+      model: "large"
+      personality_preset: "systems_thinker"
+      department: "consulting"
+    - role: "Backend Developer"
+      name: ""
+      merge_id: "backend-1"
+      level: "senior"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "consulting"
+    - role: "Backend Developer"
+      name: ""
+      merge_id: "backend-2"
+      level: "senior"
+      model: "medium"
+      personality_preset: "code_craftsman"
+      department: "consulting"
+    - role: "Project Manager"
+      name: ""
+      level: "senior"
+      model: "medium"
+      personality_preset: "client_advisor"
+      department: "operations"
+    - role: "Technical Writer"
+      name: ""
+      level: "mid"
+      model: "small"
+      personality_preset: "technical_communicator"
+      department: "operations"
+
+  workflow: "kanban"
+  communication: "hierarchical"
+
+  workflow_handoffs:
+    - from_department: "consulting"
+      to_department: "operations"
+      trigger: "Deliverable ready for client review and scheduling"
+      artifacts:
+        - "implementation"
+        - "documentation"
+    - from_department: "operations"
+      to_department: "consulting"
+      trigger: "Client feedback requiring technical changes"
+      artifacts:
+        - "change_request"
+        - "requirements"
+
+  escalation_paths:
+    - from_department: "operations"
+      to_department: "consulting"
+      condition: "Technical blocker impeding client delivery timeline"
+      priority_boost: 2
+    - from_department: "consulting"
+      to_department: "operations"
+      condition: "Scope change requiring client communication"
+      priority_boost: 1

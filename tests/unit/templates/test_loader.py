@@ -381,6 +381,8 @@ class TestBuiltinOperationalConfigs:
         ("agency", "supervised", "hierarchical", "kanban"),
         ("research_lab", "full", "event_driven", "kanban"),
         ("full_company", "supervised", "hierarchical", "agile_kanban"),
+        ("consultancy", "supervised", "hierarchical", "kanban"),
+        ("data_team", "full", "event_driven", "kanban"),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
@@ -391,15 +393,7 @@ class TestBuiltinOperationalConfigs:
     @pytest.mark.parametrize(
         ("name", "autonomy_level", "communication", "workflow"),
         _EXPECTED_CONFIGS,
-        ids=[
-            "solo_founder",
-            "startup",
-            "dev_shop",
-            "product_team",
-            "agency",
-            "research_lab",
-            "full_company",
-        ],
+        ids=[row[0] for row in _EXPECTED_CONFIGS],
     )
     def test_operational_config(
         self,
@@ -413,6 +407,20 @@ class TestBuiltinOperationalConfigs:
         assert tpl.autonomy == {"level": autonomy_level}
         assert tpl.communication == communication
         assert tpl.workflow == workflow
+
+
+# -- builtin-to-enum sync ------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinEnumSync:
+    """Every non-CUSTOM CompanyType member must have a BUILTIN_TEMPLATES entry."""
+
+    def test_company_type_matches_builtin_templates(self) -> None:
+        from synthorg.core.enums import CompanyType
+
+        expected = {ct.value for ct in CompanyType if ct is not CompanyType.CUSTOM}
+        assert set(BUILTIN_TEMPLATES) == expected
 
 
 # -- builtin skill patterns -----------------------------------------------
@@ -439,6 +447,8 @@ class TestBuiltinSkillPatterns:
             ),
         ),
         ("research_lab", ("generator", "inversion", "reviewer")),
+        ("consultancy", ("generator", "pipeline", "reviewer")),
+        ("data_team", ("generator", "reviewer", "tool_wrapper")),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
