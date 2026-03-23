@@ -126,38 +126,55 @@ template:
     - role: "CEO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "visionary_leader"
       department: "executive"
     - role: "CTO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "systems_thinker"
       department: "executive"
     - role: "CFO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "data_driven_optimizer"
       department: "executive"
     - role: "COO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "process_optimizer"
       department: "operations"
     - role: "CPO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "user_advocate"
       department: "product"
     # Product (2)
     - role: "Product Manager"
       name: ""
       level: "senior"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "strategic_planner"
       department: "product"
     - role: "Technical Writer"
@@ -183,13 +200,18 @@ template:
     - role: "Software Architect"
       name: ""
       level: "principal"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "DevOps/SRE Engineer"
       name: ""
       level: "mid"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
@@ -209,7 +231,9 @@ template:
       personality_preset: "pragmatic_builder"
 {% else %}
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "cost"
       personality_preset: "eager_learner"
 {% endif %}
       department: "engineering"
@@ -225,7 +249,9 @@ template:
       personality_preset: "creative_innovator"
 {% else %}
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "cost"
       personality_preset: "team_diplomat"
 {% endif %}
       department: "engineering"
@@ -266,13 +292,17 @@ template:
     - role: "Project Manager"
       name: ""
       level: "senior"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       name: ""
       level: "senior"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "empathetic_mentor"
       department: "operations"
     # Security (2)
@@ -292,7 +322,9 @@ template:
     - role: "Content Writer"
       name: ""
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "quality"
       personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"

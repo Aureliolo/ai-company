@@ -193,34 +193,47 @@ template:
   # User-defined templates may use Jinja2 placeholders (e.g. {{ name | auto }})
   # which trigger Faker-based auto-generation at render time using the
   # locales selected in the Names setup step.
+  # The `model` field accepts either a string tier alias (backward-compatible)
+  # or a structured dict with tier, priority, min_context, and capabilities.
+  # Structured format overrides personality-based affinity defaults.
   agents:
     - role: "CEO"
       name: "Amara Okafor"
-      model: "large"
+      model:                          # structured model requirement
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "visionary_leader"
 
     - role: "CTO"
       name: "Hiroshi Tanaka"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "rapid_prototyper"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       name: "Kenji Matsuda"
       level: "senior"
-      model: "medium"
+      model: "medium"                 # string tier alias (still works)
       personality_preset: "pragmatic_builder"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
       name: "Sofia Reyes"
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "cost"
       personality_preset: "team_diplomat"
 
     - role: "Product Manager"
       name: "Liam Chen"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "strategic_planner"
 
   departments:

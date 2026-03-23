@@ -269,3 +269,87 @@ class TestMatchAllAgents:
         results = match_all_agents(agents, providers)
         for i, result in enumerate(results):
             assert result.agent_index == i
+
+    def test_model_requirement_dict_used_when_present(self) -> None:
+        """Serialized ModelRequirement dict bypasses resolve_model_requirement."""
+        req_dict = {
+            "tier": "large",
+            "priority": "quality",
+            "min_context": 100_000,
+            "capabilities": (),
+        }
+        agents = [{"tier": "large", "model_requirement": req_dict}]
+        models = (
+            _make_model("big", cost_input=0.1, max_context=200_000),
+            _make_model("small", cost_input=0.001, max_context=200_000),
+        )
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        assert results[0].tier == "large"
+
+    def test_model_requirement_min_context_filtering(self) -> None:
+        """ModelRequirement min_context filters out small-context models."""
+        req_dict = {
+            "tier": "medium",
+            "priority": "balanced",
+            "min_context": 150_000,
+            "capabilities": (),
+        }
+        agents = [{"model_requirement": req_dict}]
+        models = (_make_model("too-small", cost_input=0.01, max_context=100_000),)
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        # Should fallback (score 0) since no model meets min_context.
+        assert len(results) == 1
+        assert results[0].score == 0.0
+
+    def test_model_requirement_overrides_affinity(self) -> None:
+        """Structured ModelRequirement ignores personality_preset affinity."""
+        req_dict = {"tier": "medium", "priority": "cost", "capabilities": ()}
+        agents = [
+            {
+                "tier": "medium",
+                "personality_preset": "visionary_leader",
+                "model_requirement": req_dict,
+            },
+        ]
+        models = (
+            _make_model("cheap", cost_input=0.001),
+            _make_model("expensive", cost_input=0.1),
+        )
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        # Should pick cheap model (priority=cost), NOT expensive
+        # (which visionary_leader affinity would select via quality).
+        assert results[0].model_id == "cheap"
+
+    def test_model_requirement_object_used_directly(self) -> None:
+        """ModelRequirement object (not serialized) is also accepted."""
+        req = ModelRequirement(tier="small", priority="speed")
+        agents = [{"model_requirement": req}]
+        models = (
+            _make_model("fast", cost_input=0.01, latency_ms=50),
+            _make_model("slow", cost_input=0.01, latency_ms=500),
+        )
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        assert results[0].tier == "small"
+
+    def test_fallback_to_tier_preset_without_model_requirement(self) -> None:
+        """Without model_requirement, the old tier+preset path is used."""
+        agents = [
+            {"tier": "large", "personality_preset": "visionary_leader"},
+        ]
+        models = (
+            _make_model("cheap", cost_input=0.001, max_context=200_000),
+            _make_model("mid", cost_input=0.05, max_context=200_000),
+            _make_model("expensive", cost_input=0.1, max_context=200_000),
+        )
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        # visionary_leader affinity sets priority=quality -> expensive.
+        assert results[0].model_id == "expensive"

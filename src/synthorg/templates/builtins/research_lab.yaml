@@ -64,7 +64,10 @@ template:
     - role: "Software Architect"
       name: ""
       level: "principal"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "systems_thinker"
       department: "engineering"
     - role: "Backend Developer"

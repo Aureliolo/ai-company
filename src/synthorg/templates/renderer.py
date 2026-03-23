@@ -646,7 +646,16 @@ def _expand_single_agent(
     if personality is not None:
         agent_dict["personality"] = personality
 
-    model_tier = agent.get("model", "medium")
+    model_raw = agent.get("model", "medium")
+    if isinstance(model_raw, dict):
+        from synthorg.templates.model_requirements import (  # noqa: PLC0415
+            parse_model_requirement,
+        )
+
+        req = parse_model_requirement(model_raw)
+        model_tier = req.tier
+    else:
+        model_tier = model_raw
     agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
 
     # Preserve _remove merge directive for inheritance.

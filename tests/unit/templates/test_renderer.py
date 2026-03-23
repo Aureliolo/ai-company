@@ -149,6 +149,106 @@ class TestRenderTemplateAgents:
             assert len(agent.name) > 0
 
 
+# ── Structured model dict ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRenderTemplateStructuredModel:
+    def test_dict_model_extracts_tier(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        yaml_content = """\
+template:
+  name: "Structured Model Test"
+  description: "test"
+  version: "1.0.0"
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "CEO"
+      name: "Test CEO"
+      level: "c_suite"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
+      department: "executive"
+"""
+        path = tmp_template_file(yaml_content)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+        assert isinstance(config, RootConfig)
+        ceo = config.agents[0]
+        assert ceo.model["model_id"] == "large"
+
+    def test_string_model_still_works(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        yaml_content = """\
+template:
+  name: "String Model Test"
+  description: "test"
+  version: "1.0.0"
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "Backend Developer"
+      name: "Test Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+"""
+        path = tmp_template_file(yaml_content)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+        assert isinstance(config, RootConfig)
+        dev = config.agents[0]
+        assert dev.model["model_id"] == "medium"
+
+    def test_mixed_string_and_dict_models(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        yaml_content = """\
+template:
+  name: "Mixed Model Test"
+  description: "test"
+  version: "1.0.0"
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "CEO"
+      name: "Test CEO"
+      level: "c_suite"
+      model:
+        tier: "large"
+        priority: "quality"
+      department: "executive"
+    - role: "Backend Developer"
+      name: "Test Dev"
+      level: "mid"
+      model: "small"
+      department: "engineering"
+"""
+        path = tmp_template_file(yaml_content)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+        assert isinstance(config, RootConfig)
+        assert len(config.agents) == 2
+        ceo = next(a for a in config.agents if a.role == "CEO")
+        dev = next(a for a in config.agents if a.role == "Backend Developer")
+        assert ceo.model["model_id"] == "large"
+        assert dev.model["model_id"] == "small"
+
+
 # ── Departments ──────────────────────────────────────────────────
 
 

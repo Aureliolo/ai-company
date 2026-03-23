@@ -55,7 +55,10 @@ template:
     - role: "Software Architect"
       name: ""
       level: "principal"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "systems_thinker"
       department: "consulting"
     - role: "Backend Developer"
@@ -75,7 +78,9 @@ template:
     - role: "Project Manager"
       name: ""
       level: "senior"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "client_advisor"
       department: "operations"
     - role: "Technical Writer"

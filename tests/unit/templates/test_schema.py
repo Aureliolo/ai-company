@@ -114,6 +114,37 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="dev", model="   ")
 
+    def test_dict_model_accepted(self) -> None:
+        model_dict = {
+            "tier": "large",
+            "priority": "quality",
+            "min_context": 100000,
+        }
+        a = TemplateAgentConfig(role="CEO", model=model_dict)
+        assert a.model == model_dict
+
+    def test_dict_model_tier_only(self) -> None:
+        a = TemplateAgentConfig(role="Dev", model={"tier": "small"})
+        assert a.model == {"tier": "small"}
+
+    def test_dict_model_invalid_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="Dev", model={"tier": "huge"})
+
+    def test_dict_model_invalid_priority_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(
+                role="Dev",
+                model={"tier": "medium", "priority": "fastest"},
+            )
+
+    def test_dict_model_extra_field_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(
+                role="Dev",
+                model={"tier": "medium", "unknown_field": "x"},
+            )
+
     def test_both_personality_and_preset_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Cannot specify both"):
             TemplateAgentConfig(

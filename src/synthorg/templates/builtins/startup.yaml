@@ -60,13 +60,19 @@ template:
     - role: "CEO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "visionary_leader"
       department: "executive"
     - role: "CTO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "rapid_prototyper"
       department: "executive"
     - role: "Full-Stack Developer"
@@ -80,13 +86,17 @@ template:
       name: ""
       merge_id: "fullstack-mid"
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "cost"
       personality_preset: "team_diplomat"
       department: "engineering"
     - role: "Product Manager"
       name: ""
       level: "senior"
-      model: "medium"
+      model:
+        tier: "medium"
+        priority: "speed"
       personality_preset: "strategic_planner"
       department: "product"
 

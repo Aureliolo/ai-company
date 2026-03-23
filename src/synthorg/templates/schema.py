@@ -9,6 +9,7 @@ from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
+from synthorg.templates.model_requirements import parse_model_requirement
 
 logger = get_logger(__name__)
 
@@ -94,7 +95,9 @@ class TemplateAgentConfig(BaseModel):
         name: Agent name (may contain Jinja2 placeholders; empty triggers
             auto-generation).
         level: Seniority level override.
-        model: Model tier alias (e.g. ``"large"``, ``"medium"``, ``"small"``).
+        model: Model tier alias (``"large"``, ``"medium"``, ``"small"``)
+            or a structured ``ModelRequirement`` dict with ``tier``,
+            ``priority``, ``min_context``, and ``capabilities`` fields.
         personality_preset: Named personality preset from the presets registry.
         personality: Inline personality config dict (alternative to
             ``personality_preset``).
@@ -116,7 +119,22 @@ class TemplateAgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
-    model: NotBlankStr = Field(default="medium", description="Model tier alias")
+    model: NotBlankStr | dict[str, Any] = Field(
+        default="medium",
+        description="Model tier alias or structured ModelRequirement dict",
+    )
+
+    @field_validator("model")
+    @classmethod
+    def _validate_model(
+        cls,
+        value: NotBlankStr | dict[str, Any],
+    ) -> NotBlankStr | dict[str, Any]:
+        """Validate model value: tier string or ModelRequirement dict."""
+        if isinstance(value, dict):
+            parse_model_requirement(value)
+        return value
+
     personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset",

@@ -90,6 +90,19 @@ def expand_template_agents(
             preset_name = "pragmatic_builder"
             personality = get_personality_preset(preset_name)
 
+        # Resolve model tier and optional structured ModelRequirement.
+        tier: str
+        if isinstance(agent_cfg.model, dict):
+            from synthorg.templates.model_requirements import (  # noqa: PLC0415
+                parse_model_requirement,
+            )
+
+            model_req = parse_model_requirement(agent_cfg.model)
+            tier = model_req.tier
+        else:
+            model_req = None
+            tier = agent_cfg.model
+
         agent_dict: dict[str, Any] = {
             "name": name,
             "role": agent_cfg.role,
@@ -97,9 +110,11 @@ def expand_template_agents(
             "level": agent_cfg.level.value,
             "personality": personality,
             "personality_preset": preset_name,
-            "tier": agent_cfg.model,  # Template tier alias, not LLM model ID
+            "tier": tier,
             "model": {"provider": "", "model_id": ""},
         }
+        if model_req is not None:
+            agent_dict["model_requirement"] = model_req.model_dump()
         agents.append(agent_dict)
 
     return agents

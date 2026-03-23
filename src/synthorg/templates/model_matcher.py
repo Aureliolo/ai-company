@@ -121,6 +121,7 @@ def match_all_agents(
         first available provider/model as a fallback.
     """
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
+        ModelRequirement,
         resolve_model_requirement,
     )
 
@@ -132,19 +133,29 @@ def match_all_agents(
     ]
 
     for idx, agent in enumerate(agents):
-        tier: ModelTier = agent.get("tier", "medium")
-        preset = agent.get("personality_preset")
-        try:
-            req = resolve_model_requirement(tier, preset)
-        except ValidationError, ValueError:
-            logger.warning(
-                TEMPLATE_MODEL_MATCH_SKIPPED,
-                agent_index=idx,
-                tier=tier,
-                preset=preset,
-                reason="invalid_requirement",
-            )
-            continue
+        # Use pre-parsed ModelRequirement when available (structured
+        # dict path), otherwise fall back to tier + personality affinity.
+        model_req = agent.get("model_requirement")
+        if isinstance(model_req, ModelRequirement):
+            req = model_req
+            tier: ModelTier = req.tier
+        elif isinstance(model_req, dict):
+            req = ModelRequirement(**model_req)
+            tier = req.tier
+        else:
+            tier = agent.get("tier", "medium")
+            preset = agent.get("personality_preset")
+            try:
+                req = resolve_model_requirement(tier, preset)
+            except ValidationError, ValueError:
+                logger.warning(
+                    TEMPLATE_MODEL_MATCH_SKIPPED,
+                    agent_index=idx,
+                    tier=tier,
+                    preset=preset,
+                    reason="invalid_requirement",
+                )
+                continue
 
         best_provider: str | None = None
         best_model: ProviderModelConfig | None = None

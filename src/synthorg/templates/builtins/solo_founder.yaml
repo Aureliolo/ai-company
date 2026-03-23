@@ -44,7 +44,10 @@ template:
     - role: "CEO"
       name: ""
       level: "c_suite"
-      model: "large"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
       personality_preset: "visionary_leader"
       department: "executive"
     - role: "Full-Stack Developer"
