@@ -48,11 +48,11 @@ uv run zensical serve                      # local docs preview (http://127.0.0.
 
 ```bash
 npm --prefix web install                   # install frontend deps
-npm --prefix web run dev                   # dev server (http://localhost:5173)
-npm --prefix web run build                 # production build
+npm --prefix web run dev                   # dev server (http://localhost:5173) -- devtools + console forwarding enabled
+npm --prefix web run build                 # production build (devtools disabled)
 npm --prefix web run lint                  # ESLint
 npm --prefix web run type-check            # vue-tsc type checking
-npm --prefix web run test                  # Vitest unit tests
+npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
 ```
 
 ### CLI (Go Binary)
@@ -231,7 +231,7 @@ site/             # Astro landing page (synthorg.io)
 ## CI
 
 - **Path filtering**: `dorny/paths-filter` -- jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
-- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test/build/audit) run in parallel -> ci-pass gate
+- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test with `--detect-async-leaks`/build/audit) run in parallel -> ci-pass gate
 - **Pages**: `pages.yml` -- version extraction from `pyproject.toml`, OpenAPI export, Astro + Zensical docs build (with version banner), GitHub Pages deploy on push to main
 - **PR Preview**: `pages-preview.yml` -- Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
 - **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`
@@ -251,5 +251,5 @@ site/             # Astro landing page (synthorg.io)
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, CodeMirror 6 (vue-codemirror), js-yaml, Vitest, fast-check, ESLint, vue-tsc, @vitejs/devtools)
+- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, vue-router, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, vue-echarts, Axios, vue-draggable-plus, CodeMirror 6 (vue-codemirror), js-yaml, Vitest, @vitest/coverage-v8, fast-check, ESLint, eslint-plugin-security, vue-tsc, @vitejs/devtools)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

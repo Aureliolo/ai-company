@@ -127,6 +127,17 @@ async function handleFilterUpdate(newFilters: TaskFilterType) {
   }
 }
 
+async function handleRetry() {
+  try {
+    await Promise.all([
+      taskStore.fetchTasks(filters.value),
+      agentStore.fetchAgents(),
+    ])
+  } catch (err) {
+    console.error('Retry fetch failed:', sanitizeForLog(err))
+  }
+}
+
 async function handleFilterReset() {
   filters.value = {}
   try {
@@ -184,7 +195,7 @@ async function handleFilterReset() {
 
     <ErrorBoundary
       :error="taskStore.error ?? agentStore.error"
-      @retry="() => { taskStore.fetchTasks(filters); agentStore.fetchAgents() }"
+      @retry="handleRetry"
     >
       <LoadingSkeleton
         v-if="taskStore.loading && taskStore.tasks.length === 0"

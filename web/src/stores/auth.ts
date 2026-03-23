@@ -142,6 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Only clear auth on 401 (invalid/expired token)
       // Transient errors (network, 500) should NOT log the user out
       if (isAxiosError(err) && err.response?.status === 401) {
+        console.warn('Session expired or invalid token -- clearing auth')
         clearAuth()
       } else {
         console.error('Failed to fetch user profile:', getErrorMessage(err))
