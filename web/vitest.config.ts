@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     coverage: {
       provider: 'v8',
-      changed: 'origin/main',
+      changed: process.env.CI ? undefined : 'origin/main',
       include: ['src/**/*.{ts,vue}'],
       exclude: ['src/**/*.d.ts', 'src/main.ts', 'src/__tests__/**'],
     },
