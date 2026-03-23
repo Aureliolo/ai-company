@@ -28,7 +28,7 @@ Parse the user's argument to determine audit scope:
 |----------|-------|------------------|
 | `full` (default) | Entire codebase | All categories |
 | `src/` or `src/synthorg/` | Python backend only | Python-focused categories |
-| `web/` | Vue dashboard only | Frontend categories |
+| `web/` | React dashboard only | Frontend categories |
 | `cli/` | Go CLI only | Go categories |
 | `docs/` or `site/` | Documentation/site | Docs/content categories |
 | `.github/` or `ci` | CI/CD only | CI/workflow categories |
@@ -107,7 +107,7 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 
 | Agent | What It Searches For |
 |-------|---------------------|
-| `vue-dashboard` | Broken API refs, missing error handling, console.log in prod, TypeScript gaps, a11y |
+| `react-dashboard` | Broken API refs, missing error handling, console.log in prod, TypeScript gaps, a11y |
 
 #### Go CLI Agents (scope includes `cli/`)
 
@@ -311,7 +311,7 @@ These patterns recur across audits:
 - **Test quality** -- flaky fixes + missing coverage (all in `tests/`)
 - **CI hardening** -- timeouts, permissions, script safety (all in `.github/`)
 - **Documentation** -- content fixes across `docs/` and `site/`
-- **Language-specific** -- Go fixes together, Vue fixes together
+- **Language-specific** -- Go fixes together, React fixes together
 
 ### Standalone features
 

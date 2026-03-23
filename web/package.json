@@ -40,7 +40,7 @@
     "@testing-library/jest-dom": "^6",
     "@testing-library/react": "^16",
     "@testing-library/user-event": "^14",
-    "@types/node": "^25",
+    "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",

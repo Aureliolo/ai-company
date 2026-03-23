@@ -4,6 +4,9 @@ import eslintReact from '@eslint-react/eslint-plugin'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import pluginSecurity from 'eslint-plugin-security'
 
+// TODO: Add eslint-plugin-react-hooks when it supports ESLint 10 (v5 caps at ESLint 9).
+// @eslint-react provides some hooks analysis via hooks-extra rules in the meantime.
+
 export default tseslint.config(
   { ignores: ['dist/**'] },
   js.configs.recommended,

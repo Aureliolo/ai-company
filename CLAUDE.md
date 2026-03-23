@@ -121,9 +121,7 @@ src/synthorg/
 
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   components/     # React components by feature + ui/ (shadcn primitives)
-  hooks/          # Custom React hooks
   lib/            # Utilities (cn() class merging, etc.)
-  stores/         # Zustand stores
   styles/         # Global CSS and Tailwind theme tokens
   __tests__/      # Vitest unit tests
 

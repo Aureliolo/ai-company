@@ -80,7 +80,7 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
    - `src_py`: `.py` files in `src/`
    - `test_py`: `.py` files in `tests/`
-   - `web_src`: `.vue`, `.ts`, `.css` files in `web/src/` (excluding `web/src/__tests__/`)
+   - `web_src`: `.tsx`, `.ts`, `.css` files in `web/src/` (excluding `web/src/__tests__/`)
    - `web_test`: `.ts` files in `web/src/__tests__/`
    - `docker`: files in `docker/`, root-level `Dockerfile*`, `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, `docker-compose*.yaml`
    - `ci`: files in `.github/workflows/`, `.github/actions/`
@@ -135,7 +135,7 @@ Determine if agent review can be skipped:
 - If `$ARGUMENTS` contains `quick` -> skip agents, go to Phase 2 then Phase 8, then Phase 10 and Phase 11
 - **Auto-detect**: If ALL changed files are non-substantive (only `.md` docs, config formatting, typo-level edits with no logic changes, `site/` static assets like images/fonts), skip agents automatically
   - Auto-skip examples: all changes are `.md` files; only `pyproject.toml` version bump; only `.yaml`/`.json` config with no Python changes; only `site/` image/font/asset changes
-  - Do NOT auto-skip: any `.py` file changed; any `.go` file changed; any `.vue`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added
+  - Do NOT auto-skip: any `.py` file changed; any `.go` file changed; any `.tsx`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added
 - If auto-skipping, inform user: "Skipping agent review (no substantive code changes detected). Running automated checks only."
 
 ## Phase 2: Automated Checks (always run)
@@ -436,32 +436,32 @@ When `web_src` files are included in the security review scope, add these fronte
 
 ### Frontend-reviewer custom prompt
 
-The frontend-reviewer agent checks Vue 3 dashboard code quality and patterns.
+The frontend-reviewer agent checks React 19 + shadcn/ui dashboard code quality and patterns.
 
-**Vue 3 / Composition API (CRITICAL):**
-1. Options API usage instead of Composition API with `<script setup>` (CRITICAL)
-2. Direct DOM manipulation instead of Vue reactivity (`document.querySelector`, `innerHTML`) (CRITICAL)
-3. Missing `defineProps`/`defineEmits` type annotations (MAJOR)
+**React patterns (CRITICAL):**
+1. Class components instead of functional components (CRITICAL)
+2. Direct DOM manipulation (`document.querySelector`, `innerHTML`) instead of React state/refs (CRITICAL)
+3. Missing or incorrect TypeScript prop types on components (MAJOR)
 
-**Pinia stores (MAJOR):**
-4. Direct state mutation outside store actions (MAJOR)
-5. Business logic in components that belongs in stores (MAJOR)
-6. Missing error handling in store actions that call APIs (MAJOR)
+**Zustand stores (MAJOR):**
+4. Business logic in components that belongs in stores (MAJOR)
+5. Missing error handling in store actions that call APIs (MAJOR)
+6. Store state accessed without selectors (causes unnecessary re-renders) (MAJOR)
 
-**PrimeVue / Tailwind CSS (MEDIUM):**
-7. Custom CSS that duplicates existing PrimeVue components or Tailwind utilities (MEDIUM)
+**shadcn/ui / Tailwind CSS (MEDIUM):**
+7. Custom CSS that duplicates existing shadcn/ui components or Tailwind utilities (MEDIUM)
 8. Inline styles instead of Tailwind classes (MEDIUM)
-9. Missing PrimeVue component imports (components should be auto-imported or explicitly imported) (MEDIUM)
+9. Hardcoded colors/spacing instead of design tokens (CSS variables) (MEDIUM)
 
 **TypeScript (MAJOR):**
-10. `any` type usage -- should use proper types from `web/src/api/types.ts` (MAJOR)
-11. Missing return types on composable functions (MAJOR)
+10. `any` type usage -- should use proper types (MAJOR)
+11. Missing return types on custom hooks (MAJOR)
 12. Type assertions (`as`) that could be replaced with proper type guards (MEDIUM)
 
-**Composables (MAJOR):**
-13. Reactive logic duplicated across components instead of extracted into a composable (MAJOR)
-14. Composables with side effects in module scope instead of within `onMounted`/lifecycle hooks (MAJOR)
-15. Missing cleanup in composables (event listeners, intervals, subscriptions) (MAJOR)
+**Custom hooks (MAJOR):**
+13. Reactive logic duplicated across components instead of extracted into a custom hook (MAJOR)
+14. Custom hooks with side effects not wrapped in `useEffect` (MAJOR)
+15. Missing cleanup in hooks (event listeners, intervals, subscriptions, abort controllers) (MAJOR)
 
 **Accessibility (MEDIUM):**
 16. Interactive elements missing `aria-label` or accessible text (MEDIUM)
