@@ -15,16 +15,12 @@ from typing import TYPE_CHECKING
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.budget.cost_record import CostRecord
     from synthorg.hr.performance.models import TaskMetricRecord
-
-logger = get_logger(__name__)
-
 
 # ── Enums ──────────────────────────────────────────────────────
 
@@ -95,8 +91,8 @@ class BudgetForecast(BaseModel):
         daily_projections: Per-day cumulative spend projections.
         days_until_exhausted: Days until budget exhaustion (None if
             no budget set or zero daily spend). Uses ceiling
-            rounding -- the budget survives at least this many
-            full days.
+            rounding -- the budget is exhausted on or before
+            this many days.
         confidence: Confidence score (0.0-1.0) based on data density.
         avg_daily_spend_usd: Average daily spend used for projection.
     """
@@ -112,6 +108,7 @@ class BudgetForecast(BaseModel):
     )
     days_until_exhausted: int | None = Field(
         default=None,
+        ge=0,
         description="Days until budget exhaustion",
     )
     confidence: float = Field(
@@ -183,10 +180,13 @@ def generate_bucket_starts(
     end: datetime,
     bucket_size: BucketSize,
 ) -> list[datetime]:
-    """Generate all bucket start times in [start, end).
+    """Generate all bucket start times covering [start, end).
+
+    ``start`` is aligned (floored) to the nearest bucket boundary
+    before iteration, so the first bucket may begin before ``start``.
 
     Args:
-        start: Period start (inclusive).
+        start: Period start (floored to bucket boundary).
         end: Period end (exclusive).
         bucket_size: Granularity.
 
@@ -338,6 +338,9 @@ def _compute_daily_spend(
     records: Sequence[CostRecord],
 ) -> tuple[float, float, int]:
     """Compute average daily spend and confidence inputs.
+
+    Caller must ensure ``records`` is non-empty; an empty
+    sequence raises ``IndexError``.
 
     Args:
         records: Non-empty cost records.

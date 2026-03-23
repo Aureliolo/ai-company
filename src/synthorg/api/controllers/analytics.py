@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, NamedTuple
+from typing import TYPE_CHECKING, Annotated, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -29,6 +29,7 @@ from synthorg.budget.trends import (
     project_daily_spend,
     resolve_bucket_size,
 )
+from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import TaskStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
@@ -37,6 +38,12 @@ from synthorg.observability.events.analytics import (
     ANALYTICS_TRENDS_QUERIED,
 )
 from synthorg.observability.events.api import API_REQUEST_ERROR
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
+    from synthorg.hr.performance.models import TaskMetricRecord
 
 logger = get_logger(__name__)
 
@@ -60,7 +67,7 @@ class OverviewMetrics(BaseModel):
         idle_agents_count: Number of non-active agents.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     total_tasks: int = Field(ge=0, description="Total number of tasks")
     tasks_by_status: dict[str, int] = Field(
@@ -99,7 +106,7 @@ class TrendsResponse(BaseModel):
         data_points: Bucketed time-series data.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     period: TrendPeriod = Field(description="Lookback period")
     metric: TrendMetric = Field(description="Metric type queried")
@@ -114,25 +121,26 @@ class ForecastResponse(BaseModel):
 
     Attributes:
         horizon_days: Projection horizon in days.
-        projected_total_usd: Projected total additional spend.
+        projected_total_usd: Projected total spend over the horizon.
         daily_projections: Per-day cumulative spend projections.
         days_until_exhausted: Days until budget exhaustion.
         confidence: Confidence score based on data density.
         avg_daily_spend_usd: Average daily spend used for projection.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     horizon_days: int = Field(ge=1, description="Projection horizon")
     projected_total_usd: float = Field(
         ge=0.0,
-        description="Projected total additional spend",
+        description="Projected total spend over the horizon",
     )
     daily_projections: tuple[ForecastPoint, ...] = Field(
         description="Per-day cumulative spend projections",
     )
     days_until_exhausted: int | None = Field(
         default=None,
+        ge=0,
         description="Days until budget exhaustion",
     )
     confidence: float = Field(
@@ -172,7 +180,7 @@ async def _resolve_budget_context(
     """
     budget_config = app_state.cost_tracker.budget_config
     monthly = budget_config.total_monthly if budget_config else 0.0
-    if monthly <= 0 or budget_config is None:
+    if budget_config is None or monthly <= 0:
         return _BudgetContext(monthly=0.0, remaining=0.0, used_percent=0.0)
 
     period_start = billing_period_start(budget_config.reset_day)
@@ -191,8 +199,8 @@ async def _resolve_budget_context(
         )
         period_cost = fallback_total_cost
 
-    used_pct = round(period_cost / monthly * 100, 2)
-    remaining = max(monthly - period_cost, 0.0)
+    used_pct = round(period_cost / monthly * 100, BUDGET_ROUNDING_PRECISION)
+    remaining = round(max(monthly - period_cost, 0.0), BUDGET_ROUNDING_PRECISION)
     return _BudgetContext(
         monthly=monthly,
         remaining=remaining,
@@ -233,6 +241,40 @@ async def _resolve_agent_counts(
     return config_agent_count, 0
 
 
+def _bucket_task_metric_data(
+    task_metrics: Sequence[TaskMetricRecord],
+    metric: TrendMetric,
+    start: datetime,
+    now: datetime,
+    bucket_size: BucketSize,
+) -> tuple[TrendDataPoint, ...]:
+    """Bucket task metric records by the requested metric.
+
+    Args:
+        task_metrics: Task metric records.
+        metric: TASKS_COMPLETED or SUCCESS_RATE.
+        start: Period start.
+        now: Period end.
+        bucket_size: Bucket granularity.
+
+    Returns:
+        Bucketed data points.
+    """
+    if metric == TrendMetric.TASKS_COMPLETED:
+        return bucket_task_completions(
+            task_metrics,
+            start,
+            now,
+            bucket_size,
+        )
+    return bucket_success_rate(
+        task_metrics,
+        start,
+        now,
+        bucket_size,
+    )
+
+
 async def _fetch_trend_data_points(
     app_state: AppState,
     metric: TrendMetric,
@@ -269,25 +311,76 @@ async def _fetch_trend_data_points(
                 metric=metric.value,
             )
             return ()
-        if metric == TrendMetric.TASKS_COMPLETED:
-            return bucket_task_completions(
-                task_metrics,
-                start,
-                now,
-                bucket_size,
-            )
-        return bucket_success_rate(
+        return _bucket_task_metric_data(
             task_metrics,
+            metric,
             start,
             now,
             bucket_size,
         )
 
-    # ACTIVE_AGENTS: flat line at current count
+    # ACTIVE_AGENTS: flat line -- no historical agent counts are
+    # tracked, so report the current snapshot across all buckets
     active_count, _ = await _resolve_agent_counts(app_state, 0)
     return tuple(
         TrendDataPoint(timestamp=bs, value=float(active_count))
         for bs in generate_bucket_starts(start, now, bucket_size)
+    )
+
+
+async def _assemble_overview(  # noqa: PLR0913
+    app_state: AppState,
+    *,
+    all_tasks: Sequence[Any],
+    total_cost: float,
+    agents: Sequence[Any],
+    records_7d: Sequence[Any],
+    now: datetime,
+) -> OverviewMetrics:
+    """Build overview metrics from parallel query results.
+
+    Args:
+        app_state: Application state.
+        all_tasks: All tasks from persistence.
+        total_cost: Total cost across all records.
+        agents: Agent configurations.
+        records_7d: Cost records from the last 7 days.
+        now: Current time reference.
+
+    Returns:
+        Populated overview metrics.
+    """
+    counts = Counter(t.status.value for t in all_tasks)
+    by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
+
+    budget = await _resolve_budget_context(app_state, total_cost)
+    # Overview sparkline uses daily buckets intentionally (not hourly
+    # like /trends?period=7d) to produce a compact 7-point sparkline
+    cost_7d = bucket_cost_records(
+        records_7d,
+        now - timedelta(days=7),
+        now,
+        BucketSize.DAY,
+    )
+    active, idle = await _resolve_agent_counts(app_state, len(agents))
+
+    logger.debug(
+        ANALYTICS_OVERVIEW_QUERIED,
+        total_tasks=len(all_tasks),
+        total_cost_usd=total_cost,
+        active_agents=active,
+    )
+
+    return OverviewMetrics(
+        total_tasks=len(all_tasks),
+        tasks_by_status=by_status,
+        total_agents=len(agents),
+        total_cost_usd=total_cost,
+        budget_remaining_usd=budget.remaining,
+        budget_used_percent=budget.used_percent,
+        cost_7d_trend=cost_7d,
+        active_agents_count=active,
+        idle_agents_count=idle,
     )
 
 
@@ -307,8 +400,8 @@ class AnalyticsController(Controller):
     ) -> ApiResponse[OverviewMetrics]:
         """Return high-level metrics overview.
 
-        Includes task counts, cost totals, budget status, 7-day spend
-        sparkline, and agent activity counts.
+        Includes task counts, cost totals, budget status, 7-day
+        spend sparkline, and agent activity counts.
 
         Args:
             state: Application state.
@@ -342,45 +435,17 @@ class AnalyticsController(Controller):
                 error_count=len(eg.exceptions),
                 exc_info=True,
             )
-            raise eg.exceptions[0] from eg
-
-        all_tasks = t_tasks.result()
-        total_cost = t_cost.result()
-        agents = t_agents.result()
-
-        counts = Counter(t.status.value for t in all_tasks)
-        by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
-
-        budget = await _resolve_budget_context(app_state, total_cost)
-        cost_7d = bucket_cost_records(
-            t_7d.result(),
-            now - timedelta(days=7),
-            now,
-            BucketSize.DAY,
-        )
-        active, idle = await _resolve_agent_counts(
-            app_state,
-            len(agents),
-        )
-
-        logger.debug(
-            ANALYTICS_OVERVIEW_QUERIED,
-            total_tasks=len(all_tasks),
-            total_cost_usd=total_cost,
-            active_agents=active,
-        )
+            msg = "analytics overview temporarily unavailable"
+            raise ServiceUnavailableError(msg) from eg
 
         return ApiResponse(
-            data=OverviewMetrics(
-                total_tasks=len(all_tasks),
-                tasks_by_status=by_status,
-                total_agents=len(agents),
-                total_cost_usd=total_cost,
-                budget_remaining_usd=budget.remaining,
-                budget_used_percent=budget.used_percent,
-                cost_7d_trend=cost_7d,
-                active_agents_count=active,
-                idle_agents_count=idle,
+            data=await _assemble_overview(
+                app_state,
+                all_tasks=t_tasks.result(),
+                total_cost=t_cost.result(),
+                agents=t_agents.result(),
+                records_7d=t_7d.result(),
+                now=now,
             ),
         )
 
@@ -452,8 +517,10 @@ class AnalyticsController(Controller):
     ) -> ApiResponse[ForecastResponse]:
         """Return budget spend projection.
 
-        Uses average daily spend over the lookback period
-        (equal to horizon_days) to project future spend.
+        Fetches records from the lookback period (equal to
+        horizon_days), then computes average daily spend from
+        the span of records found. Confidence reflects data
+        density within the lookback window.
 
         Args:
             state: Application state.

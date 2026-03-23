@@ -358,6 +358,50 @@ class TestForecastEndpoint:
         assert resp.status_code == 401
 
 
+# ── Graceful degradation tests ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAnalyticsGracefulDegradation:
+    """Verify fallback behavior when optional services are unavailable."""
+
+    def test_trends_empty_when_no_performance_tracker(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Trends returns empty data when performance tracker unavailable."""
+        from synthorg.api.app import create_app
+        from synthorg.api.auth.service import AuthService
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+        config = RootConfig(company_name="test")
+        auth_service: AuthService = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_service)
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_service,
+            settings_service=settings_service,
+        )
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/v1/analytics/trends",
+                params={"metric": "tasks_completed"},
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["data_points"] == []
+
+
 # ── Integration tests ──────────────────────────────────────────
 
 

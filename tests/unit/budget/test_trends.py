@@ -13,6 +13,7 @@ from synthorg.budget.trends import (
     bucket_cost_records,
     bucket_success_rate,
     bucket_task_completions,
+    generate_bucket_starts,
     period_to_timedelta,
     project_daily_spend,
     resolve_bucket_size,
@@ -70,23 +71,35 @@ def _task_metric(
 class TestResolvers:
     """resolve_bucket_size and period_to_timedelta."""
 
-    def test_resolve_bucket_size_7d(self) -> None:
-        assert resolve_bucket_size(TrendPeriod.SEVEN_DAYS) == BucketSize.HOUR
+    @pytest.mark.parametrize(
+        ("period", "expected"),
+        [
+            (TrendPeriod.SEVEN_DAYS, BucketSize.HOUR),
+            (TrendPeriod.THIRTY_DAYS, BucketSize.DAY),
+            (TrendPeriod.NINETY_DAYS, BucketSize.DAY),
+        ],
+    )
+    def test_resolve_bucket_size(
+        self,
+        period: TrendPeriod,
+        expected: BucketSize,
+    ) -> None:
+        assert resolve_bucket_size(period) == expected
 
-    def test_resolve_bucket_size_30d(self) -> None:
-        assert resolve_bucket_size(TrendPeriod.THIRTY_DAYS) == BucketSize.DAY
-
-    def test_resolve_bucket_size_90d(self) -> None:
-        assert resolve_bucket_size(TrendPeriod.NINETY_DAYS) == BucketSize.DAY
-
-    def test_period_to_timedelta_7d(self) -> None:
-        assert period_to_timedelta(TrendPeriod.SEVEN_DAYS) == timedelta(days=7)
-
-    def test_period_to_timedelta_30d(self) -> None:
-        assert period_to_timedelta(TrendPeriod.THIRTY_DAYS) == timedelta(days=30)
-
-    def test_period_to_timedelta_90d(self) -> None:
-        assert period_to_timedelta(TrendPeriod.NINETY_DAYS) == timedelta(days=90)
+    @pytest.mark.parametrize(
+        ("period", "expected"),
+        [
+            (TrendPeriod.SEVEN_DAYS, timedelta(days=7)),
+            (TrendPeriod.THIRTY_DAYS, timedelta(days=30)),
+            (TrendPeriod.NINETY_DAYS, timedelta(days=90)),
+        ],
+    )
+    def test_period_to_timedelta(
+        self,
+        period: TrendPeriod,
+        expected: timedelta,
+    ) -> None:
+        assert period_to_timedelta(period) == expected
 
 
 # ── bucket_cost_records tests ──────────────────────────────────
@@ -465,6 +478,65 @@ class TestProjectDailySpend:
             assert days[i] == days[i - 1] + timedelta(days=1)
 
 
+# ── generate_bucket_starts tests ───────────────────────────────
+
+
+@pytest.mark.unit
+class TestGenerateBucketStarts:
+    """generate_bucket_starts public function."""
+
+    def test_empty_when_start_equals_end(self) -> None:
+        t = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+        assert generate_bucket_starts(t, t, BucketSize.DAY) == []
+
+    def test_daily_bucket_count(self) -> None:
+        start = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
+        result = generate_bucket_starts(start, end, BucketSize.DAY)
+        assert len(result) == 3
+
+    def test_hourly_bucket_count(self) -> None:
+        start = datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+        result = generate_bucket_starts(start, end, BucketSize.HOUR)
+        assert len(result) == 4
+
+    def test_start_is_floored_to_bucket(self) -> None:
+        start = datetime(2026, 3, 1, 10, 30, 0, tzinfo=UTC)
+        end = datetime(2026, 3, 1, 13, 0, 0, tzinfo=UTC)
+        result = generate_bucket_starts(start, end, BucketSize.HOUR)
+        assert result[0] == datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
+
+    def test_result_is_sorted(self) -> None:
+        start = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+        end = datetime(2026, 3, 5, 0, 0, 0, tzinfo=UTC)
+        result = generate_bucket_starts(start, end, BucketSize.DAY)
+        assert result == sorted(result)
+
+
+# ── Budget exhaustion edge case ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestBudgetExhaustionEdgeCases:
+    """Edge cases for days_until_exhausted."""
+
+    def test_zero_remaining_budget(self) -> None:
+        records = [
+            _cost_record(
+                timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
+                cost_usd=10.0,
+            ),
+        ]
+        result = project_daily_spend(
+            records,
+            horizon_days=7,
+            budget_total_monthly=100.0,
+            budget_remaining_usd=0.0,
+        )
+        assert result.days_until_exhausted == 0
+
+
 # ── Enum value tests ───────────────────────────────────────────
 
 
@@ -472,17 +544,35 @@ class TestProjectDailySpend:
 class TestEnumValues:
     """Verify enum string values for API serialization."""
 
-    def test_trend_period_values(self) -> None:
-        assert TrendPeriod.SEVEN_DAYS.value == "7d"
-        assert TrendPeriod.THIRTY_DAYS.value == "30d"
-        assert TrendPeriod.NINETY_DAYS.value == "90d"
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (TrendPeriod.SEVEN_DAYS, "7d"),
+            (TrendPeriod.THIRTY_DAYS, "30d"),
+            (TrendPeriod.NINETY_DAYS, "90d"),
+        ],
+    )
+    def test_trend_period_values(self, member: TrendPeriod, expected: str) -> None:
+        assert member.value == expected
 
-    def test_trend_metric_values(self) -> None:
-        assert TrendMetric.TASKS_COMPLETED.value == "tasks_completed"
-        assert TrendMetric.SPEND.value == "spend"
-        assert TrendMetric.ACTIVE_AGENTS.value == "active_agents"
-        assert TrendMetric.SUCCESS_RATE.value == "success_rate"
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (TrendMetric.TASKS_COMPLETED, "tasks_completed"),
+            (TrendMetric.SPEND, "spend"),
+            (TrendMetric.ACTIVE_AGENTS, "active_agents"),
+            (TrendMetric.SUCCESS_RATE, "success_rate"),
+        ],
+    )
+    def test_trend_metric_values(self, member: TrendMetric, expected: str) -> None:
+        assert member.value == expected
 
-    def test_bucket_size_values(self) -> None:
-        assert BucketSize.HOUR.value == "hour"
-        assert BucketSize.DAY.value == "day"
+    @pytest.mark.parametrize(
+        ("member", "expected"),
+        [
+            (BucketSize.HOUR, "hour"),
+            (BucketSize.DAY, "day"),
+        ],
+    )
+    def test_bucket_size_values(self, member: BucketSize, expected: str) -> None:
+        assert member.value == expected

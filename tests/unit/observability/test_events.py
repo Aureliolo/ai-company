@@ -235,6 +235,17 @@ class TestEventConstants:
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
 
+    def test_analytics_events_exist(self) -> None:
+        from synthorg.observability.events.analytics import (
+            ANALYTICS_FORECAST_QUERIED,
+            ANALYTICS_OVERVIEW_QUERIED,
+            ANALYTICS_TRENDS_QUERIED,
+        )
+
+        assert ANALYTICS_TRENDS_QUERIED == "analytics.trends.queried"
+        assert ANALYTICS_FORECAST_QUERIED == "analytics.forecast.queried"
+        assert ANALYTICS_OVERVIEW_QUERIED == "analytics.overview.queried"
+
     def test_config_events_exist(self) -> None:
         assert CONFIG_LOADED == "config.load.success"
         assert CONFIG_PARSE_FAILED == "config.parse.failed"
