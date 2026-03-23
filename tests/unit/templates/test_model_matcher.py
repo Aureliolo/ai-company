@@ -276,7 +276,7 @@ class TestMatchAllAgents:
             "tier": "large",
             "priority": "quality",
             "min_context": 100_000,
-            "capabilities": (),
+            "capabilities": [],
         }
         agents = [{"tier": "large", "model_requirement": req_dict}]
         models = (
@@ -306,7 +306,7 @@ class TestMatchAllAgents:
             "tier": "medium",
             "priority": "balanced",
             "min_context": 150_000,
-            "capabilities": (),
+            "capabilities": [],
         }
         agents = [{"model_requirement": req_dict}]
         models = (_make_model("too-small", cost_input=0.01, max_context=100_000),)
@@ -315,10 +315,11 @@ class TestMatchAllAgents:
         # Should fallback (score 0) since no model meets min_context.
         assert len(results) == 1
         assert results[0].score == 0.0
+        assert results[0].model_id == "too-small"
 
     def test_model_requirement_overrides_affinity(self) -> None:
         """Structured ModelRequirement ignores personality_preset affinity."""
-        req_dict = {"tier": "medium", "priority": "cost", "capabilities": ()}
+        req_dict = {"tier": "medium", "priority": "cost", "capabilities": []}
         agents = [
             {
                 "tier": "medium",
@@ -349,6 +350,7 @@ class TestMatchAllAgents:
         results = match_all_agents(agents, providers)
         assert len(results) == 1
         assert results[0].tier == "small"
+        assert results[0].model_id == "fast"
 
     def test_fallback_to_tier_preset_without_model_requirement(self) -> None:
         """Without model_requirement, the old tier+preset path is used."""

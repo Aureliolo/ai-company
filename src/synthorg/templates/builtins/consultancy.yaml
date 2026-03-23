@@ -86,7 +86,9 @@ template:
     - role: "Technical Writer"
       name: ""
       level: "mid"
-      model: "small"
+      model:
+        tier: "small"
+        priority: "quality"
       personality_preset: "technical_communicator"
       department: "operations"
 

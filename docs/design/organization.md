@@ -194,8 +194,9 @@ template:
   # which trigger Faker-based auto-generation at render time using the
   # locales selected in the Names setup step.
   # The `model` field accepts either a string tier alias (backward-compatible)
-  # or a structured dict with tier, priority, min_context, and capabilities.
-  # Structured format overrides personality-based affinity defaults.
+  # or a structured dict with tier, priority, min_context, and optionally
+  # capabilities.  Structured format overrides personality-based affinity
+  # defaults.
   agents:
     - role: "CEO"
       name: "Amara Okafor"
@@ -330,8 +331,8 @@ Provider, Names, Company, Review Org) followed by a completion screen. The Names
 users choose which cultural locales are used for Faker-based agent name generation (e.g.,
 English, Portuguese, Yoruba); selected locales are persisted and applied when templates render
 agent names. When a template is selected in the Company step, all template agents are
-auto-created with models matched to configured providers via a cost-based tier classification
-engine. The Review Org step lets users inspect agents and reassign models before completing
+auto-created with models matched to configured providers via a tier classification
+engine that respects each agent's priority axis (quality, speed, cost, or balanced). The Review Org step lets users inspect agents and reassign models before completing
 setup. All configuration is persisted to the database via REST API calls. To re-run the
 setup wizard from scratch, use `synthorg wipe` (walks you through an interactive backup,
 wipes all data, and optionally restarts the stack to re-open the wizard).

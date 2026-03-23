@@ -92,6 +92,53 @@ def match_model(
     return best, score
 
 
+def _resolve_agent_requirement(
+    agent: dict[str, Any],
+    idx: int,
+    model_requirement_cls: type,
+    parse_fn: Any,
+    resolve_fn: Any,
+) -> tuple[Any, ModelTier] | None:
+    """Resolve a single agent's model requirement.
+
+    Returns:
+        ``(requirement, tier)`` on success, or ``None`` if the agent
+        should be skipped (invalid requirement logged as warning).
+    """
+    model_req = agent.get("model_requirement")
+    if isinstance(model_req, model_requirement_cls):
+        return model_req, model_req.tier  # type: ignore[attr-defined]
+
+    if isinstance(model_req, dict):
+        try:
+            req = parse_fn(model_req)
+        except (ValidationError, ValueError) as exc:
+            logger.warning(
+                TEMPLATE_MODEL_MATCH_SKIPPED,
+                agent_index=idx,
+                reason="invalid_model_requirement_dict",
+                error=str(exc),
+            )
+            return None
+        return req, req.tier
+
+    tier: ModelTier = agent.get("tier", "medium")
+    preset = agent.get("personality_preset")
+    try:
+        req = resolve_fn(tier, preset)
+    except (ValidationError, ValueError) as exc:
+        logger.warning(
+            TEMPLATE_MODEL_MATCH_SKIPPED,
+            agent_index=idx,
+            tier=tier,
+            preset=preset,
+            reason="invalid_requirement",
+            error=str(exc),
+        )
+        return None
+    return req, tier
+
+
 def match_all_agents(
     agents: list[dict[str, Any]],
     providers: dict[str, Any],
@@ -141,37 +188,16 @@ def match_all_agents(
     ]
 
     for idx, agent in enumerate(agents):
-        # Use pre-parsed ModelRequirement when available (structured
-        # dict path), otherwise fall back to tier + personality affinity.
-        model_req = agent.get("model_requirement")
-        if isinstance(model_req, ModelRequirement):
-            req = model_req
-            tier: ModelTier = req.tier
-        elif isinstance(model_req, dict):
-            try:
-                req = parse_model_requirement(model_req)
-            except ValidationError, ValueError:
-                logger.warning(
-                    TEMPLATE_MODEL_MATCH_SKIPPED,
-                    agent_index=idx,
-                    reason="invalid_model_requirement_dict",
-                )
-                continue
-            tier = req.tier
-        else:
-            tier = agent.get("tier", "medium")
-            preset = agent.get("personality_preset")
-            try:
-                req = resolve_model_requirement(tier, preset)
-            except ValidationError, ValueError:
-                logger.warning(
-                    TEMPLATE_MODEL_MATCH_SKIPPED,
-                    agent_index=idx,
-                    tier=tier,
-                    preset=preset,
-                    reason="invalid_requirement",
-                )
-                continue
+        resolved = _resolve_agent_requirement(
+            agent,
+            idx,
+            ModelRequirement,
+            parse_model_requirement,
+            resolve_model_requirement,
+        )
+        if resolved is None:
+            continue
+        req, tier = resolved
 
         best_provider: str | None = None
         best_model: ProviderModelConfig | None = None

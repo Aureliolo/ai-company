@@ -27,6 +27,14 @@ Pre-built company templates, personality presets, and template builder.
 
 ::: synthorg.templates.presets
 
+## Model Requirements
+
+::: synthorg.templates.model_requirements
+
+## Model Matcher
+
+::: synthorg.templates.model_matcher
+
 ## Errors
 
 ::: synthorg.templates.errors

@@ -679,15 +679,22 @@ def _expand_single_agent(
 def _resolve_model_tier(agent: dict[str, Any]) -> str:
     """Extract the model tier from a template agent dict.
 
-    Handles both the legacy string format (``"medium"``) and the
-    structured ``ModelRequirement`` dict format
+    Handles both the string format (``"medium"``) and the structured
+    ``ModelRequirement`` dict format
     (``{"tier": "medium", "priority": "quality"}``).
+
+    The renderer path sets a placeholder ``model_id``; structured
+    requirements are only fully threaded through the setup wizard path
+    which calls ``match_all_agents``.
 
     Args:
         agent: Raw template agent dict from Jinja2 rendering.
 
     Returns:
         Tier string (``"large"``, ``"medium"``, or ``"small"``).
+
+    Raises:
+        TemplateRenderError: If a dict model contains invalid fields.
     """
     model_raw = agent.get("model", "medium")
     if isinstance(model_raw, dict):
@@ -695,7 +702,16 @@ def _resolve_model_tier(agent: dict[str, Any]) -> str:
             parse_model_requirement,
         )
 
-        return parse_model_requirement(model_raw).tier
+        try:
+            return parse_model_requirement(model_raw).tier
+        except (ValidationError, ValueError) as exc:
+            msg = f"Invalid structured model requirement: {exc}"
+            logger.warning(
+                TEMPLATE_RENDER_TYPE_ERROR,
+                field="model",
+                error=str(exc),
+            )
+            raise TemplateRenderError(msg) from exc
     return str(model_raw)
 
 

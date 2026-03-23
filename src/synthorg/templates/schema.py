@@ -3,7 +3,14 @@
 from collections import Counter
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -136,7 +143,7 @@ class TemplateAgentConfig(BaseModel):
 
         try:
             parse_model_requirement(value)
-        except Exception as exc:
+        except (ValueError, ValidationError) as exc:
             raise ValueError(str(exc)) from exc
         return value
 

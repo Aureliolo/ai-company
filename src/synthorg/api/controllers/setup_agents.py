@@ -53,7 +53,9 @@ def expand_template_agents(
             uses all Latin-script locales.
 
     Returns:
-        List of agent config dicts with ``tier`` metadata.
+        List of agent config dicts with ``tier`` metadata and, when
+        the template uses structured model requirements, a
+        ``model_requirement`` dict for downstream matching.
     """
     from synthorg.templates.presets import (  # noqa: PLC0415
         generate_auto_name,

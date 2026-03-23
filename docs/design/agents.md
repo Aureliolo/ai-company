@@ -111,6 +111,11 @@ Personality is split into two tiers:
         temperature: 0.3
         max_tokens: 8192
         fallback_model: "openrouter/example-medium-001"
+      model_requirement:            # original tier/priority from template
+        tier: "medium"
+        priority: "balanced"
+        min_context: 0
+        capabilities: []
       memory:
         type: "persistent"       # persistent, project, session, none
         retention_days: null     # null = forever
