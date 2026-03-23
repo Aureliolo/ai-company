@@ -1037,7 +1037,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
                 |          |
         +-------v--+  +---v--------+
         |  Web UI   |  |  CLI Tool  |
-        |  (Vue 3)  |  |  (Go)      |
+        |  (React)  |  |  (Go)      |
         +----------+   +-----------+
 ```
 
@@ -1130,7 +1130,7 @@ and retry guidance.
 
 !!! note "Status"
 
-    The Web UI is built as a Vue 3 + PrimeVue + Tailwind CSS dashboard. The API
+    The Web UI is built as a React 19 + shadcn/ui + Tailwind CSS dashboard. The API
     remains fully self-sufficient for all operations -- the dashboard is a thin client.
 
 - **Dashboard**: Real-time company overview, active tasks, spending

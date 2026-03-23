@@ -82,7 +82,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 ## Documentation (2026-03-12)
 
-**Decision:** Zensical + mkdocstrings for docs; Astro for landing page; build output embedding for Vue dashboard; single domain with CI merge.
+**Decision:** Zensical + mkdocstrings for docs; Astro for landing page; build output embedding for React dashboard; single domain with CI merge.
 
 **Rationale:** MkDocs has been unmaintained since August 2024. Material for MkDocs entered maintenance mode (v9.7.0 final, 12 months critical fixes only). Zensical is the designated successor by the same team (squidfunk), reads `mkdocs.yml` natively, and ships with the Material theme built-in. Griffe AST extraction for mkdocstrings remains PEP 649 safe. Zensical's `--strict` mode is not yet available ([zensical/backlog#72](https://github.com/zensical/backlog/issues/72)) -- CI builds without strict validation until that ships.
 

@@ -74,7 +74,7 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 | **Litestar** | API layer (see [Tech Stack](../architecture/tech-stack.md#why-litestar-over-fastapi) for rationale) |
 | **MCP** | Tool integration standard |
 | **Pydantic** | Config validation and data models |
-| **Vue 3** | Web UI framework (see [Tech Stack](../architecture/tech-stack.md)) |
+| **React 19** | Web UI framework (see [Tech Stack](../architecture/tech-stack.md)) |
 
 ---
 

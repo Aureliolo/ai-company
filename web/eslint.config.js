@@ -1,53 +1,36 @@
-import pluginVue from 'eslint-plugin-vue'
+import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import eslintReact from '@eslint-react/eslint-plugin'
+import reactRefresh from 'eslint-plugin-react-refresh'
 import pluginSecurity from 'eslint-plugin-security'
-import tsParser from '@typescript-eslint/parser'
 
-export default [
-  {
-    ignores: ['dist/**'],
-  },
-  ...pluginVue.configs['flat/recommended'],
+export default tseslint.config(
+  { ignores: ['dist/**'] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  eslintReact.configs['recommended-typescript'],
   pluginSecurity.configs.recommended,
   {
-    files: ['**/*.vue'],
-    languageOptions: {
-      parserOptions: {
-        parser: tsParser,
-      },
+    plugins: {
+      'react-refresh': reactRefresh,
     },
-  },
-  {
-    files: ['**/*.ts'],
-    languageOptions: {
-      parser: tsParser,
-    },
-  },
-  {
     rules: {
-      'no-unassigned-vars': 'error',
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true },
+      ],
       'no-useless-assignment': 'error',
-      'preserve-caught-error': 'error',
-      'vue/no-v-html': 'error',
-      // Rule flags every obj[var] with no data-flow analysis (40+ warnings,
-      // ~87% false positives). Prototype pollution is guarded explicitly in
-      // providers.ts (Object.create(null) + __proto__/constructor/prototype
-      // filtering). Future dynamic property access with untrusted keys should
-      // be manually reviewed.
+      // Rule flags every obj[var] with no data-flow analysis -- too many false
+      // positives. Prototype pollution is guarded explicitly at system boundaries.
       'security/detect-object-injection': 'off',
     },
   },
   {
-    files: ['src/App.vue', 'src/components/layout/Sidebar.vue', 'src/components/layout/Topbar.vue'],
+    // shadcn/ui components co-export variant helpers alongside components --
+    // this is the standard pattern and safe for HMR.
+    files: ['src/components/ui/**'],
     rules: {
-      'vue/multi-word-component-names': 'off',
+      'react-refresh/only-export-components': 'off',
     },
   },
-  {
-    files: ['src/__tests__/**'],
-    rules: {
-      // Test stubs intentionally use untyped props and multiple components per file
-      'vue/require-prop-types': 'off',
-      'vue/one-component-per-file': 'off',
-    },
-  },
-]
+)

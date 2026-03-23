@@ -5,7 +5,7 @@
 # CIS hardening applied via compose.yml (no-new-privileges, drop caps, etc.)
 # =============================================================================
 
-# Stage 1: Build Vue dashboard (non-root for defense-in-depth)
+# Stage 1: Build React dashboard (non-root for defense-in-depth)
 FROM node:25-alpine@sha256:5209bcaca9836eb3448b650396213dbe9d9a34d31840c2ae1f206cb2986a8543 AS builder
 RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:build /app
 WORKDIR /app

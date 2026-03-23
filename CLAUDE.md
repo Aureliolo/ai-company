@@ -48,10 +48,10 @@ uv run zensical serve                      # local docs preview (http://127.0.0.
 
 ```bash
 npm --prefix web install                   # install frontend deps
-npm --prefix web run dev                   # dev server (http://localhost:5173) -- devtools + console forwarding enabled
-npm --prefix web run build                 # production build (devtools disabled)
+npm --prefix web run dev                   # dev server (http://localhost:5173)
+npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint
-npm --prefix web run type-check            # vue-tsc type checking
+npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
 ```
 
@@ -119,15 +119,12 @@ src/synthorg/
   templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching, locale-aware name generation
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory
 
-web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
-  api/            # Axios client, endpoint modules, TypeScript types
-  components/     # Vue components by feature (agents/, approvals/, budget/, company/, setup/, settings/, providers/, etc.)
-  composables/    # useAuth, usePolling, useOptimisticUpdate, useWebSocketSubscription, useEditMode, etc.
-  router/         # Vue Router config with auth guards
-  stores/         # Pinia stores (auth, agents, tasks, budget, messages, approvals, settings, company, providers, websocket, etc.)
-  styles/         # Global CSS and PrimeVue theme
-  utils/          # Constants, formatters, error helpers
-  views/          # Page-level components (Login, Setup, Dashboard, OrgChart, TaskBoard, Company, Providers, Settings, etc.)
+web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
+  components/     # React components by feature + ui/ (shadcn primitives)
+  hooks/          # Custom React hooks
+  lib/            # Utilities (cn() class merging, etc.)
+  stores/         # Zustand stores
+  styles/         # Global CSS and Tailwind theme tokens
   __tests__/      # Vitest unit tests
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
@@ -187,7 +184,7 @@ site/             # Astro landing page (synthorg.io)
 - **Parallelism**: `pytest-xdist` via `-n auto` -- **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
-- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), Vue uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (50 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties`. `.hypothesis/` is gitignored.
+- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), React uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (50 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties`. `.hypothesis/` is gitignored.
 - **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests -- always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins. For tasks that must block indefinitely until cancelled (e.g. simulating a slow provider or stubborn coroutine), use `asyncio.Event().wait()` instead of `asyncio.sleep(large_number)` -- it is cancellation-safe and carries no timing assumptions.
 
 ## Git
@@ -251,5 +248,5 @@ site/             # Astro landing page (synthorg.io)
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, vue-router, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, vue-echarts, Axios, vue-draggable-plus, CodeMirror 6 (vue-codemirror), js-yaml, Vitest, @vitest/coverage-v8, fast-check, ESLint, eslint-plugin-security, vue-tsc, @vitejs/devtools)
+- **Web dashboard**: Node.js 22+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, Recharts, Framer Motion, cmdk, Axios, Lucide React, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

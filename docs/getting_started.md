@@ -123,7 +123,7 @@ synthorg/
     e2e/                # Full system tests
   docs/                 # Developer documentation
   docker/               # Dockerfiles, Compose, .env.example
-  web/                  # Vue 3 web dashboard (PrimeVue + Tailwind CSS)
+  web/                  # React 19 web dashboard (shadcn/ui + Tailwind CSS)
   .github/              # CI workflows, dependabot, actions
   pyproject.toml        # Project config (deps, tools, linters)
   docs/DESIGN_SPEC.md   # Pointer to design specification pages
@@ -132,13 +132,13 @@ synthorg/
 
 ## Web Dashboard Development
 
-The Vue 3 dashboard lives in `web/`. Prerequisites: **Node.js 20+**.
+The React dashboard lives in `web/`. Prerequisites: **Node.js 22+**.
 
 ```bash
 npm --prefix web install        # install frontend deps
 npm --prefix web run dev         # dev server at http://localhost:5173
 npm --prefix web run lint        # ESLint
-npm --prefix web run type-check  # vue-tsc type checking
+npm --prefix web run type-check  # TypeScript type checking
 npm --prefix web run test        # Vitest unit tests
 npm --prefix web run build       # production build
 ```
