@@ -84,7 +84,7 @@ All fonts self-hosted via `@fontsource` -- no external CDN dependencies.
 
 ### 1.3 Spacing Grid
 
-Base unit: **8px**. All spacing values are multiples or halves of the base.
+Base unit: **8px**. All spacing values follow a 4px sub-grid (half the 8px base unit).
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -203,6 +203,20 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1) |
 | Glow | 6px health bar only: `0 0 8px accent/30%` when healthy |
 
+#### Gauge (arc)
+
+| Property | Value |
+|----------|-------|
+| Arc angle | 180 degrees (half-circle, bottom open) |
+| Outer radius | 48px (default), 32px (compact) |
+| Stroke width | 6px |
+| Track color | `border` (`#1e1e2e`) |
+| Fill color | Dynamic -- follows data state (success/accent/warning/danger) |
+| Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1), clockwise from left |
+| Value label | Centered inside the arc, Geist Mono 18px weight 700, `text-primary` |
+| Sub-label | Below value label, 11px, `text-muted` (e.g. "of 100") |
+| Tick marks | Optional, 1px lines at 0%, 25%, 50%, 75%, 100% positions, `border` color |
+
 #### Change badge
 
 | Property | Value |
@@ -210,7 +224,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Font | Mono, 11px, weight 500 |
 | Padding | 2px 6px |
 | Border-radius | 4px |
-| Positive | Color: `#22c55e`, bg: `rgba(34, 197, 94, 0.08)`, border: `rgba(34, 197, 94, 0.2)` |
+| Positive | Color: `success`, bg: `rgba(16, 185, 129, 0.08)`, border: `rgba(16, 185, 129, 0.2)` |
 | Negative | Color: `danger`, bg: `rgba(239, 68, 68, 0.08)`, border: `rgba(239, 68, 68, 0.2)` |
 
 ### 2.4 MetricCard Layout
@@ -374,9 +388,8 @@ All animation values are defined in `web/src/lib/motion.ts` and imported as cons
 
 | Property | Value |
 |----------|-------|
-| Exit | Opacity 1 -> 0, x: 0 -> -8px, duration 150ms |
-| Enter | Opacity 0 -> 1, x: 8px -> 0, duration 200ms |
-| Transition | `tweenDefault` |
+| Exit | Opacity 1 -> 0, x: 0 -> -8px, duration 150ms, easeIn |
+| Enter | Opacity 0 -> 1, x: 8px -> 0, duration 200ms, `tweenDefault` |
 | Direction | Content slides in the direction of navigation (deeper = right, back = left) |
 
 ### 4.3 Card Entrance
@@ -389,7 +402,7 @@ Cards stagger their entrance when a page loads or data first arrives.
 | Animate to | `{ opacity: 1, y: 0 }` |
 | Transition | `tweenDefault` (200ms) |
 | Stagger | 30ms between consecutive cards |
-| Max stagger | 300ms (cards beyond index 10 all enter at 300ms) |
+| Stagger note | Consuming components should cap visible stagger at ~10 items (300ms) to avoid long entrance sequences |
 
 ### 4.4 Status Change Animation
 
@@ -446,31 +459,39 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 | `text-primary` | `#e2e8f0` | `bg-base` | `#0a0a12` | 15.99:1 | PASS | PASS |
 | `text-primary` | `#e2e8f0` | `bg-surface` | `#0f0f1a` | 15.44:1 | PASS | PASS |
 | `text-primary` | `#e2e8f0` | `bg-card` | `#13131f` | 14.93:1 | PASS | PASS |
+| `text-primary` | `#e2e8f0` | `bg-card-hover` | `#181828` | 14.19:1 | PASS | PASS |
 | `text-secondary` | `#94a3b8` | `bg-base` | `#0a0a12` | 7.69:1 | PASS | PASS |
 | `text-secondary` | `#94a3b8` | `bg-surface` | `#0f0f1a` | 7.42:1 | PASS | PASS |
 | `text-secondary` | `#94a3b8` | `bg-card` | `#13131f` | 7.18:1 | PASS | PASS |
+| `text-secondary` | `#94a3b8` | `bg-card-hover` | `#181828` | 6.82:1 | PASS | PASS |
 | `text-muted` | `#8b95a5` | `bg-base` | `#0a0a12` | 6.52:1 | PASS | PASS |
 | `text-muted` | `#8b95a5` | `bg-surface` | `#0f0f1a` | 6.29:1 | PASS | PASS |
 | `text-muted` | `#8b95a5` | `bg-card` | `#13131f` | 6.08:1 | PASS | PASS |
+| `text-muted` | `#8b95a5` | `bg-card-hover` | `#181828` | 5.78:1 | PASS | PASS |
 | `accent` | `#38bdf8` | `bg-base` | `#0a0a12` | 9.20:1 | PASS | PASS |
 | `accent` | `#38bdf8` | `bg-surface` | `#0f0f1a` | 8.88:1 | PASS | PASS |
 | `accent` | `#38bdf8` | `bg-card` | `#13131f` | 8.59:1 | PASS | PASS |
+| `accent` | `#38bdf8` | `bg-card-hover` | `#181828` | 8.17:1 | PASS | PASS |
 | `accent-dim` | `#0ea5e9` | `bg-base` | `#0a0a12` | 7.11:1 | PASS | PASS |
 | `accent-dim` | `#0ea5e9` | `bg-surface` | `#0f0f1a` | 6.87:1 | PASS | PASS |
 | `accent-dim` | `#0ea5e9` | `bg-card` | `#13131f` | 6.64:1 | PASS | PASS |
+| `accent-dim` | `#0ea5e9` | `bg-card-hover` | `#181828` | 6.31:1 | PASS | PASS |
 | `success` | `#10b981` | `bg-base` | `#0a0a12` | 7.77:1 | PASS | PASS |
 | `success` | `#10b981` | `bg-surface` | `#0f0f1a` | 7.50:1 | PASS | PASS |
 | `success` | `#10b981` | `bg-card` | `#13131f` | 7.26:1 | PASS | PASS |
+| `success` | `#10b981` | `bg-card-hover` | `#181828` | 6.90:1 | PASS | PASS |
 | `warning` | `#f59e0b` | `bg-base` | `#0a0a12` | 9.18:1 | PASS | PASS |
 | `warning` | `#f59e0b` | `bg-surface` | `#0f0f1a` | 8.86:1 | PASS | PASS |
 | `warning` | `#f59e0b` | `bg-card` | `#13131f` | 8.57:1 | PASS | PASS |
+| `warning` | `#f59e0b` | `bg-card-hover` | `#181828` | 8.15:1 | PASS | PASS |
 | `danger` | `#ef4444` | `bg-base` | `#0a0a12` | 5.24:1 | PASS | PASS |
 | `danger` | `#ef4444` | `bg-surface` | `#0f0f1a` | 5.06:1 | PASS | PASS |
 | `danger` | `#ef4444` | `bg-card` | `#13131f` | 4.89:1 | PASS | PASS |
+| `danger` | `#ef4444` | `bg-card-hover` | `#181828` | 4.65:1 | PASS | PASS |
 
-**Result**: All 24 foreground/background combinations pass WCAG AA for both normal and large text.
+**Result**: All 32 foreground/background combinations pass WCAG AA for both normal and large text.
 
-**Closest to threshold**: `danger` on `bg-card` at 4.89:1 (threshold 4.5:1). This is safe but should not be used at font sizes smaller than 11px.
+**Closest to threshold**: `danger` on `bg-card-hover` at 4.65:1 (threshold 4.5:1). This is safe but should not be used at font sizes smaller than 11px.
 
 ### 5.2 Focus Indicators
 
@@ -492,7 +513,7 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 | Modals/overlays | `role="dialog"`, `aria-modal="true"`, focus trap, Escape to close |
 | Tab panels | `role="tablist"`, `role="tab"`, `role="tabpanel"`, arrow key navigation |
 | Notifications | `aria-live="assertive"` for critical alerts, `"polite"` for informational |
-| Drag-and-drop | `aria-grabbed`, `aria-dropeffect`, announce drag start/end to screen readers |
+| Drag-and-drop | `aria-roledescription="draggable item"` on draggable elements, `aria-live="assertive"` announcements for drag start/over/drop events |
 | Command palette | `role="combobox"`, `aria-expanded`, `aria-activedescendant` for selection |
 
 ### 5.4 Status Encoding
@@ -549,7 +570,7 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | 768 - 1023px | Hidden | Hamburger opens overlay | 0px / 240px (overlay) |
 | < 768px | Hidden | No toggle -- mobile not supported | 0px |
 
-Sidebar state is persisted in user preferences. The auto-collapse at 1024px respects the saved preference -- if a user explicitly expanded the sidebar, it stays expanded until the viewport crosses the 768px threshold.
+Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. A user can manually expand it, and this preference is respected within that range. Below 768px, the sidebar is hidden and accessed via the hamburger toggle.
 
 ---
 
@@ -558,6 +579,8 @@ Sidebar state is persisted in user preferences. The auto-collapse at 1024px resp
 ### Tailwind `@theme` Snippet
 
 The following `@theme` block contains all design tokens for Tailwind v4. This replaces the existing color definitions in `web/src/styles/global.css` (to be integrated in #775).
+
+> **Note**: The `@theme` block uses Tailwind's native property naming (`--color-*`, `--spacing-*`), while `design-tokens.css` uses the `--so-*` prefix for non-Tailwind contexts. Both define the same underlying values.
 
 ```css
 @theme {

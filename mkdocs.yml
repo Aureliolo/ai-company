@@ -111,6 +111,8 @@ nav:
       - Memory: design/memory.md
       - Operations: design/operations.md
       - Brand Identity & UX: design/brand-and-ux.md
+      - Page Structure & IA: design/page-structure.md
+      - UX Guidelines: design/ux-guidelines.md
   - Architecture:
       - architecture/index.md
       - Tech Stack: architecture/tech-stack.md

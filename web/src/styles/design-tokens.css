@@ -41,7 +41,7 @@
   --so-font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --so-font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
-  /* -- Spacing (8px base unit) -- */
+  /* -- Spacing (4px sub-grid, semantic scale -- not strict 8px multipliers) -- */
   --so-space-1: 4px;
   --so-space-2: 8px;
   --so-space-3: 12px;

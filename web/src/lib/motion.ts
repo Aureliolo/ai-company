@@ -96,7 +96,13 @@ export const cardEntrance: Variants = {
   },
 };
 
-/** Parent container that staggers children by 30ms, max 300ms total. */
+/**
+ * Parent container that staggers children by 30ms.
+ *
+ * Note: Framer Motion does not enforce a stagger cap. Consuming components
+ * should limit visible stagger to ~10 items (300ms) to avoid long entrance
+ * sequences -- e.g. by paginating or virtualizing beyond that threshold.
+ */
 export const staggerChildren: Variants = {
   hidden: {},
   visible: {
@@ -138,16 +144,26 @@ export const pageEnter: Variants = {
 /**
  * Flash effect for real-time value updates.
  *
- * Apply as a CSS class or inline style -- not a Framer Motion variant,
+ * Three-phase animation: flash (200ms) -> hold (100ms) -> fade (300ms).
+ * Apply via CSS `@keyframes` or inline style -- not a Framer Motion variant,
  * because the flash triggers on data change, not mount/unmount.
  *
- * Implementation pattern:
- * ```tsx
- * const [flash, setFlash] = useState(false);
- * useEffect(() => { setFlash(true); const t = setTimeout(() => setFlash(false), 600); return () => clearTimeout(t); }, [value]);
+ * Recommended CSS implementation:
+ * ```css
+ * \@keyframes status-flash {
+ *   0%   { background-color: var(--so-overlay-flash); }
+ *   33%  { background-color: var(--so-overlay-flash); }  // hold
+ *   50%  { background-color: var(--so-overlay-flash); }  // hold end
+ *   100% { background-color: transparent; }               // fade
+ * }
  * ```
  */
-export const STATUS_FLASH_DURATION_MS = 600;
+export const STATUS_FLASH = {
+  flashMs: 200,
+  holdMs: 100,
+  fadeMs: 300,
+  totalMs: 600,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Badge bounce
@@ -166,12 +182,21 @@ export const badgeBounce: Variants = {
 // Reduced motion
 // ---------------------------------------------------------------------------
 
+/** Instant transition for reduced-motion contexts (springs become instant). */
+export const reducedMotionInstant: Transition = {
+  duration: 0,
+};
+
 /**
- * Check if the user prefers reduced motion.
+ * Check if the user prefers reduced motion (point-in-time snapshot).
  *
- * Use this to conditionally disable or simplify animations:
+ * For reactive detection that responds to OS preference changes mid-session,
+ * use Framer Motion's built-in `useReducedMotion()` hook or write a custom
+ * hook with `matchMedia("(prefers-reduced-motion: reduce)")` + change listener.
+ *
+ * This utility is for non-React contexts (e.g. SSR branching, one-time checks):
  * ```tsx
- * const transition = prefersReducedMotion() ? tweenFast : springDefault;
+ * const transition = prefersReducedMotion() ? reducedMotionInstant : springDefault;
  * ```
  */
 export function prefersReducedMotion(): boolean {
