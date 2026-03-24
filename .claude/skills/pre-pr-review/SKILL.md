@@ -439,7 +439,7 @@ When `web_src` files are included in the security review scope, add these fronte
 The frontend-reviewer agent checks React 19 + shadcn/ui dashboard code quality and patterns.
 
 **React patterns (CRITICAL):**
-1. Class components instead of functional components (CRITICAL)
+1. Class components instead of functional components (MAJOR)
 2. Direct DOM manipulation (`document.querySelector`, `innerHTML`) instead of React state/refs (CRITICAL)
 3. Missing or incorrect TypeScript prop types on components (MAJOR)
 
