@@ -19,6 +19,7 @@ The design specification has been split into focused documentation pages for bet
 | [Operations](docs/design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
 | [Brand Identity & UX](docs/design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
 | [Page Structure & IA](docs/design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
+| [UX Design Guidelines](docs/design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |
 
 ## Supporting Pages
 

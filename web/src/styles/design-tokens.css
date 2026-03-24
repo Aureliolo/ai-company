@@ -1,0 +1,69 @@
+/*
+ * SynthOrg Design Tokens -- Warm Ops Palette
+ *
+ * CSS custom properties for the Warm Ops dark-mode-only color system.
+ * Use these in non-Tailwind contexts: inline styles, third-party library
+ * theming (Recharts, XyFlow), SVG styling, and canvas rendering.
+ *
+ * For Tailwind components, use utility classes (e.g. `text-accent`, `bg-bg-card`)
+ * which map to the @theme block in global.css.
+ *
+ * WCAG AA verified -- all text/background combinations pass 4.5:1 minimum.
+ * See docs/design/ux-guidelines.md Section 5.1 for the full contrast matrix.
+ */
+
+:root {
+  /* -- Brand -- */
+  --so-accent: #38bdf8;
+  --so-accent-dim: #0ea5e9;
+
+  /* -- State -- */
+  --so-success: #10b981;
+  --so-warning: #f59e0b;
+  --so-danger: #ef4444;
+
+  /* -- Text -- */
+  --so-text-primary: #e2e8f0;
+  --so-text-secondary: #94a3b8;
+  --so-text-muted: #8b95a5;
+
+  /* -- Backgrounds -- */
+  --so-bg-base: #0a0a12;
+  --so-bg-surface: #0f0f1a;
+  --so-bg-card: #13131f;
+  --so-bg-card-hover: #181828;
+
+  /* -- Borders -- */
+  --so-border: #1e1e2e;
+  --so-border-bright: #2a2a3e;
+
+  /* -- Typography -- */
+  --so-font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --so-font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+
+  /* -- Spacing (4px sub-grid, semantic scale -- not strict 8px multipliers) -- */
+  --so-space-1: 4px;
+  --so-space-2: 8px;
+  --so-space-3: 12px;
+  --so-space-4: 16px;
+  --so-space-5: 20px;
+  --so-space-6: 24px;
+  --so-space-8: 32px;
+  --so-space-10: 48px;
+  --so-space-12: 64px;
+
+  /* -- Border radius -- */
+  --so-radius-sm: 4px;
+  --so-radius-md: 6px;
+  --so-radius-lg: 8px;
+  --so-radius-xl: 12px;
+
+  /* -- Shadows -- */
+  --so-shadow-card-hover: 0 4px 24px rgba(56, 189, 248, 0.08);
+  --so-shadow-health-glow: 0 0 8px rgba(56, 189, 248, 0.3);
+
+  /* -- Opacity overlays -- */
+  --so-overlay-hover: rgba(255, 255, 255, 0.04);
+  --so-overlay-active: rgba(56, 189, 248, 0.06);
+  --so-overlay-flash: rgba(56, 189, 248, 0.10);
+}
