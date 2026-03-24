@@ -97,6 +97,11 @@ describe('unwrapVoid', () => {
     expect(() => unwrapVoid(response)).not.toThrow()
   })
 
+  it('handles 204 No Content with empty body', () => {
+    const response = { data: '' as unknown as ApiResponse<null>, status: 204, statusText: 'No Content', headers: {}, config: {} as AxiosResponse['config'] }
+    expect(() => unwrapVoid(response)).not.toThrow()
+  })
+
   it('throws ApiRequestError for error response', () => {
     const response = mockResponse<ApiResponse<null>>({
       data: null,

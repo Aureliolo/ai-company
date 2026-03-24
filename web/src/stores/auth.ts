@@ -87,7 +87,8 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         if (!get().token) {
           throw new Error(`${flowName} failed: session expired. Please try again.`, { cause: fetchErr })
         }
-        get().clearAuth()
+        // Don't clear the fresh token on transient errors (network, 5xx).
+        // The auth succeeded; the profile load can be retried.
         throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`, { cause: fetchErr })
       }
       if (!get().user) {

@@ -445,11 +445,12 @@ def _parse_ws_message(
     data: str,
 ) -> dict[str, Any] | str:
     """Parse raw JSON from the client, returning a dict or an error string."""
-    if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
+    encoded = data.encode()
+    if len(encoded) > _MAX_WS_MESSAGE_BYTES:
         logger.warning(
             API_WS_INVALID_MESSAGE,
             reason="message_too_large",
-            size=len(data.encode()),
+            size=len(encoded),
         )
         return json.dumps({"error": "Message too large"})
 
