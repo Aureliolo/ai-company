@@ -100,7 +100,7 @@ class TestExtractPerformanceSummary:
         assert summary.agent_name == "alice"
         assert summary.tasks_completed_7d == 3
         assert summary.tasks_completed_30d == 12
-        # Total = max tasks_completed across windows (30d has 12)
+        # Best available = max tasks_completed across windows (30d has 12)
         assert summary.tasks_completed_total == 12
         assert summary.avg_completion_time_seconds == pytest.approx(90.0)
         assert summary.success_rate_percent == pytest.approx(80.0)

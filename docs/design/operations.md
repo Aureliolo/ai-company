@@ -1060,7 +1060,10 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/health` | Health check, readiness |
 | `/api/v1/auth` | Authentication: setup, login, password change, ws-ticket (login/setup/change-password rate-limited to 10 req/min) |
 | `/api/v1/company` | CRUD company config |
-| `/api/v1/agents` | List, hire, fire, modify agents. Sub-routes: `GET /{name}/performance` (metrics summary), `GET /{name}/activity` (paginated timeline), `GET /{name}/history` (career events) |
+| `/api/v1/agents` | List, hire, fire, modify agents |
+| `GET /api/v1/agents/{name}/performance` | Agent performance metrics summary |
+| `GET /api/v1/agents/{name}/activity` | Paginated agent activity timeline |
+| `GET /api/v1/agents/{name}/history` | Agent career history events |
 | `/api/v1/departments` | Department management |
 | `/api/v1/projects` | Project CRUD |
 | `/api/v1/tasks` | Task management |

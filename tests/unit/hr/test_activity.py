@@ -108,7 +108,9 @@ class TestMergeActivityTimeline:
 
         assert len(timeline) == 2
         assert timeline[0].event_type == "onboarded"
+        assert timeline[0].description == "Agent onboarded"
         assert timeline[1].event_type == "hired"
+        assert timeline[1].description == "Agent hired"
 
     def test_only_task_metrics(self) -> None:
         t1 = _make_task_metric(
@@ -243,6 +245,16 @@ class TestFilterCareerEvents:
         assert len(career) == 5
         types = {c.event_type for c in career}
         assert types == {"hired", "onboarded", "promoted", "demoted", "fired"}
+
+    def test_empty_details_produces_fallback_description(self) -> None:
+        hired = _make_lifecycle_event(
+            event_type=LifecycleEventType.HIRED,
+            details="",
+        )
+
+        career = filter_career_events((hired,))
+
+        assert career[0].description == "Agent hired"
 
     def test_metadata_and_initiated_by_preserved(self) -> None:
         hired = _make_lifecycle_event(

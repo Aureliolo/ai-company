@@ -10,13 +10,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import LifecycleEventType
-from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import TaskMetricRecord
-
-logger = get_logger(__name__)
 
 
 class ActivityEvent(BaseModel):

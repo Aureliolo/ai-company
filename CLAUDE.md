@@ -109,7 +109,7 @@ src/synthorg/
   config/         # YAML company config loading and validation
   core/           # Shared domain models, base classes, resilience config
   engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop
-  hr/             # Hiring, firing, onboarding, agent registry, performance tracking, promotion/demotion
+  hr/             # Hiring, firing, onboarding, agent registry, performance tracking, activity timeline, career history, promotion/demotion
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
   persistence/    # Pluggable PersistenceBackend, SQLite, settings + user repositories
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/

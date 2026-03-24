@@ -30,6 +30,11 @@ from synthorg.observability.events.api import (
 
 logger = get_logger(__name__)
 
+# Safety cap for lifecycle event queries to prevent unbounded memory
+# allocation.  The paginate() helper already caps the returned page
+# to MAX_LIMIT, but the underlying fetch is uncapped without this.
+_MAX_LIFECYCLE_EVENTS = 10_000
+
 
 async def _resolve_agent_id(
     app_state: AppState,
@@ -49,14 +54,14 @@ async def _resolve_agent_id(
     """
     identity = await app_state.agent_registry.get_by_name(agent_name)
     if identity is None:
-        msg = f"Agent {agent_name!r} not found"
+        msg = "Agent not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
     return str(identity.id)
 
 
 class AgentController(Controller):
-    """Read-only access to agent configurations, performance, and activity."""
+    """Read-only access to agent configurations, performance, activity, and history."""
 
     path = "/agents"
     tags = ("agents",)
@@ -104,10 +109,11 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         agents = await app_state.config_resolver.get_agents()
+        name_lower = agent_name.lower()
         for agent in agents:
-            if agent.name == agent_name:
+            if agent.name.lower() == name_lower:
                 return ApiResponse(data=agent)
-        msg = f"Agent {agent_name!r} not found"
+        msg = "Agent not found"
         logger.warning(API_RESOURCE_NOT_FOUND, resource="agent", name=agent_name)
         raise NotFoundError(msg)
 
@@ -170,6 +176,7 @@ class AgentController(Controller):
 
         lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
+            limit=_MAX_LIFECYCLE_EVENTS,
         )
         task_metrics = app_state.performance_tracker.get_task_metrics(
             agent_id=agent_id,
@@ -212,6 +219,7 @@ class AgentController(Controller):
         agent_id = await _resolve_agent_id(app_state, agent_name)
         events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
+            limit=_MAX_LIFECYCLE_EVENTS,
         )
         career = filter_career_events(events)
         logger.debug(

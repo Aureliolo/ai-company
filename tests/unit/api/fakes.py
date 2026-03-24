@@ -141,6 +141,7 @@ class FakeLifecycleEventRepository:
         agent_id: str | None = None,
         event_type: LifecycleEventType | None = None,
         since: datetime | None = None,
+        limit: int | None = None,
     ) -> tuple[AgentLifecycleEvent, ...]:
         result = self._events
         if agent_id is not None:
@@ -149,6 +150,8 @@ class FakeLifecycleEventRepository:
             result = [e for e in result if e.event_type == event_type]
         if since is not None:
             result = [e for e in result if e.timestamp >= since]
+        if limit is not None:
+            result = result[:limit]
         return tuple(result)
 
 

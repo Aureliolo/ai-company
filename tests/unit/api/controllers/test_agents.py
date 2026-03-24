@@ -143,6 +143,9 @@ class TestAgentControllerDbOverride:
 
 
 # ── Helpers for performance/activity/history tests ────────────
+# Note: Similar factories exist in tests/unit/hr/test_activity.py with
+# different defaults (simple string IDs vs UUID format) because controller
+# tests need UUID-valid agent_id for AgentIdentity construction.
 
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
@@ -234,8 +237,9 @@ class TestAgentPerformance:
         data = resp.json()["data"]
         assert data["agent_name"] == _AGENT_NAME
         assert data["trend_direction"] in {d.value for d in TrendDirection}
-        assert "windows" in data
-        assert "trends" in data
+        assert isinstance(data["windows"], list)
+        assert len(data["windows"]) >= 1
+        assert isinstance(data["trends"], list)
 
     async def test_performance_empty_metrics(
         self,
@@ -293,6 +297,71 @@ class TestAgentPerformance:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
             assert resp.status_code == 503
+            assert resp.json()["success"] is False
+
+    def test_activity_returns_503_without_registry(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Activity endpoint returns 503 when agent registry not configured."""
+        from synthorg.api.app import create_app
+        from synthorg.budget.tracker import CostTracker
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+        config = RootConfig(company_name="test")
+        auth_svc = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_svc)
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_svc,
+            settings_service=settings_svc,
+        )
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/activity")
+            assert resp.status_code == 503
+            assert resp.json()["success"] is False
+
+    def test_history_returns_503_without_registry(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """History endpoint returns 503 when agent registry not configured."""
+        from synthorg.api.app import create_app
+        from synthorg.budget.tracker import CostTracker
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+        config = RootConfig(company_name="test")
+        auth_svc = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_svc)
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_svc,
+            settings_service=settings_svc,
+        )
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/history")
+            assert resp.status_code == 503
+            assert resp.json()["success"] is False
 
 
 # ── Activity endpoint tests ───────────────────────────────────
