@@ -6,12 +6,70 @@ chronological timeline, and filters career-relevant events.
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.dto import ActivityEvent, CareerEvent
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import LifecycleEventType
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import TaskMetricRecord
+
+logger = get_logger(__name__)
+
+
+class ActivityEvent(BaseModel):
+    """Single event in an agent's activity timeline.
+
+    Attributes:
+        event_type: Event category (e.g. ``"hired"``, ``"task_completed"``).
+        timestamp: When the event occurred.
+        description: Human-readable event description.
+        related_ids: Related entity identifiers (e.g. task_id, agent_id).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    event_type: NotBlankStr = Field(description="Event category")
+    timestamp: AwareDatetime = Field(description="When the event occurred")
+    description: str = Field(
+        default="",
+        max_length=1024,
+        description="Human-readable event description",
+    )
+    related_ids: dict[str, str] = Field(
+        default_factory=dict,
+        description="Related entity identifiers",
+    )
+
+
+class CareerEvent(BaseModel):
+    """Career milestone in an agent's history.
+
+    Attributes:
+        event_type: Lifecycle event type (e.g. ``"hired"``, ``"promoted"``).
+        timestamp: When the event occurred.
+        description: Human-readable event description.
+        initiated_by: Who triggered the event.
+        metadata: Additional structured metadata.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    event_type: NotBlankStr = Field(description="Lifecycle event type")
+    timestamp: AwareDatetime = Field(description="When the event occurred")
+    description: str = Field(
+        default="",
+        max_length=1024,
+        description="Human-readable event description",
+    )
+    initiated_by: NotBlankStr = Field(description="Who triggered the event")
+    metadata: dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional structured metadata",
+    )
+
 
 _CAREER_EVENT_TYPES: frozenset[LifecycleEventType] = frozenset(
     {
@@ -39,7 +97,7 @@ def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
     status = "succeeded" if record.is_success else "failed"
     desc = (
         f"Task {record.task_id} {status} "
-        f"({record.duration_seconds:.1f}s, ${record.cost_usd:.4f})"
+        f"({record.duration_seconds:.1f}s, {record.cost_usd:.4f} USD)"
     )
     return ActivityEvent(
         event_type="task_completed",

@@ -132,6 +132,24 @@ class TestMergeActivityTimeline:
         assert "failed" in timeline[0].description
         assert "task-a" in timeline[1].related_ids["task_id"]
         assert "succeeded" in timeline[1].description
+        assert "USD" in timeline[1].description
+
+    def test_identical_timestamps_stable_sort(self) -> None:
+        ts = _NOW - timedelta(days=1)
+        hired = _make_lifecycle_event(
+            event_type=LifecycleEventType.HIRED,
+            timestamp=ts,
+        )
+        task = _make_task_metric(completed_at=ts, task_id="task-same-ts")
+
+        timeline = merge_activity_timeline(
+            lifecycle_events=(hired,),
+            task_metrics=(task,),
+        )
+
+        assert len(timeline) == 2
+        # Both events present, order is stable (lifecycle first in input)
+        assert {e.event_type for e in timeline} == {"hired", "task_completed"}
 
     def test_related_ids_populated(self) -> None:
         hired = _make_lifecycle_event(agent_id="agent-001")

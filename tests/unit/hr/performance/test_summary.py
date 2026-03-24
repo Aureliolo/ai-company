@@ -100,8 +100,8 @@ class TestExtractPerformanceSummary:
         assert summary.agent_name == "alice"
         assert summary.tasks_completed_7d == 3
         assert summary.tasks_completed_30d == 12
-        # Total = max data_point_count across windows (30d has 15)
-        assert summary.tasks_completed_total == 15
+        # Total = max tasks_completed across windows (30d has 12)
+        assert summary.tasks_completed_total == 12
         assert summary.avg_completion_time_seconds == pytest.approx(90.0)
         assert summary.success_rate_percent == pytest.approx(80.0)
         assert summary.cost_per_task_usd == pytest.approx(0.04)
@@ -185,3 +185,38 @@ class TestExtractPerformanceSummary:
         summary = extract_performance_summary(snapshot, "frank")
 
         assert summary.success_rate_percent is None
+
+    def test_only_30d_window(self) -> None:
+        w30 = _make_window(
+            window_size="30d",
+            tasks_completed=10,
+            tasks_failed=2,
+            success_rate=0.83,
+            avg_cost_per_task=0.06,
+            avg_completion_time_seconds=75.0,
+        )
+        snapshot = _make_snapshot(windows=(w30,))
+
+        summary = extract_performance_summary(snapshot, "grace")
+
+        assert summary.tasks_completed_7d == 0
+        assert summary.tasks_completed_30d == 10
+        assert summary.tasks_completed_total == 10
+        assert summary.success_rate_percent == pytest.approx(83.0)
+        assert summary.cost_per_task_usd == pytest.approx(0.06)
+        assert summary.avg_completion_time_seconds == pytest.approx(75.0)
+
+    def test_7d_only_allows_zero_30d(self) -> None:
+        """When only a 7d window exists, 30d count is 0 which is valid."""
+        w7 = _make_window(
+            window_size="7d",
+            tasks_completed=5,
+            tasks_failed=0,
+        )
+        snapshot = _make_snapshot(windows=(w7,))
+
+        summary = extract_performance_summary(snapshot, "heidi")
+
+        assert summary.tasks_completed_7d == 5
+        assert summary.tasks_completed_30d == 0
+        assert summary.tasks_completed_total == 5

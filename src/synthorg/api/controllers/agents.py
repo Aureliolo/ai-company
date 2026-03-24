@@ -1,25 +1,25 @@
 """Agent configuration, performance, activity, and history controller."""
 
-import asyncio
-
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
-from synthorg.api.dto import (
-    ActivityEvent,
-    AgentPerformanceSummary,
-    ApiResponse,
-    CareerEvent,
-    PaginatedResponse,
-)
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.config.schema import AgentConfig  # noqa: TC001
-from synthorg.hr.activity import filter_career_events, merge_activity_timeline
-from synthorg.hr.performance.summary import extract_performance_summary
+from synthorg.hr.activity import (
+    ActivityEvent,
+    CareerEvent,
+    filter_career_events,
+    merge_activity_timeline,
+)
+from synthorg.hr.performance.summary import (
+    AgentPerformanceSummary,
+    extract_performance_summary,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
@@ -168,22 +168,16 @@ class AgentController(Controller):
         app_state: AppState = state.app_state
         agent_id = await _resolve_agent_id(app_state, agent_name)
 
-        async with asyncio.TaskGroup() as tg:
-            t_lifecycle = tg.create_task(
-                app_state.persistence.lifecycle_events.list_events(
-                    agent_id=agent_id,
-                ),
-            )
-            t_metrics = tg.create_task(
-                asyncio.to_thread(
-                    app_state.performance_tracker.get_task_metrics,
-                    agent_id=agent_id,
-                ),
-            )
+        lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
+            agent_id=agent_id,
+        )
+        task_metrics = app_state.performance_tracker.get_task_metrics(
+            agent_id=agent_id,
+        )
 
         timeline = merge_activity_timeline(
-            lifecycle_events=t_lifecycle.result(),
-            task_metrics=t_metrics.result(),
+            lifecycle_events=lifecycle_events,
+            task_metrics=task_metrics,
         )
         page, meta = paginate(timeline, offset=offset, limit=limit)
         logger.debug(

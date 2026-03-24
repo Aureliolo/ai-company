@@ -6,29 +6,96 @@ Transforms :class:`AgentPerformanceSnapshot` into a flat
 
 from typing import TYPE_CHECKING
 
-from synthorg.api.dto import AgentPerformanceSummary
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import TrendDirection
+from synthorg.hr.performance.models import TrendResult, WindowMetrics  # noqa: TC001
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
-    from synthorg.hr.performance.models import (
-        AgentPerformanceSnapshot,
-        WindowMetrics,
-    )
+    from synthorg.hr.performance.models import AgentPerformanceSnapshot
+
+logger = get_logger(__name__)
 
 _WINDOW_7D = "7d"
 _WINDOW_30D = "30d"
 _SUCCESS_RATE_METRIC = "success_rate"
 
 
-def _find_window(
-    snapshot: AgentPerformanceSnapshot,
-    label: str,
-) -> WindowMetrics | None:
-    """Find a window by its size label."""
-    for w in snapshot.windows:
-        if w.window_size == label:
-            return w
-    return None
+class AgentPerformanceSummary(BaseModel):
+    """Flat performance summary for dashboard display.
+
+    Derived from :class:`~synthorg.hr.performance.models.AgentPerformanceSnapshot`
+    via :func:`extract_performance_summary`.
+
+    Attributes:
+        agent_name: Agent display name.
+        tasks_completed_total: Lifetime successfully completed tasks.
+        tasks_completed_7d: Tasks completed in the last 7 days.
+        tasks_completed_30d: Tasks completed in the last 30 days.
+        avg_completion_time_seconds: Average task duration (30d window).
+        success_rate_percent: Task success rate as percentage (30d window).
+        cost_per_task_usd: Average cost per task (30d window).
+        quality_score: Overall quality score (0.0-10.0).
+        collaboration_score: Overall collaboration score (0.0-10.0).
+        trend_direction: Primary trend direction.
+        windows: Rolling window metrics from snapshot.
+        trends: Trend results from snapshot.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_name: NotBlankStr = Field(description="Agent display name")
+    tasks_completed_total: int = Field(
+        ge=0,
+        description="Lifetime successfully completed tasks",
+    )
+    tasks_completed_7d: int = Field(
+        ge=0,
+        description="Tasks completed in the last 7 days",
+    )
+    tasks_completed_30d: int = Field(
+        ge=0,
+        description="Tasks completed in the last 30 days",
+    )
+    avg_completion_time_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Average task duration in seconds (30d window)",
+    )
+    success_rate_percent: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Task success rate as percentage (30d window)",
+    )
+    cost_per_task_usd: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Average cost per task in USD (30d window)",
+    )
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+        description="Overall quality score",
+    )
+    collaboration_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+        description="Overall collaboration score",
+    )
+    trend_direction: TrendDirection = Field(description="Primary trend direction")
+    windows: tuple[WindowMetrics, ...] = Field(
+        default=(),
+        description="Rolling window metrics",
+    )
+    trends: tuple[TrendResult, ...] = Field(
+        default=(),
+        description="Trend detection results",
+    )
 
 
 def _primary_trend_direction(
@@ -68,14 +135,14 @@ def extract_performance_summary(
     Returns:
         A flat summary suitable for dashboard rendering.
     """
-    w7 = _find_window(snapshot, _WINDOW_7D)
-    w30 = _find_window(snapshot, _WINDOW_30D)
+    window_map = {w.window_size: w for w in snapshot.windows}
+    w7 = window_map.get(_WINDOW_7D)
+    w30 = window_map.get(_WINDOW_30D)
 
-    # Total tasks = sum of data_point_count across all windows.
-    # Use the largest window's count as the total (windows overlap in time,
-    # so summing would double-count).  Fall back to 0 if no windows.
+    # Total completed = max tasks_completed across all windows (windows
+    # overlap in time, so max avoids double-counting).
     tasks_total = max(
-        (w.data_point_count for w in snapshot.windows),
+        (w.tasks_completed for w in snapshot.windows),
         default=0,
     )
 

@@ -263,6 +263,37 @@ class TestAgentPerformance:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
+    def test_performance_returns_503_without_registry(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Agent registry not configured returns 503."""
+        from synthorg.api.app import create_app
+        from synthorg.budget.tracker import CostTracker
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+        config = RootConfig(company_name="test")
+        auth_svc = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_svc)
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_svc,
+            settings_service=settings_svc,
+        )
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            resp = client.get(f"/api/v1/agents/{_AGENT_NAME}/performance")
+            assert resp.status_code == 503
+
 
 # ── Activity endpoint tests ───────────────────────────────────
 
@@ -304,7 +335,10 @@ class TestAgentActivity:
         events = body["data"]
         # Most recent first
         assert events[0]["event_type"] == "task_completed"
+        assert "task-100" in events[0]["related_ids"]["task_id"]
+        assert "succeeded" in events[0]["description"]
         assert events[1]["event_type"] == "hired"
+        assert events[1]["description"] == "Hired as developer"
 
     async def test_activity_pagination(
         self,

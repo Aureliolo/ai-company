@@ -199,6 +199,7 @@ def performance_tracker() -> PerformanceTracker:
 
 @pytest.fixture
 def agent_registry() -> AgentRegistryService:
+    """Return a fresh AgentRegistryService instance."""
     return AgentRegistryService()
 
 
