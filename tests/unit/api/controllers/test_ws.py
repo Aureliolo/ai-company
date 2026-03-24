@@ -287,37 +287,54 @@ class TestWsTicketAuth:
         assert 4000 <= _WS_CLOSE_AUTH_FAILED <= 4999
         assert 4000 <= _WS_CLOSE_FORBIDDEN <= 4999
 
-    @pytest.mark.parametrize(
-        ("url", "scenario"),
-        [
-            ("/api/v1/ws", "missing_ticket"),
-            ("/api/v1/ws?ticket=bogus-ticket", "invalid_ticket"),
-        ],
-    )
-    def test_ws_rejects_bad_ticket(
+    def test_ws_rejects_invalid_query_ticket(
         self,
         test_client: TestClient[Any],
-        url: str,
-        scenario: str,
     ) -> None:
-        """WS connection with missing or invalid ticket is rejected.
-
-        Verifying the close code (not just WebSocketDisconnect) ensures
-        the rejection comes from the handler's ticket validation -- not
-        from a middleware or DI failure (which would produce a different
-        close code, such as Litestar's internal 4500).
-        """
+        """WS connection with invalid query-param ticket is rejected pre-accept."""
         from litestar.exceptions import WebSocketDisconnect
 
         with (
             pytest.raises(WebSocketDisconnect) as exc_info,
-            test_client.websocket_connect(url),
+            test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
         ):
             pass
         assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED, (
             f"Expected close code {_WS_CLOSE_AUTH_FAILED} for "
-            f"{scenario}, got {exc_info.value.code}"
+            f"invalid_ticket, got {exc_info.value.code}"
         )
+
+    def test_ws_rejects_bad_first_message_ticket(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """WS connection with invalid first-message ticket is rejected post-accept."""
+        from litestar.exceptions import WebSocketDisconnect
+
+        def send_bad_ticket() -> None:
+            with test_client.websocket_connect("/api/v1/ws") as ws:
+                ws.send_text(json.dumps({"action": "auth", "ticket": "bogus-ticket"}))
+                ws.receive_text()
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            send_bad_ticket()
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
+
+    def test_ws_rejects_missing_first_message_auth(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """WS connection sending non-auth first message is rejected."""
+        from litestar.exceptions import WebSocketDisconnect
+
+        def send_wrong_action() -> None:
+            with test_client.websocket_connect("/api/v1/ws") as ws:
+                ws.send_text(json.dumps({"action": "subscribe", "channels": ["tasks"]}))
+                ws.receive_text()
+
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            send_wrong_action()
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
 
     def test_ws_accepts_valid_ticket(
         self,
