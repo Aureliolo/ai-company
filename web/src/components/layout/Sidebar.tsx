@@ -22,7 +22,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/router/routes'
 import { SidebarNavItem } from './SidebarNavItem'
 
-const STORAGE_KEY = 'sidebar_collapsed'
+export const STORAGE_KEY = 'sidebar_collapsed'
 
 const SIDEBAR_BUTTON_CLASS = cn(
   'flex items-center gap-3 rounded-md px-3 py-2 text-sm',

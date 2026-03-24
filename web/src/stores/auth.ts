@@ -136,15 +136,13 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
       localStorage.removeItem('auth_must_change_password')
-      // Save return path so LoginPage can redirect back after re-authentication.
-      // sessionStorage is same-origin only, preventing open redirect attacks.
+      // Hard redirect to login -- intentionally uses window.location (not
+      // react-router) because this runs in a Zustand store outside the
+      // React tree. Saves return path so LoginPage can redirect back
+      // after re-authentication (sessionStorage is same-origin only).
       const currentPath = window.location.pathname
       if (currentPath !== '/login' && currentPath !== '/setup') {
         sessionStorage.setItem('auth_return_path', currentPath)
-      }
-      // Hard redirect to login -- intentionally uses window.location (not react-router)
-      // because this runs in a Zustand store outside the React tree.
-      if (currentPath !== '/login' && currentPath !== '/setup') {
         window.location.href = '/login'
       }
     },

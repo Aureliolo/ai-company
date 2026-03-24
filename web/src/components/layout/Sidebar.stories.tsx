@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useAuthStore } from '@/stores/auth'
-import { Sidebar } from './Sidebar'
+import { Sidebar, STORAGE_KEY } from './Sidebar'
 
 const meta = {
   title: 'Layout/Sidebar',
@@ -38,7 +38,7 @@ type Story = StoryObj<typeof meta>
 export const Expanded: Story = {
   decorators: [
     (Story) => {
-      localStorage.setItem('sidebar_collapsed', 'false')
+      localStorage.setItem(STORAGE_KEY, 'false')
       return <Story />
     },
   ],
@@ -47,7 +47,7 @@ export const Expanded: Story = {
 export const Collapsed: Story = {
   decorators: [
     (Story) => {
-      localStorage.setItem('sidebar_collapsed', 'true')
+      localStorage.setItem(STORAGE_KEY, 'true')
       return <Story />
     },
   ],
