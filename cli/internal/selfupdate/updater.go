@@ -164,12 +164,16 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 		if r.Draft {
 			continue
 		}
+		// Validate tag before using it as a baseline or candidate.
+		// Malformed tags (err != nil) are silently skipped -- tags
+		// come from the GitHub API and are expected to be well-formed.
+		if _, err := compareWithDev(r.TagName, r.TagName); err != nil {
+			continue
+		}
 		if r.Prerelease && strings.Contains(r.TagName, "-dev.") {
 			if latestDev == nil {
 				latestDev = r
 			} else if cmp, err := compareWithDev(r.TagName, latestDev.TagName); err == nil && cmp > 0 {
-				// Malformed tags (err != nil) are silently skipped -- tags
-				// come from the GitHub API and are expected to be well-formed.
 				latestDev = r
 			}
 		} else if !r.Prerelease {
@@ -468,7 +472,11 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 
 	if err := os.Rename(tmpPath, execPath); err != nil {
 		if runtime.GOOS == "windows" && oldPath != "" {
-			_ = os.Rename(oldPath, execPath)
+			if rollbackErr := os.Rename(oldPath, execPath); rollbackErr != nil {
+				// Rollback failed: leave tmpPath intact for manual recovery.
+				return fmt.Errorf("replacing binary (old binary left at %s): %w", oldPath,
+					errors.Join(err, fmt.Errorf("rollback: %w", rollbackErr)))
+			}
 		}
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("replacing binary: %w", err)

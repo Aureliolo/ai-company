@@ -225,8 +225,10 @@ func writeOrPatchCompose(state config.State, digestPins map[string]string, safeD
 
 // imageLinePattern matches Docker image references in compose YAML.
 // Handles both digest-pinned (repo@sha256:...) and tag-based (repo:tag).
+// The pattern anchors after the service name with an optional [:@] suffix
+// to avoid matching extended repo names (e.g. synthorg-backend-fips).
 var imageLinePattern = regexp.MustCompile(
-	`(\s+image:\s+)ghcr\.io/aureliolo/synthorg-(backend|web|sandbox)[\S]*`,
+	`(\s+image:\s+)ghcr\.io/aureliolo/synthorg-(backend|web|sandbox)(?:[:@]\S+)?`,
 )
 
 // patchComposeImageRefs updates only the image references in an existing

@@ -471,11 +471,21 @@ func TestConfigGetDefaultChannel(t *testing.T) {
 		rootCmd.SetErr(nil)
 		rootCmd.SetArgs(nil)
 	})
-	// When channel is empty in JSON, DefaultState fills "stable".
+	// Seed a config file that omits "channel" so Load's unmarshal-onto-
+	// DefaultState fallback supplies the default "stable" value.
 	dir := t.TempDir()
-	state := config.DefaultState()
-	state.DataDir = dir
-	if err := config.Save(state); err != nil {
+	raw, err := json.Marshal(map[string]any{
+		"data_dir":            dir,
+		"backend_port":        3001,
+		"web_port":            3000,
+		"log_level":           "info",
+		"persistence_backend": "sqlite",
+		"memory_backend":      "mem0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
 

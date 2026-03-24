@@ -258,25 +258,8 @@ func TestReplace(t *testing.T) {
 	}
 
 	newContent := []byte("new binary content")
-	newPath := fakeBinary + ".new"
-	if err := os.WriteFile(newPath, newContent, 0o755); err != nil {
-		t.Fatalf("write new: %v", err)
-	}
-
-	if runtime.GOOS == "windows" {
-		oldPath := fakeBinary + ".old"
-		_ = os.Remove(oldPath)
-		if err := os.Rename(fakeBinary, oldPath); err != nil {
-			t.Fatalf("rename current to old: %v", err)
-		}
-		if err := os.Rename(newPath, fakeBinary); err != nil {
-			t.Fatalf("rename new to current: %v", err)
-		}
-		_ = os.Remove(oldPath)
-	} else {
-		if err := os.Rename(newPath, fakeBinary); err != nil {
-			t.Fatalf("rename new to current: %v", err)
-		}
+	if err := ReplaceAt(newContent, fakeBinary); err != nil {
+		t.Fatalf("ReplaceAt: %v", err)
 	}
 
 	data, err := os.ReadFile(fakeBinary)
