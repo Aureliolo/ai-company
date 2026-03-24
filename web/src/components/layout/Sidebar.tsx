@@ -1,0 +1,225 @@
+import { useState } from 'react'
+import {
+  Bell,
+  Command,
+  Cpu,
+  DollarSign,
+  GitBranch,
+  KanbanSquare,
+  LayoutDashboard,
+  LogOut,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  ShieldCheck,
+  Users,
+  Video,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
+import { useAuthStore } from '@/stores/auth'
+import { ROUTES } from '@/router/routes'
+import { SidebarNavItem } from './SidebarNavItem'
+
+const STORAGE_KEY = 'sidebar_collapsed'
+
+export function Sidebar() {
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(STORAGE_KEY) === 'true',
+  )
+  const { user } = useAuth()
+  const logout = useAuthStore((s) => s.logout)
+
+  function toggleCollapse() {
+    setCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem(STORAGE_KEY, String(next))
+      return next
+    })
+  }
+
+  return (
+    <aside
+      className={cn(
+        'flex h-full flex-col border-r border-surface-100 bg-surface-50 transition-[width] duration-200',
+        collapsed ? 'w-14' : 'w-[220px]',
+      )}
+    >
+      {/* Header */}
+      <div className="flex h-14 shrink-0 items-center border-b border-surface-100 px-3">
+        {collapsed ? (
+          <span className="mx-auto text-lg font-bold text-brand-400">S</span>
+        ) : (
+          <span className="text-lg font-bold text-brand-400">SynthOrg</span>
+        )}
+      </div>
+
+      {/* Primary navigation */}
+      <nav className="flex flex-1 flex-col overflow-y-auto px-2 pt-3">
+        <div className="flex flex-col gap-1">
+          <SidebarNavItem
+            to={ROUTES.DASHBOARD}
+            icon={LayoutDashboard}
+            label="Dashboard"
+            collapsed={collapsed}
+          />
+          <SidebarNavItem
+            to={ROUTES.ORG}
+            icon={GitBranch}
+            label="Org Chart"
+            collapsed={collapsed}
+          />
+          <SidebarNavItem
+            to={ROUTES.TASKS}
+            icon={KanbanSquare}
+            label="Task Board"
+            collapsed={collapsed}
+          />
+          <SidebarNavItem
+            to={ROUTES.BUDGET}
+            icon={DollarSign}
+            label="Budget"
+            collapsed={collapsed}
+          />
+          <SidebarNavItem
+            to={ROUTES.APPROVALS}
+            icon={ShieldCheck}
+            label="Approvals"
+            collapsed={collapsed}
+            badge={0}
+          />
+        </div>
+
+        {/* Workspace section */}
+        <div className="mt-4 border-t border-surface-100 pt-3">
+          {!collapsed && (
+            <span className="mb-2 block px-3 text-xs font-medium uppercase tracking-wider text-surface-400">
+              Workspace
+            </span>
+          )}
+          <div className="flex flex-col gap-1">
+            <SidebarNavItem
+              to={ROUTES.AGENTS}
+              icon={Users}
+              label="Agents"
+              collapsed={collapsed}
+            />
+            <SidebarNavItem
+              to={ROUTES.MESSAGES}
+              icon={MessageSquare}
+              label="Messages"
+              collapsed={collapsed}
+              badge={0}
+            />
+            <SidebarNavItem
+              to={ROUTES.MEETINGS}
+              icon={Video}
+              label="Meetings"
+              collapsed={collapsed}
+            />
+            <SidebarNavItem
+              to={ROUTES.PROVIDERS}
+              icon={Cpu}
+              label="Providers"
+              collapsed={collapsed}
+            />
+            <SidebarNavItem
+              to={ROUTES.SETTINGS}
+              icon={Settings}
+              label="Settings"
+              collapsed={collapsed}
+            />
+          </div>
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Bottom section */}
+        <div className="border-t border-surface-100 py-3">
+          <div className="flex flex-col gap-1">
+            {/* Collapse toggle */}
+            <button
+              onClick={toggleCollapse}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
+              ) : (
+                <>
+                  <PanelLeftClose className="size-5 shrink-0" aria-hidden="true" />
+                  <span>Collapse</span>
+                </>
+              )}
+            </button>
+
+            {/* Notifications placeholder */}
+            <button
+              title="Notifications"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+            >
+              <Bell
+                className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
+                aria-hidden="true"
+              />
+              {!collapsed && <span>Notifications</span>}
+            </button>
+
+            {/* Cmd+K hint */}
+            {!collapsed && (
+              <div className="flex items-center gap-3 px-3 py-2 text-xs text-surface-400">
+                <Command className="size-4 shrink-0" aria-hidden="true" />
+                <span>Cmd+K to search</span>
+              </div>
+            )}
+
+            {/* Connection status placeholder */}
+            <div
+              className={cn(
+                'flex items-center gap-3 px-3 py-1',
+                collapsed && 'justify-center',
+              )}
+            >
+              <span
+                className="size-2 rounded-full bg-success-500"
+                title="Connected"
+                aria-label="Connection status: connected"
+              />
+              {!collapsed && (
+                <span className="text-xs text-surface-400">Connected</span>
+              )}
+            </div>
+
+            {/* User / logout */}
+            {user && (
+              <div
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2',
+                  collapsed && 'justify-center',
+                )}
+              >
+                {!collapsed && (
+                  <div className="flex-1 truncate">
+                    <div className="text-sm font-medium text-surface-700 truncate">
+                      {user.username}
+                    </div>
+                    <div className="text-xs text-surface-400">{user.role}</div>
+                  </div>
+                )}
+                <button
+                  onClick={logout}
+                  title="Logout"
+                  className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700"
+                >
+                  <LogOut className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </nav>
+    </aside>
+  )
+}

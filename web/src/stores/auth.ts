@@ -136,8 +136,8 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
       localStorage.removeItem('auth_must_change_password')
-      // Redirect to login if not already there
-      // TODO: Phase 1.3 -- use react-router navigate
+      // Hard redirect to login -- intentionally uses window.location (not react-router)
+      // because this runs in a Zustand store outside the React tree.
       if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
         window.location.href = '/login'
       }
