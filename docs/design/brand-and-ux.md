@@ -183,7 +183,9 @@ This was discovered during the design exploration (#765) and caused layout break
 | Design exploration mockups (5 variations) | `feat/765-design-exploration` branch, `mockups-v2/` (exploration artifacts, not production code) |
 | Original winning prototype (C+D direction) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
 | UX research document | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
+| Page structure and information architecture | [Page Structure & IA](page-structure.md) |
 | Parent issue (full UX overhaul) | #762 |
 | Design exploration issue | #765 |
+| Page structure issue | #766 |
 | Design tokens implementation | #775 |
 | UX guidelines document | #767 |
