@@ -96,6 +96,15 @@ class CostTracker:
             has_department_resolver=department_resolver is not None,
         )
 
+    @property
+    def budget_config(self) -> BudgetConfig | None:
+        """The optional budget configuration.
+
+        Returns:
+            Budget config if set, else ``None``.
+        """
+        return self._budget_config
+
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
 
