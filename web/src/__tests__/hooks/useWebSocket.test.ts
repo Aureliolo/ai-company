@@ -52,7 +52,7 @@ describe('useWebSocket', () => {
     expect(onChannelSpy).toHaveBeenCalledWith('tasks', handler)
   })
 
-  it('unsubscribes and removes handlers on unmount', () => {
+  it('removes handlers on unmount (without global unsubscribe)', () => {
     useAuthStore.setState({ token: 'test-token' })
     useWebSocketStore.setState({ connected: true })
 
@@ -66,7 +66,8 @@ describe('useWebSocket', () => {
 
     unmount()
 
-    expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
+    // Should only remove handlers, NOT unsubscribe globally (other instances may share channels)
+    expect(unsubscribeSpy).not.toHaveBeenCalled()
     expect(offChannelSpy).toHaveBeenCalledWith('tasks', handler)
   })
 

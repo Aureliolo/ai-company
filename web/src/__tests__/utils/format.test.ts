@@ -92,6 +92,8 @@ describe('formatCurrency', () => {
   it('formats negative values', () => {
     const result = formatCurrency(-10)
     expect(result).toContain('10')
+    // Verify negative indicator (varies by locale: "-$10.00" or "($10.00)")
+    expect(result.includes('-') || result.includes('(')).toBe(true)
   })
 })
 

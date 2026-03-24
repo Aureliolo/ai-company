@@ -78,9 +78,8 @@ describe('useAuth', () => {
     expect(result.current.mustChangePassword).toBe(true)
   })
 
-  it('falls back to localStorage for mustChangePassword', () => {
-    localStorage.setItem('auth_must_change_password', 'true')
-    useAuthStore.setState({ token: 'test', user: null })
+  it('falls back to _mustChangePasswordFallback when user is null', () => {
+    useAuthStore.setState({ token: 'test', user: null, _mustChangePasswordFallback: true })
     const { result } = renderHook(() => useAuth())
     expect(result.current.mustChangePassword).toBe(true)
   })

@@ -36,6 +36,11 @@ export interface WebSocketReturn {
  * Connects when enabled (default: auth token present), subscribes to
  * deduplicated channels, and wires event handlers on mount. Automatically
  * unsubscribes and removes handlers on unmount.
+ *
+ * **Important:** The `bindings` and `filters` are only processed on mount
+ * (or when `enabled` changes from false to true). If they need to change
+ * dynamically, the consuming component must be remounted, for example by
+ * changing its `key` prop.
  */
 export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
   const { bindings, filters, enabled } = options
@@ -76,10 +81,13 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         console.error('WebSocket subscribe failed:', sanitizeForLog(err))
       }
 
+      if (disposedRef.current) return
+
       for (const binding of bindings) {
         try {
           wsStore.onChannelEvent(binding.channel, binding.handler)
         } catch (err) {
+          setSetupError('WebSocket handler setup failed.')
           console.error('WebSocket handler wiring failed:', sanitizeForLog(err))
         }
       }
@@ -89,11 +97,9 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
 
     return () => {
       disposedRef.current = true
-      try {
-        wsStore.unsubscribe(uniqueChannels)
-      } catch (err) {
-        console.error('WebSocket unsubscribe failed:', sanitizeForLog(err))
-      }
+      // Only remove handlers -- do NOT unsubscribe channels globally since
+      // other hook instances may share the same channels. The store's
+      // handler set deduplication ensures cleanup is safe per-handler.
       for (const binding of bindings) {
         try {
           wsStore.offChannelEvent(binding.channel, binding.handler)
@@ -102,9 +108,9 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         }
       }
     }
-    // Bindings and filters are intentionally excluded -- they are captured once
-    // on mount to match the Vue composable's lifecycle semantics. Changing them
-    // requires remounting the component (e.g. via a key prop).
+    // Bindings and filters are intentionally excluded -- they are captured
+    // once on mount and remain stable for the component's lifetime. Changing
+    // them requires remounting the component (e.g. via a key prop).
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [isEnabled])
 

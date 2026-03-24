@@ -4,7 +4,6 @@
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
-import { sanitizeForLog } from '@/utils/logging'
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -22,7 +21,8 @@ export const apiClient = axios.create({
 // attack surface but require backend cookie-based auth support plus CSRF
 // protection. Mitigations in place: short-lived tokens with server-controlled
 // expiry, automatic 401 cleanup, and expiry checks on page load (see auth
-// store). CSP headers in nginx.conf restrict script sources. If the deployment
+// store). CSP headers in security-headers.conf (included by nginx.conf) restrict
+// script sources. If the deployment
 // architecture changes to support cookie-based auth, migrate away from
 // localStorage -- see docs/security.md for the full threat model.
 
@@ -40,14 +40,16 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError<{ error?: string; success?: boolean }>) => {
     if (error.response?.status === 401) {
+      // Clear credentials synchronously to prevent stale-token retries
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
       localStorage.removeItem('auth_must_change_password')
-      // Sync Zustand auth state -- dynamic import avoids circular dependency
+      // Sync Zustand auth state -- dynamic import avoids circular dependency.
+      // We intentionally fire-and-forget: the rejection below reaches the
+      // caller immediately, while auth state cleanup happens concurrently.
       import('@/stores/auth').then(({ useAuthStore }) => {
         useAuthStore.getState().logout()
-      }).catch((importErr: unknown) => {
-        console.error('Failed to import auth store after 401:', sanitizeForLog(importErr))
+      }).catch(() => {
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
           window.location.href = '/login'
@@ -90,9 +92,11 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
 
 /**
  * Validate an ApiResponse envelope without extracting data.
- * Use for endpoints that return {@code ApiResponse<null>}.
+ * Use for endpoints that return `ApiResponse<null>` (including 204 No Content).
  */
 export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
+  // 204 No Content: empty body is expected and valid
+  if (response.status === 204) return
   const body = response.data
   if (!body || typeof body !== 'object') {
     throw new ApiRequestError('Unknown API error')

@@ -25,10 +25,10 @@ describe('constants property tests', () => {
     )
   })
 
-  it('terminal statuses are unreachable from themselves', () => {
+  it('terminal statuses have no outgoing transitions', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom(...[...TERMINAL_STATUSES]),
+        fc.constantFrom(...TERMINAL_STATUSES),
         (status) => {
           expect(VALID_TRANSITIONS[status]).toHaveLength(0)
         },

@@ -54,13 +54,15 @@ describe('unwrap', () => {
       error_detail: testErrorDetail,
       success: false,
     })
-    expect(() => unwrap(response)).toThrow(ApiRequestError)
+    let caught: ApiRequestError | null = null
     try {
       unwrap(response)
     } catch (err) {
-      expect((err as ApiRequestError).message).toBe('Something went wrong')
-      expect((err as ApiRequestError).errorDetail).toEqual(testErrorDetail)
+      caught = err as ApiRequestError
     }
+    expect(caught).toBeInstanceOf(ApiRequestError)
+    expect(caught!.message).toBe('Something went wrong')
+    expect(caught!.errorDetail).toEqual(testErrorDetail)
   })
 
   it('throws for null body', () => {

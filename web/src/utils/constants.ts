@@ -33,7 +33,7 @@ export const TASK_STATUS_ORDER: readonly TaskStatus[] = [
 ] as const
 
 /** Terminal task statuses that cannot transition further. */
-export const TERMINAL_STATUSES = new Set<TaskStatus>(['completed', 'cancelled'])
+export const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set<TaskStatus>(['completed', 'cancelled'])
 
 /** Task status transitions map. */
 export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[]>> = {
@@ -96,7 +96,7 @@ const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths'] as const
 export const SECURITY_SENSITIVE_SETTINGS: ReadonlySet<string> = new Set(SECURITY_SENSITIVE_KEYS)
 
 /** Settings that are simple string arrays and should render as chip inputs in GUI mode. */
-export const SIMPLE_ARRAY_SETTINGS = new Set([
+export const SIMPLE_ARRAY_SETTINGS: ReadonlySet<string> = new Set([
   'api/cors_allowed_origins',
   'api/rate_limit_exclude_paths',
   'api/auth_exclude_paths',

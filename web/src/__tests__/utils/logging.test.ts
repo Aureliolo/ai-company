@@ -9,8 +9,11 @@ describe('sanitizeForLog', () => {
     expect(sanitizeForLog(undefined)).toBe('undefined')
   })
 
-  it('extracts Error.message', () => {
-    expect(sanitizeForLog(new Error('boom'))).toBe('boom')
+  it('extracts Error stack (includes message)', () => {
+    const result = sanitizeForLog(new Error('boom'))
+    // Stack starts with "Error: boom" followed by stack frames
+    expect(result).toContain('Error: boom')
+    expect(result).toContain('at ')
   })
 
   it('strips control characters', () => {
@@ -24,6 +27,8 @@ describe('sanitizeForLog', () => {
   it('preserves printable ASCII and unicode', () => {
     expect(sanitizeForLog('Hello, World! 123')).toBe('Hello, World! 123')
     expect(sanitizeForLog('cafe')).toBe('cafe')
+    expect(sanitizeForLog('caf\u00e9')).toBe('caf\u00e9')
+    expect(sanitizeForLog('\u3053\u3093\u306b\u3061\u306f')).toBe('\u3053\u3093\u306b\u3061\u306f')
   })
 
   it('truncates at maxLen', () => {
