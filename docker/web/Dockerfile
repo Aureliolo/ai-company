@@ -21,7 +21,7 @@ RUN npm run build \
     && find /app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) -size +256c -exec gzip -9 -k {} \;
 
 # Stage 2: Serve with nginx
-FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:ccbac1a4c20a8b41c5dd1691bd91d63eda3b7989d643a33fd47841838519bfb9
+FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:6582a34398ce9530ea3ae5b46595391a26ef44955335bed21a9afa4c3f715c70
 
 LABEL org.opencontainers.image.title="synthorg-web" \
       org.opencontainers.image.description="SynthOrg web dashboard" \
