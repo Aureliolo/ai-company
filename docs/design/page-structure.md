@@ -1,0 +1,360 @@
+---
+title: Page Structure & Information Architecture
+description: Validated page list, navigation hierarchy, URL routing map, WebSocket subscriptions, and responsive scope for the v0.5.0 web dashboard.
+---
+
+# Page Structure & Information Architecture
+
+## Overview
+
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (20 controllers, 7 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs in v0.5.0; stub-only controllers (ProjectController, ArtifactController) are explicitly excluded from the page list.
+
+---
+
+## Page List
+
+### Primary Navigation
+
+High-frequency destinations, always visible in the sidebar.
+
+#### Dashboard (`/`)
+
+Org overview: department health indicators (green/amber/red), recent activity widget, budget snapshot with sparkline, active task summary, agent status counts, approval badge count. The central "is the company healthy?" view.
+
+**API endpoints**: `GET /analytics/overview`, `GET /analytics/trends`, `GET /company/departments`, `GET /agents`
+**WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all -- aggregated into health indicators and activity feed)
+
+#### Org Chart (`/org`)
+
+Living org visualization with real-time agent status. Default mode is read-only: interactive graph (XyFlow) showing CEO, departments, teams, agents with status dots and health overlays. Click agent nodes to open Agent Detail panel.
+
+"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, description, autonomy, shutdown timeout), Agents (card grid with add/edit/delete), Departments (card grid with nested teams/reporting/policies). This is the former Company page merged into the Org Chart -- same data domain, one destination.
+
+**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /agents`, `GET /agents/{name}`
+**WS channels**: `agents` (status changes, hired/fired), `system`
+
+#### Task Board (`/tasks`)
+
+Kanban view (default) and list view toggle. Filter by status, assignee, department. Task cards show title, assignee, status, priority. Click opens task detail with full context, state transition buttons, and "Coordinate" action (triggers multi-agent coordination via `/tasks/{id}/coordinate`).
+
+Project filter dropdown available but empty until project backend exists (stub controller).
+
+**API endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PATCH /tasks/{id}`, `POST /tasks/{id}/transition`, `POST /tasks/{id}/cancel`, `DELETE /tasks/{id}`, `POST /tasks/{id}/coordinate`
+**WS channels**: `tasks`
+
+#### Budget (`/budget`)
+
+P&L management dashboard -- not a billing tab. Current period spend vs budget, per-agent cost breakdown, per-department rollups, trend lines, cost anomaly highlights. Forecast sub-view (`/budget/forecast`) shows projected spend trajectories from the analytics engine.
+
+**API endpoints**: `GET /budget/config`, `GET /budget/records`, `GET /budget/agents/{id}`, `GET /analytics/overview`, `GET /analytics/trends`, `GET /analytics/forecast`
+**WS channels**: `budget`
+
+#### Approvals (`/approvals`)
+
+Pending decisions queue -- agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level badges, action type labels, approve/reject with comment, history view. Sidebar badge shows live pending count.
+
+**API endpoints**: `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
+**WS channels**: `approvals`
+
+### Secondary Navigation
+
+Lower-frequency destinations in a collapsible "Workspace" section.
+
+#### Agents (`/agents`)
+
+Agent profiles as card grid or table. Each card shows name, role, department, status dot, current task. Click opens the Agent Detail panel (slide-in overlay, not a separate page -- but URL-addressable at `/agents/{name}` for deep linking).
+
+**Agent Detail panel tabs**:
+
+- **Overview**: Identity, personality traits, backstory, role description
+- **Performance**: Collaboration score, calibration data, task completion rates, career arc narrative
+- **Access**: Autonomy level (view/edit), tool permissions, authority boundaries
+- **Activity**: Assigned tasks, recent actions, spending breakdown
+
+**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{id}/autonomy`, `PUT /agents/{id}/autonomy`, `GET /agents/{id}/collaboration/score`, `GET /agents/{id}/collaboration/override`, `GET /agents/{id}/collaboration/calibration`, `GET /budget/agents/{id}`
+**WS channels**: `agents`
+
+#### Messages (`/messages`)
+
+Channel-filtered message feed for inspecting agent-to-agent communications. Channel list sidebar (from `/messages/channels`), main message feed with real-time updates. Filter by channel via URL query parameter (`/messages?channel={name}`).
+
+This is an investigative tool -- users examine delegation chains, audit coordination, debug inter-agent communication. Not a chat interface.
+
+**API endpoints**: `GET /messages`, `GET /messages/channels`
+**WS channels**: `messages`
+
+#### Meetings (`/meetings`)
+
+Meeting history list with status/type filters. Click opens meeting detail (`/meetings/{id}`) with transcript and outcomes. "Trigger Meeting" action creates event-based meetings.
+
+**API endpoints**: `GET /meetings`, `GET /meetings/{id}`, `POST /meetings/trigger`
+**WS channels**: `meetings`
+
+#### Providers (`/providers`)
+
+LLM provider management. CRUD cards for configured providers. Connection test button. Preset-based creation flow. Model auto-discovery. Provider detail/edit at `/providers/{name}`.
+
+No WebSocket subscription -- provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
+
+**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
+
+#### Settings (`/settings`)
+
+Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Two-column responsive grid, basic/advanced mode, GUI/JSON/YAML edit toggle. Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
+
+The **backup namespace** includes backup management CRUD: trigger backup, list backups, view details, restore, delete. This consolidates the BackupController under the Settings page.
+
+System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
+
+**API endpoints**: `GET /settings/schema`, `GET /settings/schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**WS channels**: `system` (restart-required notifications)
+
+### Standalone Pages
+
+Not in sidebar navigation.
+
+#### Login (`/login`)
+
+Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or `/setup` if setup is not complete (based on `GET /setup/status`).
+
+**API endpoints**: `POST /auth/setup`, `POST /auth/login`, `GET /setup/status`
+
+#### Setup Wizard (`/setup`)
+
+Multi-step first-run flow: template selection, company creation, agent configuration, provider setup, completion. Each step is URL-addressable (`/setup/{step}`). Redirects to `/` if setup is already complete.
+
+**API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/company`, `POST /setup/agent`, `GET /setup/agents`, `PUT /setup/agents/{agent_index}/name`, `PUT /setup/agents/{agent_index}/model`, `POST /setup/agents/{agent_index}/randomize-name`, `GET /setup/name-locales/available`, `GET /setup/name-locales`, `PUT /setup/name-locales`, `POST /setup/complete`
+
+### Overlays
+
+Not pages -- triggered by user interaction, rendered over current page.
+
+#### Command Palette
+
+**Trigger**: Cmd+K (macOS) / Ctrl+K (Windows/Linux)
+Global search overlay: navigate to any page, search agents by name, search tasks, jump to settings namespaces. Built with `cmdk` library.
+
+#### Notifications Panel
+
+**Trigger**: Bell icon in sidebar bottom + unread badge
+Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
+
+#### Agent Detail Panel
+
+**Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
+Slide-in panel with tabbed content (Overview, Performance, Access, Activity). Not a separate route -- overlays the current page. URL updates to `/agents/{name}` for deep linking and back-button support.
+
+---
+
+## Navigation Hierarchy
+
+```text
+SIDEBAR (220px expanded / 56px icon rail)
+|
++-- [Logo / Brand mark]
+|
++-- PRIMARY
+|   +-- Dashboard          [LayoutDashboard]     /
+|   +-- Org Chart          [GitBranch]           /org
+|   +-- Task Board         [KanbanSquare]        /tasks
+|   +-- Budget             [DollarSign]          /budget  [amber dot when >85% spent]
+|   +-- Approvals          [ShieldCheck]         /approvals  [badge: pending count]
+|
++-- WORKSPACE (collapsible label)
+|   +-- Agents             [Users]               /agents
+|   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
+|   +-- Meetings           [Video]               /meetings
+|   +-- Providers          [Cpu]                 /providers
+|   +-- Settings           [Settings]            /settings
+|
++-- BOTTOM
+    +-- [Collapse toggle]
+    +-- [Notifications bell + badge]
+    +-- [Cmd+K hint]
+    +-- [Connection status dot from /health]
+    +-- [User avatar / role badge / logout]
+```
+
+**Icon source**: Lucide React (already a project dependency).
+
+**Visual separators**: Thin border lines between Primary, Workspace, and Bottom sections. No section headers for Primary -- items speak for themselves. "Workspace" label for secondary section, hidden when sidebar is collapsed to icon rail.
+
+**Badge behaviors**:
+
+- **Approvals**: Live count of pending approvals from WS `approvals` channel. Red badge. Disappears at zero.
+- **Messages**: Unread message count from WS `messages` channel. Muted badge. Disappears at zero.
+- **Budget**: Amber dot (no number) when budget exceeds 85% threshold. Source: WS `budget` channel alerts.
+- **Notifications bell**: Aggregate unread count from system + approvals + budget alerts. Disappears at zero.
+
+---
+
+## URL Routing Map
+
+### Application Routes
+
+| Route | Page | Notes |
+|-------|------|-------|
+| `/` | Dashboard | Home. Redirects to `/setup` if not configured |
+| `/login` | Login | No sidebar, full page |
+| `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
+| `/setup/:step` | Setup Wizard step | `template`, `company`, `agents`, `providers`, `complete` |
+| `/org` | Org Chart | Read-only visualization |
+| `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD |
+| `/tasks` | Task Board | Kanban default |
+| `/tasks?view=list` | Task Board (list) | List view toggle |
+| `/tasks?status=:status` | Task Board (filtered) | Filter by task status |
+| `/tasks/:taskId` | Task detail | Panel overlay on board |
+| `/budget` | Budget | P&L dashboard |
+| `/budget/forecast` | Budget forecast | Projection charts |
+| `/approvals` | Approvals | Pending queue |
+| `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
+| `/agents` | Agents | Profile list |
+| `/agents/:agentName` | Agent detail | Slide-in panel, URL-addressable |
+| `/messages` | Messages | Channel feed |
+| `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
+| `/meetings` | Meetings | Meeting history |
+| `/meetings/:meetingId` | Meeting detail | Transcript and outcomes |
+| `/providers` | Providers | Provider list |
+| `/providers/:providerName` | Provider detail | Edit/test provider |
+| `/settings` | Settings | Namespace overview |
+| `/settings/:namespace` | Settings (filtered) | Single namespace view |
+| `*` | 404 Not Found | Catch-all |
+
+### Route Guards
+
+| Rule | Behavior |
+|------|----------|
+| No JWT token | Redirect to `/login` (all routes except `/login` and `/setup`) |
+| Setup not complete | Redirect to `/setup` (all routes except `/login` and `/setup`) |
+| Setup already complete | Redirect to `/` (when navigating to `/setup`) |
+| `/login` with valid JWT | Redirect to `/` |
+
+---
+
+## WebSocket Channel Subscription Map
+
+Single WebSocket connection per session, established after login. Client subscribes to all 7 channels. Events are dispatched client-side to Zustand stores based on channel.
+
+| Page | Channels | Events of Interest |
+|------|----------|--------------------|
+| **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All -- aggregated into health indicators, activity feed, badge counts |
+| **Org Chart** | `agents`, `system` | Agent hired/fired, status changes |
+| **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
+| **Budget** | `budget` | Cost records added, budget alerts |
+| **Approvals** | `approvals` | Approval submitted/approved/rejected/expired |
+| **Agents** | `agents` | Agent status changes |
+| **Messages** | `messages` | New messages sent |
+| **Meetings** | `meetings` | Meeting started/completed/failed |
+| **Providers** | (none) | N/A -- polling via TanStack Query |
+| **Settings** | `system` | Restart-required notifications |
+| **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
+
+**Global subscriptions** (active regardless of current page):
+
+- `system`: Connection status, shutdown notices
+- `approvals`: Badge count for sidebar
+- `budget`: Threshold alert for sidebar indicator
+- `messages`: Unread count for sidebar badge
+
+---
+
+## Responsive Scope
+
+Desktop-first with minimal tablet support. No mobile layout for v0.5.0.
+
+| Breakpoint | Sidebar | Content | Rationale |
+|------------|---------|---------|-----------|
+| >=1280px | Full (220px) | Multi-column layouts | Standard desktop |
+| 1024--1279px | Auto-collapses to icon rail (56px) | Full width minus rail | Smaller desktops, split-screen |
+| 768--1023px | Hidden (hamburger toggle, 240px overlay) | Single column | Tablet landscape |
+| <768px | Hidden | "Use desktop or CLI" message | Not designed for mobile -- Go CLI covers quick-check use cases |
+
+The density system (Dense/Balanced/Medium/Sparse from [Brand & UX](brand-and-ux.md)) provides additional user control over information density at any breakpoint.
+
+---
+
+## Resolved Questions
+
+### Activity feed: Dashboard widget (not global drawer)
+
+The activity feed is a Dashboard widget, not a persistent global element. Rationale:
+
+- A persistent drawer competes with page content for attention (violates principle #3: "navigation recedes, content shines")
+- The Dashboard is the natural home for activity summaries -- users who want more detail click through to the relevant page (principle #5: progressive disclosure)
+- Linear, Vercel, and Grafana all use dashboard widgets for activity, not persistent drawers
+- The Dashboard already subscribes to all WS channels for its health indicators -- the activity widget is a natural aggregation
+
+### Messages: Own page (not drawer)
+
+Messages have a dedicated API (`/messages` + channel filtering) and WebSocket channel -- this is a first-class domain. Agent-to-agent communications require investigation (delegation chains, coordination audits), which needs filters, scrolling, and context that a drawer cannot provide. The channel filtering model maps naturally to a page with a channel sidebar and message feed.
+
+### Org Chart + Company: Merged with mode separation
+
+Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization. An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Inline graph editing (drag to reorganize) is deferred to v0.6+.
+
+---
+
+## Controller-to-Page Map
+
+Every backend controller has a home in the page structure. No orphans.
+
+| Controller | Page |
+|------------|------|
+| HealthController | Sidebar (connection status dot) |
+| AuthController | Login |
+| SetupController | Setup Wizard |
+| CompanyController | Org Chart |
+| DepartmentController | Org Chart |
+| AgentController | Agents, Org Chart |
+| TaskController | Task Board |
+| MessageController | Messages |
+| MeetingController | Meetings |
+| BudgetController | Budget, Dashboard |
+| AnalyticsController | Dashboard, Budget |
+| ProviderController | Providers |
+| ApprovalsController | Approvals, Dashboard |
+| SettingsController | Settings |
+| BackupController | Settings (backup namespace) |
+| AutonomyController | Agent Detail panel (Access tab) |
+| CollaborationController | Agent Detail panel (Performance tab) |
+| CoordinationController | Task Board (task detail action) |
+| ProjectController | Excluded (stub) |
+| ArtifactController | Excluded (stub, pending #612) |
+
+---
+
+## Design Principle Compliance
+
+How this page structure supports the 10 design principles from #762:
+
+| # | Principle | How the structure supports it |
+|---|-----------|-------------------------------|
+| 1 | Data is never just a number | Dashboard: sparklines + deltas via `/analytics/trends`. Budget: forecast projections. Agent detail: career arc narrative |
+| 2 | Real-time means visible | WS subscription map ensures every data-bearing page has live updates. Sidebar badges update in real time |
+| 3 | Navigation recedes, content shines | Collapsible sidebar (220px to 56px). No persistent drawers competing with content |
+| 4 | Status arrives, doesn't flash | WS events update Zustand stores; animation profile is "status-driven" (only changed elements animate) |
+| 5 | Progressive disclosure | Dashboard summary to page detail. Agent list to slide-in panel. Org chart node to agent detail |
+| 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board and Approvals |
+| 7 | Typography carries information | Geist Mono for metrics/values/agent names. Geist Sans for labels/descriptions |
+| 8 | Prose alongside metrics | Agent detail: biography narrative next to performance numbers. Budget: cost context explanations |
+| 9 | Every pixel earns its place | No placeholder pages (Artifacts, Projects excluded). No "Coming Soon" stubs |
+| 10 | One component, one look | Consistent card/panel/badge patterns across all pages via shadcn/ui primitives |
+
+---
+
+## Reference Materials
+
+| Resource | Location |
+|----------|----------|
+| Brand identity and UX design system | [Brand & UX](brand-and-ux.md) |
+| UX research and competitor analysis | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
+| Design exploration mockups | `feat/765-design-exploration` branch, `mockups-v2/` |
+| Winning prototype (Mission Control) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
+| WebSocket channel definitions | `src/synthorg/api/channels.py` |
+| API controller registry | `src/synthorg/api/controllers/__init__.py` |
+| Operations design spec (API surface) | [Operations](operations.md) |
+| Parent UX overhaul issue | [#762](https://github.com/Aureliolo/synthorg/issues/762) |
+| Design exploration issue | [#765](https://github.com/Aureliolo/synthorg/issues/765) |
+| Page structure issue | [#766](https://github.com/Aureliolo/synthorg/issues/766) |
