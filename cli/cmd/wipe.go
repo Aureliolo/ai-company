@@ -51,8 +51,9 @@ with a clean slate. You are prompted at each step:
   1. Whether to create a backup (default: yes)
   2. Whether to start containers for the backup (if needed)
   3. Where to save the backup archive (if backing up)
-  4. Final confirmation before wiping
-  5. Whether to start containers after the wipe (default: yes)
+  4. Whether to overwrite if the backup file already exists
+  5. Final confirmation before wiping
+  6. Whether to start containers after the wipe (default: yes)
 
 Requires an interactive terminal.`,
 	RunE: runWipe,
@@ -116,7 +117,8 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 }
 
 // confirmAndWipe asks for final confirmation, stops containers, removes
-// volumes, and optionally restarts the stack.
+// volumes, and optionally restarts the stack. Restart failures are
+// non-fatal -- they produce a warning and a manual-start hint.
 func (wc *wipeContext) confirmAndWipe() error {
 	confirmed, err := wc.confirmWipe()
 	if err != nil {
@@ -147,7 +149,11 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 
 	wc.out.Blank()
-	wc.out.Success("Factory reset complete")
+	if startAfter {
+		wc.out.Success("Factory reset complete")
+	} else {
+		wc.out.Success("Factory reset complete (containers not restarted)")
+	}
 
 	if startAfter {
 		setupURL := fmt.Sprintf("http://localhost:%d/setup", wc.state.WebPort)
@@ -202,7 +208,11 @@ func (wc *wipeContext) containersRunning() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("checking container status: %w", err)
 	}
-	return !isEmptyPS(psOut), nil
+	empty, err := isEmptyPS(psOut)
+	if err != nil {
+		return false, err
+	}
+	return !empty, nil
 }
 
 // startContainers verifies, pulls, and starts the stack, then waits for
@@ -217,15 +227,17 @@ func (wc *wipeContext) startContainers() error {
 }
 
 // waitForBackendHealth waits for the backend to become healthy.
-// Returns an error if the health check times out.
+// Returns an error if the backend does not become healthy within the
+// timeout or the context is cancelled.
 func (wc *wipeContext) waitForBackendHealth() error {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", wc.state.BackendPort)
 	return health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second)
 }
 
 // offerBackup prompts whether to create a backup, and if so, ensures
-// containers are running (prompting if needed), then creates the backup
-// via the backend API and copies the archive to a local path.
+// containers are running (prompting if needed), prompts for a save path,
+// checks for overwrite conflicts, then creates the backup via the backend
+// API and copies the archive to a local path.
 func (wc *wipeContext) offerBackup() error {
 	wantBackup, err := wc.promptForBackup()
 	if err != nil {
@@ -261,25 +273,25 @@ func (wc *wipeContext) offerBackup() error {
 // without running containers). Returns true when the backend is ready
 // for a backup, or false when the user chose to skip the backup.
 func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
-	running, err := wc.containersRunning()
-	if err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
-		if err := wc.askContinueWithoutBackup(
-			"Could not check container status. Continue with wipe anyway?",
-		); err != nil {
+	// askToSkip warns and prompts the user to continue without a backup.
+	// Returns (false, nil) if the user agrees to skip, or (false, err)
+	// if the user cancels the wipe.
+	askToSkip := func(prompt string) (bool, error) {
+		if err := wc.askContinueWithoutBackup(prompt); err != nil {
 			return false, err
 		}
 		return false, nil
 	}
+
+	running, err := wc.containersRunning()
+	if err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
+		return askToSkip("Could not check container status. Continue with wipe anyway?")
+	}
 	if running {
 		if err := wc.waitForBackendHealth(); err != nil {
 			wc.errOut.Warn(fmt.Sprintf("Backend not healthy: %v", err))
-			if err := wc.askContinueWithoutBackup(
-				"Backend is not healthy. Continue with wipe anyway?",
-			); err != nil {
-				return false, err
-			}
-			return false, nil
+			return askToSkip("Backend is not healthy. Continue with wipe anyway?")
 		}
 		return true, nil
 	}
@@ -289,23 +301,20 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 		return false, err
 	}
 	if !startOK {
-		if err := wc.askContinueWithoutBackup(
-			"Backup requires running containers. Continue with wipe anyway?",
-		); err != nil {
-			return false, err
-		}
-		return false, nil
+		return askToSkip("Backup requires running containers. Continue with wipe anyway?")
 	}
 
 	if err := wc.startContainers(); err != nil {
 		wc.errOut.Warn(fmt.Sprintf("Could not start containers for backup: %v", err))
-		if err := wc.askContinueWithoutBackup(
-			"Could not start containers for backup. Continue with wipe anyway?",
-		); err != nil {
-			return false, err
-		}
-		return false, nil
+		return askToSkip("Could not start containers for backup. Continue with wipe anyway?")
 	}
+
+	// Containers just started -- wait for the backend before attempting backup.
+	if err := wc.waitForBackendHealth(); err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Backend not healthy after start: %v", err))
+		return askToSkip("Backend is not healthy. Continue with wipe anyway?")
+	}
+
 	return true, nil
 }
 
@@ -356,6 +365,7 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = os.TempDir()
+		wc.errOut.Warn("Could not determine home directory; defaulting to temp directory")
 	}
 	defaultPath := filepath.Join(homeDir, fmt.Sprintf("synthorg-backup-%s.tar.gz", time.Now().Format("20060102-150405")))
 
@@ -398,30 +408,33 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 // tool this is acceptable -- the race requires a co-located malicious
 // process, and resolving it would require restructuring both write paths.
 func (wc *wipeContext) checkOverwrite(path string) error {
-	_, err := os.Stat(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil // file does not exist -- safe to write
 		}
 		return fmt.Errorf("cannot access save path: %w", err)
 	}
+	if info.IsDir() {
+		return fmt.Errorf("save path must be a file, not a directory: %s", path)
+	}
 	var overwrite bool
 	err = wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title(fmt.Sprintf("File already exists: %s. Overwrite?", filepath.Base(path))).
+			Title(fmt.Sprintf("File already exists: %s. Overwrite?", path)).
 			Affirmative("Yes, overwrite").
 			Negative("Cancel").
 			Value(&overwrite),
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Wipe cancelled.")
+			wc.out.Hint("Overwrite declined -- wipe cancelled.")
 			return errWipeCancelled
 		}
 		return fmt.Errorf("overwrite prompt: %w", err)
 	}
 	if !overwrite {
-		wc.out.Hint("Wipe cancelled.")
+		wc.out.Hint("Overwrite declined -- wipe cancelled.")
 		return errWipeCancelled
 	}
 	return nil
@@ -434,7 +447,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	if err != nil {
 		sp.Error("Backup failed")
 		wc.errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
-		return wc.askContinueWithoutBackup("Backup failed. Continue with wipe anyway?")
+		return wc.askContinueWithoutBackup("Backup creation failed. Continue with wipe anyway?")
 	}
 	sp.Success("Backup created")
 
@@ -442,8 +455,10 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	if err := copyBackupFromContainer(wc.ctx, wc.info, wc.safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
 		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
-		wc.errOut.Hint("The backup exists in the container but will be lost after wipe.")
-		return wc.askContinueWithoutBackup("Backup failed. Continue with wipe anyway?")
+		wc.errOut.Hint("The backup exists in the container but will be destroyed by the wipe.")
+		return wc.askContinueWithoutBackup(
+			"Backup was created but could not be copied locally. Continue with wipe anyway?",
+		)
 	}
 	sp.Success(fmt.Sprintf("Backup saved to %s", savePath))
 
@@ -485,16 +500,20 @@ func copyBackupFromContainer(ctx context.Context, info docker.Info, safeDir, bac
 		return fmt.Errorf("invalid backup ID: %s", backupID)
 	}
 
-	// Try compressed archive first (default).
+	// Try compressed archive first (default). If the compressed file
+	// does not exist, docker compose cp fails and we fall back to the
+	// uncompressed directory below. Log the first error for diagnostics.
 	archiveName := backupID + "_manual.tar.gz"
 	containerSrc := "backend:/data/backups/" + archiveName
-	err := composeRunQuiet(ctx, info, safeDir, "cp", containerSrc, localPath)
-	if err == nil {
+	firstErr := composeRunQuiet(ctx, info, safeDir, "cp", containerSrc, localPath)
+	if firstErr == nil {
 		return nil
 	}
 
-	// Fall back to uncompressed directory -- copy to a temp dir, then
-	// tar it locally so the user gets a single file either way.
+	// Fall back to uncompressed directory -- the compressed archive may
+	// not exist depending on the backup handler. Log the first attempt
+	// error for diagnostics in case the fallback also fails.
+	_, _ = fmt.Fprintf(os.Stderr, "compressed archive not available (%v), trying uncompressed directory\n", firstErr)
 	dirName := backupID + "_manual"
 	containerSrc = "backend:/data/backups/" + dirName + "/."
 	tmpDir, mkErr := os.MkdirTemp("", "synthorg-backup-*")
@@ -591,18 +610,22 @@ func (wc *wipeContext) promptStartAfterWipe() (bool, error) {
 
 // isEmptyPS returns true if docker compose ps output indicates no containers.
 // Handles both JSON array format (Compose v2.21+) and NDJSON (older versions).
-func isEmptyPS(output string) bool {
+// Returns an error if the JSON output cannot be parsed.
+func isEmptyPS(output string) (bool, error) {
 	trimmed := strings.TrimSpace(output)
 	if trimmed == "" {
-		return true
+		return true, nil
 	}
 	// JSON array format (Compose v2.21+).
 	if strings.HasPrefix(trimmed, "[") {
 		var arr []json.RawMessage
-		return json.Unmarshal([]byte(trimmed), &arr) == nil && len(arr) == 0
+		if err := json.Unmarshal([]byte(trimmed), &arr); err != nil {
+			return false, fmt.Errorf("parsing docker compose ps output: %w", err)
+		}
+		return len(arr) == 0, nil
 	}
 	// NDJSON: any non-empty line means at least one container.
-	return false
+	return false, nil
 }
 
 // openBrowser opens a URL in the default browser. Only localhost HTTP(S)
