@@ -150,6 +150,7 @@ class FakeLifecycleEventRepository:
             result = [e for e in result if e.event_type == event_type]
         if since is not None:
             result = [e for e in result if e.timestamp >= since]
+        result = sorted(result, key=lambda e: e.timestamp, reverse=True)
         if limit is not None:
             result = result[:limit]
         return tuple(result)

@@ -217,9 +217,11 @@ class AgentController(Controller):
         """
         app_state: AppState = state.app_state
         agent_id = await _resolve_agent_id(app_state, agent_name)
+        # No limit here: career events are few per agent and the filter
+        # below keeps only ~5 event types; capping would risk dropping
+        # older milestones (e.g. the original HIRED event).
         events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
-            limit=_MAX_LIFECYCLE_EVENTS,
         )
         career = filter_career_events(events)
         logger.debug(

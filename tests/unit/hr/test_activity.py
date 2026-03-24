@@ -150,8 +150,9 @@ class TestMergeActivityTimeline:
         )
 
         assert len(timeline) == 2
-        # Both events present, order is stable (lifecycle first in input)
-        assert {e.event_type for e in timeline} == {"hired", "task_completed"}
+        # Stable sort: lifecycle events appear before task metrics at same timestamp
+        assert timeline[0].event_type == "hired"
+        assert timeline[1].event_type == "task_completed"
 
     def test_related_ids_populated(self) -> None:
         hired = _make_lifecycle_event(agent_id="agent-001")
