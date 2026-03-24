@@ -24,6 +24,12 @@ import { SidebarNavItem } from './SidebarNavItem'
 
 const STORAGE_KEY = 'sidebar_collapsed'
 
+const SIDEBAR_BUTTON_CLASS = cn(
+  'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
+  'text-surface-500 transition-colors',
+  'hover:bg-surface-100 hover:text-surface-700',
+)
+
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(STORAGE_KEY) === 'true',
@@ -143,7 +149,7 @@ export function Sidebar() {
             onClick={toggleCollapse}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+            className={SIDEBAR_BUTTON_CLASS}
           >
             {collapsed ? (
               <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
@@ -159,7 +165,7 @@ export function Sidebar() {
           <button
             title="Notifications"
             aria-label="Notifications"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+            className={SIDEBAR_BUTTON_CLASS}
           >
             <Bell
               className={cn('size-5 shrink-0', collapsed && 'mx-auto')}

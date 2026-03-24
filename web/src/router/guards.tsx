@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, Outlet } from 'react-router'
 import { useAuthStore, useIsAuthenticated } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
@@ -45,26 +45,38 @@ function FullScreenError({ onRetry }: { onRetry: () => void }) {
  * Requires authentication. Redirects to /login if no JWT token.
  * Proactively validates the token by fetching the user profile
  * when authenticated but user data is not yet loaded (page refresh).
+ * Fail-closed: shows loading until validation completes.
  */
 export function AuthGuard() {
   const isAuthenticated = useIsAuthenticated()
   const user = useAuthStore((s) => s.user)
   const fetchUser = useAuthStore((s) => s.fetchUser)
+  // Initialize validating to true when we have a token but no
+  // user (page refresh). useState initializer avoids synchronous
+  // setState inside the effect, satisfying the lint rule.
+  const [validating, setValidating] = useState(
+    () => isAuthenticated && !user,
+  )
   const validatedRef = useRef(false)
 
   useEffect(() => {
     if (!isAuthenticated || user || validatedRef.current) return
     validatedRef.current = true
 
-    // Proactively validate token on page refresh. On 401,
-    // fetchUser calls clearAuth() which redirects to /login.
-    // Non-401 errors are tolerated (profile retried on next
-    // API call); the guard falls through to render children.
-    fetchUser().catch(() => {})
+    // Validate token by fetching user profile. On 401,
+    // fetchUser calls clearAuth() -> isAuthenticated=false ->
+    // redirect to /login. Non-401 errors are tolerated.
+    fetchUser()
+      .catch(() => {})
+      .finally(() => setValidating(false))
   }, [isAuthenticated, user, fetchUser])
 
   if (!isAuthenticated) {
     return <Navigate to={ROUTES.LOGIN} replace />
+  }
+
+  if (validating) {
+    return <FullScreenLoading />
   }
 
   return <Outlet />

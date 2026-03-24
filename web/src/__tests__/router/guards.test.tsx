@@ -76,7 +76,15 @@ describe('AuthGuard', () => {
   })
 
   it('renders children when authenticated', () => {
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({
+      token: 'test-token',
+      user: {
+        id: '1',
+        username: 'admin',
+        role: 'ceo',
+        must_change_password: false,
+      },
+    })
 
     renderRoutes(
       [
@@ -92,6 +100,31 @@ describe('AuthGuard', () => {
 
     expect(screen.getByText('Protected')).toBeInTheDocument()
     expect(screen.queryByText('Login Page')).not.toBeInTheDocument()
+  })
+
+  it('shows loading while validating token on page refresh', async () => {
+    // Token present but no user -- simulates page refresh
+    useAuthStore.setState({ token: 'test-token' })
+
+    renderRoutes(
+      [
+        {
+          path: '/',
+          element: <AuthGuard />,
+          children: [{ index: true, element: <div>Protected</div> }],
+        },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    // Guard shows loading while fetchUser validates the token
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByText('Protected')).not.toBeInTheDocument()
+
+    // After validation completes, protected content renders
+    await waitFor(() => {
+      expect(screen.getByText('Protected')).toBeInTheDocument()
+    })
   })
 })
 
