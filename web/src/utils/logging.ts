@@ -8,14 +8,24 @@ function isBidiControl(code: number): boolean {
 
 /** Sanitize a value for safe logging (strip control chars + BIDI overrides, truncate). */
 export function sanitizeForLog(value: unknown, maxLen = 500): string {
-  const raw = value instanceof Error
-    ? (value.stack ?? value.message ?? String(value))
-    : String(value)
+  const cap = Number.isFinite(maxLen) ? Math.max(0, Math.floor(maxLen)) : 500
+  if (cap === 0) return ''
+  let raw: string
+  if (value instanceof Error) {
+    raw = value.stack ?? value.message ?? String(value)
+  } else {
+    try {
+      raw = String(value)
+    } catch {
+      raw = '[unstringifiable]'
+    }
+  }
   let result = ''
   for (const ch of raw) {
-    const code = ch.charCodeAt(0)
-    result += (code >= 0x20 && code !== 0x7f && !isBidiControl(code)) ? ch : ' '
-    if (result.length >= maxLen) break
+    const code = ch.codePointAt(0) ?? 0
+    const isControl = code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f)
+    result += (!isControl && !isBidiControl(code)) ? ch : ' '
+    if (result.length >= cap) break
   }
   return result
 }

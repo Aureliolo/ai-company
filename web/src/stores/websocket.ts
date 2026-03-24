@@ -7,6 +7,7 @@
 
 import { create } from 'zustand'
 import { AxiosError } from 'axios'
+import { WS_CHANNELS } from '@/api/types'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 import { getWsTicket } from '@/api/endpoints/auth'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
@@ -42,7 +43,7 @@ const activeSubscriptions: { channels: WsChannel[]; filters?: Record<string, str
 interface WebSocketState {
   connected: boolean
   reconnectExhausted: boolean
-  subscribedChannels: WsChannel[]
+  subscribedChannels: readonly WsChannel[]
 
   connect: () => Promise<void>
   disconnect: () => void
@@ -54,10 +55,8 @@ interface WebSocketState {
 
 // ── Helpers ─────────────────────────────────────────────────
 
-/** Known valid WsChannel values for runtime validation. */
-const VALID_WS_CHANNELS: ReadonlySet<string> = new Set<WsChannel>([
-  'tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings',
-])
+/** Known valid WsChannel values for runtime validation (derived from types.ts). */
+const VALID_WS_CHANNELS: ReadonlySet<string> = new Set(WS_CHANNELS)
 
 /** WS close codes that indicate auth failure (do not reconnect). */
 const WS_AUTH_FAILURE_CODES = new Set([4001, 4003])
@@ -219,6 +218,13 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         // isWsEvent validates all required WsEvent fields at runtime;
         // dispatchEvent has internal per-handler try/catch
         dispatchEvent(msg as unknown as WsEvent)
+      } else {
+        console.warn('WebSocket message failed WsEvent validation, discarding:', {
+          hasEventType: typeof msg.event_type,
+          hasChannel: typeof msg.channel,
+          hasTimestamp: typeof msg.timestamp,
+          hasPayload: typeof msg.payload,
+        })
       }
     }
 

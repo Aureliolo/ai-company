@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
 const MIN_POLL_INTERVAL = 100
@@ -34,7 +35,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
         await fnRef.current()
         setError(null)
       } catch (err) {
-        setError(sanitizeForLog(err, 200))
+        setError(getErrorMessage(err))
         console.error('Polling error:', sanitizeForLog(err))
       }
       scheduleTick(runId)
@@ -56,7 +57,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
       try {
         await fnRef.current()
       } catch (err) {
-        setError(sanitizeForLog(err, 200))
+        setError(getErrorMessage(err))
         console.error('Polling error:', sanitizeForLog(err))
       }
       scheduleTick(runId)

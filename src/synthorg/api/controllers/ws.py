@@ -100,6 +100,19 @@ async def _validate_ticket(
     return user
 
 
+async def _reject_auth(
+    socket: WebSocket[Any, Any, Any],
+    log_reason: str,
+    close_reason: str,
+    *,
+    code: int = _WS_CLOSE_AUTH_FAILED,
+    **extra_kwargs: str,
+) -> None:
+    """Log a warning and close the socket for an auth rejection."""
+    logger.warning(API_WS_TICKET_INVALID, reason=log_reason, **extra_kwargs)
+    await socket.close(code=code, reason=close_reason)
+
+
 async def _read_auth_message(  # noqa: PLR0911
     socket: WebSocket[Any, Any, Any],
 ) -> str | None:
@@ -113,43 +126,36 @@ async def _read_auth_message(  # noqa: PLR0911
             timeout=_WS_AUTH_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        logger.warning(API_WS_TICKET_INVALID, reason="auth_timeout")
-        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Auth timeout")
+        await _reject_auth(socket, "auth_timeout", "Auth timeout")
         return None
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="disconnect_during_auth")
         return None
 
     if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
-        logger.warning(API_WS_TICKET_INVALID, reason="auth_too_large")
-        await socket.close(
-            code=_WS_CLOSE_AUTH_FAILED,
-            reason="Auth message too large",
-        )
+        await _reject_auth(socket, "auth_too_large", "Auth message too large")
         return None
 
     try:
         msg = json.loads(data)
     except json.JSONDecodeError:
-        logger.warning(API_WS_TICKET_INVALID, reason="invalid_auth_json")
-        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Invalid auth message")
+        await _reject_auth(socket, "invalid_auth_json", "Invalid auth message")
         return None
 
     if not isinstance(msg, dict) or msg.get("action") != "auth":
         action = msg.get("action", "") if isinstance(msg, dict) else ""
-        logger.warning(
-            API_WS_TICKET_INVALID,
-            reason="expected_auth_action",
+        await _reject_auth(
+            socket,
+            "expected_auth_action",
+            "Expected auth action",
             action=str(action)[:64],
         )
-        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Expected auth action")
         return None
 
     raw_ticket = msg.get("ticket")
     ticket: str | None = raw_ticket if isinstance(raw_ticket, str) else None
     if not ticket:
-        logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket_in_auth")
-        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
+        await _reject_auth(socket, "missing_ticket_in_auth", "Missing ticket")
         return None
 
     return ticket
@@ -237,6 +243,24 @@ async def _check_ws_role(
     return True
 
 
+def _matches_filters(
+    event: dict[str, Any],
+    channel: str,
+    channel_filters: dict[str, str],
+) -> bool:
+    """Check whether the event payload matches the active channel filters."""
+    payload = event.get("payload", {})
+    if not isinstance(payload, dict):
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            channel=channel,
+            reason="payload_not_dict",
+            payload_type=type(payload).__name__,
+        )
+        return False
+    return all(payload.get(k) == v for k, v in channel_filters.items())
+
+
 async def _on_event(
     event_data: bytes,
     subscribed: set[str],
@@ -276,25 +300,15 @@ async def _on_event(
         return
 
     channel_filters = filters.get(channel)
-    if channel_filters:
-        payload = event.get("payload", {})
-        if not isinstance(payload, dict):
-            logger.warning(
-                API_WS_INVALID_MESSAGE,
-                channel=channel,
-                reason="payload_not_dict",
-                payload_type=type(payload).__name__,
-            )
-            return
-        if not all(payload.get(k) == v for k, v in channel_filters.items()):
-            return
+    if channel_filters and not _matches_filters(event, channel, channel_filters):
+        return
 
     try:
         await socket.send_text(event_data.decode("utf-8"))
     except WebSocketDisconnect:
         logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
     except Exception:
-        logger.warning(API_WS_SEND_FAILED, exc_info=True)
+        logger.error(API_WS_SEND_FAILED, exc_info=True)
         await socket.close(code=1011, reason="Internal error")
 
 
@@ -308,7 +322,7 @@ async def _authenticate_ws(
     """
     ticket_param = socket.query_params.get("ticket")
 
-    if ticket_param:
+    if ticket_param is not None:
         user = await _validate_ticket(socket)
         if user is None:
             return None
@@ -342,9 +356,9 @@ async def _setup_connection(
     socket: WebSocket[Any, Any, Any],
     user: AuthenticatedUser,
     *,
-    accepted: bool,
+    already_accepted: bool,
 ) -> tuple[ChannelsPlugin, Any] | None:
-    """Resolve plugin, subscribe to channels, and accept the connection.
+    """Resolve plugin, accept the connection, and subscribe to channels.
 
     Returns ``(channels_plugin, subscriber)`` on success, or ``None``
     (socket already closed) on failure.
@@ -363,11 +377,15 @@ async def _setup_connection(
         await socket.close(code=1011, reason="Internal error")
         return None
 
+    socket.scope["user"] = user
+    if not already_accepted:
+        await socket.accept()
+
     try:
         subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
     except Exception:
         logger.error(
-            API_WS_SEND_FAILED,
+            API_WS_TRANSPORT_ERROR,
             reason="subscribe_failed",
             client=str(socket.client),
             user_id=user.user_id,
@@ -376,9 +394,6 @@ async def _setup_connection(
         await socket.close(code=1011, reason="Internal error")
         return None
 
-    socket.scope["user"] = user
-    if not accepted:
-        await socket.accept()
     logger.info(
         API_WS_CONNECTED,
         client=str(socket.client),
@@ -408,12 +423,12 @@ async def ws_handler(
     auth_result = await _authenticate_ws(socket)
     if auth_result is None:
         return
-    user, accepted = auth_result
+    user, already_accepted = auth_result
 
     if not await _check_ws_role(socket, user):
         return
 
-    setup = await _setup_connection(socket, user, accepted=accepted)
+    setup = await _setup_connection(socket, user, already_accepted=already_accepted)
     if setup is None:
         return
     channels_plugin, subscriber = setup

@@ -51,6 +51,11 @@ export function getErrorMessage(error: unknown): string {
       return 'Network error. Please check your connection.'
     }
 
+    // For unhandled 4xx, surface a generic client error
+    if (status !== undefined && status >= 400 && status < 500) {
+      return `Request failed (${status}). Please check your input.`
+    }
+
     // For 5xx, use generic message instead of leaking server internals
     return 'A server error occurred. Please try again later.'
   }

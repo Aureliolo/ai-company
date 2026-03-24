@@ -311,13 +311,13 @@ class TestWsTicketAuth:
         """WS connection with invalid first-message ticket is rejected post-accept."""
         from litestar.exceptions import WebSocketDisconnect
 
-        def send_bad_ticket() -> None:
+        def attempt() -> None:
             with test_client.websocket_connect("/api/v1/ws") as ws:
                 ws.send_text(json.dumps({"action": "auth", "ticket": "bogus-ticket"}))
                 ws.receive_text()
 
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            send_bad_ticket()
+            attempt()
         assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
 
     def test_ws_rejects_missing_first_message_auth(
@@ -327,13 +327,13 @@ class TestWsTicketAuth:
         """WS connection sending non-auth first message is rejected."""
         from litestar.exceptions import WebSocketDisconnect
 
-        def send_wrong_action() -> None:
+        def attempt() -> None:
             with test_client.websocket_connect("/api/v1/ws") as ws:
                 ws.send_text(json.dumps({"action": "subscribe", "channels": ["tasks"]}))
                 ws.receive_text()
 
         with pytest.raises(WebSocketDisconnect) as exc_info:
-            send_wrong_action()
+            attempt()
         assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
 
     def test_ws_accepts_valid_ticket(

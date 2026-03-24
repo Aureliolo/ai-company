@@ -1,7 +1,8 @@
 import { renderHook } from '@testing-library/react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthStore } from '@/stores/auth'
-import type { UserInfoResponse } from '@/api/types'
+import type { HumanRole, UserInfoResponse } from '@/api/types'
+import { WRITE_ROLES } from '@/utils/constants'
 
 vi.mock('@/api/endpoints/auth', () => ({
   login: vi.fn(),
@@ -43,8 +44,9 @@ describe('useAuth', () => {
   })
 
   describe('canWrite', () => {
-    const writeRoles = ['ceo', 'manager', 'board_member', 'pair_programmer'] as const
-    const readOnlyRoles = ['observer', 'system'] as const
+    const writeRoles = WRITE_ROLES
+    const allRoles: readonly HumanRole[] = ['ceo', 'manager', 'board_member', 'pair_programmer', 'observer', 'system']
+    const readOnlyRoles = allRoles.filter((r) => !(WRITE_ROLES as readonly string[]).includes(r))
 
     for (const role of writeRoles) {
       it(`returns canWrite=true for ${role}`, () => {

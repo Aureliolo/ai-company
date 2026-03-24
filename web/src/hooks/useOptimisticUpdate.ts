@@ -8,11 +8,12 @@ import { getErrorMessage } from '@/utils/errors'
  * `applyOptimistic` applies the optimistic state and returns a rollback function,
  * and `serverAction` is the actual server request.
  *
- * A `null` return means one of two things:
+ * A `null` return means one of three things:
  * - **Server error**: `error` is set with a message. The optimistic state was rolled back.
  * - **Already in-flight**: `pending` was true, so the call was a no-op.
+ * - **Optimistic prepare failed**: `applyOptimistic` threw and the state was reverted.
  *
- * Callers should check `error` to distinguish server errors from no-op returns.
+ * Callers should check `error` to distinguish failures from no-op returns.
  */
 export function useOptimisticUpdate(): {
   pending: boolean

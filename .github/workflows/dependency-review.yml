@@ -22,6 +22,7 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high
+          retry-on-snapshot-warnings: true
           # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 -- MIT per classifiers, scancode misdetects
           # Python-2.0.1: editorconfig 0.17.1 (via jsbeautifier via litestar[standard])
           # MIT-0: cffi 2.0.0 -- permissive (MIT variant, no attribution required)

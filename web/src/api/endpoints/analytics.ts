@@ -11,7 +11,7 @@ export async function getTrends(
   metric?: TrendMetric,
 ): Promise<TrendsResponse> {
   const response = await apiClient.get<ApiResponse<TrendsResponse>>('/analytics/trends', {
-    params: { period, metric },
+    params: period !== undefined || metric !== undefined ? { period, metric } : undefined,
   })
   return unwrap(response)
 }

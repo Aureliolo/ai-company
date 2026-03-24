@@ -64,15 +64,14 @@ describe('unwrap', () => {
       error_detail: testErrorDetail,
       success: false,
     })
-    let caught: ApiRequestError | null = null
+    expect(() => unwrap(response)).toThrow(ApiRequestError)
     try {
       unwrap(response)
     } catch (err) {
-      caught = err as ApiRequestError
+      const caught = err as ApiRequestError
+      expect(caught.message).toBe('Something went wrong')
+      expect(caught.errorDetail).toEqual(testErrorDetail)
     }
-    expect(caught).toBeInstanceOf(ApiRequestError)
-    expect(caught!.message).toBe('Something went wrong')
-    expect(caught!.errorDetail).toEqual(testErrorDetail)
   })
 
   it('throws for null body', () => {

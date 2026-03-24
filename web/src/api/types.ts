@@ -753,14 +753,10 @@ export interface TriggerMeetingRequest {
 
 // ── WebSocket ────────────────────────────────────────────────
 
-export type WsChannel =
-  | 'tasks'
-  | 'agents'
-  | 'budget'
-  | 'messages'
-  | 'system'
-  | 'approvals'
-  | 'meetings'
+/** All valid WebSocket channel names. Runtime set derived from this in websocket store. */
+export const WS_CHANNELS = ['tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings'] as const
+
+export type WsChannel = typeof WS_CHANNELS[number]
 
 export type WsEventType =
   | 'task.created'
@@ -800,18 +796,18 @@ export type WsSubscriptionFilters = Readonly<Record<string, string>>
 
 export interface WsSubscribeMessage {
   action: 'subscribe'
-  channels: WsChannel[]
+  readonly channels: readonly WsChannel[]
   filters?: WsSubscriptionFilters
 }
 
 export interface WsUnsubscribeMessage {
   action: 'unsubscribe'
-  channels: WsChannel[]
+  readonly channels: readonly WsChannel[]
 }
 
 export interface WsAckMessage {
   action: 'subscribed' | 'unsubscribed'
-  channels: WsChannel[]
+  readonly channels: readonly WsChannel[]
 }
 
 export interface WsErrorMessage {

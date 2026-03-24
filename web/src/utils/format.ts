@@ -39,6 +39,7 @@ export function formatRelativeTime(iso: string | null | undefined): string {
  * Format USD currency value.
  */
 export function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) return '--'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -51,6 +52,7 @@ export function formatCurrency(value: number): string {
  * Format a number with locale-appropriate separators.
  */
 export function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '--'
   return new Intl.NumberFormat('en-US').format(value)
 }
 
