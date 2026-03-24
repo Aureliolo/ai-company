@@ -30,17 +30,31 @@ const SIDEBAR_BUTTON_CLASS = cn(
   'hover:bg-surface-100 hover:text-surface-700',
 )
 
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function writeCollapsed(value: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, String(value))
+  } catch {
+    // Ignore -- storage may be unavailable (e.g. quota exceeded)
+  }
+}
+
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(STORAGE_KEY) === 'true',
-  )
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const { user } = useAuth()
   const logout = useAuthStore((s) => s.logout)
 
   function toggleCollapse() {
     setCollapsed((prev) => {
       const next = !prev
-      localStorage.setItem(STORAGE_KEY, String(next))
+      writeCollapsed(next)
       return next
     })
   }
@@ -219,7 +233,11 @@ export function Sidebar() {
                 onClick={logout}
                 title="Logout"
                 aria-label="Logout"
-                className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700"
+                className={cn(
+                  'rounded-md p-1 text-surface-400',
+                  'transition-colors',
+                  'hover:bg-surface-100 hover:text-surface-700',
+                )}
               >
                 <LogOut className="size-4" aria-hidden="true" />
               </button>

@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
 import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from '@/router/guards'
@@ -126,6 +127,32 @@ describe('AuthGuard', () => {
       expect(screen.getByText('Protected')).toBeInTheDocument()
     })
   })
+
+  it('fails open on non-401 errors (transient network failure)', async () => {
+    const { getMe } = await import('@/api/endpoints/auth')
+    vi.mocked(getMe).mockRejectedValueOnce(new Error('Network error'))
+
+    useAuthStore.setState({ token: 'test-token' })
+
+    renderRoutes(
+      [
+        {
+          path: '/',
+          element: <AuthGuard />,
+          children: [{ index: true, element: <div>Protected</div> }],
+        },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    // Shows loading initially
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+
+    // After transient failure, guard renders children (degraded state)
+    await waitFor(() => {
+      expect(screen.getByText('Protected')).toBeInTheDocument()
+    })
+  })
 })
 
 describe('SetupGuard', () => {
@@ -248,6 +275,25 @@ describe('SetupGuard', () => {
       expect(screen.getByText('Failed to check setup status.')).toBeInTheDocument()
     })
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+
+    // Retry succeeds
+    mockGetSetupStatus.mockResolvedValueOnce({
+      needs_admin: false,
+      needs_setup: false,
+      has_providers: true,
+      has_name_locales: true,
+      has_company: true,
+      has_agents: true,
+      min_password_length: 12,
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('App Content')).toBeInTheDocument()
+    })
+    expect(mockGetSetupStatus).toHaveBeenCalledTimes(2)
   })
 })
 
