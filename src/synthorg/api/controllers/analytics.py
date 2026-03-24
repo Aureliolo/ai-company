@@ -168,12 +168,16 @@ class _BudgetContext(NamedTuple):
 async def _resolve_budget_context(
     app_state: AppState,
     fallback_total_cost: float = 0.0,
+    *,
+    now: datetime | None = None,
 ) -> _BudgetContext:
     """Compute budget remaining and usage percentage.
 
     Args:
         app_state: Application state.
         fallback_total_cost: Total cost to use if period query fails.
+        now: Upper bound for cost query (exclusive). Defaults to
+            current UTC time.
 
     Returns:
         Budget context with monthly, remaining, and used_percent.
@@ -183,10 +187,12 @@ async def _resolve_budget_context(
     if budget_config is None or monthly <= 0:
         return _BudgetContext(monthly=0.0, remaining=0.0, used_percent=0.0)
 
+    end = now or datetime.now(UTC)
     period_start = billing_period_start(budget_config.reset_day)
     try:
         period_cost = await app_state.cost_tracker.get_total_cost(
             start=period_start,
+            end=end,
         )
     except MemoryError, RecursionError:
         raise
@@ -356,12 +362,19 @@ async def _assemble_overview(  # noqa: PLR0913
     counts = Counter(t.status.value for t in all_tasks)
     by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
-    budget = await _resolve_budget_context(app_state, total_cost)
+    budget = await _resolve_budget_context(app_state, total_cost, now=now)
     # Overview sparkline uses daily buckets intentionally (not hourly
-    # like /trends?period=7d) to produce a compact 7-point sparkline
+    # like /trends?period=7d) to produce a compact 7-point sparkline.
+    # Align start to midnight 6 days ago so we get exactly 7 buckets.
+    sparkline_start = now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(days=6)
     cost_7d = bucket_cost_records(
         records_7d,
-        now - timedelta(days=7),
+        sparkline_start,
         now,
         BucketSize.DAY,
     )
@@ -540,7 +553,7 @@ class AnalyticsController(Controller):
             start=lookback_start,
             end=now,
         )
-        budget = await _resolve_budget_context(app_state)
+        budget = await _resolve_budget_context(app_state, now=now)
 
         forecast = project_daily_spend(
             records,
