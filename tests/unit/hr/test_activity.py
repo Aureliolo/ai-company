@@ -21,6 +21,7 @@ def _make_lifecycle_event(  # noqa: PLR0913
     agent_name: str = "alice",
     details: str = "",
     initiated_by: str = "system",
+    metadata: dict[str, str] | None = None,
 ) -> AgentLifecycleEvent:
     return AgentLifecycleEvent(
         agent_id=agent_id,
@@ -29,6 +30,7 @@ def _make_lifecycle_event(  # noqa: PLR0913
         timestamp=timestamp,
         initiated_by=initiated_by,
         details=details,
+        metadata=metadata or {},
     )
 
 
@@ -262,9 +264,11 @@ class TestFilterCareerEvents:
             event_type=LifecycleEventType.HIRED,
             initiated_by="ceo",
             details="Hired as developer",
+            metadata={"reason": "expansion", "team": "backend"},
         )
 
         career = filter_career_events((hired,))
 
         assert career[0].initiated_by == "ceo"
         assert career[0].description == "Hired as developer"
+        assert career[0].metadata == {"reason": "expansion", "team": "backend"}
