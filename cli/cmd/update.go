@@ -5,18 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
-	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
-	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
@@ -73,27 +71,65 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if !applied {
-		// User declined compose changes. New images may not work with
-		// old compose (e.g. missing env vars). Let them force it.
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
-			"Warning: new images may not work correctly with your current compose configuration.")
-		forceImages := false
-		ok, confirmErr := confirmUpdateWithDefault(
-			"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
-			forceImages,
-		)
-		if confirmErr != nil {
-			return confirmErr
-		}
-		if !ok {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Image update skipped. Run 'synthorg init' then 'synthorg update' when ready.")
-			return nil
-		}
-		// User insisted -- update images but preserve their compose.
-		return updateContainerImages(cmd, state, true, recovered)
+		return handleDeclinedCompose(cmd, state, recovered)
+	}
+	return updateContainerImages(cmd, state, false, recovered)
+}
+
+// handleDeclinedCompose warns the user that new images may not work with
+// their current compose configuration and offers to update images anyway.
+func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(),
+		"Warning: new images may not work correctly with your current compose configuration.")
+	ok, err := confirmUpdateWithDefault(
+		"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Image update skipped. Run 'synthorg init' then 'synthorg update' when ready.")
+		return nil
+	}
+	return updateContainerImages(cmd, state, true, recovered)
+}
+
+// isDevChannelMismatch returns true when the running binary is a dev build
+// but the update channel is not "dev". This helps users who installed a dev
+// build but forgot to set the channel.
+func isDevChannelMismatch(channel, ver string) bool {
+	return channel != "dev" && strings.Contains(ver, "-dev.")
+}
+
+// downloadAndApplyCLI downloads, verifies, and replaces the current binary
+// with the new version. Returns errReexec on success so the caller can
+// re-exec the updated binary.
+func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.CheckResult) error {
+	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
+
+	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
 	}
 
-	return updateContainerImages(cmd, state, false, recovered)
+	_, _ = fmt.Fprintln(out, "Downloading...")
+	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
+	if err != nil {
+		return fmt.Errorf("downloading update: %w", err)
+	}
+
+	if err := selfupdate.Replace(binary); err != nil {
+		return fmt.Errorf("replacing binary: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
+	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
+		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v"))
+
+	return errReexec
 }
 
 // errReexec is a sentinel error returned by updateCLI when the binary was
@@ -128,15 +164,11 @@ func updateCLI(cmd *cobra.Command) error {
 		_, _ = fmt.Fprintln(out, "Checking for updates...")
 	}
 
-	// Alert if running a dev build but checking the stable channel.
-	// This catches the common case where the user installed a dev build
-	// but forgot to set the channel. It is not an error -- they may
-	// intentionally be waiting for the next stable release.
-	if channel != "dev" && strings.Contains(version.Version, "-dev.") {
+	if isDevChannelMismatch(channel, version.Version) {
 		_, _ = fmt.Fprintln(out,
-			"Note: running a dev build but update channel is \"stable\".",
-			"Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
+			"Note: running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
 	}
+
 	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
@@ -148,32 +180,7 @@ func updateCLI(cmd *cobra.Command) error {
 		return nil
 	}
 
-	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
-
-	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-
-	_, _ = fmt.Fprintln(out, "Downloading...")
-	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
-	if err != nil {
-		return fmt.Errorf("downloading update: %w", err)
-	}
-
-	if err := selfupdate.Replace(binary); err != nil {
-		return fmt.Errorf("replacing binary: %w", err)
-	}
-	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
-	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
-		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v"))
-
-	// Signal the caller to re-exec the new binary so the rest of the
-	// update (compose refresh, image pull) uses the new embedded template.
-	return errReexec
+	return downloadAndApplyCLI(ctx, out, result)
 }
 
 // resolveUpdateChannel reads the update channel from config, defaulting to
@@ -257,201 +264,6 @@ func reexecUpdate(cmd *cobra.Command) error {
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)
 	}
 	return nil
-}
-
-// refreshCompose regenerates compose.yml from the current embedded template.
-// If the regenerated compose differs from what is on disk, it shows the diff
-// and asks the user to approve. When force is true (recovery mode), a missing
-// compose.yml is generated from the template without prompting.
-// Returns true if compose is up to date or changes were applied; false if
-// the user declined.
-func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, error) {
-	out := cmd.OutOrStdout()
-
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return false, err
-	}
-
-	composePath := filepath.Join(safeDir, "compose.yml")
-	existing, fresh, err := loadAndGenerate(composePath, state)
-	if err != nil {
-		return false, err
-	}
-	if existing == nil {
-		if !force {
-			return true, nil // no compose.yml on disk -- nothing to refresh
-		}
-		// Recovery mode: compose.yml is missing, generate from template.
-		// loadAndGenerate returns (nil, nil, nil) when the file is absent,
-		// so we must generate the content explicitly.
-		params := compose.ParamsFromState(state)
-		params.DigestPins = state.VerifiedDigests
-		generated, genErr := compose.Generate(params)
-		if genErr != nil {
-			return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
-		}
-		if wErr := atomicWriteFile(composePath, generated, safeDir); wErr != nil {
-			return false, fmt.Errorf("writing compose.yml during recovery: %w", wErr)
-		}
-		_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")
-		return true, nil
-	}
-
-	if bytes.Equal(existing, fresh) {
-		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
-		return true, nil
-	}
-
-	// Auto-apply when only the version comment and/or image references
-	// changed -- these are expected during an update and don't need
-	// user confirmation (template structure is unchanged).
-	if isUpdateBoilerplateOnly(existing, fresh) {
-		if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
-			return false, fmt.Errorf("writing updated compose: %w", err)
-		}
-		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
-		return true, nil
-	}
-
-	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir)
-}
-
-// isUpdateBoilerplateOnly returns true if the only differences between
-// existing and fresh are the version comment (line 1) and/or image
-// references. These change on every update and don't need user approval.
-func isUpdateBoilerplateOnly(existing, fresh []byte) bool {
-	oldLines := strings.Split(string(existing), "\n")
-	newLines := strings.Split(string(fresh), "\n")
-	if len(oldLines) != len(newLines) {
-		return false
-	}
-	for i := range oldLines {
-		if oldLines[i] == newLines[i] {
-			continue
-		}
-		// Allow version comment difference (line 1).
-		if i == 0 && strings.HasPrefix(oldLines[i], "# Generated by SynthOrg CLI") &&
-			strings.HasPrefix(newLines[i], "# Generated by SynthOrg CLI") {
-			continue
-		}
-		// Allow image reference differences for the same service.
-		oldSub := imageLinePattern.FindStringSubmatch(oldLines[i])
-		newSub := imageLinePattern.FindStringSubmatch(newLines[i])
-		if len(oldSub) >= 3 && len(newSub) >= 3 && oldSub[2] == newSub[2] {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-// loadAndGenerate reads the existing compose and generates a fresh one from
-// the template. Returns (nil, nil, nil) if no compose.yml exists on disk.
-func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, error) {
-	existing, err := os.ReadFile(composePath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, nil
-		}
-		return nil, nil, fmt.Errorf("reading existing compose: %w", err)
-	}
-
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
-	fresh, err := compose.Generate(params)
-	if err != nil {
-		return nil, nil, fmt.Errorf("generating compose from template: %w", err)
-	}
-	return existing, fresh, nil
-}
-
-// applyComposeDiff shows the diff between existing and fresh compose,
-// asks the user to approve, and writes the fresh compose if approved.
-// Returns true if applied, false if declined.
-func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string) (bool, error) {
-	out := cmd.OutOrStdout()
-
-	diff := lineDiff(string(existing), string(fresh))
-	_, _ = fmt.Fprintln(out, "Compose template has changed:")
-	_, _ = fmt.Fprintln(out, diff)
-
-	ok, err := confirmUpdate("Apply compose configuration changes?")
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		_, _ = fmt.Fprintln(out, "Compose changes skipped.")
-		return false, nil
-	}
-
-	if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
-		return false, fmt.Errorf("writing updated compose: %w", err)
-	}
-	_, _ = fmt.Fprintln(out, "Compose configuration updated.")
-	return true, nil
-}
-
-// secretKeyPattern matches YAML lines containing known sensitive keys.
-// Used by lineDiff to redact sensitive values before displaying.
-// Covers common secret naming conventions to prevent leaking credentials
-// in terminal scrollback or CI logs when the compose template changes.
-var secretKeyPattern = regexp.MustCompile(
-	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|ENCRYPTION_KEY|SETTINGS_KEY|PRIVATE_KEY|CERT)\w*\s*:`,
-)
-
-// lineDiff produces a bag-based diff showing added (+) and removed (-) lines
-// between two strings. Lines containing secret keys are redacted.
-//
-// Note: this uses multiset membership, not positional diffing. Reordered
-// lines are not reported as changes. This is acceptable for compose files
-// where the user approves structural additions/removals, not reorderings.
-func lineDiff(oldText, updated string) string {
-	oldLines := strings.Split(oldText, "\n")
-	newLines := strings.Split(updated, "\n")
-
-	newSet := make(map[string]int, len(newLines))
-	for _, l := range newLines {
-		newSet[l]++
-	}
-
-	oldSet := make(map[string]int, len(oldLines))
-	for _, l := range oldLines {
-		oldSet[l]++
-	}
-
-	var b strings.Builder
-	for _, l := range oldLines {
-		if newSet[l] > 0 {
-			newSet[l]--
-			continue
-		}
-		b.WriteString("  - ")
-		b.WriteString(redactSecret(l))
-		b.WriteByte('\n')
-	}
-	for _, l := range newLines {
-		if oldSet[l] > 0 {
-			oldSet[l]--
-			continue
-		}
-		b.WriteString("  + ")
-		b.WriteString(redactSecret(l))
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
-// redactSecret replaces secret values with [REDACTED] in diff output.
-// Uses the regex submatch end position to find the colon reliably,
-// rather than scanning from the start of the line.
-func redactSecret(line string) string {
-	loc := secretKeyPattern.FindStringIndex(line)
-	if loc != nil {
-		// loc[1] is past the trailing ":", so the key + colon is line[:loc[1]].
-		return line[:loc[1]] + " [REDACTED]"
-	}
-	return line
 }
 
 // targetImageTag converts a CLI version string to a Docker image tag.
@@ -665,70 +477,6 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	return pins, nil
 }
 
-// writeOrPatchCompose either regenerates compose from the template or
-// patches only image references in the existing file.
-func writeOrPatchCompose(state config.State, digestPins map[string]string, safeDir string, preserveCompose bool) error {
-	if !preserveCompose {
-		return writeDigestPinnedCompose(state, digestPins, safeDir)
-	}
-	return patchComposeImageRefs(state.ImageTag, digestPins, state.Sandbox, safeDir)
-}
-
-// imageLinePattern matches Docker image references in compose YAML.
-// Handles both digest-pinned (repo@sha256:...) and tag-based (repo:tag).
-var imageLinePattern = regexp.MustCompile(
-	`(\s+image:\s+)ghcr\.io/aureliolo/synthorg-(backend|web|sandbox)[\S]*`,
-)
-
-// patchComposeImageRefs updates only the image references in an existing
-// compose.yml without regenerating from the template. This preserves the
-// user's compose configuration while allowing image updates.
-//
-// Returns an error if no image references were found or if not all expected
-// services (backend, web, and optionally sandbox) were patched -- this
-// prevents config.Save from advancing state when compose is unpatched.
-func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnabled bool, safeDir string) error {
-	composePath := filepath.Join(safeDir, "compose.yml")
-	existing, err := os.ReadFile(composePath)
-	if err != nil {
-		return fmt.Errorf("reading compose for image patching: %w", err)
-	}
-
-	replaced := make(map[string]bool)
-	patched := imageLinePattern.ReplaceAllStringFunc(string(existing), func(match string) string {
-		sub := imageLinePattern.FindStringSubmatch(match)
-		if len(sub) < 3 {
-			return match
-		}
-		prefix := sub[1] // e.g. "    image: "
-		name := sub[2]   // e.g. "backend"
-		repo := images.RepoPrefix + name
-		replaced[name] = true
-
-		if d, ok := digestPins[name]; ok && d != "" {
-			return prefix + repo + "@" + d
-		}
-		return prefix + repo + ":" + tag
-	})
-
-	if len(replaced) == 0 {
-		return fmt.Errorf("no synthorg image references found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", composePath)
-	}
-
-	// Backend and web are always required; sandbox only when enabled.
-	required := []string{"backend", "web"}
-	if sandboxEnabled {
-		required = append(required, "sandbox")
-	}
-	for _, svc := range required {
-		if !replaced[svc] {
-			return fmt.Errorf("image reference for %q not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", svc, composePath)
-		}
-	}
-
-	return atomicWriteFile(composePath, []byte(patched), safeDir)
-}
-
 // restartIfRunning checks if containers are running and offers a restart.
 // Returns (true, nil) when containers were restarted and passed health checks.
 // Returns (false, nil) when restart was skipped or health check failed.
@@ -759,6 +507,11 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
+	return performRestart(ctx, out, info, safeDir, state)
+}
+
+// performRestart stops, restarts, and health-checks containers.
+func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State) (bool, error) {
 	uiOut := ui.NewUI(out)
 
 	sp := uiOut.StartSpinner("Stopping containers...")

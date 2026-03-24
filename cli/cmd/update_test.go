@@ -581,9 +581,9 @@ func TestIsDevChannelMismatch(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.channel != "dev" && strings.Contains(tt.version, "-dev.")
+			got := isDevChannelMismatch(tt.channel, tt.version)
 			if got != tt.want {
-				t.Errorf("mismatch(%q, %q) = %v, want %v", tt.channel, tt.version, got, tt.want)
+				t.Errorf("isDevChannelMismatch(%q, %q) = %v, want %v", tt.channel, tt.version, got, tt.want)
 			}
 		})
 	}

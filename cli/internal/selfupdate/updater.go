@@ -154,6 +154,8 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 			if latestDev == nil {
 				latestDev = r
 			} else if cmp, err := compareWithDev(r.TagName, latestDev.TagName); err == nil && cmp > 0 {
+				// Malformed tags (err != nil) are silently skipped -- tags
+				// come from the GitHub API and are expected to be well-formed.
 				latestDev = r
 			}
 		} else if !r.Prerelease {
@@ -436,55 +438,18 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 		return fmt.Errorf("resolving symlinks: %w", err)
 	}
 
-	// Write to a temp file in the same directory, then rename atomically.
 	dir := filepath.Dir(execPath)
-	tmpFile, err := os.CreateTemp(dir, binaryName+".*.tmp")
+	tmpPath, err := writeTempBinary(binaryData, dir)
 	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-
-	if _, err := tmpFile.Write(binaryData); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("writing new binary: %w", err)
-	}
-	if err := tmpFile.Chmod(0o755); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("setting permissions: %w", err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("syncing new binary: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("closing new binary: %w", err)
+		return err
 	}
 
-	// On Windows, we can't overwrite the running binary -- rename first.
-	// Use a random suffix to avoid predictable paths.
-	var oldPath string
-	if runtime.GOOS == "windows" {
-		oldFile, err := os.CreateTemp(dir, binaryName+".old.*.tmp")
-		if err != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("creating temp file for old binary: %w", err)
-		}
-		oldPath = oldFile.Name()
-		_ = oldFile.Close()
-		_ = os.Remove(oldPath) // Remove so Rename can use the path.
-
-		if err := os.Rename(execPath, oldPath); err != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("renaming current binary: %w", err)
-		}
+	oldPath, err := windowsPreReplace(dir, execPath, tmpPath)
+	if err != nil {
+		return err
 	}
 
 	if err := os.Rename(tmpPath, execPath); err != nil {
-		// Attempt rollback on Windows.
 		if runtime.GOOS == "windows" && oldPath != "" {
 			_ = os.Rename(oldPath, execPath)
 		}
@@ -496,8 +461,61 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 	if oldPath != "" {
 		_ = os.Remove(oldPath)
 	}
-
 	return nil
+}
+
+// writeTempBinary writes binary data to a temp file in dir and returns
+// the temp file path. The file is synced, closed, and set to 0755.
+func writeTempBinary(data []byte, dir string) (string, error) {
+	tmpFile, err := os.CreateTemp(dir, binaryName+".*.tmp")
+	if err != nil {
+		return "", fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("writing new binary: %w", err)
+	}
+	if err := tmpFile.Chmod(0o755); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("setting permissions: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("syncing new binary: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("closing new binary: %w", err)
+	}
+	return tmpPath, nil
+}
+
+// windowsPreReplace moves the current binary out of the way on Windows
+// (where the running binary cannot be overwritten). Returns the old
+// binary path for cleanup, or empty string on non-Windows.
+func windowsPreReplace(dir, execPath, tmpPath string) (string, error) {
+	if runtime.GOOS != "windows" {
+		return "", nil
+	}
+	oldFile, err := os.CreateTemp(dir, binaryName+".old.*.tmp")
+	if err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("creating temp file for old binary: %w", err)
+	}
+	oldPath := oldFile.Name()
+	_ = oldFile.Close()
+	_ = os.Remove(oldPath) // Remove so Rename can use the path.
+
+	if err := os.Rename(execPath, oldPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("renaming current binary: %w", err)
+	}
+	return oldPath, nil
 }
 
 func assetName() string {

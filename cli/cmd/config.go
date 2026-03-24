@@ -118,6 +118,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 }
 
 // gettableConfigKeys lists all keys supported by `config get`.
+// Keep in sync with the Long help text on configGetCmd.
 var gettableConfigKeys = []string{
 	"auto_cleanup", "backend_port", "channel", "image_tag",
 	"log_level", "memory_backend", "persistence_backend",
@@ -131,6 +132,10 @@ func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, co
 func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	dir := resolveDataDir()
+
+	if _, err := config.SecurePath(dir); err != nil {
+		return fmt.Errorf("invalid data directory: %w", err)
+	}
 
 	state, err := config.Load(dir)
 	if err != nil {
