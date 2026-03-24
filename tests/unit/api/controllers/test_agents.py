@@ -3,6 +3,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import pytest
 from litestar.testing import TestClient
@@ -155,7 +156,7 @@ def _make_identity(
     name: str = _AGENT_NAME,
 ) -> AgentIdentity:
     return AgentIdentity(
-        id=agent_id,
+        id=UUID(agent_id),
         name=name,
         role="developer",
         department="eng",
