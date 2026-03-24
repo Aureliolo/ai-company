@@ -1,7 +1,7 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { AgentConfig, ApiResponse, AutonomyLevelRequest, AutonomyLevelResponse, PaginatedResponse, PaginationParams } from '../types'
 
-export async function listAgents(params?: PaginationParams) {
+export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<AgentConfig>> {
   const response = await apiClient.get<PaginatedResponse<AgentConfig>>('/agents', { params })
   return unwrapPaginated<AgentConfig>(response)
 }

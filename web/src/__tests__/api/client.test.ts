@@ -156,30 +156,75 @@ describe('unwrapPaginated', () => {
   })
 })
 
+/** Extract the fulfilled handler from the first request interceptor -- throws if not found. */
+function getRequestInterceptor(): (config: Record<string, unknown>) => Record<string, unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlers = (apiClient.interceptors.request as any).handlers as Array<{ fulfilled?: (config: any) => any }> | undefined
+  const fulfilled = handlers?.[0]?.fulfilled
+  if (!fulfilled) throw new Error('Request interceptor not found -- Axios internals may have changed')
+  return fulfilled as (config: Record<string, unknown>) => Record<string, unknown>
+}
+
 describe('apiClient request interceptor', () => {
+  afterEach(() => {
+    localStorage.removeItem('auth_token')
+  })
+
   it('injects auth token when present in localStorage', () => {
     localStorage.setItem('auth_token', 'test-jwt-token')
-    const config = { headers: {} as Record<string, string> }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (apiClient.interceptors.request as any).handlers as Array<{ fulfilled?: (config: any) => any }> | undefined
-    const interceptor = handlers?.[0]
-    expect(interceptor).toBeDefined()
-    if (interceptor?.fulfilled) {
-      const result = interceptor.fulfilled(config) as { headers: Record<string, string> }
-      expect(result.headers['Authorization']).toBe('Bearer test-jwt-token')
-    }
-    localStorage.removeItem('auth_token')
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['Authorization']).toBe('Bearer test-jwt-token')
   })
 
   it('does not inject token when not in localStorage', () => {
     localStorage.removeItem('auth_token')
-    const config = { headers: {} as Record<string, string> }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers = (apiClient.interceptors.request as any).handlers as Array<{ fulfilled?: (config: any) => any }> | undefined
-    const interceptor = handlers?.[0]
-    if (interceptor?.fulfilled) {
-      const result = interceptor.fulfilled(config) as { headers: Record<string, string> }
-      expect(result.headers['Authorization']).toBeUndefined()
-    }
+    const fulfilled = getRequestInterceptor()
+    const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
+    expect(result.headers['Authorization']).toBeUndefined()
+  })
+})
+
+describe('apiClient 401 response interceptor', () => {
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it('clears auth localStorage keys on 401', async () => {
+    localStorage.setItem('auth_token', 'old-token')
+    localStorage.setItem('auth_token_expires_at', '99999999')
+    localStorage.setItem('auth_must_change_password', 'true')
+
+    const error = new (await import('axios')).AxiosError(
+      'Unauthorized',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      { status: 401, data: {}, headers: {}, statusText: 'Unauthorized', config: {} as AxiosResponse['config'] } as AxiosResponse,
+    )
+
+    // The interceptor rejects with the error but clears localStorage as a side effect
+    await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
+
+    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
+    expect(localStorage.getItem('auth_must_change_password')).toBeNull()
+  })
+
+  it('passes through non-401 errors unchanged', async () => {
+    const error = new (await import('axios')).AxiosError(
+      'Server Error',
+      'ERR_BAD_RESPONSE',
+      undefined,
+      undefined,
+      { status: 500, data: {}, headers: {}, statusText: 'Error', config: {} as AxiosResponse['config'] } as AxiosResponse,
+    )
+
+    localStorage.setItem('auth_token', 'should-remain')
+
+    await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
+
+    // Token should NOT be cleared on non-401
+    expect(localStorage.getItem('auth_token')).toBe('should-remain')
   })
 })

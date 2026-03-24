@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, CompanyConfig, Department, PaginatedResponse, PaginationParams } from '../types'
 
 export async function getCompanyConfig(): Promise<CompanyConfig> {
@@ -6,7 +6,7 @@ export async function getCompanyConfig(): Promise<CompanyConfig> {
   return unwrap(response)
 }
 
-export async function listDepartments(params?: PaginationParams) {
+export async function listDepartments(params?: PaginationParams): Promise<PaginatedResult<Department>> {
   const response = await apiClient.get<PaginatedResponse<Department>>('/departments', { params })
   return unwrapPaginated<Department>(response)
 }

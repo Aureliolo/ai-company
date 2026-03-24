@@ -101,7 +101,7 @@ describe('websocket store', () => {
   })
 
   describe('connect', () => {
-    it('fetches ticket and creates WebSocket connection', async () => {
+    it('fetches ticket and creates WebSocket connection without ticket in URL', async () => {
       const authApi = await import('@/api/endpoints/auth')
       vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
 
@@ -111,7 +111,8 @@ describe('websocket store', () => {
 
       const ws = MockWebSocket.latest()
       expect(ws).toBeDefined()
-      expect(ws!.url).toContain('ticket=test-ticket')
+      // Ticket should NOT be in the URL (first-message auth)
+      expect(ws!.url).not.toContain('ticket=')
     })
 
     it('sets connected to true on open', async () => {
@@ -356,6 +357,71 @@ describe('websocket store', () => {
       ws.onmessage?.({ data: oversized })
 
       expect(handler).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('reconnect exhaustion', () => {
+    it('sets reconnectExhausted after max attempts', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      // Ticket exchange always fails with non-401 error, triggering reconnect attempts
+      vi.mocked(authApi.getWsTicket).mockRejectedValue(new Error('connection refused'))
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      // Each failed ticket exchange triggers scheduleReconnect
+      // Advance through all 20 attempts (exponential backoff capped at 30s)
+      for (let i = 0; i < 20; i++) {
+        await vi.advanceTimersByTimeAsync(30_000)
+        await vi.runAllTimersAsync()
+      }
+
+      expect(useWebSocketStore.getState().reconnectExhausted).toBe(true)
+    })
+  })
+
+  describe('ticket 401 handling', () => {
+    it('does not reconnect on ticket 401', async () => {
+      const { AxiosError: Ae } = await import('axios')
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getWsTicket).mockRejectedValue(
+        new Ae('Unauthorized', 'ERR_BAD_RESPONSE', undefined, undefined, {
+          status: 401, data: {}, headers: {}, statusText: 'Unauthorized',
+          config: {} as import('axios').AxiosResponse['config'],
+        } as import('axios').AxiosResponse),
+      )
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      // Advance time -- no reconnect should be scheduled on 401
+      const instancesBefore = MockWebSocket.instances.length
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(MockWebSocket.instances.length).toBe(instancesBefore)
+    })
+  })
+
+  describe('first-message auth', () => {
+    it('sends auth ticket as first message on open', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'my-secret-ticket', expires_in: 30 })
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      const ws = MockWebSocket.latest()!
+      expect(ws.url).not.toContain('ticket=')
+
+      ws.simulateOpen()
+
+      // First message should be the auth action
+      expect(ws.sentMessages.length).toBeGreaterThanOrEqual(1)
+      const authMsg = JSON.parse(ws.sentMessages[0]!) as { action: string; ticket: string }
+      expect(authMsg.action).toBe('auth')
+      expect(authMsg.ticket).toBe('my-secret-ticket')
     })
   })
 

@@ -1,7 +1,7 @@
-import { apiClient, unwrapPaginated } from '../client'
+import { apiClient, unwrapPaginated, type PaginatedResult } from '../client'
 import type { PaginatedResponse, PaginationParams } from '../types'
 
-export async function listArtifacts(params?: PaginationParams) {
+export async function listArtifacts(params?: PaginationParams): Promise<PaginatedResult<Record<string, unknown>>> {
   const response = await apiClient.get<PaginatedResponse<Record<string, unknown>>>('/artifacts', { params })
   return unwrapPaginated<Record<string, unknown>>(response)
 }

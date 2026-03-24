@@ -1,4 +1,4 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, unwrapVoid } from '../client'
 import type {
   AddAllowlistEntryRequest,
   ApiResponse,
@@ -48,7 +48,8 @@ export async function updateProvider(name: string, data: UpdateProviderRequest):
 }
 
 export async function deleteProvider(name: string): Promise<void> {
-  await apiClient.delete(`/providers/${encodeURIComponent(name)}`)
+  const response = await apiClient.delete<ApiResponse<null>>(`/providers/${encodeURIComponent(name)}`)
+  unwrapVoid(response)
 }
 
 export async function testConnection(name: string, data?: TestConnectionRequest): Promise<TestConnectionResponse> {

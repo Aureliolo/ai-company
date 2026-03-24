@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { AgentSpending, ApiResponse, BudgetConfig, CostRecord, PaginatedResponse, PaginationParams } from '../types'
 
 export async function getBudgetConfig(): Promise<BudgetConfig> {
@@ -8,7 +8,7 @@ export async function getBudgetConfig(): Promise<BudgetConfig> {
 
 export async function listCostRecords(
   params?: PaginationParams & { agent_id?: string; task_id?: string },
-) {
+): Promise<PaginatedResult<CostRecord>> {
   const response = await apiClient.get<PaginatedResponse<CostRecord>>('/budget/records', { params })
   return unwrapPaginated<CostRecord>(response)
 }

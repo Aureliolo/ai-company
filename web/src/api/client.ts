@@ -7,7 +7,7 @@ import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
 import { sanitizeForLog } from '@/utils/logging'
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
-const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string) || ''
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 const BASE_URL = RAW_BASE.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '')
 
 export const apiClient = axios.create({
@@ -103,23 +103,31 @@ export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
   }
 }
 
+/** Return type for paginated API calls. */
+export interface PaginatedResult<T> {
+  data: T[]
+  total: number
+  offset: number
+  limit: number
+}
+
 /**
  * Extract data from a paginated response.
  * Validates the response structure to avoid cryptic TypeErrors.
  */
 export function unwrapPaginated<T>(
   response: AxiosResponse<PaginatedResponse<T>>,
-): { data: T[]; total: number; offset: number; limit: number } {
+): PaginatedResult<T> {
   const body = response.data
   if (!body || typeof body !== 'object') {
-    throw new Error('Unknown API error')
+    throw new ApiRequestError('Unknown API error')
   }
   if (!body.success) {
     const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   if (!body.pagination || !Array.isArray(body.data)) {
-    throw new Error('Unexpected API response format')
+    throw new ApiRequestError('Unexpected API response format')
   }
   return {
     data: body.data,
