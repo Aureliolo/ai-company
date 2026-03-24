@@ -269,7 +269,11 @@ func compareWithDev(a, b string) (int, error) {
 	}
 }
 
-// splitDev splits "0.4.7-dev.3" into (3, "0.4.7") or (-1, "0.4.7") if no -dev. suffix.
+// splitDev splits "0.4.7-dev.3" into (3, "0.4.7") or (-1, "0.4.7") if no
+// -dev. suffix. When the suffix is present but non-numeric (e.g.
+// "0.4.7-dev.NaN" or "0.4.7-dev."), returns (-1, base) -- the tag is
+// treated as stable by compareWithDev. A devNum of -1 always means
+// "stable / no valid dev suffix".
 func splitDev(v string) (devNum int, base string) {
 	idx := strings.Index(v, "-dev.")
 	if idx < 0 {

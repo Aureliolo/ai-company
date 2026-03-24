@@ -247,27 +247,42 @@ func TestExtractBinary(t *testing.T) {
 	}
 }
 
-func TestReplace(t *testing.T) {
-	tmp := t.TempDir()
-	fakeBinary := filepath.Join(tmp, "synthorg")
+func TestReplaceAtViaSymlink(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		fakeBinary += ".exe"
+		t.Skip("symlink creation requires elevated privileges on Windows")
 	}
-	if err := os.WriteFile(fakeBinary, []byte("old binary"), 0o755); err != nil {
+	// ReplaceAt resolves symlinks before replacing. Verify the real
+	// file is updated and the symlink remains valid.
+	tmp := t.TempDir()
+	realBinary := filepath.Join(tmp, "synthorg.real")
+	if err := os.WriteFile(realBinary, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	newContent := []byte("new binary content")
-	if err := ReplaceAt(newContent, fakeBinary); err != nil {
-		t.Fatalf("ReplaceAt: %v", err)
+	symlink := filepath.Join(tmp, "synthorg")
+	if err := os.Symlink(realBinary, symlink); err != nil {
+		t.Fatalf("creating symlink: %v", err)
 	}
 
-	data, err := os.ReadFile(fakeBinary)
+	newContent := []byte("new binary via symlink")
+	if err := ReplaceAt(newContent, symlink); err != nil {
+		t.Fatalf("ReplaceAt via symlink: %v", err)
+	}
+
+	// Real file should contain new content.
+	data, err := os.ReadFile(realBinary)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != string(newContent) {
-		t.Errorf("replaced binary = %q, want %q", data, newContent)
+		t.Errorf("real binary = %q, want %q", data, newContent)
+	}
+	// Symlink should still resolve.
+	linkData, err := os.ReadFile(symlink)
+	if err != nil {
+		t.Fatalf("reading via symlink: %v", err)
+	}
+	if string(linkData) != string(newContent) {
+		t.Errorf("symlink read = %q, want %q", linkData, newContent)
 	}
 }
 

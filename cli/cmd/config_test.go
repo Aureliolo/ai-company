@@ -465,6 +465,33 @@ func TestConfigGetUnknownKey(t *testing.T) {
 	}
 }
 
+func TestConfigGetRejectsSecretKeys(t *testing.T) {
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, key := range []string{"jwt_secret", "settings_key"} {
+		t.Run(key, func(t *testing.T) {
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "get", key, "--data-dir", dir})
+			err := rootCmd.Execute()
+			if err == nil {
+				t.Fatalf("expected error for secret key %q", key)
+			}
+		})
+	}
+}
+
 func TestConfigGetDefaultChannel(t *testing.T) {
 	t.Cleanup(func() {
 		rootCmd.SetOut(nil)
