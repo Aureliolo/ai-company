@@ -22,9 +22,9 @@ export const useSetupStore = create<SetupState>()((set, get) => ({
       const status = await getSetupStatus()
       set({ setupComplete: !status.needs_setup, loading: false })
     } catch {
-      // On error (e.g. network failure), leave setupComplete as null
-      // so the guard can show an error state with retry option
-      set({ loading: false, error: true })
+      // On error (e.g. network failure), explicitly reset setupComplete
+      // to null so the guard sees unknown state and shows error/retry
+      set({ setupComplete: null, loading: false, error: true })
     }
   },
 }))

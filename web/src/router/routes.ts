@@ -28,4 +28,8 @@ export const ROUTES = {
 } as const
 
 /** Routes accessible without authentication. */
-export const PUBLIC_ROUTES: readonly string[] = [ROUTES.LOGIN, ROUTES.SETUP]
+export const PUBLIC_ROUTES: readonly string[] = [
+  ROUTES.LOGIN,
+  ROUTES.SETUP,
+  ROUTES.SETUP_STEP,
+]

@@ -42,6 +42,7 @@ describe('App', () => {
     useSetupStore.setState({
       setupComplete: null,
       loading: false,
+      error: false,
     })
     localStorage.clear()
     vi.clearAllMocks()

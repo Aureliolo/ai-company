@@ -2,7 +2,14 @@ import { cn } from '@/lib/utils'
 
 export function StatusBar() {
   return (
-    <div className="flex h-8 shrink-0 items-center gap-6 border-b border-surface-100 bg-surface-0 px-6 text-[11px] tracking-wide font-mono text-surface-500 select-none">
+    <div
+      className={cn(
+        'flex h-8 shrink-0 items-center gap-6',
+        'border-b border-surface-100 bg-surface-0 px-6',
+        'text-[11px] tracking-wide font-mono',
+        'text-surface-500 select-none',
+      )}
+    >
       <span className="text-[10px] uppercase tracking-widest text-surface-400">
         SynthOrg
       </span>

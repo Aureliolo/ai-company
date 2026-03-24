@@ -40,7 +40,13 @@ export function SidebarNavItem({
         <>
           <span className="flex-1 truncate">{label}</span>
           {badge !== undefined && badge > 0 && (
-            <span className="flex size-5 items-center justify-center rounded-full bg-danger-500 text-xs font-semibold text-white">
+            <span
+              className={cn(
+                'flex size-5 items-center justify-center',
+                'rounded-full bg-danger-500',
+                'text-xs font-semibold text-white',
+              )}
+            >
               {badge > 99 ? '99+' : badge}
             </span>
           )}
