@@ -420,6 +420,13 @@ func TestConfigGet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
+			// Reset rootCmd output after each subtest to prevent
+			// cross-contamination of shared Cobra state.
+			t.Cleanup(func() {
+				rootCmd.SetOut(nil)
+				rootCmd.SetErr(nil)
+				rootCmd.SetArgs(nil)
+			})
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -436,6 +443,11 @@ func TestConfigGet(t *testing.T) {
 }
 
 func TestConfigGetUnknownKey(t *testing.T) {
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -454,6 +466,11 @@ func TestConfigGetUnknownKey(t *testing.T) {
 }
 
 func TestConfigGetDefaultChannel(t *testing.T) {
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
 	// When channel is empty in JSON, DefaultState fills "stable".
 	dir := t.TempDir()
 	state := config.DefaultState()

@@ -133,11 +133,12 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	dir := resolveDataDir()
 
-	if _, err := config.SecurePath(dir); err != nil {
+	safeDir, err := config.SecurePath(dir)
+	if err != nil {
 		return fmt.Errorf("invalid data directory: %w", err)
 	}
 
-	state, err := config.Load(dir)
+	state, err := config.Load(safeDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

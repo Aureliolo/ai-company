@@ -43,11 +43,25 @@ const (
 	apiTimeout  = 30 * time.Second
 )
 
+// checkRedirectHost validates that each redirect hop stays within
+// AllowedDownloadHosts. This prevents a compromised redirect chain
+// from opening connections to internal hosts before the post-response
+// check in httpGetWithClient fires.
+func checkRedirectHost(req *http.Request, _ []*http.Request) error {
+	if !AllowedDownloadHosts[req.URL.Hostname()] {
+		return fmt.Errorf("redirect to disallowed host %q", req.URL.Hostname())
+	}
+	return nil
+}
+
 // apiClient is a shared HTTP client for lightweight GitHub API requests
 // (release metadata). Reuses connections across calls within a single
 // CLI invocation. The download path uses its own client with a longer
 // timeout (httpTimeout).
-var apiClient = &http.Client{Timeout: apiTimeout}
+var apiClient = &http.Client{
+	Timeout:       apiTimeout,
+	CheckRedirect: checkRedirectHost,
+}
 
 // Release represents a GitHub release.
 type Release struct {
@@ -225,7 +239,7 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 
 // compareWithDev compares two version strings that may contain .dev suffixes.
 // Returns >0 if a > b, 0 if equal, <0 if a < b.
-// v0.4.7 > v0.4.7.dev3 > v0.4.7.dev2 > v0.4.6.
+// v0.4.7 > v0.4.7-dev.3 > v0.4.7-dev.2 > v0.4.6.
 func compareWithDev(a, b string) (int, error) {
 	aDev, aBase := splitDev(strings.TrimPrefix(a, "v"))
 	bDev, bBase := splitDev(strings.TrimPrefix(b, "v"))
@@ -261,7 +275,7 @@ func splitDev(v string) (devNum int, base string) {
 	numStr := v[idx+5:] // skip "-dev."
 	n, err := strconv.Atoi(numStr)
 	if err != nil {
-		return -1, v
+		return -1, base
 	}
 	return n, base
 }
@@ -389,7 +403,10 @@ func Download(ctx context.Context, assetURL, checksumURL, bundleURL string) ([]b
 		return nil, fmt.Errorf("no checksum file found in release assets -- refusing to install unverified binary")
 	}
 
-	client := &http.Client{Timeout: httpTimeout}
+	client := &http.Client{
+		Timeout:       httpTimeout,
+		CheckRedirect: checkRedirectHost,
+	}
 
 	// Download binary archive.
 	archiveData, err := httpGetWithClient(ctx, client, assetURL, maxBinaryBytes)

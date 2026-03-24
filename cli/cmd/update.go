@@ -317,17 +317,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
-	// Capture previous image IDs before pull for auto-cleanup.
-	// Best-effort: if this fails, auto-cleanup keeps only current.
-	var previousIDs map[string]bool
-	if state.AutoCleanup {
-		var captureErr error
-		previousIDs, captureErr = collectCurrentImageIDs(ctx, info, state)
-		if captureErr != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-				"Warning: could not capture previous image IDs for auto-cleanup: %v\n", captureErr)
-		}
-	}
+	previousIDs := captureImageIDsForCleanup(ctx, cmd, info, state)
 
 	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose); err != nil {
 		return err
@@ -336,6 +326,21 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 	updatedState := state
 	updatedState.ImageTag = tag
 	return postPullActions(cmd, info, safeDir, state, updatedState, previousIDs)
+}
+
+// captureImageIDsForCleanup records current image IDs before a pull so
+// auto-cleanup can remove them afterwards. Best-effort: returns nil on error.
+func captureImageIDsForCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State) map[string]bool {
+	if !state.AutoCleanup {
+		return nil
+	}
+	ids, err := collectCurrentImageIDs(ctx, info, state)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"Warning: could not capture previous image IDs for auto-cleanup: %v\n", err)
+		return nil
+	}
+	return ids
 }
 
 // postPullActions handles restart, auto-cleanup, and old image hints after

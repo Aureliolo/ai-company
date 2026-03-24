@@ -60,8 +60,8 @@ func TestSplitDev(t *testing.T) {
 		{"0.4.7-dev.0", 0, "0.4.7"},
 		{"0.4.7", -1, "0.4.7"},
 		{"1.0.0", -1, "1.0.0"},
-		{"0.4.7-dev.", -1, "0.4.7-dev."},       // empty suffix treated as stable
-		{"0.4.7-dev.NaN", -1, "0.4.7-dev.NaN"}, // non-numeric treated as stable
+		{"0.4.7-dev.", -1, "0.4.7"},    // empty suffix: base extracted, treated as stable
+		{"0.4.7-dev.NaN", -1, "0.4.7"}, // non-numeric: base extracted, treated as stable
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

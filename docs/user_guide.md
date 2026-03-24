@@ -26,7 +26,7 @@ The web dashboard is at [http://localhost:3000](http://localhost:3000) (default 
 
 Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`, `synthorg wipe`, `synthorg cleanup`, `synthorg config`, `synthorg version`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has structural changes (new environment variables, hardening tweaks), the diff is shown for approval before applying; version comment and image reference updates are applied automatically.
 
-To automatically clean up old container images after updates (keeping only the current and previous version), run `synthorg config set auto_cleanup true`.
+To automatically clean up old container images after updates (keeping only the current and previous version), run `synthorg config set auto_cleanup true`. Use `synthorg config get <key>` to retrieve a single configuration value (e.g., `synthorg config get channel`).
 
 To opt in to pre-release builds (dev channel), run `synthorg config set channel dev`. Dev channel builds are created on every push to main between stable releases and include Docker images, CLI binaries, cosign signatures, and SLSA provenance. To switch back: `synthorg config set channel stable`.
 
