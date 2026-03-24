@@ -12,25 +12,23 @@ export function useLoginLockout(): {
   recordFailure: (err: unknown) => string | null
   reset: () => void
 } {
-  const [attempts, setAttempts] = useState(0)
   const [lockedUntil, setLockedUntil] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
-  const clockRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const attemptsRef = useRef(0)
 
-  // Reactive clock so `locked` re-evaluates when lockout expires
+  // Only tick the clock while locked -- avoids 1 re-render/sec when not locked
   useEffect(() => {
-    clockRef.current = setInterval(() => { setNow(Date.now()) }, 1000)
-    return () => {
-      if (clockRef.current) clearInterval(clockRef.current)
-    }
-  }, [])
+    if (!lockedUntil) return
+    const id = setInterval(() => { setNow(Date.now()) }, 1000)
+    return () => clearInterval(id)
+  }, [lockedUntil])
 
   const locked = !!(lockedUntil && now < lockedUntil)
 
   const checkAndClearLockout = useCallback((): boolean => {
     if (lockedUntil && Date.now() >= lockedUntil) {
       setLockedUntil(null)
-      setAttempts(0)
+      attemptsRef.current = 0
       return false
     }
     return !!(lockedUntil && Date.now() < lockedUntil)
@@ -43,19 +41,18 @@ export function useLoginLockout(): {
       err.response.status < 500
 
     if (isCredentialError) {
-      const newAttempts = attempts + 1
-      setAttempts(newAttempts)
-      if (newAttempts >= LOGIN_MAX_ATTEMPTS) {
+      attemptsRef.current += 1
+      if (attemptsRef.current >= LOGIN_MAX_ATTEMPTS) {
         setLockedUntil(Date.now() + LOGIN_LOCKOUT_MS)
-        setAttempts(0)
+        attemptsRef.current = 0
         return `Too many failed attempts. Please wait ${LOGIN_LOCKOUT_MS / 1000} seconds.`
       }
     }
     return null
-  }, [attempts])
+  }, [])
 
   const reset = useCallback(() => {
-    setAttempts(0)
+    attemptsRef.current = 0
     setLockedUntil(null)
   }, [])
 

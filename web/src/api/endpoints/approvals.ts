@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type {
   ApiResponse,
   ApprovalFilters,
@@ -9,7 +9,7 @@ import type {
   RejectRequest,
 } from '../types'
 
-export async function listApprovals(filters?: ApprovalFilters) {
+export async function listApprovals(filters?: ApprovalFilters): Promise<PaginatedResult<ApprovalItem>> {
   const response = await apiClient.get<PaginatedResponse<ApprovalItem>>('/approvals', { params: filters })
   return unwrapPaginated<ApprovalItem>(response)
 }

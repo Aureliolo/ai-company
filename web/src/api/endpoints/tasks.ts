@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type {
   ApiResponse,
   CancelTaskRequest,
@@ -10,7 +10,7 @@ import type {
   UpdateTaskRequest,
 } from '../types'
 
-export async function listTasks(filters?: TaskFilters) {
+export async function listTasks(filters?: TaskFilters): Promise<PaginatedResult<Task>> {
   const response = await apiClient.get<PaginatedResponse<Task>>('/tasks', { params: filters })
   return unwrapPaginated<Task>(response)
 }
@@ -41,5 +41,6 @@ export async function cancelTask(taskId: string, data: CancelTaskRequest): Promi
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
-  await apiClient.delete(`/tasks/${encodeURIComponent(taskId)}`)
+  const response = await apiClient.delete<ApiResponse<null>>(`/tasks/${encodeURIComponent(taskId)}`)
+  unwrapVoid(response)
 }

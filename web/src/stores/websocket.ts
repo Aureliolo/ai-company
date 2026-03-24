@@ -60,6 +60,22 @@ function getWsUrl(): string {
   return `${protocol}//${host}/api/v1/ws`
 }
 
+/** Runtime validation that a parsed message conforms to the WsEvent shape. */
+function isWsEvent(msg: Record<string, unknown>): boolean {
+  return (
+    typeof msg.event_type === 'string' &&
+    typeof msg.channel === 'string' &&
+    typeof msg.timestamp === 'string' &&
+    typeof msg.payload === 'object' &&
+    msg.payload !== null
+  )
+}
+
+/** Validate that a channels array from a server ack contains only known channel strings. */
+function isWsChannelArray(arr: unknown): arr is WsChannel[] {
+  return Array.isArray(arr) && arr.every((c) => typeof c === 'string')
+}
+
 function dispatchEvent(event: WsEvent) {
   channelHandlers.get(event.channel)?.forEach((h) => {
     try { h(event) } catch (err) {
@@ -120,10 +136,20 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       return
     }
 
-    const url = `${getWsUrl()}?ticket=${encodeURIComponent(ticket)}`
+    // First-message auth: connect without ticket in URL, send it as first message
+    const url = getWsUrl()
     socket = new WebSocket(url)
 
     socket.onopen = () => {
+      // Send auth ticket as first message (keeps ticket out of URL/logs/history)
+      try {
+        socket!.send(JSON.stringify({ action: 'auth', ticket }))
+      } catch (err) {
+        console.error('WebSocket auth send failed:', sanitizeForLog(err))
+        socket!.close()
+        return
+      }
+
       set({ connected: true })
       reconnectAttempts = 0
       pendingSubscriptions = []
@@ -152,8 +178,8 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       const msg = data as Record<string, unknown>
 
       if (msg.action === 'subscribed' || msg.action === 'unsubscribed') {
-        if (Array.isArray(msg.channels)) {
-          set({ subscribedChannels: [...(msg.channels as WsChannel[])] })
+        if (isWsChannelArray(msg.channels)) {
+          set({ subscribedChannels: [...msg.channels] })
         }
         return
       }
@@ -163,7 +189,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         return
       }
 
-      if (msg.event_type && msg.channel) {
+      if (isWsEvent(msg)) {
         try {
           dispatchEvent(msg as unknown as WsEvent)
         } catch (handlerErr) {

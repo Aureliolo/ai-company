@@ -1,15 +1,23 @@
 """WebSocket handler for real-time event feeds.
 
-Clients connect to ``/api/v1/ws?ticket=<ticket>`` and send JSON
-messages to subscribe/unsubscribe from named channels with optional
-payload filters.  The server pushes ``WsEvent`` JSON on subscribed
-channels.
+Clients connect to ``/api/v1/ws`` and authenticate using a one-time
+ticket obtained from ``POST /api/v1/auth/ws-ticket``.  Two auth
+methods are supported (backward compatible):
 
-Authentication uses a one-time ticket obtained from
-``POST /api/v1/auth/ws-ticket``.  The ticket is validated and
-consumed (single-use) before the connection is accepted.
+1. **First-message auth** (preferred): connect without query params,
+   then send ``{"action": "auth", "ticket": "<ticket>"}`` as the
+   first message.  Keeps the ticket out of URLs, logs, and browser
+   history.
+
+2. **Query-param auth** (legacy): connect to ``/api/v1/ws?ticket=<t>``.
+   Validated before ``accept()`` so invalid tickets never upgrade.
+
+After authentication, clients send JSON messages to subscribe/
+unsubscribe from named channels with optional payload filters.
+The server pushes ``WsEvent`` JSON on subscribed channels.
 """
 
+import asyncio
 import json
 from typing import Any
 
@@ -45,6 +53,7 @@ _MAX_WS_MESSAGE_BYTES: int = 4096
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
+_WS_AUTH_TIMEOUT_SECONDS: float = 10.0
 
 
 async def _validate_ticket(
@@ -86,6 +95,87 @@ async def _validate_ticket(
     logger.debug(
         API_WS_AUTH_STAGE,
         stage="ticket_valid",
+        user_id=user.user_id,
+    )
+    return user
+
+
+async def _read_auth_message(
+    socket: WebSocket[Any, Any, Any],
+) -> str | None:
+    """Read and validate the first-message auth payload.
+
+    Returns the ticket string, or ``None`` after closing the socket.
+    """
+    try:
+        data = await asyncio.wait_for(
+            socket.receive_text(),
+            timeout=_WS_AUTH_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning(API_WS_TICKET_INVALID, reason="auth_timeout")
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Auth timeout")
+        return None
+    except WebSocketDisconnect:
+        return None
+
+    try:
+        msg = json.loads(data)
+    except json.JSONDecodeError, TypeError:
+        logger.warning(API_WS_TICKET_INVALID, reason="invalid_auth_json")
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Invalid auth message")
+        return None
+
+    if not isinstance(msg, dict) or msg.get("action") != "auth":
+        logger.warning(
+            API_WS_TICKET_INVALID,
+            reason="expected_auth_action",
+            action=str(msg.get("action", ""))[:64],
+        )
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Expected auth action")
+        return None
+
+    ticket = msg.get("ticket")
+    if not ticket or not isinstance(ticket, str):
+        logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket_in_auth")
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
+        return None
+
+    return ticket
+
+
+async def _auth_from_first_message(
+    socket: WebSocket[Any, Any, Any],
+) -> AuthenticatedUser | None:
+    """Authenticate via the first message after accept.
+
+    Expects ``{"action": "auth", "ticket": "<ticket>"}``.  Returns
+    ``None`` and closes the socket on invalid ticket, wrong message
+    format, or timeout.
+    """
+    ticket = await _read_auth_message(socket)
+    if ticket is None:
+        return None
+
+    app_state = socket.app.state["app_state"]
+    user: AuthenticatedUser | None = app_state.ticket_store.validate_and_consume(
+        ticket,
+    )
+    if user is None:
+        logger.warning(
+            API_WS_TICKET_INVALID,
+            reason="invalid_or_expired",
+            client=str(socket.client),
+        )
+        await socket.close(
+            code=_WS_CLOSE_AUTH_FAILED,
+            reason="Invalid or expired ticket",
+        )
+        return None
+
+    logger.debug(
+        API_WS_AUTH_STAGE,
+        stage="first_message_ticket_valid",
         user_id=user.user_id,
     )
     return user
@@ -190,6 +280,46 @@ async def _on_event(
         await socket.close(code=1011, reason="Internal error")
 
 
+async def _authenticate_ws(
+    socket: WebSocket[Any, Any, Any],
+) -> tuple[AuthenticatedUser, bool] | None:
+    """Run the two-path auth flow.
+
+    Returns ``(user, already_accepted)`` on success, or ``None``
+    (socket already closed) on failure.
+    """
+    ticket_param = socket.query_params.get("ticket")
+
+    if ticket_param:
+        user = await _validate_ticket(socket)
+        if user is None:
+            return None
+        return user, False
+
+    # First-message path: must accept before reading
+    await socket.accept()
+    user = await _auth_from_first_message(socket)
+    if user is None:
+        return None
+    return user, True
+
+
+def _resolve_channels_plugin(
+    socket: WebSocket[Any, Any, Any],
+) -> ChannelsPlugin | None:
+    """Resolve the ChannelsPlugin from app.plugins.
+
+    Litestar's DI does not reliably inject plugin instances into
+    WebSocket handlers (the parameter is misidentified as a query
+    param, causing a Litestar-internal 4500 close before the
+    handler runs).  See #549.
+    """
+    for plugin in socket.app.plugins:
+        if isinstance(plugin, ChannelsPlugin):
+            return plugin
+    return None
+
+
 # Defense-in-depth: opt signals Litestar's auth middleware to skip
 # this handler.  The middleware is already HTTP-only (ScopeType.HTTP)
 # and the WS path is regex-excluded, so this is a tertiary safeguard.
@@ -199,33 +329,33 @@ async def ws_handler(
 ) -> None:
     """Handle WebSocket connections with channel subscriptions.
 
-    Authentication is performed via a one-time ticket passed as
-    ``?ticket=<ticket>`` in the query string.  The ticket is
-    validated and consumed before the connection is accepted.
+    Supports two authentication methods (backward compatible):
 
-    Protocol (JSON from client):
-        ``{"action": "subscribe", "channels": ["tasks"],
-          "filters": {"agent_id": "...", "project": "..."}}``
-        ``{"action": "unsubscribe", "channels": ["tasks"]}``
+    1. **First-message auth** (preferred): connect without ``?ticket``,
+       accept the upgrade, then send ``{"action": "auth", "ticket": "..."}``
+       as the first message.  Keeps the ticket out of URLs and logs.
+
+    2. **Query-param auth** (legacy): connect with ``?ticket=<ticket>``.
+       Validated and consumed before ``accept()``.
+
+    After authentication, the client protocol is::
+
+        {
+            "action": "subscribe",
+            "channels": ["tasks"],
+            "filters": {"agent_id": "...", "project": "..."},
+        }
+        {"action": "unsubscribe", "channels": ["tasks"]}
     """
-    user = await _validate_ticket(socket)
-    if user is None:
+    auth_result = await _authenticate_ws(socket)
+    if auth_result is None:
         return
+    user, accepted = auth_result
 
     if not await _check_ws_role(socket, user):
         return
 
-    # Resolve ChannelsPlugin by iterating app.plugins -- the same
-    # pattern used by get_channels_plugin() in channels.py.
-    # Litestar's DI does not reliably inject plugin instances into
-    # WebSocket handlers (the parameter is misidentified as a query
-    # param, causing a Litestar-internal 4500 close before the
-    # handler runs).  See #549.
-    channels_plugin: ChannelsPlugin | None = None
-    for plugin in socket.app.plugins:
-        if isinstance(plugin, ChannelsPlugin):
-            channels_plugin = plugin
-            break
+    channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:
         logger.warning(
             API_WS_SEND_FAILED,
@@ -247,11 +377,10 @@ async def ws_handler(
         await socket.close(code=1011, reason="Internal error")
         return
 
-    # Accept only after auth, role check, plugin resolution, and
-    # subscription all succeed -- avoid accepting then immediately
-    # closing on infrastructure failures.
+    # Accept only if not already accepted (first-message path accepts early).
     socket.scope["user"] = user
-    await socket.accept()
+    if not accepted:
+        await socket.accept()
     logger.info(
         API_WS_CONNECTED,
         client=str(socket.client),

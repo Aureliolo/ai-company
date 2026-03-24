@@ -1,4 +1,4 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, unwrapVoid } from '../client'
 import type { ApiResponse, BackupInfo, BackupManifest, RestoreRequest, RestoreResponse } from '../types'
 
 export async function createBackup(): Promise<BackupManifest> {
@@ -17,7 +17,8 @@ export async function getBackup(backupId: string): Promise<BackupManifest> {
 }
 
 export async function deleteBackup(backupId: string): Promise<void> {
-  await apiClient.delete(`/admin/backups/${encodeURIComponent(backupId)}`)
+  const response = await apiClient.delete<ApiResponse<null>>(`/admin/backups/${encodeURIComponent(backupId)}`)
+  unwrapVoid(response)
 }
 
 export async function restoreBackup(data: RestoreRequest): Promise<RestoreResponse> {

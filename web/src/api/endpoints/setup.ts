@@ -36,7 +36,7 @@ export async function createAgent(data: SetupAgentRequest): Promise<SetupAgentRe
   return unwrap(response)
 }
 
-export async function getAgents(): Promise<SetupAgentSummary[]> {
+export async function getAgents(): Promise<readonly SetupAgentSummary[]> {
   const response = await apiClient.get<ApiResponse<SetupAgentsListResponse>>('/setup/agents')
   return unwrap(response).agents
 }

@@ -131,6 +131,20 @@ describe('auth store', () => {
     })
   })
 
+  describe('setup', () => {
+    it('calls setup API and fetches user', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.setup).mockResolvedValue(mockTokenResponse)
+      vi.mocked(authApi.getMe).mockResolvedValue(mockUser)
+
+      await useAuthStore.getState().setup('admin', 'pass')
+
+      expect(authApi.setup).toHaveBeenCalledWith({ username: 'admin', password: 'pass' })
+      expect(useAuthStore.getState().token).toBe('test-jwt-token')
+      expect(useAuthStore.getState().user).toEqual(mockUser)
+    })
+  })
+
   describe('fetchUser', () => {
     it('does nothing when no token', async () => {
       const authApi = await import('@/api/endpoints/auth')
@@ -160,6 +174,32 @@ describe('auth store', () => {
       await useAuthStore.getState().fetchUser()
 
       expect(localStorage.getItem('auth_must_change_password')).toBe('true')
+    })
+
+    it('clears auth on 401 error', async () => {
+      const { AxiosError } = await import('axios')
+      const authApi = await import('@/api/endpoints/auth')
+      const error401 = new AxiosError('Unauthorized', 'ERR_BAD_RESPONSE', undefined, undefined, {
+        status: 401, data: {}, headers: {}, statusText: 'Unauthorized',
+        config: {} as import('axios').AxiosResponse['config'],
+      } as import('axios').AxiosResponse)
+      vi.mocked(authApi.getMe).mockRejectedValue(error401)
+      useAuthStore.setState({ token: 'test-token' })
+      localStorage.setItem('auth_token', 'test-token')
+
+      await useAuthStore.getState().fetchUser()
+
+      expect(useAuthStore.getState().token).toBeNull()
+      expect(localStorage.getItem('auth_token')).toBeNull()
+    })
+
+    it('throws on non-401 errors without clearing auth', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getMe).mockRejectedValue(new Error('Network error'))
+      useAuthStore.setState({ token: 'test-token' })
+
+      await expect(useAuthStore.getState().fetchUser()).rejects.toThrow('Network error')
+      expect(useAuthStore.getState().token).toBe('test-token')
     })
   })
 

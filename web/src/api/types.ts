@@ -122,18 +122,6 @@ export interface ErrorDetail {
   type: string
 }
 
-export interface ProblemDetail {
-  type: string
-  title: string
-  status: number
-  detail: string
-  instance: string
-  error_code: ErrorCode
-  error_category: ErrorCategory
-  retryable: boolean
-  retry_after: number | null
-}
-
 // ── Response Envelopes ───────────────────────────────────────
 
 /** Discriminated API response envelope. */
@@ -210,17 +198,17 @@ export interface Task {
   project: string
   created_by: string
   assigned_to: string | null
-  reviewers: string[]
-  dependencies: string[]
-  artifacts_expected: ExpectedArtifact[]
-  acceptance_criteria: AcceptanceCriterion[]
+  readonly reviewers: readonly string[]
+  readonly dependencies: readonly string[]
+  readonly artifacts_expected: readonly ExpectedArtifact[]
+  readonly acceptance_criteria: readonly AcceptanceCriterion[]
   estimated_complexity: Complexity
   budget_limit: number
   cost_usd?: number
   deadline: string | null
   max_retries: number
   parent_task_id: string | null
-  delegation_chain: string[]
+  readonly delegation_chain: readonly string[]
   task_structure: TaskStructure | null
   coordination_topology: CoordinationTopology
   version?: number
@@ -290,7 +278,6 @@ export interface CreateApprovalRequest {
   action_type: string
   title: string
   description: string
-  requested_by: string
   risk_level: ApprovalRiskLevel
   ttl_seconds?: number
   task_id?: string
@@ -316,7 +303,7 @@ export interface ApprovalFilters {
 // ── Agents ───────────────────────────────────────────────────
 
 export interface PersonalityConfig {
-  traits: string[]
+  readonly traits: readonly string[]
   communication_style: string
   risk_tolerance: RiskTolerance
   creativity: CreativityLevel
@@ -341,8 +328,8 @@ export interface ModelConfig {
 }
 
 export interface SkillSet {
-  primary: string[]
-  secondary: string[]
+  readonly primary: readonly string[]
+  readonly secondary: readonly string[]
 }
 
 export interface MemoryConfig {
@@ -352,8 +339,8 @@ export interface MemoryConfig {
 
 export interface ToolPermissions {
   access_level: ToolAccessLevel
-  allowed: string[]
-  denied: string[]
+  readonly allowed: readonly string[]
+  readonly denied: readonly string[]
 }
 
 /**
@@ -365,7 +352,7 @@ export interface AgentConfig {
   id: string
   name: string
   role: string
-  department: string
+  department: DepartmentName
   level: SeniorityLevel
   status: AgentStatus
   personality: PersonalityConfig
@@ -400,7 +387,7 @@ export interface BudgetAlertConfig {
 export interface AutoDowngradeConfig {
   enabled: boolean
   threshold: number
-  downgrade_map: [string, string][]
+  readonly downgrade_map: readonly [string, string][]
   boundary: 'task_assignment'
 }
 
@@ -425,6 +412,11 @@ export interface OverviewMetrics {
   tasks_by_status: Record<TaskStatus, number>
   total_agents: number
   total_cost_usd: number
+  budget_remaining_usd: number
+  budget_used_percent: number
+  cost_7d_trend: readonly TrendDataPoint[]
+  active_agents_count: number
+  idle_agents_count: number
 }
 
 export type TrendPeriod = '7d' | '30d' | '90d'
@@ -442,7 +434,7 @@ export interface TrendsResponse {
   period: TrendPeriod
   metric: TrendMetric
   bucket_size: BucketSize
-  data_points: TrendDataPoint[]
+  readonly data_points: readonly TrendDataPoint[]
 }
 
 export interface ForecastPoint {
@@ -453,7 +445,7 @@ export interface ForecastPoint {
 export interface ForecastResponse {
   horizon_days: number
   projected_total_usd: number
-  daily_projections: ForecastPoint[]
+  readonly daily_projections: readonly ForecastPoint[]
   days_until_exhausted: number | null
   confidence: number
   avg_daily_spend_usd: number
@@ -464,18 +456,18 @@ export interface ForecastResponse {
 export interface Department {
   name: DepartmentName
   display_name: string
-  teams: TeamConfig[]
+  readonly teams: readonly TeamConfig[]
 }
 
 export interface TeamConfig {
   name: string
-  members: string[]
+  readonly members: readonly string[]
 }
 
 export interface CompanyConfig {
   company_name: string
-  agents: AgentConfig[]
-  departments: Department[]
+  readonly agents: readonly AgentConfig[]
+  readonly departments: readonly Department[]
 }
 
 // ── Providers ────────────────────────────────────────────────
@@ -498,7 +490,7 @@ export interface ProviderConfig {
   driver: string
   auth_type: AuthType
   base_url: string | null
-  models: ProviderModelConfig[]
+  readonly models: readonly ProviderModelConfig[]
   has_api_key: boolean
   has_oauth_credentials: boolean
   has_custom_header: boolean
@@ -556,8 +548,8 @@ export interface ProviderPreset {
   driver: string
   auth_type: AuthType
   default_base_url: string | null
-  candidate_urls: string[]
-  default_models: ProviderModelConfig[]
+  readonly candidate_urls: readonly string[]
+  readonly default_models: readonly ProviderModelConfig[]
 }
 
 export interface ProbePresetResponse {
@@ -575,12 +567,12 @@ export interface CreateFromPresetRequest {
 }
 
 export interface DiscoverModelsResponse {
-  discovered_models: ProviderModelConfig[]
+  readonly discovered_models: readonly ProviderModelConfig[]
   provider_name: string
 }
 
 export interface DiscoveryPolicyResponse {
-  host_port_allowlist: string[]
+  readonly host_port_allowlist: readonly string[]
   block_private_ips: boolean
   entry_count: number
 }
@@ -621,7 +613,7 @@ export interface MessageMetadata {
   project_id: string | null
   tokens_used: number | null
   cost_usd: number | null
-  extra: [string, string][]
+  readonly extra: readonly [string, string][]
 }
 
 export interface Message {
@@ -633,7 +625,7 @@ export interface Message {
   priority: MessagePriority
   channel: string
   content: string
-  attachments: Attachment[]
+  readonly attachments: readonly Attachment[]
   metadata: MessageMetadata
 }
 
@@ -642,7 +634,7 @@ export type ChannelType = 'topic' | 'direct' | 'broadcast'
 export interface Channel {
   name: string
   type: ChannelType
-  subscribers: string[]
+  readonly subscribers: readonly string[]
 }
 
 // ── Health ───────────────────────────────────────────────────
@@ -691,7 +683,7 @@ export interface MeetingAgendaItem {
 export interface MeetingAgenda {
   title: string
   context: string
-  items: MeetingAgendaItem[]
+  readonly items: readonly MeetingAgendaItem[]
 }
 
 export type MeetingPhase =
@@ -723,12 +715,12 @@ export interface MeetingMinutes {
   meeting_id: string
   protocol_type: MeetingProtocolType
   leader_id: string
-  participant_ids: string[]
+  readonly participant_ids: readonly string[]
   agenda: MeetingAgenda
-  contributions: MeetingContribution[]
+  readonly contributions: readonly MeetingContribution[]
   summary: string
-  decisions: string[]
-  action_items: ActionItem[]
+  readonly decisions: readonly string[]
+  readonly action_items: readonly ActionItem[]
   conflicts_detected: boolean
   total_input_tokens: number
   total_output_tokens: number
@@ -831,7 +823,7 @@ export type WsEventHandler = (event: WsEvent) => void
 export interface CollaborationScoreResult {
   score: number
   strategy_name: string
-  component_scores: [string, number][]
+  readonly component_scores: readonly [string, number][]
   confidence: number
   override_active: boolean
 }
@@ -867,7 +859,7 @@ export interface LlmCalibrationRecord {
 export interface CalibrationSummaryResponse {
   agent_id: string
   average_drift: number | null
-  records: LlmCalibrationRecord[]
+  readonly records: readonly LlmCalibrationRecord[]
   record_count: number
 }
 
@@ -889,10 +881,10 @@ export interface CoordinationPhaseResponse {
 
 export interface CoordinationResultResponse {
   parent_task_id: string
-  topology: string
+  topology: CoordinationTopology
   total_duration_seconds: number
   total_cost_usd: number
-  phases: CoordinationPhaseResponse[]
+  readonly phases: readonly CoordinationPhaseResponse[]
   wave_count: number
   is_success: boolean
 }
@@ -907,7 +899,7 @@ export interface BackupManifest {
   synthorg_version: string
   timestamp: string
   trigger: BackupTrigger
-  components: BackupComponent[]
+  readonly components: readonly BackupComponent[]
   size_bytes: number
   checksum: string
   backup_id: string
@@ -917,7 +909,7 @@ export interface BackupInfo {
   backup_id: string
   timestamp: string
   trigger: BackupTrigger
-  components: BackupComponent[]
+  readonly components: readonly BackupComponent[]
   size_bytes: number
   compressed: boolean
 }
@@ -930,7 +922,7 @@ export interface RestoreRequest {
 
 export interface RestoreResponse {
   manifest: BackupManifest
-  restored_components: BackupComponent[]
+  readonly restored_components: readonly BackupComponent[]
   safety_backup_id: string
   restart_required: boolean
 }
@@ -995,7 +987,7 @@ export interface SetupAgentSummary {
   name: string
   role: string
   department: string
-  level: string
+  level: SeniorityLevel
   model_provider: string
   model_id: string
   tier: string
@@ -1008,7 +1000,7 @@ export interface SetupCompanyResponse {
   template_applied: string | null
   department_count: number
   agent_count: number
-  agents: SetupAgentSummary[]
+  readonly agents: readonly SetupAgentSummary[]
 }
 
 export interface SetupAgentResponse {
@@ -1029,7 +1021,7 @@ export interface UpdateAgentNameRequest {
 }
 
 export interface SetupAgentsListResponse {
-  agents: SetupAgentSummary[]
+  readonly agents: readonly SetupAgentSummary[]
   agent_count: number
 }
 

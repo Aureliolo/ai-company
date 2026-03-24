@@ -120,10 +120,14 @@ src/synthorg/
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory
 
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
+  api/            # Axios client, endpoint modules (18 domains), shared types
   components/     # React components by feature + ui/ (shadcn primitives)
+  hooks/          # React hooks (auth, WebSocket, polling, optimistic updates)
   lib/            # Utilities (cn() class merging, etc.)
+  stores/         # Zustand stores (auth, WebSocket, domain shells)
   styles/         # Global CSS and Tailwind theme tokens
-  __tests__/      # Vitest unit tests
+  utils/          # Constants, error handling, formatting, logging
+  __tests__/      # Vitest unit + property tests (mirrors src/ structure)
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
   cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.)
