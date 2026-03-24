@@ -212,6 +212,37 @@ func TestCheckDevFromURLAllDrafts(t *testing.T) {
 	}
 }
 
+func TestCheckDevFromURLMalformedFirstTag(t *testing.T) {
+	// A malformed dev tag appearing first must not become the baseline and
+	// suppress valid dev tags that follow.
+	asset := assetName()
+	releases := []devRelease{
+		{TagName: "v0.5.0-dev.NaN", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.NaN/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.NaN/checksums.txt"},
+		}},
+		{TagName: "v0.5.0-dev.3", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.3/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.3/checksums.txt"},
+		}},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	result, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("CheckDevFromURL: %v", err)
+	}
+	// The valid dev.3 should be selected, not the malformed dev.NaN.
+	if result.LatestVersion != "v0.5.0-dev.3" {
+		t.Errorf("LatestVersion = %q, want v0.5.0-dev.3", result.LatestVersion)
+	}
+}
+
 func TestCheckDevFromURLOutOfOrder(t *testing.T) {
 	// GitHub API may return releases out of version order when drafts are
 	// published asynchronously. selectBestRelease must compare by version,

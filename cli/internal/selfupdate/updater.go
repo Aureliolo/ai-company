@@ -48,6 +48,9 @@ const (
 // from opening connections to internal hosts before the post-response
 // check in httpGetWithClient fires.
 func checkRedirectHost(req *http.Request, _ []*http.Request) error {
+	if req.URL.Scheme != "https" {
+		return fmt.Errorf("redirect to disallowed scheme %q", req.URL.Scheme)
+	}
 	if !AllowedDownloadHosts[req.URL.Hostname()] {
 		return fmt.Errorf("redirect to disallowed host %q", req.URL.Hostname())
 	}
@@ -170,7 +173,15 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 		if _, err := compareWithDev(r.TagName, r.TagName); err != nil {
 			continue
 		}
+		tag := strings.TrimPrefix(r.TagName, "v")
 		if r.Prerelease && strings.Contains(r.TagName, "-dev.") {
+			// Verify the dev suffix actually parsed to a number.
+			// splitDev returns devNum == -1 for malformed suffixes
+			// like "0.5.0-dev.NaN", which would be mis-ranked as
+			// stable by compareWithDev. Skip these.
+			if devNum, _ := splitDev(tag); devNum < 0 {
+				continue
+			}
 			if latestDev == nil {
 				latestDev = r
 			} else if cmp, err := compareWithDev(r.TagName, latestDev.TagName); err == nil && cmp > 0 {
