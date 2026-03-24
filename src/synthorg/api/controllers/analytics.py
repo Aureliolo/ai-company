@@ -295,7 +295,10 @@ async def _fetch_trend_data_points(
         Bucketed data points for the metric.
     """
     if metric == TrendMetric.SPEND:
-        records = await app_state.cost_tracker.get_records(start=start)
+        records = await app_state.cost_tracker.get_records(
+            start=start,
+            end=now,
+        )
         return bucket_cost_records(records, start, now, bucket_size)
 
     if metric in (TrendMetric.TASKS_COMPLETED, TrendMetric.SUCCESS_RATE):
