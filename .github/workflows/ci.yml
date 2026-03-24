@@ -307,11 +307,34 @@ jobs:
         run: npm audit --audit-level=high
         working-directory: web
 
+  # ── Dashboard: Storybook Build ──
+  dashboard-storybook-build:
+    name: Dashboard Storybook Build
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run storybook:build -- --disable-telemetry
+        working-directory: web
+
   # ── Gate: all required checks passed ──
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit]
+    needs: [changes, lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -332,6 +355,7 @@ jobs:
             ${{ needs.dashboard-test.result }}
             ${{ needs.dashboard-build.result }}
             ${{ needs.dashboard-audit.result }}
+            ${{ needs.dashboard-storybook-build.result }}
         run: |
           # Any "failure" or "cancelled" in the results means CI failed.
           if echo "$RESULTS" | grep -qE "failure|cancelled"; then

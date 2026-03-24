@@ -51,6 +51,7 @@ Thumbs.db
 # Web UI
 web/node_modules/
 web/dist/
+web/storybook-static/
 *.tsbuildinfo
 web/vite.config.d.ts
 web/vite.config.js

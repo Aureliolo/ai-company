@@ -1,6 +1,30 @@
 import { create } from 'zustand'
+import { getSetupStatus } from '@/api/endpoints/setup'
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface SetupState {}
+interface SetupState {
+  /** Whether initial setup is complete. `null` means not yet fetched. */
+  setupComplete: boolean | null
+  loading: boolean
+  /** Whether the last fetch attempt failed. */
+  error: boolean
+  fetchSetupStatus: () => Promise<void>
+}
 
-export const useSetupStore = create<SetupState>()(() => ({}))
+export const useSetupStore = create<SetupState>()((set, get) => ({
+  setupComplete: null,
+  loading: false,
+  error: false,
+
+  async fetchSetupStatus() {
+    if (get().loading) return
+    set({ loading: true, error: false })
+    try {
+      const status = await getSetupStatus()
+      set({ setupComplete: !status.needs_setup, loading: false })
+    } catch {
+      // On error (e.g. network failure), explicitly reset setupComplete
+      // to null so the guard sees unknown state and shows error/retry
+      set({ setupComplete: null, loading: false, error: true })
+    }
+  },
+}))

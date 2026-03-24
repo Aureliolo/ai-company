@@ -9,7 +9,7 @@
 FROM node:25-alpine@sha256:5209bcaca9836eb3448b650396213dbe9d9a34d31840c2ae1f206cb2986a8543 AS builder
 RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:build /app
 WORKDIR /app
-COPY --chown=build:build web/package.json web/package-lock.json ./
+COPY --chown=build:build web/package.json web/package-lock.json web/.npmrc ./
 # Run npm ci as build user so node_modules (including .vite cache) is owned by
 # the same user that runs the build -- avoids permission errors in Vite.
 USER build
