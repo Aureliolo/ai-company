@@ -151,7 +151,7 @@ graph TB
 
 | Section | Description |
 |---------|-------------|
-| [Design Specification](docs/design/index.md) | Vision, agents, communication, engine, memory, operations, brand & UX |
+| [Design Specification](docs/design/index.md) | Vision, agents, communication, engine, memory, operations, brand & UX, page structure |
 | [Architecture](docs/architecture/index.md) | System overview, tech stack, decision log |
 | [API Reference](docs/rest-api.md) | REST API reference (Scalar/OpenAPI) |
 | [Library Reference](docs/api/index.md) | Auto-generated from docstrings |

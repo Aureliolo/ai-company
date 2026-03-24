@@ -7,9 +7,9 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (23 controllers, 7 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (20 controllers, 7 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
-**Guiding principle**: every page maps to a real backend domain with live data. No placeholder pages, no "Coming Soon" stubs.
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs in v0.5.0; stub-only controllers (ProjectController, ArtifactController) are explicitly excluded from the page list.
 
 ---
 
@@ -98,7 +98,7 @@ LLM provider management. CRUD cards for configured providers. Connection test bu
 
 No WebSocket subscription -- provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 
-**API endpoints**: `GET /providers`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
+**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
 #### Settings (`/settings`)
 
@@ -119,13 +119,13 @@ Not in sidebar navigation.
 
 Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or `/setup` if setup is not complete (based on `GET /setup/status`).
 
-**API endpoints**: `POST /auth/login`, `GET /setup/status`
+**API endpoints**: `POST /auth/setup`, `POST /auth/login`, `GET /setup/status`
 
 #### Setup Wizard (`/setup`)
 
 Multi-step first-run flow: template selection, company creation, agent configuration, provider setup, completion. Each step is URL-addressable (`/setup/{step}`). Redirects to `/` if setup is already complete.
 
-**API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/init-company`, `POST /setup/add-agent`, `GET /setup/agents`, `PUT /setup/agent/{id}/name`, `PUT /setup/agent/{id}/model`, `POST /setup/complete`
+**API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/company`, `POST /setup/agent`, `GET /setup/agents`, `PUT /setup/agents/{agent_index}/name`, `PUT /setup/agents/{agent_index}/model`, `POST /setup/agents/{agent_index}/randomize-name`, `GET /setup/name-locales/available`, `GET /setup/name-locales`, `PUT /setup/name-locales`, `POST /setup/complete`
 
 ### Overlays
 
