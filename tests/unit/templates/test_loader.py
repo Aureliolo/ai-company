@@ -319,9 +319,12 @@ class TestListTemplatesEdgeCases:
 
     def test_defective_builtin_skipped(self) -> None:
         """A defective built-in template is skipped without crashing."""
-        with patch(
-            "synthorg.templates.loader._load_builtin",
-            side_effect=TemplateRenderError("broken builtin"),
+        with (
+            patch(
+                "synthorg.templates.loader._load_builtin",
+                side_effect=TemplateRenderError("broken builtin"),
+            ),
+            patch("synthorg.templates.loader.logger"),
         ):
             templates = list_templates()
             # All builtins failed, so only user templates (none) remain.
