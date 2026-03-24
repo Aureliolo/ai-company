@@ -187,6 +187,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         set({ user: result })
         if (result && !result.must_change_password) {
           localStorage.removeItem('auth_must_change_password')
+          set({ _mustChangePasswordFallback: false })
         }
         return result
       } catch (err) {

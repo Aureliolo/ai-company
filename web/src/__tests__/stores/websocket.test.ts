@@ -371,7 +371,8 @@ describe('websocket store', () => {
       const ws = MockWebSocket.latest()!
       ws.simulateOpen()
 
-      // Simulate oversized raw message (> 131072 chars)
+      // Simulate oversized raw message (> 131072 bytes).
+      // Uses ASCII 'x' so char count == byte count (estimateByteLength uses TextEncoder).
       const oversized = 'x'.repeat(131073)
       ws.onmessage?.({ data: oversized })
 

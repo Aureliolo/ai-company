@@ -512,7 +512,7 @@ export interface CreateProviderRequest {
   oauth_scope?: string
   custom_header_name?: string
   custom_header_value?: string
-  models?: ProviderModelConfig[]
+  models?: readonly ProviderModelConfig[]
 }
 
 export interface UpdateProviderRequest {
@@ -527,7 +527,7 @@ export interface UpdateProviderRequest {
   oauth_scope?: string | null
   custom_header_name?: string | null
   custom_header_value?: string | null
-  models?: ProviderModelConfig[]
+  models?: readonly ProviderModelConfig[]
 }
 
 export interface TestConnectionRequest {
