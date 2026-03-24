@@ -563,7 +563,7 @@ export interface CreateFromPresetRequest {
   name: string
   api_key?: string
   base_url?: string
-  models?: ProviderModelConfig[]
+  models?: readonly ProviderModelConfig[]
 }
 
 export interface DiscoverModelsResponse {

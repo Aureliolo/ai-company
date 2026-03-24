@@ -61,6 +61,8 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
     const uniqueChannels: WsChannel[] = [...new Set(bindings.map((b) => b.channel))]
 
     const setup = async () => {
+      // Clear any stale error from a previous failed setup
+      setSetupError(null)
       try {
         if (!wsStore.connected) {
           await wsStore.connect()

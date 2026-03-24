@@ -136,10 +136,11 @@ async def _read_auth_message(  # noqa: PLR0911
         return None
 
     if not isinstance(msg, dict) or msg.get("action") != "auth":
+        action = msg.get("action", "") if isinstance(msg, dict) else ""
         logger.warning(
             API_WS_TICKET_INVALID,
             reason="expected_auth_action",
-            action=str(msg.get("action", ""))[:64],
+            action=str(action)[:64],
         )
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Expected auth action")
         return None
