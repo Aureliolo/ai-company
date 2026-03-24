@@ -110,6 +110,7 @@ nav:
       - Engine: design/engine.md
       - Memory: design/memory.md
       - Operations: design/operations.md
+      - Brand Identity & UX: design/brand-and-ux.md
   - Architecture:
       - architecture/index.md
       - Tech Stack: architecture/tech-stack.md
