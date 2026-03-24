@@ -9,6 +9,7 @@ import re
 from typing import Self
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -28,6 +29,8 @@ from synthorg.core.enums import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
+from synthorg.hr.enums import TrendDirection  # noqa: TC001
+from synthorg.hr.performance.models import TrendResult, WindowMetrics  # noqa: TC001
 from synthorg.providers.enums import AuthType
 
 DEFAULT_LIMIT: int = 50
@@ -743,6 +746,133 @@ class ProbePresetResponse(BaseModel):
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)
     candidates_tried: int = Field(default=0, ge=0)
+
+
+# ── Agent performance DTOs ─────────────────────────────────────
+
+
+class AgentPerformanceSummary(BaseModel):
+    """Flat performance summary for dashboard display.
+
+    Derived from :class:`~synthorg.hr.performance.models.AgentPerformanceSnapshot`
+    via :func:`~synthorg.hr.performance.summary.extract_performance_summary`.
+
+    Attributes:
+        agent_name: Agent display name.
+        tasks_completed_total: Lifetime completed tasks.
+        tasks_completed_7d: Tasks completed in the last 7 days.
+        tasks_completed_30d: Tasks completed in the last 30 days.
+        avg_completion_time_seconds: Average task duration (30d window).
+        success_rate_percent: Task success rate as percentage (30d window).
+        cost_per_task_usd: Average cost per task (30d window).
+        quality_score: Overall quality score (0.0-10.0).
+        collaboration_score: Overall collaboration score (0.0-10.0).
+        trend_direction: Primary trend direction.
+        windows: Rolling window metrics from snapshot.
+        trends: Trend results from snapshot.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_name: NotBlankStr = Field(description="Agent display name")
+    tasks_completed_total: int = Field(ge=0, description="Lifetime completed tasks")
+    tasks_completed_7d: int = Field(
+        ge=0,
+        description="Tasks completed in the last 7 days",
+    )
+    tasks_completed_30d: int = Field(
+        ge=0,
+        description="Tasks completed in the last 30 days",
+    )
+    avg_completion_time_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Average task duration in seconds (30d window)",
+    )
+    success_rate_percent: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Task success rate as percentage (30d window)",
+    )
+    cost_per_task_usd: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Average cost per task in USD (30d window)",
+    )
+    quality_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+        description="Overall quality score",
+    )
+    collaboration_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=10.0,
+        description="Overall collaboration score",
+    )
+    trend_direction: TrendDirection = Field(description="Primary trend direction")
+    windows: tuple[WindowMetrics, ...] = Field(
+        default=(),
+        description="Rolling window metrics",
+    )
+    trends: tuple[TrendResult, ...] = Field(
+        default=(),
+        description="Trend detection results",
+    )
+
+
+class ActivityEvent(BaseModel):
+    """Single event in an agent's activity timeline.
+
+    Attributes:
+        event_type: Event category (e.g. ``"hired"``, ``"task_completed"``).
+        timestamp: When the event occurred.
+        description: Human-readable event description.
+        related_ids: Related entity identifiers (e.g. task_id, agent_id).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    event_type: NotBlankStr = Field(description="Event category")
+    timestamp: AwareDatetime = Field(description="When the event occurred")
+    description: str = Field(
+        default="",
+        max_length=1024,
+        description="Human-readable event description",
+    )
+    related_ids: dict[str, str] = Field(
+        default_factory=dict,
+        description="Related entity identifiers",
+    )
+
+
+class CareerEvent(BaseModel):
+    """Career milestone in an agent's history.
+
+    Attributes:
+        event_type: Lifecycle event type (e.g. ``"hired"``, ``"promoted"``).
+        timestamp: When the event occurred.
+        description: Human-readable event description.
+        initiated_by: Who triggered the event.
+        metadata: Additional structured metadata.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    event_type: NotBlankStr = Field(description="Lifecycle event type")
+    timestamp: AwareDatetime = Field(description="When the event occurred")
+    description: str = Field(
+        default="",
+        max_length=1024,
+        description="Human-readable event description",
+    )
+    initiated_by: NotBlankStr = Field(description="Who triggered the event")
+    metadata: dict[str, str] = Field(
+        default_factory=dict,
+        description="Additional structured metadata",
+    )
 
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
