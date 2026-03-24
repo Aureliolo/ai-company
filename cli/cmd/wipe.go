@@ -138,7 +138,8 @@ func (wc *wipeContext) confirmAndWipe() error {
 
 	if startAfter {
 		if err := wc.startContainers(); err != nil {
-			return err
+			wc.errOut.Warn(fmt.Sprintf("Could not restart containers: %v", err))
+			startAfter = false // fall through to manual-start hint
 		}
 	}
 
@@ -209,13 +210,11 @@ func (wc *wipeContext) startContainers() error {
 	return pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut)
 }
 
-// waitForBackendHealth waits for the backend to become healthy, warning
-// if the health check fails within the timeout.
-func (wc *wipeContext) waitForBackendHealth() {
+// waitForBackendHealth waits for the backend to become healthy.
+// Returns an error if the health check times out.
+func (wc *wipeContext) waitForBackendHealth() error {
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", wc.state.BackendPort)
-	if err := health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Backend not healthy -- backup may not be available: %v", err))
-	}
+	return health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second)
 }
 
 // offerBackup prompts whether to create a backup, and if so, ensures
@@ -230,12 +229,20 @@ func (wc *wipeContext) offerBackup() error {
 		return nil
 	}
 
-	if err := wc.ensureRunningForBackup(); err != nil {
+	ready, err := wc.ensureRunningForBackup()
+	if err != nil {
 		return err
+	}
+	if !ready {
+		return nil // user chose to skip backup via askContinueWithoutBackup
 	}
 
 	savePath, err := wc.promptSavePath()
 	if err != nil {
+		return err
+	}
+
+	if err := wc.checkOverwrite(savePath); err != nil {
 		return err
 	}
 
@@ -245,37 +252,55 @@ func (wc *wipeContext) offerBackup() error {
 // ensureRunningForBackup checks whether containers are running. If not,
 // it prompts the user before starting them. If the user declines, it
 // falls through to askContinueWithoutBackup (backup cannot proceed
-// without running containers).
-func (wc *wipeContext) ensureRunningForBackup() error {
+// without running containers). Returns true when the backend is ready
+// for a backup, or false when the user chose to skip the backup.
+func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 	running, err := wc.containersRunning()
 	if err != nil {
 		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
-		return wc.askContinueWithoutBackup(
+		if err := wc.askContinueWithoutBackup(
 			"Could not check container status. Continue with wipe anyway?",
-		)
+		); err != nil {
+			return false, err
+		}
+		return false, nil
 	}
 	if running {
-		wc.waitForBackendHealth()
-		return nil
+		if err := wc.waitForBackendHealth(); err != nil {
+			wc.errOut.Warn(fmt.Sprintf("Backend not healthy: %v", err))
+			if err := wc.askContinueWithoutBackup(
+				"Backend is not healthy. Continue with wipe anyway?",
+			); err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		return true, nil
 	}
 
 	startOK, err := wc.promptStartForBackup()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !startOK {
-		return wc.askContinueWithoutBackup(
+		if err := wc.askContinueWithoutBackup(
 			"Backup requires running containers. Continue with wipe anyway?",
-		)
+		); err != nil {
+			return false, err
+		}
+		return false, nil
 	}
 
 	if err := wc.startContainers(); err != nil {
 		wc.errOut.Warn(fmt.Sprintf("Could not start containers for backup: %v", err))
-		return wc.askContinueWithoutBackup(
+		if err := wc.askContinueWithoutBackup(
 			"Could not start containers for backup. Continue with wipe anyway?",
-		)
+		); err != nil {
+			return false, err
+		}
+		return false, nil
 	}
-	return nil
+	return true, nil
 }
 
 // promptStartForBackup asks whether to start containers so a backup
@@ -359,6 +384,33 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 		return "", fmt.Errorf("resolving save path: %w", err)
 	}
 	return absPath, nil
+}
+
+// checkOverwrite warns and prompts if the save path already exists.
+func (wc *wipeContext) checkOverwrite(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return nil // does not exist or stat error -- proceed
+	}
+	var overwrite bool
+	err := wc.runForm(huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("File already exists: %s. Overwrite?", filepath.Base(path))).
+			Affirmative("Yes, overwrite").
+			Negative("Cancel").
+			Value(&overwrite),
+	)))
+	if err != nil {
+		if isUserAbort(err) {
+			wc.out.Hint("Wipe cancelled.")
+			return errWipeCancelled
+		}
+		return fmt.Errorf("overwrite prompt: %w", err)
+	}
+	if !overwrite {
+		wc.out.Hint("Wipe cancelled.")
+		return errWipeCancelled
+	}
+	return nil
 }
 
 // createAndCopyBackup creates a backup via the API and copies it locally.

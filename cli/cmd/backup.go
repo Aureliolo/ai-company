@@ -309,7 +309,7 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 	out.Step("Creating backup...")
 
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 30*time.Second, state.JWTSecret)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 60*time.Second, state.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("creating backup: %w", err)
 	}
