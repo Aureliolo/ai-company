@@ -79,6 +79,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
       } catch (err) {
         setSetupError('WebSocket subscription failed.')
         console.error('WebSocket subscribe failed:', sanitizeForLog(err))
+        return
       }
 
       if (disposedRef.current) return

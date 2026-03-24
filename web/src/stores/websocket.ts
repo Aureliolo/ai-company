@@ -75,7 +75,8 @@ function isWsEvent(msg: Record<string, unknown>): boolean {
     typeof msg.channel === 'string' &&
     typeof msg.timestamp === 'string' &&
     typeof msg.payload === 'object' &&
-    msg.payload !== null
+    msg.payload !== null &&
+    !Array.isArray(msg.payload)
   )
 }
 
@@ -229,7 +230,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
       // Auth failures (4001/4003): do not reconnect -- surface error
       if (WS_AUTH_FAILURE_CODES.has(event.code)) {
-        console.error(`WebSocket auth failed (code ${event.code}): ${event.reason}`)
+        console.error(`WebSocket auth failed (code ${event.code}): ${sanitizeForLog(event.reason, 200)}`)
         set({ reconnectExhausted: true })
         return
       }

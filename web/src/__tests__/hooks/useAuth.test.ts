@@ -12,7 +12,7 @@ vi.mock('@/api/endpoints/auth', () => ({
 
 function resetStore() {
   localStorage.clear()
-  useAuthStore.setState({ token: null, user: null, loading: false })
+  useAuthStore.setState({ token: null, user: null, loading: false, _mustChangePasswordFallback: false })
 }
 
 describe('useAuth', () => {

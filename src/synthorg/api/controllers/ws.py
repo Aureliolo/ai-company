@@ -100,7 +100,7 @@ async def _validate_ticket(
     return user
 
 
-async def _read_auth_message(
+async def _read_auth_message(  # noqa: PLR0911
     socket: WebSocket[Any, Any, Any],
 ) -> str | None:
     """Read and validate the first-message auth payload.
@@ -118,6 +118,14 @@ async def _read_auth_message(
         return None
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="disconnect_during_auth")
+        return None
+
+    if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
+        logger.warning(API_WS_TICKET_INVALID, reason="auth_too_large")
+        await socket.close(
+            code=_WS_CLOSE_AUTH_FAILED,
+            reason="Auth message too large",
+        )
         return None
 
     try:
