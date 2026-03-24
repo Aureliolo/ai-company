@@ -96,7 +96,7 @@ Base unit: **8px**. All spacing values follow a 4px sub-grid (half the 8px base 
 | `space-6` | 24px | Page padding, section gap (sparse), major separations |
 | `space-8` | 32px | Page section breaks |
 | `space-10` | 48px | Major layout divisions |
-| `space-12` | 64px | Sidebar width (compact rail: 56px, rounded to nearest) |
+| `space-12` | 64px | Major layout divisions, sidebar expanded padding |
 
 ### 1.4 Logo and Wordmark Usage
 
