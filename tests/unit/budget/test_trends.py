@@ -468,13 +468,16 @@ class TestProjectDailySpend:
             result.projected_total_usd = 99.0  # type: ignore[misc]
 
     def test_projections_have_sequential_dates(self) -> None:
+        anchor = datetime(2026, 3, 10, 14, 0, 0, tzinfo=UTC)
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=5.0
             ),
         ]
-        result = project_daily_spend(records, horizon_days=5)
+        result = project_daily_spend(records, horizon_days=5, now=anchor)
         days = [p.day for p in result.daily_projections]
+        # First projection is the day after the anchor
+        assert days[0] == anchor.date() + timedelta(days=1)
         for i in range(1, len(days)):
             assert days[i] == days[i - 1] + timedelta(days=1)
 
