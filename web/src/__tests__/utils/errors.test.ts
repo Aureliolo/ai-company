@@ -1,0 +1,153 @@
+import { AxiosError, type AxiosResponse } from 'axios'
+import { getErrorMessage, getErrorDetail, isAxiosError } from '@/utils/errors'
+import type { ErrorDetail } from '@/api/types'
+
+function makeAxiosError(
+  status: number | undefined,
+  data?: Record<string, unknown>,
+): AxiosError {
+  const error = new AxiosError(
+    'Request failed',
+    status ? 'ERR_BAD_RESPONSE' : 'ERR_NETWORK',
+    undefined,
+    undefined,
+    status
+      ? {
+          status,
+          data,
+          headers: {},
+          statusText: 'Error',
+          config: {} as AxiosResponse['config'],
+        } as AxiosResponse
+      : undefined,
+  )
+  return error
+}
+
+describe('isAxiosError', () => {
+  it('returns true for AxiosError', () => {
+    expect(isAxiosError(makeAxiosError(400))).toBe(true)
+  })
+
+  it('returns false for regular Error', () => {
+    expect(isAxiosError(new Error('test'))).toBe(false)
+  })
+
+  it('returns false for non-error values', () => {
+    expect(isAxiosError('string')).toBe(false)
+    expect(isAxiosError(null)).toBe(false)
+    expect(isAxiosError(undefined)).toBe(false)
+  })
+})
+
+describe('getErrorMessage', () => {
+  it('returns 4xx backend error message when available', () => {
+    const error = makeAxiosError(400, { error: 'Invalid name', success: false })
+    expect(getErrorMessage(error)).toBe('Invalid name')
+  })
+
+  it('returns generic message for 400 without backend error', () => {
+    const error = makeAxiosError(400)
+    expect(getErrorMessage(error)).toBe('Invalid request. Please check your input.')
+  })
+
+  it('returns auth message for 401', () => {
+    const error = makeAxiosError(401)
+    expect(getErrorMessage(error)).toBe('Authentication required. Please log in.')
+  })
+
+  it('returns permission message for 403', () => {
+    const error = makeAxiosError(403)
+    expect(getErrorMessage(error)).toBe('You do not have permission to perform this action.')
+  })
+
+  it('returns not found message for 404', () => {
+    const error = makeAxiosError(404)
+    expect(getErrorMessage(error)).toBe('The requested resource was not found.')
+  })
+
+  it('returns conflict message for 409', () => {
+    const error = makeAxiosError(409)
+    expect(getErrorMessage(error)).toContain('Conflict')
+  })
+
+  it('returns validation message for 422', () => {
+    const error = makeAxiosError(422)
+    expect(getErrorMessage(error)).toContain('Validation')
+  })
+
+  it('returns rate limit message for 429', () => {
+    const error = makeAxiosError(429)
+    expect(getErrorMessage(error)).toContain('Too many requests')
+  })
+
+  it('returns unavailable message for 503', () => {
+    const error = makeAxiosError(503)
+    expect(getErrorMessage(error)).toContain('temporarily unavailable')
+  })
+
+  it('does NOT leak 5xx error body', () => {
+    const error = makeAxiosError(500, { error: 'Internal: SQL deadlock on users table' })
+    expect(getErrorMessage(error)).toBe('A server error occurred. Please try again later.')
+  })
+
+  it('returns network error for no response', () => {
+    const error = makeAxiosError(undefined)
+    expect(getErrorMessage(error)).toBe('Network error. Please check your connection.')
+  })
+
+  it('returns generic server error for unknown 5xx', () => {
+    const error = makeAxiosError(502)
+    expect(getErrorMessage(error)).toBe('A server error occurred. Please try again later.')
+  })
+
+  it('returns Error.message for non-axios Error with short message', () => {
+    expect(getErrorMessage(new Error('Something went wrong'))).toBe('Something went wrong')
+  })
+
+  it('returns generic message for Error with long message', () => {
+    const longMsg = 'x'.repeat(201)
+    expect(getErrorMessage(new Error(longMsg))).toBe('An unexpected error occurred.')
+  })
+
+  it('returns generic message for Error starting with {', () => {
+    expect(getErrorMessage(new Error('{"internal":"data"}'))).toBe('An unexpected error occurred.')
+  })
+
+  it('returns generic message for non-error values', () => {
+    expect(getErrorMessage('string')).toBe('An unexpected error occurred.')
+    expect(getErrorMessage(42)).toBe('An unexpected error occurred.')
+    expect(getErrorMessage(null)).toBe('An unexpected error occurred.')
+  })
+})
+
+describe('getErrorDetail', () => {
+  it('returns null for non-axios error', () => {
+    expect(getErrorDetail(new Error('test'))).toBeNull()
+  })
+
+  it('returns null when no error_detail in response', () => {
+    const error = makeAxiosError(400, { error: 'bad' })
+    expect(getErrorDetail(error)).toBeNull()
+  })
+
+  it('returns error_detail when present', () => {
+    const detail: ErrorDetail = {
+      detail: 'Not found',
+      error_code: 3000,
+      error_category: 'not_found',
+      retryable: false,
+      retry_after: null,
+      instance: 'req-123',
+      title: 'Not Found',
+      type: 'https://docs.example.com/errors/not-found',
+    }
+    const error = makeAxiosError(404, { error_detail: detail })
+    expect(getErrorDetail(error)).toEqual(detail)
+  })
+
+  it('returns null for network error (no response)', () => {
+    const error = makeAxiosError(undefined)
+    expect(getErrorDetail(error)).toBeNull()
+  })
+})
