@@ -564,3 +564,27 @@ func TestPatchComposeImageRefs_MissingRequiredService(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestIsDevChannelMismatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		channel string
+		version string
+		want    bool
+	}{
+		{"dev build on stable channel", "stable", "0.5.0-dev.8", true},
+		{"dev build on dev channel", "dev", "0.5.0-dev.8", false},
+		{"stable build on stable channel", "stable", "0.4.9", false},
+		{"stable build on dev channel", "dev", "0.4.9", false},
+		{"local dev build", "stable", "dev", false},
+		{"empty version", "stable", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.channel != "dev" && strings.Contains(tt.version, "-dev.")
+			if got != tt.want {
+				t.Errorf("mismatch(%q, %q) = %v, want %v", tt.channel, tt.version, got, tt.want)
+			}
+		})
+	}
+}

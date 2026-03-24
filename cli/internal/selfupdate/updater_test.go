@@ -898,6 +898,79 @@ func TestCheckDevFromURLAllDrafts(t *testing.T) {
 	}
 }
 
+func TestCheckDevFromURLOutOfOrder(t *testing.T) {
+	// GitHub API may return releases out of version order when drafts are
+	// published asynchronously. selectBestRelease must compare by version,
+	// not rely on list position.
+	asset := assetName()
+	releases := []devRelease{
+		{TagName: "v0.5.0-dev.9", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.9/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.9/checksums.txt"},
+		}},
+		{TagName: "v0.5.0-dev.8", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.8/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.8/checksums.txt"},
+		}},
+		{TagName: "v0.5.0-dev.11", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.11/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.11/checksums.txt"},
+		}},
+		{TagName: "v0.5.0-dev.10", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.10/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.5.0-dev.10/checksums.txt"},
+		}},
+		{TagName: "v0.4.9", Prerelease: false, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.9/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.9/checksums.txt"},
+		}},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	result, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("CheckDevFromURL: %v", err)
+	}
+	// dev.11 is the highest version despite appearing third in the list.
+	if result.LatestVersion != "v0.5.0-dev.11" {
+		t.Errorf("LatestVersion = %q, want v0.5.0-dev.11", result.LatestVersion)
+	}
+}
+
+func TestCheckDevFromURLOutOfOrderStable(t *testing.T) {
+	// Stable releases may also appear out of order.
+	asset := assetName()
+	releases := []devRelease{
+		{TagName: "v0.4.8", Prerelease: false, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.8/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.8/checksums.txt"},
+		}},
+		{TagName: "v0.4.9", Prerelease: false, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.9/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.9/checksums.txt"},
+		}},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	result, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("CheckDevFromURL: %v", err)
+	}
+	if result.LatestVersion != "v0.4.9" {
+		t.Errorf("LatestVersion = %q, want v0.4.9", result.LatestVersion)
+	}
+}
+
 func TestCheckDevFromURLRateLimited(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

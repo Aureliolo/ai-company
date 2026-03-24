@@ -127,6 +127,16 @@ func updateCLI(cmd *cobra.Command) error {
 	} else {
 		_, _ = fmt.Fprintln(out, "Checking for updates...")
 	}
+
+	// Alert if running a dev build but checking the stable channel.
+	// This catches the common case where the user installed a dev build
+	// but forgot to set the channel. It is not an error -- they may
+	// intentionally be waiting for the next stable release.
+	if channel != "dev" && strings.Contains(version.Version, "-dev.") {
+		_, _ = fmt.Fprintln(out,
+			"Note: running a dev build but update channel is \"stable\".",
+			"Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
+	}
 	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)

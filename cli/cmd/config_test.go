@@ -386,6 +386,95 @@ func FuzzConfigSetLogLevel(f *testing.F) {
 	})
 }
 
+func TestConfigGet(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	state.Channel = "dev"
+	state.ImageTag = "0.5.0-dev.9"
+	state.LogLevel = "debug"
+	state.AutoCleanup = true
+	state.Sandbox = true
+	state.BackendPort = 9000
+	state.WebPort = 4000
+	state.PersistenceBackend = "sqlite"
+	state.MemoryBackend = "mem0"
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{"channel", "dev"},
+		{"image_tag", "0.5.0-dev.9"},
+		{"log_level", "debug"},
+		{"auto_cleanup", "true"},
+		{"sandbox", "true"},
+		{"backend_port", "9000"},
+		{"web_port", "4000"},
+		{"persistence_backend", "sqlite"},
+		{"memory_backend", "mem0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "get", tt.key, "--data-dir", dir})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := strings.TrimSpace(buf.String())
+			if got != tt.want {
+				t.Errorf("config get %s = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfigGetUnknownKey(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "get", "unknown_key", "--data-dir", dir})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown key")
+	}
+}
+
+func TestConfigGetDefaultChannel(t *testing.T) {
+	// When channel is empty in JSON, DefaultState fills "stable".
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "get", "channel", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.TrimSpace(buf.String())
+	if got != "stable" {
+		t.Errorf("config get channel = %q, want stable", got)
+	}
+}
+
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()

@@ -33,6 +33,26 @@ var configShowCmd = &cobra.Command{
 	RunE:  runConfigShow,
 }
 
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Get a configuration value",
+	Long: `Get a single configuration value.
+
+Supported keys:
+  auto_cleanup          Automatically remove old images after update
+  channel               Update channel
+  image_tag             Current container image tag
+  log_level             Log verbosity
+  sandbox               Sandbox enabled
+  backend_port          Backend API port
+  web_port              Web dashboard port
+  persistence_backend   Persistence backend
+  memory_backend        Memory backend`,
+	Args:              cobra.ExactArgs(1),
+	RunE:              runConfigGet,
+	ValidArgsFunction: completeConfigGetKeys,
+}
+
 var configSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
@@ -48,6 +68,7 @@ Supported keys:
 
 func init() {
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configGetCmd)
 	configCmd.AddCommand(configSetCmd)
 	rootCmd.AddCommand(configCmd)
 }
@@ -93,6 +114,54 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 
+	return nil
+}
+
+// gettableConfigKeys lists all keys supported by `config get`.
+var gettableConfigKeys = []string{
+	"auto_cleanup", "backend_port", "channel", "image_tag",
+	"log_level", "memory_backend", "persistence_backend",
+	"sandbox", "web_port",
+}
+
+func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return gettableConfigKeys, cobra.ShellCompDirectiveNoFileComp
+}
+
+func runConfigGet(cmd *cobra.Command, args []string) error {
+	key := args[0]
+	dir := resolveDataDir()
+
+	state, err := config.Load(dir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	var value string
+	switch key {
+	case "auto_cleanup":
+		value = strconv.FormatBool(state.AutoCleanup)
+	case "backend_port":
+		value = strconv.Itoa(state.BackendPort)
+	case "channel":
+		value = state.DisplayChannel()
+	case "image_tag":
+		value = state.ImageTag
+	case "log_level":
+		value = state.LogLevel
+	case "memory_backend":
+		value = state.MemoryBackend
+	case "persistence_backend":
+		value = state.PersistenceBackend
+	case "sandbox":
+		value = strconv.FormatBool(state.Sandbox)
+	case "web_port":
+		value = strconv.Itoa(state.WebPort)
+	default:
+		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(gettableConfigKeys, ", "))
+	}
+
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), value)
 	return nil
 }
 

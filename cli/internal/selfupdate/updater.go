@@ -140,8 +140,9 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 
 // selectBestRelease picks the best release from a list that may contain both
 // stable and dev pre-releases. Prefers stable if it is newer than or equal to
-// the latest dev release. Assumes releases are ordered newest-first (GitHub API
-// default for GET /repos/{owner}/{repo}/releases).
+// the latest dev release. Compares all candidates by version rather than
+// relying on API ordering, which is not guaranteed to be newest-first
+// (draft-then-publish releases may appear out of version order).
 func selectBestRelease(releases []devRelease) (*devRelease, error) {
 	var latestDev, latestStable *devRelease
 	for i := range releases {
@@ -152,9 +153,13 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 		if r.Prerelease && strings.Contains(r.TagName, "-dev.") {
 			if latestDev == nil {
 				latestDev = r
+			} else if cmp, err := compareWithDev(r.TagName, latestDev.TagName); err == nil && cmp > 0 {
+				latestDev = r
 			}
 		} else if !r.Prerelease {
 			if latestStable == nil {
+				latestStable = r
+			} else if cmp, err := compareWithDev(r.TagName, latestStable.TagName); err == nil && cmp > 0 {
 				latestStable = r
 			}
 		}
