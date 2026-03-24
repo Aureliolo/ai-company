@@ -68,7 +68,7 @@ function getWsUrl(): string {
 }
 
 /** Runtime validation that a parsed message conforms to the WsEvent shape. */
-function isWsEvent(msg: Record<string, unknown>): boolean {
+function isWsEvent(msg: Record<string, unknown>): msg is Record<string, unknown> & WsEvent {
   return (
     typeof msg.event_type === 'string' &&
     typeof msg.channel === 'string' &&
@@ -168,6 +168,10 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         return
       }
 
+      // Note: connected is set before the server confirms the auth ticket.
+      // If auth fails, onclose fires immediately with code 4001/4003 and
+      // clears connected.  The brief true-then-false flash is inherent to
+      // first-message auth (server must accept the upgrade to read the ticket).
       set({ connected: true })
       reconnectAttempts = 0
       pendingSubscriptions = []
@@ -215,9 +219,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       }
 
       if (isWsEvent(msg)) {
-        // isWsEvent validates all required WsEvent fields at runtime;
-        // dispatchEvent has internal per-handler try/catch
-        dispatchEvent(msg as unknown as WsEvent)
+        dispatchEvent(msg)
       } else {
         console.warn('WebSocket message failed WsEvent validation, discarding:', {
           hasEventType: typeof msg.event_type,
