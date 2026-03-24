@@ -1,0 +1,320 @@
+"""Tests for department health endpoint."""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import UUID
+
+import pytest
+from litestar.testing import TestClient
+
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
+from synthorg.config.schema import AgentConfig, RootConfig
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.enums import AgentStatus, Complexity, TaskType
+from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.hr.registry import AgentRegistryService
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
+from tests.unit.api.conftest import (
+    FakeMessageBus,
+    FakePersistenceBackend,
+    make_auth_headers,
+)
+
+_NOW = datetime.now(UTC)
+_AGENT_ID_A = "00000000-0000-0000-0000-000000000aaa"
+_AGENT_ID_B = "00000000-0000-0000-0000-000000000bbb"
+_HEADERS = make_auth_headers("ceo")
+
+
+def _make_identity(
+    *,
+    agent_id: str,
+    name: str,
+    department: str = "eng",
+    status: AgentStatus = AgentStatus.ACTIVE,
+) -> AgentIdentity:
+    return AgentIdentity(
+        id=UUID(agent_id),
+        name=name,
+        role="developer",
+        department=department,
+        model=ModelConfig(
+            provider="test-provider",
+            model_id="test-small-001",
+        ),
+        hiring_date=_NOW.date(),
+        status=status,
+    )
+
+
+def _make_cost_record(
+    *,
+    agent_id: str,
+    timestamp: datetime,
+    cost_usd: float = 0.01,
+) -> CostRecord:
+    return CostRecord(
+        agent_id=agent_id,
+        task_id="task-001",
+        provider="test-provider",
+        model="test-small-001",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=cost_usd,
+        timestamp=timestamp,
+    )
+
+
+def _make_task_metric(
+    *,
+    agent_id: str,
+    completed_at: datetime,
+    is_success: bool = True,
+    cost_usd: float = 0.01,
+) -> TaskMetricRecord:
+    return TaskMetricRecord(
+        agent_id=agent_id,
+        task_id="task-001",
+        task_type=TaskType.DEVELOPMENT,
+        completed_at=completed_at,
+        is_success=is_success,
+        duration_seconds=10.0,
+        cost_usd=cost_usd,
+        turns_used=2,
+        tokens_used=150,
+        complexity=Complexity.SIMPLE,
+    )
+
+
+def _build_dept_client(  # noqa: PLR0913
+    *,
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+    config: RootConfig,
+    cost_tracker: CostTracker | None = None,
+    performance_tracker: PerformanceTracker | None = None,
+    agent_registry: AgentRegistryService | None = None,
+) -> TestClient[Any]:
+    """Build a TestClient with the given config for department tests."""
+    from synthorg.api.app import create_app
+    from synthorg.api.auth.service import AuthService
+    from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+    auth_service: AuthService = _make_test_auth_service()
+    _seed_test_users(fake_persistence, auth_service)
+    settings_service = SettingsService(
+        repository=fake_persistence.settings,
+        registry=get_registry(),
+        config=config,
+    )
+    app = create_app(
+        config=config,
+        persistence=fake_persistence,
+        message_bus=fake_message_bus,
+        cost_tracker=cost_tracker or CostTracker(),
+        auth_service=auth_service,
+        settings_service=settings_service,
+        performance_tracker=performance_tracker or PerformanceTracker(),
+        agent_registry=agent_registry or AgentRegistryService(),
+    )
+    return TestClient(app)
+
+
+# ── Tests ─────────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentHealth:
+    def test_department_not_found(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get("/api/v1/departments/nonexistent/health")
+        assert resp.status_code == 404
+        assert resp.json()["success"] is False
+
+    def test_auth_required(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get(
+            "/api/v1/departments/eng/health",
+            headers={"Authorization": "Bearer invalid"},
+        )
+        assert resp.status_code == 401
+
+    def test_empty_department(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Department exists but has no agents."""
+        from synthorg.core.company import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=50.0),),
+        )
+        with _build_dept_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            config=config,
+        ) as client:
+            resp = client.get(
+                "/api/v1/departments/eng/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["department_name"] == "eng"
+            assert data["agent_count"] == 0
+            assert data["active_agent_count"] == 0
+            assert data["utilization_percent"] == 0.0
+            assert data["avg_performance_score"] is None
+            assert data["department_cost_7d"] == 0.0
+            assert data["collaboration_score"] is None
+
+    async def test_with_agents_and_data(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Full scenario with agents, costs, and performance data."""
+        from synthorg.core.company import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=50.0),),
+            agents=(
+                AgentConfig(name="alice", role="dev", department="eng"),
+                AgentConfig(name="bob", role="dev", department="eng"),
+            ),
+        )
+
+        # Set up agent registry with 1 active, 1 inactive
+        registry = AgentRegistryService()
+        identity_a = _make_identity(
+            agent_id=_AGENT_ID_A,
+            name="alice",
+            department="eng",
+            status=AgentStatus.ACTIVE,
+        )
+        identity_b = _make_identity(
+            agent_id=_AGENT_ID_B,
+            name="bob",
+            department="eng",
+            status=AgentStatus.ON_LEAVE,
+        )
+        await registry.register(identity_a)
+        await registry.register(identity_b)
+
+        # Set up cost tracker with records in last 7 days
+        cost_tracker = CostTracker()
+        await cost_tracker.record(
+            _make_cost_record(
+                agent_id=_AGENT_ID_A,
+                timestamp=_NOW - timedelta(days=1),
+                cost_usd=0.50,
+            ),
+        )
+        await cost_tracker.record(
+            _make_cost_record(
+                agent_id=_AGENT_ID_B,
+                timestamp=_NOW - timedelta(days=2),
+                cost_usd=0.30,
+            ),
+        )
+
+        # Set up performance tracker
+        perf = PerformanceTracker()
+        await perf.record_task_metric(
+            _make_task_metric(
+                agent_id=_AGENT_ID_A,
+                completed_at=_NOW - timedelta(days=1),
+            ),
+        )
+
+        with _build_dept_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            config=config,
+            cost_tracker=cost_tracker,
+            performance_tracker=perf,
+            agent_registry=registry,
+        ) as client:
+            resp = client.get(
+                "/api/v1/departments/eng/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["department_name"] == "eng"
+            assert data["agent_count"] == 2
+            assert data["active_agent_count"] == 1
+            assert data["utilization_percent"] == 50.0
+            assert data["department_cost_7d"] == 0.80
+            assert isinstance(data["cost_trend"], list)
+
+    def test_other_department_agents_excluded(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Agents from other departments are excluded."""
+        from synthorg.core.company import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(
+                Department(name="eng", budget_percent=50.0),
+                Department(name="sales", budget_percent=50.0),
+            ),
+            agents=(
+                AgentConfig(name="alice", role="dev", department="eng"),
+                AgentConfig(name="bob", role="rep", department="sales"),
+            ),
+        )
+        with _build_dept_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            config=config,
+        ) as client:
+            resp = client.get(
+                "/api/v1/departments/eng/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["agent_count"] == 1
+
+    def test_cost_trend_is_daily_sparkline(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """cost_trend should contain daily-bucketed data points."""
+        from synthorg.core.company import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=100.0),),
+            agents=(AgentConfig(name="alice", role="dev", department="eng"),),
+        )
+        with _build_dept_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            config=config,
+        ) as client:
+            resp = client.get(
+                "/api/v1/departments/eng/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            trend = data["cost_trend"]
+            assert isinstance(trend, list)
+            # Should have 7 daily buckets
+            assert len(trend) == 7
+            for pt in trend:
+                assert "timestamp" in pt
+                assert "value" in pt

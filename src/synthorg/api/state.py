@@ -27,6 +27,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.management.service import (
     ProviderManagementService,
 )
@@ -71,6 +72,7 @@ class AppState:
         "_model_router",
         "_performance_tracker",
         "_persistence",
+        "_provider_health_tracker",
         "_provider_management",
         "_provider_registry",
         "_review_gate_service",
@@ -101,6 +103,7 @@ class AppState:
         settings_service: SettingsService | None = None,
         provider_registry: ProviderRegistry | None = None,
         model_router: ModelRouter | None = None,
+        provider_health_tracker: ProviderHealthTracker | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -120,6 +123,7 @@ class AppState:
         self._settings_service = settings_service
         self._provider_registry = provider_registry
         self._model_router = model_router
+        self._provider_health_tracker = provider_health_tracker
         self._config_resolver: ConfigResolver | None = (
             ConfigResolver(settings_service=settings_service, config=config)
             if settings_service is not None
@@ -340,6 +344,19 @@ class AppState:
     def has_provider_management(self) -> bool:
         """Check whether the provider management service is configured."""
         return self._provider_management is not None
+
+    @property
+    def provider_health_tracker(self) -> ProviderHealthTracker:
+        """Return provider health tracker or raise 503."""
+        return self._require_service(
+            self._provider_health_tracker,
+            "provider_health_tracker",
+        )
+
+    @property
+    def has_provider_health_tracker(self) -> bool:
+        """Check whether the provider health tracker is configured."""
+        return self._provider_health_tracker is not None
 
     @property
     def has_auth_service(self) -> bool:

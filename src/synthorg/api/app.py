@@ -73,6 +73,7 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
@@ -420,6 +421,7 @@ def create_app(  # noqa: PLR0913
     performance_tracker: PerformanceTracker | None = None,
     settings_service: SettingsService | None = None,
     provider_registry: ProviderRegistry | None = None,
+    provider_health_tracker: ProviderHealthTracker | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -442,6 +444,7 @@ def create_app(  # noqa: PLR0913
         performance_tracker: Performance tracking service.
         settings_service: Settings service for runtime config.
         provider_registry: Provider registry.
+        provider_health_tracker: Provider health tracking service.
 
     Returns:
         Configured Litestar application.
@@ -547,6 +550,7 @@ def create_app(  # noqa: PLR0913
         performance_tracker=performance_tracker,
         settings_service=settings_service,
         provider_registry=provider_registry,
+        provider_health_tracker=provider_health_tracker,
         startup_time=time.monotonic(),
     )
 

@@ -3,6 +3,7 @@
 from litestar import Controller
 
 from synthorg.api.auth.controller import AuthController
+from synthorg.api.controllers.activities import ActivityController
 from synthorg.api.controllers.agents import AgentController
 from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals import ApprovalsController
@@ -28,6 +29,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
     CompanyController,
     AgentController,
+    ActivityController,
     DepartmentController,
     ProjectController,
     TaskController,
@@ -49,6 +51,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
 
 __all__ = [
     "ALL_CONTROLLERS",
+    "ActivityController",
     "AgentController",
     "AnalyticsController",
     "ApprovalsController",

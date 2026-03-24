@@ -29,6 +29,7 @@ from synthorg.core.task import Task
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.providers.health import ProviderHealthTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import (
@@ -204,6 +205,12 @@ def agent_registry() -> AgentRegistryService:
 
 
 @pytest.fixture
+def provider_health_tracker() -> ProviderHealthTracker:
+    """Return a fresh ProviderHealthTracker instance."""
+    return ProviderHealthTracker()
+
+
+@pytest.fixture
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
@@ -224,6 +231,7 @@ def test_client(  # noqa: PLR0913
     fake_task_engine: TaskEngine,
     performance_tracker: PerformanceTracker,
     agent_registry: AgentRegistryService,
+    provider_health_tracker: ProviderHealthTracker,
 ) -> Generator[TestClient[Any]]:
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
@@ -245,6 +253,7 @@ def test_client(  # noqa: PLR0913
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,
         settings_service=settings_service,
+        provider_health_tracker=provider_health_tracker,
     )
     with TestClient(app) as client:
         # Default: CEO token (most tests need write access)

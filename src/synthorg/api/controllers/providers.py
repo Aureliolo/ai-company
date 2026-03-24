@@ -34,6 +34,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_PROVIDER_HEALTH_QUERIED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
@@ -43,6 +44,7 @@ from synthorg.providers.errors import (
     ProviderNotFoundError,
     ProviderValidationError,
 )
+from synthorg.providers.health import ProviderHealthSummary  # noqa: TC001
 from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
 
@@ -202,6 +204,45 @@ class ProviderController(Controller):
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
         return ApiResponse(data=provider.models)
+
+    @get(
+        "/{name:str}/health",
+        guards=[require_read_access],
+    )
+    async def get_provider_health(
+        self,
+        state: State,
+        name: PathName,
+    ) -> ApiResponse[ProviderHealthSummary]:
+        """Get provider health summary.
+
+        Returns health status, error rate, average response time,
+        and call count for the last 24 hours.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+
+        Returns:
+            Provider health summary envelope.
+
+        Raises:
+            NotFoundError: If the provider is not found.
+        """
+        app_state: AppState = state.app_state
+        providers = await app_state.config_resolver.get_provider_configs()
+        if name not in providers:
+            msg = f"Provider {name!r} not found"
+            logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
+            raise NotFoundError(msg)
+        summary = await app_state.provider_health_tracker.get_summary(name)
+        logger.debug(
+            API_PROVIDER_HEALTH_QUERIED,
+            provider=name,
+            health_status=summary.health_status.value,
+            calls_24h=summary.calls_last_24h,
+        )
+        return ApiResponse(data=summary)
 
     # ── Write endpoints (write access) ───────────────────────
 
