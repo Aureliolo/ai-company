@@ -121,7 +121,7 @@ src/synthorg/
 
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules (18 domains), shared types
-  components/     # React components by feature + ui/ (shadcn primitives)
+  components/     # React components: ui/ (shadcn primitives); feature dirs added as pages are built
   hooks/          # React hooks (auth, WebSocket, polling, optimistic updates)
   lib/            # Utilities (cn() class merging, etc.)
   stores/         # Zustand stores (auth, WebSocket, domain shells)

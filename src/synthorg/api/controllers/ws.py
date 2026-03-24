@@ -279,6 +279,12 @@ async def _on_event(
     if channel_filters:
         payload = event.get("payload", {})
         if not isinstance(payload, dict):
+            logger.warning(
+                API_WS_INVALID_MESSAGE,
+                channel=channel,
+                reason="payload_not_dict",
+                payload_type=type(payload).__name__,
+            )
             return
         if not all(payload.get(k) == v for k, v in channel_filters.items()):
             return
@@ -350,7 +356,7 @@ async def _setup_connection(
     """
     channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:
-        logger.warning(
+        logger.error(
             API_WS_TRANSPORT_ERROR,
             reason="channels_plugin_not_registered",
         )
@@ -360,7 +366,7 @@ async def _setup_connection(
     try:
         subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
     except Exception:
-        logger.warning(
+        logger.error(
             API_WS_SEND_FAILED,
             reason="subscribe_failed",
             client=str(socket.client),

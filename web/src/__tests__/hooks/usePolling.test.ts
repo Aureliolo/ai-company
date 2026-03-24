@@ -98,6 +98,34 @@ describe('usePolling', () => {
     expect(fn).toHaveBeenCalledTimes(callCount)
   })
 
+  it('exposes error state when fn throws', async () => {
+    const fn = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('poll failed'))
+      .mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => usePolling(fn, 1000))
+
+    // Start -- first call succeeds
+    await act(async () => {
+      result.current.start()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.error).toBeNull()
+
+    // Second call fails
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(result.current.error).toContain('poll failed')
+
+    // Third call succeeds -- error should clear
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(result.current.error).toBeNull()
+  })
+
   it('does not overlap calls when fn is slow', async () => {
     let concurrentCalls = 0
     let maxConcurrent = 0

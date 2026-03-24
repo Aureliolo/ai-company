@@ -21,7 +21,8 @@ export const apiClient = axios.create({
 // attack surface but require backend cookie-based auth support plus CSRF
 // protection. Mitigations in place: short-lived tokens with server-controlled
 // expiry, automatic 401 cleanup, and expiry checks on page load (see auth
-// store). CSP headers in security-headers.conf (included by nginx.conf) restrict
+// store). Default token lifetime is 24 hours (configurable via jwt_expiry_minutes).
+// CSP headers in security-headers.conf (included by nginx.conf) restrict
 // script sources. If the deployment
 // architecture changes to support cookie-based auth, migrate away from
 // localStorage -- see docs/security.md for the full threat model.
@@ -49,7 +50,8 @@ apiClient.interceptors.response.use(
       // caller immediately, while auth state cleanup happens concurrently.
       import('@/stores/auth').then(({ useAuthStore }) => {
         useAuthStore.getState().logout()
-      }).catch(() => {
+      }).catch((importErr: unknown) => {
+        console.error('Auth store cleanup failed during 401 handling:', importErr)
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
           window.location.href = '/login'

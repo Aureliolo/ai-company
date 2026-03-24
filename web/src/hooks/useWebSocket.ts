@@ -96,7 +96,12 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
       }
     }
 
-    setup()
+    setup().catch((err) => {
+      if (!disposedRef.current) {
+        setSetupError('WebSocket setup failed unexpectedly.')
+      }
+      console.error('WebSocket setup failed:', sanitizeForLog(err))
+    })
 
     return () => {
       disposedRef.current = true

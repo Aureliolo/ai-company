@@ -310,6 +310,43 @@ describe('websocket store', () => {
 
       expect(handler).not.toHaveBeenCalled()
     })
+
+    it('rejects malformed messages that fail isWsEvent validation', async () => {
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
+
+      const handler = vi.fn()
+      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+
+      // Missing required fields
+      ws.simulateMessage({ event_type: 'task.created' })
+      expect(handler).not.toHaveBeenCalled()
+
+      // Payload is an array (not an object)
+      ws.simulateMessage({
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: [1, 2, 3],
+      })
+      expect(handler).not.toHaveBeenCalled()
+
+      // Payload is null
+      ws.simulateMessage({
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: null,
+      })
+      expect(handler).not.toHaveBeenCalled()
+    })
   })
 
   describe('reconnection', () => {

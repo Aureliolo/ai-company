@@ -61,7 +61,9 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
       }
       scheduleTick(runId)
     }
-    immediate()
+    immediate().catch((err) => {
+      console.error('Polling initial run failed:', sanitizeForLog(err))
+    })
   }, [scheduleTick, isValidInterval, intervalMs])
 
   const stop = useCallback(() => {

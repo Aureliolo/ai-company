@@ -241,7 +241,11 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     }
 
     thisSocket.onerror = () => {
-      console.error('WebSocket connection error')
+      console.error('WebSocket connection error', {
+        url,
+        readyState: thisSocket.readyState,
+        reconnectAttempts,
+      })
     }
   }
 

@@ -47,6 +47,16 @@ describe('unwrap', () => {
     expect(unwrap(response)).toEqual({ id: 'test-1' })
   })
 
+  it('throws for success:true with data:null', () => {
+    const response = mockResponse<ApiResponse<null>>({
+      data: null,
+      error: null,
+      error_detail: null,
+      success: true,
+    })
+    expect(() => unwrap(response)).toThrow(ApiRequestError)
+  })
+
   it('throws ApiRequestError for error response', () => {
     const response = mockResponse<ApiResponse<null>>({
       data: null,
