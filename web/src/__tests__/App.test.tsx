@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { useAuthStore } from '@/stores/auth'
+import { useSetupStore } from '@/stores/setup'
 import App from '../App'
 
 // Mock the setup API (used by SetupGuard)
@@ -38,23 +39,36 @@ describe('App', () => {
       loading: false,
       _mustChangePasswordFallback: false,
     })
+    useSetupStore.setState({
+      setupComplete: null,
+      loading: false,
+    })
     localStorage.clear()
     vi.clearAllMocks()
   })
 
-  it('renders without crashing', async () => {
+  it('redirects unauthenticated users to login', async () => {
     render(<App />)
-    // App renders a router -- unauthenticated users see the login page
     // Login page is lazy-loaded, so wait for it
     await waitFor(() => {
       expect(screen.getByText('Login')).toBeInTheDocument()
     })
   })
 
-  it('shows login page when not authenticated', async () => {
-    render(<App />)
-    await waitFor(() => {
-      expect(screen.getByText('Login')).toBeInTheDocument()
+  it('renders app shell for authenticated users with setup complete', async () => {
+    useAuthStore.setState({
+      token: 'test-token',
+      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
     })
+    useSetupStore.setState({ setupComplete: true })
+
+    render(<App />)
+    // Wait for lazy-loaded layout to render
+    await waitFor(() => {
+      // "Dashboard" appears in both the sidebar nav item and the page stub
+      expect(screen.getAllByText('Dashboard')).toHaveLength(2)
+    })
+    // Sidebar brand appears in both sidebar header and status bar
+    expect(screen.getAllByText('SynthOrg')).toHaveLength(2)
   })
 })

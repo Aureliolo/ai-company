@@ -63,6 +63,7 @@ export function Sidebar() {
             icon={LayoutDashboard}
             label="Dashboard"
             collapsed={collapsed}
+            end
           />
           <SidebarNavItem
             to={ROUTES.ORG}

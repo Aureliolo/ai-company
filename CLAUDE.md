@@ -53,6 +53,8 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
+npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
+npm --prefix web run storybook:build       # Storybook production build
 ```
 
 ### CLI (Go Binary)
@@ -121,9 +123,11 @@ src/synthorg/
 
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules (18 domains), shared types
-  components/     # React components: ui/ (shadcn primitives); feature dirs added as pages are built
+  components/     # React components: ui/ (shadcn primitives), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates)
   lib/            # Utilities (cn() class merging, etc.)
+  pages/          # Lazy-loaded page components (one per route)
+  router/         # React Router config, route constants, auth/setup guards
   stores/         # Zustand stores (auth, WebSocket, domain shells)
   styles/         # Global CSS and Tailwind theme tokens
   utils/          # Constants, error handling, formatting, logging
@@ -230,7 +234,7 @@ site/             # Astro landing page (synthorg.io)
 ## CI
 
 - **Path filtering**: `dorny/paths-filter` -- jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
-- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test with `--detect-async-leaks`/build/audit) run in parallel -> ci-pass gate
+- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard (lint/type-check/test with `--detect-async-leaks`/build/storybook-build/audit) run in parallel -> ci-pass gate
 - **Pages**: `pages.yml` -- version extraction from `pyproject.toml`, OpenAPI export, Astro + Zensical docs build (with version banner), GitHub Pages deploy on push to main
 - **PR Preview**: `pages-preview.yml` -- Cloudflare Pages deploy per PR (`pr-<number>.synthorg-pr-preview.pages.dev`), cleanup on PR close
 - **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`

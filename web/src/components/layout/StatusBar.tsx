@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+
 export function StatusBar() {
   return (
     <div className="flex h-8 shrink-0 items-center gap-6 border-b border-surface-100 bg-surface-0 px-6 text-[11px] tracking-wide font-mono text-surface-500 select-none">
@@ -47,7 +49,7 @@ function Divider() {
 function Dot({ color }: { color: string }) {
   return (
     <span
-      className={`mr-1.5 inline-block size-[5px] shrink-0 rounded-full ${color}`}
+      className={cn('mr-1.5 inline-block size-[5px] shrink-0 rounded-full', color)}
       aria-hidden="true"
     />
   )

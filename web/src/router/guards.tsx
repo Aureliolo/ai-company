@@ -24,7 +24,9 @@ export function AuthGuard() {
  * Must be nested inside AuthGuard (setup check only applies to authenticated users).
  */
 export function SetupGuard() {
-  const { setupComplete, loading, fetchSetupStatus } = useSetupStore()
+  const setupComplete = useSetupStore((s) => s.setupComplete)
+  const loading = useSetupStore((s) => s.loading)
+  const fetchSetupStatus = useSetupStore((s) => s.fetchSetupStatus)
 
   useEffect(() => {
     if (setupComplete === null && !loading) {
@@ -35,7 +37,7 @@ export function SetupGuard() {
   if (setupComplete === null || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-text-secondary text-sm">Loading...</div>
+        <div className="text-surface-500 text-sm">Loading...</div>
       </div>
     )
   }
@@ -66,7 +68,9 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
  */
 export function SetupCompleteGuard({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useIsAuthenticated()
-  const { setupComplete, loading, fetchSetupStatus } = useSetupStore()
+  const setupComplete = useSetupStore((s) => s.setupComplete)
+  const loading = useSetupStore((s) => s.loading)
+  const fetchSetupStatus = useSetupStore((s) => s.fetchSetupStatus)
 
   useEffect(() => {
     if (isAuthenticated && setupComplete === null && !loading) {
@@ -83,7 +87,7 @@ export function SetupCompleteGuard({ children }: { children: React.ReactNode }) 
   if (setupComplete === null || loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-text-secondary text-sm">Loading...</div>
+        <div className="text-surface-500 text-sm">Loading...</div>
       </div>
     )
   }

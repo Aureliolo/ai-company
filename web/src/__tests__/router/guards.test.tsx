@@ -143,6 +143,41 @@ describe('SetupGuard', () => {
 
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
+
+  it('triggers fetchSetupStatus when setup status is unknown', async () => {
+    const { getSetupStatus } = await import('@/api/endpoints/setup')
+    const mockGetSetupStatus = vi.mocked(getSetupStatus)
+    mockGetSetupStatus.mockResolvedValue({
+      needs_admin: false,
+      needs_setup: false,
+      has_providers: true,
+      has_name_locales: true,
+      has_company: true,
+      has_agents: true,
+      min_password_length: 12,
+    })
+
+    useAuthStore.setState({ token: 'test-token' })
+    // setupComplete is null (not yet fetched), loading is false
+
+    renderRoutes(
+      [
+        {
+          path: '/',
+          element: <SetupGuard />,
+          children: [{ index: true, element: <div>App Content</div> }],
+        },
+        { path: '/setup', element: <div>Setup Page</div> },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    // Should fetch and then render content (setup is complete)
+    await waitFor(() => {
+      expect(screen.getByText('App Content')).toBeInTheDocument()
+    })
+    expect(mockGetSetupStatus).toHaveBeenCalledOnce()
+  })
 })
 
 describe('GuestGuard', () => {

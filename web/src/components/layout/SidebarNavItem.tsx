@@ -9,6 +9,7 @@ interface SidebarNavItemProps {
   collapsed: boolean
   badge?: number
   dotColor?: string
+  end?: boolean
 }
 
 export function SidebarNavItem({
@@ -18,10 +19,12 @@ export function SidebarNavItem({
   collapsed,
   badge,
   dotColor,
+  end,
 }: SidebarNavItemProps) {
   return (
     <NavLink
       to={to}
+      end={end}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         cn(

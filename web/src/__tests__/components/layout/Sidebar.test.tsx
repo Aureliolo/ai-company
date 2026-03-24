@@ -19,6 +19,15 @@ afterAll(() => {
   })
 })
 
+function resetStore() {
+  useAuthStore.setState({
+    token: null,
+    user: null,
+    loading: false,
+    _mustChangePasswordFallback: false,
+  })
+}
+
 function setup(initialEntries: string[] = ['/']) {
   useAuthStore.setState({
     token: 'test-token',
@@ -31,6 +40,7 @@ function setup(initialEntries: string[] = ['/']) {
 
 describe('Sidebar', () => {
   beforeEach(() => {
+    resetStore()
     localStorage.clear()
     vi.clearAllMocks()
   })
@@ -72,14 +82,11 @@ describe('Sidebar', () => {
     const user = userEvent.setup()
     setup()
 
-    // Initially expanded
     expect(screen.getByText('SynthOrg')).toBeInTheDocument()
     expect(localStorage.getItem('sidebar_collapsed')).toBeNull()
 
-    // Click collapse
     await user.click(screen.getByTitle('Collapse sidebar'))
 
-    // Labels should be hidden, localStorage updated
     expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
     expect(localStorage.getItem('sidebar_collapsed')).toBe('true')
   })
@@ -89,10 +96,8 @@ describe('Sidebar', () => {
     const user = userEvent.setup()
     setup()
 
-    // Initially collapsed -- SynthOrg text should not show
     expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
 
-    // Click expand
     await user.click(screen.getByTitle('Expand sidebar'))
 
     expect(screen.getByText('SynthOrg')).toBeInTheDocument()
@@ -111,5 +116,16 @@ describe('Sidebar', () => {
     setup()
 
     expect(screen.getByText('S')).toBeInTheDocument()
+  })
+
+  it('calls logout when logout button is clicked', async () => {
+    const user = userEvent.setup()
+    const logoutSpy = vi.fn()
+    setup()
+    useAuthStore.setState({ logout: logoutSpy } as never)
+
+    await user.click(screen.getByTitle('Logout'))
+
+    expect(logoutSpy).toHaveBeenCalledOnce()
   })
 })

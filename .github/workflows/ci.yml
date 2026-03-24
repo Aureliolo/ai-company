@@ -208,7 +208,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - run: npm run lint
         working-directory: web
@@ -231,7 +231,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - run: npm run type-check
         working-directory: web
@@ -254,7 +254,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - run: npm run test -- --coverage --detect-async-leaks
         working-directory: web
@@ -277,7 +277,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - name: Production build
         run: npm run build
@@ -301,7 +301,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - name: npm audit (critical + high)
         run: npm audit --audit-level=high
@@ -325,7 +325,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
         working-directory: web
       - run: npm run storybook:build -- --disable-telemetry
         working-directory: web
