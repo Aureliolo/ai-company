@@ -261,8 +261,8 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     subscribedChannels: [],
 
     async connect() {
-      if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
       if (connectPromise) return connectPromise
+      if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
       const generation = connectGeneration
       connectPromise = doConnect(generation).finally(() => {
         if (generation === connectGeneration) connectPromise = null
