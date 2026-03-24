@@ -38,11 +38,14 @@ const mockUser: UserInfoResponse = {
 }
 
 function resetStore() {
+  // Use logout() to properly clean up module-scoped expiry timer
+  useAuthStore.getState().logout()
   localStorage.clear()
   useAuthStore.setState({
     token: null,
     user: null,
     loading: false,
+    _mustChangePasswordFallback: false,
   })
   window.location.pathname = '/dashboard'
   window.location.href = ''
@@ -187,7 +190,8 @@ describe('auth store', () => {
       useAuthStore.setState({ token: 'test-token' })
       localStorage.setItem('auth_token', 'test-token')
 
-      await useAuthStore.getState().fetchUser()
+      // fetchUser now throws on 401 after clearing auth
+      await expect(useAuthStore.getState().fetchUser()).rejects.toThrow('Session expired')
 
       expect(useAuthStore.getState().token).toBeNull()
       expect(localStorage.getItem('auth_token')).toBeNull()
@@ -233,8 +237,10 @@ describe('auth store', () => {
   })
 
   describe('token expiry', () => {
+    beforeEach(() => vi.useFakeTimers())
+    afterEach(() => vi.useRealTimers())
+
     it('clears auth when token expires', () => {
-      vi.useFakeTimers()
       useAuthStore.getState().setToken('expiring-token', 10)
 
       expect(useAuthStore.getState().token).toBe('expiring-token')
@@ -242,7 +248,6 @@ describe('auth store', () => {
       vi.advanceTimersByTime(10_000)
 
       expect(useAuthStore.getState().token).toBeNull()
-      vi.useRealTimers()
     })
   })
 })

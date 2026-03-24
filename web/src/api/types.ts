@@ -783,6 +783,10 @@ export type WsEventType =
   | 'meeting.started'
   | 'meeting.completed'
   | 'meeting.failed'
+  | 'coordination.started'
+  | 'coordination.phase_completed'
+  | 'coordination.completed'
+  | 'coordination.failed'
 
 export interface WsEvent {
   event_type: WsEventType
@@ -1030,12 +1034,12 @@ export interface SetupNameLocalesRequest {
 }
 
 export interface SetupNameLocalesResponse {
-  locales: string[]
+  readonly locales: readonly string[]
 }
 
 export interface AvailableLocalesResponse {
-  regions: Record<string, string[]>
-  display_names: Record<string, string>
+  readonly regions: Readonly<Record<string, readonly string[]>>
+  readonly display_names: Readonly<Record<string, string>>
 }
 
 // ── Settings ────────────────────────────────────────────────
@@ -1102,25 +1106,25 @@ export interface AgentConfigEntry {
 }
 
 export interface DepartmentTeam {
-  name: string
-  lead?: string
-  members?: string[]
+  readonly name: string
+  readonly lead?: string
+  readonly members?: readonly string[]
 }
 
 export interface DepartmentReportingLine {
-  subordinate: string
-  supervisor: string
-  subordinate_id?: string | null
-  supervisor_id?: string | null
+  readonly subordinate: string
+  readonly supervisor: string
+  readonly subordinate_id?: string | null
+  readonly supervisor_id?: string | null
 }
 
 export interface DepartmentEntry {
-  name: string
-  head?: string
-  head_id?: string | null
-  budget_percent?: number
-  teams?: DepartmentTeam[]
-  reporting_lines?: DepartmentReportingLine[]
-  autonomy_level?: AutonomyLevel | null
-  policies?: Record<string, unknown>
+  readonly name: string
+  readonly head?: string
+  readonly head_id?: string | null
+  readonly budget_percent?: number
+  readonly teams?: readonly DepartmentTeam[]
+  readonly reporting_lines?: readonly DepartmentReportingLine[]
+  readonly autonomy_level?: AutonomyLevel | null
+  readonly policies?: Record<string, unknown>
 }

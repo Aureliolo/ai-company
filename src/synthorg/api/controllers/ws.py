@@ -117,11 +117,12 @@ async def _read_auth_message(
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Auth timeout")
         return None
     except WebSocketDisconnect:
+        logger.debug(API_WS_DISCONNECTED, reason="disconnect_during_auth")
         return None
 
     try:
         msg = json.loads(data)
-    except json.JSONDecodeError, TypeError:
+    except json.JSONDecodeError:
         logger.warning(API_WS_TICKET_INVALID, reason="invalid_auth_json")
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Invalid auth message")
         return None
@@ -135,9 +136,8 @@ async def _read_auth_message(
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Expected auth action")
         return None
 
-    ticket: str | None = (
-        msg.get("ticket") if isinstance(msg.get("ticket"), str) else None
-    )
+    raw_ticket = msg.get("ticket")
+    ticket: str | None = raw_ticket if isinstance(raw_ticket, str) else None
     if not ticket:
         logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket_in_auth")
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
@@ -199,8 +199,9 @@ async def _check_ws_role(
         role=str(user.role),
     )
     # Defense-in-depth: user.role is already validated as HumanRole by
-    # Pydantic, and _READ_ROLES == frozenset(HumanRole).  These checks
-    # guard against future changes to the role model or read-role set.
+    # Pydantic.  _READ_ROLES excludes SYSTEM (which has its own endpoints).
+    # These checks guard against future changes to the role model or
+    # read-role set.
     try:
         role = HumanRole(user.role)
     except ValueError:
@@ -322,6 +323,55 @@ def _resolve_channels_plugin(
     return None
 
 
+async def _setup_connection(
+    socket: WebSocket[Any, Any, Any],
+    user: AuthenticatedUser,
+    *,
+    accepted: bool,
+) -> tuple[ChannelsPlugin, Any] | None:
+    """Resolve plugin, subscribe to channels, and accept the connection.
+
+    Returns ``(channels_plugin, subscriber)`` on success, or ``None``
+    (socket already closed) on failure.
+
+    Note: the first-message auth path calls ``accept()`` before role
+    checking.  A valid-ticket, insufficient-role client receives a WS
+    upgrade followed immediately by close code 4003.  This is inherent
+    to reading over an established WS connection.
+    """
+    channels_plugin = _resolve_channels_plugin(socket)
+    if channels_plugin is None:
+        logger.warning(
+            API_WS_TRANSPORT_ERROR,
+            reason="channels_plugin_not_registered",
+        )
+        await socket.close(code=1011, reason="Internal error")
+        return None
+
+    try:
+        subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
+    except Exception:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            reason="subscribe_failed",
+            client=str(socket.client),
+            user_id=user.user_id,
+            exc_info=True,
+        )
+        await socket.close(code=1011, reason="Internal error")
+        return None
+
+    socket.scope["user"] = user
+    if not accepted:
+        await socket.accept()
+    logger.info(
+        API_WS_CONNECTED,
+        client=str(socket.client),
+        user_id=user.user_id,
+    )
+    return channels_plugin, subscriber
+
+
 # Defense-in-depth: opt signals Litestar's auth middleware to skip
 # this handler.  The middleware is already HTTP-only (ScopeType.HTTP)
 # and the WS path is regex-excluded, so this is a tertiary safeguard.
@@ -339,15 +389,6 @@ async def ws_handler(
 
     2. **Query-param auth** (legacy): connect with ``?ticket=<ticket>``.
        Validated and consumed before ``accept()``.
-
-    After authentication, the client protocol is::
-
-        {
-            "action": "subscribe",
-            "channels": ["tasks"],
-            "filters": {"agent_id": "...", "project": "..."},
-        }
-        {"action": "unsubscribe", "channels": ["tasks"]}
     """
     auth_result = await _authenticate_ws(socket)
     if auth_result is None:
@@ -357,37 +398,10 @@ async def ws_handler(
     if not await _check_ws_role(socket, user):
         return
 
-    channels_plugin = _resolve_channels_plugin(socket)
-    if channels_plugin is None:
-        logger.warning(
-            API_WS_SEND_FAILED,
-            reason="channels_plugin_not_registered",
-        )
-        await socket.close(code=1011, reason="Internal error")
+    setup = await _setup_connection(socket, user, accepted=accepted)
+    if setup is None:
         return
-
-    try:
-        subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
-    except Exception:
-        logger.warning(
-            API_WS_SEND_FAILED,
-            reason="subscribe_failed",
-            client=str(socket.client),
-            user_id=user.user_id,
-            exc_info=True,
-        )
-        await socket.close(code=1011, reason="Internal error")
-        return
-
-    # Accept only if not already accepted (first-message path accepts early).
-    socket.scope["user"] = user
-    if not accepted:
-        await socket.accept()
-    logger.info(
-        API_WS_CONNECTED,
-        client=str(socket.client),
-        user_id=user.user_id,
-    )
+    channels_plugin, subscriber = setup
 
     subscribed: set[str] = set()
     filters: dict[str, dict[str, str]] = {}
@@ -432,6 +446,11 @@ def _parse_ws_message(
 ) -> dict[str, Any] | str:
     """Parse raw JSON from the client, returning a dict or an error string."""
     if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            reason="message_too_large",
+            size=len(data.encode()),
+        )
         return json.dumps({"error": "Message too large"})
 
     try:

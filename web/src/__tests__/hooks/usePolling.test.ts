@@ -10,10 +10,17 @@ describe('usePolling', () => {
     vi.useRealTimers()
   })
 
-  it('throws for invalid interval', () => {
-    expect(() => {
-      renderHook(() => usePolling(vi.fn(), 50))
-    }).toThrow('intervalMs must be a finite number >= 100')
+  it('logs error and does not start for invalid interval', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fn = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => usePolling(fn, 50))
+
+    act(() => { result.current.start() })
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('intervalMs must be a finite number >= 100'))
+    expect(result.current.active).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+    consoleSpy.mockRestore()
   })
 
   it('starts inactive', () => {
@@ -125,5 +132,40 @@ describe('usePolling', () => {
 
     // Only called once from the first start
     expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not spawn duplicate loop after stop/start while inflight', async () => {
+    let resolveFirst: () => void
+    const firstCall = new Promise<void>((r) => { resolveFirst = r })
+    const fn = vi.fn().mockImplementationOnce(() => firstCall).mockResolvedValue(undefined)
+    const { result } = renderHook(() => usePolling(fn, 1000))
+
+    // Start first run
+    await act(async () => {
+      result.current.start()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(fn).toHaveBeenCalledTimes(1)
+
+    // Stop + start while first call is still pending
+    act(() => {
+      result.current.stop()
+      result.current.start()
+    })
+
+    // Resolve the first (now-stale) call
+    await act(async () => {
+      resolveFirst!()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    // Second run should have fired from the new start, not the stale completion
+    expect(fn).toHaveBeenCalledTimes(2)
+
+    // Advance one interval -- should still only have one active loop
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(fn).toHaveBeenCalledTimes(3)
   })
 })

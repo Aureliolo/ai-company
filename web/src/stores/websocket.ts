@@ -54,6 +54,14 @@ interface WebSocketState {
 
 // ── Helpers ─────────────────────────────────────────────────
 
+/** Known valid WsChannel values for runtime validation. */
+const VALID_WS_CHANNELS: ReadonlySet<string> = new Set<WsChannel>([
+  'tasks', 'agents', 'budget', 'messages', 'system', 'approvals', 'meetings',
+])
+
+/** WS close codes that indicate auth failure (do not reconnect). */
+const WS_AUTH_FAILURE_CODES = new Set([4001, 4003])
+
 function getWsUrl(): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
@@ -73,7 +81,13 @@ function isWsEvent(msg: Record<string, unknown>): boolean {
 
 /** Validate that a channels array from a server ack contains only known channel strings. */
 function isWsChannelArray(arr: unknown): arr is WsChannel[] {
-  return Array.isArray(arr) && arr.every((c) => typeof c === 'string')
+  return Array.isArray(arr) && arr.every((c) => typeof c === 'string' && VALID_WS_CHANNELS.has(c))
+}
+
+/** Estimate byte length of a string (accounts for multi-byte characters). */
+function estimateByteLength(str: string): number {
+  // TextEncoder gives accurate UTF-8 byte count
+  return new TextEncoder().encode(str).byteLength
 }
 
 function dispatchEvent(event: WsEvent) {
@@ -128,7 +142,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       if (shouldBeConnected && !isAuthError) {
         scheduleReconnect()
       }
-      return
+      throw err
     }
 
     // Guard against stale connect attempts
@@ -138,15 +152,19 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
     // First-message auth: connect without ticket in URL, send it as first message
     const url = getWsUrl()
-    socket = new WebSocket(url)
+    const thisSocket = new WebSocket(url)
+    socket = thisSocket
 
-    socket.onopen = () => {
+    thisSocket.onopen = () => {
+      // Guard: if a newer connection replaced us, bail out
+      if (socket !== thisSocket) return
+
       // Send auth ticket as first message (keeps ticket out of URL/logs/history)
       try {
-        socket!.send(JSON.stringify({ action: 'auth', ticket }))
+        thisSocket.send(JSON.stringify({ action: 'auth', ticket }))
       } catch (err) {
         console.error('WebSocket auth send failed:', sanitizeForLog(err))
-        socket!.close()
+        thisSocket.close()
         return
       }
 
@@ -155,23 +173,29 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       pendingSubscriptions = []
       for (const sub of activeSubscriptions) {
         try {
-          socket!.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
+          thisSocket.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
         } catch (err) {
           console.error('WebSocket subscribe send failed (will retry on reconnect):', sanitizeForLog(err))
         }
       }
     }
 
-    socket.onmessage = (event: MessageEvent) => {
-      if (typeof event.data === 'string' && event.data.length > WS_MAX_MESSAGE_SIZE) {
+    thisSocket.onmessage = (event: MessageEvent) => {
+      if (typeof event.data !== 'string') return
+      if (estimateByteLength(event.data) > WS_MAX_MESSAGE_SIZE) {
         console.error('WebSocket message exceeds max size, discarding')
         return
       }
       let data: unknown
       try {
-        data = JSON.parse(event.data as string)
+        data = JSON.parse(event.data)
       } catch (parseErr) {
         console.error('Failed to parse WebSocket message:', sanitizeForLog(parseErr))
+        return
+      }
+
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        console.error('WebSocket message is not a JSON object, discarding')
         return
       }
 
@@ -185,28 +209,37 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       }
 
       if (msg.error) {
-        console.error('WebSocket error:', sanitizeForLog(msg.error))
+        // Truncate attacker-controlled error value for log injection mitigation
+        console.error('WebSocket error:', sanitizeForLog(msg.error, 200))
         return
       }
 
       if (isWsEvent(msg)) {
-        try {
-          dispatchEvent(msg as unknown as WsEvent)
-        } catch (handlerErr) {
-          console.error('WebSocket event handler error:', sanitizeForLog(handlerErr), 'Event type:', sanitizeForLog(msg.event_type, 100))
-        }
+        // isWsEvent validates all required WsEvent fields at runtime;
+        // dispatchEvent has internal per-handler try/catch
+        dispatchEvent(msg as unknown as WsEvent)
       }
     }
 
-    socket.onclose = () => {
+    thisSocket.onclose = (event: CloseEvent) => {
+      // Guard: only act on our own socket, not a stale reference
+      if (socket !== thisSocket) return
       set({ connected: false })
       socket = null
+
+      // Auth failures (4001/4003): do not reconnect -- surface error
+      if (WS_AUTH_FAILURE_CODES.has(event.code)) {
+        console.error(`WebSocket auth failed (code ${event.code}): ${event.reason}`)
+        set({ reconnectExhausted: true })
+        return
+      }
+
       if (!intentionalClose && shouldBeConnected) {
         scheduleReconnect()
       }
     }
 
-    socket.onerror = () => {
+    thisSocket.onerror = () => {
       console.error('WebSocket connection error')
     }
   }
@@ -270,13 +303,16 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
     unsubscribe(channels: WsChannel[]) {
       const channelSet = new Set(channels)
+      // Remove matching channels from stored subscriptions and clean up empty entries
       for (let i = activeSubscriptions.length - 1; i >= 0; i--) {
-        if (activeSubscriptions[i]!.channels.every((c) => channelSet.has(c))) {
+        activeSubscriptions[i]!.channels = activeSubscriptions[i]!.channels.filter((c) => !channelSet.has(c))
+        if (activeSubscriptions[i]!.channels.length === 0) {
           activeSubscriptions.splice(i, 1)
         }
       }
       for (let i = pendingSubscriptions.length - 1; i >= 0; i--) {
-        if (pendingSubscriptions[i]!.channels.every((c) => channelSet.has(c))) {
+        pendingSubscriptions[i]!.channels = pendingSubscriptions[i]!.channels.filter((c) => !channelSet.has(c))
+        if (pendingSubscriptions[i]!.channels.length === 0) {
           pendingSubscriptions.splice(i, 1)
         }
       }

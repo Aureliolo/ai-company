@@ -9,6 +9,7 @@ vi.mock('@/api/endpoints/auth', () => ({
 // ── MockWebSocket ───────────────────────────────────────────
 
 type WsListener = ((event: { data: string }) => void) | null
+type WsCloseListener = ((event: { code: number; reason: string }) => void) | null
 
 class MockWebSocket {
   static readonly CONNECTING = 0
@@ -24,7 +25,7 @@ class MockWebSocket {
   url: string
   readyState = MockWebSocket.CONNECTING
   onopen: (() => void) | null = null
-  onclose: (() => void) | null = null
+  onclose: WsCloseListener = null
   onerror: (() => void) | null = null
   onmessage: WsListener = null
   sentMessages: string[] = []
@@ -39,10 +40,10 @@ class MockWebSocket {
     this.sentMessages.push(data)
   }
 
-  close() {
+  close(code = 1000, reason = '') {
     this.closed = true
     this.readyState = MockWebSocket.CLOSED
-    this.onclose?.()
+    this.onclose?.({ code, reason })
   }
 
   // Test helpers
@@ -55,9 +56,9 @@ class MockWebSocket {
     this.onmessage?.({ data: JSON.stringify(data) })
   }
 
-  simulateClose() {
+  simulateClose(code = 1006, reason = '') {
     this.readyState = MockWebSocket.CLOSED
-    this.onclose?.()
+    this.onclose?.({ code, reason })
   }
 
   static instances: MockWebSocket[] = []
@@ -179,17 +180,35 @@ describe('websocket store', () => {
         const parsed = JSON.parse(m) as { action: string }
         return parsed.action === 'subscribe'
       })
-      // One from auto-re-subscribe is not expected since we subscribed after open
-      // The subscribe call itself should have sent one
-      expect(sent.length).toBeGreaterThanOrEqual(1)
-      const lastSub = JSON.parse(sent[sent.length - 1]!) as { channels: string[] }
-      expect(lastSub.channels).toEqual(['tasks', 'approvals'])
+      // The subscribe call should have sent exactly one subscribe message
+      expect(sent).toHaveLength(1)
+      const sub = JSON.parse(sent[0]!) as { channels: string[] }
+      expect(sub.channels).toEqual(['tasks', 'approvals'])
     })
 
-    it('queues subscription when not connected', () => {
-      // Not connected, no socket
+    it('queues subscription when not connected and replays on connect', async () => {
+      // Subscribe while not connected
       useWebSocketStore.getState().subscribe(['tasks'])
-      // No error thrown -- just queued
+
+      // Now connect -- the subscription should be replayed
+      const authApi = await import('@/api/endpoints/auth')
+      vi.mocked(authApi.getWsTicket).mockResolvedValue({ ticket: 'test-ticket', expires_in: 30 })
+
+      const connectPromise = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await connectPromise
+
+      const ws = MockWebSocket.latest()!
+      ws.simulateOpen()
+
+      // Should see auth message + replayed subscription
+      const subscribeMsgs = ws.sentMessages.filter((m) => {
+        const parsed = JSON.parse(m) as { action: string }
+        return parsed.action === 'subscribe'
+      })
+      expect(subscribeMsgs.length).toBeGreaterThanOrEqual(1)
+      const sub = JSON.parse(subscribeMsgs[0]!) as { channels: string[] }
+      expect(sub.channels).toEqual(['tasks'])
     })
   })
 
@@ -366,9 +385,10 @@ describe('websocket store', () => {
       // Ticket exchange always fails with non-401 error, triggering reconnect attempts
       vi.mocked(authApi.getWsTicket).mockRejectedValue(new Error('connection refused'))
 
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
+      // connect() rejects on ticket failure -- catch immediately to avoid unhandled rejection
+      await expect(
+        useWebSocketStore.getState().connect(),
+      ).rejects.toThrow('connection refused')
 
       // Each failed ticket exchange triggers scheduleReconnect
       // Advance through all 20 attempts (exponential backoff capped at 30s)
@@ -392,9 +412,10 @@ describe('websocket store', () => {
         } as import('axios').AxiosResponse),
       )
 
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
+      // connect() rejects on ticket failure -- catch immediately to avoid unhandled rejection
+      await expect(
+        useWebSocketStore.getState().connect(),
+      ).rejects.toThrow('Unauthorized')
 
       // Advance time -- no reconnect should be scheduled on 401
       const instancesBefore = MockWebSocket.instances.length
@@ -417,8 +438,8 @@ describe('websocket store', () => {
 
       ws.simulateOpen()
 
-      // First message should be the auth action
-      expect(ws.sentMessages.length).toBeGreaterThanOrEqual(1)
+      // First message should be the auth action (exactly 1 message before subscriptions)
+      expect(ws.sentMessages).toHaveLength(1)
       const authMsg = JSON.parse(ws.sentMessages[0]!) as { action: string; ticket: string }
       expect(authMsg.action).toBe('auth')
       expect(authMsg.ticket).toBe('my-secret-ticket')
