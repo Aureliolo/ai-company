@@ -535,6 +535,7 @@ class AnalyticsController(Controller):
 
         records = await app_state.cost_tracker.get_records(
             start=lookback_start,
+            end=now,
         )
         budget = await _resolve_budget_context(app_state)
 
