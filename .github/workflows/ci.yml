@@ -158,7 +158,8 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - name: pip-audit
-        run: uv run pip-audit
+        # CVE-2026-4539: pygments <=2.19.2 ReDoS in AdlLexer, no fix yet. Review by 2026-04-14. Tracking: #821
+        run: uv run pip-audit --ignore-vuln CVE-2026-4539
 
   # ── Docker: Dockerfile Lint ──
   dockerfile-lint:
