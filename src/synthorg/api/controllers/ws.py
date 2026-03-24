@@ -135,8 +135,10 @@ async def _read_auth_message(
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Expected auth action")
         return None
 
-    ticket = msg.get("ticket")
-    if not ticket or not isinstance(ticket, str):
+    ticket: str | None = (
+        msg.get("ticket") if isinstance(msg.get("ticket"), str) else None
+    )
+    if not ticket:
         logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket_in_auth")
         await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
         return None
