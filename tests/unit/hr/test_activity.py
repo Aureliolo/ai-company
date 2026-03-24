@@ -132,9 +132,9 @@ class TestMergeActivityTimeline:
 
         assert len(timeline) == 2
         assert timeline[0].event_type == "task_completed"
-        assert "task-b" in timeline[0].related_ids["task_id"]
+        assert timeline[0].related_ids["task_id"] == "task-b"
         assert "failed" in timeline[0].description
-        assert "task-a" in timeline[1].related_ids["task_id"]
+        assert timeline[1].related_ids["task_id"] == "task-a"
         assert "succeeded" in timeline[1].description
         assert "USD" in timeline[1].description
 
