@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.providers.health import (
     ProviderHealthRecord,
@@ -38,7 +39,7 @@ def _make_record(
 class TestProviderHealthRecord:
     def test_frozen(self) -> None:
         record = _make_record()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             record.provider_name = "other"  # type: ignore[misc]
 
     def test_success_record(self) -> None:
@@ -72,7 +73,7 @@ class TestProviderHealthSummary:
 
     def test_frozen(self) -> None:
         summary = ProviderHealthSummary()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             summary.error_rate_percent_24h = 99.0  # type: ignore[misc]
 
 
@@ -372,3 +373,59 @@ class TestHealthStatusComputed:
     def test_down_at_50_percent(self) -> None:
         summary = ProviderHealthSummary(error_rate_percent_24h=50.0)
         assert summary.health_status == ProviderHealthStatus.DOWN
+
+
+# ── cross-field validator tests ───────────────────────────────
+
+
+@pytest.mark.unit
+class TestRecordErrorConsistency:
+    def test_success_with_error_message_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="error_message must be None when success is True",
+        ):
+            _make_record(success=True, error_message="oops")
+
+    def test_failure_without_error_message_allowed(self) -> None:
+        record = _make_record(success=False, error_message=None)
+        assert record.success is False
+        assert record.error_message is None
+
+    def test_failure_with_error_message_allowed(self) -> None:
+        record = _make_record(success=False, error_message="timeout")
+        assert record.error_message == "timeout"
+
+
+# ── prune_expired tests ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestPruneExpired:
+    async def test_prune_removes_old_records(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(timestamp=now - timedelta(hours=25)),
+        )
+        await tracker.record(
+            _make_record(timestamp=now - timedelta(hours=1)),
+        )
+        removed = await tracker.prune_expired(now=now)
+        assert removed == 1
+        summary = await tracker.get_summary("test-provider", now=now)
+        assert summary.calls_last_24h == 1
+
+    async def test_prune_empty_tracker(self) -> None:
+        tracker = ProviderHealthTracker()
+        removed = await tracker.prune_expired()
+        assert removed == 0
+
+    async def test_prune_nothing_expired(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(timestamp=now - timedelta(hours=1)),
+        )
+        removed = await tracker.prune_expired(now=now)
+        assert removed == 0

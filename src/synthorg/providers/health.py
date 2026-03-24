@@ -9,8 +9,16 @@ import math
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -56,16 +64,25 @@ class ProviderHealthRecord(BaseModel):
         description="Error description when success is False",
     )
 
+    @model_validator(mode="after")
+    def _validate_error_consistency(self) -> Self:
+        """Ensure error_message is None when success is True."""
+        if self.success and self.error_message is not None:
+            msg = "error_message must be None when success is True"
+            raise ValueError(msg)
+        return self
+
 
 class ProviderHealthSummary(BaseModel):
     """Aggregated provider health for API response.
 
     Attributes:
-        health_status: Derived health status (up/degraded/down).
         last_check_timestamp: Most recent call timestamp.
         avg_response_time_ms: Average response time over the last 24h.
         error_rate_percent_24h: Error rate percentage over the last 24h.
         calls_last_24h: Total calls in the last 24h.
+        health_status: Derived (computed_field) from error rate
+            (up/degraded/down). Not a constructor parameter.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -107,11 +124,31 @@ def _derive_health_status(error_rate: float) -> ProviderHealthStatus:
     return ProviderHealthStatus.UP
 
 
-class ProviderHealthTracker:
-    """In-memory, append-only tracker for provider call outcomes.
+def _aggregate_records(
+    records: list[ProviderHealthRecord],
+) -> ProviderHealthSummary:
+    """Aggregate a list of health records into a summary."""
+    total = len(records)
+    errors = sum(1 for r in records if not r.success)
+    error_rate = round(errors / total * 100, 2)
+    avg_rt = round(
+        math.fsum(r.response_time_ms for r in records) / total,
+        2,
+    )
+    last_ts = max(r.timestamp for r in records)
+    return ProviderHealthSummary(
+        last_check_timestamp=last_ts,
+        avg_response_time_ms=avg_rt,
+        error_rate_percent_24h=error_rate,
+        calls_last_24h=total,
+    )
 
-    Thread-safe via ``asyncio.Lock``.  Mirrors the
-    :class:`~synthorg.budget.tracker.CostTracker` pattern.
+
+class ProviderHealthTracker:
+    """In-memory tracker for provider call outcomes.
+
+    Concurrency-safe via ``asyncio.Lock``.  Follows the same
+    append-only pattern as :class:`~synthorg.budget.tracker.CostTracker`.
     """
 
     __slots__ = ("_lock", "_records")
@@ -128,6 +165,25 @@ class ProviderHealthTracker:
         """
         async with self._lock:
             self._records.append(record)
+
+    async def prune_expired(self, *, now: datetime | None = None) -> int:
+        """Remove records older than the health window.
+
+        Call periodically from long-running services to bound
+        memory growth.
+
+        Args:
+            now: Reference time.  Defaults to current UTC time.
+
+        Returns:
+            Number of records removed.
+        """
+        ref = now or datetime.now(UTC)
+        cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
+        async with self._lock:
+            before = len(self._records)
+            self._records = [r for r in self._records if r.timestamp >= cutoff]
+            return before - len(self._records)
 
     async def get_summary(
         self,
@@ -160,21 +216,7 @@ class ProviderHealthTracker:
         if not recent:
             return ProviderHealthSummary()
 
-        total = len(recent)
-        errors = sum(1 for r in recent if not r.success)
-        error_rate = round(errors / total * 100, 2)
-
-        response_times = [r.response_time_ms for r in recent]
-        avg_rt = round(math.fsum(response_times) / total, 2)
-
-        last_ts = max(r.timestamp for r in recent)
-
-        return ProviderHealthSummary(
-            last_check_timestamp=last_ts,
-            avg_response_time_ms=avg_rt,
-            error_rate_percent_24h=error_rate,
-            calls_last_24h=total,
-        )
+        return _aggregate_records(recent)
 
     async def get_all_summaries(
         self,
@@ -198,21 +240,10 @@ class ProviderHealthTracker:
             if r.timestamp >= cutoff:
                 by_provider[r.provider_name].append(r)
 
-        result: dict[str, ProviderHealthSummary] = {}
-        for name, records in sorted(by_provider.items()):
-            total = len(records)
-            errors = sum(1 for r in records if not r.success)
-            error_rate = round(errors / total * 100, 2)
-            response_times = [r.response_time_ms for r in records]
-            avg_rt = round(math.fsum(response_times) / total, 2)
-            last_ts = max(r.timestamp for r in records)
-            result[name] = ProviderHealthSummary(
-                last_check_timestamp=last_ts,
-                avg_response_time_ms=avg_rt,
-                error_rate_percent_24h=error_rate,
-                calls_last_24h=total,
-            )
-        return result
+        return {
+            name: _aggregate_records(records)
+            for name, records in sorted(by_provider.items())
+        }
 
     async def _snapshot(self) -> tuple[ProviderHealthRecord, ...]:
         """Return an immutable snapshot of all current records."""

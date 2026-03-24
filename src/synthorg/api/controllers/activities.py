@@ -9,6 +9,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
 from synthorg.api.dto import PaginatedResponse
+from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
@@ -73,6 +74,8 @@ class ActivityController(Controller):
 
         Merges lifecycle events and task completion records into
         a unified chronological timeline, most recent first.
+        If the performance tracker is unavailable, task metrics
+        are omitted (lifecycle events are still returned).
 
         Args:
             state: Application state.
@@ -87,9 +90,9 @@ class ActivityController(Controller):
         """
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
-        since = now - timedelta(hours=int(last_n_hours))
+        since = now - timedelta(hours=last_n_hours)
 
-        # Lifecycle events from persistence (async), then task metrics (sync)
+        # Lifecycle events (async), then task metrics (sync)
         lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
             since=since,
@@ -104,6 +107,8 @@ class ActivityController(Controller):
             )
         except MemoryError, RecursionError:
             raise
+        except ServiceUnavailableError:
+            raise
         except Exception:
             logger.warning(
                 API_REQUEST_ERROR,
@@ -113,13 +118,11 @@ class ActivityController(Controller):
             )
             task_metrics = ()
 
-        # Merge into unified timeline (most recent first)
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
         )
 
-        # Apply type filter if requested
         if event_type is not None:
             timeline = tuple(e for e in timeline if e.event_type == event_type)
 
@@ -130,7 +133,7 @@ class ActivityController(Controller):
             total_events=meta.total,
             type_filter=event_type,
             agent_id_filter=agent_id,
-            last_n_hours=int(last_n_hours),
+            last_n_hours=last_n_hours,
         )
 
         return PaginatedResponse(data=page, pagination=meta)

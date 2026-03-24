@@ -254,6 +254,10 @@ class TestDepartmentHealth:
             assert data["utilization_percent"] == 50.0
             assert data["department_cost_7d"] == 0.80
             assert isinstance(data["cost_trend"], list)
+            # Performance scores may be None if snapshot
+            # resolution failed, but they should be present
+            assert "avg_performance_score" in data
+            assert "collaboration_score" in data
 
     def test_other_department_agents_excluded(
         self,
@@ -359,7 +363,73 @@ class TestDepartmentHealthModel:
                 department_name="eng",
                 agent_count=2,
                 active_agent_count=5,
-                utilization_percent=0.0,
                 department_cost_7d=0.0,
                 cost_trend=(),
             )
+
+    def test_utilization_percent_computed(self) -> None:
+        from synthorg.api.controllers.departments import DepartmentHealth
+
+        health = DepartmentHealth(
+            department_name="eng",
+            agent_count=4,
+            active_agent_count=2,
+            department_cost_7d=0.0,
+            cost_trend=(),
+        )
+        assert health.utilization_percent == 50.0
+
+    def test_utilization_percent_zero_agents(self) -> None:
+        from synthorg.api.controllers.departments import DepartmentHealth
+
+        health = DepartmentHealth(
+            department_name="eng",
+            agent_count=0,
+            active_agent_count=0,
+            department_cost_7d=0.0,
+            cost_trend=(),
+        )
+        assert health.utilization_percent == 0.0
+
+
+# ── ExceptionGroup fallback test ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentHealthDegradation:
+    async def test_degraded_when_cost_tracker_fails(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Endpoint returns degraded health when Phase 1 queries fail."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.core.company import Department
+
+        config = RootConfig(
+            company_name="test",
+            departments=(Department(name="eng", budget_percent=100.0),),
+            agents=(AgentConfig(name="alice", role="dev", department="eng"),),
+        )
+        cost_tracker = CostTracker()
+        cost_tracker.get_records = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("simulated cost failure"),
+        )
+        with _build_dept_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            config=config,
+            cost_tracker=cost_tracker,
+        ) as client:
+            resp = client.get(
+                "/api/v1/departments/eng/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            # Degraded: zeroed metrics
+            assert data["active_agent_count"] == 0
+            assert data["utilization_percent"] == 0.0
+            assert data["department_cost_7d"] == 0.0
+            assert data["avg_performance_score"] is None

@@ -171,17 +171,18 @@ class TestActivityFeed:
         resp = test_client.get("/api/v1/activities")
         assert resp.status_code == 200
 
+    @pytest.mark.parametrize("hours", [24, 48, 168])
     def test_last_n_hours_valid_values(
         self,
         test_client: TestClient[Any],
+        hours: int,
     ) -> None:
-        """48 and 168 are valid values."""
-        for hours in (24, 48, 168):
-            resp = test_client.get(
-                "/api/v1/activities",
-                params={"last_n_hours": hours},
-            )
-            assert resp.status_code == 200
+        """24, 48, and 168 are valid values."""
+        resp = test_client.get(
+            "/api/v1/activities",
+            params={"last_n_hours": hours},
+        )
+        assert resp.status_code == 200
 
     def test_last_n_hours_invalid(
         self,
@@ -213,72 +214,61 @@ class TestActivityFeed:
         fake_persistence: FakePersistenceBackend,
     ) -> None:
         """Endpoint still returns lifecycle events when perf tracker fails."""
-        from unittest.mock import PropertyMock, patch
-
         await fake_persistence.lifecycle_events.save(
             _make_lifecycle_event(
                 timestamp=_NOW - timedelta(hours=1),
             ),
         )
 
-        # Make performance_tracker property raise
-        with patch.object(
-            type(fake_persistence),
-            "lifecycle_events",
-            new_callable=PropertyMock,
-            return_value=fake_persistence.lifecycle_events,
-        ):
-            # The test_client's performance_tracker is real but we can
-            # test fallback by having get_task_metrics raise
-            from synthorg.hr.performance.tracker import PerformanceTracker
+        # Build a tracker whose get_task_metrics always raises
+        from synthorg.hr.performance.tracker import PerformanceTracker
 
-            tracker = PerformanceTracker()
+        tracker = PerformanceTracker()
 
-            def _raise(**_kwargs: object) -> None:
-                msg = "simulated failure"
-                raise RuntimeError(msg)
+        def _raise(**_kwargs: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
 
-            tracker.get_task_metrics = _raise  # type: ignore[assignment]
+        tracker.get_task_metrics = _raise  # type: ignore[assignment]
 
-            from synthorg.api.app import create_app
-            from synthorg.api.auth.service import AuthService
-            from synthorg.budget.tracker import CostTracker
-            from synthorg.settings.registry import get_registry
-            from synthorg.settings.service import SettingsService
-            from tests.unit.api.conftest import (
-                FakeMessageBus,
-                _make_test_auth_service,
-                _seed_test_users,
-                make_auth_headers,
+        from synthorg.api.app import create_app
+        from synthorg.api.auth.service import AuthService
+        from synthorg.budget.tracker import CostTracker
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            _make_test_auth_service,
+            _seed_test_users,
+            make_auth_headers,
+        )
+
+        config = RootConfig(company_name="test")
+        auth_service: AuthService = _make_test_auth_service()
+        bus = FakeMessageBus()
+        await bus.start()
+        _seed_test_users(fake_persistence, auth_service)
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_service,
+            settings_service=settings_service,
+            performance_tracker=tracker,
+        )
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/v1/activities",
+                headers=make_auth_headers("ceo"),
             )
-
-            config = RootConfig(company_name="test")
-            auth_service: AuthService = _make_test_auth_service()
-            bus = FakeMessageBus()
-            await bus.start()
-            _seed_test_users(fake_persistence, auth_service)
-            settings_service = SettingsService(
-                repository=fake_persistence.settings,
-                registry=get_registry(),
-                config=config,
-            )
-            app = create_app(
-                config=config,
-                persistence=fake_persistence,
-                message_bus=bus,
-                cost_tracker=CostTracker(),
-                auth_service=auth_service,
-                settings_service=settings_service,
-                performance_tracker=tracker,
-            )
-            from litestar.testing import TestClient
-
-            with TestClient(app) as client:
-                resp = client.get(
-                    "/api/v1/activities",
-                    headers=make_auth_headers("ceo"),
-                )
-                assert resp.status_code == 200
-                body = resp.json()
-                # Should still return lifecycle events
-                assert body["pagination"]["total"] >= 1
+            assert resp.status_code == 200
+            body = resp.json()
+            # Should still return lifecycle events
+            assert body["pagination"]["total"] >= 1

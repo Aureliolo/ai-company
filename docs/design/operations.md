@@ -119,6 +119,7 @@ Providers can be managed at runtime through the API without restarting:
 - **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
 - **Auth types**: `api_key` (default), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
 - **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header` boolean indicators
+- **Health**: `GET /api/v1/providers/{name}/health` -- returns health status (up/degraded/down derived from 24h error rate), average response time, error rate percentage, and call count. In-memory tracking via `ProviderHealthTracker` (concurrency-safe, append-only with periodic pruning)
 
 ### Model Routing Strategy
 

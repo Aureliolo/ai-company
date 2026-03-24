@@ -23,7 +23,7 @@ High-frequency destinations, always visible in the sidebar.
 
 Org overview: department health indicators (green/amber/red), recent activity widget, budget snapshot with sparkline, active task summary, agent status counts, approval badge count. The central "is the company healthy?" view.
 
-**API endpoints**: `GET /analytics/overview`, `GET /analytics/trends`, `GET /company/departments`, `GET /agents`
+**API endpoints**: `GET /analytics/overview`, `GET /analytics/trends`, `GET /company/departments`, `GET /departments/{name}/health`, `GET /activities`, `GET /agents`
 **WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all -- aggregated into health indicators and activity feed)
 
 #### Org Chart (`/org`)
@@ -32,7 +32,7 @@ Living org visualization with real-time agent status. Default mode is read-only:
 
 "Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, description, autonomy, shutdown timeout), Agents (card grid with add/edit/delete), Departments (card grid with nested teams/reporting/policies). This is the former Company page merged into the Org Chart -- same data domain, one destination.
 
-**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /agents`, `GET /agents/{name}`
+**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`
 **WS channels**: `agents` (status changes, hired/fired), `system`
 
 #### Task Board (`/tasks`)
@@ -98,7 +98,7 @@ LLM provider management. CRUD cards for configured providers. Connection test bu
 
 No WebSocket subscription -- provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 
-**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
+**API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
 #### Settings (`/settings`)
 
@@ -307,6 +307,7 @@ Every backend controller has a home in the page structure. No orphans.
 | SetupController | Setup Wizard |
 | CompanyController | Org Chart |
 | DepartmentController | Org Chart |
+| ActivityController | Dashboard |
 | AgentController | Agents, Org Chart |
 | TaskController | Task Board |
 | MessageController | Messages |
