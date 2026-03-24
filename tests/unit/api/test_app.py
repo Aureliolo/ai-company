@@ -917,6 +917,7 @@ class TestAutoWirePhase1ErrorPaths:
             cost_tracker=None,
             task_engine=None,
             provider_registry=None,
+            provider_health_tracker=None,
         )
         bus = result.message_bus
         assert isinstance(bus, InMemoryMessageBus)
@@ -949,6 +950,7 @@ class TestAutoWirePhase1ErrorPaths:
                 cost_tracker=None,
                 task_engine=None,
                 provider_registry=None,
+                provider_health_tracker=None,
             )
 
     def test_message_bus_creation_failure(
@@ -974,6 +976,7 @@ class TestAutoWirePhase1ErrorPaths:
                 cost_tracker=None,
                 task_engine=None,
                 provider_registry=None,
+                provider_health_tracker=None,
             )
 
 

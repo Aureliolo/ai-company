@@ -507,11 +507,13 @@ def create_app(  # noqa: PLR0913
         cost_tracker=cost_tracker,
         task_engine=task_engine,
         provider_registry=provider_registry,
+        provider_health_tracker=provider_health_tracker,
     )
     message_bus = phase1.message_bus
     cost_tracker = phase1.cost_tracker
     task_engine = phase1.task_engine
     provider_registry = phase1.provider_registry
+    provider_health_tracker = phase1.provider_health_tracker
 
     # ── Meeting auto-wire: orchestrator + scheduler (Phase 1 level) ──
     meeting_wire = auto_wire_meetings(

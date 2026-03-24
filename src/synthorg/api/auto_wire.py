@@ -2,7 +2,7 @@
 
 Phase 1 (construction time): creates services that don't need a
 connected persistence backend -- message bus, cost tracker, provider
-registry, task engine.
+registry, task engine, provider health tracker.
 
 Meeting auto-wire (construction time): creates meeting orchestrator
 and meeting scheduler (same lifecycle as Phase 1 but separate call).
@@ -27,6 +27,7 @@ from synthorg.observability.events.api import (
     API_SERVICE_AUTO_WIRED,
 )
 from synthorg.observability.events.meeting import MEETING_STUB_AGENT_CALLER
+from synthorg.providers.health import ProviderHealthTracker
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
@@ -58,6 +59,7 @@ class Phase1Result(NamedTuple):
     cost_tracker: CostTracker | None
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
+    provider_health_tracker: ProviderHealthTracker | None
 
 
 class MeetingWireResult(NamedTuple):
@@ -93,6 +95,7 @@ def auto_wire_phase1(  # noqa: PLR0913
     cost_tracker: CostTracker | None,
     task_engine: TaskEngine | None,
     provider_registry: ProviderRegistry | None,
+    provider_health_tracker: ProviderHealthTracker | None,
 ) -> Phase1Result:
     """Auto-wire services that don't need connected persistence.
 
@@ -108,6 +111,8 @@ def auto_wire_phase1(  # noqa: PLR0913
         cost_tracker: Explicit tracker or ``None`` to auto-wire.
         task_engine: Explicit engine or ``None`` to auto-wire.
         provider_registry: Explicit registry or ``None`` to auto-wire.
+        provider_health_tracker: Explicit tracker or ``None`` to
+            auto-wire.
 
     Returns:
         A ``Phase1Result`` with all (possibly auto-wired) services.
@@ -123,6 +128,10 @@ def auto_wire_phase1(  # noqa: PLR0913
 
     if task_engine is None and persistence is not None:
         task_engine = _wire_task_engine(persistence, message_bus)
+
+    if provider_health_tracker is None:
+        provider_health_tracker = ProviderHealthTracker()
+        logger.info(API_SERVICE_AUTO_WIRED, service="provider_health_tracker")
 
     if persistence is None:
         logger.warning(
@@ -140,6 +149,7 @@ def auto_wire_phase1(  # noqa: PLR0913
         cost_tracker=cost_tracker,
         task_engine=task_engine,
         provider_registry=provider_registry,
+        provider_health_tracker=provider_health_tracker,
     )
 
 
