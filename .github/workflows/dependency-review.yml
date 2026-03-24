@@ -37,6 +37,9 @@ jobs:
           #   (BSD-3-Clause AND google-patent-grant, standard Go stdlib-adjacent, permissive)
           # CC-BY-3.0, CC-BY-4.0: Creative Commons Attribution -- permissive, requires
           #   attribution only. Common in Go struct-tag and documentation-related packages.
+          # OFL-1.1: SIL Open Font License -- standard font license used by
+          #   @fontsource-variable/geist (Geist font). Permissive, requires
+          #   attribution and no selling fonts standalone.
           allow-licenses: >-
             MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
@@ -46,7 +49,8 @@ jobs:
             LicenseRef-scancode-google-patent-license-golang,
             ZPL-2.1,
             LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
-            BlueOak-1.0.0
+            BlueOak-1.0.0,
+            OFL-1.1
           # Packages with null/missing SPDX license metadata in lockfile.
           # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
           # qdrant-client (Apache-2.0), posthog (MIT).
@@ -54,6 +58,11 @@ jobs:
           # "Apache-2.0 AND LGPL-3.0-or-later") -- all constituents are
           # in the allowlist but the action doesn't split AND expressions.
           # CI-only transitive dep via wrangler, no licensing impact.
+          #
+          # json-schema-typed (BSD-2-Clause AND JSON): transitive dep via
+          # shadcn/radix. The "JSON" license has a non-standard "Good, not
+          # Evil" clause. Dev-only type definition package, not bundled in
+          # production output. The action cannot split compound AND licenses.
           #
           # golangci-lint (GPL-3.0) and its GPL/compound-licensed linter deps:
           # These are dev-only tool dependencies declared via `tool` directive
@@ -75,5 +84,6 @@ jobs:
             pkg:golang/github.com/leonklingele/grouper@1.1.2,
             pkg:golang/github.com/xen0n/gosmopolitan@1.3.0,
             pkg:golang/github.com/alfatraining/structtag@1.0.0,
-            pkg:golang/github.com/fatih/structtag@1.2.0
+            pkg:golang/github.com/fatih/structtag@1.2.0,
+            pkg:npm/json-schema-typed@8.0.2
           comment-summary-in-pr: always
