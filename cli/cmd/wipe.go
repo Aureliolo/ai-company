@@ -80,8 +80,11 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+	if _, err := os.Stat(composePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+		}
+		return fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
 	}
 
 	out := ui.NewUI(cmd.OutOrStdout())
@@ -181,7 +184,10 @@ func (wc *wipeContext) confirmWipe() (bool, error) {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			return false, nil // treat Ctrl-C as "Cancel"
+			// Wipe has NOT happened yet, so Ctrl-C is equivalent to
+			// choosing "Cancel" -- return false without errWipeCancelled
+			// since the caller already handles the !confirmed path.
+			return false, nil
 		}
 		return false, fmt.Errorf("confirmation prompt: %w", err)
 	}
@@ -387,12 +393,20 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 }
 
 // checkOverwrite warns and prompts if the save path already exists.
+// Note: there is an inherent TOCTOU race between this check and the
+// eventual write (in tarDirectory or docker compose cp). For a local CLI
+// tool this is acceptable -- the race requires a co-located malicious
+// process, and resolving it would require restructuring both write paths.
 func (wc *wipeContext) checkOverwrite(path string) error {
-	if _, err := os.Stat(path); err != nil {
-		return nil // does not exist or stat error -- proceed
+	_, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil // file does not exist -- safe to write
+		}
+		return fmt.Errorf("cannot access save path: %w", err)
 	}
 	var overwrite bool
-	err := wc.runForm(huh.NewForm(huh.NewGroup(
+	err = wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("File already exists: %s. Overwrite?", filepath.Base(path))).
 			Affirmative("Yes, overwrite").
