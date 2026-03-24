@@ -311,6 +311,7 @@ async def _fetch_trend_data_points(
         try:
             task_metrics = app_state.performance_tracker.get_task_metrics(
                 since=start,
+                until=now,
             )
         except ServiceUnavailableError:
             logger.warning(
@@ -442,6 +443,7 @@ class AnalyticsController(Controller):
                 t_7d = tg.create_task(
                     app_state.cost_tracker.get_records(
                         start=now - timedelta(days=7),
+                        end=now,
                     ),
                 )
         except ExceptionGroup as eg:
