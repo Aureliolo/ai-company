@@ -3,11 +3,11 @@
 import asyncio
 import math
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import NotFoundError
@@ -27,6 +27,7 @@ from synthorg.observability.events.api import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.cost_record import CostRecord
     from synthorg.config.schema import AgentConfig
     from synthorg.hr.performance.models import AgentPerformanceSnapshot
 
@@ -80,6 +81,17 @@ class DepartmentHealth(BaseModel):
         description="Mean collaboration score (0-10)",
     )
 
+    @model_validator(mode="after")
+    def _validate_active_le_total(self) -> Self:
+        """Ensure active agent count does not exceed total."""
+        if self.active_agent_count > self.agent_count:
+            msg = (
+                f"active_agent_count ({self.active_agent_count}) "
+                f"exceeds agent_count ({self.agent_count})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 # ── Helpers ───────────────────────────────────────────────────
 
@@ -123,14 +135,16 @@ async def _resolve_snapshots(
 ) -> tuple[AgentPerformanceSnapshot, ...]:
     """Fetch performance snapshots for the given agent IDs.
 
-    Returns whatever snapshots are available; agents with no data
-    are silently skipped.
+    Uses ``asyncio.TaskGroup`` for parallel fan-out.  Agents
+    whose snapshots fail to load are silently skipped.
     """
-    snapshots: list[AgentPerformanceSnapshot] = []
-    for aid in agent_ids:
+    results: list[AgentPerformanceSnapshot | None] = [None] * len(agent_ids)
+
+    async def _fetch(idx: int, aid: str) -> None:
         try:
-            snap = await app_state.performance_tracker.get_snapshot(aid)
-            snapshots.append(snap)
+            results[idx] = await app_state.performance_tracker.get_snapshot(
+                aid,
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -140,7 +154,12 @@ async def _resolve_snapshots(
                 agent_id=aid,
                 exc_info=True,
             )
-    return tuple(snapshots)
+
+    async with asyncio.TaskGroup() as tg:
+        for i, aid in enumerate(agent_ids):
+            tg.create_task(_fetch(i, aid))
+
+    return tuple(r for r in results if r is not None)
 
 
 async def _resolve_agent_ids(
@@ -149,16 +168,18 @@ async def _resolve_agent_ids(
 ) -> tuple[str, ...]:
     """Map agent names to IDs via the registry.
 
+    Uses ``asyncio.TaskGroup`` for parallel fan-out.
     Agents not found in the registry are silently skipped.
     """
     if not app_state.has_agent_registry:
         return ()
-    ids: list[str] = []
-    for name in agent_names:
+    results: list[str | None] = [None] * len(agent_names)
+
+    async def _lookup(idx: int, name: str) -> None:
         try:
             identity = await app_state.agent_registry.get_by_name(name)
             if identity is not None:
-                ids.append(str(identity.id))
+                results[idx] = str(identity.id)
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -168,7 +189,12 @@ async def _resolve_agent_ids(
                 agent_name=name,
                 exc_info=True,
             )
-    return tuple(ids)
+
+    async with asyncio.TaskGroup() as tg:
+        for i, name in enumerate(agent_names):
+            tg.create_task(_lookup(i, name))
+
+    return tuple(r for r in results if r is not None)
 
 
 def _mean_optional(values: list[float | None]) -> float | None:
@@ -177,6 +203,61 @@ def _mean_optional(values: list[float | None]) -> float | None:
     if not filtered:
         return None
     return round(math.fsum(filtered) / len(filtered), 2)
+
+
+def _sparkline_start(now: datetime) -> datetime:
+    """Compute the aligned start for a 7-day daily sparkline."""
+    return now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(days=6)
+
+
+def _aggregate_dept_cost(
+    cost_records: tuple[CostRecord, ...],
+    agent_id_set: frozenset[str],
+    now: datetime,
+) -> tuple[float, tuple[TrendDataPoint, ...]]:
+    """Filter cost records to department agents and compute totals.
+
+    Returns:
+        Tuple of (total_cost_7d, cost_trend_sparkline).
+    """
+    dept_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
+    total = round(
+        math.fsum(r.cost_usd for r in dept_records),
+        BUDGET_ROUNDING_PRECISION,
+    )
+    trend = bucket_cost_records(
+        dept_records,
+        _sparkline_start(now),
+        now,
+        BucketSize.DAY,
+    )
+    return total, trend
+
+
+def _build_degraded_health(
+    dept_name: str,
+    agent_count: int,
+    now: datetime,
+) -> DepartmentHealth:
+    """Build a minimal DepartmentHealth for when queries fail."""
+    return DepartmentHealth(
+        department_name=dept_name,
+        agent_count=agent_count,
+        active_agent_count=0,
+        utilization_percent=0.0,
+        department_cost_7d=0.0,
+        cost_trend=bucket_cost_records(
+            (),
+            _sparkline_start(now),
+            now,
+            BucketSize.DAY,
+        ),
+    )
 
 
 async def _assemble_department_health(
@@ -192,14 +273,7 @@ async def _assemble_department_health(
     now = datetime.now(UTC)
     seven_days_ago = now - timedelta(days=7)
 
-    # Resolve agent IDs for cost and performance queries
-    agent_ids = await _resolve_agent_ids(app_state, agent_names)
-
-    # Parallel queries
-    active_count = 0
-    cost_records: tuple[object, ...] = ()
-    snapshots: tuple[AgentPerformanceSnapshot, ...] = ()
-
+    # Phase 1: parallel queries for active count, cost, and agent IDs
     try:
         async with asyncio.TaskGroup() as tg:
             t_active = tg.create_task(
@@ -211,10 +285,13 @@ async def _assemble_department_health(
                     end=now,
                 ),
             )
-            t_snap = tg.create_task(
-                _resolve_snapshots(app_state, agent_ids),
+            t_ids = tg.create_task(
+                _resolve_agent_ids(app_state, agent_names),
             )
     except ExceptionGroup as eg:
+        fatal = eg.subgroup((MemoryError, RecursionError))
+        if fatal is not None:
+            raise fatal from eg
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health",
@@ -222,71 +299,37 @@ async def _assemble_department_health(
             error_count=len(eg.exceptions),
             exc_info=True,
         )
-        # Return minimal health with zeros
-        sparkline_start = now.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        ) - timedelta(days=6)
-        return DepartmentHealth(
-            department_name=dept_name,
-            agent_count=agent_count,
-            active_agent_count=0,
-            utilization_percent=0.0,
-            department_cost_7d=0.0,
-            cost_trend=bucket_cost_records(
-                (),
-                sparkline_start,
-                now,
-                BucketSize.DAY,
-            ),
-        )
-    else:
-        active_count = t_active.result()
-        cost_records = t_cost.result()
-        snapshots = t_snap.result()
+        return _build_degraded_health(dept_name, agent_count, now)
 
-    # Filter cost records to department agents only
+    active_count = t_active.result()
+    cost_records: tuple[CostRecord, ...] = t_cost.result()
+    agent_ids = t_ids.result()
+
+    # Phase 2: snapshots (depend on resolved agent_ids)
+    snapshots = await _resolve_snapshots(app_state, agent_ids)
+
+    # Aggregate
     agent_id_set = frozenset(agent_ids)
-    dept_cost_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
-
-    # Aggregate cost
-    dept_cost_7d = round(
-        math.fsum(r.cost_usd for r in dept_cost_records),
-        BUDGET_ROUNDING_PRECISION,
-    )
-
-    # Build cost trend sparkline (7 daily buckets)
-    sparkline_start = now.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    ) - timedelta(days=6)
-    cost_trend = bucket_cost_records(
-        dept_cost_records,
-        sparkline_start,
+    dept_cost_7d, cost_trend = _aggregate_dept_cost(
+        cost_records,
+        agent_id_set,
         now,
-        BucketSize.DAY,
     )
-
-    # Utilization
     utilization = round(active_count / agent_count * 100, 2) if agent_count > 0 else 0.0
-
-    # Average performance and collaboration scores
-    quality_scores = [s.overall_quality_score for s in snapshots]
-    collab_scores = [s.overall_collaboration_score for s in snapshots]
 
     return DepartmentHealth(
         department_name=dept_name,
         agent_count=agent_count,
         active_agent_count=active_count,
         utilization_percent=utilization,
-        avg_performance_score=_mean_optional(quality_scores),
+        avg_performance_score=_mean_optional(
+            [s.overall_quality_score for s in snapshots],
+        ),
         department_cost_7d=dept_cost_7d,
         cost_trend=cost_trend,
-        collaboration_score=_mean_optional(collab_scores),
+        collaboration_score=_mean_optional(
+            [s.overall_collaboration_score for s in snapshots],
+        ),
     )
 
 

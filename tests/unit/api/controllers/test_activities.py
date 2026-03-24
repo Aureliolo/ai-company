@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.config.schema import RootConfig
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -206,3 +207,78 @@ class TestActivityFeed:
         assert "pagination" in body
         assert body["pagination"]["offset"] == 0
         assert body["pagination"]["limit"] == 10
+
+    async def test_graceful_degradation_no_performance_tracker(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Endpoint still returns lifecycle events when perf tracker fails."""
+        from unittest.mock import PropertyMock, patch
+
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(
+                timestamp=_NOW - timedelta(hours=1),
+            ),
+        )
+
+        # Make performance_tracker property raise
+        with patch.object(
+            type(fake_persistence),
+            "lifecycle_events",
+            new_callable=PropertyMock,
+            return_value=fake_persistence.lifecycle_events,
+        ):
+            # The test_client's performance_tracker is real but we can
+            # test fallback by having get_task_metrics raise
+            from synthorg.hr.performance.tracker import PerformanceTracker
+
+            tracker = PerformanceTracker()
+
+            def _raise(**_kwargs: object) -> None:
+                msg = "simulated failure"
+                raise RuntimeError(msg)
+
+            tracker.get_task_metrics = _raise  # type: ignore[assignment]
+
+            from synthorg.api.app import create_app
+            from synthorg.api.auth.service import AuthService
+            from synthorg.budget.tracker import CostTracker
+            from synthorg.settings.registry import get_registry
+            from synthorg.settings.service import SettingsService
+            from tests.unit.api.conftest import (
+                FakeMessageBus,
+                _make_test_auth_service,
+                _seed_test_users,
+                make_auth_headers,
+            )
+
+            config = RootConfig(company_name="test")
+            auth_service: AuthService = _make_test_auth_service()
+            bus = FakeMessageBus()
+            await bus.start()
+            _seed_test_users(fake_persistence, auth_service)
+            settings_service = SettingsService(
+                repository=fake_persistence.settings,
+                registry=get_registry(),
+                config=config,
+            )
+            app = create_app(
+                config=config,
+                persistence=fake_persistence,
+                message_bus=bus,
+                cost_tracker=CostTracker(),
+                auth_service=auth_service,
+                settings_service=settings_service,
+                performance_tracker=tracker,
+            )
+            from litestar.testing import TestClient
+
+            with TestClient(app) as client:
+                resp = client.get(
+                    "/api/v1/activities",
+                    headers=make_auth_headers("ceo"),
+                )
+                assert resp.status_code == 200
+                body = resp.json()
+                # Should still return lifecycle events
+                assert body["pagination"]["total"] >= 1

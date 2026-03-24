@@ -63,20 +63,17 @@ class TestProviderHealthRecord:
 @pytest.mark.unit
 class TestProviderHealthSummary:
     def test_defaults(self) -> None:
-        summary = ProviderHealthSummary(
-            health_status=ProviderHealthStatus.UP,
-        )
+        summary = ProviderHealthSummary()
+        assert summary.health_status == ProviderHealthStatus.UP
         assert summary.last_check_timestamp is None
         assert summary.avg_response_time_ms is None
         assert summary.error_rate_percent_24h == 0.0
         assert summary.calls_last_24h == 0
 
     def test_frozen(self) -> None:
-        summary = ProviderHealthSummary(
-            health_status=ProviderHealthStatus.UP,
-        )
+        summary = ProviderHealthSummary()
         with pytest.raises(Exception):  # noqa: B017, PT011
-            summary.health_status = ProviderHealthStatus.DOWN  # type: ignore[misc]
+            summary.error_rate_percent_24h = 99.0  # type: ignore[misc]
 
 
 # ── Tracker tests ─────────────────────────────────────────────
@@ -272,3 +269,106 @@ class TestProviderHealthTracker:
 
         summary = await tracker.get_summary("test-provider", now=now)
         assert summary.calls_last_24h == 200
+
+
+# ── _derive_health_status boundary tests ──────────────────────
+
+
+@pytest.mark.unit
+class TestDeriveHealthStatus:
+    """Test exact boundary values for health status thresholds."""
+
+    @pytest.mark.parametrize(
+        ("error_rate", "expected"),
+        [
+            (0.0, ProviderHealthStatus.UP),
+            (9.99, ProviderHealthStatus.UP),
+            (10.0, ProviderHealthStatus.DEGRADED),
+            (49.99, ProviderHealthStatus.DEGRADED),
+            (50.0, ProviderHealthStatus.DOWN),
+            (100.0, ProviderHealthStatus.DOWN),
+        ],
+    )
+    def test_boundary_values(
+        self,
+        error_rate: float,
+        expected: ProviderHealthStatus,
+    ) -> None:
+        from synthorg.providers.health import _derive_health_status
+
+        assert _derive_health_status(error_rate) == expected
+
+
+# ── get_all_summaries tests ───────────────────────────────────
+
+
+@pytest.mark.unit
+class TestGetAllSummaries:
+    async def test_empty_tracker(self) -> None:
+        tracker = ProviderHealthTracker()
+        result = await tracker.get_all_summaries()
+        assert result == {}
+
+    async def test_single_provider(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(timestamp=now, response_time_ms=100.0),
+        )
+        result = await tracker.get_all_summaries(now=now)
+        assert "test-provider" in result
+        summary = result["test-provider"]
+        assert summary.calls_last_24h == 1
+        assert summary.health_status == ProviderHealthStatus.UP
+
+    async def test_multiple_providers(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(
+                provider_name="provider-a",
+                timestamp=now,
+                success=True,
+            ),
+        )
+        await tracker.record(
+            _make_record(
+                provider_name="provider-b",
+                timestamp=now,
+                success=False,
+            ),
+        )
+        result = await tracker.get_all_summaries(now=now)
+        assert len(result) == 2
+        assert result["provider-a"].health_status == ProviderHealthStatus.UP
+        assert result["provider-b"].health_status == ProviderHealthStatus.DOWN
+
+    async def test_excludes_old_records(self) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime.now(UTC)
+        await tracker.record(
+            _make_record(
+                timestamp=now - timedelta(hours=25),
+                success=False,
+            ),
+        )
+        result = await tracker.get_all_summaries(now=now)
+        assert result == {}
+
+
+# ── computed_field health_status tests ────────────────────────
+
+
+@pytest.mark.unit
+class TestHealthStatusComputed:
+    def test_health_status_derived_from_error_rate(self) -> None:
+        summary = ProviderHealthSummary(error_rate_percent_24h=15.0)
+        assert summary.health_status == ProviderHealthStatus.DEGRADED
+
+    def test_default_is_up(self) -> None:
+        summary = ProviderHealthSummary()
+        assert summary.health_status == ProviderHealthStatus.UP
+
+    def test_down_at_50_percent(self) -> None:
+        summary = ProviderHealthSummary(error_rate_percent_24h=50.0)
+        assert summary.health_status == ProviderHealthStatus.DOWN

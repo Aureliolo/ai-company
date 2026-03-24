@@ -89,7 +89,7 @@ class ActivityController(Controller):
         now = datetime.now(UTC)
         since = now - timedelta(hours=int(last_n_hours))
 
-        # Fetch lifecycle events and task metrics in parallel
+        # Lifecycle events from persistence (async), then task metrics (sync)
         lifecycle_events = await app_state.persistence.lifecycle_events.list_events(
             agent_id=agent_id,
             since=since,
@@ -102,6 +102,8 @@ class ActivityController(Controller):
                 since=since,
                 until=now,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 API_REQUEST_ERROR,

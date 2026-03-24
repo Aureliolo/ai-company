@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -70,9 +70,6 @@ class ProviderHealthSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    health_status: ProviderHealthStatus = Field(
-        description="Derived health status",
-    )
     last_check_timestamp: AwareDatetime | None = Field(
         default=None,
         description="Most recent call timestamp",
@@ -94,6 +91,12 @@ class ProviderHealthSummary(BaseModel):
         description="Total calls in the last 24h",
     )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def health_status(self) -> ProviderHealthStatus:
+        """Derive health status from error rate."""
+        return _derive_health_status(self.error_rate_percent_24h)
+
 
 def _derive_health_status(error_rate: float) -> ProviderHealthStatus:
     """Derive health status from error rate percentage."""
@@ -110,6 +113,8 @@ class ProviderHealthTracker:
     Thread-safe via ``asyncio.Lock``.  Mirrors the
     :class:`~synthorg.budget.tracker.CostTracker` pattern.
     """
+
+    __slots__ = ("_lock", "_records")
 
     def __init__(self) -> None:
         self._records: list[ProviderHealthRecord] = []
@@ -153,9 +158,7 @@ class ProviderHealthTracker:
         ]
 
         if not recent:
-            return ProviderHealthSummary(
-                health_status=ProviderHealthStatus.UP,
-            )
+            return ProviderHealthSummary()
 
         total = len(recent)
         errors = sum(1 for r in recent if not r.success)
@@ -167,7 +170,6 @@ class ProviderHealthTracker:
         last_ts = max(r.timestamp for r in recent)
 
         return ProviderHealthSummary(
-            health_status=_derive_health_status(error_rate),
             last_check_timestamp=last_ts,
             avg_response_time_ms=avg_rt,
             error_rate_percent_24h=error_rate,
@@ -205,7 +207,6 @@ class ProviderHealthTracker:
             avg_rt = round(math.fsum(response_times) / total, 2)
             last_ts = max(r.timestamp for r in records)
             result[name] = ProviderHealthSummary(
-                health_status=_derive_health_status(error_rate),
                 last_check_timestamp=last_ts,
                 avg_response_time_ms=avg_rt,
                 error_rate_percent_24h=error_rate,

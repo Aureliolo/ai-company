@@ -318,3 +318,48 @@ class TestDepartmentHealth:
             for pt in trend:
                 assert "timestamp" in pt
                 assert "value" in pt
+
+
+# ── _mean_optional unit tests ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMeanOptional:
+    def test_empty_list(self) -> None:
+        from synthorg.api.controllers.departments import _mean_optional
+
+        assert _mean_optional([]) is None
+
+    def test_all_none(self) -> None:
+        from synthorg.api.controllers.departments import _mean_optional
+
+        assert _mean_optional([None, None]) is None
+
+    def test_mixed_values(self) -> None:
+        from synthorg.api.controllers.departments import _mean_optional
+
+        assert _mean_optional([5.0, None, 10.0]) == 7.5
+
+    def test_all_present(self) -> None:
+        from synthorg.api.controllers.departments import _mean_optional
+
+        assert _mean_optional([3.0, 6.0, 9.0]) == 6.0
+
+
+# ── DepartmentHealth model validation tests ───────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentHealthModel:
+    def test_active_exceeds_total_rejected(self) -> None:
+        from synthorg.api.controllers.departments import DepartmentHealth
+
+        with pytest.raises(ValueError, match="exceeds agent_count"):
+            DepartmentHealth(
+                department_name="eng",
+                agent_count=2,
+                active_agent_count=5,
+                utilization_percent=0.0,
+                department_cost_7d=0.0,
+                cost_trend=(),
+            )
