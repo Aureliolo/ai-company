@@ -449,7 +449,7 @@ class TestProjectDailySpend:
         assert result.confidence == 1.0
 
     def test_confidence_partial_coverage(self) -> None:
-        # Records on 2 days of a 4-day span -> confidence 0.5
+        # Exclusive delta: (Mar 4 - Mar 1).days = 3, data on 2 days -> 2/3
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=1.0
