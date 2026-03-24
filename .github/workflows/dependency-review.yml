@@ -64,6 +64,12 @@ jobs:
           # Evil" clause. Dev-only type definition package, not bundled in
           # production output. The action cannot split compound AND licenses.
           #
+          # victory-vendor (ISC AND JSON AND MIT): transitive dep via recharts.
+          # GitHub's license scanner falsely detects "JSON" license. Actual
+          # package.json declares "MIT AND ISC". Manual audit of all 13
+          # vendored LICENSE files confirms ISC + BSD-3-Clause only, no JSON
+          # license text present. Same false-positive pattern as json-schema-typed.
+          #
           # golangci-lint (GPL-3.0) and its GPL/compound-licensed linter deps:
           # These are dev-only tool dependencies declared via `tool` directive
           # in cli/go.mod. They are never compiled into the SynthOrg binary --
@@ -85,5 +91,6 @@ jobs:
             pkg:golang/github.com/xen0n/gosmopolitan@1.3.0,
             pkg:golang/github.com/alfatraining/structtag@1.0.0,
             pkg:golang/github.com/fatih/structtag@1.2.0,
-            pkg:npm/json-schema-typed@8.0.2
+            pkg:npm/json-schema-typed@8.0.2,
+            pkg:npm/victory-vendor@37.3.6
           comment-summary-in-pr: always
