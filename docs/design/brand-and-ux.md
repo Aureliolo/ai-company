@@ -7,11 +7,13 @@ description: Visual identity, theme architecture, color system, typography, dens
 
 ## Design Direction
 
-**Chosen direction**: Warm Ops (Variation B from the design exploration in #765), with semantic color encoding from Signal (Variation D).
+**Chosen direction**: Warm Ops -- a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven color encoding where every color communicates system status rather than serving as decoration.
 
-**Core philosophy**: Colors communicate meaning, not just brand. Orange/amber means "attention needed" -- it is not the brand color. The brand accent is a warm soft blue, and every other color in the UI earns its presence by signaling state.
+**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying color exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue -- deliberately neutral so that semantic state colors dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
 
-**References**: Linear (clean, balanced), Vercel (status-first), Dust.tt (warm approachability), Grafana (data density option).
+**What was rejected and why**: A cool blue-cyan palette (data center aesthetic) was too generic -- indistinguishable from Grafana/Datadog screenshots. A neutral gray palette (no hue) lacked enough identity to be recognizable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
+
+**Design influences**: Linear (clean layout, balanced density), Vercel (status-first design), Dust.tt (warm approachability), Grafana (data density as a user preference).
 
 ## Color System
 
@@ -56,7 +58,7 @@ Each theme is a single configuration object (~50 lines). All colors are CSS cust
 2. Register it in the theme index
 3. Done -- all components automatically pick up the new palette
 
-No component code changes required. See `mockups-v2/src/themes/` for the 5 exploration themes as examples.
+No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern -- each theme is ~50 lines of color token definitions with zero component changes.
 
 ## Typography
 
@@ -105,7 +107,7 @@ Animation is an **independent user preference**, controlling motion intensity.
 | Status-driven | Fade | None | Fade | Only on state change | Animation earns attention -- only moving things changed |
 | Aggressive | Slide + fade + scale | Lift + glow | Scale | Yes + shimmer | High energy, demo/presentation mode |
 
-**Recommended default**: Status-driven (from Signal variation). Animation should communicate state change, not decoration. Static elements stay still; only things that changed move.
+**Recommended default**: Status-driven. Animation should communicate state change, not decoration. Static elements stay still; only things that changed move.
 
 ## Sidebar
 
@@ -113,10 +115,10 @@ Sidebar mode is an **independent user preference**.
 
 | Mode | Behavior | Width | Best for |
 |------|----------|-------|----------|
-| Rail | Always visible, icon + label | 200px | Standard desktop use |
+| Rail | Always visible, icon + label | 220px | Standard desktop use |
 | Collapsible (default) | Expanded by default, can collapse to icon rail. Remembers user preference. | 220px / 56px | Most users -- full nav when needed, compact when focused |
 | Hidden | Hamburger toggle, content gets full width | 240px (overlay) | Maximum content area, presentation |
-| Persistent | Always expanded with notification badges | 210px | High-interactivity workflows, many nav items |
+| Persistent | Always expanded with notification badges | 220px | High-interactivity workflows, many nav items |
 | Compact | Always visible, icons prominent, text secondary | 56px | Small screens, secondary monitors |
 
 ### Persistence
@@ -129,7 +131,7 @@ Sidebar collapse state is persisted in user preferences. If a user collapses the
 
 The theme system has 5 orthogonal axes that users can configure independently:
 
-```
+```text
 Color Palette  x  Density  x  Typography  x  Animation  x  Sidebar Mode
 ```
 
@@ -137,7 +139,7 @@ This gives users full control without combinatorial explosion in theme definitio
 
 ### Implementation Pattern
 
-```
+```text
 ThemeProvider (React context)
   |-- sets CSS custom properties on wrapper div (--theme-accent, --theme-bg-base, etc.)
   |-- Tailwind @theme block maps --theme-* to Tailwind utility classes
@@ -178,7 +180,7 @@ This was discovered during the design exploration (#765) and caused layout break
 
 | Resource | Location |
 |----------|----------|
-| Design exploration mockups (5 variations) | `research/762-ux-mockups` branch, `mockups-v2/` |
+| Design exploration mockups (5 variations) | `feat/765-design-exploration` branch, `mockups-v2/` (exploration artifacts, not production code) |
 | Original winning prototype (C+D direction) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
 | UX research document | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
 | Parent issue (full UX overhaul) | #762 |

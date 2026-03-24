@@ -73,20 +73,6 @@ development, business operations, creative work, or any domain.
 - Not a wrapper around a single model or provider
 - Not a toy/demo -- designed for real, production-quality output
 
-## MVP Definition
-
-The MVP validates the core hypothesis: **a single agent can complete a real task end-to-end**
-within the framework's architecture.
-
-**MVP scope:**
-
-- Single agent executing tasks via the **ReAct** [execution loop](engine.md#agent-execution-loop)
-- **Subprocess sandbox** for file system and git tools (Docker optional for code execution)
-- **Fail-and-reassign** crash recovery
-- **Cooperative graceful shutdown** with configurable timeout
-- **Proxy metrics**: turns/tokens/cost per task
-- System prompt builder with agent personality injection
-
 !!! info "How to read the design specification"
 
     Sections describe the full vision. The full design is documented upfront to inform
@@ -205,5 +191,12 @@ graph TD
 
     Budget enforcement, security, progressive trust, autonomy levels, and approval
     workflows.
+
+-   [**Brand Identity & UX**](brand-and-ux.md)
+
+    ---
+
+    Visual identity, semantic color system, theme architecture, typography, density,
+    and animation guidelines.
 
 </div>

@@ -324,11 +324,12 @@ class TestListTemplatesEdgeCases:
                 "synthorg.templates.loader._load_builtin",
                 side_effect=TemplateRenderError("broken builtin"),
             ),
-            patch("synthorg.templates.loader.logger"),
+            patch("synthorg.templates.loader.logger") as mock_logger,
         ):
             templates = list_templates()
             # All builtins failed, so only user templates (none) remain.
             assert templates == ()
+            assert mock_logger.exception.call_count == len(BUILTIN_TEMPLATES)
 
 
 # ── load_template path traversal ─────────────────────────────────
