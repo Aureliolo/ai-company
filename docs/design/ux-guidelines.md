@@ -51,7 +51,7 @@ Metric cards, sparklines, and trend indicators assign color by data direction:
 
 #### Dark Mode Only
 
-The dashboard is dark-mode only (confirmed in #762). All color tokens assume dark backgrounds. No light mode is planned. WCAG AA ratios are validated against bg-base, bg-surface, and bg-card.
+The dashboard is dark-mode only (confirmed in #762). All color tokens assume dark backgrounds. No light mode is planned. WCAG AA ratios are validated against bg-base, bg-surface, bg-card, and bg-card-hover.
 
 ### 1.2 Typography Scale
 
@@ -570,7 +570,7 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | 768 - 1023px | Hidden | Hamburger opens overlay | 0px / 240px (overlay) |
 | < 768px | Hidden | No toggle -- mobile not supported | 0px |
 
-Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. A user can manually expand it, and this preference is respected within that range. Below 768px, the sidebar is hidden and accessed via the hamburger toggle.
+Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. A user can manually expand it, and this preference is respected within that range. Below 768px, the sidebar is hidden with no toggle (mobile is not supported).
 
 ---
 
