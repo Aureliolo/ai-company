@@ -309,7 +309,8 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 	out.Step("Creating backup...")
 
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 30*time.Second, state.JWTSecret)
+	// 60s: backup can take time for large datasets; aligned with wipe backup timeout.
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 60*time.Second, state.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("creating backup: %w", err)
 	}
@@ -482,6 +483,9 @@ func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID str
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
+// Returns an error when the post-restore restart fails so scripts can detect
+// partial completion via non-zero exit code. The restore itself has already
+// succeeded at this point.
 func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, errOut *ui.UI, safeDir string) error {
 	out.KeyValue("Restart required", "yes")
 
@@ -493,21 +497,21 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 		}
 		errOut.Warn(fmt.Sprintf("Could not inspect compose file: %v", err))
 		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
-		return nil
+		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		errOut.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
 		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
-		return nil
+		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
 	out.Step("Stopping containers for restart...")
 	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
 		errOut.Warn(fmt.Sprintf("Could not stop containers: %v", err))
 		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
-		return nil
+		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
 	out.Hint("Run 'synthorg start' to bring the stack back up")

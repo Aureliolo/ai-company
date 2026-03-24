@@ -16,24 +16,31 @@ import (
 func TestIsEmptyPS(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name   string
-		output string
-		want   bool
+		name    string
+		output  string
+		want    bool
+		wantErr bool
 	}{
-		{"empty string", "", true},
-		{"empty JSON array", "[]", true},
-		{"empty array with newline", "[]\n", true},
-		{"empty with whitespace", "  []  ", true},
-		{"empty array with inner space", "[ ]", true},
-		{"non-empty JSON", `[{"Name":"backend"}]`, false},
-		{"whitespace only", "   ", true},
-		{"single container", `{"Name":"backend","State":"running"}`, false},
-		{"NDJSON multiple containers", "{\"Name\":\"backend\"}\n{\"Name\":\"web\"}\n", false},
+		{"empty string", "", true, false},
+		{"empty JSON array", "[]", true, false},
+		{"empty array with newline", "[]\n", true, false},
+		{"empty with whitespace", "  []  ", true, false},
+		{"empty array with inner space", "[ ]", true, false},
+		{"non-empty JSON", `[{"Name":"backend"}]`, false, false},
+		{"whitespace only", "   ", true, false},
+		{"single container", `{"Name":"backend","State":"running"}`, false, false},
+		{"NDJSON multiple containers", "{\"Name\":\"backend\"}\n{\"Name\":\"web\"}\n", false, false},
+		{"malformed JSON array", "[invalid", false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isEmptyPS(tt.output); got != tt.want {
+			got, err := isEmptyPS(tt.output)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("isEmptyPS(%q) error = %v, wantErr %v", tt.output, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
 				t.Errorf("isEmptyPS(%q) = %v, want %v", tt.output, got, tt.want)
 			}
 		})
