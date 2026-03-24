@@ -362,8 +362,9 @@ class TestProjectDailySpend:
         assert len(result.daily_projections) == 7
 
     def test_known_daily_spend(self) -> None:
-        # $30 over 3-day span (Mar 1 to Mar 3 = 2-day delta, clamped to 2)
-        # avg = $30/2 = $15/day, project 4 days
+        # Records on Mar 1, 2, 3 (3 calendar days).  The implementation
+        # uses an exclusive date delta: (Mar 3 - Mar 1).days = 2.
+        # Total $30 / 2-day delta = $15/day, projected over 4 days.
         records = [
             _cost_record(
                 timestamp=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC), cost_usd=10.0
@@ -396,7 +397,7 @@ class TestProjectDailySpend:
         assert result.days_until_exhausted is None
 
     def test_days_until_exhausted(self) -> None:
-        # Span: Mar 1 to Mar 2 = 1 day, total $20 -> $20/day
+        # Exclusive delta: (Mar 2 - Mar 1).days = 1, total $20 -> $20/day
         # $50 remaining / $20/day = 2.5 -> ceil = 3 days
         records = [
             _cost_record(
