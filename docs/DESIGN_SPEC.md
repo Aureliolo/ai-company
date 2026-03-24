@@ -18,6 +18,7 @@ The design specification has been split into focused documentation pages for bet
 | [Memory & Persistence](docs/design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
 | [Operations](docs/design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
 | [Brand Identity & UX](docs/design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
+| [Page Structure & IA](docs/design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
 
 ## Supporting Pages
 

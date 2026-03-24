@@ -1133,18 +1133,23 @@ and retry guidance.
     The Web UI is built as a React 19 + shadcn/ui + Tailwind CSS dashboard. The API
     remains fully self-sufficient for all operations -- the dashboard is a thin client.
 
-- **Dashboard**: Real-time company overview, active tasks, spending
-- **Org Chart**: Visual hierarchy with interactive nodes -- click agents to view profiles, departments and teams to browse the agent list; empty state with settings link when no departments are configured
-- **Task Board**: Kanban/list view of all tasks across projects
-- **Message Feed**: Real-time feed of agent communications
-- **Approval Queue**: Pending approvals with context and recommendations
-- **Agent Profiles**: Detailed view of each agent's identity, history, metrics
-- **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
-- **Meeting Logs**: View meeting transcripts and outcomes
-- **Artifact Browser**: Placeholder -- pending artifact persistence backend ([#612](https://github.com/Aureliolo/synthorg/issues/612))
-- **Company**: Standalone page (`/company`) for company configuration with form-based CRUD. Sub-tabs: General (name, description, autonomy level, shutdown timeout), Agents (card grid with add/edit/delete, accordion sub-object editors for personality/model/memory/tools/authority), Departments (card grid with add/edit/delete, nested teams/reporting lines/policies editors). GUI/JSON/YAML edit mode toggle for the entire page.
-- **Providers**: Standalone page (`/providers`) for LLM provider management. Add/edit/delete providers, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`). Provider routing settings (strategy, retry) rendered alongside CRUD cards.
-- **Settings**: Configuration for the remaining 7 namespaces (api, memory, budget, security, coordination, observability, backup). Two-column responsive grid layout, basic/advanced mode with amber-styled advanced section and confirmation dialog, GUI/JSON/YAML edit mode toggle (global default + per-tab override via CodeMirror 6), chip/tag input for simple string arrays, floating "Save All Modified" button. System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI via a `HIDDEN_SETTINGS` filter but remain accessible through the REST API. Environment-sourced settings are displayed as read-only with a warning message.
+For the full page list, navigation hierarchy, URL routing map, and WebSocket channel subscriptions, see [Page Structure & IA](page-structure.md).
+
+**Primary navigation** (sidebar, always visible):
+
+- **Dashboard** (`/`): Org overview -- department health indicators, recent activity widget, budget snapshot, active task summary, agent status counts, approval badge count
+- **Org Chart** (`/org`): Living org visualization with real-time agent status. Merged with former Company page -- "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments), GUI/JSON/YAML toggle
+- **Task Board** (`/tasks`): Kanban (default) and list view toggle. Task detail includes "Coordinate" action for multi-agent coordination
+- **Budget** (`/budget`): P&L management dashboard -- current spend vs budget, per-agent/department breakdowns, trend lines, forecast projections (`/budget/forecast`)
+- **Approvals** (`/approvals`): Pending decisions queue with risk-level badges, approve/reject with comment, history view
+
+**Secondary navigation** (sidebar, collapsible "Workspace" section):
+
+- **Agents** (`/agents`): Agent profile cards/table. Click opens Agent Detail slide-in panel with tabs: Overview, Performance (collaboration score), Access (autonomy level), Activity (tasks, spending)
+- **Messages** (`/messages`): Channel-filtered agent-to-agent communication feed for investigating delegation chains and coordination
+- **Meetings** (`/meetings`): Meeting history, transcripts, outcomes. Trigger meeting action
+- **Providers** (`/providers`): LLM provider CRUD, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`). Provider routing settings alongside CRUD cards
+- **Settings** (`/settings`): Configuration for 7 namespaces (api, memory, budget, security, coordination, observability, backup). Two-column responsive grid, basic/advanced mode, GUI/JSON/YAML toggle. Backup management CRUD nested under backup namespace. System-managed settings hidden from GUI. Environment-sourced settings read-only.
     - *DB-backed persistence*: 9 namespaces total (api, company, providers, memory, budget, security, coordination, observability, backup) -- company and providers are managed on their own dedicated pages. Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values. REST API (`GET`/`PUT`/`DELETE` + schema endpoints for dynamic UI generation), change notifications via message bus.
     - *`ConfigResolver`*: Typed scalar accessors assemble full Pydantic config models from individually resolved settings (using `asyncio.TaskGroup` for parallel resolution). Structural data accessors (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback to `RootConfig` defaults on invalid data.
     - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings), `BackupSettingsSubscriber` (toggles `BackupScheduler` on `enabled` change, reschedules interval on `schedule_hours` change).
