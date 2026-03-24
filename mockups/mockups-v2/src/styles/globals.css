@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "./fonts.css";
+@import "./animations.css";
+
+/* Map theme CSS custom properties to Tailwind utilities via @theme */
+@theme {
+  --color-bg-base: var(--theme-bg-base, #0a0a12);
+  --color-bg-surface: var(--theme-bg-surface, #0f0f1a);
+  --color-bg-card: var(--theme-bg-card, #13131f);
+  --color-bg-card-hover: var(--theme-bg-card-hover, #181828);
+  --color-border: var(--theme-border, #1e1e2e);
+  --color-border-bright: var(--theme-border-bright, #2a2a3e);
+  --color-accent: var(--theme-accent, #22d3ee);
+  --color-accent-dim: var(--theme-accent-dim, #0891b2);
+  --color-success: var(--theme-success, #10b981);
+  --color-warning: var(--theme-warning, #f59e0b);
+  --color-danger: var(--theme-danger, #ef4444);
+  --color-text-primary: var(--theme-text-primary, #e2e8f0);
+  --color-text-secondary: var(--theme-text-secondary, #94a3b8);
+  --color-text-muted: var(--theme-text-muted, #8b95a5);
+
+  --font-mono: var(--theme-font-mono, "JetBrains Mono Variable", monospace);
+  --font-sans: var(--theme-font-sans, "Inter Variable", sans-serif);
+}
+
+/* Base resets -- MUST be in @layer base so Tailwind utilities can override */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    background-color: var(--theme-bg-base, #0a0a12);
+    color: var(--theme-text-primary, #e2e8f0);
+    font-family: var(--theme-font-sans, "Inter Variable", sans-serif);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--theme-bg-surface, #0f0f1a);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-border-bright, #2a2a3e);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-text-muted, #8b95a5);
+}
+
+/* Utility: accent glow shadow */
+.accent-glow {
+  box-shadow: 0 0 12px var(--theme-accent-glow, rgba(34, 211, 238, 0.15));
+}
