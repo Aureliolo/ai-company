@@ -81,7 +81,7 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
    - `src_py`: `.py` files in `src/`
    - `test_py`: `.py` files in `tests/`
    - `web_src`: `.tsx`, `.ts`, `.css` files in `web/src/` (excluding `web/src/__tests__/`)
-   - `web_test`: `.ts` files in `web/src/__tests__/`
+   - `web_test`: `.ts`, `.tsx` files in `web/src/__tests__/`
    - `docker`: files in `docker/`, root-level `Dockerfile*`, `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, `docker-compose*.yaml`
    - `ci`: files in `.github/workflows/`, `.github/actions/`
    - `infra_config`: `.pre-commit-config.yaml`, `.dockerignore`
@@ -425,7 +425,7 @@ The conventions-enforcer agent checks for project-specific code conventions from
 When `web_src` files are included in the security review scope, add these frontend-specific checks to the security-reviewer agent's prompt alongside its standard backend security analysis:
 
 **Frontend security (when `web_src` changed):**
-1. XSS via `v-html` or unescaped user content rendering (CRITICAL)
+1. XSS via `dangerouslySetInnerHTML` or unescaped user content rendering (CRITICAL)
 2. Sensitive data (tokens, API keys) stored in `localStorage`/`sessionStorage` instead of httpOnly cookies (CRITICAL)
 3. Missing CSRF token handling in API requests (MAJOR)
 4. Exposing sensitive data in client-side JavaScript bundles (MAJOR)
