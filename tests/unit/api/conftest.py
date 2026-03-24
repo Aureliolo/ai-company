@@ -27,6 +27,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import Task
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import (
@@ -191,6 +192,11 @@ def root_config() -> RootConfig:
 
 
 @pytest.fixture
+def performance_tracker() -> PerformanceTracker:
+    return PerformanceTracker()
+
+
+@pytest.fixture
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
@@ -209,6 +215,7 @@ def test_client(  # noqa: PLR0913
     root_config: RootConfig,
     auth_service: AuthService,
     fake_task_engine: TaskEngine,
+    performance_tracker: PerformanceTracker,
 ) -> Generator[TestClient[Any]]:
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
@@ -227,6 +234,7 @@ def test_client(  # noqa: PLR0913
         approval_store=approval_store,
         auth_service=auth_service,
         task_engine=fake_task_engine,
+        performance_tracker=performance_tracker,
         settings_service=settings_service,
     )
     with TestClient(app) as client:

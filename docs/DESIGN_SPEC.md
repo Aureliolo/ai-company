@@ -17,6 +17,7 @@ The design specification has been split into focused documentation pages for bet
 | [Task & Workflow Engine](docs/design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown |
 | [Memory & Persistence](docs/design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
 | [Operations](docs/design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
+| [Brand Identity & UX](docs/design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
 
 ## Supporting Pages
 

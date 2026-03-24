@@ -1070,7 +1070,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/artifacts` | Browse produced artifacts (code, docs, etc.) |
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
-| `/api/v1/analytics` | Performance metrics, dashboards |
+| `/api/v1/analytics` | `GET /overview` (metrics summary with budget status, 7d spend sparkline, agent counts), `GET /trends?period=7d\|30d\|90d&metric=spend\|tasks_completed\|active_agents\|success_rate` (time-series bucketed metrics; hourly buckets for 7d, daily for 30d/90d; defaults: `period=7d`, `metric=spend`), `GET /forecast?horizon_days=1..90` (budget spend projection with daily projections and exhaustion estimate; default 14; 400 on out-of-range) |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
 | `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models`, `POST /api/v1/providers/probe-preset`, `GET /api/v1/providers/discovery-policy`, `POST /api/v1/providers/discovery-policy/entries`, `POST /api/v1/providers/discovery-policy/remove-entry` | Provider CRUD, connection testing, presets, preset auto-probe, model discovery, discovery SSRF allowlist management, 4 auth types (api_key, oauth, custom_header, none) |
 | `GET /api/v1/setup/status`, `GET /api/v1/setup/templates`, `POST /api/v1/setup/company`, `POST /api/v1/setup/agent`, `GET /api/v1/setup/agents`, `PUT /api/v1/setup/agents/{index}/model` (`{index}` = zero-based position in the list returned by `GET /api/v1/setup/agents`; not a stable ID -- re-fetch to resolve; out-of-range returns 404), `GET /api/v1/setup/name-locales/available`, `GET /api/v1/setup/name-locales`, `PUT /api/v1/setup/name-locales`, `POST /api/v1/setup/complete` | First-run setup wizard: status check (public, reports `has_company`/`has_agents`/`has_providers`/`has_name_locales` for step resume), template listing, company creation (auto-creates template agents with model matching), agent listing + model reassignment, manual agent creation (blank path), name locale management (list available Faker locales, get/set selected locales for agent name generation), completion gate (requires company + agents + providers) |
@@ -1295,7 +1295,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-52 domain-specific event constant modules under `observability/events/` (one per subsystem:
+53 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
