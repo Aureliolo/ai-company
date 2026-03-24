@@ -5,23 +5,26 @@ interface SetupState {
   /** Whether initial setup is complete. `null` means not yet fetched. */
   setupComplete: boolean | null
   loading: boolean
+  /** Whether the last fetch attempt failed. */
+  error: boolean
   fetchSetupStatus: () => Promise<void>
 }
 
 export const useSetupStore = create<SetupState>()((set, get) => ({
   setupComplete: null,
   loading: false,
+  error: false,
 
   async fetchSetupStatus() {
     if (get().loading) return
-    set({ loading: true })
+    set({ loading: true, error: false })
     try {
       const status = await getSetupStatus()
       set({ setupComplete: !status.needs_setup, loading: false })
     } catch {
       // On error (e.g. network failure), leave setupComplete as null
-      // so the guard can retry on next navigation
-      set({ loading: false })
+      // so the guard can show an error state with retry option
+      set({ loading: false, error: true })
     }
   },
 }))

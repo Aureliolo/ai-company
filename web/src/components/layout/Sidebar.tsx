@@ -55,8 +55,8 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Primary navigation */}
-      <nav className="flex flex-1 flex-col overflow-y-auto px-2 pt-3">
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-2 pt-3" aria-label="Main navigation">
         <div className="flex flex-col gap-1">
           <SidebarNavItem
             to={ROUTES.DASHBOARD}
@@ -133,94 +133,93 @@ export function Sidebar() {
             />
           </div>
         </div>
+      </nav>
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Bottom section */}
-        <div className="border-t border-surface-100 py-3">
-          <div className="flex flex-col gap-1">
-            {/* Collapse toggle */}
-            <button
-              onClick={toggleCollapse}
-              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
-              ) : (
-                <>
-                  <PanelLeftClose className="size-5 shrink-0" aria-hidden="true" />
-                  <span>Collapse</span>
-                </>
-              )}
-            </button>
-
-            {/* Notifications placeholder */}
-            <button
-              title="Notifications"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
-            >
-              <Bell
-                className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
-                aria-hidden="true"
-              />
-              {!collapsed && <span>Notifications</span>}
-            </button>
-
-            {/* Cmd+K hint */}
-            {!collapsed && (
-              <div className="flex items-center gap-3 px-3 py-2 text-xs text-surface-400">
-                <Command className="size-4 shrink-0" aria-hidden="true" />
-                <span>Cmd+K to search</span>
-              </div>
+      {/* Bottom section (non-navigation controls) */}
+      <div className="border-t border-surface-100 px-2 py-3">
+        <div className="flex flex-col gap-1">
+          {/* Collapse toggle */}
+          <button
+            onClick={toggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
+            ) : (
+              <>
+                <PanelLeftClose className="size-5 shrink-0" aria-hidden="true" />
+                <span>Collapse</span>
+              </>
             )}
+          </button>
 
-            {/* Connection status placeholder */}
+          {/* Notifications placeholder */}
+          <button
+            title="Notifications"
+            aria-label="Notifications"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700"
+          >
+            <Bell
+              className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
+              aria-hidden="true"
+            />
+            {!collapsed && <span>Notifications</span>}
+          </button>
+
+          {/* Cmd+K hint */}
+          {!collapsed && (
+            <div className="flex items-center gap-3 px-3 py-2 text-xs text-surface-400">
+              <Command className="size-4 shrink-0" aria-hidden="true" />
+              <span>Cmd+K to search</span>
+            </div>
+          )}
+
+          {/* Connection status placeholder */}
+          <div
+            className={cn(
+              'flex items-center gap-3 px-3 py-1',
+              collapsed && 'justify-center',
+            )}
+          >
+            <span
+              className="size-2 rounded-full bg-success-500"
+              title="Connected"
+              aria-label="Connection status: connected"
+            />
+            {!collapsed && (
+              <span className="text-xs text-surface-400">Connected</span>
+            )}
+          </div>
+
+          {/* User / logout */}
+          {user && (
             <div
               className={cn(
-                'flex items-center gap-3 px-3 py-1',
+                'flex items-center gap-3 px-3 py-2',
                 collapsed && 'justify-center',
               )}
             >
-              <span
-                className="size-2 rounded-full bg-success-500"
-                title="Connected"
-                aria-label="Connection status: connected"
-              />
               {!collapsed && (
-                <span className="text-xs text-surface-400">Connected</span>
-              )}
-            </div>
-
-            {/* User / logout */}
-            {user && (
-              <div
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2',
-                  collapsed && 'justify-center',
-                )}
-              >
-                {!collapsed && (
-                  <div className="flex-1 truncate">
-                    <div className="text-sm font-medium text-surface-700 truncate">
-                      {user.username}
-                    </div>
-                    <div className="text-xs text-surface-400">{user.role}</div>
+                <div className="flex-1 truncate">
+                  <div className="text-sm font-medium text-surface-700">
+                    {user.username}
                   </div>
-                )}
-                <button
-                  onClick={logout}
-                  title="Logout"
-                  className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700"
-                >
-                  <LogOut className="size-4" aria-hidden="true" />
-                </button>
-              </div>
-            )}
-          </div>
+                  <div className="text-xs text-surface-400">{user.role}</div>
+                </div>
+              )}
+              <button
+                onClick={logout}
+                title="Logout"
+                aria-label="Logout"
+                className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
-      </nav>
+      </div>
     </aside>
   )
 }

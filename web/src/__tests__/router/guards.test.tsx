@@ -9,6 +9,19 @@ vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: vi.fn(),
 }))
 
+// Mock the auth API (AuthGuard proactively calls fetchUser to validate token)
+vi.mock('@/api/endpoints/auth', () => ({
+  getMe: vi.fn().mockResolvedValue({
+    id: '1',
+    username: 'admin',
+    role: 'ceo',
+    must_change_password: false,
+  }),
+  login: vi.fn(),
+  setup: vi.fn(),
+  changePassword: vi.fn(),
+}))
+
 // Prevent window.location side effects from auth store
 const originalLocation = window.location
 beforeAll(() => {
@@ -34,6 +47,7 @@ function resetStores() {
   useSetupStore.setState({
     setupComplete: null,
     loading: false,
+    error: false,
   })
   localStorage.clear()
 }
@@ -177,6 +191,30 @@ describe('SetupGuard', () => {
       expect(screen.getByText('App Content')).toBeInTheDocument()
     })
     expect(mockGetSetupStatus).toHaveBeenCalledOnce()
+  })
+
+  it('shows error with retry when fetchSetupStatus fails', async () => {
+    const { getSetupStatus } = await import('@/api/endpoints/setup')
+    const mockGetSetupStatus = vi.mocked(getSetupStatus)
+    mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
+
+    useAuthStore.setState({ token: 'test-token' })
+
+    renderRoutes(
+      [
+        {
+          path: '/',
+          element: <SetupGuard />,
+          children: [{ index: true, element: <div>App Content</div> }],
+        },
+      ],
+      { initialEntries: ['/'] },
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to check setup status.')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 })
 
@@ -332,5 +370,34 @@ describe('SetupCompleteGuard', () => {
       expect(screen.getByText('Setup Wizard')).toBeInTheDocument()
     })
     expect(mockGetSetupStatus).toHaveBeenCalledOnce()
+  })
+
+  it('redirects authenticated users to dashboard when fetch fails (fail-closed)', async () => {
+    const { getSetupStatus } = await import('@/api/endpoints/setup')
+    const mockGetSetupStatus = vi.mocked(getSetupStatus)
+    mockGetSetupStatus.mockRejectedValue(new Error('Network error'))
+
+    useAuthStore.setState({ token: 'test-token' })
+
+    renderRoutes(
+      [
+        {
+          path: '/setup',
+          element: (
+            <SetupCompleteGuard>
+              <div>Setup Wizard</div>
+            </SetupCompleteGuard>
+          ),
+        },
+        { path: '/', element: <div>Dashboard</div> },
+      ],
+      { initialEntries: ['/setup'] },
+    )
+
+    // Fail-closed: should redirect to dashboard rather than allowing setup access
+    await waitFor(() => {
+      expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Setup Wizard')).not.toBeInTheDocument()
   })
 })

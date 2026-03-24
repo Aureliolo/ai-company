@@ -5,7 +5,6 @@ import type { RouteObject } from 'react-router'
 
 interface RenderWithRouterOptions {
   initialEntries?: string[]
-  routes?: RouteObject[]
 }
 
 /**

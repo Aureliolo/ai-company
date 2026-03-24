@@ -36,15 +36,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Expanded: Story = {
-  play: () => {
-    localStorage.setItem('sidebar_collapsed', 'false')
-  },
+  decorators: [
+    (Story) => {
+      localStorage.setItem('sidebar_collapsed', 'false')
+      return <Story />
+    },
+  ],
 }
 
 export const Collapsed: Story = {
-  play: () => {
-    localStorage.setItem('sidebar_collapsed', 'true')
-  },
   decorators: [
     (Story) => {
       localStorage.setItem('sidebar_collapsed', 'true')

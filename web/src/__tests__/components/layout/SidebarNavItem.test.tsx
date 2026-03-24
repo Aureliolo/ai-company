@@ -52,4 +52,24 @@ describe('SidebarNavItem', () => {
 
     expect(screen.queryByText('5')).not.toBeInTheDocument()
   })
+
+  it('renders dot indicator when dotColor is provided', () => {
+    renderWithRouter(
+      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} dotColor="bg-success-500" />,
+    )
+
+    expect(screen.getByText('Agents')).toBeInTheDocument()
+    // The dot is rendered as a decorative span with the given color class
+    const dot = document.querySelector('.bg-success-500.rounded-full')
+    expect(dot).toBeInTheDocument()
+  })
+
+  it('does not render dot indicator when dotColor is not provided', () => {
+    renderWithRouter(
+      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} />,
+    )
+
+    const dot = document.querySelector('.rounded-full.size-2')
+    expect(dot).not.toBeInTheDocument()
+  })
 })

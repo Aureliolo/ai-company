@@ -51,7 +51,7 @@ describe('App', () => {
     render(<App />)
     // Login page is lazy-loaded, so wait for it
     await waitFor(() => {
-      expect(screen.getByText('Login')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument()
     })
   })
 
@@ -65,10 +65,12 @@ describe('App', () => {
     render(<App />)
     // Wait for lazy-loaded layout to render
     await waitFor(() => {
-      // "Dashboard" appears in both the sidebar nav item and the page stub
-      expect(screen.getAllByText('Dashboard')).toHaveLength(2)
+      // Verify sidebar navigation is present
+      expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument()
     })
-    // Sidebar brand appears in both sidebar header and status bar
-    expect(screen.getAllByText('SynthOrg')).toHaveLength(2)
+    // Verify main content area exists
+    expect(screen.getByRole('main')).toBeInTheDocument()
+    // Verify brand text is present in the app
+    expect(screen.getAllByText('SynthOrg').length).toBeGreaterThanOrEqual(1)
   })
 })

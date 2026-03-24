@@ -121,8 +121,15 @@ describe('Sidebar', () => {
   it('calls logout when logout button is clicked', async () => {
     const user = userEvent.setup()
     const logoutSpy = vi.fn()
-    setup()
-    useAuthStore.setState({ logout: logoutSpy } as never)
+    useAuthStore.setState({
+      ...useAuthStore.getState(),
+      token: 'test-token',
+      user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+      loading: false,
+      _mustChangePasswordFallback: false,
+      logout: logoutSpy,
+    })
+    renderWithRouter(<Sidebar />, { initialEntries: ['/'] })
 
     await user.click(screen.getByTitle('Logout'))
 

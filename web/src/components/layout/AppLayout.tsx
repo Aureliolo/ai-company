@@ -5,7 +5,7 @@ import { StatusBar } from './StatusBar'
 
 function PageLoadingFallback() {
   return (
-    <div className="flex h-full items-center justify-center">
+    <div className="flex h-full items-center justify-center" role="status" aria-live="polite">
       <span className="text-sm text-surface-400">Loading...</span>
     </div>
   )
