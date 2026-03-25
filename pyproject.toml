@@ -54,7 +54,7 @@ test = [
     "hypothesis==6.151.9",
 ]
 docs = [
-    "zensical==0.0.28",
+    "zensical==0.0.29",
     "mkdocstrings[python]==1.0.3",
     "griffe-pydantic==1.3.1",
 ]
