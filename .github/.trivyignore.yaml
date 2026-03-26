@@ -11,6 +11,8 @@ vulnerabilities:
       https://github.com/nginx/docker-nginx-unprivileged/issues/381
 
   - id: CVE-2026-25210
+    purls:
+      - "pkg:deb/debian/libexpat1?distro=debian-13"
     expired_at: "2026-06-24T00:00:00Z"
     statement: >-
       libexpat integer overflow in doContent buffer reallocation (fixed in
@@ -19,6 +21,20 @@ vulnerabilities:
       runs as non-root (UID 10001), and the local-access attack vector is
       inherent to the sandbox's purpose (executing untrusted code).
       Revisit when python:3.14-slim ships libexpat >= 2.7.4.
+
+  - id: CVE-2025-69720
+    purls:
+      - "pkg:deb/debian/ncurses?distro=debian-13"
+    expired_at: "2026-06-24T00:00:00Z"
+    statement: >-
+      Stack buffer overflow in ncurses infocmp -i (analyze_string in
+      progs/infocmp.c). Only triggers when running infocmp -i on crafted
+      terminfo entry. Sandbox never invokes infocmp -- ncurses is a
+      transitive dep of Python/git. Fixed in ncurses 6.5 patch 20251213
+      but Debian Trixie ships 6.5+20250216-2. Grype rates CRITICAL but
+      EPSS < 0.1% and Debian marks unimportant. Risk accepted: sandbox
+      is ephemeral, network-isolated via iptables, runs as non-root
+      (UID 10001).
 
   - id: CVE-2026-32767
     purls:

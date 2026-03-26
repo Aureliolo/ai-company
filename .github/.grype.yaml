@@ -7,7 +7,8 @@ ignore:
       Disputed zlib vulnerability affecting only the untgz demo utility
       in contrib/, not core zlib. Upstream disputes CVE validity.
 
-  # Audit: 2026-06-24 -- revisit when python:3.14-slim ships libexpat >= 2.7.4
+  # Audit: 2026-03-26 -- Review-by: 2026-06-24
+  # Revisit when python:3.14-slim ships libexpat >= 2.7.4
   - vulnerability: CVE-2026-25210
     package:
       name: libexpat1
@@ -16,6 +17,37 @@ ignore:
       libexpat integer overflow in doContent buffer reallocation (fixed in
       2.7.4, sandbox has 2.7.1-2). No Debian Trixie fix available yet.
       Risk accepted: sandbox is ephemeral, network-isolated, non-root.
+
+  # Audit: 2026-03-26 -- Review-by: 2026-06-24
+  # Revisit when Debian Trixie ships ncurses >= 6.5-20251213
+  - vulnerability: CVE-2025-69720
+    package:
+      name: libncursesw6
+      type: deb
+    reason: >-
+      Stack buffer overflow in infocmp -i (analyze_string). Only triggers
+      when running infocmp -i on crafted terminfo -- sandbox never invokes
+      infocmp. ncurses is a transitive dep of Python/git. Grype rates
+      CRITICAL but EPSS < 0.1%, Debian unimportant. Risk accepted:
+      sandbox is ephemeral, network-isolated, non-root.
+  - vulnerability: CVE-2025-69720
+    package:
+      name: libtinfo6
+      type: deb
+    reason: >-
+      Same as libncursesw6 entry above -- ncurses infocmp -i overflow.
+  - vulnerability: CVE-2025-69720
+    package:
+      name: ncurses-base
+      type: deb
+    reason: >-
+      Same as libncursesw6 entry above -- ncurses infocmp -i overflow.
+  - vulnerability: CVE-2025-69720
+    package:
+      name: ncurses-bin
+      type: deb
+    reason: >-
+      Same as libncursesw6 entry above -- ncurses infocmp -i overflow.
 
   # Audit: 2026-06-17 -- review after 90 days (no native expiration in Grype)
   - vulnerability: CVE-2026-32767

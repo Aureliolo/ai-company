@@ -168,12 +168,20 @@ jobs:
           retention-days: 30
 
       - name: Grype scan
+        id: grype-backend
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
+
+      - name: Grype table (diagnosis on failure)
+        if: failure() && steps.grype-backend.outcome == 'failure'
+        run: |
+          grype "${{ steps.scan-ref.outputs.ref }}" \
+            --fail-on critical --output table -c .github/.grype.yaml \
+            | grep -E 'Critical|High' || true
 
       # CIS Docker Benchmark v1.6.0 compliance check (uses trivy installed above).
       # Informational for now -- remove continue-on-error once baseline is clean.
@@ -356,12 +364,20 @@ jobs:
           retention-days: 30
 
       - name: Grype scan
+        id: grype-web
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
+
+      - name: Grype table (diagnosis on failure)
+        if: failure() && steps.grype-web.outcome == 'failure'
+        run: |
+          grype "${{ steps.scan-ref.outputs.ref }}" \
+            --fail-on critical --output table -c .github/.grype.yaml \
+            | grep -E 'Critical|High' || true
 
       - name: CIS Docker Benchmark (web)
         continue-on-error: true
@@ -541,12 +557,20 @@ jobs:
           retention-days: 30
 
       - name: Grype scan
+        id: grype-sandbox
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
         with:
           image: ${{ steps.scan-ref.outputs.ref }}
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
+
+      - name: Grype table (diagnosis on failure)
+        if: failure() && steps.grype-sandbox.outcome == 'failure'
+        run: |
+          grype "${{ steps.scan-ref.outputs.ref }}" \
+            --fail-on critical --output table -c .github/.grype.yaml \
+            | grep -E 'Critical|High' || true
 
       - name: CIS Docker Benchmark (sandbox)
         continue-on-error: true
