@@ -552,6 +552,100 @@ class TestApprovalUrgencyFields:
         assert "urgency_level" in data
         assert "seconds_remaining" in data
 
+    async def test_reject_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, approval_id="rej-001")
+        resp = test_client.post(
+            f"{_BASE}/rej-001/reject",
+            json={"reason": "Too risky"},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "no_expiry"
+        assert data["seconds_remaining"] is None
+
+    async def test_urgency_boundary_at_1hr(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        now = datetime.now(UTC)
+        item = ApprovalItem(
+            id="boundary-1h",
+            action_type="code_merge",
+            title="Boundary test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.MEDIUM,
+            created_at=now,
+            # 3605s in the future -- after processing the remaining
+            # time will still be >= 3600s, landing in HIGH (not critical).
+            expires_at=now + timedelta(seconds=3605),
+        )
+        await approval_store.add(item)
+        resp = test_client.get(
+            f"{_BASE}/boundary-1h",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "high"
+
+    async def test_urgency_boundary_at_4hrs(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        now = datetime.now(UTC)
+        item = ApprovalItem(
+            id="boundary-4h",
+            action_type="code_merge",
+            title="Boundary test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.MEDIUM,
+            created_at=now,
+            # 14405s in the future -- after processing the remaining
+            # time will still be >= 14400s, landing in NORMAL (not high).
+            expires_at=now + timedelta(seconds=14405),
+        )
+        await approval_store.add(item)
+        resp = test_client.get(
+            f"{_BASE}/boundary-4h",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "normal"
+
+    async def test_expired_approval_shows_zero_seconds(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        now = datetime.now(UTC)
+        item = ApprovalItem(
+            id="exp-001",
+            action_type="code_merge",
+            title="Expired item",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        approval_store._items[item.id] = item
+        resp = test_client.get(
+            f"{_BASE}/exp-001",
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["seconds_remaining"] == 0.0
+        assert data["urgency_level"] == "critical"
+
 
 @pytest.mark.unit
 class TestApprovalPathParamValidation:

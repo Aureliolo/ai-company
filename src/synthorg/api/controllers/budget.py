@@ -1,12 +1,12 @@
 """Budget controller -- read-only access to cost data."""
 
 from collections import defaultdict
-from typing import Annotated
+from typing import Annotated, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.dto import (
     ApiResponse,
@@ -52,7 +52,7 @@ class DailySummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    date: str = Field(description="ISO date (YYYY-MM-DD)")
+    date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
     total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
     total_input_tokens: int = Field(
         ge=0,
@@ -78,7 +78,6 @@ class PeriodSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    avg_cost_usd: float = Field(ge=0.0, description="Average cost per record")
     total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
     total_input_tokens: int = Field(
         ge=0,
@@ -89,6 +88,14 @@ class PeriodSummary(BaseModel):
         description="Total output tokens",
     )
     record_count: int = Field(ge=0, description="Number of records")
+
+    @computed_field(description="Average cost per record")  # type: ignore[prop-decorator]
+    @property
+    def avg_cost_usd(self) -> float:
+        """Average cost per record (0.0 if no records)."""
+        if self.record_count == 0:
+            return 0.0
+        return self.total_cost_usd / self.record_count
 
 
 class CostRecordListResponse(BaseModel):
@@ -113,6 +120,17 @@ class CostRecordListResponse(BaseModel):
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
 
+    @model_validator(mode="after")
+    def _validate_error_detail_consistency(self) -> Self:
+        """Ensure ``error`` and ``error_detail`` are set together."""
+        if self.error_detail is not None and self.error is None:
+            msg = "error_detail requires error to be set"
+            raise ValueError(msg)
+        if self.error is not None and self.error_detail is None:
+            msg = "error must be accompanied by error_detail"
+            raise ValueError(msg)
+        return self
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def success(self) -> bool:
@@ -133,7 +151,6 @@ def _build_summaries(
     """
     if not records:
         return (), PeriodSummary(
-            avg_cost_usd=0.0,
             total_cost_usd=0.0,
             total_input_tokens=0,
             total_output_tokens=0,
@@ -155,14 +172,11 @@ def _build_summaries(
         for date, day_records in sorted(by_day.items())
     )
 
-    total_cost = sum(r.cost_usd for r in records)
-    count = len(records)
     period = PeriodSummary(
-        avg_cost_usd=total_cost / count,
-        total_cost_usd=total_cost,
+        total_cost_usd=sum(r.cost_usd for r in records),
         total_input_tokens=sum(r.input_tokens for r in records),
         total_output_tokens=sum(r.output_tokens for r in records),
-        record_count=count,
+        record_count=len(records),
     )
 
     return daily, period

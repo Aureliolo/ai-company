@@ -99,6 +99,7 @@ class TestBudgetSummaries:
         resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
+        assert body["success"] is True
         assert "daily_summary" in body
         assert "period_summary" in body
 
@@ -127,9 +128,12 @@ class TestBudgetSummaries:
         dates = [d["date"] for d in daily]
         assert "2026-03-01" in dates
         assert "2026-03-02" in dates
-        # Day 1 has 2 records
+        # Day 1 has 2 records with known aggregates
         day1 = next(d for d in daily if d["date"] == "2026-03-01")
         assert day1["record_count"] == 2
+        assert day1["total_cost_usd"] == pytest.approx(0.02)
+        assert day1["total_input_tokens"] == 200
+        assert day1["total_output_tokens"] == 100
 
     async def test_period_summary_avg_cost(
         self,

@@ -209,6 +209,14 @@ property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending 
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 `_SpendingTotals` base class.
 
+The `GET /budget/records` endpoint returns paginated cost records alongside two server-computed
+summaries (aggregated from **all** matching records, not just the current page):
+
+- **`daily_summary`**: per-day aggregation with `date`, `total_cost_usd`, `total_input_tokens`,
+  `total_output_tokens`, and `record_count`, sorted chronologically.
+- **`period_summary`**: overall stats including `avg_cost_usd` (computed), `total_cost_usd`,
+  `total_input_tokens`, `total_output_tokens`, and `record_count`.
+
 ### CFO Agent Responsibilities
 
 The CFO agent (when enabled) acts as a cost management system. Budget tracking, per-task cost
@@ -994,6 +1002,18 @@ feedback arrives.
 
     Mirrors real organizations -- if one approver is unavailable, the next in line covers.
     Requires configuring an escalation chain.
+
+!!! info "Approval API Response Enrichment"
+
+    The approval REST API enriches every `ApprovalItem` response with computed
+    urgency fields so the dashboard can display time-sensitive indicators without
+    client-side computation:
+
+    - **`seconds_remaining`** (`float | null`): seconds until `expires_at`, clamped
+      to 0.0 for expired items; `null` when no TTL is set.
+    - **`urgency_level`** (enum): `critical` (< 1 hr), `high` (< 4 hrs),
+      `normal` (>= 4 hrs), `no_expiry` (no TTL). Applied to all list, detail,
+      create, approve, and reject endpoints.
 
 !!! abstract "Park/Resume Mechanism"
 

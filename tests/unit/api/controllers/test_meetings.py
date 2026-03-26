@@ -269,6 +269,23 @@ class TestMeetingController:
             context={},
         )
 
+    def test_trigger_response_includes_analytics(
+        self,
+        meeting_client: TestClient[Any],
+        mock_scheduler: MagicMock,
+    ) -> None:
+        record = _make_record("mtg-triggered")
+        mock_scheduler.trigger_event.return_value = (record,)
+        resp = meeting_client.post(
+            "/api/v1/meetings/trigger",
+            json={"event_name": "deploy_complete"},
+        )
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert "token_usage_by_participant" in item
+        assert "contribution_rank" in item
+        assert "meeting_duration_seconds" in item
+
     def test_oversized_meeting_id_rejected(
         self,
         meeting_client: TestClient[Any],
@@ -407,6 +424,18 @@ class TestMeetingAnalytics:
         assert "token_usage_by_participant" in data
         assert "contribution_rank" in data
         assert "meeting_duration_seconds" in data
+
+    def test_completed_meeting_with_empty_contributions(
+        self,
+        meeting_client: TestClient[Any],
+    ) -> None:
+        """Completed meeting with minutes but no contributions."""
+        resp = meeting_client.get("/api/v1/meetings/mtg-001")
+        data = resp.json()["data"]
+        assert data["token_usage_by_participant"] == {}
+        assert data["contribution_rank"] == []
+        # Duration is still computed from started_at/ended_at
+        assert data["meeting_duration_seconds"] is not None
 
 
 @pytest.mark.unit

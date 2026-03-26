@@ -29,6 +29,8 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'expired'
 
 export type ApprovalRiskLevel = 'low' | 'medium' | 'high' | 'critical'
 
+export type UrgencyLevel = 'critical' | 'high' | 'normal' | 'no_expiry'
+
 export type SeniorityLevel =
   | 'junior'
   | 'mid'
@@ -274,6 +276,11 @@ export interface ApprovalItem {
   expires_at: string | null
 }
 
+export interface ApprovalResponse extends ApprovalItem {
+  seconds_remaining: number | null
+  urgency_level: UrgencyLevel
+}
+
 export interface CreateApprovalRequest {
   action_type: string
   title: string
@@ -376,6 +383,22 @@ export interface CostRecord {
   cost_usd: number
   timestamp: string
   call_category: 'productive' | 'coordination' | 'system' | null
+}
+
+export interface DailySummary {
+  date: string
+  total_cost_usd: number
+  total_input_tokens: number
+  total_output_tokens: number
+  record_count: number
+}
+
+export interface PeriodSummary {
+  avg_cost_usd: number
+  total_cost_usd: number
+  total_input_tokens: number
+  total_output_tokens: number
+  record_count: number
 }
 
 export interface BudgetAlertConfig {
@@ -737,6 +760,12 @@ export interface MeetingRecord {
   minutes: MeetingMinutes | null
   error_message: string | null
   token_budget: number
+}
+
+export interface MeetingResponse extends MeetingRecord {
+  token_usage_by_participant: Record<string, number>
+  contribution_rank: readonly string[]
+  meeting_duration_seconds: number | null
 }
 
 export interface MeetingFilters {

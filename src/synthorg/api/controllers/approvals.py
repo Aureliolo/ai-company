@@ -50,6 +50,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_CONTEXT_LOADED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
+    APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -85,6 +86,7 @@ class ApprovalResponse(ApprovalItem):
     model_config = ConfigDict(frozen=True)
 
     seconds_remaining: float | None = Field(
+        ge=0.0,
         description="Seconds until expiry (null if no TTL set)",
     )
     urgency_level: UrgencyLevel = Field(
@@ -314,7 +316,7 @@ async def _try_review_gate_transition(  # noqa: PLR0913
         raise
     except Exception:
         logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
+            APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
             error="Review gate transition failed (non-fatal)",

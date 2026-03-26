@@ -95,6 +95,7 @@ class MeetingResponse(MeetingRecord):
     )
     meeting_duration_seconds: float | None = Field(
         default=None,
+        ge=0.0,
         description="Meeting duration in seconds (null if not completed)",
     )
 

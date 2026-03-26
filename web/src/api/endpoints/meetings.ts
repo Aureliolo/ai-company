@@ -2,20 +2,20 @@ import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../cli
 import type {
   ApiResponse,
   MeetingFilters,
-  MeetingRecord,
+  MeetingResponse,
   PaginatedResponse,
   TriggerMeetingRequest,
 } from '../types'
 
-export async function listMeetings(filters?: MeetingFilters): Promise<PaginatedResult<MeetingRecord>> {
-  const response = await apiClient.get<PaginatedResponse<MeetingRecord>>('/meetings', {
+export async function listMeetings(filters?: MeetingFilters): Promise<PaginatedResult<MeetingResponse>> {
+  const response = await apiClient.get<PaginatedResponse<MeetingResponse>>('/meetings', {
     params: filters,
   })
-  return unwrapPaginated<MeetingRecord>(response)
+  return unwrapPaginated<MeetingResponse>(response)
 }
 
-export async function getMeeting(meetingId: string): Promise<MeetingRecord> {
-  const response = await apiClient.get<ApiResponse<MeetingRecord>>(
+export async function getMeeting(meetingId: string): Promise<MeetingResponse> {
+  const response = await apiClient.get<ApiResponse<MeetingResponse>>(
     `/meetings/${encodeURIComponent(meetingId)}`,
   )
   return unwrap(response)
@@ -23,7 +23,7 @@ export async function getMeeting(meetingId: string): Promise<MeetingRecord> {
 
 export async function triggerMeeting(
   data: TriggerMeetingRequest,
-): Promise<MeetingRecord[]> {
-  const response = await apiClient.post<ApiResponse<MeetingRecord[]>>('/meetings/trigger', data)
+): Promise<MeetingResponse[]> {
+  const response = await apiClient.post<ApiResponse<MeetingResponse[]>>('/meetings/trigger', data)
   return unwrap(response)
 }

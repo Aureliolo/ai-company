@@ -415,6 +415,20 @@ explicit registry), the `PassthroughParticipantResolver` is used as a fallback.
 It supports only context lookup and literal pass-through (steps 1 and 5 above),
 skipping the registry-dependent steps (2--4).
 
+### Meeting API Response Enrichment
+
+The meeting REST API enriches every `MeetingRecord` response with computed
+analytics fields derived from `MeetingMinutes.contributions`:
+
+- **`token_usage_by_participant`** (`dict[str, int]`): total tokens (input +
+  output) consumed per agent. Empty when no minutes are available.
+- **`contribution_rank`** (`list[str]`): agent IDs sorted by total token usage
+  descending. Empty when no minutes are available.
+- **`meeting_duration_seconds`** (`float | null`): duration computed from
+  `ended_at - started_at`. `null` when no minutes are available.
+
+These fields are applied to all meeting endpoints (list, detail, trigger).
+
 ### Auto-Wiring
 
 The `MeetingOrchestrator` and `MeetingScheduler` are auto-wired at startup
