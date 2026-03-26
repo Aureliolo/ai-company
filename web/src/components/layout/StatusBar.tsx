@@ -19,6 +19,8 @@ export function StatusBar() {
   const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count ?? 0)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks ?? 0)
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
+  const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
+  const pendingApprovals = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review ?? 0)
 
   const [healthStatus, setHealthStatus] = useState<SystemStatus>('ok')
 
@@ -90,6 +92,22 @@ export function StatusBar() {
         <span className="ml-1.5 text-foreground">{costDisplay}</span>
         <span className="ml-1 text-muted-foreground">today</span>
       </StatusItem>
+
+      <StatusItem>
+        <span className="text-muted-foreground">budget</span>
+        <span className="ml-1.5 text-foreground">
+          {budgetPercent !== undefined && budgetPercent !== null
+            ? `${Math.round(budgetPercent)}%`
+            : '--%'}
+        </span>
+      </StatusItem>
+
+      {pendingApprovals > 0 && (
+        <StatusItem>
+          <Dot color="bg-danger" />
+          <span>{pendingApprovals} pending</span>
+        </StatusItem>
+      )}
 
       <div className="flex-1" />
 

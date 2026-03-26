@@ -19,6 +19,7 @@ interface BudgetBurnChartProps {
   trendData: readonly TrendDataPoint[]
   forecast: ForecastResponse | null
   budgetTotal: number
+  budgetRemaining?: number
 }
 
 interface ChartDataPoint {
@@ -40,7 +41,7 @@ function buildChartData(
     // Bridge: last actual point also gets projected value for continuity
     if (points.length > 0) {
       const last = points[points.length - 1]!
-      last.projected = last.actual
+      points[points.length - 1] = { ...last, projected: last.actual }
     }
     for (const fp of forecast.daily_projections) {
       points.push({
@@ -57,6 +58,10 @@ function formatDayLabel(dateStr: string): string {
   const date = new Date(dateStr)
   if (Number.isNaN(date.getTime())) return dateStr
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function getTodayLabel(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function ChartTooltipContent({ active, payload, label }: {
@@ -78,23 +83,29 @@ function ChartTooltipContent({ active, payload, label }: {
   )
 }
 
-export function BudgetBurnChart({ trendData, forecast, budgetTotal }: BudgetBurnChartProps) {
+export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemaining }: BudgetBurnChartProps) {
   const chartData = buildChartData(trendData, forecast)
   const hasData = trendData.length > 0
+  const todayLabel = getTodayLabel()
 
   return (
     <SectionCard
       title="Budget Burn"
       icon={DollarSign}
       action={
-        forecast ? (
-          <div className="flex gap-2">
-            <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd)} />
-            {forecast.days_until_exhausted !== null && (
-              <StatPill label="Days left" value={forecast.days_until_exhausted} />
-            )}
-          </div>
-        ) : undefined
+        <div className="flex gap-2">
+          {budgetRemaining !== undefined && (
+            <StatPill label="Remaining" value={formatCurrency(budgetRemaining)} />
+          )}
+          {forecast && (
+            <>
+              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd)} />
+              {forecast.days_until_exhausted !== null && (
+                <StatPill label="Days left" value={forecast.days_until_exhausted} />
+              )}
+            </>
+          )}
+        </div>
       }
     >
       {!hasData ? (
@@ -141,6 +152,19 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal }: BudgetBurn
                   }}
                 />
               )}
+
+              <ReferenceLine
+                x={todayLabel}
+                stroke="var(--so-text-muted)"
+                strokeDasharray="3 3"
+                strokeWidth={1}
+                label={{
+                  value: 'Today',
+                  position: 'top',
+                  fontSize: 10,
+                  fill: 'var(--so-text-muted)',
+                }}
+              />
 
               <defs>
                 <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">

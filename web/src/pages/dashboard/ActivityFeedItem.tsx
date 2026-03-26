@@ -2,14 +2,39 @@ import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
-import type { ActivityItem } from '@/api/types'
+import type { ActivityItem, WsEventType } from '@/api/types'
 
 interface ActivityFeedItemProps {
   activity: ActivityItem
   className?: string
 }
 
+const ACTION_DOT_COLORS: Record<string, string> = {
+  'task.created': 'bg-accent',
+  'task.updated': 'bg-accent',
+  'task.status_changed': 'bg-success',
+  'task.assigned': 'bg-accent',
+  'agent.hired': 'bg-success',
+  'agent.fired': 'bg-danger',
+  'agent.status_changed': 'bg-warning',
+  'budget.record_added': 'bg-warning',
+  'budget.alert': 'bg-danger',
+  'approval.submitted': 'bg-accent',
+  'approval.approved': 'bg-success',
+  'approval.rejected': 'bg-danger',
+  'approval.expired': 'bg-warning',
+  'system.error': 'bg-danger',
+  'system.startup': 'bg-success',
+  'system.shutdown': 'bg-warning',
+}
+
+function getActionDotColor(actionType: WsEventType): string {
+  return ACTION_DOT_COLORS[actionType] ?? 'bg-text-muted'
+}
+
 export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps) {
+  const dotColor = getActionDotColor(activity.action_type)
+
   return (
     <div
       className={cn(
@@ -18,7 +43,16 @@ export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps)
         className,
       )}
     >
-      <Avatar name={activity.agent_name} size="sm" />
+      <div className="relative">
+        <Avatar name={activity.agent_name} size="sm" />
+        <span
+          className={cn(
+            'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-bg-card',
+            dotColor,
+          )}
+          aria-label={`Action: ${activity.action_type.replace(/[._]/g, ' ')}`}
+        />
+      </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
           <span className="truncate text-sm font-semibold text-foreground">

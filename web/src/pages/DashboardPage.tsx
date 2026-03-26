@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, WifiOff } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
@@ -19,6 +19,8 @@ export default function DashboardPage() {
     orgHealthPercent,
     loading,
     error,
+    wsConnected,
+    wsSetupError,
   } = useDashboardData()
 
   if (loading && !overview) {
@@ -36,6 +38,13 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {!wsConnected && !loading && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+          <WifiOff className="size-4 shrink-0" />
+          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>
       )}
 
@@ -64,6 +73,7 @@ export default function DashboardPage() {
           trendData={overview?.cost_7d_trend ?? []}
           forecast={forecast}
           budgetTotal={budgetConfig?.total_monthly ?? 0}
+          budgetRemaining={overview?.budget_remaining_usd}
         />
       </ErrorBoundary>
     </div>

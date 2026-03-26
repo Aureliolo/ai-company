@@ -118,4 +118,10 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Overview')).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
+
+  it('shows WebSocket disconnect warning when not connected', async () => {
+    hookReturn = { ...defaultHookReturn, wsConnected: false }
+    await renderDashboard()
+    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+  })
 })

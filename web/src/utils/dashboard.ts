@@ -7,16 +7,10 @@ import type {
   WsEvent,
   WsEventType,
 } from '@/api/types'
+import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
 
-export interface DashboardMetricCardData {
-  label: string
-  value: string | number
-  change?: { value: number; direction: 'up' | 'down' }
-  sparklineData?: number[]
-  progress?: { current: number; total: number }
-  subText?: string
-}
+export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
 const EVENT_DESCRIPTIONS: Record<string, string> = {
   'task.created': 'created a task',
@@ -89,11 +83,12 @@ export function computeSpendTrend(
   const last = points[points.length - 1]!.value
   if (first === 0) return undefined
   const pct = Math.round(Math.abs(((last - first) / first) * 100))
+  if (pct === 0) return undefined
   return { value: pct, direction: last >= first ? 'up' : 'down' }
 }
 
-export function computeOrgHealth(departments: DepartmentHealth[]): number {
-  if (departments.length === 0) return 0
+export function computeOrgHealth(departments: DepartmentHealth[]): number | null {
+  if (departments.length === 0) return null
   const sum = departments.reduce((acc, d) => acc + d.health_percent, 0)
   return Math.round(sum / departments.length)
 }

@@ -122,13 +122,13 @@ src/synthorg/
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory, invocation tracking
 
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
-  api/            # Axios client, endpoint modules (18 domains), shared types
+  api/            # Axios client, endpoint modules (19 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions)
   lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
   pages/          # Lazy-loaded page components (one per route)
   router/         # React Router config, route constants, auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, domain shells)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, domain shells)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)

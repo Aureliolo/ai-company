@@ -19,8 +19,8 @@ const MAX_ACTIVITIES = 50
 interface AnalyticsState {
   overview: OverviewMetrics | null
   forecast: ForecastResponse | null
-  departmentHealths: DepartmentHealth[]
-  activities: ActivityItem[]
+  departmentHealths: readonly DepartmentHealth[]
+  activities: readonly ActivityItem[]
   budgetConfig: BudgetConfig | null
   orgHealthPercent: number | null
   loading: boolean

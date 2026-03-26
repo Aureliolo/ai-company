@@ -111,6 +111,25 @@ describe('computeMetricCards', () => {
     const spendCard = cards.find((c) => c.label === 'SPEND')
     expect(spendCard!.progress).toEqual({ current: 200, total: 500 })
   })
+
+  it('clamps spend progress when cost exceeds budget', () => {
+    const cards = computeMetricCards(
+      makeOverview({ total_cost_usd: 600 }),
+      makeBudgetConfig({ total_monthly: 500 }),
+    )
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.progress!.current).toBe(500)
+    expect(spendCard!.progress!.total).toBe(500)
+  })
+
+  it('omits sparkline when fewer than 2 trend points', () => {
+    const cards = computeMetricCards(
+      makeOverview({ cost_7d_trend: [{ timestamp: '2026-03-26', value: 5 }] }),
+      makeBudgetConfig(),
+    )
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.sparklineData).toBeUndefined()
+  })
 })
 
 describe('computeSpendTrend', () => {
@@ -145,11 +164,19 @@ describe('computeSpendTrend', () => {
     ])
     expect(result).toBeUndefined()
   })
+
+  it('returns undefined when values are equal (0% change)', () => {
+    const result = computeSpendTrend([
+      { timestamp: '2026-03-20', value: 5 },
+      { timestamp: '2026-03-21', value: 5 },
+    ])
+    expect(result).toBeUndefined()
+  })
 })
 
 describe('computeOrgHealth', () => {
-  it('returns 0 for empty array', () => {
-    expect(computeOrgHealth([])).toBe(0)
+  it('returns null for empty array', () => {
+    expect(computeOrgHealth([])).toBeNull()
   })
 
   it('returns exact value for single department', () => {
@@ -190,8 +217,14 @@ describe('describeEvent', () => {
     expect(describeEvent('budget.alert')).toBe('triggered a budget alert')
   })
 
-  it('returns fallback for unknown event types', () => {
-    expect(describeEvent('coordination.started')).toBeTruthy()
+  it('maps coordination.started', () => {
+    expect(describeEvent('coordination.started')).toBe('started coordination')
+  })
+
+  it('returns fallback for unmapped event types using regex replace', () => {
+    // Force a type assertion to test the fallback path with a value not in EVENT_DESCRIPTIONS
+    const result = describeEvent('custom.unknown_event' as never)
+    expect(result).toBe('custom unknown event')
   })
 })
 
@@ -225,6 +258,28 @@ describe('wsEventToActivityItem', () => {
     }
     const item = wsEventToActivityItem(event)
     expect(item.agent_name).toBe('System')
+  })
+
+  it('falls back to assigned_to when agent_name is missing', () => {
+    const event: WsEvent = {
+      event_type: 'task.assigned',
+      channel: 'tasks',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { assigned_to: 'agent-dev' },
+    }
+    const item = wsEventToActivityItem(event)
+    expect(item.agent_name).toBe('agent-dev')
+  })
+
+  it('falls back to describeEvent when payload.description is missing', () => {
+    const event: WsEvent = {
+      event_type: 'agent.hired',
+      channel: 'agents',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { agent_name: 'new-agent' },
+    }
+    const item = wsEventToActivityItem(event)
+    expect(item.description).toBe('joined the organization')
   })
 
   it('handles missing task_id in payload', () => {

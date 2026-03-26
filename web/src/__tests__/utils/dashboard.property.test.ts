@@ -109,7 +109,7 @@ describe('computeMetricCards (properties)', () => {
 })
 
 describe('computeOrgHealth (properties)', () => {
-  it('returns a value in [0, 100]', () => {
+  it('returns null for empty array and a value in [0, 100] otherwise', () => {
     const arbDeptHealth: fc.Arbitrary<DepartmentHealth> = fc.record({
       name: fc.constantFrom(...DEPT_NAMES),
       display_name: fc.string({ minLength: 1 }),
@@ -122,8 +122,12 @@ describe('computeOrgHealth (properties)', () => {
     fc.assert(
       fc.property(fc.array(arbDeptHealth, { minLength: 0, maxLength: 9 }), (depts) => {
         const result = computeOrgHealth(depts)
-        expect(result).toBeGreaterThanOrEqual(0)
-        expect(result).toBeLessThanOrEqual(100)
+        if (depts.length === 0) {
+          expect(result).toBeNull()
+        } else {
+          expect(result).toBeGreaterThanOrEqual(0)
+          expect(result).toBeLessThanOrEqual(100)
+        }
       }),
     )
   })

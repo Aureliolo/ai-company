@@ -4,10 +4,11 @@ import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { formatCurrency } from '@/utils/format'
 import type { DepartmentHealth } from '@/api/types'
 
 interface OrgHealthSectionProps {
-  departments: DepartmentHealth[]
+  departments: readonly DepartmentHealth[]
   overallHealth: number | null
 }
 
@@ -30,12 +31,19 @@ export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectio
           <StaggerGroup className="space-y-3">
             {departments.map((dept) => (
               <StaggerItem key={dept.name}>
-                <DeptHealthBar
-                  name={dept.display_name}
-                  health={dept.health_percent}
-                  agentCount={dept.agent_count}
-                  taskCount={dept.task_count}
-                />
+                <div>
+                  <DeptHealthBar
+                    name={dept.display_name}
+                    health={dept.health_percent}
+                    agentCount={dept.agent_count}
+                    taskCount={dept.task_count}
+                  />
+                  {dept.cost_usd !== null && (
+                    <span className="mt-0.5 block text-right font-mono text-xs text-text-muted">
+                      {formatCurrency(dept.cost_usd)}
+                    </span>
+                  )}
+                </div>
               </StaggerItem>
             ))}
           </StaggerGroup>

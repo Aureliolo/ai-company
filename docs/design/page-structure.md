@@ -23,7 +23,7 @@ High-frequency destinations, always visible in the sidebar.
 
 Org overview: department health indicators (green/amber/red), recent activity widget, budget snapshot with sparkline, active task summary, agent status counts, approval badge count. The central "is the company healthy?" view.
 
-**API endpoints**: `GET /analytics/overview`, `GET /analytics/trends`, `GET /company/departments`, `GET /departments/{name}/health`, `GET /activities`, `GET /agents`
+**API endpoints**: `GET /analytics/overview`, `GET /analytics/forecast`, `GET /budget/config`, `GET /departments`, `GET /departments/{name}/health`, `GET /activities`
 **WS channels**: `tasks`, `agents`, `budget`, `system`, `approvals` (all -- aggregated into health indicators and activity feed)
 
 #### Org Chart (`/org`)

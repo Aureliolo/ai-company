@@ -106,6 +106,48 @@ describe('useAnalyticsStore', () => {
       expect(useAnalyticsStore.getState().error).toBeNull()
     })
 
+    it('degrades gracefully when listActivities fails', async () => {
+      const { listActivities } = await import('@/api/endpoints/activities')
+      vi.mocked(listActivities).mockRejectedValueOnce(new Error('Not found'))
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.activities).toEqual([])
+      expect(state.error).toBeNull()
+    })
+
+    it('degrades gracefully when listDepartments fails', async () => {
+      const { listDepartments } = await import('@/api/endpoints/company')
+      vi.mocked(listDepartments).mockRejectedValueOnce(new Error('Not found'))
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.departmentHealths).toEqual([])
+      expect(state.error).toBeNull()
+    })
+
+    it('populates departmentHealths when departments exist', async () => {
+      const { listDepartments, getDepartmentHealth } = await import('@/api/endpoints/company')
+      vi.mocked(listDepartments).mockResolvedValueOnce({
+        data: [{ name: 'engineering', display_name: 'Engineering', teams: [] }],
+        total: 1, offset: 0, limit: 50,
+      })
+      vi.mocked(getDepartmentHealth).mockResolvedValueOnce({
+        name: 'engineering',
+        display_name: 'Engineering',
+        health_percent: 85,
+        agent_count: 4,
+        task_count: 10,
+        cost_usd: null,
+      })
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.departmentHealths).toHaveLength(1)
+      expect(state.departmentHealths[0]!.health_percent).toBe(85)
+      expect(state.orgHealthPercent).toBe(85)
+    })
+
     it('sets error on API failure', async () => {
       const { getOverviewMetrics } = await import('@/api/endpoints/analytics')
       vi.mocked(getOverviewMetrics).mockRejectedValueOnce(new Error('Network error'))

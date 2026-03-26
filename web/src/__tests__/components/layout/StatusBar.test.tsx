@@ -68,4 +68,45 @@ describe('StatusBar', () => {
     render(<StatusBar />)
     expect(screen.getByText('all systems nominal')).toBeInTheDocument()
   })
+
+  it('shows cost placeholder when no data loaded', () => {
+    render(<StatusBar />)
+    expect(screen.getByText('$--')).toBeInTheDocument()
+  })
+
+  it('shows budget percentage when data loaded', () => {
+    useAnalyticsStore.setState({
+      overview: {
+        total_tasks: 10,
+        tasks_by_status: { in_review: 3 } as never,
+        total_agents: 5,
+        total_cost_usd: 50,
+        budget_remaining_usd: 450,
+        budget_used_percent: 10,
+        cost_7d_trend: [],
+        active_agents_count: 3,
+        idle_agents_count: 2,
+      },
+    })
+    render(<StatusBar />)
+    expect(screen.getByText('10%')).toBeInTheDocument()
+  })
+
+  it('shows pending approvals count when non-zero', () => {
+    useAnalyticsStore.setState({
+      overview: {
+        total_tasks: 10,
+        tasks_by_status: { in_review: 3 } as never,
+        total_agents: 5,
+        total_cost_usd: 50,
+        budget_remaining_usd: 450,
+        budget_used_percent: 10,
+        cost_7d_trend: [],
+        active_agents_count: 3,
+        idle_agents_count: 2,
+      },
+    })
+    render(<StatusBar />)
+    expect(screen.getByText('3 pending')).toBeInTheDocument()
+  })
 })

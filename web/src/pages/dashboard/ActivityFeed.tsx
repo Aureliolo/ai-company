@@ -8,7 +8,7 @@ import type { ActivityItem } from '@/api/types'
 const MAX_VISIBLE = 10
 
 interface ActivityFeedProps {
-  activities: ActivityItem[]
+  activities: readonly ActivityItem[]
 }
 
 export function ActivityFeed({ activities }: ActivityFeedProps) {

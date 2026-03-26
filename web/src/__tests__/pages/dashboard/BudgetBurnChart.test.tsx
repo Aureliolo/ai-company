@@ -54,4 +54,20 @@ describe('BudgetBurnChart', () => {
     )
     expect(screen.getByText(/avg/i)).toBeInTheDocument()
   })
+
+  it('renders days left when days_until_exhausted is non-null', () => {
+    const forecastWithDays = { ...SAMPLE_FORECAST, days_until_exhausted: 12 }
+    render(
+      <BudgetBurnChart trendData={SAMPLE_TREND} forecast={forecastWithDays} budgetTotal={500} />,
+    )
+    expect(screen.getByText('Days left')).toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
+  })
+
+  it('renders remaining budget when provided', () => {
+    render(
+      <BudgetBurnChart trendData={SAMPLE_TREND} forecast={null} budgetTotal={500} budgetRemaining={350} />,
+    )
+    expect(screen.getByText('Remaining')).toBeInTheDocument()
+  })
 })

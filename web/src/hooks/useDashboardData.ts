@@ -2,18 +2,25 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
-import type { WsChannel } from '@/api/types'
+import type {
+  ActivityItem,
+  BudgetConfig,
+  DepartmentHealth,
+  ForecastResponse,
+  OverviewMetrics,
+  WsChannel,
+} from '@/api/types'
 
 const DASHBOARD_POLL_INTERVAL = 30_000
 const DASHBOARD_CHANNELS: WsChannel[] = ['tasks', 'agents', 'budget', 'system', 'approvals']
 
 export interface UseDashboardDataReturn {
-  overview: ReturnType<typeof useAnalyticsStore.getState>['overview']
-  forecast: ReturnType<typeof useAnalyticsStore.getState>['forecast']
-  departmentHealths: ReturnType<typeof useAnalyticsStore.getState>['departmentHealths']
-  activities: ReturnType<typeof useAnalyticsStore.getState>['activities']
-  budgetConfig: ReturnType<typeof useAnalyticsStore.getState>['budgetConfig']
-  orgHealthPercent: ReturnType<typeof useAnalyticsStore.getState>['orgHealthPercent']
+  overview: OverviewMetrics | null
+  forecast: ForecastResponse | null
+  departmentHealths: readonly DepartmentHealth[]
+  activities: readonly ActivityItem[]
+  budgetConfig: BudgetConfig | null
+  orgHealthPercent: number | null
   loading: boolean
   error: string | null
   wsConnected: boolean
@@ -41,6 +48,7 @@ export function useDashboardData(): UseDashboardDataReturn {
   }, [])
   const polling = usePolling(pollFn, DASHBOARD_POLL_INTERVAL)
 
+  // polling.start/stop are stable refs from useCallback inside usePolling
   useEffect(() => {
     polling.start()
     return () => polling.stop()
