@@ -71,6 +71,8 @@ describe('InlineEdit', () => {
     render(<InlineEdit value="Hello" onSave={onSave} />)
 
     await user.click(screen.getByText('Hello'))
+    await user.clear(screen.getByRole('textbox'))
+    await user.type(screen.getByRole('textbox'), 'Changed')
     await user.keyboard('{Enter}')
 
     await waitFor(() => {

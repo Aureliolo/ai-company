@@ -1,7 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { Button } from './button'
 
 type ErrorLevel = 'page' | 'section' | 'component'
@@ -154,15 +153,17 @@ export function ErrorBoundary({
 }: ErrorBoundaryProps) {
   const FallbackComponent = fallback ?? DefaultErrorFallback
 
-  return (
-    <div className={cn(className)}>
-      <ErrorBoundaryInner
-        FallbackComponent={FallbackComponent}
-        onReset={onReset}
-        level={level}
-      >
-        {children}
-      </ErrorBoundaryInner>
-    </div>
+  const inner = (
+    <ErrorBoundaryInner
+      FallbackComponent={FallbackComponent}
+      onReset={onReset}
+      level={level}
+    >
+      {children}
+    </ErrorBoundaryInner>
   )
+
+  if (!className) return inner
+
+  return <div className={className}>{inner}</div>
 }

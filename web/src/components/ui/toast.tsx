@@ -33,7 +33,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       initial="initial"
       animate="animate"
       exit="exit"
-      role="alert"
+      role={toast.variant === 'error' ? 'alert' : 'status'}
       aria-live={ariaLive}
       className={cn(
         'pointer-events-auto flex w-80 items-start gap-3 rounded-lg border border-border-bright bg-surface p-3 shadow-lg',
@@ -70,7 +70,7 @@ export interface ToastContainerProps {
 export function ToastContainer({ maxVisible = 3 }: ToastContainerProps) {
   const toasts = useToastStore((s) => s.toasts)
   const dismiss = useToastStore((s) => s.dismiss)
-  const visible = toasts.slice(0, maxVisible)
+  const visible = toasts.slice(-maxVisible)
 
   return (
     <div

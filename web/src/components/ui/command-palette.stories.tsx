@@ -27,7 +27,7 @@ function PaletteSetup({ commands, open }: { commands: CommandItem[]; open?: bool
   const { registerCommands } = useCommandPalette()
   useEffect(() => {
     const cleanup = registerCommands(commands)
-    if (open) _setOpen(true)
+    _setOpen(open ?? false)
     return () => {
       cleanup()
       _setOpen(false)

@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { cardEntrance } from '@/lib/motion'
-import { cn } from '@/lib/utils'
 
 export interface StaggerGroupProps {
   children?: React.ReactNode
@@ -77,7 +76,7 @@ export function StaggerItem({
       variants={cardEntrance}
       layoutId={layoutId}
       layout={layout}
-      className={cn(className)}
+      className={className}
       data-testid={testId}
     >
       {children}

@@ -79,9 +79,14 @@ describe('Toast', () => {
     },
   )
 
-  it('has role="alert"', () => {
-    render(<Toast toast={baseToast} onDismiss={vi.fn()} />)
+  it('error variant has role="alert"', () => {
+    render(<Toast toast={{ ...baseToast, variant: 'error' }} onDismiss={vi.fn()} />)
     expect(screen.getByRole('alert')).toBeInTheDocument()
+  })
+
+  it('non-error variants have role="status"', () => {
+    render(<Toast toast={baseToast} onDismiss={vi.fn()} />)
+    expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
   it('hides dismiss button when dismissible is false', () => {
@@ -111,7 +116,7 @@ describe('ToastContainer', () => {
       useToastStore.getState().add({ variant: 'info', title: `Toast ${i}` })
     }
     render(<ToastContainer maxVisible={3} />)
-    const alerts = screen.getAllByRole('alert')
+    const alerts = screen.getAllByRole('status')
     expect(alerts).toHaveLength(3)
   })
 
@@ -120,7 +125,7 @@ describe('ToastContainer', () => {
       useToastStore.getState().add({ variant: 'info', title: `Toast ${i}` })
     }
     render(<ToastContainer />)
-    const alerts = screen.getAllByRole('alert')
+    const alerts = screen.getAllByRole('status')
     expect(alerts).toHaveLength(3)
   })
 })

@@ -133,6 +133,7 @@ export function _reset() {
   openState = false
   registrationCounter = 0
   updateCommandsSnapshot()
+  emitChange()
 }
 
 // Public API for non-hook contexts (e.g. tests, stories)

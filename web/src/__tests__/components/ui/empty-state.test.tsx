@@ -17,16 +17,14 @@ describe('EmptyState', () => {
   })
 
   it('renders icon when provided', () => {
-    render(<EmptyState title="No results" icon={Search} />)
+    const { container } = render(<EmptyState title="No results" icon={Search} />)
     // Lucide icons render as SVG
-    const svg = document.querySelector('svg')
-    expect(svg).toBeInTheDocument()
+    expect(container.querySelector('svg')).toBeInTheDocument()
   })
 
   it('does not render icon when not provided', () => {
-    render(<EmptyState title="Empty" />)
-    const svg = document.querySelector('svg')
-    expect(svg).not.toBeInTheDocument()
+    const { container } = render(<EmptyState title="Empty" />)
+    expect(container.querySelector('svg')).not.toBeInTheDocument()
   })
 
   it('renders action button when provided', () => {

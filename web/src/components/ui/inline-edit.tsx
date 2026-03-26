@@ -5,7 +5,7 @@ import { useFlash } from '@/hooks/useFlash'
 
 type EditState = 'display' | 'editing' | 'saving'
 
-interface InlineEditProps {
+export interface InlineEditProps {
   value: string
   onSave: (newValue: string) => Promise<void>
   /** Validation function -- return error string or null. */
@@ -72,6 +72,11 @@ export function InlineEdit({
     // Prevent double-save (Enter triggers save, then blur fires save again)
     if (saveInProgressRef.current) return
     if (state !== 'editing') return
+    if (editValue === value) {
+      setState('display')
+      setError(null)
+      return
+    }
     saveInProgressRef.current = true
 
     try {
@@ -101,6 +106,7 @@ export function InlineEdit({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (e.nativeEvent.isComposing) return
       if (e.key === 'Enter') {
         e.preventDefault()
         save()
