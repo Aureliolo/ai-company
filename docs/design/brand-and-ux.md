@@ -184,7 +184,7 @@ The component development environment uses Storybook 10 with native type-safe co
 
 - **Config**: `defineMain` (from `@storybook/react-vite/node`) and `definePreview` (from `@storybook/react-vite`) for full TypeScript inference
 - **Addons**: `@storybook/addon-docs` (autodocs) and `@storybook/addon-a11y` (WCAG testing). Essentials (backgrounds, controls, viewport, actions) and interactions are built into core
-- **Backgrounds**: Keyed to our `--so-bg-base` token (`#0a0a12`) via `initialGlobals`, ensuring stories render against the actual brand dark background
+- **Backgrounds**: Selected via `initialGlobals.backgrounds.value = 'dark'`, which references our `--so-bg-base` token (`#0a0a12`) through `backgrounds.options.dark.value`, ensuring stories render against the actual brand dark background
 - **Decorator**: Global dark-mode wrapper (`div.dark.bg-background.p-4.text-foreground`) applies our design tokens to all stories
 
 ## Reference Materials
