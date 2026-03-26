@@ -18,10 +18,11 @@ function getInitials(name: string): string {
 interface AvatarProps {
   name: string
   size?: 'sm' | 'md' | 'lg'
+  borderColor?: string
   className?: string
 }
 
-export function Avatar({ name, size = 'md', className }: AvatarProps) {
+export function Avatar({ name, size = 'md', borderColor, className }: AvatarProps) {
   const initials = getInitials(name)
 
   return (
@@ -31,6 +32,8 @@ export function Avatar({ name, size = 'md', className }: AvatarProps) {
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-full',
         'bg-accent-dim font-mono font-semibold text-foreground',
+        borderColor && 'border-2',
+        borderColor,
         SIZE_CLASSES[size],
         className,
       )}

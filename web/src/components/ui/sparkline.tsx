@@ -6,6 +6,7 @@ interface SparklineProps {
   color?: string
   width?: number
   height?: number
+  animated?: boolean
   className?: string
 }
 
@@ -29,11 +30,12 @@ export function Sparkline({
   color = 'var(--so-accent)',
   width = 64,
   height = 24,
+  animated = true,
   className,
 }: SparklineProps) {
   const gradientId = useId()
 
-  if (data.length === 0) return null
+  if (data.length <= 1) return null
 
   const points = buildPoints(data, width, height)
   const pointPairs = points.split(' ')
@@ -46,6 +48,9 @@ export function Sparkline({
   const padding = 2
   const fillPoints = `${padding},${height - padding} ${points} ${width - padding},${height - padding}`
 
+  // Approximate total path length for draw animation
+  const approxPathLength = width * 1.5
+
   return (
     <svg
       width={width}
@@ -55,6 +60,24 @@ export function Sparkline({
       className={cn('shrink-0', className)}
       aria-hidden="true"
     >
+      {animated && (
+        <style>{`
+          @keyframes sparkline-draw {
+            from { stroke-dashoffset: ${approxPathLength}; }
+            to { stroke-dashoffset: 0; }
+          }
+          @keyframes sparkline-fade {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .sparkline-line, .sparkline-fill, .sparkline-dot {
+              animation: none !important;
+            }
+          }
+        `}</style>
+      )}
+
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.3" />
@@ -64,26 +87,36 @@ export function Sparkline({
 
       {/* Fill area */}
       <polygon
+        className="sparkline-fill"
         points={fillPoints}
         fill={`url(#${gradientId})`}
+        style={animated ? { animation: 'sparkline-fade 200ms ease-out 200ms both' } : undefined}
       />
 
       {/* Line */}
       <polyline
+        className="sparkline-line"
         points={points}
         stroke={color}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
+        style={animated ? {
+          strokeDasharray: approxPathLength,
+          strokeDashoffset: 0,
+          animation: `sparkline-draw 200ms ease-out 200ms both`,
+        } : undefined}
       />
 
       {/* End dot */}
       <circle
+        className="sparkline-dot"
         cx={lastX}
         cy={lastY}
         r="2"
         fill={color}
+        style={animated ? { animation: 'sparkline-fade 200ms ease-out 400ms both' } : undefined}
       />
     </svg>
   )

@@ -28,9 +28,7 @@ describe('Sparkline', () => {
   it('renders nothing for single data point', () => {
     const { container } = render(<Sparkline data={[5]} />)
 
-    // A single point can't form a line, still renders the dot
-    const svg = container.querySelector('svg')
-    expect(svg).toBeInTheDocument()
+    expect(container.querySelector('svg')).not.toBeInTheDocument()
   })
 
   it('renders a polyline element', () => {

@@ -36,6 +36,10 @@ export const Large: Story = {
   args: { name: 'Alice Smith', size: 'lg' },
 }
 
+export const WithBorder: Story = {
+  args: { name: 'Alice Smith', borderColor: 'border-accent' },
+}
+
 export const AllSizes: Story = {
   args: { name: 'Alice Smith' },
   render: () => (
@@ -43,6 +47,18 @@ export const AllSizes: Story = {
       <Avatar name="Alice Smith" size="sm" />
       <Avatar name="Alice Smith" size="md" />
       <Avatar name="Alice Smith" size="lg" />
+    </div>
+  ),
+}
+
+export const WithDepartmentBorders: Story = {
+  args: { name: 'Alice Smith' },
+  render: () => (
+    <div className="flex items-center gap-3">
+      <Avatar name="Alice Smith" borderColor="border-accent" />
+      <Avatar name="Bob Jones" borderColor="border-success" />
+      <Avatar name="Carol White" borderColor="border-warning" />
+      <Avatar name="Dave Brown" borderColor="border-danger" />
     </div>
   ),
 }

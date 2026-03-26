@@ -44,7 +44,7 @@ export function SidebarNavItem({
               className={cn(
                 'flex size-5 items-center justify-center',
                 'rounded-full bg-danger',
-                'text-xs font-semibold text-white',
+                'text-xs font-semibold text-foreground',
               )}
             >
               {badge > 99 ? '99+' : badge}

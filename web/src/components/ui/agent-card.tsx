@@ -26,7 +26,7 @@ export function AgentCard({
       className={cn(
         'rounded-lg border border-border bg-card p-card',
         'transition-all duration-200',
-        'hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_rgba(56,189,248,0.08)]',
+        'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}
     >

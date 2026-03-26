@@ -20,7 +20,7 @@ export function MetricCard({
   subText,
   className,
 }: MetricCardProps) {
-  const progressPct = progress
+  const progressPct = progress && progress.total > 0
     ? Math.round((progress.current / progress.total) * 100)
     : 0
 
@@ -55,6 +55,7 @@ export function MetricCard({
           aria-valuenow={progressPct}
           aria-valuemin={0}
           aria-valuemax={100}
+          aria-label={`${label} progress`}
           className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-border"
         >
           <div

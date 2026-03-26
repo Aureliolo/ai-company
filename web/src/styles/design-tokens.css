@@ -93,6 +93,12 @@
   --so-density-grid-gap: var(--so-space-3);
 }
 
+.density-medium {
+  --so-density-card-padding: 14px;
+  --so-density-section-gap: var(--so-space-4);
+  --so-density-grid-gap: var(--so-space-4);
+}
+
 .density-sparse {
   --so-density-card-padding: var(--so-space-5);
   --so-density-section-gap: var(--so-space-6);
