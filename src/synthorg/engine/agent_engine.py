@@ -92,6 +92,7 @@ from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
+from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
@@ -223,6 +224,7 @@ class AgentEngine:
         compaction_callback: CompactionCallback | None = None,
         plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
+        tool_invocation_tracker: ToolInvocationTracker | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -288,6 +290,7 @@ class AgentEngine:
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
         self._coordinator = coordinator
+        self._tool_invocation_tracker = tool_invocation_tracker
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -1185,6 +1188,7 @@ class AgentEngine:
             security_interceptor=interceptor,
             agent_id=str(identity.id),
             task_id=task_id,
+            invocation_tracker=self._tool_invocation_tracker,
         )
 
     def _log_completion(
