@@ -158,8 +158,7 @@ def _tool_invocation_to_activity(
     if record.is_success:
         desc = f"Tool {record.tool_name} executed successfully"
     else:
-        suffix = f": {record.error_message}" if record.error_message else ""
-        desc = f"Tool {record.tool_name} failed{suffix}"
+        desc = f"Tool {record.tool_name} failed"
     related_ids: dict[str, str] = {
         "agent_id": str(record.agent_id),
     }

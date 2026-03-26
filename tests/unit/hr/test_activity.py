@@ -417,7 +417,8 @@ class TestToolUsedEvents:
         assert evt.event_type == "tool_used"
         assert "write_file" in evt.description
         assert "failed" in evt.description
-        assert "Permission denied" in evt.description
+        # Error message NOT in description (avoid leaking internals)
+        assert "Permission denied" not in evt.description
 
     def test_tool_used_failure_no_error_message(self) -> None:
         record = _make_tool_invocation(
