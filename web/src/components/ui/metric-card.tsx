@@ -21,7 +21,7 @@ export function MetricCard({
   className,
 }: MetricCardProps) {
   const progressPct = progress && progress.total > 0
-    ? Math.round((progress.current / progress.total) * 100)
+    ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
     : 0
 
   return (
