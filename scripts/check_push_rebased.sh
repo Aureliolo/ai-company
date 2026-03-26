@@ -13,16 +13,22 @@ set -euo pipefail
 # Extract the bash command from stdin JSON
 COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Only check git push commands
-if ! echo "$COMMAND" | grep -qE '^\s*git\s+push\b'; then
+# Only check git push commands (match anywhere for compound commands)
+if ! echo "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
     exit 0
 fi
 
-# Fetch latest origin/main (quiet, no output)
-git fetch origin main --quiet 2>/dev/null || true
+# Fetch latest origin/main (fail closed -- block push if fetch fails)
+if ! git fetch origin main --quiet 2>/dev/null; then
+    echo "Failed to fetch origin/main -- cannot verify branch is up to date. Push blocked."
+    exit 1
+fi
 
-# Check how many commits behind origin/main
-BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+# Check how many commits behind origin/main (fail closed)
+if ! BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null); then
+    echo "Failed to run git rev-list -- cannot verify branch is up to date. Push blocked."
+    exit 1
+fi
 
 if [ "$BEHIND" -gt 0 ]; then
     BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
