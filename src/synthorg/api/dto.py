@@ -18,6 +18,7 @@ from pydantic import (
 )
 
 from synthorg.api.errors import ErrorCategory, ErrorCode  # noqa: TC001
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,
@@ -476,7 +477,7 @@ class CoordinationResultResponse(BaseModel):
     total_duration_seconds: float = Field(ge=0.0)
     total_cost_usd: float = Field(ge=0.0)
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",

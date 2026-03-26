@@ -22,6 +22,7 @@ from synthorg.api.errors import (
 from synthorg.api.guards import require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.engine.coordination.models import (
     CoordinationContext,
     CoordinationResult,
@@ -84,6 +85,8 @@ def _publish_ws_event(
 
 def _map_result_to_response(
     result: CoordinationResult,
+    *,
+    currency: str = DEFAULT_CURRENCY,
 ) -> CoordinationResultResponse:
     """Map a domain ``CoordinationResult`` to an API response DTO."""
     return CoordinationResultResponse(
@@ -91,6 +94,7 @@ def _map_result_to_response(
         topology=result.topology.value,
         total_duration_seconds=result.total_duration_seconds,
         total_cost_usd=result.total_cost_usd,
+        currency=currency,
         phases=tuple(
             CoordinationPhaseResponse(
                 phase=p.phase,
@@ -173,7 +177,19 @@ class CoordinationController(Controller):
             context,
             task_id,
         )
-        return ApiResponse(data=_map_result_to_response(result))
+        try:
+            budget_cfg = await app_state.config_resolver.get_budget_config()
+            currency = budget_cfg.currency
+        except Exception:
+            logger.warning(
+                API_COORDINATION_FAILED,
+                error="budget config unavailable, using default currency",
+                exc_info=True,
+            )
+            currency = DEFAULT_CURRENCY
+        return ApiResponse(
+            data=_map_result_to_response(result, currency=currency),
+        )
 
     async def _get_task(
         self,
