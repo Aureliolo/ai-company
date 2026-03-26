@@ -107,7 +107,7 @@ describe('MetricCard', () => {
             <MetricCard label="Test" value={0} change={{ value, direction }} />,
           )
           const prefix = direction === 'up' ? '+' : '-'
-          expect(screen.getByText(new RegExp(`\\${prefix}${value}%`))).toBeInTheDocument()
+          expect(screen.getByText(`${prefix}${value}%`)).toBeInTheDocument()
           unmount()
         },
       ),
