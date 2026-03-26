@@ -508,3 +508,22 @@ class TestDelegationServiceRecordStore:
         )
         with pytest.raises(MemoryError):
             service.delegate(request, delegator, delegatee)
+
+    def test_recursion_error_in_record_store_propagates(self) -> None:
+        from unittest.mock import MagicMock
+
+        store = MagicMock(spec=DelegationRecordStore)
+        store.record_sync.side_effect = RecursionError("max depth")
+
+        service, _ = _build_service(record_store=store)
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        with pytest.raises(RecursionError):
+            service.delegate(request, delegator, delegatee)
