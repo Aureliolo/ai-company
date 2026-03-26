@@ -1004,7 +1004,6 @@ feedback arrives.
     Requires configuring an escalation chain.
 
 !!! info "Approval API Response Enrichment"
-
     The approval REST API enriches every `ApprovalItem` response with computed
     urgency fields so the dashboard can display time-sensitive indicators without
     client-side computation:
