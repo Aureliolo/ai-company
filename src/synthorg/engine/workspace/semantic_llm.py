@@ -190,6 +190,7 @@ class LlmSemanticAnalyzer:
                     workspace_id=workspace.workspace_id,
                     analyzer="llm",
                     reason="provider_error",
+                    exc_info=True,
                 )
                 return ()
             else:
@@ -209,13 +210,17 @@ def _read_file_contents(
     root: Path,
     files: list[str],
 ) -> dict[str, str]:
-    """Read file contents, skipping unreadable files."""
-    import contextlib  # noqa: PLC0415
-
+    """Read file contents, skipping unreadable files with logging."""
     contents: dict[str, str] = {}
     for file_path in files:
-        with contextlib.suppress(FileNotFoundError, PermissionError, OSError):
+        try:
             contents[file_path] = (root / file_path).read_text(encoding="utf-8")
+        except FileNotFoundError, PermissionError, OSError:
+            logger.debug(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                file=file_path,
+                reason="read_error",
+            )
     return contents
 
 

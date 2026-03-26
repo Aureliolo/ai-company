@@ -28,3 +28,4 @@ WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE: Final[str] = (
 )
 WORKSPACE_SEMANTIC_CONFLICT: Final[str] = "workspace.semantic.conflict"
 WORKSPACE_SEMANTIC_ANALYSIS_FAILED: Final[str] = "workspace.semantic.analysis.failed"
+WORKSPACE_SEMANTIC_PARSE_SKIP: Final[str] = "workspace.semantic.parse.skip"

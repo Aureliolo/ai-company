@@ -166,6 +166,7 @@ def parse_tool_call_response(
         return _parse_conflicts_from_content(response.content)
 
     msg = "No tool call or parseable content in response"
+    logger.warning(WORKSPACE_SEMANTIC_ANALYSIS_FAILED, reason="no_tool_call")
     raise ValueError(msg)
 
 
@@ -176,6 +177,11 @@ def _parse_conflicts_from_args(
     raw_conflicts = arguments.get("conflicts", [])
     if not isinstance(raw_conflicts, list):
         msg = f"Expected list of conflicts, got {type(raw_conflicts).__name__}"
+        logger.warning(
+            WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            reason="invalid_conflicts_type",
+            error=msg,
+        )
         raise TypeError(msg)
 
     conflicts: list[MergeConflict] = []
@@ -204,7 +210,7 @@ def _parse_conflicts_from_content(content: str) -> tuple[MergeConflict, ...]:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         msg = f"Cannot parse response content as JSON: {exc}"
-        logger.debug(
+        logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             reason="parse_error",
             error=msg,
@@ -217,4 +223,9 @@ def _parse_conflicts_from_content(content: str) -> tuple[MergeConflict, ...]:
         return _parse_conflicts_from_args({"conflicts": data})
 
     msg = f"Unexpected JSON structure: {type(data).__name__}"
+    logger.warning(
+        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+        reason="unexpected_json",
+        error=msg,
+    )
     raise ValueError(msg)

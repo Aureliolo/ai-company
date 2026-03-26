@@ -7,10 +7,14 @@ Files with syntax errors are silently skipped (logged at DEBUG).
 
 import ast
 from collections import Counter
+from typing import NamedTuple
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
 from synthorg.observability import get_logger
+from synthorg.observability.events.workspace import (
+    WORKSPACE_SEMANTIC_PARSE_SKIP,
+)
 
 logger = get_logger(__name__)
 
@@ -19,11 +23,12 @@ def _safe_parse(source: str, filename: str) -> ast.Module | None:
     """Parse source code, returning None on syntax errors."""
     try:
         return ast.parse(source, filename=filename)
-    except SyntaxError:
+    except SyntaxError as exc:
         logger.debug(
-            "semantic.check.parse_skip",
+            WORKSPACE_SEMANTIC_PARSE_SKIP,
             file=filename,
             reason="syntax_error",
+            error=f"line {exc.lineno}: {exc.msg}",
         )
         return None
 
@@ -57,24 +62,28 @@ def _all_name_references(tree: ast.Module) -> set[str]:
     return refs
 
 
-def _function_min_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Return the minimum number of positional arguments a function requires.
+_VARIADIC_ARG_SENTINEL = 999
 
-    Excludes self/cls for methods, counts only required args
-    (those without defaults).
+
+def _function_min_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Return the minimum number of positional arguments required.
+
+    Counts both positional-only and regular args, excluding those
+    with defaults.
     """
     args = node.args
-    return len(args.args) - len(args.defaults)
+    total = len(args.posonlyargs) + len(args.args)
+    return total - len(args.defaults)
 
 
 def _function_max_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Return the maximum number of positional arguments a function accepts.
+    """Return the maximum number of positional arguments accepted.
 
-    Returns a large number if *args is present.
+    Returns ``_VARIADIC_ARG_SENTINEL`` if ``*args`` is present.
     """
     if node.args.vararg is not None:
-        return 999
-    return len(node.args.args)
+        return _VARIADIC_ARG_SENTINEL
+    return len(node.args.posonlyargs) + len(node.args.args)
 
 
 def _function_param_names(
@@ -205,7 +214,12 @@ def check_removed_references(
     return tuple(conflicts)
 
 
-_SigInfo = tuple[int, int, int, int, set[str]]
+class _SigInfo(NamedTuple):
+    old_min: int
+    old_max: int
+    new_min: int
+    new_max: int
+    new_params: frozenset[str]
 
 
 def _collect_changed_sigs(
@@ -260,12 +274,12 @@ def _compare_signatures(
         has_kwargs = merged_node.args.kwarg is not None
 
         if old_min != new_min or old_max != new_max or old_params - new_params:
-            out[name] = (
-                old_min,
-                old_max,
-                new_min,
-                new_max,
-                new_params if not has_kwargs else set(),
+            out[name] = _SigInfo(
+                old_min=old_min,
+                old_max=old_max,
+                new_min=new_min,
+                new_max=new_max,
+                new_params=(frozenset(new_params) if not has_kwargs else frozenset()),
             )
 
 
@@ -276,7 +290,7 @@ def _check_call_compat(
     sig: _SigInfo,
 ) -> MergeConflict | None:
     """Check a single call against the new signature."""
-    _, _, new_min, new_max, new_params = sig
+    new_min, new_max, new_params = sig.new_min, sig.new_max, sig.new_params
     pos_count = len(call.args)
     if pos_count < new_min or pos_count > new_max:
         return MergeConflict(
@@ -416,7 +430,13 @@ def _collect_removed_exports(
             _top_level_names(merged_tree),
         )
         if gone:
-            module_stem = file_path.removesuffix(".py").replace("/", ".")
+            # Strip common source root prefixes before converting to module path
+            stem = file_path.removesuffix(".py")
+            for prefix in ("src/", "lib/"):
+                if stem.startswith(prefix):
+                    stem = stem[len(prefix) :]
+                    break
+            module_stem = stem.replace("/", ".").replace("\\", ".")
             removed[module_stem] = gone
     return removed
 

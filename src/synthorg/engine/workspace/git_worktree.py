@@ -35,6 +35,7 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_MERGE_CONFLICT,
     WORKSPACE_MERGE_FAILED,
     WORKSPACE_MERGE_START,
+    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
     WORKSPACE_SEMANTIC_CONFLICT,
     WORKSPACE_SETUP_COMPLETE,
     WORKSPACE_SETUP_FAILED,
@@ -603,7 +604,7 @@ class PlannerWorktreeStrategy:
             "merge-base",
             sha_a,
             ref_b,
-            log_event=WORKSPACE_MERGE_FAILED,
+            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
         )
         return stdout.strip() if rc == 0 else ""
 
@@ -625,7 +626,7 @@ class PlannerWorktreeStrategy:
             "diff",
             "--name-only",
             f"{base_sha}..{merge_sha}",
-            log_event=WORKSPACE_MERGE_FAILED,
+            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
         )
         if rc != 0 or not stdout:
             return ()
@@ -650,7 +651,7 @@ class PlannerWorktreeStrategy:
             rc, stdout, _ = await self._run_git(
                 "show",
                 f"{base_sha}:{file_path}",
-                log_event=WORKSPACE_MERGE_FAILED,
+                log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             )
             if rc == 0:
                 sources[file_path] = stdout
@@ -675,13 +676,34 @@ class PlannerWorktreeStrategy:
             merge_sha: Commit SHA after the merge.
 
         Returns:
-            Tuple of semantic conflicts, empty if analyzer not configured.
+            Tuple of semantic conflicts, empty if analyzer
+            not configured or on analysis failure.
         """
         if self._semantic_analyzer is None or not pre_merge_sha:
             return ()
+        result = await self._do_semantic_analysis(
+            workspace=workspace,
+            pre_merge_sha=pre_merge_sha,
+            merge_sha=merge_sha,
+        )
+        if result:
+            logger.warning(
+                WORKSPACE_SEMANTIC_CONFLICT,
+                workspace_id=workspace.workspace_id,
+                count=len(result),
+            )
+        return result
 
+    async def _do_semantic_analysis(
+        self,
+        *,
+        workspace: Workspace,
+        pre_merge_sha: str,
+        merge_sha: str,
+    ) -> tuple[MergeConflict, ...]:
+        """Execute semantic analysis, returning () on failure."""
+        assert self._semantic_analyzer is not None  # noqa: S101
         try:
-            # Find where the workspace branched from main
             branch_point = await self._get_merge_base(
                 pre_merge_sha,
                 workspace.branch_name,
@@ -701,7 +723,7 @@ class PlannerWorktreeStrategy:
                 changed_files,
             )
 
-            result = await self._semantic_analyzer.analyze(
+            return await self._semantic_analyzer.analyze(
                 workspace=workspace,
                 changed_files=changed_files,
                 repo_root=str(self._repo_root),
@@ -709,16 +731,9 @@ class PlannerWorktreeStrategy:
             )
         except Exception:
             logger.warning(
-                WORKSPACE_MERGE_FAILED,
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 workspace_id=workspace.workspace_id,
-                error="Semantic analysis failed, merge result unaffected",
+                error="Semantic analysis failed, merge unaffected",
+                exc_info=True,
             )
             return ()
-
-        if result:
-            logger.warning(
-                WORKSPACE_SEMANTIC_CONFLICT,
-                workspace_id=workspace.workspace_id,
-                count=len(result),
-            )
-        return result

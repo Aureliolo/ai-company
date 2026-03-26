@@ -191,6 +191,35 @@ class TestCheckSignatureChanges:
         )
         assert len(conflicts) == 0
 
+    def test_keyword_arg_removed_detected(self) -> None:
+        base_sources = {
+            "utils.py": "def process(data, verbose=False):\n    pass\n",
+        }
+        merged_sources = {
+            "utils.py": "def process(data):\n    pass\n",
+            "main.py": "process(data, verbose=True)\n",
+        }
+        conflicts = check_signature_changes(
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        )
+        assert len(conflicts) >= 1
+        assert any("verbose" in c.description for c in conflicts)
+
+    def test_varargs_accepts_extra_positional(self) -> None:
+        base_sources = {
+            "utils.py": "def process(data, *args):\n    pass\n",
+        }
+        merged_sources = {
+            "utils.py": "def process(data, *args):\n    pass\n",
+            "main.py": "process(1, 2, 3, 4)\n",
+        }
+        conflicts = check_signature_changes(
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        )
+        assert len(conflicts) == 0
+
     def test_signature_unchanged_no_conflict(self) -> None:
         base_sources = {
             "utils.py": "def process(data, verbose=False):\n    pass\n",

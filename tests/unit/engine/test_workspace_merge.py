@@ -373,3 +373,75 @@ class TestSortWorkspaces:
         assert len(results) == 3
         # ws-1 comes first (explicitly ordered)
         assert results[0].workspace_id == "ws-1"
+
+
+# ---------------------------------------------------------------------------
+# Semantic conflict escalation
+# ---------------------------------------------------------------------------
+
+
+def _make_semantic_conflict() -> MergeConflict:
+    return MergeConflict(
+        file_path="utils.py",
+        conflict_type=ConflictType.SEMANTIC,
+        description="Function removed but still referenced",
+    )
+
+
+class TestSemanticConflictEscalation:
+    """Tests for semantic conflict handling in merge orchestrator."""
+
+    pytestmark = pytest.mark.unit
+
+    async def test_human_escalation_stops_on_semantic_conflict(
+        self,
+    ) -> None:
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
+
+        sc = _make_semantic_conflict()
+        strategy = AsyncMock()
+        strategy.merge_workspace.side_effect = [
+            make_merge_result(
+                workspace_id="ws-1",
+                semantic_conflicts=(sc,),
+            ),
+            make_merge_result(workspace_id="ws-2"),
+        ]
+
+        orch = MergeOrchestrator(
+            strategy=strategy,
+            merge_order=MergeOrder.COMPLETION,
+            conflict_escalation=ConflictEscalation.HUMAN,
+        )
+        results = await orch.merge_all(workspaces=(ws1, ws2))
+
+        assert len(results) == 1
+        assert results[0].semantic_conflicts == (sc,)
+        assert results[0].escalation == ConflictEscalation.HUMAN
+
+    async def test_review_agent_escalation_continues(self) -> None:
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
+
+        sc = _make_semantic_conflict()
+        strategy = AsyncMock()
+        strategy.merge_workspace.side_effect = [
+            make_merge_result(
+                workspace_id="ws-1",
+                semantic_conflicts=(sc,),
+            ),
+            make_merge_result(workspace_id="ws-2"),
+        ]
+
+        orch = MergeOrchestrator(
+            strategy=strategy,
+            merge_order=MergeOrder.COMPLETION,
+            conflict_escalation=ConflictEscalation.REVIEW_AGENT,
+        )
+        results = await orch.merge_all(workspaces=(ws1, ws2))
+
+        assert len(results) == 2
+        assert results[0].semantic_conflicts == (sc,)
+        assert results[0].escalation == ConflictEscalation.REVIEW_AGENT
+        assert results[1].success is True

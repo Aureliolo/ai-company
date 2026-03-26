@@ -102,10 +102,11 @@ class MergeResult(BaseModel):
         workspace_id: Workspace that was merged.
         branch_name: Branch that was merged.
         success: Whether the merge completed without conflicts.
-        conflicts: Any conflicts encountered during merge.
+        conflicts: Any textual conflicts encountered during merge.
         escalation: Escalation strategy applied, if any.
         merged_commit_sha: SHA of the merge commit, if successful.
         duration_seconds: Time taken for the merge operation.
+        semantic_conflicts: Semantic conflicts detected after merge.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -59,6 +59,70 @@ class SemanticAnalyzer(Protocol):
         ...
 
 
+def _filter_files(
+    changed_files: tuple[str, ...],
+    config: SemanticAnalysisConfig,
+) -> list[str]:
+    """Filter changed files by extension and limit to max_files."""
+    py_files = [
+        f
+        for f in changed_files
+        if any(f.endswith(ext) for ext in config.file_extensions)
+    ]
+    return py_files[: config.max_files]
+
+
+def _read_sources(
+    root: Path,
+    files: list[str],
+    workspace_id: str,
+) -> dict[str, str]:
+    """Read file contents, skipping unreadable files with logging."""
+    sources: dict[str, str] = {}
+    for file_path in files:
+        try:
+            sources[file_path] = (root / file_path).read_text(encoding="utf-8")
+        except (FileNotFoundError, PermissionError, OSError) as exc:
+            logger.debug(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace_id,
+                file=file_path,
+                reason="read_error",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+    return sources
+
+
+def _run_ast_checks(
+    base_sources: dict[str, str],
+    merged_sources: dict[str, str],
+) -> tuple[MergeConflict, ...]:
+    """Run all AST semantic checks and return combined results."""
+    all_conflicts: list[MergeConflict] = []
+    all_conflicts.extend(
+        check_removed_references(
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        ),
+    )
+    all_conflicts.extend(
+        check_signature_changes(
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        ),
+    )
+    all_conflicts.extend(
+        check_duplicate_definitions(merged_sources=merged_sources),
+    )
+    all_conflicts.extend(
+        check_import_conflicts(
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        ),
+    )
+    return tuple(all_conflicts)
+
+
 class AstSemanticAnalyzer:
     """Deterministic AST-based semantic conflict analyzer.
 
@@ -100,74 +164,19 @@ class AstSemanticAnalyzer:
             file_count=len(changed_files),
         )
 
-        # Filter to supported extensions and respect max_files
-        py_files = [
-            f
-            for f in changed_files
-            if any(f.endswith(ext) for ext in self._config.file_extensions)
-        ]
-        py_files = py_files[: self._config.max_files]
-
+        py_files = _filter_files(changed_files, self._config)
         if not py_files:
-            logger.info(
-                WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
-                workspace_id=workspace.workspace_id,
-                analyzed=0,
-                conflicts=0,
-            )
-            return ()
+            return self._log_complete(workspace.workspace_id, 0, 0)
 
-        # Read merged file contents
-        root = Path(repo_root)
-        merged_sources: dict[str, str] = {}
-        for file_path in py_files:
-            try:
-                content = (root / file_path).read_text(encoding="utf-8")
-                merged_sources[file_path] = content
-            except FileNotFoundError, PermissionError, OSError:
-                logger.debug(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    file=file_path,
-                    reason="read_error",
-                )
-
+        merged_sources = _read_sources(
+            Path(repo_root),
+            py_files,
+            workspace.workspace_id,
+        )
         if not merged_sources:
-            logger.info(
-                WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
-                workspace_id=workspace.workspace_id,
-                analyzed=0,
-                conflicts=0,
-            )
-            return ()
+            return self._log_complete(workspace.workspace_id, 0, 0)
 
-        # Run all checks
-        all_conflicts: list[MergeConflict] = []
-        all_conflicts.extend(
-            check_removed_references(
-                base_sources=base_sources,
-                merged_sources=merged_sources,
-            ),
-        )
-        all_conflicts.extend(
-            check_signature_changes(
-                base_sources=base_sources,
-                merged_sources=merged_sources,
-            ),
-        )
-        all_conflicts.extend(
-            check_duplicate_definitions(
-                merged_sources=merged_sources,
-            ),
-        )
-        all_conflicts.extend(
-            check_import_conflicts(
-                base_sources=base_sources,
-                merged_sources=merged_sources,
-            ),
-        )
-
-        result = tuple(all_conflicts)
+        result = _run_ast_checks(base_sources, merged_sources)
 
         if result:
             logger.warning(
@@ -175,14 +184,29 @@ class AstSemanticAnalyzer:
                 workspace_id=workspace.workspace_id,
                 count=len(result),
             )
+        return self._log_complete(
+            workspace.workspace_id,
+            len(merged_sources),
+            len(result),
+            conflicts=result,
+        )
 
+    @staticmethod
+    def _log_complete(
+        workspace_id: str,
+        analyzed: int,
+        count: int,
+        *,
+        conflicts: tuple[MergeConflict, ...] = (),
+    ) -> tuple[MergeConflict, ...]:
+        """Log completion and return conflicts."""
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
-            workspace_id=workspace.workspace_id,
-            analyzed=len(merged_sources),
-            conflicts=len(result),
+            workspace_id=workspace_id,
+            analyzed=analyzed,
+            conflicts=count,
         )
-        return result
+        return conflicts
 
 
 class CompositeSemanticAnalyzer:
@@ -239,6 +263,7 @@ class CompositeSemanticAnalyzer:
                     workspace_id=workspace.workspace_id,
                     analyzer=type(analyzer).__name__,
                     reason="analyzer_error",
+                    exc_info=True,
                 )
 
         # Deduplicate by (file_path, description)

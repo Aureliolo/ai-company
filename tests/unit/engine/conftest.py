@@ -356,6 +356,7 @@ def make_merge_result(  # noqa: PLR0913
     duration_seconds: float = 0.5,
     merged_commit_sha: str | None = None,
     escalation: ConflictEscalation | None = None,
+    semantic_conflicts: tuple[MergeConflict, ...] = (),
 ) -> MergeResult:
     """Build a ``MergeResult`` with sensible defaults."""
     from synthorg.engine.workspace.models import MergeResult
@@ -371,6 +372,7 @@ def make_merge_result(  # noqa: PLR0913
         duration_seconds=duration_seconds,
         merged_commit_sha=merged_commit_sha,
         escalation=escalation,
+        semantic_conflicts=semantic_conflicts,
     )
 
 
