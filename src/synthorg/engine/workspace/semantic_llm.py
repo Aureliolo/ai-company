@@ -1,10 +1,12 @@
 """LLM-based semantic conflict analyzer.
 
 Uses an LLM provider to review merged code for semantic conflicts
-that AST analysis cannot detect. Only used when conflict escalation
-is REVIEW_AGENT and a provider is configured.
+that AST analysis cannot detect. Intended for use when conflict
+escalation is REVIEW_AGENT and a provider is configured. The gating
+logic resides in the workspace strategy layer.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.engine.workspace.semantic_llm_prompt import (
@@ -26,6 +28,7 @@ from synthorg.providers.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from synthorg.engine.workspace.config import SemanticAnalysisConfig
@@ -77,7 +80,7 @@ class LlmSemanticAnalyzer:
         workspace: Workspace,
         changed_files: tuple[str, ...],
         repo_root: str,
-        base_sources: dict[str, str],
+        base_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged files using an LLM for semantic conflicts.
 
@@ -85,13 +88,12 @@ class LlmSemanticAnalyzer:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
             repo_root: Absolute path to the repository root.
-            base_sources: File path to source content before the merge.
+            base_sources: Mapping of file path to source content
+                before the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances from LLM review.
         """
-        from pathlib import Path  # noqa: PLC0415
-
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_START,
             workspace_id=workspace.workspace_id,
@@ -99,24 +101,60 @@ class LlmSemanticAnalyzer:
             file_count=len(changed_files),
         )
 
-        # Filter to configured extensions and max_files
+        result = await self._prepare_review_context(
+            changed_files,
+            repo_root,
+            base_sources,
+        )
+        if result is None:
+            return ()
+        messages, tool_def, comp_config = result
+
+        return await self._call_with_retry(
+            workspace=workspace,
+            messages=messages,
+            tool_def=tool_def,
+            comp_config=comp_config,
+            max_retries=self._config.llm_max_retries,
+        )
+
+    async def _prepare_review_context(
+        self,
+        changed_files: tuple[str, ...],
+        repo_root: str,
+        base_sources: Mapping[str, str],
+    ) -> tuple[list[ChatMessage], ToolDefinition, CompletionConfig] | None:
+        """Filter files, read contents, and build LLM messages.
+
+        Returns:
+            Tuple of (messages, tool_def, comp_config) or ``None``
+            when there is nothing to review.
+        """
+        from pathlib import Path  # noqa: PLC0415
+
         py_files = [
             f
             for f in changed_files
             if any(f.endswith(ext) for ext in self._config.file_extensions)
         ]
         py_files = py_files[: self._config.max_files]
-
         if not py_files:
-            return ()
+            return None
 
-        # Read merged file contents
         root = Path(repo_root)
-        merged_contents = _read_file_contents(root, py_files)
+        merged_contents = await asyncio.to_thread(
+            _read_file_contents,
+            root,
+            py_files,
+            self._config.max_file_bytes,
+        )
         if not merged_contents:
-            return ()
+            return None
 
-        diff_summary = _build_diff_summary(merged_contents, base_sources)
+        diff_summary = _build_diff_summary(
+            merged_contents,
+            base_sources,
+        )
         messages = [
             build_system_message(),
             build_review_message(
@@ -129,13 +167,7 @@ class LlmSemanticAnalyzer:
             temperature=self._config.llm_temperature,
             max_tokens=self._config.llm_max_tokens,
         )
-
-        return await self._call_with_retry(
-            workspace=workspace,
-            messages=messages,
-            tool_def=tool_def,
-            comp_config=comp_config,
-        )
+        return messages, tool_def, comp_config
 
     async def _call_with_retry(
         self,
@@ -184,6 +216,8 @@ class LlmSemanticAnalyzer:
                     reason="parse_exhausted",
                 )
                 return ()
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -209,26 +243,49 @@ class LlmSemanticAnalyzer:
 def _read_file_contents(
     root: Path,
     files: list[str],
+    max_file_bytes: int,
 ) -> dict[str, str]:
     """Read file contents, skipping unreadable files with logging."""
+    resolved_root = root.resolve()
     contents: dict[str, str] = {}
     for file_path in files:
         try:
-            contents[file_path] = (root / file_path).read_text(encoding="utf-8")
-        except FileNotFoundError, PermissionError, OSError:
-            logger.debug(
+            target = (root / file_path).resolve()
+            if not target.is_relative_to(resolved_root):
+                logger.warning(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    file=file_path,
+                    reason="path_traversal",
+                )
+                continue
+            stat = target.stat()
+            if stat.st_size > max_file_bytes:
+                logger.debug(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    file=file_path,
+                    reason="file_too_large",
+                    size=stat.st_size,
+                    limit=max_file_bytes,
+                )
+                continue
+            contents[file_path] = target.read_text(
+                encoding="utf-8",
+            )
+        except (FileNotFoundError, PermissionError, OSError) as exc:
+            logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 file=file_path,
                 reason="read_error",
+                error=f"{type(exc).__name__}: {exc}",
             )
     return contents
 
 
 def _build_diff_summary(
     merged_contents: dict[str, str],
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
 ) -> str:
-    """Build a diff summary line for each changed file."""
+    """Build a change-type summary (NEW FILE / MODIFIED) for each file."""
     parts: list[str] = []
     for path, merged in merged_contents.items():
         base = base_sources.get(path)

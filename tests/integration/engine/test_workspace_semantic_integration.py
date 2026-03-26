@@ -241,16 +241,25 @@ class TestSemanticConflictDetection:
         repo = tmp_path / "repo"
         _init_test_repo(repo)
 
+        # Initial file with enough content so branches touch disjoint hunks
         _commit_file(
             repo,
             "helpers.py",
-            "# helpers module\n",
-            "Add helpers stub",
+            (
+                "MARKER = 'base'\n"
+                "\n"
+                "# -------------------------------------------------------\n"
+                "# Spacer block so git sees two distinct regions\n"
+                "# -------------------------------------------------------\n"
+                "\n"
+                "OTHER = 'value'\n"
+            ),
+            "Add helpers with spacer",
         )
 
         strategy = _make_strategy(repo)
 
-        # Agent A: add process function
+        # Agent A: add process() at the TOP of the file (before MARKER)
         ws_a = await strategy.setup_workspace(
             request=WorkspaceRequest(
                 task_id="task-a",
@@ -260,11 +269,23 @@ class TestSemanticConflictDetection:
         _commit_file(
             Path(ws_a.worktree_path),
             "helpers.py",
-            ("# helpers module\n\ndef process(data):\n    return data.upper()\n"),
-            "Add process function (agent A)",
+            (
+                "def process(data):\n"
+                "    return data.upper()\n"
+                "\n"
+                "\n"
+                "MARKER = 'base'\n"
+                "\n"
+                "# -------------------------------------------------------\n"
+                "# Spacer block so git sees two distinct regions\n"
+                "# -------------------------------------------------------\n"
+                "\n"
+                "OTHER = 'value'\n"
+            ),
+            "Add process function at top (agent A)",
         )
 
-        # Agent B: also add process function with different impl
+        # Agent B: add process() at the BOTTOM of the file (after OTHER)
         ws_b = await strategy.setup_workspace(
             request=WorkspaceRequest(
                 task_id="task-b",
@@ -274,22 +295,32 @@ class TestSemanticConflictDetection:
         _commit_file(
             Path(ws_b.worktree_path),
             "helpers.py",
-            ("# helpers module\n\ndef process(data):\n    return data.lower()\n"),
-            "Add process function (agent B)",
+            (
+                "MARKER = 'base'\n"
+                "\n"
+                "# -------------------------------------------------------\n"
+                "# Spacer block so git sees two distinct regions\n"
+                "# -------------------------------------------------------\n"
+                "\n"
+                "OTHER = 'value'\n"
+                "\n"
+                "\n"
+                "def process(data):\n"
+                "    return data.lower()\n"
+            ),
+            "Add process function at bottom (agent B)",
         )
 
         # Merge A
         result_a = await strategy.merge_workspace(workspace=ws_a)
         assert result_a.success is True
 
-        # Merge B -- may cause textual conflict (same lines) or succeed
-        # with duplicate definition. Either way, semantic analysis should
-        # catch it if the merge succeeds.
+        # Merge B -- disjoint hunks so git merges cleanly, producing
+        # two definitions of process(). Semantic analysis catches this.
         result_b = await strategy.merge_workspace(workspace=ws_b)
-        if result_b.success:
-            # Textual merge succeeded but we have duplicate definitions
-            assert len(result_b.semantic_conflicts) >= 1
-            assert any("process" in c.description for c in result_b.semantic_conflicts)
+        assert result_b.success, "Merge should succeed textually"
+        assert result_b.semantic_conflicts
+        assert any("process" in c.description for c in result_b.semantic_conflicts)
 
         await strategy.teardown_workspace(workspace=ws_a)
         await strategy.teardown_workspace(workspace=ws_b)

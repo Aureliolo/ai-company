@@ -1,7 +1,6 @@
 """Unit tests for the LLM-based semantic analyzer."""
 
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,6 +14,8 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
+
+_READ_FN = "synthorg.engine.workspace.semantic_llm._read_file_contents"
 
 pytestmark = pytest.mark.unit
 
@@ -79,10 +80,7 @@ class TestLlmSemanticAnalyzer:
 
         merged_content = "def new_func():\n    pass\n"
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            return merged_content
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value={"utils.py": merged_content}):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("utils.py",),
@@ -104,10 +102,7 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            return "x = 1\n"
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value={"foo.py": "x = 1\n"}):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("foo.py",),
@@ -143,10 +138,7 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            return "x = 1\n"
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value={"foo.py": "x = 1\n"}):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("foo.py",),
@@ -179,10 +171,7 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            return "x = 1\n"
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value={"a.py": "x = 1\n"}):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("a.py",),

@@ -4,7 +4,6 @@ Tests AstSemanticAnalyzer and CompositeSemanticAnalyzer with
 mocked file I/O to verify orchestration and result aggregation.
 """
 
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,6 +16,8 @@ from synthorg.engine.workspace.semantic_analyzer import (
     CompositeSemanticAnalyzer,
     SemanticAnalyzer,
 )
+
+_READ_FN = "synthorg.engine.workspace.semantic_analyzer._read_sources"
 
 pytestmark = pytest.mark.unit
 
@@ -91,7 +92,8 @@ class TestAstSemanticAnalyzer:
         # Even with many files, only max_files are analyzed
         files = tuple(f"file{i}.py" for i in range(10))
 
-        with patch.object(Path, "read_text", return_value="x = 1\n"):
+        limited = {f"file{i}.py": "x = 1\n" for i in range(2)}
+        with patch(_READ_FN, return_value=limited):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=files,
@@ -108,20 +110,15 @@ class TestAstSemanticAnalyzer:
         base_sources = {
             "utils.py": "def calculate_total(items):\n    return sum(items)\n",
         }
-        merged_utils = "def compute_total(items):\n    return sum(items)\n"
-        merged_orders = (
-            "from utils import calculate_total\n\nresult = calculate_total([1, 2, 3])\n"
-        )
+        merged_sources = {
+            "utils.py": "def compute_total(items):\n    return sum(items)\n",
+            "orders.py": (
+                "from utils import calculate_total\n\n"
+                "result = calculate_total([1, 2, 3])\n"
+            ),
+        }
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            name = self.name
-            if name == "utils.py":
-                return merged_utils
-            if name == "orders.py":
-                return merged_orders
-            return ""
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value=merged_sources):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("utils.py", "orders.py"),
@@ -137,18 +134,12 @@ class TestAstSemanticAnalyzer:
         base_sources = {
             "utils.py": "def process(data):\n    pass\n",
         }
-        merged_utils = "def process(data):\n    pass\n\ndef extra():\n    pass\n"
-        merged_main = "from utils import process\n\nprocess(42)\n"
+        merged_sources = {
+            "utils.py": "def process(data):\n    pass\n\ndef extra():\n    pass\n",
+            "main.py": "from utils import process\n\nprocess(42)\n",
+        }
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            name = self.name
-            if name == "utils.py":
-                return merged_utils
-            if name == "main.py":
-                return merged_main
-            return ""
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value=merged_sources):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("utils.py", "main.py"),
@@ -160,10 +151,7 @@ class TestAstSemanticAnalyzer:
     async def test_file_read_error_skipped(self) -> None:
         analyzer = AstSemanticAnalyzer(config=SemanticAnalysisConfig())
 
-        def mock_read_text(self: Path, encoding: str = "utf-8") -> str:
-            raise FileNotFoundError
-
-        with patch.object(Path, "read_text", mock_read_text):
+        with patch(_READ_FN, return_value={}):
             result = await analyzer.analyze(
                 workspace=_make_workspace(),
                 changed_files=("missing.py",),

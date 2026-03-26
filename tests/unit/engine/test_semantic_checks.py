@@ -1,8 +1,8 @@
 """Unit tests for AST-based semantic conflict checks.
 
 Tests the pure check functions in semantic_checks.py with
-source code strings. Each check category has parametrized
-tests covering positive detections and negative (no-conflict) cases.
+source code strings. Each check category has multiple test
+cases covering positive detections and negative (no-conflict) cases.
 """
 
 import pytest

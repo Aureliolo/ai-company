@@ -5,7 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import ConflictEscalation, ConflictType  # noqa: TC001
+from synthorg.core.enums import ConflictEscalation, ConflictType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -93,6 +93,14 @@ class MergeConflict(BaseModel):
         default="",
         description="Human-readable description of the conflict",
     )
+
+    @model_validator(mode="after")
+    def _validate_semantic_description(self) -> Self:
+        """Semantic conflicts must have a non-empty description."""
+        if self.conflict_type == ConflictType.SEMANTIC and not self.description:
+            msg = "Semantic conflicts must have a non-empty description"
+            raise ValueError(msg)
+        return self
 
 
 class MergeResult(BaseModel):

@@ -5,6 +5,7 @@ merge cannot detect: removed-name references, signature mismatches,
 duplicate definitions, and import conflicts.
 """
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -23,6 +24,8 @@ from synthorg.observability.events.workspace import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.engine.workspace.config import SemanticAnalysisConfig
     from synthorg.engine.workspace.models import MergeConflict, Workspace
 
@@ -43,7 +46,7 @@ class SemanticAnalyzer(Protocol):
         workspace: Workspace,
         changed_files: tuple[str, ...],
         repo_root: str,
-        base_sources: dict[str, str],
+        base_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged files for semantic conflicts.
 
@@ -51,7 +54,8 @@ class SemanticAnalyzer(Protocol):
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
             repo_root: Absolute path to the repository root.
-            base_sources: File path to source content before the merge.
+            base_sources: Mapping of file path to source content
+                before the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances.
@@ -78,10 +82,20 @@ def _read_sources(
     workspace_id: str,
 ) -> dict[str, str]:
     """Read file contents, skipping unreadable files with logging."""
+    resolved_root = root.resolve()
     sources: dict[str, str] = {}
     for file_path in files:
         try:
-            sources[file_path] = (root / file_path).read_text(encoding="utf-8")
+            target = (root / file_path).resolve()
+            if not target.is_relative_to(resolved_root):
+                logger.warning(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    workspace_id=workspace_id,
+                    file=file_path,
+                    reason="path_traversal",
+                )
+                continue
+            sources[file_path] = target.read_text(encoding="utf-8")
         except (FileNotFoundError, PermissionError, OSError) as exc:
             logger.debug(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -94,7 +108,7 @@ def _read_sources(
 
 
 def _run_ast_checks(
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Run all AST semantic checks and return combined results."""
@@ -145,7 +159,7 @@ class AstSemanticAnalyzer:
         workspace: Workspace,
         changed_files: tuple[str, ...],
         repo_root: str,
-        base_sources: dict[str, str],
+        base_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged Python files for semantic conflicts.
 
@@ -153,7 +167,8 @@ class AstSemanticAnalyzer:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
             repo_root: Absolute path to the repository root.
-            base_sources: File path to source content before the merge.
+            base_sources: Mapping of file path to source content
+                before the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances.
@@ -168,7 +183,8 @@ class AstSemanticAnalyzer:
         if not py_files:
             return self._log_complete(workspace.workspace_id, 0, 0)
 
-        merged_sources = _read_sources(
+        merged_sources = await asyncio.to_thread(
+            _read_sources,
             Path(repo_root),
             py_files,
             workspace.workspace_id,
@@ -234,7 +250,7 @@ class CompositeSemanticAnalyzer:
         workspace: Workspace,
         changed_files: tuple[str, ...],
         repo_root: str,
-        base_sources: dict[str, str],
+        base_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Run all analyzers and return deduplicated results.
 
@@ -242,7 +258,8 @@ class CompositeSemanticAnalyzer:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
             repo_root: Absolute path to the repository root.
-            base_sources: File path to source content before the merge.
+            base_sources: Mapping of file path to source content
+                before the merge.
 
         Returns:
             Deduplicated tuple of semantic conflicts from all analyzers.
@@ -257,12 +274,15 @@ class CompositeSemanticAnalyzer:
                     base_sources=base_sources,
                 )
                 all_conflicts.extend(conflicts)
-            except Exception:
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                     workspace_id=workspace.workspace_id,
                     analyzer=type(analyzer).__name__,
                     reason="analyzer_error",
+                    error=f"{type(exc).__name__}: {exc}",
                     exc_info=True,
                 )
 

@@ -7,7 +7,10 @@ Files with syntax errors are silently skipped (logged at DEBUG).
 
 import ast
 from collections import Counter
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.models import MergeConflict
@@ -36,6 +39,10 @@ def _safe_parse(source: str, filename: str) -> ast.Module | None:
 def _top_level_names(tree: ast.Module) -> dict[str, ast.stmt]:
     """Extract top-level function, class, and assignment names.
 
+    Only handles plain assignments (ast.Assign), not annotated
+    assignments (ast.AnnAssign) to reduce false positives from
+    type stubs and type aliases.
+
     Returns:
         Mapping from name to the AST node that defines it.
     """
@@ -54,10 +61,10 @@ def _top_level_names(tree: ast.Module) -> dict[str, ast.stmt]:
 
 
 def _all_name_references(tree: ast.Module) -> set[str]:
-    """Collect all Name nodes referenced in the module."""
+    """Collect names referenced in Load context in the module."""
     refs: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             refs.add(node.id)
     return refs
 
@@ -144,7 +151,7 @@ def _imported_names(tree: ast.Module) -> list[tuple[str, str, str]]:
 
 
 def _collect_removed_names(
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> dict[str, str]:
     """Find top-level names removed between base and merged.
@@ -156,6 +163,11 @@ def _collect_removed_names(
     for file_path, base_src in base_sources.items():
         merged_src = merged_sources.get(file_path)
         if merged_src is None:
+            # File was deleted -- all names are removed
+            base_tree = _safe_parse(base_src, file_path)
+            if base_tree is not None:
+                for name in _top_level_names(base_tree):
+                    removed[name] = file_path
             continue
         base_tree = _safe_parse(base_src, file_path)
         merged_tree = _safe_parse(merged_src, file_path)
@@ -170,7 +182,7 @@ def _collect_removed_names(
 
 def check_removed_references(
     *,
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect references to names removed by the merge.
@@ -180,8 +192,8 @@ def check_removed_references(
     referenced in any merged file.
 
     Args:
-        base_sources: File path to source code before merge.
-        merged_sources: File path to source code after merge.
+        base_sources: Mapping of file path to source code before merge.
+        merged_sources: Mapping of file path to source code after merge.
 
     Returns:
         Tuple of semantic conflicts for removed-name references.
@@ -199,8 +211,9 @@ def check_removed_references(
         if merged_tree is None:
             continue
         refs = _all_name_references(merged_tree)
+        local_defs = set(_top_level_names(merged_tree))
         for name, source_file in removed_names.items():
-            if file_path != source_file and name in refs:
+            if name in refs and name not in local_defs:
                 conflicts.append(
                     MergeConflict(
                         file_path=file_path,
@@ -220,10 +233,11 @@ class _SigInfo(NamedTuple):
     new_min: int
     new_max: int
     new_params: frozenset[str]
+    required_kwonly: frozenset[str]
 
 
 def _collect_changed_sigs(
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> dict[str, _SigInfo]:
     """Find functions whose signatures changed between base and merged.
@@ -273,13 +287,45 @@ def _compare_signatures(
         old_params = _function_param_names(base_node)
         has_kwargs = merged_node.args.kwarg is not None
 
-        if old_min != new_min or old_max != new_max or old_params - new_params:
+        # Track new required keyword-only params not in old signature
+        new_required_kwonly = frozenset(
+            arg.arg
+            for arg, default in zip(
+                merged_node.args.kwonlyargs,
+                merged_node.args.kw_defaults,
+                strict=True,
+            )
+            if default is None
+        )
+        old_required_kwonly = frozenset(
+            arg.arg
+            for arg, default in zip(
+                base_node.args.kwonlyargs,
+                base_node.args.kw_defaults,
+                strict=True,
+            )
+            if default is None
+        )
+        added_required_kwonly = new_required_kwonly - old_required_kwonly
+
+        # Gaining *args (new_max = sentinel) is backward-compatible
+        max_restricted = new_max not in (
+            old_max,
+            _VARIADIC_ARG_SENTINEL,
+        )
+        if (
+            old_min != new_min
+            or max_restricted
+            or old_params - new_params
+            or added_required_kwonly
+        ):
             out[name] = _SigInfo(
                 old_min=old_min,
                 old_max=old_max,
                 new_min=new_min,
                 new_max=new_max,
                 new_params=(frozenset(new_params) if not has_kwargs else frozenset()),
+                required_kwonly=added_required_kwonly,
             )
 
 
@@ -293,13 +339,17 @@ def _check_call_compat(
     new_min, new_max, new_params = sig.new_min, sig.new_max, sig.new_params
     pos_count = len(call.args)
     if pos_count < new_min or pos_count > new_max:
+        if new_max == _VARIADIC_ARG_SENTINEL:
+            args_desc = f"at least {new_min}"
+        else:
+            args_desc = f"{new_min}-{new_max}"
         return MergeConflict(
             file_path=file_path,
             conflict_type=ConflictType.SEMANTIC,
             description=(
                 f"Calls '{name}' with {pos_count} positional "
                 f"argument(s) but merged signature "
-                f"requires {new_min}-{new_max}"
+                f"requires {args_desc}"
             ),
         )
     if new_params:
@@ -314,12 +364,26 @@ def _check_call_compat(
                     f"signature"
                 ),
             )
+    if sig.required_kwonly:
+        provided_kws = _call_keyword_names(call)
+        missing_kwonly = sig.required_kwonly - provided_kws
+        if missing_kwonly:
+            return MergeConflict(
+                file_path=file_path,
+                conflict_type=ConflictType.SEMANTIC,
+                description=(
+                    f"Calls '{name}' without required "
+                    f"keyword-only argument(s) "
+                    f"{sorted(missing_kwonly)} added in "
+                    f"merged signature"
+                ),
+            )
     return None
 
 
 def check_signature_changes(
     *,
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect function signature changes that may break callers.
@@ -329,8 +393,8 @@ def check_signature_changes(
     still pass the old number of arguments.
 
     Args:
-        base_sources: File path to source code before merge.
-        merged_sources: File path to source code after merge.
+        base_sources: Mapping of file path to source code before merge.
+        merged_sources: Mapping of file path to source code after merge.
 
     Returns:
         Tuple of semantic conflicts for signature incompatibilities.
@@ -371,7 +435,7 @@ def check_duplicate_definitions(
     earlier one.
 
     Args:
-        merged_sources: File path to source code after merge.
+        merged_sources: Mapping of file path to source code after merge.
 
     Returns:
         Tuple of semantic conflicts for duplicate definitions.
@@ -408,19 +472,43 @@ def check_duplicate_definitions(
     return tuple(conflicts)
 
 
+def _file_path_to_module_stem(file_path: str) -> str:
+    """Convert a Python file path to a dotted module stem.
+
+    Strips ``.py`` suffix, converts ``__init__.py`` to the parent
+    package name, removes common source root prefixes (``src/``,
+    ``lib/``), and replaces path separators with dots.
+    """
+    stem = file_path.removesuffix(".py")
+    if stem.endswith(("/__init__", "\\__init__")):
+        sep = "/" if "/" in stem else "\\"
+        stem = stem.rsplit(sep, 1)[0]
+    for prefix in ("src/", "lib/"):
+        if stem.startswith(prefix):
+            stem = stem[len(prefix) :]
+            break
+    return stem.replace("/", ".").replace("\\", ".")
+
+
 def _collect_removed_exports(
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> dict[str, set[str]]:
-    """Find module-level names removed between base and merged.
+    """Find top-level definitions removed between base and merged, keyed by module stem.
 
     Returns:
-        Mapping from module stem to set of removed export names.
+        Mapping from dotted module stem to set of removed definition names.
     """
     removed: dict[str, set[str]] = {}
     for file_path, base_src in base_sources.items():
         merged_src = merged_sources.get(file_path)
         if merged_src is None:
+            # File was deleted -- all exports are removed
+            base_tree = _safe_parse(base_src, file_path)
+            if base_tree is not None:
+                gone = set(_top_level_names(base_tree))
+                if gone:
+                    removed[_file_path_to_module_stem(file_path)] = gone
             continue
         base_tree = _safe_parse(base_src, file_path)
         merged_tree = _safe_parse(merged_src, file_path)
@@ -430,20 +518,13 @@ def _collect_removed_exports(
             _top_level_names(merged_tree),
         )
         if gone:
-            # Strip common source root prefixes before converting to module path
-            stem = file_path.removesuffix(".py")
-            for prefix in ("src/", "lib/"):
-                if stem.startswith(prefix):
-                    stem = stem[len(prefix) :]
-                    break
-            module_stem = stem.replace("/", ".").replace("\\", ".")
-            removed[module_stem] = gone
+            removed[_file_path_to_module_stem(file_path)] = gone
     return removed
 
 
 def check_import_conflicts(
     *,
-    base_sources: dict[str, str],
+    base_sources: Mapping[str, str],
     merged_sources: dict[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect imports of names that were removed from their source module.
@@ -452,8 +533,8 @@ def check_import_conflicts(
     adds an import of that name, the import will fail at runtime.
 
     Args:
-        base_sources: File path to source code before merge.
-        merged_sources: File path to source code after merge.
+        base_sources: Mapping of file path to source code before merge.
+        merged_sources: Mapping of file path to source code after merge.
 
     Returns:
         Tuple of semantic conflicts for broken imports.

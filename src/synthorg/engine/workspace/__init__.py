@@ -28,6 +28,9 @@ from synthorg.engine.workspace.semantic_analyzer import (
     CompositeSemanticAnalyzer,
     SemanticAnalyzer,
 )
+from synthorg.engine.workspace.semantic_llm import (
+    LlmSemanticAnalyzer,
+)
 from synthorg.engine.workspace.service import (
     WorkspaceIsolationService,
 )
@@ -35,6 +38,7 @@ from synthorg.engine.workspace.service import (
 __all__ = [
     "AstSemanticAnalyzer",
     "CompositeSemanticAnalyzer",
+    "LlmSemanticAnalyzer",
     "MergeConflict",
     "MergeOrchestrator",
     "MergeResult",

@@ -394,6 +394,7 @@ class TestWorkspaceGroupResult:
                 duration_seconds=-1.0,
             )
 
+    @pytest.mark.unit
     def test_total_semantic_conflicts(self) -> None:
         """total_semantic_conflicts sums across merge results."""
         sc = MergeConflict(

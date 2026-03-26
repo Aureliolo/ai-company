@@ -187,17 +187,29 @@ def _parse_conflicts_from_args(
     conflicts: list[MergeConflict] = []
     for item in raw_conflicts:
         if not isinstance(item, dict):
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                reason="unexpected_conflict_item_type",
+                item_type=type(item).__name__,
+            )
             continue
         file_path = item.get("file_path", "")
         description = item.get("description", "")
-        if file_path and description:
-            conflicts.append(
-                MergeConflict(
-                    file_path=file_path,
-                    conflict_type=ConflictType.SEMANTIC,
-                    description=description,
-                ),
+        if not file_path or not description:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                reason="incomplete_conflict_item",
+                file_path=file_path or "(empty)",
+                has_description=bool(description),
             )
+            continue
+        conflicts.append(
+            MergeConflict(
+                file_path=file_path,
+                conflict_type=ConflictType.SEMANTIC,
+                description=description,
+            ),
+        )
     return tuple(conflicts)
 
 

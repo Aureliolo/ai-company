@@ -49,6 +49,16 @@ class SemanticAnalysisConfig(BaseModel):
         gt=0,
         description="Maximum tokens for LLM response",
     )
+    llm_max_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum retry attempts on LLM parse failure",
+    )
+    max_file_bytes: int = Field(
+        default=524288,
+        gt=0,
+        description="Maximum bytes per file for semantic analysis",
+    )
 
 
 class PlannerWorktreesConfig(BaseModel):
