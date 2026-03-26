@@ -1,6 +1,8 @@
 """Workspace isolation configuration models."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -59,6 +61,21 @@ class SemanticAnalysisConfig(BaseModel):
         gt=0,
         description="Maximum bytes per file for semantic analysis",
     )
+
+    @model_validator(mode="after")
+    def _validate_file_extensions(self) -> Self:
+        """Reject empty or malformed file extensions."""
+        if not self.file_extensions:
+            msg = "file_extensions must not be empty"
+            raise ValueError(msg)
+        for ext in self.file_extensions:
+            if not ext or not ext.startswith(".") or " " in ext:
+                msg = (
+                    f"Invalid file extension {ext!r}: must start "
+                    f"with '.' and contain no spaces"
+                )
+                raise ValueError(msg)
+        return self
 
 
 class PlannerWorktreesConfig(BaseModel):

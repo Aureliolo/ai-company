@@ -271,7 +271,7 @@ def _read_file_contents(
             contents[file_path] = target.read_text(
                 encoding="utf-8",
             )
-        except (FileNotFoundError, PermissionError, OSError) as exc:
+        except OSError as exc:
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 file=file_path,

@@ -455,3 +455,24 @@ class TestMergeResultSemanticConflicts:
             semantic_conflicts=(sc,),
         )
         assert len(mr.semantic_conflicts) == 1
+
+    def test_semantic_conflict_requires_description(self) -> None:
+        """Semantic MergeConflict with empty description is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="non-empty description",
+        ):
+            MergeConflict(
+                file_path="a.py",
+                conflict_type=ConflictType.SEMANTIC,
+                description="",
+            )
+
+    def test_textual_conflict_allows_empty_description(self) -> None:
+        """Textual MergeConflict with empty description is allowed."""
+        mc = MergeConflict(
+            file_path="a.py",
+            conflict_type=ConflictType.TEXTUAL,
+            description="",
+        )
+        assert mc.description == ""

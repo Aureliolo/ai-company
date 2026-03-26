@@ -96,7 +96,7 @@ def _read_sources(
                 )
                 continue
             sources[file_path] = target.read_text(encoding="utf-8")
-        except (FileNotFoundError, PermissionError, OSError) as exc:
+        except OSError as exc:
             logger.debug(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 workspace_id=workspace_id,
