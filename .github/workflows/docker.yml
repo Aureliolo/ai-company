@@ -178,8 +178,10 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-backend.outcome == 'failure'
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
         run: |
-          grype "${{ steps.scan-ref.outputs.ref }}" \
+          grype "$IMAGE_REF" \
             --fail-on critical --output table -c .github/.grype.yaml \
             | grep -E 'Critical|High' || true
 
@@ -374,8 +376,10 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-web.outcome == 'failure'
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
         run: |
-          grype "${{ steps.scan-ref.outputs.ref }}" \
+          grype "$IMAGE_REF" \
             --fail-on critical --output table -c .github/.grype.yaml \
             | grep -E 'Critical|High' || true
 
@@ -567,8 +571,10 @@ jobs:
 
       - name: Grype table (diagnosis on failure)
         if: failure() && steps.grype-sandbox.outcome == 'failure'
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
         run: |
-          grype "${{ steps.scan-ref.outputs.ref }}" \
+          grype "$IMAGE_REF" \
             --fail-on critical --output table -c .github/.grype.yaml \
             | grep -E 'Critical|High' || true
 
