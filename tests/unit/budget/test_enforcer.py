@@ -16,6 +16,7 @@ from synthorg.budget.config import (
     BudgetAlertConfig,
     BudgetConfig,
 )
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import BudgetExhaustedError, DailyLimitExceededError
 from synthorg.budget.tracker import CostTracker
@@ -157,21 +158,28 @@ def _patch_periods() -> Iterator[None]:
 class TestCurrencyProperty:
     """Tests for BudgetEnforcer.currency property."""
 
-    def test_returns_configured_currency(self) -> None:
-        cfg = _make_budget_config(total_monthly=100.0)
+    @pytest.mark.parametrize(
+        ("currency_override", "expected"),
+        [
+            (None, DEFAULT_CURRENCY),
+            ("GBP", "GBP"),
+        ],
+        ids=["default", "custom"],
+    )
+    def test_returns_configured_or_default(
+        self,
+        currency_override: str | None,
+        expected: str,
+    ) -> None:
+        if currency_override is None:
+            cfg = _make_budget_config(total_monthly=100.0)
+        else:
+            cfg = BudgetConfig(currency=currency_override)
         enforcer = BudgetEnforcer(
             budget_config=cfg,
             cost_tracker=CostTracker(budget_config=cfg),
         )
-        assert enforcer.currency == "USD"
-
-    def test_returns_custom_currency(self) -> None:
-        cfg = BudgetConfig(currency="GBP")
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=CostTracker(budget_config=cfg),
-        )
-        assert enforcer.currency == "GBP"
+        assert enforcer.currency == expected
 
 
 # ── Pre-flight checks ───────────────────────────────────────────────

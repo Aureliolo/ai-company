@@ -477,6 +477,7 @@ export interface ForecastResponse {
   days_until_exhausted: number | null
   confidence: number
   avg_daily_spend_usd: number
+  currency: string
 }
 
 // ── Company / Organization ───────────────────────────────────

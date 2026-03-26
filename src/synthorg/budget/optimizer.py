@@ -574,6 +574,7 @@ class CostOptimizer:
                 current_model=most_used_model,
                 downgrade_map=downgrade_map,
                 resolver=self._model_resolver,
+                currency=self._budget_config.currency,
             )
             if recommendation is not None:
                 recommendations.append(recommendation)

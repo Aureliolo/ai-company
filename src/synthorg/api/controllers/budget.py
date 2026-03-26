@@ -37,7 +37,7 @@ class AgentSpending(BaseModel):
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Cumulative cost in configured currency.
+        total_cost_usd: Cumulative cost in USD (base currency).
         currency: ISO 4217 currency code.
     """
 
@@ -45,7 +45,7 @@ class AgentSpending(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in configured currency"
+        ge=0.0, description="Total cost in USD (base currency)"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -72,7 +72,7 @@ class DailySummary(BaseModel):
 
     date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
     total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in configured currency"
+        ge=0.0, description="Total cost in USD (base currency)"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,
@@ -107,7 +107,7 @@ class PeriodSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in configured currency"
+        ge=0.0, description="Total cost in USD (base currency)"
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,

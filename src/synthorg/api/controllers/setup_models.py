@@ -143,7 +143,7 @@ class SetupAgentRequest(BaseModel):
         model_provider: Provider name for the agent's model.
         model_id: Model identifier from that provider.
         department: Department to assign the agent to.
-        budget_limit_monthly: Optional monthly budget limit in configured currency.
+        budget_limit_monthly: Optional monthly budget limit in USD (base currency).
     """
 
     model_config = ConfigDict(frozen=True)

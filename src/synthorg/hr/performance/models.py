@@ -369,7 +369,7 @@ class WindowMetrics(BaseModel):
     avg_cost_per_task: float | None = Field(
         default=None,
         ge=0.0,
-        description="Average cost per task",
+        description="Average cost per task in USD (base currency)",
     )
     avg_completion_time_seconds: float | None = Field(
         default=None,

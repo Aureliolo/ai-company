@@ -77,11 +77,11 @@ class OverviewMetrics(BaseModel):
     )
     total_agents: int = Field(ge=0, description="Number of configured agents")
     total_cost_usd: float = Field(
-        ge=0.0, description="Total cost in configured currency"
+        ge=0.0, description="Total cost in USD (base currency)"
     )
     budget_remaining_usd: float = Field(
         ge=0.0,
-        description="Remaining budget in configured currency",
+        description="Remaining budget in USD (base currency)",
     )
     currency: str = Field(
         default=DEFAULT_CURRENCY,

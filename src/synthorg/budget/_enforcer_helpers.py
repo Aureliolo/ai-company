@@ -5,6 +5,7 @@ module under the 800-line limit.  All functions here are module-level
 pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.enums import BudgetAlertLevel
@@ -132,25 +133,29 @@ def _build_downgraded_model_config(
 # ── Alert helpers ────────────────────────────────────────────────
 
 
-_ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
+_raw_order: dict[BudgetAlertLevel, int] = {
     BudgetAlertLevel.NORMAL: 0,
     BudgetAlertLevel.WARNING: 1,
     BudgetAlertLevel.CRITICAL: 2,
     BudgetAlertLevel.HARD_STOP: 3,
 }
 
-if set(_ALERT_LEVEL_ORDER) != set(BudgetAlertLevel):
+if set(_raw_order) != set(BudgetAlertLevel):
     msg = (
-        f"_ALERT_LEVEL_ORDER keys {set(_ALERT_LEVEL_ORDER)} do not match "
+        f"_ALERT_LEVEL_ORDER keys {set(_raw_order)} do not match "
         f"BudgetAlertLevel members {set(BudgetAlertLevel)}"
     )
     raise RuntimeError(msg)
-if len(set(_ALERT_LEVEL_ORDER.values())) != len(BudgetAlertLevel):
+if len(set(_raw_order.values())) != len(BudgetAlertLevel):
     msg = (
-        f"_ALERT_LEVEL_ORDER values must be unique, "
-        f"got: {sorted(_ALERT_LEVEL_ORDER.values())}"
+        f"_ALERT_LEVEL_ORDER values must be unique, got: {sorted(_raw_order.values())}"
     )
     raise RuntimeError(msg)
+
+_ALERT_LEVEL_ORDER: MappingProxyType[BudgetAlertLevel, int] = MappingProxyType(
+    _raw_order,
+)
+del _raw_order
 
 
 def _emit_alert(
