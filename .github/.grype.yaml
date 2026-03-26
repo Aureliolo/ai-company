@@ -7,6 +7,16 @@ ignore:
       Disputed zlib vulnerability affecting only the untgz demo utility
       in contrib/, not core zlib. Upstream disputes CVE validity.
 
+  # Audit: 2026-06-24 -- revisit when python:3.14-slim ships libexpat >= 2.7.4
+  - vulnerability: CVE-2026-25210
+    package:
+      name: libexpat1
+      type: deb
+    reason: >-
+      libexpat integer overflow in doContent buffer reallocation (fixed in
+      2.7.4, sandbox has 2.7.1-2). No Debian Trixie fix available yet.
+      Risk accepted: sandbox is ephemeral, network-isolated, non-root.
+
   # Audit: 2026-06-17 -- review after 90 days (no native expiration in Grype)
   - vulnerability: CVE-2026-32767
     package:

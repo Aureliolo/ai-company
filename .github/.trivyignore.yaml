@@ -10,6 +10,16 @@ vulnerabilities:
       nginx-unprivileged maintainer closed as not-zlib:
       https://github.com/nginx/docker-nginx-unprivileged/issues/381
 
+  - id: CVE-2026-25210
+    expired_at: "2026-06-24T00:00:00Z"
+    statement: >-
+      libexpat integer overflow in doContent buffer reallocation (fixed in
+      2.7.4, sandbox has 2.7.1-2). No Debian Trixie fix available yet.
+      Risk accepted: sandbox is ephemeral, network-isolated via iptables,
+      runs as non-root (UID 10001), and the local-access attack vector is
+      inherent to the sandbox's purpose (executing untrusted code).
+      Revisit when python:3.14-slim ships libexpat >= 2.7.4.
+
   - id: CVE-2026-32767
     purls:
       - "pkg:apk/alpine/libexpat"
