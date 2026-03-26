@@ -128,6 +128,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -196,6 +197,11 @@ class AgentEngine:
         plan_execute_config: Optional configuration for the
             plan-execute loop.  Passed to ``build_execution_loop``
             when auto-selection picks ``"plan_execute"``.
+        provider_registry: Optional registry of completion providers.
+            Used for runtime provider CRUD and model discovery.
+        tool_invocation_tracker: Optional tracker for recording tool
+            invocations in the activity timeline.  Passed through to
+            each ``ToolInvoker`` created by ``_make_tool_invoker``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -223,6 +229,7 @@ class AgentEngine:
         compaction_callback: CompactionCallback | None = None,
         plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
+        tool_invocation_tracker: ToolInvocationTracker | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -288,6 +295,7 @@ class AgentEngine:
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
         self._coordinator = coordinator
+        self._tool_invocation_tracker = tool_invocation_tracker
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -1185,6 +1193,7 @@ class AgentEngine:
             security_interceptor=interceptor,
             agent_id=str(identity.id),
             task_id=task_id,
+            invocation_tracker=self._tool_invocation_tracker,
         )
 
     def _log_completion(

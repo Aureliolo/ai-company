@@ -19,6 +19,9 @@ from synthorg.communication.delegation.hierarchy import (
 from synthorg.communication.delegation.models import (
     DelegationRequest,
 )
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,
+)
 from synthorg.communication.delegation.service import (
     DelegationService,
 )
@@ -79,6 +82,7 @@ def _build_service(
     enforce_chain: bool = True,
     allow_skip: bool = False,
     max_depth: int = 5,
+    record_store: DelegationRecordStore | None = None,
 ) -> tuple[
     DelegationService,
     HierarchyResolver,
@@ -121,6 +125,7 @@ def _build_service(
         hierarchy=hierarchy,
         authority_validator=authority_validator,
         guard=guard,
+        record_store=record_store,
     )
     return service, hierarchy
 
@@ -440,3 +445,73 @@ class TestDelegationServiceHelpers:
         assert service.get_supervisor_of("cto") == "ceo"
         assert service.get_supervisor_of("dev") == "cto"
         assert service.get_supervisor_of("ceo") is None
+
+
+@pytest.mark.unit
+class TestDelegationServiceRecordStore:
+    """Tests for record_store integration in _record_delegation."""
+
+    async def test_successful_delegation_populates_record_store(self) -> None:
+        store = DelegationRecordStore()
+        service, _ = _build_service(record_store=store)
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        service.delegate(request, delegator, delegatee)
+
+        records = await store.get_all_records()
+        assert len(records) == 1
+        assert records[0].delegator_id == "ceo"
+        assert records[0].delegatee_id == "cto"
+
+    def test_record_store_failure_does_not_block_delegation(self) -> None:
+        from unittest.mock import MagicMock
+
+        store = MagicMock(spec=DelegationRecordStore)
+        store.record_sync.side_effect = RuntimeError("storage failure")
+
+        service, _ = _build_service(record_store=store)
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        result = service.delegate(request, delegator, delegatee)
+        assert result.success is True
+
+    @pytest.mark.parametrize(
+        "exc_class",
+        [MemoryError, RecursionError],
+        ids=["memory_error", "recursion_error"],
+    )
+    def test_fatal_error_in_record_store_propagates(
+        self,
+        exc_class: type[BaseException],
+    ) -> None:
+        from unittest.mock import MagicMock
+
+        store = MagicMock(spec=DelegationRecordStore)
+        store.record_sync.side_effect = exc_class("fatal")
+
+        service, _ = _build_service(record_store=store)
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        with pytest.raises(exc_class):
+            service.delegate(request, delegator, delegatee)

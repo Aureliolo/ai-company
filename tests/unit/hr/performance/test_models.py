@@ -1,6 +1,6 @@
 """Tests for performance tracking domain models."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -13,6 +13,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     CollaborationScoreResult,
     QualityScoreResult,
+    TaskMetricRecord,
     TrendResult,
     WindowMetrics,
 )
@@ -114,6 +115,51 @@ class TestTaskMetricRecord:
     def test_inf_rejected(self) -> None:
         with pytest.raises(ValidationError):
             make_task_metric(cost_usd=float("inf"))
+
+    def test_started_at_before_completed_at_valid(self) -> None:
+        started = NOW - timedelta(hours=1)
+        record = TaskMetricRecord(
+            agent_id="agent-001",
+            task_id="task-001",
+            task_type=TaskType.DEVELOPMENT,
+            started_at=started,
+            completed_at=NOW,
+            is_success=True,
+            duration_seconds=60.0,
+            cost_usd=0.5,
+            turns_used=5,
+            tokens_used=1000,
+            complexity=Complexity.MEDIUM,
+        )
+        assert record.started_at == started
+
+    @pytest.mark.parametrize(
+        "offset",
+        [timedelta(hours=1), timedelta(0)],
+        ids=["after_completed", "equal_to_completed"],
+    )
+    def test_started_at_not_before_completed_at_rejected(
+        self,
+        offset: timedelta,
+    ) -> None:
+        with pytest.raises(ValidationError, match=r"started_at.*must be.*before"):
+            TaskMetricRecord(
+                agent_id="agent-001",
+                task_id="task-001",
+                task_type=TaskType.DEVELOPMENT,
+                started_at=NOW + offset,
+                completed_at=NOW,
+                is_success=True,
+                duration_seconds=60.0,
+                cost_usd=0.5,
+                turns_used=5,
+                tokens_used=1000,
+                complexity=Complexity.MEDIUM,
+            )
+
+    def test_started_at_none_allowed(self) -> None:
+        record = make_task_metric()
+        assert record.started_at is None
 
 
 # ── CollaborationMetricRecord ─────────────────────────────────────
