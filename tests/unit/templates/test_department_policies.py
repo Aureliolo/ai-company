@@ -1,4 +1,4 @@
-"""Tests for department policies on built-in templates (#723)."""
+"""Tests for department policy configuration in built-in templates (#723)."""
 
 import pytest
 
@@ -7,11 +7,11 @@ from synthorg.core.company import ApprovalChain, Department
 from synthorg.templates.loader import load_template
 from synthorg.templates.renderer import render_template
 
-# -- Helpers ───────────────────────────────────────────────────────
+# -- Helpers ---------------------------------------------------------------
 
 
 def _get_dept(config: RootConfig, name: str) -> Department:
-    """Find a department by name in a rendered config."""
+    """Find a department by name; calls pytest.fail if absent."""
     for d in config.departments:
         if d.name == name:
             return d
@@ -20,7 +20,7 @@ def _get_dept(config: RootConfig, name: str) -> Department:
 
 
 def _get_chain(dept: Department, action_type: str) -> ApprovalChain:
-    """Find an approval chain by action type in a department."""
+    """Find an approval chain by action type; calls pytest.fail if absent."""
     for c in dept.policies.approval_chains:
         if c.action_type == action_type:
             return c
@@ -31,41 +31,19 @@ def _get_chain(dept: Department, action_type: str) -> ApprovalChain:
     )
 
 
-# -- Fixtures ──────────────────────────────────────────────────────
+def _render(name: str) -> RootConfig:
+    """Load and render a built-in template by name."""
+    return render_template(load_template(name))
 
 
-@pytest.fixture(scope="module")
-def dev_shop_config() -> RootConfig:
-    """Render the dev_shop template once for all tests."""
-    return render_template(load_template("dev_shop"))
-
-
-@pytest.fixture(scope="module")
-def product_team_config() -> RootConfig:
-    """Render the product_team template once for all tests."""
-    return render_template(load_template("product_team"))
-
-
-@pytest.fixture(scope="module")
-def agency_config() -> RootConfig:
-    """Render the agency template once for all tests."""
-    return render_template(load_template("agency"))
-
-
-@pytest.fixture(scope="module")
-def full_company_config() -> RootConfig:
-    """Render the full_company template once for all tests."""
-    return render_template(load_template("full_company"))
-
-
-# -- Tests ─────────────────────────────────────────────────────────
+# -- Tests -----------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestBuiltinDepartmentPolicies:
-    """Verify department policies on built-in templates (#723)."""
+    """Verify review requirements and approval chains across built-in templates."""
 
-    # -- engineering review requirements (parametrized) ────────────
+    # -- engineering review requirements (parametrized) --------------------
 
     @pytest.mark.parametrize(
         ("template_name", "expected_reviewers"),
@@ -81,69 +59,48 @@ class TestBuiltinDepartmentPolicies:
         template_name: str,
         expected_reviewers: int,
     ) -> None:
-        config = render_template(load_template(template_name))
+        config = _render(template_name)
         eng = _get_dept(config, "engineering")
         assert eng.policies.review_requirements.min_reviewers == expected_reviewers
 
-    # -- dev_shop ──────────────────────────────────────────────────
+    # -- dev_shop ----------------------------------------------------------
 
-    def test_dev_shop_qa_test_coverage_chain(
-        self,
-        dev_shop_config: RootConfig,
-    ) -> None:
-        qa = _get_dept(dev_shop_config, "quality_assurance")
+    def test_dev_shop_qa_test_coverage_chain(self) -> None:
+        qa = _get_dept(_render("dev_shop"), "quality_assurance")
         chain = _get_chain(qa, "test_coverage")
-        assert "QA Lead" in chain.approvers
+        assert chain.approvers == ("QA Lead",)
 
-    def test_dev_shop_operations_default_policies(
-        self,
-        dev_shop_config: RootConfig,
-    ) -> None:
-        ops = _get_dept(dev_shop_config, "operations")
+    def test_dev_shop_operations_default_policies(self) -> None:
+        ops = _get_dept(_render("dev_shop"), "operations")
         assert ops.policies.approval_chains == ()
 
-    # -- product_team ──────────────────────────────────────────────
+    # -- product_team ------------------------------------------------------
 
-    def test_product_team_design_review_chain(
-        self,
-        product_team_config: RootConfig,
-    ) -> None:
-        design = _get_dept(product_team_config, "design")
+    def test_product_team_design_review_chain(self) -> None:
+        design = _get_dept(_render("product_team"), "design")
         chain = _get_chain(design, "design_review")
-        assert "UX Designer" in chain.approvers
+        assert chain.approvers == ("UX Designer",)
 
-    # -- agency ────────────────────────────────────────────────────
+    # -- agency ------------------------------------------------------------
 
-    def test_agency_operations_client_approval_chain(
-        self,
-        agency_config: RootConfig,
-    ) -> None:
-        ops = _get_dept(agency_config, "operations")
+    def test_agency_operations_client_approval_chain(self) -> None:
+        ops = _get_dept(_render("agency"), "operations")
         chain = _get_chain(ops, "client_approval")
-        assert "Project Manager" in chain.approvers
+        assert chain.approvers == ("Project Manager",)
 
-    # -- full_company ──────────────────────────────────────────────
+    # -- full_company ------------------------------------------------------
 
-    def test_full_company_engineering_code_review_chain(
-        self,
-        full_company_config: RootConfig,
-    ) -> None:
-        eng = _get_dept(full_company_config, "engineering")
+    def test_full_company_engineering_code_review_chain(self) -> None:
+        eng = _get_dept(_render("full_company"), "engineering")
         chain = _get_chain(eng, "code_review")
         assert chain.approvers == ("Software Architect", "CTO")
 
-    def test_full_company_security_review_chain(
-        self,
-        full_company_config: RootConfig,
-    ) -> None:
-        sec = _get_dept(full_company_config, "security")
+    def test_full_company_security_review_chain(self) -> None:
+        sec = _get_dept(_render("full_company"), "security")
         chain = _get_chain(sec, "security_review")
         assert chain.approvers == ("Security Engineer", "CTO")
 
-    def test_full_company_operations_change_management_chain(
-        self,
-        full_company_config: RootConfig,
-    ) -> None:
-        ops = _get_dept(full_company_config, "operations")
+    def test_full_company_operations_change_management_chain(self) -> None:
+        ops = _get_dept(_render("full_company"), "operations")
         chain = _get_chain(ops, "change_management")
-        assert "COO" in chain.approvers
+        assert chain.approvers == ("COO",)
