@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ErrorFallbackProps } from '@/components/ui/error-boundary'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 
 function ThrowingComponent({ shouldThrow }: { shouldThrow: boolean }) {
@@ -17,7 +18,7 @@ function ConditionalThrower() {
   return <div>Recovered</div>
 }
 
-function CustomFallback({ error }: { error: Error; resetErrorBoundary: () => void; level: string }) {
+function CustomFallback({ error }: ErrorFallbackProps) {
   return <div>Custom: {error.message}</div>
 }
 

@@ -62,6 +62,9 @@ describe('SkeletonCard', () => {
     const { container } = render(<SkeletonCard lines={4} />)
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper).toBeInTheDocument()
+    // SkeletonCard delegates to SkeletonText -- verify correct number of skeleton lines
+    const skeletonLines = wrapper.querySelectorAll('.h-3')
+    expect(skeletonLines).toHaveLength(4)
   })
 })
 

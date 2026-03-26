@@ -1,21 +1,36 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import {
   _commandGroups,
+  _reset,
   _setOpen,
   _updateCommandsSnapshot,
+  useRegisterCommands,
 } from '@/hooks/useCommandPalette'
 import { CommandPalette } from '@/components/ui/command-palette'
 
-// cmdk uses ResizeObserver and scrollIntoView which are not in jsdom
-class ResizeObserverMock {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
-Element.prototype.scrollIntoView = vi.fn()
+let originalResizeObserver: typeof globalThis.ResizeObserver
+let originalScrollIntoView: typeof Element.prototype.scrollIntoView
+
+beforeAll(() => {
+  originalResizeObserver = globalThis.ResizeObserver
+  originalScrollIntoView = Element.prototype.scrollIntoView
+
+  // cmdk uses ResizeObserver and scrollIntoView which are not in jsdom
+  class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
+  Element.prototype.scrollIntoView = vi.fn()
+})
+
+afterAll(() => {
+  globalThis.ResizeObserver = originalResizeObserver
+  Element.prototype.scrollIntoView = originalScrollIntoView
+})
 
 function makeCommand(overrides: Partial<CommandItem> = {}): CommandItem {
   return {
@@ -35,9 +50,7 @@ function setupCommands(commands: CommandItem[]) {
 
 describe('CommandPalette', () => {
   beforeEach(() => {
-    _commandGroups.clear()
-    _updateCommandsSnapshot()
-    _setOpen(false)
+    _reset()
     localStorage.clear()
   })
 
@@ -107,5 +120,23 @@ describe('CommandPalette', () => {
 
     await user.click(screen.getByText('Dashboard'))
     expect(action).toHaveBeenCalledTimes(1)
+  })
+
+  it('useRegisterCommands registers commands on mount and cleans up on unmount', () => {
+    const commands = [makeCommand({ label: 'Mounted Cmd' })]
+    const { unmount } = renderHook(() => useRegisterCommands(commands))
+
+    // Commands should be registered
+    _setOpen(true)
+    render(<CommandPalette />)
+    expect(screen.getByText('Mounted Cmd')).toBeInTheDocument()
+    cleanup()
+
+    // Unmount should clean up
+    unmount()
+    _setOpen(true)
+    render(<CommandPalette />)
+    expect(screen.queryByText('Mounted Cmd')).not.toBeInTheDocument()
+    cleanup()
   })
 })

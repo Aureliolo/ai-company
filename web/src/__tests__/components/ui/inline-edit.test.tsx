@@ -104,8 +104,41 @@ describe('InlineEdit', () => {
     expect(container.firstChild).toHaveClass('custom')
   })
 
+  it('saves on blur', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<InlineEdit value="original" onSave={onSave} />)
+
+    // Enter edit mode
+    await user.click(screen.getByRole('button'))
+    const input = screen.getByRole('textbox')
+
+    // Change value and blur
+    await user.clear(input)
+    await user.type(input, 'updated')
+    await user.tab()
+
+    expect(onSave).toHaveBeenCalledWith('updated')
+  })
+
+  it('does not double-save on Enter followed by blur', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<InlineEdit value="original" onSave={onSave} />)
+
+    await user.click(screen.getByRole('button'))
+    const input = screen.getByRole('textbox')
+
+    await user.clear(input)
+    await user.type(input, 'changed')
+    await user.keyboard('{Enter}')
+
+    // onSave should only be called once even though blur may fire after Enter
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
   describe('property: string values round-trip', () => {
-    it('cancel preserves original value', () => {
+    it('display renders generated values', () => {
       fc.assert(
         fc.property(fc.string({ minLength: 1, maxLength: 50 }), (value) => {
           const { unmount } = render(

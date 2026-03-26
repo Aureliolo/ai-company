@@ -1,5 +1,6 @@
 import { Command } from 'cmdk'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FocusScope } from '@radix-ui/react-focus-scope'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CommandItem } from '@/hooks/useCommandPalette'
@@ -15,15 +16,22 @@ function getRecentIds(): string[] {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter((v): v is string => typeof v === 'string').slice(0, MAX_RECENT)
-  } catch {
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to read recent commands from localStorage:', err)
+    }
     return []
   }
 }
 
 function addRecentId(id: string) {
-  const recent = getRecentIds().filter((r) => r !== id)
-  recent.unshift(id)
-  localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
+  try {
+    const recent = getRecentIds().filter((r) => r !== id)
+    recent.unshift(id)
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
+  } catch {
+    // Best-effort convenience feature -- never block command execution
+  }
 }
 
 interface CommandPaletteProps {
@@ -34,8 +42,6 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   const { commands, isOpen, close, toggle } = useCommandPalette()
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<'global' | 'local'>('global')
-  const panelRef = useRef<HTMLDivElement>(null)
-
   // Global keyboard shortcuts: Cmd+K / Ctrl+K to toggle, Escape to close
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -51,13 +57,13 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [toggle, close, isOpen])
 
-  // Reset search when opening (uses ref to avoid setState-in-effect)
-  const prevOpenRef = useRef(isOpen)
-  if (isOpen && !prevOpenRef.current) {
-    setSearch('')
-    setScope('global')
-  }
-  prevOpenRef.current = isOpen
+  // Reset search and scope when palette opens
+  useEffect(() => {
+    if (isOpen) {
+      setSearch('') // eslint-disable-line @eslint-react/set-state-in-effect -- intentional reset on open
+      setScope('global') // eslint-disable-line @eslint-react/set-state-in-effect -- intentional reset on open
+    }
+  }, [isOpen])
 
   const filteredCommands = useMemo(() => {
     return commands.filter((cmd) => {
@@ -89,7 +95,13 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   const handleSelect = useCallback(
     (cmd: CommandItem) => {
       addRecentId(cmd.id)
-      cmd.action()
+      try {
+        cmd.action()
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('Command action failed:', err)
+        }
+      }
       close()
     },
     [close],
@@ -107,7 +119,13 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   const hasLocalCommands = commands.some((c) => c.scope === 'local')
 
   return (
-    <div className="fixed inset-0 z-50" onKeyDown={handleScopeToggle}>
+    <div
+      className="fixed inset-0 z-50"
+      onKeyDown={handleScopeToggle}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Command palette"
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
@@ -115,7 +133,8 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         aria-hidden="true"
       />
       {/* Panel */}
-      <div className="flex items-start justify-center pt-[15vh]" ref={panelRef}>
+      <div className="flex items-start justify-center pt-[15vh]">
+        <FocusScope trapped loop>
         <Command
           className={cn(
             'relative w-full max-w-[640px] rounded-xl border border-border-bright bg-surface shadow-lg',
@@ -182,6 +201,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
             )}
           </div>
         </Command>
+        </FocusScope>
       </div>
     </div>
   )

@@ -13,8 +13,6 @@ export interface CommandItem {
   group: string
   /** Additional search terms. */
   keywords?: string[]
-  /** Whether this item is pinned to the top. */
-  pinned?: boolean
   /** Scope: 'global' (default) or 'local' (page-specific). */
   scope?: 'global' | 'local'
 }
@@ -44,7 +42,7 @@ function getAllCommands(): CommandItem[] {
   return all
 }
 
-// Snapshot references for useSyncExternalStore (must be referentially stable when unchanged)
+// Snapshot reference for useSyncExternalStore (rebuilt on every registration change)
 let commandsSnapshot: CommandItem[] = []
 
 function updateCommandsSnapshot() {
@@ -93,7 +91,7 @@ function setOpen(value: boolean) {
 /**
  * Hook for interacting with the global command palette.
  *
- * - `registerCommands(items)` registers page-local commands; returns a cleanup function.
+ * - `registerCommands(items)` registers commands with the palette; returns a cleanup function.
  * - `open()` / `close()` programmatically control the palette.
  * - `commands` is the current list of all registered commands.
  * - `isOpen` reflects the palette's open state.
@@ -118,12 +116,23 @@ export function useCommandPalette() {
 
 /**
  * Hook that registers commands on mount and cleans up on unmount.
+ *
+ * Note: `commands` should be memoized (e.g., via `useMemo` or a module-level constant)
+ * to avoid re-registration on every render.
  */
 export function useRegisterCommands(commands: CommandItem[]) {
   useEffect(() => {
     const cleanup = registerCommands(commands)
     return cleanup
   }, [commands])
+}
+
+/** Reset all module-level state (for testing only). */
+export function _reset() {
+  commandGroups.clear()
+  openState = false
+  registrationCounter = 0
+  updateCommandsSnapshot()
 }
 
 // Exported for testing

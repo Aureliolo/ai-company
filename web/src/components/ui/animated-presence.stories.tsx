@@ -58,6 +58,6 @@ function TransitionDemo() {
 }
 
 export const Default: Story = {
-  render: () => <TransitionDemo />,
   args: { routeKey: '/', children: null },
+  render: () => <TransitionDemo />,
 }

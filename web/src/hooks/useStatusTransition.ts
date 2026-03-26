@@ -4,8 +4,10 @@ import { statusColorTransition } from '@/lib/motion'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { getStatusColor } from '@/lib/utils'
 
+type StatusToken = ReturnType<typeof getStatusColor>
+
 /** CSS variable references for semantic status colors. */
-const STATUS_COLOR_MAP: Record<string, string> = {
+const STATUS_COLOR_MAP: Record<StatusToken, string> = {
   success: 'var(--so-success)',
   accent: 'var(--so-accent)',
   warning: 'var(--so-warning)',
@@ -14,8 +16,8 @@ const STATUS_COLOR_MAP: Record<string, string> = {
 }
 
 interface UseStatusTransitionReturn {
-  /** The semantic color token name (e.g. "success", "danger"). */
-  displayColor: string
+  /** The semantic color token name (e.g. "success", "danger", "text-secondary"). */
+  displayColor: StatusToken
   /** Props to spread on a motion element for animated color transitions. */
   motionProps: {
     animate: { backgroundColor: string }
@@ -32,7 +34,7 @@ export function useStatusTransition(
   status: AgentRuntimeStatus,
 ): UseStatusTransitionReturn {
   const colorToken = getStatusColor(status)
-  const cssColor = STATUS_COLOR_MAP[colorToken] ?? 'var(--so-text-secondary)'
+  const cssColor = STATUS_COLOR_MAP[colorToken]
 
   const motionProps = useMemo(
     () => ({

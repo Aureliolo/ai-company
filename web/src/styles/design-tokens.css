@@ -125,7 +125,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .so-shimmer {
+  .so-shimmer,
+  .so-flash-active {
     animation: none !important;
   }
 }

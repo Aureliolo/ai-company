@@ -46,8 +46,14 @@ class ErrorBoundaryInner extends Component<
   }
 
   resetErrorBoundary = () => {
-    this.props.onReset?.()
     this.setState({ hasError: false, error: null })
+    try {
+      this.props.onReset?.()
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.error('ErrorBoundary onReset failed:', err)
+      }
+    }
   }
 
   render() {
@@ -103,6 +109,7 @@ function DefaultErrorFallback({
         <AlertTriangle className="size-4" aria-hidden="true" />
         <span>{message}</span>
         <button
+          type="button"
           onClick={resetErrorBoundary}
           className="text-accent underline underline-offset-2 hover:text-accent-foreground"
         >

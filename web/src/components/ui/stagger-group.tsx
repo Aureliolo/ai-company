@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { cardEntrance } from '@/lib/motion'
 import { cn } from '@/lib/utils'
@@ -25,7 +26,7 @@ interface StaggerItemProps {
  * Container that staggers its children's entrance animations.
  *
  * Use with `StaggerItem` children for coordinated card entrance effects.
- * Limits stagger to ~10 items (300ms) to avoid long entrance sequences.
+ * Consider limiting to ~10 items (300ms total at default stagger) to avoid long entrance sequences.
  */
 export function StaggerGroup({
   children,
@@ -33,15 +34,18 @@ export function StaggerGroup({
   staggerDelay = 0.03,
   animate = true,
 }: StaggerGroupProps) {
-  const containerVariants = {
-    hidden: {},
-    visible: {
-      transition: {
-        staggerChildren: staggerDelay,
-        delayChildren: 0,
+  const containerVariants = useMemo(
+    () => ({
+      hidden: {},
+      visible: {
+        transition: {
+          staggerChildren: staggerDelay,
+          delayChildren: 0,
+        },
       },
-    },
-  }
+    }),
+    [staggerDelay],
+  )
 
   return (
     <motion.div

@@ -56,6 +56,10 @@ export const WithDescription: Story = {
 }
 
 export const AllVariants: Story = {
+  args: {
+    toast: { id: '1', variant: 'success', title: 'All variants' },
+    onDismiss: () => {},
+  },
   render: () => (
     <div className="flex flex-col gap-2">
       <Toast
@@ -76,10 +80,6 @@ export const AllVariants: Story = {
       />
     </div>
   ),
-  args: {
-    toast: { id: '1', variant: 'success', title: 'All variants' },
-    onDismiss: () => {},
-  },
 }
 
 function StackedDemo() {

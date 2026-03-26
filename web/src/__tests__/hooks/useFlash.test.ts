@@ -78,6 +78,7 @@ describe('useFlash', () => {
   })
 
   it('multiple rapid triggers reset the timer (no stacking)', () => {
+    const halfway = Math.floor(STATUS_FLASH.totalMs / 2)
     const { result } = renderHook(() => useFlash())
 
     act(() => {
@@ -86,7 +87,7 @@ describe('useFlash', () => {
 
     // Advance partway through
     act(() => {
-      vi.advanceTimersByTime(300)
+      vi.advanceTimersByTime(halfway)
     })
     expect(result.current.flashing).toBe(true)
 
@@ -98,13 +99,13 @@ describe('useFlash', () => {
     // Advance by the remaining original time -- should still be flashing
     // because the timer was reset
     act(() => {
-      vi.advanceTimersByTime(300)
+      vi.advanceTimersByTime(halfway)
     })
     expect(result.current.flashing).toBe(true)
 
     // Advance the rest of the new timer
     act(() => {
-      vi.advanceTimersByTime(STATUS_FLASH.totalMs - 300)
+      vi.advanceTimersByTime(STATUS_FLASH.totalMs - halfway)
     })
     expect(result.current.flashing).toBe(false)
   })

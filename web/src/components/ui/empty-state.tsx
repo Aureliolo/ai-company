@@ -2,13 +2,13 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
-interface EmptyStateAction {
+export interface EmptyStateAction {
   label: string
   onClick: () => void
   variant?: 'default' | 'outline'
 }
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   /** Optional icon displayed above the title. */
   icon?: LucideIcon
   /** Primary message. */

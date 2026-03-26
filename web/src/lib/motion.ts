@@ -2,7 +2,7 @@
  * Framer Motion animation presets for the SynthOrg dashboard.
  *
  * Import these constants instead of hardcoding animation values in components.
- * See docs/design/ux-guidelines.md Section 4 for the full animation language.
+ * See docs/design/ux-guidelines.md (Animation Language section) for the full animation language.
  *
  * @example
  * ```tsx
@@ -148,9 +148,9 @@ export const pageEnter: Variants = {
  * Apply via CSS `@keyframes` or inline style -- not a Framer Motion variant,
  * because the flash triggers on data change, not mount/unmount.
  *
- * Recommended CSS implementation:
+ * Recommended CSS implementation (actual keyframe is `so-status-flash` in `design-tokens.css`):
  * ```css
- * \@keyframes status-flash {
+ * \@keyframes so-status-flash {
  *   0%   { background-color: var(--so-overlay-flash); }
  *   33%  { background-color: var(--so-overlay-flash); }  // hold
  *   50%  { background-color: var(--so-overlay-flash); }  // hold end
@@ -158,11 +158,15 @@ export const pageEnter: Variants = {
  * }
  * ```
  */
+const _FLASH_MS = 200;
+const _HOLD_MS = 100;
+const _FADE_MS = 300;
+
 export const STATUS_FLASH = {
-  flashMs: 200,
-  holdMs: 100,
-  fadeMs: 300,
-  totalMs: 600,
+  flashMs: _FLASH_MS,
+  holdMs: _HOLD_MS,
+  fadeMs: _FADE_MS,
+  totalMs: _FLASH_MS + _HOLD_MS + _FADE_MS,
 } as const;
 
 // ---------------------------------------------------------------------------

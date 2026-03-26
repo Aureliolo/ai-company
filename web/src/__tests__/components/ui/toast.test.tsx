@@ -83,6 +83,16 @@ describe('Toast', () => {
     render(<Toast toast={baseToast} onDismiss={vi.fn()} />)
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
+
+  it('hides dismiss button when dismissible is false', () => {
+    render(
+      <Toast
+        toast={{ ...baseToast, dismissible: false }}
+        onDismiss={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /dismiss/i })).not.toBeInTheDocument()
+  })
 })
 
 describe('ToastContainer', () => {

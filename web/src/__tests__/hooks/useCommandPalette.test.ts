@@ -1,15 +1,13 @@
 import { act, renderHook } from '@testing-library/react'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import {
-  _commandGroups,
-  _setOpen,
-  _updateCommandsSnapshot,
+  _reset,
   useCommandPalette,
 } from '@/hooks/useCommandPalette'
 
 function makeCommand(overrides: Partial<CommandItem> = {}): CommandItem {
   return {
-    id: 'test-1',
+    id: `test-${Math.random().toString(36).slice(2)}`,
     label: 'Test Command',
     action: vi.fn(),
     group: 'Test',
@@ -19,10 +17,7 @@ function makeCommand(overrides: Partial<CommandItem> = {}): CommandItem {
 
 describe('useCommandPalette', () => {
   beforeEach(() => {
-    // Reset the module-level state
-    _commandGroups.clear()
-    _updateCommandsSnapshot()
-    _setOpen(false)
+    _reset()
   })
 
   it('starts with empty commands', () => {

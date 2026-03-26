@@ -13,7 +13,7 @@ interface UseFlashOptions {
 interface UseFlashReturn {
   /** Whether the flash is currently active. */
   flashing: boolean
-  /** CSS class name to apply during flash (empty string when not flashing). */
+  /** CSS class name to apply during flash (empty string when not flashing). Requires a matching CSS rule for `so-flash-active` -- use `flashStyle` for built-in animation. */
   flashClassName: string
   /** Trigger a flash animation. Resets if called while already flashing. */
   triggerFlash: () => void

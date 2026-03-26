@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import type { Variants } from 'framer-motion'
 import {
   badgeBounce,
-  cardEntrance as cardEntrance,
+  cardEntrance,
   inlineEditEntrance,
   listItemLayout,
   modalEntrance,
@@ -161,6 +161,12 @@ describe('motion presets', () => {
   })
 
   describe('reduced motion', () => {
+    const originalMatchMedia = window.matchMedia
+
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+    })
+
     it('reducedMotionInstant has zero duration', () => {
       expect(reducedMotionInstant).toMatchObject({ duration: 0 })
     })

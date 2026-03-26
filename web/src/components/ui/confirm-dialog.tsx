@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
 
-interface ConfirmDialogProps {
+export interface ConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
@@ -62,17 +62,24 @@ export function ConfirmDialog({
                 {cancelLabel}
               </Button>
             </AlertDialog.Cancel>
-            <AlertDialog.Action asChild onClick={onConfirm}>
-              <Button
-                variant={variant === 'destructive' ? 'destructive' : 'default'}
-                disabled={loading}
-              >
-                {loading && (
-                  <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
-                )}
-                {confirmLabel}
-              </Button>
-            </AlertDialog.Action>
+            <Button
+              variant={variant === 'destructive' ? 'destructive' : 'default'}
+              disabled={loading}
+              onClick={async (e) => {
+                e.preventDefault()
+                try {
+                  await onConfirm()
+                  onOpenChange(false)
+                } catch {
+                  // Dialog stays open on error -- caller can surface the error.
+                }
+              }}
+            >
+              {loading && (
+                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+              )}
+              {confirmLabel}
+            </Button>
           </div>
         </AlertDialog.Content>
       </AlertDialog.Portal>

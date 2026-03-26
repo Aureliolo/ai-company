@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-interface SkeletonProps {
+export interface SkeletonProps {
   className?: string
   /** Whether to show shimmer animation (respects prefers-reduced-motion). Default: true. */
   shimmer?: boolean

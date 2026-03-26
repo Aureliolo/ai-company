@@ -20,6 +20,14 @@ interface ToastState {
   dismissAll: () => void
 }
 
+/** Variant-specific auto-dismiss durations. Warning/error are persistent (no auto-dismiss). */
+const VARIANT_DURATIONS: Record<ToastVariant, number | null> = {
+  success: 3000,
+  info: 5000,
+  warning: null,
+  error: null,
+}
+
 const DEFAULT_DURATION = 5000
 
 /** Module-scoped timer map for auto-dismiss cleanup. */
@@ -32,18 +40,20 @@ export const useToastStore = create<ToastState>((set, get) => ({
 
   add(toast) {
     const id = String(++nextId)
-    const duration = toast.duration ?? DEFAULT_DURATION
+    const duration = toast.duration ?? VARIANT_DURATIONS[toast.variant] ?? DEFAULT_DURATION
 
     set((state) => ({
       toasts: [...state.toasts, { ...toast, id }],
     }))
 
-    // Schedule auto-dismiss
-    const timer = setTimeout(() => {
-      timers.delete(id)
-      get().dismiss(id)
-    }, duration)
-    timers.set(id, timer)
+    // Schedule auto-dismiss (null duration means persistent)
+    if (duration !== null) {
+      const timer = setTimeout(() => {
+        timers.delete(id)
+        get().dismiss(id)
+      }, duration)
+      timers.set(id, timer)
+    }
 
     return id
   },

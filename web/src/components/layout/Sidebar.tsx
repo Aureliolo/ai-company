@@ -201,7 +201,11 @@ export function Sidebar() {
               className={cn('size-4 shrink-0', collapsed && 'mx-auto')}
               aria-hidden="true"
             />
-            {!collapsed && <span className="text-xs">Cmd+K to search</span>}
+            {!collapsed && (
+              <span className="text-xs">
+                {typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+K to search
+              </span>
+            )}
           </button>
 
           {/* Connection status placeholder */}

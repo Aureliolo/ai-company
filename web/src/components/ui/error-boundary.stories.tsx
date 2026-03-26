@@ -14,9 +14,8 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-function BrokenComponent() {
+function BrokenComponent(): React.ReactNode {
   throw new Error('Something unexpected happened')
-  return null
 }
 
 export const PageLevel: Story = {

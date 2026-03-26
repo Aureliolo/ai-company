@@ -24,21 +24,21 @@ describe('useStatusTransition', () => {
 
   it('maps active to success color', () => {
     const { result } = renderHook(() => useStatusTransition('active'))
-    expect(result.current.displayColor).toContain('success')
+    expect(result.current.displayColor).toBe('success')
   })
 
   it('maps error to danger color', () => {
     const { result } = renderHook(() => useStatusTransition('error'))
-    expect(result.current.displayColor).toContain('danger')
+    expect(result.current.displayColor).toBe('danger')
   })
 
   it('maps idle to accent color', () => {
     const { result } = renderHook(() => useStatusTransition('idle'))
-    expect(result.current.displayColor).toContain('accent')
+    expect(result.current.displayColor).toBe('accent')
   })
 
   it('maps offline to secondary color', () => {
     const { result } = renderHook(() => useStatusTransition('offline'))
-    expect(result.current.displayColor).toContain('secondary')
+    expect(result.current.displayColor).toBe('text-secondary')
   })
 })

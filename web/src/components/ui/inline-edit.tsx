@@ -74,20 +74,19 @@ export function InlineEdit({
     if (state !== 'editing') return
     saveInProgressRef.current = true
 
-    // Validate
-    if (validate) {
-      const validationError = validate(editValue)
-      if (validationError) {
-        setError(validationError)
-        saveInProgressRef.current = false
-        return
-      }
-    }
-
-    setState('saving')
-    setError(null)
-
     try {
+      // Validate
+      if (validate) {
+        const validationError = validate(editValue)
+        if (validationError) {
+          setError(validationError)
+          return
+        }
+      }
+
+      setState('saving')
+      setError(null)
+
       await onSave(editValue)
       setState('display')
       triggerFlash()
