@@ -14,7 +14,7 @@ export function StatPill({ label, value, className }: StatPillProps) {
         className,
       )}
     >
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <span className="text-compact uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
       <span className="font-mono text-xs font-semibold text-foreground">

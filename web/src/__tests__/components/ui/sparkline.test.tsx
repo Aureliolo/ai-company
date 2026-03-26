@@ -58,4 +58,18 @@ describe('Sparkline', () => {
 
     expect(svg).toHaveClass('my-class')
   })
+
+  it('does not inject animation style when animated is false', () => {
+    const { container } = render(<Sparkline data={[1, 2, 3]} animated={false} />)
+
+    expect(container.querySelector('style')).not.toBeInTheDocument()
+  })
+
+  it('renders correctly for flat data (all identical values)', () => {
+    const { container } = render(<Sparkline data={[5, 5, 5]} />)
+    const svg = container.querySelector('svg')
+
+    expect(svg).toBeInTheDocument()
+    expect(container.querySelector('polyline')).toBeInTheDocument()
+  })
 })

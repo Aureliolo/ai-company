@@ -67,4 +67,22 @@ describe('MetricCard', () => {
 
     expect(container.firstChild).toHaveClass('my-class')
   })
+
+  it('handles progress with total=0 without division error', () => {
+    const { container } = render(
+      <MetricCard label="Tasks" value={24} progress={{ current: 5, total: 0 }} />,
+    )
+
+    const progressbar = container.querySelector('[role="progressbar"]')
+    expect(progressbar).toBeInTheDocument()
+    expect(progressbar).toHaveAttribute('aria-valuenow', '0')
+  })
+
+  it('does not render sparkline for single-element data', () => {
+    const { container } = render(
+      <MetricCard label="Tasks" value={24} sparklineData={[5]} />,
+    )
+
+    expect(container.querySelector('svg')).not.toBeInTheDocument()
+  })
 })

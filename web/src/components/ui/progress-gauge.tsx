@@ -1,6 +1,6 @@
-import { cn, getHealthColor } from '@/lib/utils'
+import { cn, getHealthColor, type SemanticColor } from '@/lib/utils'
 
-const COLOR_CLASSES: Record<string, string> = {
+const COLOR_CLASSES: Record<SemanticColor, string> = {
   success: 'stroke-success',
   accent: 'stroke-accent',
   warning: 'stroke-warning',
@@ -8,8 +8,8 @@ const COLOR_CLASSES: Record<string, string> = {
 }
 
 const SIZE_CONFIG = {
-  sm: { radius: 32, stroke: 6, valueSize: 'text-sm', labelSize: 'text-[10px]' },
-  md: { radius: 48, stroke: 6, valueSize: 'text-lg', labelSize: 'text-[11px]' },
+  sm: { radius: 32, stroke: 6, valueSize: 'text-sm', labelSize: 'text-micro' },
+  md: { radius: 48, stroke: 6, valueSize: 'text-lg', labelSize: 'text-compact' },
 } as const
 
 interface ProgressGaugeProps {
@@ -27,8 +27,9 @@ export function ProgressGauge({
   size = 'md',
   className,
 }: ProgressGaugeProps) {
-  const clampedValue = Math.max(0, Math.min(value, max))
-  const percentage = Math.round((clampedValue / max) * 100)
+  const safeMax = Math.max(max, 1)
+  const clampedValue = Math.max(0, Math.min(value, safeMax))
+  const percentage = Math.round((clampedValue / safeMax) * 100)
   const color = getHealthColor(percentage)
   const config = SIZE_CONFIG[size]
 

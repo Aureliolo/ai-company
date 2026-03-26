@@ -1,6 +1,6 @@
-import { cn, getHealthColor } from '@/lib/utils'
+import { cn, getHealthColor, type SemanticColor } from '@/lib/utils'
 
-const BAR_COLOR_CLASSES: Record<string, string> = {
+const BAR_COLOR_CLASSES: Record<SemanticColor, string> = {
   success: 'bg-success',
   accent: 'bg-accent',
   warning: 'bg-warning',
@@ -56,8 +56,8 @@ export function DeptHealthBar({
 
       {/* Stats row */}
       <div className="flex gap-3 text-xs text-muted-foreground">
-        <span>{agentCount} agents</span>
-        <span>{taskCount} tasks</span>
+        <span>{agentCount} {agentCount === 1 ? 'agent' : 'agents'}</span>
+        <span>{taskCount} {taskCount === 1 ? 'task' : 'tasks'}</span>
       </div>
     </div>
   )

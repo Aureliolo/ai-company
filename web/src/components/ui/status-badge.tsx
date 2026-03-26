@@ -1,21 +1,22 @@
-import { cn, type AgentStatus, getStatusColor } from '@/lib/utils'
+import { cn, type AgentRuntimeStatus, type SemanticColor, getStatusColor } from '@/lib/utils'
 
-const STATUS_LABELS: Record<AgentStatus, string> = {
+const STATUS_LABELS: Record<AgentRuntimeStatus, string> = {
   active: 'Active',
   idle: 'Idle',
   error: 'Error',
   offline: 'Offline',
 }
 
-const DOT_COLOR_CLASSES: Record<string, string> = {
+const DOT_COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   success: 'bg-success',
   accent: 'bg-accent',
+  warning: 'bg-warning',
   danger: 'bg-danger',
   'text-secondary': 'bg-text-secondary',
 }
 
 interface StatusBadgeProps {
-  status: AgentStatus
+  status: AgentRuntimeStatus
   label?: boolean
   pulse?: boolean
   className?: string

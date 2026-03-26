@@ -2,34 +2,54 @@ import { render, screen } from '@testing-library/react'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 
 describe('DeptHealthBar', () => {
+  const defaultProps = {
+    name: 'Engineering',
+    health: 85,
+    agentCount: 5,
+    taskCount: 12,
+  }
+
   it('renders department name', () => {
-    render(<DeptHealthBar name="Engineering" health={85} agentCount={5} taskCount={12} />)
+    render(<DeptHealthBar {...defaultProps} />)
 
     expect(screen.getByText('Engineering')).toBeInTheDocument()
   })
 
   it('renders health percentage', () => {
-    render(<DeptHealthBar name="Engineering" health={85} agentCount={5} taskCount={12} />)
+    render(<DeptHealthBar {...defaultProps} />)
 
     expect(screen.getByText('85%')).toBeInTheDocument()
   })
 
   it('renders agent count', () => {
-    render(<DeptHealthBar name="Engineering" health={85} agentCount={5} taskCount={12} />)
+    render(<DeptHealthBar {...defaultProps} />)
 
     expect(screen.getByText(/5 agents/)).toBeInTheDocument()
   })
 
   it('renders task count', () => {
-    render(<DeptHealthBar name="Engineering" health={85} agentCount={5} taskCount={12} />)
+    render(<DeptHealthBar {...defaultProps} />)
 
     expect(screen.getByText(/12 tasks/)).toBeInTheDocument()
   })
 
+  it('uses singular form for count of 1', () => {
+    render(<DeptHealthBar {...defaultProps} agentCount={1} taskCount={1} />)
+
+    expect(screen.getByText(/1 agent$/)).toBeInTheDocument()
+    expect(screen.getByText(/1 task$/)).toBeInTheDocument()
+  })
+
   it('clamps health to 0-100 range', () => {
-    render(<DeptHealthBar name="Engineering" health={120} agentCount={1} taskCount={1} />)
+    render(<DeptHealthBar {...defaultProps} health={120} agentCount={1} taskCount={1} />)
 
     expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  it('clamps negative health to 0', () => {
+    render(<DeptHealthBar {...defaultProps} health={-20} />)
+
+    expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
   it('handles zero health', () => {

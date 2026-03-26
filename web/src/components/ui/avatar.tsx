@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
 const SIZE_CLASSES = {
-  sm: 'size-6 text-[10px]',
+  sm: 'size-6 text-micro',
   md: 'size-8 text-xs',
   lg: 'size-10 text-sm',
 } as const

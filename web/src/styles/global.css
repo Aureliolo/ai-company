@@ -36,6 +36,12 @@
   --font-sans: var(--so-font-sans);
   --font-mono: var(--so-font-mono);
 
+  /* ---- Typography scale (compact data display) ---- */
+  --font-size-micro: var(--so-text-micro);
+  --font-size-compact: var(--so-text-compact);
+  --font-size-body-sm: var(--so-text-body-sm);
+  --font-size-metric: var(--so-text-metric);
+
   /* ---- Density-derived spacing ---- */
   --spacing-card: var(--so-density-card-padding);
   --spacing-section-gap: var(--so-density-section-gap);

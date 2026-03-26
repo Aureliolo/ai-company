@@ -47,6 +47,16 @@ describe('Avatar', () => {
   it('handles empty name gracefully', () => {
     render(<Avatar name="" />)
 
-    expect(screen.getByRole('img', { hidden: true })).toBeInTheDocument()
+    const avatar = screen.getByRole('img')
+    expect(avatar).toBeInTheDocument()
+    expect(avatar).not.toHaveAttribute('aria-label')
+  })
+
+  it('handles whitespace-only name gracefully', () => {
+    render(<Avatar name="   " />)
+
+    const avatar = screen.getByRole('img')
+    expect(avatar).toBeInTheDocument()
+    expect(avatar.textContent).toBe('')
   })
 })

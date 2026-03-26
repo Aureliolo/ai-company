@@ -53,4 +53,19 @@ describe('ProgressGauge', () => {
 
     expect(container.firstChild).toHaveClass('my-class')
   })
+
+  it('renders small size variant with different dimensions', () => {
+    const { container } = render(<ProgressGauge value={50} size="sm" />)
+    const svg = container.querySelector('svg')
+
+    expect(svg).toBeInTheDocument()
+    // sm radius=32, stroke=6 -> svgWidth=(32+6)*2=76, md radius=48 -> svgWidth=(48+6)*2=108
+    expect(svg).toHaveAttribute('width', '76')
+  })
+
+  it('handles max=0 without NaN', () => {
+    render(<ProgressGauge value={50} max={0} />)
+
+    expect(screen.getByText('100%')).toBeInTheDocument()
+  })
 })

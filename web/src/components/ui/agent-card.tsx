@@ -1,4 +1,4 @@
-import { cn, type AgentStatus } from '@/lib/utils'
+import { cn, type AgentRuntimeStatus } from '@/lib/utils'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
 
@@ -6,7 +6,7 @@ interface AgentCardProps {
   name: string
   role: string
   department: string
-  status: AgentStatus
+  status: AgentRuntimeStatus
   currentTask?: string
   timestamp?: string
   className?: string
@@ -35,7 +35,7 @@ export function AgentCard({
         <Avatar name={name} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13px] font-semibold text-foreground">
+            <span className="truncate text-body-sm font-semibold text-foreground">
               {name}
             </span>
             <StatusBadge status={status} />
@@ -58,7 +58,7 @@ export function AgentCard({
         )}
         {timestamp && (
           <div className="mt-0.5 text-right">
-            <span className="font-mono text-[10px] text-muted-foreground">{timestamp}</span>
+            <span className="font-mono text-micro text-muted-foreground">{timestamp}</span>
           </div>
         )}
       </div>

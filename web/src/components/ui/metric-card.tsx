@@ -35,7 +35,7 @@ export function MetricCard({
     >
       {/* Top row: label + sparkline */}
       <div className="flex items-start justify-between">
-        <span className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+        <span className="text-compact uppercase tracking-[0.06em] text-muted-foreground">
           {label}
         </span>
         {sparklineData && sparklineData.length > 1 && (
@@ -44,7 +44,7 @@ export function MetricCard({
       </div>
 
       {/* Value */}
-      <div className="mt-1 font-mono text-[26px] font-bold leading-tight tracking-tight text-foreground">
+      <div className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground">
         {value}
       </div>
 
@@ -83,12 +83,14 @@ export function MetricCard({
 
 function ChangeBadge({ value, direction }: { value: number; direction: 'up' | 'down' }) {
   const isUp = direction === 'up'
+  const label = isUp ? `Up ${value} percent` : `Down ${value} percent`
 
   return (
     <span
+      aria-label={label}
       className={cn(
         'inline-flex items-center rounded px-1.5 py-0.5',
-        'font-mono text-[11px] font-medium',
+        'font-mono text-compact font-medium',
         isUp
           ? 'bg-success/8 text-success border border-success/20'
           : 'bg-danger/8 text-danger border border-danger/20',
