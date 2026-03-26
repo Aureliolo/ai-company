@@ -15,7 +15,7 @@ from synthorg.api.errors import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -209,7 +209,7 @@ class CollaborationController(Controller):
             ),
         )
 
-    @post("/override", guards=[require_write_access], status_code=200)
+    @post("/override", guards=[require_ceo_or_manager], status_code=200)
     async def set_override(
         self,
         state: State,
@@ -274,7 +274,11 @@ class CollaborationController(Controller):
             ),
         )
 
-    @delete("/override", guards=[require_write_access], status_code=HTTP_204_NO_CONTENT)
+    @delete(
+        "/override",
+        guards=[require_ceo_or_manager],
+        status_code=HTTP_204_NO_CONTENT,
+    )
     async def clear_override(
         self,
         state: State,

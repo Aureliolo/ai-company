@@ -26,7 +26,11 @@ from synthorg.api.errors import (
     NotFoundError,
     UnauthorizedError,
 )
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import (
+    require_approval_roles,
+    require_read_access,
+    require_write_access,
+)
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
@@ -617,7 +621,7 @@ class ApprovalsController(Controller):
 
     @post(
         "/{approval_id:str}/approve",
-        guards=[require_write_access],
+        guards=[require_approval_roles],
         status_code=200,
     )
     async def approve(
@@ -673,7 +677,7 @@ class ApprovalsController(Controller):
 
     @post(
         "/{approval_id:str}/reject",
-        guards=[require_write_access],
+        guards=[require_approval_roles],
         status_code=200,
     )
     async def reject(

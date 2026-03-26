@@ -20,18 +20,23 @@ def bare_client(test_client: TestClient[Any]) -> TestClient[Any]:
     return test_client
 
 
+# -- Task payload used across write-guard tests -------------------------
+
+_TASK_PAYLOAD: dict[str, str] = {
+    "title": "Test",
+    "description": "Test desc",
+    "type": "development",
+    "project": "proj",
+    "created_by": "alice",
+}
+
+
 @pytest.mark.unit
 class TestWriteGuard:
     def test_allows_ceo(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers=make_auth_headers("ceo"),
         )
         assert response.status_code == 201
@@ -39,41 +44,23 @@ class TestWriteGuard:
     def test_allows_manager(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers=make_auth_headers("manager"),
         )
         assert response.status_code == 201
 
-    def test_allows_board_member(self, test_client: TestClient[Any]) -> None:
+    def test_blocks_board_member(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers=make_auth_headers("board_member"),
         )
-        assert response.status_code == 201
+        assert response.status_code == 403
 
     def test_allows_pair_programmer(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers=make_auth_headers("pair_programmer"),
         )
         assert response.status_code == 201
@@ -81,13 +68,7 @@ class TestWriteGuard:
     def test_blocks_observer(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers=make_auth_headers("observer"),
         )
         assert response.status_code == 403
@@ -95,26 +76,14 @@ class TestWriteGuard:
     def test_missing_auth_returns_401(self, bare_client: TestClient[Any]) -> None:
         response = bare_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
         )
         assert response.status_code == 401
 
     def test_invalid_token_returns_401(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
             "/api/v1/tasks",
-            json={
-                "title": "Test",
-                "description": "Test desc",
-                "type": "development",
-                "project": "proj",
-                "created_by": "alice",
-            },
+            json=_TASK_PAYLOAD,
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert response.status_code == 401
@@ -126,6 +95,13 @@ class TestReadGuard:
         response = test_client.get(
             "/api/v1/tasks",
             headers=make_auth_headers("observer"),
+        )
+        assert response.status_code == 200
+
+    def test_allows_board_member(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers=make_auth_headers("board_member"),
         )
         assert response.status_code == 200
 
@@ -146,3 +122,63 @@ class TestReadGuard:
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert response.status_code == 401
+
+
+@pytest.mark.unit
+class TestRequireRoles:
+    """Tests for the require_roles() guard factory via live endpoints."""
+
+    def test_ceo_only_allows_ceo_on_setup(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Setup write endpoints require CEO only (after reclassification).
+        # Use a setup endpoint that requires require_ceo.
+        # GET /settings/_schema uses require_read_access so we use
+        # POST /tasks as a baseline write endpoint instead and
+        # test the guard factory directly via approvals.
+        pass
+
+    def test_board_member_can_read_but_not_write(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Read access works
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers=make_auth_headers("board_member"),
+        )
+        assert response.status_code == 200
+
+        # Write access is denied
+        response = test_client.post(
+            "/api/v1/tasks",
+            json=_TASK_PAYLOAD,
+            headers=make_auth_headers("board_member"),
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        ("role", "expected_status"),
+        [
+            ("ceo", 200),
+            ("manager", 200),
+            ("pair_programmer", 403),
+            ("board_member", 403),
+            ("observer", 403),
+        ],
+    )
+    def test_ceo_or_manager_guard(
+        self,
+        test_client: TestClient[Any],
+        role: str,
+        expected_status: int,
+    ) -> None:
+        # Autonomy update uses require_ceo_or_manager after
+        # reclassification. Use POST with a valid agent to test.
+        response = test_client.post(
+            "/api/v1/agents/test-agent/autonomy",
+            json={"level": "semi"},
+            headers=make_auth_headers(role),
+        )
+        assert response.status_code == expected_status

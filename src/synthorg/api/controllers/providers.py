@@ -28,7 +28,7 @@ from synthorg.api.dto_discovery import (
     RemoveAllowlistEntryRequest,
 )
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
@@ -79,7 +79,7 @@ class ProviderController(Controller):
 
     @post(
         "/probe-preset",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def probe_preset(
         self,
@@ -248,7 +248,7 @@ class ProviderController(Controller):
 
     @post(
         "/",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def create_provider(
         self,
@@ -290,7 +290,7 @@ class ProviderController(Controller):
 
     @post(
         "/from-preset",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def create_from_preset(
         self,
@@ -334,7 +334,7 @@ class ProviderController(Controller):
 
     @put(
         "/{name:str}",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def update_provider(
         self,
@@ -380,7 +380,7 @@ class ProviderController(Controller):
 
     @delete(
         "/{name:str}",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_provider(
@@ -410,7 +410,7 @@ class ProviderController(Controller):
 
     @post(
         "/{name:str}/discover-models",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def discover_models(
         self,
@@ -459,7 +459,7 @@ class ProviderController(Controller):
 
     @post(
         "/{name:str}/test",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def test_connection(
         self,
@@ -524,7 +524,7 @@ class ProviderController(Controller):
 
     @post(
         "/discovery-policy/entries",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def add_allowlist_entry(
         self,
@@ -553,7 +553,7 @@ class ProviderController(Controller):
 
     @post(
         "/discovery-policy/remove-entry",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def remove_allowlist_entry(
         self,

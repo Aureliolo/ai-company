@@ -5,7 +5,7 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
@@ -80,7 +80,7 @@ class AutonomyController(Controller):
             ),
         )
 
-    @post(guards=[require_write_access], status_code=200)
+    @post(guards=[require_ceo_or_manager], status_code=200)
     async def update_autonomy(
         self,
         state: State,

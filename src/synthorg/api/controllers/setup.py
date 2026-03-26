@@ -43,7 +43,7 @@ from synthorg.api.controllers.setup_models import (
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
-from synthorg.api.guards import HumanRole, require_read_access, require_write_access
+from synthorg.api.guards import HumanRole, require_ceo, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
@@ -214,7 +214,7 @@ class SetupController(Controller):
     @post(
         "/company",
         status_code=HTTP_201_CREATED,
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def create_company(
         self,
@@ -294,7 +294,7 @@ class SetupController(Controller):
     @post(
         "/agent",
         status_code=HTTP_201_CREATED,
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def create_agent(
         self,
@@ -386,7 +386,7 @@ class SetupController(Controller):
     @put(
         "/agents/{agent_index:int}/model",
         status_code=HTTP_200_OK,
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def update_agent_model(
         self,
@@ -453,7 +453,7 @@ class SetupController(Controller):
     @put(
         "/agents/{agent_index:int}/name",
         status_code=HTTP_200_OK,
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def update_agent_name(
         self,
@@ -511,7 +511,7 @@ class SetupController(Controller):
     @post(
         "/agents/{agent_index:int}/randomize-name",
         status_code=HTTP_200_OK,
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def randomize_agent_name(
         self,
@@ -632,7 +632,7 @@ class SetupController(Controller):
 
     @put(
         "/name-locales",
-        guards=[require_write_access],
+        guards=[require_ceo],
         status_code=HTTP_200_OK,
     )
     async def save_name_locales(
@@ -681,7 +681,7 @@ class SetupController(Controller):
 
     @post(
         "/complete",
-        guards=[require_write_access],
+        guards=[require_ceo],
     )
     async def complete_setup(
         self,
