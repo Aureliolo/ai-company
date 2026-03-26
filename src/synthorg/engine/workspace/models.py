@@ -89,6 +89,10 @@ class MergeConflict(BaseModel):
         default="",
         description="Workspace branch content",
     )
+    description: str = Field(
+        default="",
+        description="Human-readable description of the conflict",
+    )
 
 
 class MergeResult(BaseModel):
@@ -125,6 +129,10 @@ class MergeResult(BaseModel):
         ge=0.0,
         description="Merge duration in seconds",
     )
+    semantic_conflicts: tuple[MergeConflict, ...] = Field(
+        default=(),
+        description="Semantic conflicts detected after successful merge",
+    )
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
@@ -137,6 +145,9 @@ class MergeResult(BaseModel):
             raise ValueError(msg)
         if not self.success and self.merged_commit_sha is not None:
             msg = "Failed merge cannot have a commit SHA"
+            raise ValueError(msg)
+        if not self.success and self.semantic_conflicts:
+            msg = "Failed merge cannot have semantic conflicts"
             raise ValueError(msg)
         return self
 
@@ -179,3 +190,11 @@ class WorkspaceGroupResult(BaseModel):
     def total_conflicts(self) -> int:
         """Sum of conflicts from all merge results."""
         return sum(len(r.conflicts) for r in self.merge_results)
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Total semantic conflicts across all merges",
+    )
+    @property
+    def total_semantic_conflicts(self) -> int:
+        """Sum of semantic conflicts from all merge results."""
+        return sum(len(r.semantic_conflicts) for r in self.merge_results)

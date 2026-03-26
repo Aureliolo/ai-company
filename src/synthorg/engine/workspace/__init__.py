@@ -6,6 +6,7 @@ can work on the same repository without interfering with each other.
 
 from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
+    SemanticAnalysisConfig,
     WorkspaceIsolationConfig,
 )
 from synthorg.engine.workspace.git_worktree import (
@@ -22,16 +23,25 @@ from synthorg.engine.workspace.models import (
 from synthorg.engine.workspace.protocol import (
     WorkspaceIsolationStrategy,
 )
+from synthorg.engine.workspace.semantic_analyzer import (
+    AstSemanticAnalyzer,
+    CompositeSemanticAnalyzer,
+    SemanticAnalyzer,
+)
 from synthorg.engine.workspace.service import (
     WorkspaceIsolationService,
 )
 
 __all__ = [
+    "AstSemanticAnalyzer",
+    "CompositeSemanticAnalyzer",
     "MergeConflict",
     "MergeOrchestrator",
     "MergeResult",
     "PlannerWorktreeStrategy",
     "PlannerWorktreesConfig",
+    "SemanticAnalysisConfig",
+    "SemanticAnalyzer",
     "Workspace",
     "WorkspaceGroupResult",
     "WorkspaceIsolationConfig",

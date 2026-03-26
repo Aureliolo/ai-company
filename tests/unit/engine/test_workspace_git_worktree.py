@@ -257,12 +257,13 @@ class TestMergeWorkspace:
         ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
-        # checkout succeeds, merge succeeds, rev-parse returns SHA
+        # checkout, pre-merge rev-parse, merge, post-merge rev-parse
         mock_run_git = AsyncMock(
             side_effect=[
                 (0, "", ""),  # checkout base
+                (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
                 (0, "", ""),  # merge --no-ff
-                (0, "abc123", ""),  # rev-parse HEAD
+                (0, "abc123", ""),  # rev-parse HEAD (post-merge)
             ],
         )
 
@@ -288,6 +289,7 @@ class TestMergeWorkspace:
         mock_run_git = AsyncMock(
             side_effect=[
                 (0, "", ""),  # checkout base
+                (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
                 (1, "", "CONFLICT (content)"),  # merge fails
                 (0, "src/main.py\n", ""),  # diff --name-only
                 (0, "", ""),  # merge --abort
@@ -337,6 +339,7 @@ class TestMergeWorkspace:
         mock_run_git = AsyncMock(
             side_effect=[
                 (0, "", ""),  # checkout
+                (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
                 (1, "", "CONFLICT"),  # merge fails
                 (0, "src/a.py\n", ""),  # diff --name-only
                 (1, "", "error: abort failed"),  # merge --abort fails
@@ -363,6 +366,7 @@ class TestMergeWorkspace:
         mock_run_git = AsyncMock(
             side_effect=[
                 (0, "", ""),  # checkout
+                (0, "pre123", ""),  # rev-parse HEAD (pre-merge)
                 (0, "", ""),  # merge
                 (1, "", "error: not a valid ref"),  # rev-parse fails
             ],

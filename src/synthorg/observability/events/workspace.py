@@ -22,3 +22,9 @@ WORKSPACE_GROUP_TEARDOWN_COMPLETE: Final[str] = "workspace.group.teardown.comple
 WORKSPACE_MERGE_ABORT_FAILED: Final[str] = "workspace.merge.abort.failed"
 WORKSPACE_SORT_WORKSPACES_APPENDED: Final[str] = "workspace.sort.workspaces.appended"
 WORKSPACE_GROUP_SETUP_FAILED: Final[str] = "workspace.group.setup.failed"
+WORKSPACE_SEMANTIC_ANALYSIS_START: Final[str] = "workspace.semantic.analysis.start"
+WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE: Final[str] = (
+    "workspace.semantic.analysis.complete"
+)
+WORKSPACE_SEMANTIC_CONFLICT: Final[str] = "workspace.semantic.conflict"
+WORKSPACE_SEMANTIC_ANALYSIS_FAILED: Final[str] = "workspace.semantic.analysis.failed"

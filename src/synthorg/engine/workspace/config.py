@@ -6,6 +6,51 @@ from synthorg.core.enums import ConflictEscalation, MergeOrder
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
+class SemanticAnalysisConfig(BaseModel):
+    """Configuration for semantic conflict detection after merge.
+
+    Attributes:
+        enabled: Whether semantic analysis runs after merge.
+        file_extensions: File extensions to analyze.
+        max_files: Maximum files to analyze per merge.
+        llm_model: Model for LLM-based semantic analysis.
+        llm_temperature: Temperature for LLM analysis.
+        llm_max_tokens: Maximum tokens for LLM response.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether semantic analysis runs after merge",
+    )
+    file_extensions: tuple[str, ...] = Field(
+        default=(".py",),
+        description="File extensions to analyze",
+    )
+    max_files: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="Maximum files to analyze per merge",
+    )
+    llm_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model for LLM-based semantic analysis",
+    )
+    llm_temperature: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for LLM analysis",
+    )
+    llm_max_tokens: int = Field(
+        default=4096,
+        gt=0,
+        description="Maximum tokens for LLM response",
+    )
+
+
 class PlannerWorktreesConfig(BaseModel):
     """Configuration for the planner-worktrees isolation strategy.
 
@@ -40,6 +85,10 @@ class PlannerWorktreesConfig(BaseModel):
     cleanup_on_merge: bool = Field(
         default=True,
         description="Whether to remove worktree after merge",
+    )
+    semantic_analysis: SemanticAnalysisConfig = Field(
+        default_factory=SemanticAnalysisConfig,
+        description="Semantic conflict detection configuration",
     )
 
 
