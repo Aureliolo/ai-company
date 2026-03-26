@@ -2,10 +2,9 @@ import { cleanup, render, renderHook, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import {
-  _commandGroups,
   _reset,
   _setOpen,
-  _updateCommandsSnapshot,
+  registerCommands,
   useRegisterCommands,
 } from '@/hooks/useCommandPalette'
 import { CommandPalette } from '@/components/ui/command-palette'
@@ -42,14 +41,17 @@ function makeCommand(overrides: Partial<CommandItem> = {}): CommandItem {
   }
 }
 
+let cleanupCommands: (() => void) | null = null
+
 function setupCommands(commands: CommandItem[]) {
-  const key = 'test-commands'
-  _commandGroups.set(key, commands)
-  _updateCommandsSnapshot()
+  cleanupCommands?.()
+  cleanupCommands = registerCommands(commands)
 }
 
 describe('CommandPalette', () => {
   beforeEach(() => {
+    cleanupCommands?.()
+    cleanupCommands = null
     _reset()
     localStorage.clear()
   })

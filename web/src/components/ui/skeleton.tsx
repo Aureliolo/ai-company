@@ -10,7 +10,7 @@ export interface SkeletonProps {
 const SHIMMER_CLASSES =
   'so-shimmer bg-gradient-to-r from-border via-border-bright to-border bg-[length:200%_100%] animate-[so-shimmer_1.5s_ease-in-out_infinite]'
 
-export function Skeleton({ className, shimmer = true, style }: SkeletonProps) {
+export function Skeleton({ className, shimmer = true, style, ...rest }: SkeletonProps & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
@@ -19,6 +19,7 @@ export function Skeleton({ className, shimmer = true, style }: SkeletonProps) {
         className,
       )}
       style={style}
+      {...rest}
     />
   )
 }
@@ -43,6 +44,7 @@ export function SkeletonText({
           key={i}
           shimmer={shimmer}
           className="h-3 rounded"
+          data-skeleton-line=""
           style={i === lines - 1 ? { width: lastLineWidth } : undefined}
         />
       ))}

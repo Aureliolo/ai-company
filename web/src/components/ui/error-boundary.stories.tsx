@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useState } from 'react'
+import { Button } from './button'
 import { ErrorBoundary } from './error-boundary'
 
 const meta = {
@@ -54,12 +55,14 @@ export const CustomFallback: Story = {
       fallback={({ error, resetErrorBoundary }) => (
         <div className="rounded-lg border border-danger bg-card p-4">
           <p className="text-sm text-danger">Custom fallback: {error.message}</p>
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={resetErrorBoundary}
-            className="mt-2 text-xs text-accent underline"
+            className="mt-2"
           >
             Reset
-          </button>
+          </Button>
         </div>
       )}
     >
@@ -73,12 +76,14 @@ function MaybeBroken({ broken, onBreak }: { broken: boolean; onBreak: () => void
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <p className="text-sm text-foreground">Everything is working fine.</p>
-      <button
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onBreak}
-        className="mt-2 text-xs text-danger underline"
+        className="mt-2"
       >
         Break it
-      </button>
+      </Button>
     </div>
   )
 }

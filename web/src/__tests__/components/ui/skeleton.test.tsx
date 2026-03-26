@@ -32,19 +32,19 @@ describe('Skeleton', () => {
 describe('SkeletonText', () => {
   it('renders 3 lines by default', () => {
     const { container } = render(<SkeletonText />)
-    const lines = container.querySelectorAll('.rounded')
+    const lines = container.querySelectorAll('[data-skeleton-line]')
     expect(lines).toHaveLength(3)
   })
 
   it('renders custom number of lines', () => {
     const { container } = render(<SkeletonText lines={5} />)
-    const lines = container.querySelectorAll('.rounded')
+    const lines = container.querySelectorAll('[data-skeleton-line]')
     expect(lines).toHaveLength(5)
   })
 
   it('last line has reduced width', () => {
     const { container } = render(<SkeletonText />)
-    const lines = container.querySelectorAll('.rounded')
+    const lines = container.querySelectorAll('[data-skeleton-line]')
     const lastLine = lines[lines.length - 1]
     expect(lastLine).toHaveStyle({ width: '60%' })
   })
@@ -53,9 +53,9 @@ describe('SkeletonText', () => {
 describe('SkeletonCard', () => {
   it('renders header when header=true', () => {
     const { container } = render(<SkeletonCard header />)
-    // Header is the first child of the card
-    const children = container.querySelectorAll('.rounded')
-    expect(children.length).toBeGreaterThan(0)
+    // Header skeletons (icon + title) plus body lines via SkeletonText
+    const allSkeletons = container.querySelectorAll('.rounded')
+    expect(allSkeletons.length).toBeGreaterThan(0)
   })
 
   it('renders body lines', () => {
@@ -63,7 +63,7 @@ describe('SkeletonCard', () => {
     const wrapper = container.firstChild as HTMLElement
     expect(wrapper).toBeInTheDocument()
     // SkeletonCard delegates to SkeletonText -- verify correct number of skeleton lines
-    const skeletonLines = wrapper.querySelectorAll('.h-3')
+    const skeletonLines = wrapper.querySelectorAll('[data-skeleton-line]')
     expect(skeletonLines).toHaveLength(4)
   })
 })
@@ -72,7 +72,7 @@ describe('SkeletonMetric', () => {
   it('renders metric skeleton layout', () => {
     const { container } = render(<SkeletonMetric />)
     expect(container.firstChild).toBeInTheDocument()
-    // Should have label, value, and optionally progress bar skeletons
+    // Should have label, value, and progress bar skeletons
     const skeletons = container.querySelectorAll('.rounded')
     expect(skeletons.length).toBeGreaterThanOrEqual(2)
   })

@@ -42,7 +42,7 @@ function TransitionDemo() {
             onClick={() => setIndex(i)}
             className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
               i === index
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-card text-foreground hover:bg-card-hover'
             }`}
           >

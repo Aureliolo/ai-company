@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { cardEntrance } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
-interface StaggerGroupProps {
+export interface StaggerGroupProps {
   children?: React.ReactNode
   className?: string
   /** Stagger delay between children in seconds (default: 0.03). */
@@ -12,7 +12,7 @@ interface StaggerGroupProps {
   animate?: boolean
 }
 
-interface StaggerItemProps {
+export interface StaggerItemProps {
   children: React.ReactNode
   className?: string
   /** Framer Motion layoutId for reorder animations. */

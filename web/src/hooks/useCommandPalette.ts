@@ -135,5 +135,8 @@ export function _reset() {
   updateCommandsSnapshot()
 }
 
+// Public API for non-hook contexts (e.g. tests, stories)
+export { registerCommands }
+
 // Exported for testing
 export { setOpen as _setOpen, commandGroups as _commandGroups, updateCommandsSnapshot as _updateCommandsSnapshot }

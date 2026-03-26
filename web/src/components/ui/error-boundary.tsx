@@ -12,7 +12,7 @@ export interface ErrorFallbackProps {
   level: ErrorLevel
 }
 
-interface ErrorBoundaryProps {
+export interface ErrorBoundaryProps {
   children: ReactNode
   /** Custom fallback component. Receives error and reset function. */
   fallback?: React.ComponentType<ErrorFallbackProps>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { STATUS_FLASH } from '@/lib/motion'
 
 interface UseFlashOptions {
@@ -61,11 +61,18 @@ export function useFlash(options?: UseFlashOptions): UseFlashReturn {
 
   const flashClassName = flashing ? 'so-flash-active' : ''
 
-  const flashStyle: React.CSSProperties = flashing
-    ? {
-        animation: `so-status-flash ${totalMs}ms ease-out forwards`,
-      }
-    : {}
+  const prefersReduced = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  )
+
+  const flashStyle: React.CSSProperties =
+    flashing && !prefersReduced
+      ? { animation: `so-status-flash ${totalMs}ms ease-out forwards` }
+      : {}
 
   return { flashing, flashClassName, triggerFlash, flashStyle }
 }

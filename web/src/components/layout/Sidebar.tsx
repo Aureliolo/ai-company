@@ -53,6 +53,8 @@ export function Sidebar() {
   const logout = useAuthStore((s) => s.logout)
   const { open: openCommandPalette } = useCommandPalette()
 
+  const shortcutKey = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
+
   function toggleCollapse() {
     setCollapsed((prev) => {
       const next = !prev
@@ -190,10 +192,10 @@ export function Sidebar() {
             {!collapsed && <span>Notifications</span>}
           </button>
 
-          {/* Cmd+K search trigger */}
+          {/* Cmd+K / Ctrl+K search trigger */}
           <button
             onClick={openCommandPalette}
-            title="Search (Cmd+K)"
+            title={`Search (${shortcutKey}+K)`}
             aria-label="Search commands"
             className={SIDEBAR_BUTTON_CLASS}
           >
@@ -203,7 +205,7 @@ export function Sidebar() {
             />
             {!collapsed && (
               <span className="text-xs">
-                {typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+K to search
+                {shortcutKey}+K to search
               </span>
             )}
           </button>

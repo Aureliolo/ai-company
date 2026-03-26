@@ -34,7 +34,7 @@ function addRecentId(id: string) {
   }
 }
 
-interface CommandPaletteProps {
+export interface CommandPaletteProps {
   className?: string
 }
 
@@ -89,8 +89,17 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     if (search) return []
     return recentIds
       .map((id) => commands.find((c) => c.id === id))
-      .filter((c): c is CommandItem => c !== undefined)
-  }, [search, recentIds, commands])
+      .filter((c): c is CommandItem => {
+        if (c === undefined) return false
+        const cmdScope = c.scope ?? 'global'
+        return scope === 'global' ? true : cmdScope === 'local'
+      })
+  }, [search, recentIds, commands, scope])
+
+  const recentIdSet = useMemo(
+    () => new Set(recentItems.map((c) => c.id)),
+    [recentItems],
+  )
 
   const handleSelect = useCallback(
     (cmd: CommandItem) => {
@@ -107,12 +116,15 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     [close],
   )
 
-  const handleScopeToggle = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      setScope((prev) => (prev === 'global' ? 'local' : 'global'))
-    }
-  }, [])
+  const handleScopeToggle = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Tab' && commands.some((c) => c.scope === 'local')) {
+        e.preventDefault()
+        setScope((prev) => (prev === 'global' ? 'local' : 'global'))
+      }
+    },
+    [commands],
+  )
 
   if (!isOpen) return null
 
@@ -179,7 +191,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
                 heading={groupName}
                 className="mb-1"
               >
-                {items.map((cmd) => (
+                {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
                   <CommandItemRow key={cmd.id} item={cmd} onSelect={handleSelect} />
                 ))}
               </Command.Group>

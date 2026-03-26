@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { reducedPageVariants } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
-interface AnimatedPresenceProps {
+export interface AnimatedPresenceProps {
   children: React.ReactNode
   /** Unique key for AnimatePresence tracking (typically location.pathname). */
   routeKey: string

@@ -110,7 +110,7 @@ describe('InlineEdit', () => {
     render(<InlineEdit value="original" onSave={onSave} />)
 
     // Enter edit mode
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByText('original'))
     const input = screen.getByRole('textbox')
 
     // Change value and blur
@@ -126,7 +126,7 @@ describe('InlineEdit', () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<InlineEdit value="original" onSave={onSave} />)
 
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByText('original'))
     const input = screen.getByRole('textbox')
 
     await user.clear(input)
