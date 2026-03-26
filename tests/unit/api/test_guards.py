@@ -128,16 +128,17 @@ class TestReadGuard:
 class TestRequireRoles:
     """Tests for the require_roles() guard factory via live endpoints."""
 
-    def test_ceo_only_allows_ceo_on_setup(
+    def test_setup_blocks_manager(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        # Setup write endpoints require CEO only (after reclassification).
-        # Use a setup endpoint that requires require_ceo.
-        # GET /settings/_schema uses require_read_access so we use
-        # POST /tasks as a baseline write endpoint instead and
-        # test the guard factory directly via approvals.
-        pass
+        # Setup write endpoints now require CEO only.
+        response = test_client.post(
+            "/api/v1/setup/company",
+            json={"company_name": "test", "template": "startup"},
+            headers=make_auth_headers("manager"),
+        )
+        assert response.status_code == 403
 
     def test_board_member_can_read_but_not_write(
         self,

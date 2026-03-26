@@ -50,13 +50,6 @@ _READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
     {HumanRole.OBSERVER, HumanRole.BOARD_MEMBER},
 )
 
-# System role is scoped to specific internal endpoints only (backup,
-# wipe) and excluded from the general _WRITE_ROLES to enforce least
-# privilege.
-_SYSTEM_WRITE_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
-    {HumanRole.SYSTEM},
-)
-
 
 def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[type-arg]
     """Extract the human role from the authenticated user."""
@@ -84,8 +77,8 @@ def require_write_access(
     Checks ``connection.user.role`` for ``ceo``, ``manager``,
     or ``pair_programmer``.  Board members are excluded (they
     may only observe and approve).  The ``system`` role is
-    intentionally excluded -- use ``require_system_or_write_access``
-    for endpoints the CLI needs to reach.
+    intentionally excluded -- use ``require_roles()`` with the
+    desired roles for endpoints the CLI needs to reach.
 
     Args:
         connection: The incoming connection.
@@ -99,33 +92,6 @@ def require_write_access(
         logger.warning(
             API_GUARD_DENIED,
             guard="require_write_access",
-            role=role,
-            path=str(connection.url.path),
-        )
-        raise PermissionDeniedException(detail="Write access denied")
-
-
-def require_system_or_write_access(
-    connection: ASGIConnection,  # type: ignore[type-arg]
-    _: object,
-) -> None:
-    """Guard that allows write roles and the system role.
-
-    Used on internal endpoints that the CLI needs to reach (backup,
-    wipe).  Human write roles and the ``system`` role are accepted.
-
-    Args:
-        connection: The incoming connection.
-        _: Route handler (unused).
-
-    Raises:
-        PermissionDeniedException: If the role is not permitted.
-    """
-    role = _get_role(connection)
-    if role not in _SYSTEM_WRITE_ROLES:
-        logger.warning(
-            API_GUARD_DENIED,
-            guard="require_system_or_write_access",
             role=role,
             path=str(connection.url.path),
         )

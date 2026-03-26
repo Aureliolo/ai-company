@@ -606,6 +606,7 @@ class TestApprovalUrgencyFields:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["seconds_remaining"] == 0.0
+        assert data["urgency_level"] == "critical"
 
 
 @pytest.mark.unit

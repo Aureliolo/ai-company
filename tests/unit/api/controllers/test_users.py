@@ -1,11 +1,15 @@
 """Tests for user management controller (CEO-only CRUD)."""
 
+import uuid
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 
 from tests.unit.api.conftest import make_auth_headers
+
+# Must match the ID pattern in conftest._seed_test_users
+_SYSTEM_USER_ID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "test-system"))
 
 _BASE = "/api/v1/users"
 _CEO_HEADERS = make_auth_headers("ceo")
@@ -38,6 +42,7 @@ class TestCreateUser:
         assert data["username"] == "new-user"
         assert data["role"] == "manager"
         assert data["must_change_password"] is True
+        assert "password_hash" not in data
 
     def test_create_board_member(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
@@ -244,6 +249,41 @@ class TestUpdateUserRole:
         )
         assert resp.status_code == 404
 
+    def test_demote_only_ceo_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # The seeded CEO is the only one -- changing role must fail.
+        list_resp = test_client.get(_BASE, headers=_CEO_HEADERS)
+        ceo_users = [u for u in list_resp.json()["data"] if u["role"] == "ceo"]
+        assert len(ceo_users) == 1
+        ceo_id = ceo_users[0]["id"]
+
+        resp = test_client.patch(
+            f"{_BASE}/{ceo_id}",
+            json={"role": "manager"},
+            headers=_CEO_HEADERS,
+        )
+        assert resp.status_code == 409
+
+    def test_promote_to_second_ceo_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        create_resp = test_client.post(
+            _BASE,
+            json=_create_payload(username="promote-test"),
+            headers=_CEO_HEADERS,
+        )
+        user_id = create_resp.json()["data"]["id"]
+
+        resp = test_client.patch(
+            f"{_BASE}/{user_id}",
+            json={"role": "ceo"},
+            headers=_CEO_HEADERS,
+        )
+        assert resp.status_code == 409
+
 
 @pytest.mark.unit
 class TestDeleteUser:
@@ -283,12 +323,10 @@ class TestDeleteUser:
         test_client: TestClient[Any],
     ) -> None:
         resp = test_client.delete(
-            f"{_BASE}/system",
+            f"{_BASE}/{_SYSTEM_USER_ID}",
             headers=_CEO_HEADERS,
         )
-        # System user either returns 409 or 404 depending on
-        # whether the test harness seeds it.  Both are acceptable.
-        assert resp.status_code in {404, 409}
+        assert resp.status_code == 409
 
     def test_delete_ceo_rejected(
         self,
