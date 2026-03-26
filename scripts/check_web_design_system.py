@@ -8,7 +8,8 @@ When invoked as a hook, reads JSON from stdin with the tool input.
 Also supports direct CLI invocation for testing.
 
 Exit codes:
-    0 -- no issues found (or file not in web/src/)
+    0 -- no issues found, file not in web/src/, or file could not be read
+         (warnings printed to stderr for read/parse failures)
     1 -- violations found (prints warnings to stdout)
 
 Usage (hook mode -- reads JSON from stdin):
@@ -26,13 +27,15 @@ import sys
 from pathlib import Path
 
 # ── Thresholds ────────────────────────────────────────────────────────
-_SHORT_HEX_LEN = 4  # #abc (3 digits + hash)
+_SHORT_HEX_LEN = 4  # #rgb (3 digits + hash)
+_SHORT_HEX_ALPHA_LEN = 5  # #rgba (4 digits + hash)
+_LONG_HEX_ALPHA_LEN = 9  # #rrggbbaa (8 digits + hash)
 _MIN_PATH_DEPTH = 2  # web/<something>
 _MAP_BLOCK_COMPLEXITY = 8  # lines in .map() before suggesting extraction
 _REPEATED_PATTERN_MIN = 3  # icon+text rows before suggesting DataRow
 
 # ── Allowed raw hex values ────────────────────────────────────────────
-# These appear in design-tokens.css and are the canonical definitions.
+# Must match :root variables in web/src/styles/design-tokens.css.
 # Any OTHER hex color in a .tsx/.ts/.css file is a violation.
 ALLOWED_HEX_COLORS: set[str] = {
     "#38bdf8",
@@ -75,14 +78,14 @@ HARDCODED_COLOR_RE = re.compile(
 )
 
 HARDCODED_RGBA_RE = re.compile(
-    r"(?:rgba?)\(\s*\d+\s*,\s*\d+\s*,\s*\d+",
+    r"\brgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+",
 )
 
 HARDCODED_FONT_RE = re.compile(
     r"""(?x)
-    font-family\s*:\s*(?!var\()
+    font-family\s*:\s*(?!\s*var\()
     |
-    fontFamily\s*:\s*['"](?!var\()
+    fontFamily\s*:\s*['"](?!\s*var\()
     """,
 )
 
@@ -93,15 +96,21 @@ _COMMENT_PREFIXES = ("//", "/*", "*")
 
 
 def _normalize_hex(h: str) -> str:
-    """Normalize hex color to lowercase 6-digit form."""
+    """Normalize hex color to lowercase 6-digit form, stripping alpha."""
     h = h.lower()
-    if len(h) == _SHORT_HEX_LEN:
+    if len(h) == _SHORT_HEX_LEN:  # #rgb -> #rrggbb
         return f"#{h[1] * 2}{h[2] * 2}{h[3] * 2}"
+    if len(h) == _SHORT_HEX_ALPHA_LEN:  # #rgba -> #rrggbb (drop alpha)
+        return f"#{h[1] * 2}{h[2] * 2}{h[3] * 2}"
+    if len(h) == _LONG_HEX_ALPHA_LEN:  # #rrggbbaa -> #rrggbb (drop alpha)
+        return h[:7]
     return h
 
 
 def _is_allowed_file(file_path: Path, project_root: Path) -> bool:
     """Check if the file should be validated."""
+    if not file_path.is_relative_to(project_root):
+        return False
     rel = file_path.relative_to(project_root)
     parts = rel.parts
 
@@ -115,17 +124,23 @@ def _is_allowed_file(file_path: Path, project_root: Path) -> bool:
 
 
 def _is_in_comment_context(line: str, match_start: int) -> bool:
-    """Rough heuristic: skip matches inside comments."""
+    """Rough heuristic: skip matches inside single-line comments.
+
+    Tracks string boundaries for both ``//`` and ``/*`` detection.
+    Does not handle multi-line block comments or double-escaped
+    backslashes -- sufficient for typical JSX/TSX patterns.
+    """
     prefix = line[:match_start]
-    if "//" in prefix:
-        comment_pos = prefix.index("//")
-        in_string = False
-        for i, ch in enumerate(prefix):
-            if ch in ("'", '"', "`") and (i == 0 or prefix[i - 1] != "\\"):
-                in_string = not in_string
-            if i == comment_pos and not in_string:
-                return True
-    return "/*" in prefix and "*/" not in prefix[prefix.index("/*") :]
+    in_string = False
+    for i, ch in enumerate(prefix):
+        if ch in ("'", '"', "`") and (i == 0 or prefix[i - 1] != "\\"):
+            in_string = not in_string
+        if not in_string and prefix[i : i + 2] == "//":
+            return True
+    if not in_string and "/*" in prefix:
+        last_open = prefix.rfind("/*")
+        return "*/" not in prefix[last_open:]
+    return False
 
 
 def check_hardcoded_colors(
@@ -155,13 +170,21 @@ def check_hardcoded_colors(
                     f"    {stripped}"
                 )
 
-        warnings.extend(
-            f"  {rel_path}:{line_num}: Hardcoded rgba() "
-            f"-- use a design token variable instead.\n"
-            f"    {stripped}"
-            for m in HARDCODED_RGBA_RE.finditer(line)
-            if not _is_in_comment_context(line, m.start()) and "var(--" not in line
-        )
+        for m in HARDCODED_RGBA_RE.finditer(line):
+            if _is_in_comment_context(line, m.start()):
+                continue
+            # Skip rgba() inside a var() fallback (unclosed var( before match)
+            before = line[: m.start()]
+            var_pos = before.rfind("var(")
+            if var_pos >= 0:
+                between = before[var_pos : m.start()]
+                if between.count("(") > between.count(")"):
+                    continue
+            warnings.append(
+                f"  {rel_path}:{line_num}: Hardcoded rgba() "
+                f"-- use a design token variable instead.\n"
+                f"    {stripped}"
+            )
 
     return warnings
 
@@ -198,6 +221,7 @@ def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
 
     if not (
         "components" in parts
+        and "ui" in parts
         and file_path.suffix == ".tsx"
         and ".stories." not in file_path.name
         and file_path.name != "index.tsx"
@@ -233,7 +257,7 @@ def _check_status_dot(content: str, content_lower: str, rel_path: Path) -> list[
     return []
 
 
-def _check_avatar(content: str, content_lower: str, rel_path: Path) -> list[str]:
+def _check_avatar(content: str, rel_path: Path) -> list[str]:
     """Check for inline avatar patterns that should use Avatar."""
     pattern = r"rounded-full.*(?:flex|inline-flex).*(?:items-center|justify-center).*(?:text-xs|text-sm|text-micro)"
     has_avatar_import = (
@@ -241,11 +265,7 @@ def _check_avatar(content: str, content_lower: str, rel_path: Path) -> list[str]
         or "from './avatar'" in content
         or "from '@/components/ui/avatar'" in content
     )
-    if (
-        re.search(pattern, content)
-        and not has_avatar_import
-        and ("avatar" not in content_lower or "import" not in content_lower)
-    ):
+    if re.search(pattern, content) and not has_avatar_import:
         return [
             f"  {rel_path}: Inline avatar/initials circle pattern detected "
             f"-- use `<Avatar>` from `@/components/ui/avatar` instead."
@@ -288,7 +308,7 @@ def check_duplicate_patterns(
     warnings: list[str] = []
 
     warnings.extend(_check_status_dot(content, content_lower, rel_path))
-    warnings.extend(_check_avatar(content, content_lower, rel_path))
+    warnings.extend(_check_avatar(content, rel_path))
     warnings.extend(_check_metric(content, content_lower, rel_path))
 
     # Check for card patterns that should use SectionCard
@@ -322,7 +342,9 @@ def propose_shared_components(
 
     proposals: list[str] = []
 
-    # Detect complex list items in .map() that should be extracted
+    # Detect complex list items in .map() that should be extracted.
+    # Only matches parenthesized returns: .map((x) => (...)).
+    # Misses block bodies and bare JSX returns -- acceptable heuristic.
     map_blocks = re.findall(
         r"\.map\(\s*\([^)]*\)\s*=>\s*\(([\s\S]*?)\)\s*\)",
         content,
@@ -360,7 +382,12 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
 
     try:
         content = file_path.read_text(encoding="utf-8")
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError) as exc:
+        print(
+            f"WARNING: Could not read {file_path}: {exc} "
+            f"-- design system check skipped.",
+            file=sys.stderr,
+        )
         return []
 
     all_warnings: list[str] = []
@@ -382,7 +409,13 @@ def _resolve_project_root(file_path: Path, explicit_root: str | None) -> Path:
         if (candidate / "pyproject.toml").exists() or (candidate / ".git").exists():
             return candidate
         candidate = candidate.parent
-    return Path.cwd()
+    cwd = Path.cwd()
+    print(
+        f"WARNING: Could not detect project root from {file_path}; "
+        f"falling back to cwd ({cwd}).",
+        file=sys.stderr,
+    )
+    return cwd
 
 
 def _get_file_path_from_stdin() -> str | None:
@@ -391,8 +424,13 @@ def _get_file_path_from_stdin() -> str | None:
         return None
     try:
         data = json.load(sys.stdin)
-        return data.get("tool_input", {}).get("file_path")
-    except json.JSONDecodeError, AttributeError:
+        raw = data.get("tool_input", {}).get("file_path")
+        return str(raw) if isinstance(raw, str) else None
+    except (json.JSONDecodeError, AttributeError, TypeError) as exc:
+        print(
+            f"WARNING: Failed to parse hook JSON from stdin: {exc}",
+            file=sys.stderr,
+        )
         return None
 
 

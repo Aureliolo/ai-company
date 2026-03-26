@@ -195,15 +195,15 @@ The following shared components live in `web/src/components/ui/` and form the bu
 
 | Component | File | Props | Purpose |
 |-----------|------|-------|---------|
-| `StatusBadge` | `status-badge.tsx` | `status`, `label?`, `pulse?` | Status indicator dot with optional text label. Maps `AgentRuntimeStatus` to semantic colors via `getStatusColor()`. |
+| `StatusBadge` | `status-badge.tsx` | `status`, `label?`, `pulse?` | Status indicator dot. `label` is a boolean that toggles display of the built-in status text (not a custom string). Maps `AgentRuntimeStatus` to semantic colors via `getStatusColor()`. |
 | `MetricCard` | `metric-card.tsx` | `label`, `value`, `change?`, `sparklineData?`, `progress?`, `subText?` | Numeric KPI display with optional sparkline, change badge (+/-%), and progress bar. |
-| `Sparkline` | `sparkline.tsx` | `data`, `width?`, `height?` | Pure SVG sparkline with gradient fill and animated draw. Standalone or inside MetricCard. |
+| `Sparkline` | `sparkline.tsx` | `data`, `color?`, `width?`, `height?`, `animated?` | Pure SVG sparkline with gradient fill and animated draw. `color` defaults to `var(--so-accent)`. Standalone or inside MetricCard. |
 | `SectionCard` | `section-card.tsx` | `title`, `icon?`, `action?`, `children` | Titled card wrapper with Lucide icon, action slot, and content area. Use for every content section. |
 | `AgentCard` | `agent-card.tsx` | `name`, `role`, `department`, `status`, `currentTask?`, `timestamp?` | Consistent agent display. Composes Avatar + StatusBadge internally. Must look identical everywhere. |
-| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `percentage`, `agentCount?`, `taskCount?` | Animated horizontal fill bar with health percentage. Color auto-mapped via `getHealthColor()`. |
-| `ProgressGauge` | `progress-gauge.tsx` | `value`, `label?`, `size?` | Circular SVG gauge for 0-100% metrics (budget utilization, completion rate). |
+| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health`, `agentCount`, `taskCount` | Animated horizontal fill bar with health percentage. Color auto-mapped via `getHealthColor()`. |
+| `ProgressGauge` | `progress-gauge.tsx` | `value`, `max?`, `label?`, `size?` | Circular SVG gauge for budget/utilization. `max` defaults to 100. |
 | `StatPill` | `stat-pill.tsx` | `label`, `value` | Compact inline label + value pair for metadata rows. |
-| `Avatar` | `avatar.tsx` | `name`, `size?` | Circular initials avatar. Sizes: sm (24px), md (32px), lg (40px). |
+| `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |
 | `Button` | `button.tsx` | shadcn standard | Standard button component (shadcn/ui). |
 
 ### Utility Functions
@@ -211,7 +211,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | Function | File | Purpose |
 |----------|------|---------|
 | `cn()` | `lib/utils.ts` | Tailwind class merging (clsx + twMerge). Use in every component. |
-| `getStatusColor()` | `lib/utils.ts` | Maps `AgentRuntimeStatus` to `SemanticColor` token name. |
+| `getStatusColor()` | `lib/utils.ts` | Maps `AgentRuntimeStatus` to `SemanticColor \| "text-secondary"` token name (`offline` maps to `"text-secondary"`). |
 | `getHealthColor()` | `lib/utils.ts` | Maps 0-100 percentage to `SemanticColor` (>=75 success, >=50 accent, >=25 warning, <25 danger). |
 
 ### Types
@@ -238,7 +238,7 @@ Every new shared component must have:
 
 ### Enforcement
 
-A PostToolUse hook (`scripts/check_web_design_system.py`) validates design system adherence on every file edit. See CLAUDE.md "Web Dashboard Design System" section for the full rule set.
+A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on every Edit/Write to `web/src/` files. See CLAUDE.md "Web Dashboard Design System" section for the full rule set.
 
 ## Reference Materials
 
