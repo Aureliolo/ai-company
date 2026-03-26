@@ -1,18 +1,15 @@
-import type { StorybookConfig } from '@storybook/react-vite'
+import { defineMain } from '@storybook/react-vite/node'
 
-const config: StorybookConfig = {
+export default defineMain({
   stories: ['../src/**/*.stories.@(ts|tsx)'],
-  addons: [
-    '@storybook/addon-essentials',
-    '@storybook/addon-a11y',
-    '@storybook/addon-interactions',
-  ],
   framework: '@storybook/react-vite',
+  addons: [
+    '@storybook/addon-docs',
+    '@storybook/addon-a11y',
+  ],
   async viteFinal(config) {
     const { default: tailwindcss } = await import('@tailwindcss/vite')
     config.plugins = [...(config.plugins ?? []), tailwindcss()]
     return config
   },
-}
-
-export default config
+})

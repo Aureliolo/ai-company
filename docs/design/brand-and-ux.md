@@ -176,6 +176,16 @@ This was discovered during the design exploration (#765) and caused layout break
 - Keyboard navigation for all interactive elements
 - `aria-hidden="true"` on decorative icons
 - Escape key closes overlays/drawers
+- **Storybook a11y enforcement**: `parameters.a11y.test: 'error'` set globally in `.storybook/preview.tsx` -- all stories fail on WCAG violations, catching regressions at component development time
+
+## Storybook Tooling (v10)
+
+The component development environment uses Storybook 10 with native type-safe configuration:
+
+- **Config**: `defineMain` (from `@storybook/react-vite/node`) and `definePreview` (from `@storybook/react-vite`) for full TypeScript inference
+- **Addons**: `@storybook/addon-docs` (autodocs) and `@storybook/addon-a11y` (WCAG testing). Essentials (backgrounds, controls, viewport, actions) and interactions are built into core
+- **Backgrounds**: Keyed to our `--so-bg-base` token (`#0a0a12`) via `initialGlobals`, ensuring stories render against the actual brand dark background
+- **Decorator**: Global dark-mode wrapper (`div.dark.bg-background.text-foreground`) applies our design tokens to all stories
 
 ## Reference Materials
 

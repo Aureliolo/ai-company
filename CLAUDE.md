@@ -254,5 +254,31 @@ site/             # Astro landing page (synthorg.io)
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 22+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, Recharts, Framer Motion, cmdk, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, Storybook, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security)
+- **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, Recharts, Framer Motion, cmdk, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, Storybook 10, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)
+
+## Post-Training Reference (TypeScript 6 & Storybook 10)
+
+These tools were released after Claude's training cutoff. Key facts for correct code generation:
+
+### TypeScript 6.0 (https://aka.ms/ts6)
+
+- **`baseUrl` deprecated** -- will stop working in TS 7. Remove it; `paths` entries are relative to the tsconfig directory
+- **`esModuleInterop` always true** -- cannot be set to `false`; remove explicit `"esModuleInterop": true` to avoid deprecation warning
+- **`types` defaults to `[]`** -- no longer auto-discovers `@types/*`; must explicitly list needed types (e.g. `"types": ["vitest/globals"]`)
+- **`DOM.Iterable` merged into `DOM`** -- `"lib": ["ES2025", "DOM"]` is sufficient, no separate `DOM.Iterable`
+- **`moduleResolution: "classic"` and `"node10"` removed** -- use `"bundler"` or `"nodenext"`
+- **`strict` defaults to `true`** -- explicit `"strict": true` is redundant but harmless
+- **`noUncheckedSideEffectImports` defaults to `true`** -- CSS side-effect imports need type declarations (Vite's `/// <reference types="vite/client" />` covers this)
+- **Last JS-based TypeScript** -- TS 7.0 will be rewritten in Go. Migration tool: `npx @andrewbranch/ts5to6`
+
+### Storybook 10 (https://storybook.js.org/docs/releases/migration-guide)
+
+- **ESM-only** -- all CJS support removed
+- **Packages removed** -- `@storybook/addon-essentials`, `@storybook/addon-interactions`, `@storybook/test`, `@storybook/blocks` no longer published. Essentials (backgrounds, controls, viewport, actions, toolbars, measure, outline) and interactions are built into core `storybook`
+- **`@storybook/addon-docs` is separate** -- must be installed and added to addons if using `tags: ['autodocs']` or MDX
+- **Import paths changed** -- use `storybook/test` (not `@storybook/test`), `storybook/actions` (not `@storybook/addon-actions`)
+- **Type-safe config** -- use `defineMain` from `@storybook/react-vite/node` and `definePreview` from `@storybook/react-vite` (must still include explicit `framework` field)
+- **Backgrounds API changed** -- use `parameters.backgrounds.options` (object keyed by name) + `initialGlobals.backgrounds.value` (replaces old `default` + `values` array)
+- **a11y testing** -- use `parameters.a11y.test: 'error' | 'todo' | 'off'` (replaces old `.element` and `.manual`). Set globally in `preview.tsx` to enforce WCAG compliance on all stories
+- **Minimum versions** -- Node 20.19+, Vite 5+, Vitest 3+, TypeScript 4.9+

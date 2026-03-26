@@ -1,12 +1,17 @@
-import type { Preview } from '@storybook/react'
+import { definePreview } from '@storybook/react-vite'
 import '../src/styles/global.css'
 
-const preview: Preview = {
+export default definePreview({
   parameters: {
+    a11y: { test: 'error' },
     backgrounds: {
-      default: 'dark',
-      values: [{ name: 'dark', value: '#0a0a12' }],
+      options: {
+        dark: { name: 'SynthOrg Dark', value: '#0a0a12' },
+      },
     },
+  },
+  initialGlobals: {
+    backgrounds: { value: 'dark' },
   },
   decorators: [
     (Story) => (
@@ -15,6 +20,4 @@ const preview: Preview = {
       </div>
     ),
   ],
-}
-
-export default preview
+})
