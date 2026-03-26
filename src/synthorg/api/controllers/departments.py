@@ -61,7 +61,7 @@ class DepartmentHealth(BaseModel):
     agent_count: int = Field(ge=0, description="Total agents")
     active_agent_count: int = Field(ge=0, description="Active agents")
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",

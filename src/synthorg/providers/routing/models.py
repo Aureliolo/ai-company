@@ -13,8 +13,10 @@ class ResolvedModel(BaseModel):
         provider_name: Provider that owns this model (e.g. ``"acme-provider"``).
         model_id: Concrete model identifier (e.g. ``"acme-large-001"``).
         alias: Short alias used in routing rules, if any.
-        cost_per_1k_input: Cost per 1 000 input tokens.
-        cost_per_1k_output: Cost per 1 000 output tokens.
+        cost_per_1k_input: Cost per 1 000 input tokens in USD
+            (base currency) per 1,000 tokens.
+        cost_per_1k_output: Cost per 1 000 output tokens in USD
+            (base currency) per 1,000 tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
     """
@@ -27,12 +29,12 @@ class ResolvedModel(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens",
+        description="Cost per 1k input tokens in USD (base currency)",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens",
+        description="Cost per 1k output tokens in USD (base currency)",
     )
     max_context: int = Field(
         default=200_000,

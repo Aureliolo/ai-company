@@ -101,6 +101,7 @@ describe('formatCurrency', () => {
     const result = formatCurrency(1000, 'JPY')
     expect(result).toContain('\u00a5')
     expect(result).toContain('1,000')
+    expect(result).not.toContain('.')
   })
 
   it('formats zero with USD', () => {

@@ -15,6 +15,7 @@ from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.trends import (
     BucketSize,
     ForecastPoint,
@@ -83,7 +84,7 @@ class OverviewMetrics(BaseModel):
         description="Remaining budget in configured currency",
     )
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
@@ -163,7 +164,7 @@ class ForecastResponse(BaseModel):
         description="Average daily spend used for projection",
     )
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
@@ -591,6 +592,7 @@ class AnalyticsController(Controller):
             days_until_exhausted=forecast.days_until_exhausted,
         )
 
+        budget_cfg = await app_state.config_resolver.get_budget_config()
         return ApiResponse(
             data=ForecastResponse(
                 horizon_days=horizon_days,
@@ -599,5 +601,6 @@ class AnalyticsController(Controller):
                 days_until_exhausted=forecast.days_until_exhausted,
                 confidence=forecast.confidence,
                 avg_daily_spend_usd=forecast.avg_daily_spend_usd,
+                currency=budget_cfg.currency,
             ),
         )

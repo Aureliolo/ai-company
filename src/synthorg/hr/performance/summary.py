@@ -74,7 +74,10 @@ class AgentPerformanceSummary(BaseModel):
     cost_per_task_usd: float | None = Field(
         default=None,
         ge=0.0,
-        description=("Average cost per task (30d window, falling back to 7d)"),
+        description=(
+            "Average cost per task in USD (base currency)"
+            " (30d window, falling back to 7d)"
+        ),
     )
     quality_score: float | None = Field(
         default=None,

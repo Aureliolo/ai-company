@@ -63,12 +63,12 @@ class ProviderModelConfig(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens",
+        description="Cost per 1k input tokens in USD (base currency)",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens",
+        description="Cost per 1k output tokens in USD (base currency)",
     )
     max_context: int = Field(
         default=200_000,

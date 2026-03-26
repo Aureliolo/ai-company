@@ -60,7 +60,10 @@ class TaskMetricRecord(BaseModel):
         ge=0.0,
         description="Wall-clock execution time",
     )
-    cost_usd: float = Field(ge=0.0, description="Cost of the task")
+    cost_usd: float = Field(
+        ge=0.0,
+        description="Cost of the task in USD (base currency)",
+    )
     turns_used: int = Field(ge=0, description="Number of LLM turns used")
     tokens_used: int = Field(ge=0, description="Total tokens consumed")
     quality_score: float | None = Field(
@@ -257,7 +260,7 @@ class LlmCalibrationRecord(BaseModel):
     )
     cost_usd: float = Field(
         ge=0.0,
-        description="Cost of the LLM call",
+        description="Cost of the LLM call in USD (base currency)",
     )
 
 

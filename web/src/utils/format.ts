@@ -35,6 +35,12 @@ export function formatRelativeTime(iso: string | null | undefined): string {
   return formatDate(iso)
 }
 
+/** ISO 4217 currencies that use zero decimal places. */
+const ZERO_DECIMAL_CURRENCIES = new Set(['BIF','CLP','DJF','GNF','HUF','ISK','JPY','KMF','KRW','MGA','PYG','RWF','UGX','VND','VUV','XAF','XOF','XPF'])
+
+/** ISO 4217 currencies that use three decimal places. */
+const THREE_DECIMAL_CURRENCIES = new Set(['BHD','IQD','JOD','KWD','LYD','OMR','TND'])
+
 /**
  * Format a currency value using the given ISO 4217 currency code.
  */
@@ -47,7 +53,8 @@ export function formatCurrency(value: number, currencyCode: string = 'USD'): str
     }).format(value)
   } catch (error) {
     console.error(`[format] Intl.NumberFormat failed for currency "${currencyCode}":`, error)
-    return `${currencyCode} ${value.toFixed(2)}`
+    const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : THREE_DECIMAL_CURRENCIES.has(currencyCode) ? 3 : 2
+    return `${currencyCode} ${value.toFixed(digits)}`
   }
 }
 

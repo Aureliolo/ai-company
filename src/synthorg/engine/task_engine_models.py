@@ -58,7 +58,8 @@ class CreateTaskData(BaseModel):
         created_by: Agent name of the creator.
         assigned_to: Optional assignee agent ID.
         estimated_complexity: Complexity estimate.
-        budget_limit: Maximum spend in configured currency.
+        budget_limit: Maximum spend in USD (base currency);
+            displayed using configured currency formatting.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -86,7 +87,7 @@ class CreateTaskData(BaseModel):
     budget_limit: float = Field(
         default=0.0,
         ge=0.0,
-        description="Maximum spend in configured currency",
+        description="Maximum spend in USD (base currency)",
     )
 
 

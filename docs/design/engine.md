@@ -93,7 +93,7 @@ task:
   estimated_complexity: "medium"  # simple, medium, complex, epic
   task_structure: "parallel"      # sequential, parallel, mixed
   coordination_topology: "auto"  # auto, sas, centralized, decentralized, context_dependent
-  budget_limit: 2.00             # max spend for this task (in configured currency)
+  budget_limit: 2.00             # max spend for this task in base currency (display formatted per budget.currency)
   deadline: null
   max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"

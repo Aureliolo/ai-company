@@ -48,7 +48,7 @@ class AgentSpending(BaseModel):
         ge=0.0, description="Total cost in configured currency"
     )
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
@@ -75,7 +75,7 @@ class DailySummary(BaseModel):
         ge=0.0, description="Total cost in configured currency"
     )
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
@@ -110,7 +110,7 @@ class PeriodSummary(BaseModel):
         ge=0.0, description="Total cost in configured currency"
     )
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
@@ -160,7 +160,7 @@ class CostRecordListResponse(BaseModel):
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
     currency: str = Field(
-        default="USD",
+        default=DEFAULT_CURRENCY,
         min_length=3,
         max_length=3,
         pattern=r"^[A-Z]{3}$",
