@@ -19,6 +19,19 @@ function BrokenComponent(): React.ReactNode {
   throw new Error('Something unexpected happened')
 }
 
+export const Healthy: Story = {
+  args: { children: null },
+  render: () => (
+    <ErrorBoundary level="section">
+      <div className="rounded-lg border border-border bg-card p-4">
+        <p className="text-sm text-foreground">
+          This content renders normally when no error occurs.
+        </p>
+      </div>
+    </ErrorBoundary>
+  ),
+}
+
 export const PageLevel: Story = {
   args: { children: null },
   render: () => (

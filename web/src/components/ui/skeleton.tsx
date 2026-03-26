@@ -24,7 +24,7 @@ export function Skeleton({ className, shimmer = true, style, ...rest }: Skeleton
   )
 }
 
-interface SkeletonTextProps extends SkeletonProps {
+export interface SkeletonTextProps extends SkeletonProps {
   /** Number of text lines (default: 3). */
   lines?: number
   /** Width of the last line (default: "60%"). */
@@ -52,7 +52,7 @@ export function SkeletonText({
   )
 }
 
-interface SkeletonCardProps extends SkeletonProps {
+export interface SkeletonCardProps extends SkeletonProps {
   /** Show header skeleton. */
   header?: boolean
   /** Number of body lines (default: 3). */
@@ -68,7 +68,7 @@ export function SkeletonCard({
   return (
     <div className={cn('rounded-lg border border-border bg-card p-4 space-y-3', className)}>
       {header && (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" data-skeleton-header="">
           <Skeleton shimmer={shimmer} className="size-5 rounded" />
           <Skeleton shimmer={shimmer} className="h-4 w-32 rounded" />
         </div>
@@ -81,17 +81,14 @@ export function SkeletonCard({
 export function SkeletonMetric({ shimmer, className }: SkeletonProps) {
   return (
     <div className={cn('rounded-lg border border-border bg-card p-4 space-y-3', className)}>
-      {/* Label */}
-      <Skeleton shimmer={shimmer} className="h-3 w-20 rounded" />
-      {/* Metric value */}
-      <Skeleton shimmer={shimmer} className="h-7 w-16 rounded" />
-      {/* Progress bar */}
-      <Skeleton shimmer={shimmer} className="h-0.5 w-full rounded" />
+      <Skeleton shimmer={shimmer} className="h-3 w-20 rounded" data-testid="skeleton-label" />
+      <Skeleton shimmer={shimmer} className="h-7 w-16 rounded" data-testid="skeleton-value" />
+      <Skeleton shimmer={shimmer} className="h-0.5 w-full rounded" data-testid="skeleton-progress" />
     </div>
   )
 }
 
-interface SkeletonTableProps extends SkeletonProps {
+export interface SkeletonTableProps extends SkeletonProps {
   /** Number of rows (default: 5). */
   rows?: number
   /** Number of columns (default: 4). */
@@ -116,6 +113,7 @@ export function SkeletonTable({
             <Skeleton
               key={colIdx}
               shimmer={shimmer}
+              data-skeleton-cell=""
               className={cn('h-3 flex-1 rounded', colIdx === 0 && 'max-w-24')}
             />
           ))}

@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import {
   Skeleton,
   SkeletonCard,
@@ -53,9 +53,14 @@ describe('SkeletonText', () => {
 describe('SkeletonCard', () => {
   it('renders header when header=true', () => {
     const { container } = render(<SkeletonCard header />)
-    // Header skeletons (icon + title) plus body lines via SkeletonText
-    const allSkeletons = container.querySelectorAll('.rounded')
-    expect(allSkeletons.length).toBeGreaterThan(0)
+    const headerEl = container.querySelector('[data-skeleton-header]')
+    expect(headerEl).toBeInTheDocument()
+  })
+
+  it('omits header when header is not set', () => {
+    const { container } = render(<SkeletonCard />)
+    const headerEl = container.querySelector('[data-skeleton-header]')
+    expect(headerEl).not.toBeInTheDocument()
   })
 
   it('renders body lines', () => {
@@ -70,11 +75,10 @@ describe('SkeletonCard', () => {
 
 describe('SkeletonMetric', () => {
   it('renders metric skeleton layout', () => {
-    const { container } = render(<SkeletonMetric />)
-    expect(container.firstChild).toBeInTheDocument()
-    // Should have label, value, and progress bar skeletons
-    const skeletons = container.querySelectorAll('.rounded')
-    expect(skeletons.length).toBeGreaterThanOrEqual(2)
+    render(<SkeletonMetric />)
+    expect(screen.getByTestId('skeleton-label')).toBeInTheDocument()
+    expect(screen.getByTestId('skeleton-value')).toBeInTheDocument()
+    expect(screen.getByTestId('skeleton-progress')).toBeInTheDocument()
   })
 })
 
@@ -83,7 +87,7 @@ describe('SkeletonTable', () => {
     const { container } = render(<SkeletonTable />)
     const rows = container.querySelectorAll('[data-skeleton-row]')
     expect(rows).toHaveLength(5)
-    const firstRowCells = rows[0]?.querySelectorAll('.rounded')
+    const firstRowCells = rows[0]?.querySelectorAll('[data-skeleton-cell]')
     expect(firstRowCells).toHaveLength(4)
   })
 
@@ -91,7 +95,7 @@ describe('SkeletonTable', () => {
     const { container } = render(<SkeletonTable rows={3} columns={6} />)
     const rows = container.querySelectorAll('[data-skeleton-row]')
     expect(rows).toHaveLength(3)
-    const firstRowCells = rows[0]?.querySelectorAll('.rounded')
+    const firstRowCells = rows[0]?.querySelectorAll('[data-skeleton-cell]')
     expect(firstRowCells).toHaveLength(6)
   })
 })

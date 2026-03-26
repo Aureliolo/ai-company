@@ -126,16 +126,16 @@ describe('CommandPalette', () => {
 
   it('useRegisterCommands registers commands on mount and cleans up on unmount', () => {
     const commands = [makeCommand({ label: 'Mounted Cmd' })]
-    const { unmount } = renderHook(() => useRegisterCommands(commands))
+    const { unmount: unmountHook } = renderHook(() => useRegisterCommands(commands))
 
     // Commands should be registered
     _setOpen(true)
-    render(<CommandPalette />)
+    const palette = render(<CommandPalette />)
     expect(screen.getByText('Mounted Cmd')).toBeInTheDocument()
-    cleanup()
+    palette.unmount()
 
-    // Unmount should clean up
-    unmount()
+    // Unmount hook should clean up commands
+    unmountHook()
     _setOpen(true)
     render(<CommandPalette />)
     expect(screen.queryByText('Mounted Cmd')).not.toBeInTheDocument()

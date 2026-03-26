@@ -123,7 +123,11 @@ describe('InlineEdit', () => {
 
   it('does not double-save on Enter followed by blur', async () => {
     const user = userEvent.setup()
-    const onSave = vi.fn().mockResolvedValue(undefined)
+    let resolveSave!: () => void
+    const savePromise = new Promise<void>((resolve) => {
+      resolveSave = resolve
+    })
+    const onSave = vi.fn().mockReturnValue(savePromise)
     render(<InlineEdit value="original" onSave={onSave} />)
 
     await user.click(screen.getByText('original'))
@@ -133,7 +137,16 @@ describe('InlineEdit', () => {
     await user.type(input, 'changed')
     await user.keyboard('{Enter}')
 
-    // onSave should only be called once even though blur may fire after Enter
+    // Save is in-progress (promise unresolved) -- blur should be blocked by saveInProgressRef
+    await user.tab()
+
+    // Resolve the pending save
+    resolveSave()
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    // onSave should only be called once
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 

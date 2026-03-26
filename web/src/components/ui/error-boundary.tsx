@@ -42,7 +42,9 @@ class ErrorBoundaryInner extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('ErrorBoundary caught:', error, info.componentStack)
+    if (import.meta.env.DEV) {
+      console.error('ErrorBoundary caught:', error, info.componentStack)
+    }
   }
 
   resetErrorBoundary = () => {
