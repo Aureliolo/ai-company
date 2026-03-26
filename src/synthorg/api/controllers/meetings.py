@@ -169,6 +169,9 @@ class MeetingController(Controller):
         Returns:
             Paginated meeting records with analytics fields.
         """
+        # Manual check retained: Litestar Parameter(max_length=...) on
+        # query params crashes the worker instead of returning a proper
+        # RFC 9457 error response.
         if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
             msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
             raise ApiValidationError(msg)

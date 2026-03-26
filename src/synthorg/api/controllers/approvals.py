@@ -500,6 +500,9 @@ class ApprovalsController(Controller):
         Returns:
             Paginated approval list with urgency fields.
         """
+        # Manual check retained: Litestar Parameter(max_length=...) on
+        # query params crashes the worker instead of returning a proper
+        # RFC 9457 error response.
         if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
             msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
             raise ApiValidationError(msg)
