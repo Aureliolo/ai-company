@@ -18,6 +18,9 @@ from synthorg.api.auth.service import AuthService
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.guards import HumanRole
 from synthorg.budget.tracker import CostTracker
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,
+)
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import (
@@ -32,6 +35,7 @@ from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.health import ProviderHealthTracker
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -211,6 +215,18 @@ def provider_health_tracker() -> ProviderHealthTracker:
 
 
 @pytest.fixture
+def tool_invocation_tracker() -> ToolInvocationTracker:
+    """Return a fresh ToolInvocationTracker instance."""
+    return ToolInvocationTracker()
+
+
+@pytest.fixture
+def delegation_record_store() -> DelegationRecordStore:
+    """Return a fresh DelegationRecordStore instance."""
+    return DelegationRecordStore()
+
+
+@pytest.fixture
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
@@ -232,6 +248,8 @@ def test_client(  # noqa: PLR0913
     performance_tracker: PerformanceTracker,
     agent_registry: AgentRegistryService,
     provider_health_tracker: ProviderHealthTracker,
+    tool_invocation_tracker: ToolInvocationTracker,
+    delegation_record_store: DelegationRecordStore,
 ) -> Generator[TestClient[Any]]:
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
@@ -254,6 +272,8 @@ def test_client(  # noqa: PLR0913
         agent_registry=agent_registry,
         settings_service=settings_service,
         provider_health_tracker=provider_health_tracker,
+        tool_invocation_tracker=tool_invocation_tracker,
+        delegation_record_store=delegation_record_store,
     )
     with TestClient(app) as client:
         # Default: CEO token (most tests need write access)

@@ -23,3 +23,8 @@ DELEGATION_LOOP_ESCALATED: Final[str] = "delegation.loop.escalated"
 # Hierarchy
 DELEGATION_HIERARCHY_BUILT: Final[str] = "delegation.hierarchy.built"
 DELEGATION_HIERARCHY_CYCLE: Final[str] = "delegation.hierarchy.cycle"
+
+# Record store
+DELEGATION_RECORD_STORED: Final[str] = "delegation.record.stored"
+DELEGATION_RECORD_STORE_FAILED: Final[str] = "delegation.record.store_failed"
+DELEGATION_RECORDS_QUERIED: Final[str] = "delegation.records.queried"

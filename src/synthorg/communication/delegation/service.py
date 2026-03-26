@@ -16,6 +16,9 @@ from synthorg.communication.delegation.models import (
     DelegationRequest,
     DelegationResult,
 )
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,  # noqa: TC001
+)
 from synthorg.communication.errors import DelegationError
 from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
     DelegationGuard,
@@ -26,6 +29,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_LOOP_ESCALATED,
+    DELEGATION_RECORD_STORE_FAILED,
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
     DELEGATION_SUB_TASK_FAILED,
@@ -45,6 +49,7 @@ class DelegationService:
         hierarchy: Resolved organizational hierarchy.
         authority_validator: Authority validation logic.
         guard: Loop prevention guard.
+        record_store: Optional delegation record store for activity tracking.
     """
 
     __slots__ = (
@@ -52,6 +57,7 @@ class DelegationService:
         "_authority_validator",
         "_guard",
         "_hierarchy",
+        "_record_store",
     )
 
     def __init__(
@@ -60,10 +66,12 @@ class DelegationService:
         hierarchy: HierarchyResolver,
         authority_validator: AuthorityValidator,
         guard: DelegationGuard,
+        record_store: DelegationRecordStore | None = None,
     ) -> None:
         self._hierarchy = hierarchy
         self._authority_validator = authority_validator
         self._guard = guard
+        self._record_store = record_store
         self._audit_trail: list[DelegationRecord] = []
 
     def delegate(
@@ -180,6 +188,18 @@ class DelegationService:
             refinement=request.refinement,
         )
         self._audit_trail.append(record)
+        if self._record_store is not None:
+            try:
+                self._record_store.record_sync(record)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    DELEGATION_RECORD_STORE_FAILED,
+                    delegator=request.delegator_id,
+                    delegatee=request.delegatee_id,
+                    exc_info=True,
+                )
 
         logger.info(
             DELEGATION_CREATED,
