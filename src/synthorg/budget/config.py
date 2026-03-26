@@ -155,13 +155,14 @@ class BudgetConfig(BaseModel):
     per-agent spending limits, and automatic model downgrade settings.
 
     Attributes:
-        total_monthly: Monthly budget in USD.
+        total_monthly: Monthly budget limit.
         alerts: Alert threshold configuration.
-        per_task_limit: Maximum USD per task.
-        per_agent_daily_limit: Maximum USD per agent per day.
+        per_task_limit: Maximum cost per task.
+        per_agent_daily_limit: Maximum cost per agent per day.
         auto_downgrade: Automatic model downgrade configuration.
         reset_day: Day of month when budget resets (1-28, avoids
             month-length issues).
+        currency: ISO 4217 currency code for display formatting.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -169,7 +170,7 @@ class BudgetConfig(BaseModel):
     total_monthly: float = Field(
         default=100.0,
         ge=0.0,
-        description="Monthly budget in USD",
+        description="Monthly budget limit",
     )
     alerts: BudgetAlertConfig = Field(
         default_factory=BudgetAlertConfig,
@@ -178,12 +179,12 @@ class BudgetConfig(BaseModel):
     per_task_limit: float = Field(
         default=5.0,
         ge=0.0,
-        description="Maximum USD per task",
+        description="Maximum cost per task",
     )
     per_agent_daily_limit: float = Field(
         default=10.0,
         ge=0.0,
-        description="Maximum USD per agent per day",
+        description="Maximum cost per agent per day",
     )
     auto_downgrade: AutoDowngradeConfig = Field(
         default_factory=AutoDowngradeConfig,
@@ -197,6 +198,13 @@ class BudgetConfig(BaseModel):
         description=(
             "Day of month when budget resets (1-28, avoids month-length issues)"
         ),
+    )
+    currency: str = Field(
+        default="EUR",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code for display formatting",
     )
 
     @model_validator(mode="after")

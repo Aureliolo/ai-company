@@ -36,13 +36,17 @@ class AgentSpending(BaseModel):
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Cumulative cost in USD.
+        total_cost_usd: Cumulative cost in configured currency.
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_cost_usd: float = Field(
+        ge=0.0, description="Total cost in configured currency"
+    )
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
 
 
 class DailySummary(BaseModel):
@@ -54,12 +58,16 @@ class DailySummary(BaseModel):
         total_input_tokens: Sum of input tokens for the day.
         total_output_tokens: Sum of output tokens for the day.
         record_count: Number of cost records on this day.
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True)
 
     date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_cost_usd: float = Field(
+        ge=0.0, description="Total cost in configured currency"
+    )
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
     total_input_tokens: int = Field(
         ge=0,
         description="Total input tokens",
@@ -80,11 +88,15 @@ class PeriodSummary(BaseModel):
         total_output_tokens: Sum of output tokens.
         record_count: Total number of records.
         avg_cost_usd: Average cost per record (computed, 0.0 if none).
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_cost_usd: float = Field(
+        ge=0.0, description="Total cost in configured currency"
+    )
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
     total_input_tokens: int = Field(
         ge=0,
         description="Total input tokens",
@@ -117,6 +129,7 @@ class CostRecordListResponse(BaseModel):
         daily_summary: Per-day cost aggregations (all matching records).
         period_summary: Overall stats across all matching records.
         success: Whether the request succeeded (computed from ``error``).
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -127,6 +140,7 @@ class CostRecordListResponse(BaseModel):
     pagination: PaginationMeta
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
@@ -148,11 +162,14 @@ class CostRecordListResponse(BaseModel):
 
 def _build_summaries(
     records: tuple[CostRecord, ...],
+    *,
+    currency: str = "EUR",
 ) -> tuple[tuple[DailySummary, ...], PeriodSummary]:
     """Compute daily and period summaries from cost records.
 
     Args:
         records: All filtered cost records (not just the current page).
+        currency: ISO 4217 currency code for response models.
 
     Returns:
         Tuple of (daily summaries sorted chronologically, period summary).
@@ -163,6 +180,7 @@ def _build_summaries(
             total_input_tokens=0,
             total_output_tokens=0,
             record_count=0,
+            currency=currency,
         )
 
     by_day: dict[str, list[CostRecord]] = defaultdict(list)
@@ -176,6 +194,7 @@ def _build_summaries(
             total_input_tokens=sum(r.input_tokens for r in day_records),
             total_output_tokens=sum(r.output_tokens for r in day_records),
             record_count=len(day_records),
+            currency=currency,
         )
         for date, day_records in sorted(by_day.items())
     )
@@ -185,6 +204,7 @@ def _build_summaries(
         total_input_tokens=sum(r.input_tokens for r in records),
         total_output_tokens=sum(r.output_tokens for r in records),
         record_count=len(records),
+        currency=currency,
     )
 
     return daily, period
@@ -253,11 +273,13 @@ class BudgetController(Controller):
                 raise ApiValidationError(msg)
 
         app_state: AppState = state.app_state
+        budget_cfg = await app_state.config_resolver.get_budget_config()
+        currency = budget_cfg.currency
         records = await app_state.cost_tracker.get_records(
             agent_id=agent_id,
             task_id=task_id,
         )
-        daily, period = _build_summaries(records)
+        daily, period = _build_summaries(records, currency=currency)
         logger.info(
             API_BUDGET_RECORDS_LISTED,
             agent_id=agent_id,
@@ -270,6 +292,7 @@ class BudgetController(Controller):
             pagination=meta,
             daily_summary=daily,
             period_summary=period,
+            currency=currency,
         )
 
     @get("/agents/{agent_id:str}")
@@ -288,10 +311,12 @@ class BudgetController(Controller):
             Agent spending envelope.
         """
         app_state: AppState = state.app_state
+        budget_cfg = await app_state.config_resolver.get_budget_config()
         total = await app_state.cost_tracker.get_agent_cost(agent_id)
         return ApiResponse(
             data=AgentSpending(
                 agent_id=agent_id,
                 total_cost_usd=total,
+                currency=budget_cfg.currency,
             ),
         )

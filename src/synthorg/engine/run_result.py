@@ -74,7 +74,7 @@ class AgentRunResult(BaseModel):
         return len(self.execution_result.turns)
 
     @computed_field(  # type: ignore[prop-decorator]
-        description="Total cost in USD",
+        description="Total cost in configured currency",
     )
     @property
     def total_cost_usd(self) -> float:

@@ -512,6 +512,7 @@ class ConfigResolver:
                 t_warn = tg.create_task(self.get_int("budget", "alert_warn_at"))
                 t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
                 t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
+                t_currency = tg.create_task(self.get_str("budget", "currency"))
         except ExceptionGroup as eg:
             logger.warning(
                 SETTINGS_FETCH_FAILED,
@@ -529,6 +530,7 @@ class ConfigResolver:
                 "per_task_limit": t_per_task.result(),
                 "per_agent_daily_limit": t_daily.result(),
                 "reset_day": t_reset.result(),
+                "currency": t_currency.result(),
                 "alerts": alerts,
                 "auto_downgrade": base.auto_downgrade.model_copy(
                     update={

@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.billing import billing_period_start, daily_period_start
+from synthorg.budget.currency import format_cost
 from synthorg.budget.degradation import (
     PreFlightResult,
     resolve_degradation,
@@ -105,6 +106,11 @@ class BudgetEnforcer:
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
         return self._cost_tracker
+
+    @property
+    def currency(self) -> str:
+        """The configured ISO 4217 currency code."""
+        return self._budget_config.currency
 
     async def get_budget_utilization_pct(self) -> float | None:
         """Return monthly budget utilization as a percentage (0--100+).
@@ -339,11 +345,14 @@ class BudgetEnforcer:
                 monthly_budget=cfg.total_monthly,
                 hard_stop_limit=hard_stop_limit,
             )
+            _fmt = format_cost
+            _cur = cfg.currency
             msg = (
-                f"Monthly budget exhausted: ${monthly_cost:.2f} >= "
-                f"${hard_stop_limit:.2f} "
+                f"Monthly budget exhausted: "
+                f"{_fmt(monthly_cost, _cur)} >= "
+                f"{_fmt(hard_stop_limit, _cur)} "
                 f"({cfg.alerts.hard_stop_at}% of "
-                f"${cfg.total_monthly:.2f})"
+                f"{_fmt(cfg.total_monthly, _cur)})"
             )
             raise BudgetExhaustedError(msg)
 
@@ -370,8 +379,8 @@ class BudgetEnforcer:
             )
             msg = (
                 f"Agent {agent_id!r} daily limit exceeded: "
-                f"${daily_cost:.2f} >= "
-                f"${cfg.per_agent_daily_limit:.2f}"
+                f"{format_cost(daily_cost, cfg.currency)} >= "
+                f"{format_cost(cfg.per_agent_daily_limit, cfg.currency)}"
             )
             raise DailyLimitExceededError(msg)
 

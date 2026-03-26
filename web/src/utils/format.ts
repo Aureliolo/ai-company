@@ -36,13 +36,13 @@ export function formatRelativeTime(iso: string | null | undefined): string {
 }
 
 /**
- * Format USD currency value.
+ * Format a currency value using the given ISO 4217 currency code.
  */
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, currencyCode: string = 'EUR'): string {
   if (!Number.isFinite(value)) return '--'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: currencyCode,
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(value)

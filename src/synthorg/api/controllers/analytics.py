@@ -74,7 +74,9 @@ class OverviewMetrics(BaseModel):
         description="Task counts by status (keys are TaskStatus values)",
     )
     total_agents: int = Field(ge=0, description="Number of configured agents")
-    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_cost_usd: float = Field(
+        ge=0.0, description="Total cost in configured currency"
+    )
     budget_remaining_usd: float = Field(
         ge=0.0,
         description="Remaining budget for the current billing period",

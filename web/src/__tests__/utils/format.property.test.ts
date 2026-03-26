@@ -2,12 +2,23 @@ import fc from 'fast-check'
 import { formatCurrency, formatUptime, formatLabel, formatDate } from '@/utils/format'
 
 describe('format property tests', () => {
-  it('formatCurrency always contains $', () => {
+  it('formatCurrency with USD always contains $', () => {
     fc.assert(
       fc.property(
         fc.double({ min: -1e9, max: 1e9, noNaN: true }),
         (value) => {
-          expect(formatCurrency(value)).toContain('$')
+          expect(formatCurrency(value, 'USD')).toContain('$')
+        },
+      ),
+    )
+  })
+
+  it('formatCurrency with EUR always contains euro sign', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -1e9, max: 1e9, noNaN: true }),
+        (value) => {
+          expect(formatCurrency(value, 'EUR')).toContain('\u20ac')
         },
       ),
     )

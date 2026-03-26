@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.budget.currency import format_cost_detail
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import LifecycleEventType
 
@@ -96,12 +97,17 @@ def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
     )
 
 
-def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
+def _task_metric_to_activity(
+    record: TaskMetricRecord,
+    *,
+    currency: str = "EUR",
+) -> ActivityEvent:
     """Convert a task metric record to a task_completed event (success or failure)."""
     status = "succeeded" if record.is_success else "failed"
     desc = (
         f"Task {record.task_id} {status} "
-        f"({record.duration_seconds:.1f}s, {record.cost_usd:.4f} USD)"
+        f"({record.duration_seconds:.1f}s, "
+        f"{format_cost_detail(record.cost_usd, currency)})"
     )
     return ActivityEvent(
         event_type="task_completed",
@@ -133,12 +139,16 @@ def _task_metric_to_started_activity(
     )
 
 
-def _cost_record_to_activity(record: CostRecord) -> ActivityEvent:
+def _cost_record_to_activity(
+    record: CostRecord,
+    *,
+    currency: str = "EUR",
+) -> ActivityEvent:
     """Convert a cost record to a cost_incurred activity event."""
     desc = (
         f"API call to {record.model} "
         f"({record.input_tokens}+{record.output_tokens} tokens, "
-        f"{record.cost_usd:.4f} USD)"
+        f"{format_cost_detail(record.cost_usd, currency)})"
     )
     return ActivityEvent(
         event_type="cost_incurred",
@@ -224,6 +234,7 @@ def merge_activity_timeline(  # noqa: PLR0913
     tool_invocations: tuple[ToolInvocationRecord, ...] = (),
     delegation_records_sent: tuple[DelegationRecord, ...] = (),
     delegation_records_received: tuple[DelegationRecord, ...] = (),
+    currency: str = "EUR",
 ) -> tuple[ActivityEvent, ...]:
     """Merge multiple event sources into a chronological activity timeline.
 
@@ -236,6 +247,7 @@ def merge_activity_timeline(  # noqa: PLR0913
         tool_invocations: Tool invocation records.
         delegation_records_sent: Delegation records (delegator perspective).
         delegation_records_received: Delegation records (delegatee perspective).
+        currency: ISO 4217 currency code for cost formatting.
 
     Returns:
         Merged and sorted activity events.
@@ -243,13 +255,17 @@ def merge_activity_timeline(  # noqa: PLR0913
     activities: list[ActivityEvent] = [
         _lifecycle_to_activity(e) for e in lifecycle_events
     ]
-    activities.extend(_task_metric_to_activity(r) for r in task_metrics)
+    activities.extend(
+        _task_metric_to_activity(r, currency=currency) for r in task_metrics
+    )
     activities.extend(
         _task_metric_to_started_activity(r)
         for r in task_metrics
         if r.started_at is not None
     )
-    activities.extend(_cost_record_to_activity(r) for r in cost_records)
+    activities.extend(
+        _cost_record_to_activity(r, currency=currency) for r in cost_records
+    )
     activities.extend(_tool_invocation_to_activity(r) for r in tool_invocations)
     activities.extend(_delegation_to_sent_activity(r) for r in delegation_records_sent)
     activities.extend(

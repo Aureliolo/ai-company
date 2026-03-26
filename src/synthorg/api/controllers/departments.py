@@ -66,7 +66,7 @@ class DepartmentHealth(BaseModel):
     )
     department_cost_7d: float = Field(
         ge=0.0,
-        description="Total cost in last 7 days (USD)",
+        description="Total cost in last 7 days",
     )
     cost_trend: tuple[TrendDataPoint, ...] = Field(
         description="7-day daily spend sparkline",

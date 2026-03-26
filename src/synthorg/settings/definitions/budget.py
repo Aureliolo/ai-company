@@ -12,7 +12,7 @@ _r.register(
         key="total_monthly",
         type=SettingType.FLOAT,
         default="100.0",
-        description="Monthly budget in USD",
+        description="Monthly budget limit",
         group="Limits",
         min_value=0.0,
         yaml_path="budget.total_monthly",
@@ -25,7 +25,7 @@ _r.register(
         key="per_task_limit",
         type=SettingType.FLOAT,
         default="5.0",
-        description="Maximum USD per task",
+        description="Maximum cost per task",
         group="Limits",
         min_value=0.0,
         yaml_path="budget.per_task_limit",
@@ -38,7 +38,7 @@ _r.register(
         key="per_agent_daily_limit",
         type=SettingType.FLOAT,
         default="10.0",
-        description="Maximum USD per agent per day",
+        description="Maximum cost per agent per day",
         group="Limits",
         min_value=0.0,
         yaml_path="budget.per_agent_daily_limit",
@@ -130,5 +130,20 @@ _r.register(
         min_value=0,
         max_value=100,
         yaml_path="budget.alerts.hard_stop_at",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="currency",
+        type=SettingType.STRING,
+        default="EUR",
+        description=(
+            "ISO 4217 currency code for display formatting (e.g. USD, EUR, GBP)"
+        ),
+        group="Display",
+        validator_pattern=r"^[A-Z]{3}$",
+        yaml_path="budget.currency",
     )
 )

@@ -136,6 +136,7 @@ def build_system_prompt(  # noqa: PLR0913
     token_estimator: PromptTokenEstimator | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
+    currency_symbol: str = "$",
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -158,6 +159,8 @@ def build_system_prompt(  # noqa: PLR0913
         effective_autonomy: Resolved autonomy for the current run.
         context_budget_indicator: Formatted context budget indicator
             string to inject into the prompt.
+        currency_symbol: Currency symbol for budget displays in the
+            prompt (e.g. ``"$"``, ``"\u20ac"``).
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -207,6 +210,7 @@ def build_system_prompt(  # noqa: PLR0913
             estimator=estimator,
             effective_autonomy=effective_autonomy,
             context_budget_indicator=context_budget_indicator,
+            currency_symbol=currency_symbol,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -387,6 +391,7 @@ def _build_template_context(  # noqa: PLR0913
     org_policies: tuple[str, ...] = (),
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
+    currency_symbol: str = "$",
 ) -> dict[str, Any]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -399,12 +404,14 @@ def _build_template_context(  # noqa: PLR0913
         org_policies: Company-wide policy texts.
         effective_autonomy: Resolved autonomy for the current run.
         context_budget: Formatted context budget indicator string.
+        currency_symbol: Currency symbol for budget displays.
 
     Returns:
         Dict of template variables.
     """
     context = _build_core_context(agent, role, effective_autonomy)
 
+    context["currency_symbol"] = currency_symbol
     context["org_policies"] = org_policies
     context["context_budget"] = context_budget
 
@@ -539,6 +546,7 @@ def _trim_sections(  # noqa: PLR0913
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
+    currency_symbol: str = "$",
 ) -> tuple[
     str,
     int,
@@ -565,6 +573,7 @@ def _trim_sections(  # noqa: PLR0913
             estimator,
             effective_autonomy=effective_autonomy,
             context_budget=context_budget,
+            currency_symbol=currency_symbol,
         )
         if estimated <= max_tokens:
             break
@@ -592,6 +601,7 @@ def _trim_sections(  # noqa: PLR0913
             estimator,
             effective_autonomy=effective_autonomy,
             context_budget=context_budget,
+            currency_symbol=currency_symbol,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -636,6 +646,7 @@ def _render_with_trimming(  # noqa: PLR0913
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
+    currency_symbol: str = "$",
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
     content, estimated = _render_and_estimate(
@@ -649,6 +660,7 @@ def _render_with_trimming(  # noqa: PLR0913
         estimator,
         effective_autonomy=effective_autonomy,
         context_budget=context_budget_indicator,
+        currency_symbol=currency_symbol,
     )
 
     if max_tokens is not None and estimated > max_tokens:
@@ -664,6 +676,7 @@ def _render_with_trimming(  # noqa: PLR0913
             estimator=estimator,
             effective_autonomy=effective_autonomy,
             context_budget=context_budget_indicator,
+            currency_symbol=currency_symbol,
         )
 
     return _build_prompt_result(
@@ -721,6 +734,7 @@ def _render_and_estimate(  # noqa: PLR0913
     *,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
+    currency_symbol: str = "$",
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
@@ -735,6 +749,7 @@ def _render_and_estimate(  # noqa: PLR0913
         estimator: Token estimator.
         effective_autonomy: Resolved autonomy for the current run.
         context_budget: Formatted context budget indicator string.
+        currency_symbol: Currency symbol for budget displays.
 
     Returns:
         Tuple of (rendered content, estimated token count).
@@ -748,6 +763,7 @@ def _render_and_estimate(  # noqa: PLR0913
         org_policies=org_policies,
         effective_autonomy=effective_autonomy,
         context_budget=context_budget,
+        currency_symbol=currency_symbol,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content)
@@ -783,11 +799,16 @@ def build_error_prompt(
     )
 
 
-def format_task_instruction(task: Task) -> str:
+def format_task_instruction(
+    task: Task,
+    *,
+    currency_symbol: str = "$",
+) -> str:
     """Format a task into a user message for the initial conversation.
 
     Args:
         task: Task to format.
+        currency_symbol: Currency symbol for budget display.
 
     Returns:
         Markdown-formatted task instruction string.
@@ -801,7 +822,7 @@ def format_task_instruction(task: Task) -> str:
 
     if task.budget_limit > 0:
         parts.append("")
-        parts.append(f"**Budget limit:** ${task.budget_limit:.2f} USD")
+        parts.append(f"**Budget limit:** {currency_symbol}{task.budget_limit:.2f}")
 
     if task.deadline:
         parts.append("")

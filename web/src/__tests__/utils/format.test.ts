@@ -75,25 +75,54 @@ describe('formatRelativeTime', () => {
 })
 
 describe('formatCurrency', () => {
-  it('formats positive values', () => {
-    expect(formatCurrency(42.5)).toBe('$42.50')
+  it('defaults to EUR', () => {
+    const result = formatCurrency(42.5)
+    expect(result).toContain('42.50')
+    expect(result).toContain('\u20ac')
   })
 
-  it('formats zero', () => {
-    expect(formatCurrency(0)).toBe('$0.00')
+  it('formats USD values', () => {
+    expect(formatCurrency(42.5, 'USD')).toBe('$42.50')
+  })
+
+  it('formats EUR values', () => {
+    const result = formatCurrency(42.5, 'EUR')
+    expect(result).toContain('\u20ac')
+    expect(result).toContain('42.50')
+  })
+
+  it('formats GBP values', () => {
+    const result = formatCurrency(42.5, 'GBP')
+    expect(result).toContain('\u00a3')
+    expect(result).toContain('42.50')
+  })
+
+  it('formats JPY values', () => {
+    const result = formatCurrency(1000, 'JPY')
+    expect(result).toContain('\u00a5')
+    expect(result).toContain('1,000')
+  })
+
+  it('formats zero with USD', () => {
+    expect(formatCurrency(0, 'USD')).toBe('$0.00')
   })
 
   it('formats small fractional values', () => {
-    const result = formatCurrency(0.0001)
+    const result = formatCurrency(0.0001, 'USD')
     expect(result).toContain('$')
     expect(result).toContain('0.0001')
   })
 
   it('formats negative values', () => {
-    const result = formatCurrency(-10)
+    const result = formatCurrency(-10, 'USD')
     expect(result).toContain('10')
     // Verify negative indicator (varies by locale: "-$10.00" or "($10.00)")
     expect(result.includes('-') || result.includes('(')).toBe(true)
+  })
+
+  it('returns -- for non-finite values', () => {
+    expect(formatCurrency(Infinity, 'USD')).toBe('--')
+    expect(formatCurrency(NaN, 'USD')).toBe('--')
   })
 })
 

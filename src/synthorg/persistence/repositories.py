@@ -159,7 +159,7 @@ class CostRecordRepository(Protocol):
             task_id: Filter by task identifier.
 
         Returns:
-            Total cost in USD.
+            Total cost in configured currency.
 
         Raises:
             PersistenceError: If the operation fails.

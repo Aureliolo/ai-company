@@ -133,7 +133,7 @@ class CostTracker:
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            Rounded total cost in USD.
+            Rounded total cost in configured currency.
 
         Raises:
             ValueError: If both *start* and *end* are given and
@@ -160,7 +160,7 @@ class CostTracker:
             end: Exclusive upper bound on ``timestamp``.
 
         Returns:
-            Rounded total cost in USD for the agent.
+            Rounded total cost in configured currency for the agent.
 
         Raises:
             ValueError: If both *start* and *end* are given and

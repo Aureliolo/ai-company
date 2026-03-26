@@ -353,6 +353,7 @@ def _budget_get_side_effect(
         ("budget", "alert_warn_at"): "75",
         ("budget", "alert_critical_at"): "90",
         ("budget", "alert_hard_stop_at"): "100",
+        ("budget", "currency"): "EUR",
     }
     merged = {**defaults, **(overrides or {})}
 
@@ -385,6 +386,7 @@ class TestGetBudgetConfig:
         assert result.alerts.warn_at == 75
         assert result.alerts.critical_at == 90
         assert result.alerts.hard_stop_at == 100
+        assert result.currency == "EUR"
 
     async def test_db_overrides_take_precedence(
         self, resolver: ConfigResolver, mock_settings: AsyncMock

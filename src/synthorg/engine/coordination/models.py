@@ -178,7 +178,7 @@ class CoordinationResult(BaseModel):
     total_cost_usd: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost in USD",
+        description="Total cost in configured currency",
     )
 
     @model_validator(mode="after")
