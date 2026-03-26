@@ -38,6 +38,9 @@ template:
     - name: "engineering"
       budget_percent: 70
       head_role: "Software Architect"
+      policies:
+        review_requirements:
+          min_reviewers: 1
       reporting_lines:
         - subordinate: "Backend Developer"
           subordinate_id: "backend-senior-1"
@@ -53,6 +56,11 @@ template:
     - name: "quality_assurance"
       budget_percent: 20
       head_role: "QA Lead"
+      policies:
+        approval_chains:
+          - action_type: "test_coverage"
+            approvers:
+              - "QA Lead"
       reporting_lines:
         - subordinate: "QA Engineer"
           supervisor: "QA Lead"
