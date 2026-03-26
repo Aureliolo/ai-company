@@ -57,6 +57,14 @@ template:
     - name: "engineering"
       budget_percent: 30
       head_role: "CTO"
+      policies:
+        review_requirements:
+          min_reviewers: 2
+        approval_chains:
+          - action_type: "code_review"
+            approvers:
+              - "Software Architect"
+              - "CTO"
       reporting_lines:
         - subordinate: "Software Architect"
           supervisor: "CTO"
@@ -103,6 +111,11 @@ template:
     - name: "operations"
       budget_percent: 8
       head_role: "COO"
+      policies:
+        approval_chains:
+          - action_type: "change_management"
+            approvers:
+              - "COO"
       reporting_lines:
         - subordinate: "Project Manager"
           supervisor: "COO"
@@ -111,6 +124,12 @@ template:
     - name: "security"
       budget_percent: 8
       head_role: "Security Engineer"
+      policies:
+        approval_chains:
+          - action_type: "security_review"
+            approvers:
+              - "Security Engineer"
+              - "CTO"
       reporting_lines:
         - subordinate: "Security Operations"
           supervisor: "Security Engineer"

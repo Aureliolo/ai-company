@@ -39,6 +39,11 @@ template:
     - name: "operations"
       budget_percent: 20
       head_role: "Project Manager"
+      policies:
+        approval_chains:
+          - action_type: "client_approval"
+            approvers:
+              - "Project Manager"
       reporting_lines:
         - subordinate: "Product Manager"
           supervisor: "Project Manager"
@@ -48,6 +53,9 @@ template:
       budget_percent: 35
       head_role: "Full-Stack Developer"
       head_merge_id: "fullstack-senior"
+      policies:
+        review_requirements:
+          min_reviewers: 1
       reporting_lines:
         - subordinate: "Frontend Developer"
           supervisor: "Full-Stack Developer"
