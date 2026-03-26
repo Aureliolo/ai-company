@@ -94,6 +94,11 @@ class TestToolInvocationTracker:
         with pytest.raises(ValueError, match=r"start.*must be before"):
             await tracker.get_records(start=_NOW, end=_NOW - timedelta(hours=1))
 
+    async def test_equal_start_end_raises(self) -> None:
+        tracker = ToolInvocationTracker()
+        with pytest.raises(ValueError, match=r"start.*must be before"):
+            await tracker.get_records(start=_NOW, end=_NOW)
+
     async def test_returns_immutable_tuple(self) -> None:
         tracker = ToolInvocationTracker()
         await tracker.record(_make_record())

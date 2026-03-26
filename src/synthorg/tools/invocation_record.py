@@ -4,9 +4,10 @@ Immutable record of a single tool invocation, used by the activity
 timeline to surface ``tool_used`` events.
 """
 
+from typing import Self
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 
@@ -48,3 +49,11 @@ class ToolInvocationRecord(BaseModel):
         max_length=2048,
         description="Error message if the invocation failed",
     )
+
+    @model_validator(mode="after")
+    def _validate_success_consistency(self) -> Self:
+        """Enforce success/error_message field correlation."""
+        if self.is_success and self.error_message is not None:
+            msg = "error_message must be None when is_success is True"
+            raise ValueError(msg)
+        return self

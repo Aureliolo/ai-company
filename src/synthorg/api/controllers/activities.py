@@ -1,5 +1,6 @@
 """Org-wide activity feed controller."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
 from typing import Annotated
@@ -103,24 +104,19 @@ class ActivityController(Controller):
         )
 
         task_metrics = _fetch_task_metrics(app_state, agent_id, since, now)
-        cost_records = await _fetch_cost_records(
-            app_state,
-            agent_id,
-            since,
-            now,
-        )
-        tool_invocations = await _fetch_tool_invocations(
-            app_state,
-            agent_id,
-            since,
-            now,
-        )
-        sent, received = await _fetch_delegation_records(
-            app_state,
-            agent_id,
-            since,
-            now,
-        )
+        async with asyncio.TaskGroup() as tg:
+            cost_task = tg.create_task(
+                _fetch_cost_records(app_state, agent_id, since, now),
+            )
+            tool_task = tg.create_task(
+                _fetch_tool_invocations(app_state, agent_id, since, now),
+            )
+            del_task = tg.create_task(
+                _fetch_delegation_records(app_state, agent_id, since, now),
+            )
+        cost_records = cost_task.result()
+        tool_invocations = tool_task.result()
+        sent, received = del_task.result()
 
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
@@ -221,6 +217,8 @@ async def _fetch_tool_invocations(
         )
     except MemoryError, RecursionError:
         raise
+    except ServiceUnavailableError:
+        raise
     except Exception:
         logger.warning(
             API_REQUEST_ERROR,
@@ -266,6 +264,8 @@ async def _fetch_delegation_records(
             sent = all_records
             received = all_records
     except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
         raise
     except Exception:
         logger.warning(

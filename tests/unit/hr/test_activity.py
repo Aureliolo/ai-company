@@ -419,6 +419,25 @@ class TestToolUsedEvents:
         assert "failed" in evt.description
         assert "Permission denied" in evt.description
 
+    def test_tool_used_failure_no_error_message(self) -> None:
+        record = _make_tool_invocation(
+            tool_name="exec_cmd",
+            is_success=False,
+            error_message=None,
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            tool_invocations=(record,),
+        )
+
+        evt = timeline[0]
+        assert "exec_cmd" in evt.description
+        assert "failed" in evt.description
+        assert "None" not in evt.description
+
     def test_tool_used_no_task_id(self) -> None:
         record = _make_tool_invocation(task_id=None)
 

@@ -71,6 +71,17 @@ class TaskMetricRecord(BaseModel):
     )
     complexity: Complexity = Field(description="Estimated task complexity")
 
+    @model_validator(mode="after")
+    def _validate_temporal_ordering(self) -> Self:
+        """Ensure started_at is before completed_at when both are set."""
+        if self.started_at is not None and self.started_at >= self.completed_at:
+            msg = (
+                f"started_at ({self.started_at.isoformat()}) must be "
+                f"before completed_at ({self.completed_at.isoformat()})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class CollaborationMetricRecord(BaseModel):
     """Record of a collaboration behavior data point.

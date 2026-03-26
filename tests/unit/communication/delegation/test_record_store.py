@@ -122,6 +122,11 @@ class TestDelegationRecordStore:
                 end=_NOW - timedelta(hours=1),
             )
 
+    async def test_equal_start_end_raises(self) -> None:
+        store = DelegationRecordStore()
+        with pytest.raises(ValueError, match=r"start.*must be before"):
+            await store.get_all_records(start=_NOW, end=_NOW)
+
     async def test_returns_immutable_tuple(self) -> None:
         store = DelegationRecordStore()
         store.record_sync(_make_record())

@@ -48,6 +48,7 @@ class DelegationService:
         hierarchy: Resolved organizational hierarchy.
         authority_validator: Authority validation logic.
         guard: Loop prevention guard.
+        record_store: Optional delegation record store for activity tracking.
     """
 
     __slots__ = (
@@ -187,7 +188,18 @@ class DelegationService:
         )
         self._audit_trail.append(record)
         if self._record_store is not None:
-            self._record_store.record_sync(record)
+            try:
+                self._record_store.record_sync(record)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    DELEGATION_CREATED,
+                    delegator=request.delegator_id,
+                    delegatee=request.delegatee_id,
+                    note="Failed to record delegation in activity store",
+                    exc_info=True,
+                )
 
         logger.info(
             DELEGATION_CREATED,

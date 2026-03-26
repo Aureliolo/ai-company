@@ -1063,8 +1063,9 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
 | `GET /api/v1/agents/{name}/performance` | Agent performance metrics summary |
-| `GET /api/v1/agents/{name}/activity` | Paginated agent activity timeline |
+| `GET /api/v1/agents/{name}/activity` | Paginated agent activity timeline (lifecycle, task, cost, tool, delegation events) |
 | `GET /api/v1/agents/{name}/history` | Agent career history events |
+| `GET /api/v1/activities` | Org-wide activity feed (merges all agents, filterable by type/agent/time window) |
 | `/api/v1/departments` | Department management |
 | `/api/v1/projects` | Project CRUD |
 | `/api/v1/tasks` | Task management |
