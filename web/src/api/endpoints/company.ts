@@ -1,5 +1,5 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ApiResponse, CompanyConfig, Department, PaginatedResponse, PaginationParams } from '../types'
+import type { ApiResponse, CompanyConfig, Department, DepartmentHealth, PaginatedResponse, PaginationParams } from '../types'
 
 export async function getCompanyConfig(): Promise<CompanyConfig> {
   const response = await apiClient.get<ApiResponse<CompanyConfig>>('/company')
@@ -13,5 +13,12 @@ export async function listDepartments(params?: PaginationParams): Promise<Pagina
 
 export async function getDepartment(name: string): Promise<Department> {
   const response = await apiClient.get<ApiResponse<Department>>(`/departments/${encodeURIComponent(name)}`)
+  return unwrap(response)
+}
+
+export async function getDepartmentHealth(name: string): Promise<DepartmentHealth> {
+  const response = await apiClient.get<ApiResponse<DepartmentHealth>>(
+    `/departments/${encodeURIComponent(name)}/health`,
+  )
   return unwrap(response)
 }

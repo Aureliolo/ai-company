@@ -480,6 +480,29 @@ export interface ForecastResponse {
   currency: string
 }
 
+// ── Activities ──────────────────────────────────────────────
+
+export interface ActivityItem {
+  id: string
+  timestamp: string
+  agent_name: string
+  action_type: WsEventType
+  description: string
+  task_id: string | null
+  department: DepartmentName | null
+}
+
+// ── Department Health ───────────────────────────────────────
+
+export interface DepartmentHealth {
+  name: DepartmentName
+  display_name: string
+  health_percent: number
+  agent_count: number
+  task_count: number
+  cost_usd: number | null
+}
+
 // ── Company / Organization ───────────────────────────────────
 
 export interface Department {

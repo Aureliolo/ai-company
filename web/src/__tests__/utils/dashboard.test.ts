@@ -1,0 +1,240 @@
+import {
+  computeMetricCards,
+  computeOrgHealth,
+  computeSpendTrend,
+  describeEvent,
+  wsEventToActivityItem,
+} from '@/utils/dashboard'
+import type { BudgetConfig, DepartmentHealth, OverviewMetrics, WsEvent } from '@/api/types'
+
+function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
+  return {
+    total_tasks: 24,
+    tasks_by_status: {
+      created: 2,
+      assigned: 3,
+      in_progress: 8,
+      in_review: 2,
+      completed: 5,
+      blocked: 1,
+      failed: 1,
+      interrupted: 1,
+      cancelled: 1,
+    },
+    total_agents: 10,
+    total_cost_usd: 42.17,
+    budget_remaining_usd: 457.83,
+    budget_used_percent: 8.43,
+    cost_7d_trend: [
+      { timestamp: '2026-03-20', value: 5 },
+      { timestamp: '2026-03-21', value: 6 },
+      { timestamp: '2026-03-22', value: 7 },
+      { timestamp: '2026-03-23', value: 5 },
+      { timestamp: '2026-03-24', value: 8 },
+      { timestamp: '2026-03-25', value: 6 },
+      { timestamp: '2026-03-26', value: 5.17 },
+    ],
+    active_agents_count: 5,
+    idle_agents_count: 4,
+    ...overrides,
+  }
+}
+
+function makeBudgetConfig(overrides: Partial<BudgetConfig> = {}): BudgetConfig {
+  return {
+    total_monthly: 500,
+    alerts: { warn_at: 80, critical_at: 95, hard_stop_at: 100 },
+    per_task_limit: 10,
+    per_agent_daily_limit: 20,
+    auto_downgrade: {
+      enabled: false,
+      threshold: 90,
+      downgrade_map: [],
+      boundary: 'task_assignment',
+    },
+    reset_day: 1,
+    ...overrides,
+  }
+}
+
+describe('computeMetricCards', () => {
+  it('returns exactly 4 cards', () => {
+    const cards = computeMetricCards(makeOverview(), makeBudgetConfig())
+    expect(cards).toHaveLength(4)
+  })
+
+  it('includes Tasks card with total_tasks value', () => {
+    const cards = computeMetricCards(makeOverview({ total_tasks: 42 }), makeBudgetConfig())
+    const tasksCard = cards.find((c) => c.label === 'TASKS')
+    expect(tasksCard).toBeDefined()
+    expect(tasksCard!.value).toBe(42)
+  })
+
+  it('includes Active Agents card', () => {
+    const cards = computeMetricCards(
+      makeOverview({ active_agents_count: 7, idle_agents_count: 3 }),
+      makeBudgetConfig(),
+    )
+    const agentsCard = cards.find((c) => c.label === 'ACTIVE AGENTS')
+    expect(agentsCard).toBeDefined()
+    expect(agentsCard!.value).toBe(7)
+    expect(agentsCard!.subText).toContain('3')
+  })
+
+  it('includes Spend card with formatted currency', () => {
+    const cards = computeMetricCards(makeOverview({ total_cost_usd: 42.17 }), makeBudgetConfig())
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard).toBeDefined()
+    expect(spendCard!.value).toBe('$42.17')
+  })
+
+  it('includes sparkline data for spend card from cost_7d_trend', () => {
+    const cards = computeMetricCards(makeOverview(), makeBudgetConfig())
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.sparklineData).toEqual([5, 6, 7, 5, 8, 6, 5.17])
+  })
+
+  it('includes Pending Approvals card from tasks_by_status', () => {
+    const overview = makeOverview()
+    const cards = computeMetricCards(overview, makeBudgetConfig())
+    const approvalsCard = cards.find((c) => c.label === 'PENDING APPROVALS')
+    expect(approvalsCard).toBeDefined()
+    // in_review count serves as pending approvals proxy
+    expect(approvalsCard!.value).toBe(2)
+  })
+
+  it('includes budget progress on spend card', () => {
+    const cards = computeMetricCards(
+      makeOverview({ total_cost_usd: 200, budget_used_percent: 40 }),
+      makeBudgetConfig({ total_monthly: 500 }),
+    )
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.progress).toEqual({ current: 200, total: 500 })
+  })
+})
+
+describe('computeSpendTrend', () => {
+  it('returns undefined for empty data', () => {
+    expect(computeSpendTrend([])).toBeUndefined()
+  })
+
+  it('returns undefined for single point', () => {
+    expect(computeSpendTrend([{ timestamp: '2026-03-20', value: 5 }])).toBeUndefined()
+  })
+
+  it('returns up direction when last > first', () => {
+    const result = computeSpendTrend([
+      { timestamp: '2026-03-20', value: 5 },
+      { timestamp: '2026-03-21', value: 10 },
+    ])
+    expect(result).toEqual({ value: 100, direction: 'up' })
+  })
+
+  it('returns down direction when last < first', () => {
+    const result = computeSpendTrend([
+      { timestamp: '2026-03-20', value: 10 },
+      { timestamp: '2026-03-21', value: 5 },
+    ])
+    expect(result).toEqual({ value: 50, direction: 'down' })
+  })
+
+  it('returns undefined when first value is 0', () => {
+    const result = computeSpendTrend([
+      { timestamp: '2026-03-20', value: 0 },
+      { timestamp: '2026-03-21', value: 5 },
+    ])
+    expect(result).toBeUndefined()
+  })
+})
+
+describe('computeOrgHealth', () => {
+  it('returns 0 for empty array', () => {
+    expect(computeOrgHealth([])).toBe(0)
+  })
+
+  it('returns exact value for single department', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'engineering', display_name: 'Engineering', health_percent: 85, agent_count: 4, task_count: 10, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBe(85)
+  })
+
+  it('averages multiple departments', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'engineering', display_name: 'Engineering', health_percent: 80, agent_count: 4, task_count: 10, cost_usd: null },
+      { name: 'design', display_name: 'Design', health_percent: 60, agent_count: 2, task_count: 5, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBe(70)
+  })
+
+  it('rounds to nearest integer', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'engineering', display_name: 'Engineering', health_percent: 33, agent_count: 1, task_count: 1, cost_usd: null },
+      { name: 'design', display_name: 'Design', health_percent: 33, agent_count: 1, task_count: 1, cost_usd: null },
+      { name: 'product', display_name: 'Product', health_percent: 34, agent_count: 1, task_count: 1, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBe(33)
+  })
+})
+
+describe('describeEvent', () => {
+  it('maps task.created', () => {
+    expect(describeEvent('task.created')).toBe('created a task')
+  })
+
+  it('maps agent.hired', () => {
+    expect(describeEvent('agent.hired')).toBe('joined the organization')
+  })
+
+  it('maps budget.alert', () => {
+    expect(describeEvent('budget.alert')).toBe('triggered a budget alert')
+  })
+
+  it('returns fallback for unknown event types', () => {
+    expect(describeEvent('coordination.started')).toBeTruthy()
+  })
+})
+
+describe('wsEventToActivityItem', () => {
+  it('maps a WS event to an ActivityItem', () => {
+    const event: WsEvent = {
+      event_type: 'task.created',
+      channel: 'tasks',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: {
+        agent_name: 'agent-cto',
+        task_id: 'task-123',
+        description: 'Implement auth module',
+      },
+    }
+    const item = wsEventToActivityItem(event)
+    expect(item.agent_name).toBe('agent-cto')
+    expect(item.action_type).toBe('task.created')
+    expect(item.timestamp).toBe('2026-03-26T10:00:00Z')
+    expect(item.task_id).toBe('task-123')
+    expect(item.id).toBeTruthy()
+    expect(item.description).toBeTruthy()
+  })
+
+  it('handles missing agent_name in payload', () => {
+    const event: WsEvent = {
+      event_type: 'system.error',
+      channel: 'system',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { message: 'Something failed' },
+    }
+    const item = wsEventToActivityItem(event)
+    expect(item.agent_name).toBe('System')
+  })
+
+  it('handles missing task_id in payload', () => {
+    const event: WsEvent = {
+      event_type: 'agent.hired',
+      channel: 'agents',
+      timestamp: '2026-03-26T10:00:00Z',
+      payload: { agent_name: 'new-agent' },
+    }
+    const item = wsEventToActivityItem(event)
+    expect(item.task_id).toBeNull()
+  })
+})

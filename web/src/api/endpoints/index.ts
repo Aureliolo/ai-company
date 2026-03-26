@@ -1,3 +1,4 @@
+export * as activities from './activities'
 export * as agents from './agents'
 export * as analytics from './analytics'
 export * as approvals from './approvals'
