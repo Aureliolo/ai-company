@@ -186,6 +186,8 @@ graph TD
 !!! abstract "Note"
 
     Percentages are illustrative defaults. All allocations are configurable per company.
+    Dollar signs in the diagram are illustrative -- the actual currency is determined by
+    the `budget.currency` setting (ISO 4217 code, defaults to USD).
 
 ### Cost Tracking
 
@@ -199,7 +201,7 @@ Every API call is tracked with full context:
   "model": "example-medium-001",
   "input_tokens": 4500,
   "output_tokens": 1200,
-  "cost_usd": 0.0315,
+  "cost_usd": 0.0315,  // field name retained for API backward compatibility
   "timestamp": "2026-02-27T10:30:00Z"
 }
 ```
@@ -244,6 +246,7 @@ task-boundary auto-downgrade.
 ```yaml
 budget:
   total_monthly: 100.00
+  currency: "USD"  # ISO 4217 currency code for display
   reset_day: 1
   alerts:
     warn_at: 75               # percent
@@ -326,7 +329,7 @@ completion:
 
 - `turns_per_task` -- number of LLM turns to complete the task
 - `tokens_per_task` -- total tokens consumed
-- `cost_per_task` -- total USD cost
+- `cost_per_task` -- total cost in configured currency
 - `duration_seconds` -- wall-clock execution time
 - `prompt_tokens` -- estimated system prompt tokens
 - `prompt_token_ratio` -- ratio of prompt tokens to total tokens (overhead indicator; warns when >0.3)

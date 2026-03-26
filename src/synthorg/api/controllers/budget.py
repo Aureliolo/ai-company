@@ -21,6 +21,7 @@ from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -46,7 +47,13 @@ class AgentSpending(BaseModel):
     total_cost_usd: float = Field(
         ge=0.0, description="Total cost in configured currency"
     )
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
 
 
 class DailySummary(BaseModel):
@@ -67,7 +74,13 @@ class DailySummary(BaseModel):
     total_cost_usd: float = Field(
         ge=0.0, description="Total cost in configured currency"
     )
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
     total_input_tokens: int = Field(
         ge=0,
         description="Total input tokens",
@@ -96,7 +109,13 @@ class PeriodSummary(BaseModel):
     total_cost_usd: float = Field(
         ge=0.0, description="Total cost in configured currency"
     )
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
     total_input_tokens: int = Field(
         ge=0,
         description="Total input tokens",
@@ -140,7 +159,13 @@ class CostRecordListResponse(BaseModel):
     pagination: PaginationMeta
     daily_summary: tuple[DailySummary, ...] = ()
     period_summary: PeriodSummary
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
@@ -163,7 +188,7 @@ class CostRecordListResponse(BaseModel):
 def _build_summaries(
     records: tuple[CostRecord, ...],
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> tuple[tuple[DailySummary, ...], PeriodSummary]:
     """Compute daily and period summaries from cost records.
 

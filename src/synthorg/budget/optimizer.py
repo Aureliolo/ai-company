@@ -595,6 +595,7 @@ class CostOptimizer:
         """Find routing suggestions for all agents."""
         assert self._model_resolver is not None  # noqa: S101
         suggestions: list[RoutingSuggestion] = []
+        cur = self._budget_config.currency
 
         for agent_id in sorted(by_agent):
             agent_records = by_agent[agent_id]
@@ -615,6 +616,16 @@ class CostOptimizer:
                 if candidate.max_context < current_resolved.max_context:
                     continue
 
+                cur_fmt = format_cost(
+                    current_resolved.total_cost_per_1k,
+                    cur,
+                    precision=4,
+                )
+                cand_fmt = format_cost(
+                    candidate.total_cost_per_1k,
+                    cur,
+                    precision=4,
+                )
                 suggestions.append(
                     RoutingSuggestion(
                         agent_id=agent_id,
@@ -630,9 +641,9 @@ class CostOptimizer:
                         ),
                         reason=(
                             f"Switch from {most_used!r} "
-                            f"(${current_resolved.total_cost_per_1k:.4f}/1k) "
-                            f"to {candidate.model_id!r} "
-                            f"(${candidate.total_cost_per_1k:.4f}/1k) "
+                            f"({cur_fmt}/1k) to "
+                            f"{candidate.model_id!r} "
+                            f"({cand_fmt}/1k) "
                             f"-- same context window, lower cost"
                         ),
                     ),

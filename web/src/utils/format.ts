@@ -38,16 +38,15 @@ export function formatRelativeTime(iso: string | null | undefined): string {
 /**
  * Format a currency value using the given ISO 4217 currency code.
  */
-export function formatCurrency(value: number, currencyCode: string = 'EUR'): string {
+export function formatCurrency(value: number, currencyCode: string = 'USD'): string {
   if (!Number.isFinite(value)) return '--'
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
     }).format(value)
-  } catch {
+  } catch (error) {
+    console.error(`[format] Intl.NumberFormat failed for currency "${currencyCode}":`, error)
     return `${currencyCode} ${value.toFixed(2)}`
   }
 }

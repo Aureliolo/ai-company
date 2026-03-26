@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from synthorg.budget.currency import format_cost_detail
+from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import LifecycleEventType
 
@@ -100,7 +100,7 @@ def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
 def _task_metric_to_activity(
     record: TaskMetricRecord,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
     """Convert a task metric record to a task_completed event (success or failure)."""
     status = "succeeded" if record.is_success else "failed"
@@ -142,7 +142,7 @@ def _task_metric_to_started_activity(
 def _cost_record_to_activity(
     record: CostRecord,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
     """Convert a cost record to a cost_incurred activity event."""
     desc = (
@@ -234,7 +234,7 @@ def merge_activity_timeline(  # noqa: PLR0913
     tool_invocations: tuple[ToolInvocationRecord, ...] = (),
     delegation_records_sent: tuple[DelegationRecord, ...] = (),
     delegation_records_received: tuple[DelegationRecord, ...] = (),
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> tuple[ActivityEvent, ...]:
     """Merge multiple event sources into a chronological activity timeline.
 

@@ -27,7 +27,7 @@ class CostRecord(BaseModel):
         model: Model identifier.
         input_tokens: Input token count.
         output_tokens: Output token count.
-        cost_usd: Cost in configured currency.
+        cost_usd: Cost in USD (base currency).
         timestamp: Timezone-aware timestamp of the API call.
         call_category: Optional LLM call category for coordination
             metrics (productive, coordination, system).
@@ -41,7 +41,7 @@ class CostRecord(BaseModel):
     model: NotBlankStr = Field(description="Model identifier")
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
-    cost_usd: float = Field(ge=0.0, description="Cost in configured currency")
+    cost_usd: float = Field(ge=0.0, description="Cost in USD (base currency)")
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
     call_category: LLMCallCategory | None = Field(
         default=None,

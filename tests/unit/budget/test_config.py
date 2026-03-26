@@ -220,7 +220,7 @@ class TestBudgetConfig:
         assert cfg.alerts.warn_at == 75
         assert cfg.auto_downgrade.enabled is False
         assert cfg.reset_day == 1
-        assert cfg.currency == "EUR"
+        assert cfg.currency == "USD"
 
     def test_custom_values(self, sample_budget_config: BudgetConfig) -> None:
         """Accept valid custom budget config."""
@@ -330,27 +330,18 @@ class TestBudgetConfig:
         cfg = BudgetConfig(currency="USD")
         assert cfg.currency == "USD"
 
-    def test_currency_lowercase_rejected(self) -> None:
-        """Reject lowercase currency code."""
+    @pytest.mark.parametrize(
+        ("value", "reason"),
+        [
+            ("usd", "lowercase"),
+            ("US", "too_short"),
+            ("USDX", "too_long"),
+            ("123", "numeric"),
+            ("", "empty"),
+        ],
+        ids=["lowercase", "too_short", "too_long", "numeric", "empty"],
+    )
+    def test_currency_invalid_rejected(self, value: str, reason: str) -> None:
+        """Reject invalid currency codes: {reason}."""
         with pytest.raises(ValidationError):
-            BudgetConfig(currency="usd")
-
-    def test_currency_too_short_rejected(self) -> None:
-        """Reject currency code shorter than 3 characters."""
-        with pytest.raises(ValidationError):
-            BudgetConfig(currency="US")
-
-    def test_currency_too_long_rejected(self) -> None:
-        """Reject currency code longer than 3 characters."""
-        with pytest.raises(ValidationError):
-            BudgetConfig(currency="USDX")
-
-    def test_currency_numeric_rejected(self) -> None:
-        """Reject numeric-only currency code."""
-        with pytest.raises(ValidationError):
-            BudgetConfig(currency="123")
-
-    def test_currency_empty_rejected(self) -> None:
-        """Reject empty currency code."""
-        with pytest.raises(ValidationError):
-            BudgetConfig(currency="")
+            BudgetConfig(currency=value)

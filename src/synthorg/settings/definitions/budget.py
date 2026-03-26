@@ -138,7 +138,7 @@ _r.register(
         namespace=SettingNamespace.BUDGET,
         key="currency",
         type=SettingType.STRING,
-        default="EUR",
+        default="USD",
         description=(
             "ISO 4217 currency code for display formatting (e.g. USD, EUR, GBP)"
         ),

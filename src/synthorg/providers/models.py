@@ -19,14 +19,14 @@ class TokenUsage(BaseModel):
         input_tokens: Number of input (prompt) tokens.
         output_tokens: Number of output (completion) tokens.
         total_tokens: Sum of input and output tokens (computed).
-        cost_usd: Estimated cost in configured currency for this call.
+        cost_usd: Estimated cost in USD (base currency) for this call.
     """
 
     model_config = ConfigDict(frozen=True)
 
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
-    cost_usd: float = Field(ge=0.0, description="Estimated cost in configured currency")
+    cost_usd: float = Field(ge=0.0, description="Estimated cost in USD (base currency)")
 
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
     @property

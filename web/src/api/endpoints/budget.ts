@@ -13,6 +13,7 @@ import type {
 export interface CostRecordListResult extends PaginatedResult<CostRecord> {
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
+  currency: string
 }
 
 export async function getBudgetConfig(): Promise<BudgetConfig> {
@@ -28,6 +29,7 @@ interface CostRecordListResponseBody {
   pagination: { total: number; offset: number; limit: number }
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
+  currency: string
 }
 
 export async function listCostRecords(
@@ -45,6 +47,7 @@ export async function listCostRecords(
     limit: body.pagination.limit,
     daily_summary: body.daily_summary,
     period_summary: body.period_summary,
+    currency: body.currency,
   }
 }
 

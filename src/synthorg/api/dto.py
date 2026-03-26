@@ -475,6 +475,13 @@ class CoordinationResultResponse(BaseModel):
     topology: NotBlankStr
     total_duration_seconds: float = Field(ge=0.0)
     total_cost_usd: float = Field(ge=0.0)
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
     phases: tuple[CoordinationPhaseResponse, ...] = Field(min_length=1)
     wave_count: int = Field(ge=0)
 

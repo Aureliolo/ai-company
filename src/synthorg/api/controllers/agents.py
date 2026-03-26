@@ -9,6 +9,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -25,6 +26,7 @@ from synthorg.observability.events.api import (
     API_AGENT_ACTIVITY_QUERIED,
     API_AGENT_HISTORY_QUERIED,
     API_AGENT_PERFORMANCE_QUERIED,
+    API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
 )
 
@@ -182,11 +184,22 @@ class AgentController(Controller):
             agent_id=agent_id,
         )
 
-        budget_cfg = await app_state.config_resolver.get_budget_config()
+        try:
+            budget_cfg = await app_state.config_resolver.get_budget_config()
+            currency = budget_cfg.currency
+        except Exception:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="agents.activity",
+                agent_name=agent_name,
+                detail="budget config unavailable, using default currency",
+                exc_info=True,
+            )
+            currency = DEFAULT_CURRENCY
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
-            currency=budget_cfg.currency,
+            currency=currency,
         )
         page, meta = paginate(timeline, offset=offset, limit=limit)
         logger.debug(

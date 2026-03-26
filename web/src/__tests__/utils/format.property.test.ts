@@ -46,6 +46,17 @@ describe('format property tests', () => {
     )
   })
 
+  it('formatCurrency with no currencyCode defaults to USD ($)', () => {
+    fc.assert(
+      fc.property(
+        fc.double({ min: -1e9, max: 1e9, noNaN: true }),
+        (value) => {
+          expect(formatCurrency(value)).toContain('$')
+        },
+      ),
+    )
+  })
+
   it('formatDate returns -- for any falsy input', () => {
     fc.assert(
       fc.property(

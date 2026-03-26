@@ -163,7 +163,7 @@ class TestCurrencyProperty:
             budget_config=cfg,
             cost_tracker=CostTracker(budget_config=cfg),
         )
-        assert enforcer.currency == "EUR"
+        assert enforcer.currency == "USD"
 
     def test_returns_custom_currency(self) -> None:
         cfg = BudgetConfig(currency="GBP")
@@ -931,7 +931,7 @@ class TestMakeBudgetChecker:
 
         # First call at 75% → should emit WARNING
         with patch(
-            "synthorg.budget.enforcer.logger",
+            "synthorg.budget._enforcer_helpers.logger",
         ) as mock_logger:
             checker(ctx_warning)
             warn_calls = [
@@ -943,7 +943,7 @@ class TestMakeBudgetChecker:
 
         # Second call at same level → should NOT emit again
         with patch(
-            "synthorg.budget.enforcer.logger",
+            "synthorg.budget._enforcer_helpers.logger",
         ) as mock_logger2:
             checker(ctx_warning)
             warn_calls2 = [

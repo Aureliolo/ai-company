@@ -34,7 +34,7 @@ class TaskMetricRecord(BaseModel):
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
         duration_seconds: Wall-clock execution time.
-        cost_usd: Cost of the task in configured currency.
+        cost_usd: Cost of the task in USD (base currency).
         turns_used: Number of LLM turns used.
         tokens_used: Total tokens consumed.
         quality_score: Quality score (0.0-10.0), None if not scored.
@@ -215,7 +215,7 @@ class LlmCalibrationRecord(BaseModel):
         drift: Absolute difference between LLM and behavioral scores (computed).
         rationale: LLM's explanation for the score.
         model_used: Which LLM model was used for evaluation.
-        cost_usd: Cost of the LLM call in configured currency.
+        cost_usd: Cost of the LLM call in USD (base currency).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

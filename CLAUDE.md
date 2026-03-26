@@ -105,7 +105,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 src/synthorg/
   api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, auth/, guards (role-based access control), user management, auto-wiring, lifecycle
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
-  budget/         # Cost tracking, budget enforcement, quota degradation, CFO optimization, trend analysis, budget forecasting
+  budget/         # Cost tracking, budget enforcement, quota degradation, CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
   communication/  # Message bus, dispatcher, channels, delegation, conflict resolution, meeting/
   config/         # YAML company config loading and validation

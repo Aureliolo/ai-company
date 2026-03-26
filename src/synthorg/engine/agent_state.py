@@ -26,7 +26,7 @@ class AgentRuntimeState(BaseModel):
         status: Execution status (idle / executing / paused).
         turn_count: Turns completed in the current execution.
         accumulated_cost_usd: Cost accumulated in the current
-            execution (configured currency).
+            execution in USD (base currency).
         last_activity_at: Timestamp of the last state update.
         started_at: When the current execution started (``None`` when idle).
     """
@@ -47,7 +47,7 @@ class AgentRuntimeState(BaseModel):
     accumulated_cost_usd: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost in current execution (configured currency)",
+        description="Cost in current execution in USD (base currency)",
     )
     last_activity_at: AwareDatetime = Field(
         description="Timestamp of last state update",

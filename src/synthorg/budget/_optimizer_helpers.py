@@ -10,7 +10,7 @@ import statistics
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from synthorg.budget.currency import format_cost
+from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
     AgentEfficiency,
@@ -116,7 +116,7 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     window_duration: timedelta,
     config: CostOptimizerConfig,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> SpendingAnomaly | None:
     """Detect a spike anomaly for a single agent.
 
@@ -261,6 +261,7 @@ def _build_downgrade_recommendation(
     current_model: str,
     downgrade_map: dict[str, str],
     resolver: ModelResolver,
+    currency: str = DEFAULT_CURRENCY,
 ) -> DowngradeRecommendation | None:
     """Build a downgrade recommendation for a single agent."""
     current_resolved = resolver.resolve_safe(current_model)
@@ -334,9 +335,10 @@ def _build_downgrade_recommendation(
         estimated_savings_per_1k=savings,
         reason=(
             f"Switch from {current_model!r} "
-            f"(${current_resolved.total_cost_per_1k:.4f}/1k) to "
-            f"{target_resolved.model_id!r} "
-            f"(${target_resolved.total_cost_per_1k:.4f}/1k)"
+            f"({format_cost(current_resolved.total_cost_per_1k, currency, precision=4)}"
+            f"/1k) to {target_resolved.model_id!r} "
+            f"({format_cost(target_resolved.total_cost_per_1k, currency, precision=4)}"
+            f"/1k)"
         ),
     )
 

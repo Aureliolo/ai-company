@@ -15,6 +15,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.company import Department  # noqa: TC001
@@ -59,7 +60,13 @@ class DepartmentHealth(BaseModel):
     department_name: NotBlankStr = Field(description="Department name")
     agent_count: int = Field(ge=0, description="Total agents")
     active_agent_count: int = Field(ge=0, description="Active agents")
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
     avg_performance_score: float | None = Field(
         default=None,
         ge=0.0,
@@ -255,7 +262,7 @@ def _build_degraded_health(
     agent_count: int,
     now: datetime,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build a minimal DepartmentHealth for when queries fail."""
     return DepartmentHealth(
@@ -282,7 +289,7 @@ def _build_health_from_data(  # noqa: PLR0913
     snapshots: tuple[AgentPerformanceSnapshot, ...],
     now: datetime,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results."""
     agent_id_set = frozenset(agent_ids)
@@ -311,6 +318,8 @@ async def _assemble_department_health(
     app_state: AppState,
     dept_name: str,
     dept_agents: tuple[AgentConfig, ...],
+    *,
+    currency: str = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
     """Aggregate all data sources into a DepartmentHealth response.
 
@@ -323,6 +332,7 @@ async def _assemble_department_health(
         app_state: Application state with service references.
         dept_name: Department name.
         dept_agents: Agent configurations belonging to the department.
+        currency: ISO 4217 currency code for display formatting.
 
     Returns:
         Aggregated department health, possibly degraded on failure.
@@ -359,7 +369,7 @@ async def _assemble_department_health(
             error_count=len(eg.exceptions),
             exc_info=True,
         )
-        return _build_degraded_health(dept_name, agent_count, now)
+        return _build_degraded_health(dept_name, agent_count, now, currency=currency)
 
     # Phase 2: snapshots (depend on resolved agent_ids)
     snapshots = await _resolve_snapshots(app_state, t_ids.result())
@@ -372,6 +382,7 @@ async def _assemble_department_health(
         agent_ids=t_ids.result(),
         snapshots=snapshots,
         now=now,
+        currency=currency,
     )
 
 
@@ -471,10 +482,12 @@ class DepartmentController(Controller):
 
         agents = await app_state.config_resolver.get_agents()
         dept_agents = _filter_agents_by_department(agents, name)
+        budget_cfg = await app_state.config_resolver.get_budget_config()
         health = await _assemble_department_health(
             app_state,
             name,
             dept_agents,
+            currency=budget_cfg.currency,
         )
 
         logger.debug(

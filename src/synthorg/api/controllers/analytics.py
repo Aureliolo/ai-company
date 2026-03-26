@@ -82,7 +82,13 @@ class OverviewMetrics(BaseModel):
         ge=0.0,
         description="Remaining budget in configured currency",
     )
-    currency: str = Field(default="EUR", description="ISO 4217 currency code")
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
+    )
     budget_used_percent: float = Field(
         ge=0.0,
         description="Percentage of monthly budget used (>100 = overrun)",
@@ -155,6 +161,13 @@ class ForecastResponse(BaseModel):
     avg_daily_spend_usd: float = Field(
         ge=0.0,
         description="Average daily spend used for projection",
+    )
+    currency: str = Field(
+        default="USD",
+        min_length=3,
+        max_length=3,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code",
     )
 
 

@@ -75,10 +75,10 @@ describe('formatRelativeTime', () => {
 })
 
 describe('formatCurrency', () => {
-  it('defaults to EUR', () => {
+  it('defaults to USD', () => {
     const result = formatCurrency(42.5)
     expect(result).toContain('42.50')
-    expect(result).toContain('\u20ac')
+    expect(result).toContain('$')
   })
 
   it('formats USD values', () => {
@@ -110,7 +110,8 @@ describe('formatCurrency', () => {
   it('formats small fractional values', () => {
     const result = formatCurrency(0.0001, 'USD')
     expect(result).toContain('$')
-    expect(result).toContain('0.0001')
+    // Intl.NumberFormat rounds to currency's minor-unit (2 decimals for USD)
+    expect(result).toBe('$0.00')
   })
 
   it('formats negative values', () => {

@@ -26,11 +26,16 @@ from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.currency import format_cost, get_currency_symbol
+from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost, get_currency_symbol
+from synthorg.engine._prompt_helpers import (
+    build_core_context as _build_core_context,
+)
+from synthorg.engine._prompt_helpers import (
+    build_metadata as _build_metadata,
+)
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
 from synthorg.engine.prompt_template import (
-    AUTONOMY_INSTRUCTIONS,
     DEFAULT_TEMPLATE,
     PROMPT_TEMPLATE_VERSION,
 )
@@ -137,7 +142,7 @@ def build_system_prompt(  # noqa: PLR0913
     token_estimator: PromptTokenEstimator | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -327,61 +332,6 @@ def _resolve_template(custom_template: str | None) -> str:
     return custom_template
 
 
-def _build_core_context(
-    agent: AgentIdentity,
-    role: Role | None,
-    effective_autonomy: EffectiveAutonomy | None = None,
-) -> dict[str, Any]:
-    """Build the core (always-present) template variables from agent identity.
-
-    Args:
-        agent: Agent identity.
-        role: Optional role with description.
-        effective_autonomy: Resolved autonomy for the current run.
-
-    Returns:
-        Dict of core template variables.
-    """
-    personality = agent.personality
-    authority = agent.authority
-
-    ctx: dict[str, Any] = {
-        "agent_name": agent.name,
-        "agent_role": agent.role,
-        "agent_department": agent.department,
-        "agent_level": agent.level.value,
-        "role_description": role.description if role else "",
-        "personality_description": personality.description,
-        "communication_style": personality.communication_style,
-        "risk_tolerance": personality.risk_tolerance.value,
-        "creativity": personality.creativity.value,
-        "verbosity": personality.verbosity.value,
-        "decision_making": personality.decision_making.value,
-        "collaboration": personality.collaboration.value,
-        "conflict_approach": personality.conflict_approach.value,
-        "personality_traits": personality.traits,
-        "primary_skills": agent.skills.primary,
-        "secondary_skills": agent.skills.secondary,
-        "can_approve": authority.can_approve,
-        "reports_to": authority.reports_to or "",
-        "can_delegate_to": authority.can_delegate_to,
-        "budget_limit": authority.budget_limit,
-        "autonomy_instructions": AUTONOMY_INSTRUCTIONS[agent.level],
-    }
-
-    if effective_autonomy is not None:
-        ctx["effective_autonomy"] = {
-            "level": effective_autonomy.level.value,
-            "auto_approve_actions": sorted(effective_autonomy.auto_approve_actions),
-            "human_approval_actions": sorted(effective_autonomy.human_approval_actions),
-            "security_agent": effective_autonomy.security_agent,
-        }
-    else:
-        ctx["effective_autonomy"] = None
-
-    return ctx
-
-
 def _build_template_context(  # noqa: PLR0913
     *,
     agent: AgentIdentity,
@@ -392,7 +342,7 @@ def _build_template_context(  # noqa: PLR0913
     org_policies: tuple[str, ...] = (),
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> dict[str, Any]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -524,24 +474,6 @@ def _render_template(template_str: str, context: dict[str, Any]) -> str:
         raise PromptBuildError(msg) from exc
 
 
-def _build_metadata(agent: AgentIdentity) -> dict[str, str]:
-    """Build metadata dict from agent identity.
-
-    Args:
-        agent: The agent identity.
-
-    Returns:
-        Dict with agent_id, name, role, department, and level.
-    """
-    return {
-        "agent_id": str(agent.id),
-        "name": agent.name,
-        "role": agent.role,
-        "department": agent.department,
-        "level": agent.level.value,
-    }
-
-
 def _trim_sections(  # noqa: PLR0913
     *,
     template_str: str,
@@ -555,7 +487,7 @@ def _trim_sections(  # noqa: PLR0913
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> tuple[
     str,
     int,
@@ -655,7 +587,7 @@ def _render_with_trimming(  # noqa: PLR0913
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget_indicator: str | None = None,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
     content, estimated = _render_and_estimate(
@@ -743,7 +675,7 @@ def _render_and_estimate(  # noqa: PLR0913
     *,
     effective_autonomy: EffectiveAutonomy | None = None,
     context_budget: str | None = None,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
@@ -811,7 +743,7 @@ def build_error_prompt(
 def format_task_instruction(
     task: Task,
     *,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
 ) -> str:
     """Format a task into a user message for the initial conversation.
 
