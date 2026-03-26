@@ -71,7 +71,7 @@ class SemanticAnalysisConfig(BaseModel):
             msg = "file_extensions must not be empty"
             raise ValueError(msg)
         for ext in self.file_extensions:
-            if not ext or not ext.startswith(".") or " " in ext:
+            if not ext or ext == "." or not ext.startswith(".") or " " in ext:
                 msg = (
                     f"Invalid file extension {ext!r}: must start "
                     f"with '.' and contain no spaces"
