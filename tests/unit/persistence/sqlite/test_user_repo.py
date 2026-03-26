@@ -42,7 +42,7 @@ def _make_user(
     *,
     user_id: str = "user-001",
     username: str = "admin",
-    role: HumanRole = HumanRole.CEO,
+    role: HumanRole = HumanRole.MANAGER,
 ) -> User:
     now = datetime.now(UTC)
     return User(
@@ -130,18 +130,18 @@ class TestSQLiteUserRepository:
         self, user_repo: SQLiteUserRepository
     ) -> None:
         await user_repo.save(
-            _make_user(user_id="ceo-1", username="alice", role=HumanRole.CEO),
+            _make_user(user_id="mgr-1", username="alice", role=HumanRole.MANAGER),
         )
         await user_repo.save(
             _make_user(user_id="obs-1", username="bob", role=HumanRole.OBSERVER),
         )
         await user_repo.save(
-            _make_user(user_id="ceo-2", username="carol", role=HumanRole.CEO),
+            _make_user(user_id="mgr-2", username="carol", role=HumanRole.MANAGER),
         )
 
-        assert await user_repo.count_by_role(HumanRole.CEO) == 2
+        assert await user_repo.count_by_role(HumanRole.MANAGER) == 2
         assert await user_repo.count_by_role(HumanRole.OBSERVER) == 1
-        assert await user_repo.count_by_role(HumanRole.MANAGER) == 0
+        assert await user_repo.count_by_role(HumanRole.CEO) == 0
 
     async def test_delete(self, user_repo: SQLiteUserRepository) -> None:
         await user_repo.save(_make_user())

@@ -11,7 +11,7 @@ from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
@@ -158,7 +158,7 @@ class SettingsController(Controller):
 
     @put(
         "/{namespace:str}/{key:str}",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
     )
     async def update_setting(
         self,
@@ -198,7 +198,7 @@ class SettingsController(Controller):
 
     @delete(
         "/{namespace:str}/{key:str}",
-        guards=[require_write_access],
+        guards=[require_ceo_or_manager],
         status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_setting(

@@ -1,6 +1,6 @@
 """Backup controller -- admin endpoints for backup/restore operations.
 
-All endpoints require write access or the internal SYSTEM role
+All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
@@ -14,7 +14,7 @@ from litestar.exceptions import (
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_system_or_write_access
+from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
@@ -44,14 +44,13 @@ logger = get_logger(__name__)
 class BackupController(Controller):
     """Admin endpoints for backup and restore operations.
 
-    All endpoints require human write access (CEO, Manager,
-    Board Member, Pair Programmer) or the internal SYSTEM role
+    All endpoints require CEO or the internal SYSTEM role
     (CLI-to-backend identity).
     """
 
     path = "/admin/backups"
     tags = ("admin", "backup")
-    guards = [require_system_or_write_access]  # noqa: RUF012
+    guards = [require_roles(HumanRole.CEO, HumanRole.SYSTEM)]  # noqa: RUF012
 
     @post()
     async def create_backup(

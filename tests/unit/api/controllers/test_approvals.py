@@ -610,6 +610,51 @@ class TestApprovalUrgencyFields:
 
 
 @pytest.mark.unit
+class TestBoardMemberApprovalAccess:
+    """Board members can approve/reject but not create approvals."""
+
+    async def test_board_member_can_approve(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, approval_id="bm-approve-001")
+        resp = test_client.post(
+            f"{_BASE}/bm-approve-001/approve",
+            json={"comment": "Approved by board"},
+            headers=make_auth_headers("board_member"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["status"] == "approved"
+        assert resp.json()["data"]["decided_by"] == "test-board_member"
+
+    async def test_board_member_can_reject(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, approval_id="bm-reject-001")
+        resp = test_client.post(
+            f"{_BASE}/bm-reject-001/reject",
+            json={"reason": "Board disagrees"},
+            headers=make_auth_headers("board_member"),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["status"] == "rejected"
+
+    def test_board_member_cannot_create(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            _BASE,
+            json=_create_payload(),
+            headers=make_auth_headers("board_member"),
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.unit
 class TestApprovalPathParamValidation:
     def test_oversized_approval_id_rejected(self, test_client: TestClient[Any]) -> None:
         long_id = "x" * 129

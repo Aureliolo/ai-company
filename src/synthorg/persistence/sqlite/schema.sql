@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_single_ceo ON users(role) WHERE role = 'ceo';
 
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS api_keys (

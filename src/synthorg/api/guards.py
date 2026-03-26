@@ -2,9 +2,20 @@
 
 Guards read the authenticated user identity from ``connection.user``
 (populated by the auth middleware) and check role-based permissions.
+
+The ``require_roles`` factory creates guards for arbitrary role sets.
+Pre-built constants cover common patterns::
+
+    require_ceo              -- CEO only
+    require_ceo_or_manager   -- CEO or Manager
+    require_approval_roles   -- CEO, Manager, or Board Member
 """
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
@@ -26,21 +37,17 @@ class HumanRole(StrEnum):
     SYSTEM = "system"
 
 
+# --- Role sets --------------------------------------------------------
+
 _WRITE_ROLES: frozenset[HumanRole] = frozenset(
     {
         HumanRole.CEO,
         HumanRole.MANAGER,
-        HumanRole.BOARD_MEMBER,
         HumanRole.PAIR_PROGRAMMER,
     }
 )
-_READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
-
-# System role is scoped to specific internal endpoints only (backup,
-# wipe) and excluded from the general _WRITE_ROLES to enforce least
-# privilege.
-_SYSTEM_WRITE_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
-    {HumanRole.SYSTEM},
+_READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
+    {HumanRole.OBSERVER, HumanRole.BOARD_MEMBER},
 )
 
 
@@ -68,10 +75,10 @@ def require_write_access(
     """Guard that allows only write-capable human roles.
 
     Checks ``connection.user.role`` for ``ceo``, ``manager``,
-    ``board_member``, or ``pair_programmer``.  The ``system``
-    role is intentionally excluded -- use
-    ``require_system_or_write_access`` for endpoints the CLI
-    needs to reach.
+    or ``pair_programmer``.  Board members are excluded (they
+    may only observe and approve).  The ``system`` role is
+    intentionally excluded -- use ``require_roles()`` with the
+    desired roles for endpoints the CLI needs to reach.
 
     Args:
         connection: The incoming connection.
@@ -91,41 +98,16 @@ def require_write_access(
         raise PermissionDeniedException(detail="Write access denied")
 
 
-def require_system_or_write_access(
-    connection: ASGIConnection,  # type: ignore[type-arg]
-    _: object,
-) -> None:
-    """Guard that allows write roles and the system role.
-
-    Used on internal endpoints that the CLI needs to reach (backup,
-    wipe).  Human write roles and the ``system`` role are accepted.
-
-    Args:
-        connection: The incoming connection.
-        _: Route handler (unused).
-
-    Raises:
-        PermissionDeniedException: If the role is not permitted.
-    """
-    role = _get_role(connection)
-    if role not in _SYSTEM_WRITE_ROLES:
-        logger.warning(
-            API_GUARD_DENIED,
-            guard="require_system_or_write_access",
-            role=role,
-            path=str(connection.url.path),
-        )
-        raise PermissionDeniedException(detail="Write access denied")
-
-
 def require_read_access(
     connection: ASGIConnection,  # type: ignore[type-arg]
     _: object,
 ) -> None:
-    """Guard that allows all recognised roles.
+    """Guard that allows all human roles (excludes SYSTEM).
 
-    Checks ``connection.user.role`` for any valid role
-    including ``observer``.
+    Checks ``connection.user.role`` for any human role
+    including ``observer`` and ``board_member``.  The internal
+    ``system`` role is excluded -- use ``require_roles()`` for
+    endpoints the CLI needs to reach.
 
     Args:
         connection: The incoming connection.
@@ -143,3 +125,62 @@ def require_read_access(
             path=str(connection.url.path),
         )
         raise PermissionDeniedException(detail="Read access denied")
+
+
+# --- Guard factory ----------------------------------------------------
+
+
+def require_roles(
+    *roles: HumanRole,
+) -> Callable[[ASGIConnection, object], None]:  # type: ignore[type-arg]
+    """Create a guard that allows only the specified roles.
+
+    Args:
+        *roles: One or more ``HumanRole`` members to permit.
+
+    Returns:
+        A guard function compatible with Litestar's guard protocol.
+
+    Raises:
+        ValueError: If no roles are provided.
+    """
+    if not roles:
+        msg = "require_roles() requires at least one role"
+        raise ValueError(msg)
+
+    allowed = frozenset(roles)
+    label = ",".join(sorted(r.value for r in allowed))
+
+    def guard(
+        connection: ASGIConnection,  # type: ignore[type-arg]
+        _: object,
+    ) -> None:
+        role = _get_role(connection)
+        if role not in allowed:
+            logger.warning(
+                API_GUARD_DENIED,
+                guard=f"require_roles({label})",
+                role=role,
+                path=str(connection.url.path),
+            )
+            raise PermissionDeniedException(detail="Access denied")
+
+    guard.__name__ = f"require_roles({label})"
+    guard.__qualname__ = f"require_roles({label})"
+    return guard
+
+
+# --- Named guard constants --------------------------------------------
+
+require_ceo = require_roles(HumanRole.CEO)
+"""Guard allowing only the CEO role."""
+
+require_ceo_or_manager = require_roles(HumanRole.CEO, HumanRole.MANAGER)
+"""Guard allowing CEO or Manager roles."""
+
+require_approval_roles = require_roles(
+    HumanRole.CEO,
+    HumanRole.MANAGER,
+    HumanRole.BOARD_MEMBER,
+)
+"""Guard allowing roles that can approve or reject actions."""

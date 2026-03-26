@@ -50,7 +50,7 @@ export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[
 }
 
 /** Write-capable human roles. */
-export const WRITE_ROLES = ['ceo', 'manager', 'board_member', 'pair_programmer'] as const
+export const WRITE_ROLES = ['ceo', 'manager', 'pair_programmer'] as const
 
 // ── Settings ────────────────────────────────────────────────
 
