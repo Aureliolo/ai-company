@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useAuthStore } from '@/stores/auth'
 import { ROUTES } from '@/router/routes'
 import { SidebarNavItem } from './SidebarNavItem'
@@ -50,6 +51,7 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const { user } = useAuth()
   const logout = useAuthStore((s) => s.logout)
+  const { open: openCommandPalette } = useCommandPalette()
 
   function toggleCollapse() {
     setCollapsed((prev) => {
@@ -188,13 +190,18 @@ export function Sidebar() {
             {!collapsed && <span>Notifications</span>}
           </button>
 
-          {/* Cmd+K hint */}
-          {!collapsed && (
-            <div className="flex items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
-              <Command className="size-4 shrink-0" aria-hidden="true" />
-              <span>Cmd+K to search</span>
-            </div>
-          )}
+          {/* Cmd+K search trigger */}
+          <button
+            onClick={openCommandPalette}
+            title="Search (Cmd+K)"
+            className={SIDEBAR_BUTTON_CLASS}
+          >
+            <Command
+              className={cn('size-4 shrink-0', collapsed && 'mx-auto')}
+              aria-hidden="true"
+            />
+            {!collapsed && <span className="text-xs">Cmd+K to search</span>}
+          </button>
 
           {/* Connection status placeholder */}
           <div

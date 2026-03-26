@@ -111,3 +111,39 @@
   --so-density-section-gap: var(--so-space-6);
   --so-density-grid-gap: var(--so-space-6);
 }
+
+/* ---------------------------------------------------------------------------
+ * Skeleton shimmer animation
+ * --------------------------------------------------------------------------- */
+@keyframes so-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .so-shimmer {
+    animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Status flash animation (real-time update highlight)
+ * --------------------------------------------------------------------------- */
+@keyframes so-status-flash {
+  0% {
+    background-color: var(--so-overlay-flash);
+  }
+  33% {
+    background-color: var(--so-overlay-flash);
+  }
+  50% {
+    background-color: var(--so-overlay-flash);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

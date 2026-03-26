@@ -1,0 +1,63 @@
+import { render, screen } from '@testing-library/react'
+import { AnimatedPresence } from '@/components/ui/animated-presence'
+
+// Mock framer-motion to avoid animation timing issues in tests
+/* eslint-disable @eslint-react/component-hook-factories */
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+  return {
+    ...actual,
+    useReducedMotion: () => false,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    motion: {
+      ...actual.motion,
+      div: ({
+        children,
+        className,
+        'data-testid': testId,
+        ...rest
+      }: React.HTMLAttributes<HTMLDivElement> & { 'data-testid'?: string }) => (
+        <div className={className} data-testid={testId} {...rest}>
+          {children}
+        </div>
+      ),
+    },
+  }
+})
+/* eslint-enable @eslint-react/component-hook-factories */
+
+describe('AnimatedPresence', () => {
+  it('renders children', () => {
+    render(
+      <AnimatedPresence routeKey="/">
+        <div>Page content</div>
+      </AnimatedPresence>,
+    )
+    expect(screen.getByText('Page content')).toBeInTheDocument()
+  })
+
+  it('applies className to wrapper', () => {
+    const { container } = render(
+      <AnimatedPresence routeKey="/" className="custom-class">
+        <div>Content</div>
+      </AnimatedPresence>,
+    )
+    expect(container.firstChild).toHaveClass('custom-class')
+  })
+
+  it('renders different content for different routeKeys', () => {
+    const { rerender } = render(
+      <AnimatedPresence routeKey="/page-a">
+        <div>Page A</div>
+      </AnimatedPresence>,
+    )
+    expect(screen.getByText('Page A')).toBeInTheDocument()
+
+    rerender(
+      <AnimatedPresence routeKey="/page-b">
+        <div>Page B</div>
+      </AnimatedPresence>,
+    )
+    expect(screen.getByText('Page B')).toBeInTheDocument()
+  })
+})

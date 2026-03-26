@@ -1,0 +1,73 @@
+import { create } from 'zustand'
+
+export type ToastVariant = 'success' | 'error' | 'warning' | 'info'
+
+export interface ToastItem {
+  id: string
+  variant: ToastVariant
+  title: string
+  description?: string
+  /** Auto-dismiss duration in ms (default: 5000). */
+  duration?: number
+  /** Whether the toast can be manually dismissed (default: true). */
+  dismissible?: boolean
+}
+
+interface ToastState {
+  toasts: ToastItem[]
+  add: (toast: Omit<ToastItem, 'id'>) => string
+  dismiss: (id: string) => void
+  dismissAll: () => void
+}
+
+const DEFAULT_DURATION = 5000
+
+/** Module-scoped timer map for auto-dismiss cleanup. */
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+let nextId = 0
+
+export const useToastStore = create<ToastState>((set, get) => ({
+  toasts: [],
+
+  add(toast) {
+    const id = String(++nextId)
+    const duration = toast.duration ?? DEFAULT_DURATION
+
+    set((state) => ({
+      toasts: [...state.toasts, { ...toast, id }],
+    }))
+
+    // Schedule auto-dismiss
+    const timer = setTimeout(() => {
+      timers.delete(id)
+      get().dismiss(id)
+    }, duration)
+    timers.set(id, timer)
+
+    return id
+  },
+
+  dismiss(id) {
+    // Clear auto-dismiss timer if it exists
+    const timer = timers.get(id)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      timers.delete(id)
+    }
+
+    set((state) => ({
+      toasts: state.toasts.filter((t) => t.id !== id),
+    }))
+  },
+
+  dismissAll() {
+    // Clear all timers
+    for (const timer of timers.values()) {
+      clearTimeout(timer)
+    }
+    timers.clear()
+
+    set({ toasts: [] })
+  },
+}))

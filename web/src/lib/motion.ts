@@ -166,6 +166,85 @@ export const STATUS_FLASH = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Toast animations
+// ---------------------------------------------------------------------------
+
+/** Toast entrance: slide up from 16px below with spring settle. */
+export const toastEntrance: Variants = {
+  initial: { opacity: 0, y: 16, scale: 0.95 },
+  animate: { opacity: 1, y: 0, scale: 1, transition: springDefault },
+  exit: { opacity: 0, x: 80, transition: tweenFast },
+};
+
+// ---------------------------------------------------------------------------
+// Modal / overlay animations
+// ---------------------------------------------------------------------------
+
+/** Overlay backdrop: simple opacity fade. */
+export const overlayBackdrop: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: tweenDefault },
+  exit: { opacity: 0, transition: tweenFast },
+};
+
+/** Modal/dialog entrance: scale up with spring + fade. */
+export const modalEntrance: Variants = {
+  initial: { opacity: 0, scale: 0.95, y: 8 },
+  animate: { opacity: 1, scale: 1, y: 0, transition: springDefault },
+  exit: { opacity: 0, scale: 0.95, y: 8, transition: tweenFast },
+};
+
+// ---------------------------------------------------------------------------
+// List reorder
+// ---------------------------------------------------------------------------
+
+/** List item enter/exit for AnimatePresence + layout animations. */
+export const listItemLayout: Variants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0, transition: tweenDefault },
+  exit: { opacity: 0, y: -8, transition: tweenFast },
+};
+
+// ---------------------------------------------------------------------------
+// Inline edit
+// ---------------------------------------------------------------------------
+
+/** Inline edit field entrance: subtle fade-in. */
+export const inlineEditEntrance: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: springGentle },
+  exit: { opacity: 0, transition: tweenFast },
+};
+
+// ---------------------------------------------------------------------------
+// Status color transition
+// ---------------------------------------------------------------------------
+
+/** Tween for animating between status colors (e.g. active -> error). */
+export const statusColorTransition: Transition = {
+  type: "tween",
+  duration: 0.3,
+  ease: [0.4, 0, 0.2, 1],
+};
+
+// ---------------------------------------------------------------------------
+// Reduced page variants
+// ---------------------------------------------------------------------------
+
+/** Page transition for reduced-motion: opacity-only fade, no slide. */
+export const reducedPageVariants: Variants = {
+  initial: { opacity: 0 },
+  animate: {
+    opacity: 1,
+    transition: { type: "tween", duration: 0.15, ease: "easeOut" },
+  },
+  exit: {
+    opacity: 0,
+    transition: { type: "tween", duration: 0.1, ease: "easeIn" },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Badge bounce
 // ---------------------------------------------------------------------------
 
