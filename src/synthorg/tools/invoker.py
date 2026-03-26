@@ -44,6 +44,7 @@ from synthorg.security.models import SecurityContext, SecurityVerdictType
 
 from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
+from .invocation_tracker import ToolInvocationTracker  # noqa: TC001
 from .scan_result_handler import handle_sensitive_scan
 
 if TYPE_CHECKING:
@@ -101,6 +102,7 @@ class ToolInvoker:
         agent_id: str | None = None,
         task_id: str | None = None,
         agent_provider_name: str | None = None,
+        invocation_tracker: ToolInvocationTracker | None = None,
     ) -> None:
         """Initialize with a tool registry and optional checkers.
 
@@ -113,6 +115,8 @@ class ToolInvoker:
             task_id: Task ID for security context.
             agent_provider_name: Provider name the agent is using,
                 for cross-family LLM security evaluation.
+            invocation_tracker: Optional tracker for recording
+                invocations for the activity timeline.
         """
         self._registry = registry
         self._permission_checker = permission_checker
@@ -120,6 +124,7 @@ class ToolInvoker:
         self._agent_id = agent_id
         self._task_id = task_id
         self._agent_provider_name = agent_provider_name
+        self._invocation_tracker = invocation_tracker
 
         self._pending_escalations: list[EscalationInfo] = []
 
@@ -399,7 +404,9 @@ class ToolInvoker:
                 security_context,
             )
 
-        return self._build_result(tool_call, exec_result)
+        result = self._build_result(tool_call, exec_result)
+        await self._record_invocation(tool_call, result)
+        return result
 
     def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:
         """Look up a tool in the registry, returning an error on miss."""
@@ -655,6 +662,38 @@ class ToolInvoker:
                 is_error=True,
             )
         return None
+
+    async def _record_invocation(
+        self,
+        tool_call: ToolCall,
+        result: ToolResult,
+    ) -> None:
+        """Record a tool invocation for activity tracking (best-effort)."""
+        if self._invocation_tracker is None or self._agent_id is None:
+            return
+        try:
+            from datetime import UTC, datetime  # noqa: PLC0415
+
+            from .invocation_record import ToolInvocationRecord  # noqa: PLC0415
+
+            record = ToolInvocationRecord(
+                agent_id=self._agent_id,
+                task_id=self._task_id,
+                tool_name=tool_call.name,
+                is_success=not result.is_error,
+                timestamp=datetime.now(UTC),
+                error_message=(result.content[:2048] if result.is_error else None),
+            )
+            await self._invocation_tracker.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.debug(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                note="Failed to record invocation for activity tracking",
+            )
 
     def _build_result(
         self,

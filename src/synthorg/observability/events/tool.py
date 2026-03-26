@@ -55,3 +55,7 @@ TOOL_OUTPUT_WITHHELD: Final[str] = "tool.output.withheld"
 TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED: Final[str] = (
     "tool.subprocess.transport_close_failed"
 )
+
+# ── Invocation tracking events ─────────────────────────────────
+TOOL_INVOCATION_RECORDED: Final[str] = "tool.invocation.recorded"
+TOOL_INVOCATIONS_QUERIED: Final[str] = "tool.invocations.queried"

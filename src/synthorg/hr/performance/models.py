@@ -30,6 +30,7 @@ class TaskMetricRecord(BaseModel):
         agent_id: Agent who completed the task.
         task_id: Task identifier.
         task_type: Classification of the task.
+        started_at: When the task started (None if not tracked).
         completed_at: When the task was completed.
         is_success: Whether the task completed successfully.
         duration_seconds: Wall-clock execution time.
@@ -49,6 +50,10 @@ class TaskMetricRecord(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent who completed the task")
     task_id: NotBlankStr = Field(description="Task identifier")
     task_type: TaskType = Field(description="Classification of the task")
+    started_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the task started (None if not tracked)",
+    )
     completed_at: AwareDatetime = Field(description="When the task was completed")
     is_success: bool = Field(description="Whether the task completed successfully")
     duration_seconds: float = Field(

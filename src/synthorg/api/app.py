@@ -49,6 +49,9 @@ from synthorg.backup.factory import build_backup_service
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,  # noqa: TC001
+)
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
@@ -82,6 +85,7 @@ from synthorg.settings.subscribers import (
     MemorySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
+from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -422,6 +426,8 @@ def create_app(  # noqa: PLR0913
     settings_service: SettingsService | None = None,
     provider_registry: ProviderRegistry | None = None,
     provider_health_tracker: ProviderHealthTracker | None = None,
+    tool_invocation_tracker: ToolInvocationTracker | None = None,
+    delegation_record_store: DelegationRecordStore | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -445,6 +451,8 @@ def create_app(  # noqa: PLR0913
         settings_service: Settings service for runtime config.
         provider_registry: Provider registry.
         provider_health_tracker: Provider health tracking service.
+        tool_invocation_tracker: Tool invocation tracking service.
+        delegation_record_store: Delegation record store.
 
     Returns:
         Configured Litestar application.
@@ -553,6 +561,8 @@ def create_app(  # noqa: PLR0913
         settings_service=settings_service,
         provider_registry=provider_registry,
         provider_health_tracker=provider_health_tracker,
+        tool_invocation_tracker=tool_invocation_tracker,
+        delegation_record_store=delegation_record_store,
         startup_time=time.monotonic(),
     )
 

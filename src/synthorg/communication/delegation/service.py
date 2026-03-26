@@ -16,6 +16,9 @@ from synthorg.communication.delegation.models import (
     DelegationRequest,
     DelegationResult,
 )
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,  # noqa: TC001
+)
 from synthorg.communication.errors import DelegationError
 from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
     DelegationGuard,
@@ -52,6 +55,7 @@ class DelegationService:
         "_authority_validator",
         "_guard",
         "_hierarchy",
+        "_record_store",
     )
 
     def __init__(
@@ -60,10 +64,12 @@ class DelegationService:
         hierarchy: HierarchyResolver,
         authority_validator: AuthorityValidator,
         guard: DelegationGuard,
+        record_store: DelegationRecordStore | None = None,
     ) -> None:
         self._hierarchy = hierarchy
         self._authority_validator = authority_validator
         self._guard = guard
+        self._record_store = record_store
         self._audit_trail: list[DelegationRecord] = []
 
     def delegate(
@@ -180,6 +186,8 @@ class DelegationService:
             refinement=request.refinement,
         )
         self._audit_trail.append(record)
+        if self._record_store is not None:
+            self._record_store.record_sync(record)
 
         logger.info(
             DELEGATION_CREATED,

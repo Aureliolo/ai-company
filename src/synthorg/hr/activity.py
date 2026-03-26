@@ -1,7 +1,8 @@
 """Pure functions for building agent activity timelines.
 
-Merges lifecycle events and task metric records into a unified
-chronological timeline, and filters career-relevant events.
+Merges lifecycle events, task metrics, cost records, tool invocations,
+and delegation records into a unified chronological timeline, and
+filters career-relevant events.
 """
 
 from typing import TYPE_CHECKING
@@ -12,8 +13,11 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import LifecycleEventType
 
 if TYPE_CHECKING:
+    from synthorg.budget.cost_record import CostRecord
+    from synthorg.communication.delegation.models import DelegationRecord
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import TaskMetricRecord
+    from synthorg.tools.invocation_record import ToolInvocationRecord
 
 
 class ActivityEvent(BaseModel):
@@ -79,6 +83,9 @@ _CAREER_EVENT_TYPES: frozenset[LifecycleEventType] = frozenset(
 )
 
 
+# ── Converter functions ──────────────────────────────────────────
+
+
 def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
     """Convert a lifecycle event to a timeline activity event."""
     return ActivityEvent(
@@ -90,7 +97,7 @@ def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
 
 
 def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
-    """Convert a task metric record to a timeline activity event."""
+    """Convert a task metric record to a task_completed activity event."""
     status = "succeeded" if record.is_success else "failed"
     desc = (
         f"Task {record.task_id} {status} "
@@ -107,17 +114,123 @@ def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
     )
 
 
-def merge_activity_timeline(
+def _task_metric_to_started_activity(
+    record: TaskMetricRecord,
+) -> ActivityEvent:
+    """Convert a task metric with ``started_at`` to a task_started event."""
+    return ActivityEvent(
+        event_type="task_started",
+        timestamp=record.started_at,  # type: ignore[arg-type]
+        description=f"Task {record.task_id} started",
+        related_ids={
+            "task_id": str(record.task_id),
+            "agent_id": str(record.agent_id),
+        },
+    )
+
+
+def _cost_record_to_activity(record: CostRecord) -> ActivityEvent:
+    """Convert a cost record to a cost_incurred activity event."""
+    desc = (
+        f"API call to {record.model} "
+        f"({record.input_tokens}+{record.output_tokens} tokens, "
+        f"{record.cost_usd:.4f} USD)"
+    )
+    return ActivityEvent(
+        event_type="cost_incurred",
+        timestamp=record.timestamp,
+        description=desc,
+        related_ids={
+            "agent_id": str(record.agent_id),
+            "task_id": str(record.task_id),
+        },
+    )
+
+
+def _tool_invocation_to_activity(
+    record: ToolInvocationRecord,
+) -> ActivityEvent:
+    """Convert a tool invocation record to a tool_used activity event."""
+    if record.is_success:
+        desc = f"Tool {record.tool_name} executed successfully"
+    else:
+        suffix = f": {record.error_message}" if record.error_message else ""
+        desc = f"Tool {record.tool_name} failed{suffix}"
+    related_ids: dict[str, str] = {
+        "agent_id": str(record.agent_id),
+    }
+    if record.task_id is not None:
+        related_ids["task_id"] = str(record.task_id)
+    return ActivityEvent(
+        event_type="tool_used",
+        timestamp=record.timestamp,
+        description=desc,
+        related_ids=related_ids,
+    )
+
+
+def _delegation_to_sent_activity(
+    record: DelegationRecord,
+) -> ActivityEvent:
+    """Convert a delegation record to a delegation_sent activity event."""
+    return ActivityEvent(
+        event_type="delegation_sent",
+        timestamp=record.timestamp,
+        description=(
+            f"Delegated task {record.original_task_id} to {record.delegatee_id}"
+        ),
+        related_ids={
+            "agent_id": str(record.delegator_id),
+            "delegation_id": str(record.delegation_id),
+            "delegatee_id": str(record.delegatee_id),
+            "original_task_id": str(record.original_task_id),
+        },
+    )
+
+
+def _delegation_to_received_activity(
+    record: DelegationRecord,
+) -> ActivityEvent:
+    """Convert a delegation record to a delegation_received activity event."""
+    return ActivityEvent(
+        event_type="delegation_received",
+        timestamp=record.timestamp,
+        description=(
+            f"Received delegation of task {record.original_task_id} "
+            f"from {record.delegator_id}"
+        ),
+        related_ids={
+            "agent_id": str(record.delegatee_id),
+            "delegation_id": str(record.delegation_id),
+            "delegator_id": str(record.delegator_id),
+            "original_task_id": str(record.original_task_id),
+        },
+    )
+
+
+# ── Timeline builders ────────────────────────────────────────────
+
+
+def merge_activity_timeline(  # noqa: PLR0913
     lifecycle_events: tuple[AgentLifecycleEvent, ...],
     task_metrics: tuple[TaskMetricRecord, ...],
+    *,
+    cost_records: tuple[CostRecord, ...] = (),
+    tool_invocations: tuple[ToolInvocationRecord, ...] = (),
+    delegation_records_sent: tuple[DelegationRecord, ...] = (),
+    delegation_records_received: tuple[DelegationRecord, ...] = (),
 ) -> tuple[ActivityEvent, ...]:
-    """Merge lifecycle events and task metrics into a chronological timeline.
+    """Merge multiple event sources into a chronological activity timeline.
 
     Events are sorted by timestamp descending (most recent first).
 
     Args:
         lifecycle_events: Agent lifecycle events.
         task_metrics: Task completion metric records.
+        cost_records: Per-API-call cost records.
+        tool_invocations: Tool invocation records.
+        delegation_records_sent: Delegation records (delegator perspective).
+        delegation_records_received: Delegation records (delegatee perspective).
 
     Returns:
         Merged and sorted activity events.
@@ -126,6 +239,17 @@ def merge_activity_timeline(
         _lifecycle_to_activity(e) for e in lifecycle_events
     ]
     activities.extend(_task_metric_to_activity(r) for r in task_metrics)
+    activities.extend(
+        _task_metric_to_started_activity(r)
+        for r in task_metrics
+        if r.started_at is not None
+    )
+    activities.extend(_cost_record_to_activity(r) for r in cost_records)
+    activities.extend(_tool_invocation_to_activity(r) for r in tool_invocations)
+    activities.extend(_delegation_to_sent_activity(r) for r in delegation_records_sent)
+    activities.extend(
+        _delegation_to_received_activity(r) for r in delegation_records_received
+    )
     activities.sort(key=lambda a: a.timestamp, reverse=True)
     return tuple(activities)
 

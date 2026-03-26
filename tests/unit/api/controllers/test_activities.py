@@ -6,12 +6,20 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
+from synthorg.communication.delegation.models import DelegationRecord
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,
+)
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
+from synthorg.tools.invocation_record import ToolInvocationRecord
+from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests.unit.api.conftest import FakePersistenceBackend
 
 _NOW = datetime.now(UTC)
@@ -272,3 +280,122 @@ class TestActivityFeed:
             body = resp.json()
             # Should still return lifecycle events
             assert body["pagination"]["total"] >= 1
+
+    async def test_feed_with_cost_records(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        record = CostRecord(
+            agent_id=_AGENT_ID,
+            task_id="task-001",
+            provider="test-provider",
+            model="test-medium-001",
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.005,
+            timestamp=_NOW - timedelta(hours=1),
+        )
+        await cost_tracker.record(record)
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pagination"]["total"] == 1
+        assert body["data"][0]["event_type"] == "cost_incurred"
+
+    async def test_filter_by_type_cost_incurred(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        cost_tracker: CostTracker,
+    ) -> None:
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+        record = CostRecord(
+            agent_id=_AGENT_ID,
+            task_id="task-001",
+            provider="test-provider",
+            model="test-medium-001",
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.005,
+            timestamp=_NOW - timedelta(hours=2),
+        )
+        await cost_tracker.record(record)
+        resp = test_client.get(
+            "/api/v1/activities",
+            params={"type": "cost_incurred"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pagination"]["total"] == 1
+        assert body["data"][0]["event_type"] == "cost_incurred"
+
+    async def test_feed_with_tool_invocations(
+        self,
+        test_client: TestClient[Any],
+        tool_invocation_tracker: ToolInvocationTracker,
+    ) -> None:
+        record = ToolInvocationRecord(
+            agent_id=_AGENT_ID,
+            tool_name="read_file",
+            is_success=True,
+            timestamp=_NOW - timedelta(hours=1),
+        )
+        await tool_invocation_tracker.record(record)
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pagination"]["total"] == 1
+        assert body["data"][0]["event_type"] == "tool_used"
+
+    async def test_feed_with_delegation_events(
+        self,
+        test_client: TestClient[Any],
+        delegation_record_store: DelegationRecordStore,
+    ) -> None:
+        record = DelegationRecord(
+            delegation_id="del-001",
+            delegator_id="agent-manager",
+            delegatee_id="agent-worker",
+            original_task_id="task-parent",
+            delegated_task_id="del-abc123",
+            timestamp=_NOW - timedelta(hours=1),
+        )
+        delegation_record_store.record_sync(record)
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Org-wide: both sent and received
+        assert body["pagination"]["total"] == 2
+        types = {d["event_type"] for d in body["data"]}
+        assert types == {"delegation_sent", "delegation_received"}
+
+    async def test_filter_delegation_by_agent(
+        self,
+        test_client: TestClient[Any],
+        delegation_record_store: DelegationRecordStore,
+    ) -> None:
+        record = DelegationRecord(
+            delegation_id="del-001",
+            delegator_id=_AGENT_ID,
+            delegatee_id="agent-worker",
+            original_task_id="task-parent",
+            delegated_task_id="del-abc123",
+            timestamp=_NOW - timedelta(hours=1),
+        )
+        delegation_record_store.record_sync(record)
+        # Filter by delegator agent -- only sees delegation_sent
+        resp = test_client.get(
+            "/api/v1/activities",
+            params={"agent_id": _AGENT_ID},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Only lifecycle events for this agent + delegation_sent
+        delegation_events = [
+            d for d in body["data"] if d["event_type"].startswith("delegation")
+        ]
+        assert len(delegation_events) == 1
+        assert delegation_events[0]["event_type"] == "delegation_sent"

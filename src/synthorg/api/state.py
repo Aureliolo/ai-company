@@ -12,6 +12,9 @@ from synthorg.api.errors import ServiceUnavailableError
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
+from synthorg.communication.delegation.record_store import (
+    DelegationRecordStore,  # noqa: TC001
+)
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
@@ -36,6 +39,7 @@ from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
+from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -66,6 +70,7 @@ class AppState:
         "_config_resolver",
         "_coordinator",
         "_cost_tracker",
+        "_delegation_record_store",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
@@ -79,6 +84,7 @@ class AppState:
         "_settings_service",
         "_task_engine",
         "_ticket_store",
+        "_tool_invocation_tracker",
         "approval_store",
         "config",
         "startup_time",
@@ -104,6 +110,8 @@ class AppState:
         provider_registry: ProviderRegistry | None = None,
         model_router: ModelRouter | None = None,
         provider_health_tracker: ProviderHealthTracker | None = None,
+        tool_invocation_tracker: ToolInvocationTracker | None = None,
+        delegation_record_store: DelegationRecordStore | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -124,6 +132,8 @@ class AppState:
         self._provider_registry = provider_registry
         self._model_router = model_router
         self._provider_health_tracker = provider_health_tracker
+        self._tool_invocation_tracker = tool_invocation_tracker
+        self._delegation_record_store = delegation_record_store
         self._config_resolver: ConfigResolver | None = (
             ConfigResolver(settings_service=settings_service, config=config)
             if settings_service is not None
@@ -357,6 +367,32 @@ class AppState:
     def has_provider_health_tracker(self) -> bool:
         """Check whether the provider health tracker is configured."""
         return self._provider_health_tracker is not None
+
+    @property
+    def has_tool_invocation_tracker(self) -> bool:
+        """Check whether the tool invocation tracker is configured."""
+        return self._tool_invocation_tracker is not None
+
+    @property
+    def tool_invocation_tracker(self) -> ToolInvocationTracker:
+        """Return tool invocation tracker or raise 503."""
+        return self._require_service(
+            self._tool_invocation_tracker,
+            "tool_invocation_tracker",
+        )
+
+    @property
+    def has_delegation_record_store(self) -> bool:
+        """Check whether the delegation record store is configured."""
+        return self._delegation_record_store is not None
+
+    @property
+    def delegation_record_store(self) -> DelegationRecordStore:
+        """Return delegation record store or raise 503."""
+        return self._require_service(
+            self._delegation_record_store,
+            "delegation_record_store",
+        )
 
     @property
     def has_auth_service(self) -> bool:

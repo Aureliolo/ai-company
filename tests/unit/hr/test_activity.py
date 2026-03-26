@@ -4,11 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from synthorg.budget.cost_record import CostRecord
+from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.hr.activity import filter_career_events, merge_activity_timeline
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
+from synthorg.tools.invocation_record import ToolInvocationRecord
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 
@@ -36,6 +39,7 @@ def _make_lifecycle_event(  # noqa: PLR0913
 
 def _make_task_metric(  # noqa: PLR0913
     *,
+    started_at: datetime | None = None,
     completed_at: datetime = _NOW,
     agent_id: str = "agent-001",
     task_id: str = "task-001",
@@ -47,6 +51,7 @@ def _make_task_metric(  # noqa: PLR0913
         agent_id=agent_id,
         task_id=task_id,
         task_type=TaskType.DEVELOPMENT,
+        started_at=started_at,
         completed_at=completed_at,
         is_success=is_success,
         duration_seconds=duration_seconds,
@@ -55,6 +60,72 @@ def _make_task_metric(  # noqa: PLR0913
         tokens_used=1000,
         complexity=Complexity.MEDIUM,
     )
+
+
+def _make_cost_record(  # noqa: PLR0913
+    *,
+    agent_id: str = "agent-001",
+    task_id: str = "task-001",
+    timestamp: datetime = _NOW,
+    cost_usd: float = 0.0025,
+    input_tokens: int = 500,
+    output_tokens: int = 100,
+    model: str = "test-medium-001",
+    provider: str = "test-provider",
+) -> CostRecord:
+    return CostRecord(
+        agent_id=agent_id,
+        task_id=task_id,
+        provider=provider,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+        timestamp=timestamp,
+    )
+
+
+def _make_tool_invocation(  # noqa: PLR0913
+    *,
+    agent_id: str = "agent-001",
+    task_id: str | None = "task-001",
+    tool_name: str = "read_file",
+    is_success: bool = True,
+    timestamp: datetime = _NOW,
+    error_message: str | None = None,
+) -> ToolInvocationRecord:
+    return ToolInvocationRecord(
+        agent_id=agent_id,
+        task_id=task_id,
+        tool_name=tool_name,
+        is_success=is_success,
+        timestamp=timestamp,
+        error_message=error_message,
+    )
+
+
+def _make_delegation_record(  # noqa: PLR0913
+    *,
+    delegation_id: str = "del-001",
+    delegator_id: str = "agent-manager",
+    delegatee_id: str = "agent-worker",
+    original_task_id: str = "task-parent",
+    delegated_task_id: str = "del-abc123",
+    timestamp: datetime = _NOW,
+    refinement: str = "",
+) -> DelegationRecord:
+    return DelegationRecord(
+        delegation_id=delegation_id,
+        delegator_id=delegator_id,
+        delegatee_id=delegatee_id,
+        original_task_id=original_task_id,
+        delegated_task_id=delegated_task_id,
+        timestamp=timestamp,
+        refinement=refinement,
+    )
+
+
+# ── Existing merge tests ─────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -168,6 +239,322 @@ class TestMergeActivityTimeline:
         assert timeline[0].related_ids["agent_id"] == "agent-001"
         assert timeline[1].related_ids["agent_id"] == "agent-001"
         assert timeline[1].related_ids["task_id"] == "task-x"
+
+    def test_backward_compat_positional_only(self) -> None:
+        """Calling with only positional args still works."""
+        hired = _make_lifecycle_event(timestamp=_NOW - timedelta(days=1))
+        task = _make_task_metric(completed_at=_NOW)
+
+        timeline = merge_activity_timeline((hired,), (task,))
+
+        assert len(timeline) == 2
+
+
+# ── task_started tests ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskStartedEvents:
+    def test_task_started_event_generated(self) -> None:
+        started = _NOW - timedelta(hours=2)
+        record = _make_task_metric(
+            started_at=started,
+            completed_at=_NOW,
+            task_id="task-abc",
+        )
+
+        timeline = merge_activity_timeline((), (record,))
+
+        types = [e.event_type for e in timeline]
+        assert "task_started" in types
+        started_evt = next(e for e in timeline if e.event_type == "task_started")
+        assert started_evt.timestamp == started
+        assert started_evt.related_ids["task_id"] == "task-abc"
+        assert started_evt.related_ids["agent_id"] == "agent-001"
+        assert "started" in started_evt.description
+
+    def test_no_task_started_without_started_at(self) -> None:
+        record = _make_task_metric(started_at=None)
+
+        timeline = merge_activity_timeline((), (record,))
+
+        types = [e.event_type for e in timeline]
+        assert "task_started" not in types
+        assert len(timeline) == 1
+        assert timeline[0].event_type == "task_completed"
+
+    def test_task_started_and_completed_from_same_record(self) -> None:
+        started = _NOW - timedelta(hours=1)
+        completed = _NOW
+        record = _make_task_metric(
+            started_at=started,
+            completed_at=completed,
+            task_id="task-both",
+        )
+
+        timeline = merge_activity_timeline((), (record,))
+
+        assert len(timeline) == 2
+        # completed is more recent
+        assert timeline[0].event_type == "task_completed"
+        assert timeline[0].timestamp == completed
+        assert timeline[1].event_type == "task_started"
+        assert timeline[1].timestamp == started
+
+    def test_merge_ordering_with_task_started(self) -> None:
+        started = _NOW - timedelta(hours=3)
+        hired = _make_lifecycle_event(
+            timestamp=_NOW - timedelta(hours=2),
+        )
+        record = _make_task_metric(
+            started_at=started,
+            completed_at=_NOW - timedelta(hours=1),
+        )
+
+        timeline = merge_activity_timeline((hired,), (record,))
+
+        # Most recent first: task_completed, hired, task_started
+        assert timeline[0].event_type == "task_completed"
+        assert timeline[1].event_type == "hired"
+        assert timeline[2].event_type == "task_started"
+
+
+# ── cost_incurred tests ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCostIncurredEvents:
+    def test_cost_incurred_event(self) -> None:
+        record = _make_cost_record(
+            model="test-medium-001",
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.0025,
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            cost_records=(record,),
+        )
+
+        assert len(timeline) == 1
+        evt = timeline[0]
+        assert evt.event_type == "cost_incurred"
+        assert evt.timestamp == _NOW
+        assert "test-medium-001" in evt.description
+        assert "500+100 tokens" in evt.description
+        assert "0.0025 USD" in evt.description
+        assert evt.related_ids["agent_id"] == "agent-001"
+        assert evt.related_ids["task_id"] == "task-001"
+
+    def test_merge_with_cost_records(self) -> None:
+        hired = _make_lifecycle_event(
+            timestamp=_NOW - timedelta(hours=2),
+        )
+        cost = _make_cost_record(
+            timestamp=_NOW - timedelta(hours=1),
+        )
+
+        timeline = merge_activity_timeline(
+            (hired,),
+            (),
+            cost_records=(cost,),
+        )
+
+        assert len(timeline) == 2
+        assert timeline[0].event_type == "cost_incurred"
+        assert timeline[1].event_type == "hired"
+
+    def test_empty_cost_records(self) -> None:
+        timeline = merge_activity_timeline((), (), cost_records=())
+        assert timeline == ()
+
+
+# ── tool_used tests ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestToolUsedEvents:
+    def test_tool_used_success_event(self) -> None:
+        record = _make_tool_invocation(
+            tool_name="read_file",
+            is_success=True,
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            tool_invocations=(record,),
+        )
+
+        assert len(timeline) == 1
+        evt = timeline[0]
+        assert evt.event_type == "tool_used"
+        assert evt.timestamp == _NOW
+        assert "read_file" in evt.description
+        assert "successfully" in evt.description
+        assert evt.related_ids["agent_id"] == "agent-001"
+        assert evt.related_ids["task_id"] == "task-001"
+
+    def test_tool_used_failure_event(self) -> None:
+        record = _make_tool_invocation(
+            tool_name="write_file",
+            is_success=False,
+            error_message="Permission denied",
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            tool_invocations=(record,),
+        )
+
+        evt = timeline[0]
+        assert evt.event_type == "tool_used"
+        assert "write_file" in evt.description
+        assert "failed" in evt.description
+        assert "Permission denied" in evt.description
+
+    def test_tool_used_no_task_id(self) -> None:
+        record = _make_tool_invocation(task_id=None)
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            tool_invocations=(record,),
+        )
+
+        evt = timeline[0]
+        assert "task_id" not in evt.related_ids
+        assert evt.related_ids["agent_id"] == "agent-001"
+
+    def test_merge_with_tool_invocations(self) -> None:
+        task = _make_task_metric(
+            completed_at=_NOW - timedelta(hours=1),
+        )
+        tool = _make_tool_invocation(
+            timestamp=_NOW - timedelta(hours=2),
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (task,),
+            tool_invocations=(tool,),
+        )
+
+        assert len(timeline) == 2
+        assert timeline[0].event_type == "task_completed"
+        assert timeline[1].event_type == "tool_used"
+
+
+# ── delegation_sent / delegation_received tests ──────────────────
+
+
+@pytest.mark.unit
+class TestDelegationEvents:
+    def test_delegation_sent_event(self) -> None:
+        record = _make_delegation_record(
+            delegator_id="agent-manager",
+            delegatee_id="agent-worker",
+            original_task_id="task-parent",
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            delegation_records_sent=(record,),
+        )
+
+        assert len(timeline) == 1
+        evt = timeline[0]
+        assert evt.event_type == "delegation_sent"
+        assert evt.timestamp == _NOW
+        assert "task-parent" in evt.description
+        assert "agent-worker" in evt.description
+        assert evt.related_ids["agent_id"] == "agent-manager"
+        assert evt.related_ids["delegatee_id"] == "agent-worker"
+        assert evt.related_ids["delegation_id"] == "del-001"
+        assert evt.related_ids["original_task_id"] == "task-parent"
+
+    def test_delegation_received_event(self) -> None:
+        record = _make_delegation_record(
+            delegator_id="agent-manager",
+            delegatee_id="agent-worker",
+            original_task_id="task-parent",
+            timestamp=_NOW,
+        )
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            delegation_records_received=(record,),
+        )
+
+        assert len(timeline) == 1
+        evt = timeline[0]
+        assert evt.event_type == "delegation_received"
+        assert evt.timestamp == _NOW
+        assert "task-parent" in evt.description
+        assert "agent-manager" in evt.description
+        assert evt.related_ids["agent_id"] == "agent-worker"
+        assert evt.related_ids["delegator_id"] == "agent-manager"
+        assert evt.related_ids["delegation_id"] == "del-001"
+
+    def test_delegation_dual_perspective(self) -> None:
+        """Same record produces both sent and received events."""
+        record = _make_delegation_record(timestamp=_NOW)
+
+        timeline = merge_activity_timeline(
+            (),
+            (),
+            delegation_records_sent=(record,),
+            delegation_records_received=(record,),
+        )
+
+        types = {e.event_type for e in timeline}
+        assert types == {"delegation_sent", "delegation_received"}
+
+    def test_merge_all_event_types(self) -> None:
+        """Verify all event types merge and sort correctly."""
+        hired = _make_lifecycle_event(
+            timestamp=_NOW - timedelta(hours=6),
+        )
+        task = _make_task_metric(
+            started_at=_NOW - timedelta(hours=5),
+            completed_at=_NOW - timedelta(hours=3),
+        )
+        cost = _make_cost_record(
+            timestamp=_NOW - timedelta(hours=4),
+        )
+        tool = _make_tool_invocation(
+            timestamp=_NOW - timedelta(hours=2),
+        )
+        delegation = _make_delegation_record(
+            timestamp=_NOW - timedelta(hours=1),
+        )
+
+        timeline = merge_activity_timeline(
+            (hired,),
+            (task,),
+            cost_records=(cost,),
+            tool_invocations=(tool,),
+            delegation_records_sent=(delegation,),
+            delegation_records_received=(delegation,),
+        )
+
+        # 1 hired + 1 task_completed + 1 task_started + 1 cost + 1 tool + 2 delegation
+        assert len(timeline) == 7
+        # Verify desc order by timestamp
+        for i in range(len(timeline) - 1):
+            assert timeline[i].timestamp >= timeline[i + 1].timestamp
+
+
+# ── Career events tests (unchanged) ─────────────────────────────
 
 
 @pytest.mark.unit
