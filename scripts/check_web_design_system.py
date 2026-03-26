@@ -258,7 +258,12 @@ def _check_status_dot(content: str, content_lower: str, rel_path: Path) -> list[
 
 
 def _check_avatar(content: str, rel_path: Path) -> list[str]:
-    """Check for inline avatar patterns that should use Avatar."""
+    """Check for inline avatar patterns that should use Avatar.
+
+    Heuristic: matches rounded-full + flex-center + small-text, which is
+    the typical initials-circle recipe. May false-positive on non-avatar
+    circular flex elements (e.g. icon badges). Kept as a soft suggestion.
+    """
     pattern = r"rounded-full.*(?:flex|inline-flex).*(?:items-center|justify-center).*(?:text-xs|text-sm|text-micro)"
     has_avatar_import = (
         "<Avatar" in content
@@ -267,8 +272,9 @@ def _check_avatar(content: str, rel_path: Path) -> list[str]:
     )
     if re.search(pattern, content) and not has_avatar_import:
         return [
-            f"  {rel_path}: Inline avatar/initials circle pattern detected "
-            f"-- use `<Avatar>` from `@/components/ui/avatar` instead."
+            f"  {rel_path}: Possible inline avatar/initials circle detected "
+            f"-- consider using `<Avatar>` from `@/components/ui/avatar` "
+            f"or ignore if not applicable."
         ]
     return []
 
