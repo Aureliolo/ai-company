@@ -106,6 +106,12 @@ delegation rights, and typical model tier.
       - name: "engineering"
         head: "cto"
         budget_percent: 60
+        policies:
+          review_requirements:
+            min_reviewers: 2
+          approval_chains:
+            - action_type: "code_review"
+              approvers: ["Software Architect", "CTO"]
         teams:
           - name: "backend"
             lead: "backend_lead"
@@ -152,6 +158,7 @@ Each department defines:
 - **budget_percent** -- The share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
 - **teams** -- Named sub-groups within the department, each with a lead and members
 - **reporting_lines** -- Explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
+- **policies** (optional) -- Department-level operational policies.  Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to empty/default values when omitted
 
 ---
 
@@ -177,7 +184,7 @@ the primary mechanism for bootstrapping organizations.
 
 ```yaml
 # templates/startup.yaml (simplified -- real templates also declare
-# variables, departments, min_agents/max_agents, and tags)
+# variables, departments with policies, min_agents/max_agents, and tags)
 template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
