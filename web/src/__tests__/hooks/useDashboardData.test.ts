@@ -60,7 +60,12 @@ describe('useDashboardData', () => {
 
   it('returns overview from store', () => {
     const mockOverview = {
-      total_tasks: 10, tasks_by_status: {} as never, total_agents: 5,
+      total_tasks: 10,
+      tasks_by_status: {
+        created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
+        blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+      },
+      total_agents: 5,
       total_cost_usd: 50, budget_remaining_usd: 450, budget_used_percent: 10,
       cost_7d_trend: [], active_agents_count: 3, idle_agents_count: 2,
     }

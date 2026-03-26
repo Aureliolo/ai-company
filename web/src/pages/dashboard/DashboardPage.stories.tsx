@@ -126,6 +126,7 @@ export const EmptyOrg: Story = {
   decorators: [
     (Story) => {
       setStoreState({
+        overview: null,
         departmentHealths: [],
         activities: [],
         orgHealthPercent: null,

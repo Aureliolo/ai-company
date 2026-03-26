@@ -44,25 +44,42 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   fetchDashboardData: async () => {
     set({ loading: true, error: null })
     try {
-      const [overview, forecast, budgetConfig, activitiesResult] = await Promise.all([
-        getOverviewMetrics(),
-        getForecast(),
-        getBudgetConfig(),
-        listActivities({ limit: 20 }).catch(() => ({ data: [] as ActivityItem[] })),
-      ])
+      const [overviewResult, forecastResult, budgetResult, activitiesResult] =
+        await Promise.allSettled([
+          getOverviewMetrics(),
+          getForecast(),
+          getBudgetConfig(),
+          listActivities({ limit: 20 }),
+        ])
+
+      const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null
+      const forecast = forecastResult.status === 'fulfilled' ? forecastResult.value : null
+      const budgetConfig = budgetResult.status === 'fulfilled' ? budgetResult.value : null
+      const activitiesData =
+        activitiesResult.status === 'fulfilled' ? activitiesResult.value.data : []
+
+      if (!overview) {
+        // Overview is the critical dataset -- if it fails, surface the error
+        const reason = overviewResult.status === 'rejected' ? overviewResult.reason : null
+        set({ loading: false, error: getErrorMessage(reason ?? 'Failed to load overview') })
+        return
+      }
 
       let departmentHealths: DepartmentHealth[] = []
       try {
-        const deptResult = await listDepartments()
+        const deptResult = await listDepartments({ limit: 100 })
         const healthPromises = deptResult.data.map((dept) =>
-          getDepartmentHealth(dept.name).catch(() => null),
+          getDepartmentHealth(dept.name).catch((err: unknown) => {
+            console.warn(`Failed to fetch health for ${dept.name}:`, err)
+            return null
+          }),
         )
         const healthResults = await Promise.all(healthPromises)
         departmentHealths = healthResults.filter(
           (h): h is DepartmentHealth => h !== null,
         )
-      } catch {
-        // Department health endpoints may not exist yet -- degrade gracefully
+      } catch (err) {
+        console.warn('Failed to fetch department list:', err)
       }
 
       const orgHealthPercent = computeOrgHealth(departmentHealths)
@@ -73,7 +90,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
         budgetConfig,
         departmentHealths,
         orgHealthPercent,
-        activities: activitiesResult.data,
+        activities: activitiesData,
         loading: false,
         error: null,
       })
@@ -98,7 +115,11 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
-    const item = wsEventToActivityItem(event)
-    get().pushActivity(item)
+    try {
+      const item = wsEventToActivityItem(event)
+      get().pushActivity(item)
+    } catch (err) {
+      console.error('Failed to process WebSocket event:', err)
+    }
   },
 }))

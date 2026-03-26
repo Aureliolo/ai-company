@@ -39,8 +39,8 @@ describe('ActivityFeedItem', () => {
   })
 
   it('handles null task_id without error', () => {
-    const { container } = renderWithRouter(<ActivityFeedItem activity={makeActivity({ task_id: null })} />)
-    expect(container).toBeTruthy()
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ task_id: null })} />)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
   it('renders task link when task_id is present', () => {

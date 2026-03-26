@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { usePolling } from '@/hooks/usePolling'
 import { getHealth } from '@/api/endpoints/health'
+import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import type { HealthStatus } from '@/api/types'
 
@@ -46,13 +47,14 @@ export function StatusBar() {
   useEffect(() => {
     healthPolling.start()
     return () => healthPolling.stop()
+    // healthPolling.start/stop are stable refs from usePolling
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 
   const statusCfg = STATUS_CONFIG[healthStatus]
   const costDisplay =
     totalCost !== undefined && totalCost !== null
-      ? `$${totalCost.toFixed(2)}`
+      ? formatCurrency(totalCost)
       : '$--'
 
   return (

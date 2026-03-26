@@ -3,12 +3,20 @@ import { MemoryRouter } from 'react-router'
 import type { UseDashboardDataReturn } from '@/hooks/useDashboardData'
 import type { OverviewMetrics, BudgetConfig } from '@/api/types'
 
+function makeTasksByStatus(overrides: Partial<Record<string, number>> = {}): OverviewMetrics['tasks_by_status'] {
+  return {
+    created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
+    blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+    ...overrides,
+  } as OverviewMetrics['tasks_by_status']
+}
+
 const mockOverview: OverviewMetrics = {
   total_tasks: 24,
-  tasks_by_status: {
+  tasks_by_status: makeTasksByStatus({
     created: 2, assigned: 3, in_progress: 8, in_review: 2, completed: 5,
     blocked: 1, failed: 1, interrupted: 1, cancelled: 1,
-  },
+  }),
   total_agents: 10,
   total_cost_usd: 42.17,
   budget_remaining_usd: 457.83,
@@ -81,7 +89,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('TASKS')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE AGENTS')).toBeInTheDocument()
     expect(screen.getByText('SPEND')).toBeInTheDocument()
-    expect(screen.getByText('PENDING APPROVALS')).toBeInTheDocument()
+    expect(screen.getByText('IN REVIEW')).toBeInTheDocument()
   })
 
   it('renders metric values', async () => {
@@ -123,5 +131,11 @@ describe('DashboardPage', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     await renderDashboard()
     expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+  })
+
+  it('shows custom wsSetupError message when provided', async () => {
+    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
+    await renderDashboard()
+    expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
   })
 })

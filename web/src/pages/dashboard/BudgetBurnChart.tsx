@@ -54,8 +54,15 @@ function buildChartData(
   return points
 }
 
+function parseChartDate(dateStr: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!match) return new Date(dateStr)
+  const [, year, month, day] = match
+  return new Date(Number(year), Number(month) - 1, Number(day))
+}
+
 function formatDayLabel(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = parseChartDate(dateStr)
   if (Number.isNaN(date.getTime())) return dateStr
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
@@ -71,7 +78,7 @@ function ChartTooltipContent({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="rounded-md border border-border bg-bg-card px-3 py-2 text-xs shadow-md">
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
       <p className="mb-1 font-sans text-text-secondary">{label}</p>
       {payload.map((entry) => (
         <p key={entry.dataKey} className="font-mono text-foreground">

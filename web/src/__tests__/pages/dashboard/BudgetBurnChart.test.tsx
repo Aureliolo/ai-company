@@ -52,7 +52,8 @@ describe('BudgetBurnChart', () => {
     render(
       <BudgetBurnChart trendData={SAMPLE_TREND} forecast={SAMPLE_FORECAST} budgetTotal={500} />,
     )
-    expect(screen.getByText(/avg/i)).toBeInTheDocument()
+    expect(screen.getByText('Avg/day')).toBeInTheDocument()
+    expect(screen.getByText('$6.20')).toBeInTheDocument()
   })
 
   it('renders days left when days_until_exhausted is non-null', () => {

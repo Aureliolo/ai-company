@@ -5,7 +5,7 @@ import type { ActivityItem } from '@/api/types'
 
 function makeActivities(count: number): ActivityItem[] {
   const eventTypes = ['task.created', 'task.updated', 'agent.status_changed', 'budget.record_added', 'approval.submitted'] as const
-  const agents = ['agent-cto', 'agent-eng-lead', 'agent-designer', 'agent-qa', 'agent-devops']
+  const agents = ['agent-cto', 'agent-eng-lead', 'agent-designer', 'agent-qa', 'agent-devops'] as const
   return Array.from({ length: count }, (_, i) => ({
     id: `activity-${i}`,
     timestamp: new Date(Date.now() - i * 120_000).toISOString(),

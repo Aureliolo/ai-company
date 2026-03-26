@@ -12,7 +12,7 @@ import { formatCurrency } from '@/utils/format'
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
-const EVENT_DESCRIPTIONS: Record<string, string> = {
+const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
   'task.created': 'created a task',
   'task.updated': 'updated a task',
   'task.status_changed': 'changed task status',
@@ -43,7 +43,7 @@ export function computeMetricCards(
   overview: OverviewMetrics,
   budget: BudgetConfig,
 ): DashboardMetricCardData[] {
-  const spendTrend = computeSpendTrend([...overview.cost_7d_trend])
+  const spendTrend = computeSpendTrend(overview.cost_7d_trend)
   const costCurrent = Math.min(overview.total_cost_usd, budget.total_monthly)
 
   return [
@@ -69,14 +69,14 @@ export function computeMetricCards(
       subText: `${Math.round(overview.budget_used_percent)}% of budget`,
     },
     {
-      label: 'PENDING APPROVALS',
+      label: 'IN REVIEW',
       value: overview.tasks_by_status.in_review ?? 0,
     },
   ]
 }
 
 export function computeSpendTrend(
-  points: TrendDataPoint[],
+  points: readonly TrendDataPoint[],
 ): { value: number; direction: 'up' | 'down' } | undefined {
   if (points.length < 2) return undefined
   const first = points[0]!.value
@@ -87,7 +87,7 @@ export function computeSpendTrend(
   return { value: pct, direction: last >= first ? 'up' : 'down' }
 }
 
-export function computeOrgHealth(departments: DepartmentHealth[]): number | null {
+export function computeOrgHealth(departments: readonly DepartmentHealth[]): number | null {
   if (departments.length === 0) return null
   const sum = departments.reduce((acc, d) => acc + d.health_percent, 0)
   return Math.round(sum / departments.length)
@@ -97,8 +97,10 @@ export function describeEvent(eventType: WsEventType): string {
   return EVENT_DESCRIPTIONS[eventType] ?? eventType.replace(/[._]/g, ' ')
 }
 
+let wsActivityCounter = 0
+
 export function wsEventToActivityItem(event: WsEvent): ActivityItem {
-  const payload = event.payload
+  const payload = event.payload ?? {}
   const agentName =
     (typeof payload.agent_name === 'string' && payload.agent_name) ||
     (typeof payload.assigned_to === 'string' && payload.assigned_to) ||
@@ -116,7 +118,7 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
       : describeEvent(event.event_type)
 
   return {
-    id: `${event.timestamp}-${event.event_type}-${agentName}`,
+    id: `${event.timestamp}-${event.event_type}-${agentName}-${++wsActivityCounter}`,
     timestamp: event.timestamp,
     agent_name: agentName,
     action_type: event.event_type,

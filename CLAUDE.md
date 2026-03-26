@@ -126,7 +126,7 @@ web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions)
   lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
-  pages/          # Lazy-loaded page components (one per route)
+  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs
   router/         # React Router config, route constants, auth/setup guards
   stores/         # Zustand stores (auth, WebSocket, toast, analytics, domain shells)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge

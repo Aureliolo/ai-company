@@ -94,13 +94,12 @@ describe('computeMetricCards', () => {
     expect(spendCard!.sparklineData).toEqual([5, 6, 7, 5, 8, 6, 5.17])
   })
 
-  it('includes Pending Approvals card from tasks_by_status', () => {
+  it('includes In Review card from tasks_by_status', () => {
     const overview = makeOverview()
     const cards = computeMetricCards(overview, makeBudgetConfig())
-    const approvalsCard = cards.find((c) => c.label === 'PENDING APPROVALS')
-    expect(approvalsCard).toBeDefined()
-    // in_review count serves as pending approvals proxy
-    expect(approvalsCard!.value).toBe(2)
+    const reviewCard = cards.find((c) => c.label === 'IN REVIEW')
+    expect(reviewCard).toBeDefined()
+    expect(reviewCard!.value).toBe(2)
   })
 
   it('includes budget progress on spend card', () => {

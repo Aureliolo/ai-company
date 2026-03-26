@@ -39,7 +39,7 @@ export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectio
                     taskCount={dept.task_count}
                   />
                   {dept.cost_usd !== null && (
-                    <span className="mt-0.5 block text-right font-mono text-xs text-text-muted">
+                    <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
                       {formatCurrency(dept.cost_usd)}
                     </span>
                   )}

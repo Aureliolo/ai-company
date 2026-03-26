@@ -332,7 +332,7 @@ How this page structure supports the 10 design principles from #762:
 
 | # | Principle | How the structure supports it |
 |---|-----------|-------------------------------|
-| 1 | Data is never just a number | Dashboard: sparklines + deltas via `/analytics/trends`. Budget: forecast projections. Agent detail: career arc narrative |
+| 1 | Data is never just a number | Dashboard: sparklines + deltas via `/analytics/overview` (7-day trend). Budget: forecast projections. Agent detail: career arc narrative |
 | 2 | Real-time means visible | WS subscription map ensures every data-bearing page has live updates. Sidebar badges update in real time |
 | 3 | Navigation recedes, content shines | Collapsible sidebar (220px to 56px). No persistent drawers competing with content |
 | 4 | Status arrives, doesn't flash | WS events update Zustand stores; animation profile is "status-driven" (only changed elements animate) |

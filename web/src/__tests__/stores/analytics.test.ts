@@ -130,7 +130,7 @@ describe('useAnalyticsStore', () => {
       const { listDepartments, getDepartmentHealth } = await import('@/api/endpoints/company')
       vi.mocked(listDepartments).mockResolvedValueOnce({
         data: [{ name: 'engineering', display_name: 'Engineering', teams: [] }],
-        total: 1, offset: 0, limit: 50,
+        total: 1, offset: 0, limit: 100,
       })
       vi.mocked(getDepartmentHealth).mockResolvedValueOnce({
         name: 'engineering',
@@ -148,7 +148,7 @@ describe('useAnalyticsStore', () => {
       expect(state.orgHealthPercent).toBe(85)
     })
 
-    it('sets error on API failure', async () => {
+    it('sets error when overview fails (critical dataset)', async () => {
       const { getOverviewMetrics } = await import('@/api/endpoints/analytics')
       vi.mocked(getOverviewMetrics).mockRejectedValueOnce(new Error('Network error'))
 
@@ -156,6 +156,55 @@ describe('useAnalyticsStore', () => {
       const state = useAnalyticsStore.getState()
       expect(state.error).toBe('Network error')
       expect(state.loading).toBe(false)
+    })
+
+    it('degrades gracefully when forecast fails', async () => {
+      const { getForecast } = await import('@/api/endpoints/analytics')
+      vi.mocked(getForecast).mockRejectedValueOnce(new Error('Forecast unavailable'))
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.overview).not.toBeNull()
+      expect(state.forecast).toBeNull()
+      expect(state.error).toBeNull()
+    })
+
+    it('degrades gracefully when budgetConfig fails', async () => {
+      const { getBudgetConfig } = await import('@/api/endpoints/budget')
+      vi.mocked(getBudgetConfig).mockRejectedValueOnce(new Error('Budget unavailable'))
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.overview).not.toBeNull()
+      expect(state.budgetConfig).toBeNull()
+      expect(state.error).toBeNull()
+    })
+
+    it('filters out failed individual department health fetches', async () => {
+      const { listDepartments, getDepartmentHealth } = await import('@/api/endpoints/company')
+      vi.mocked(listDepartments).mockResolvedValueOnce({
+        data: [
+          { name: 'engineering', display_name: 'Engineering', teams: [] },
+          { name: 'design', display_name: 'Design', teams: [] },
+          { name: 'operations', display_name: 'Operations', teams: [] },
+        ],
+        total: 3, offset: 0, limit: 100,
+      })
+      vi.mocked(getDepartmentHealth)
+        .mockResolvedValueOnce({
+          name: 'engineering', display_name: 'Engineering',
+          health_percent: 85, agent_count: 4, task_count: 10, cost_usd: null,
+        })
+        .mockRejectedValueOnce(new Error('Design health unavailable'))
+        .mockResolvedValueOnce({
+          name: 'operations', display_name: 'Operations',
+          health_percent: 70, agent_count: 2, task_count: 3, cost_usd: null,
+        })
+
+      await useAnalyticsStore.getState().fetchDashboardData()
+      const state = useAnalyticsStore.getState()
+      expect(state.departmentHealths).toHaveLength(2)
+      expect(state.error).toBeNull()
     })
   })
 

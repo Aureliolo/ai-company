@@ -9,7 +9,7 @@ interface ActivityFeedItemProps {
   className?: string
 }
 
-const ACTION_DOT_COLORS: Record<string, string> = {
+const ACTION_DOT_COLORS: Partial<Record<WsEventType, string>> = {
   'task.created': 'bg-accent',
   'task.updated': 'bg-accent',
   'task.status_changed': 'bg-success',
@@ -29,7 +29,7 @@ const ACTION_DOT_COLORS: Record<string, string> = {
 }
 
 function getActionDotColor(actionType: WsEventType): string {
-  return ACTION_DOT_COLORS[actionType] ?? 'bg-text-muted'
+  return ACTION_DOT_COLORS[actionType] ?? 'bg-muted-foreground'
 }
 
 export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps) {
@@ -47,7 +47,7 @@ export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps)
         <Avatar name={activity.agent_name} size="sm" />
         <span
           className={cn(
-            'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-bg-card',
+            'absolute -bottom-0.5 -right-0.5 size-[6px] rounded-full ring-1 ring-card',
             dotColor,
           )}
           aria-label={`Action: ${activity.action_type.replace(/[._]/g, ' ')}`}
@@ -72,7 +72,7 @@ export function ActivityFeedItem({ activity, className }: ActivityFeedItemProps)
         )}
       </div>
       <span
-        className="shrink-0 font-mono text-[10px] text-text-muted"
+        className="shrink-0 font-mono text-[10px] text-muted-foreground"
         data-testid="activity-timestamp"
       >
         {formatRelativeTime(activity.timestamp)}

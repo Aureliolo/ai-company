@@ -40,4 +40,10 @@ describe('OrgHealthSection', () => {
     const meters = screen.getAllByRole('meter')
     expect(meters.length).toBeGreaterThanOrEqual(1)
   })
+
+  it('renders department cost when cost_usd is non-null', () => {
+    const depts = makeDepts(1).map((d) => ({ ...d, cost_usd: 24.5 }))
+    render(<OrgHealthSection departments={depts} overallHealth={80} />)
+    expect(screen.getByText('$24.50')).toBeInTheDocument()
+  })
 })

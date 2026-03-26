@@ -12,7 +12,7 @@ import type {
 } from '@/api/types'
 
 const DASHBOARD_POLL_INTERVAL = 30_000
-const DASHBOARD_CHANNELS: WsChannel[] = ['tasks', 'agents', 'budget', 'system', 'approvals']
+const DASHBOARD_CHANNELS = ['tasks', 'agents', 'budget', 'system', 'approvals'] as const satisfies readonly WsChannel[]
 
 export interface UseDashboardDataReturn {
   overview: OverviewMetrics | null

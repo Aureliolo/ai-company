@@ -1,6 +1,25 @@
 import { render, screen } from '@testing-library/react'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { StatusBar } from '@/components/layout/StatusBar'
+import type { OverviewMetrics } from '@/api/types'
+
+function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
+  return {
+    total_tasks: 0,
+    tasks_by_status: {
+      created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
+      blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+    } as OverviewMetrics['tasks_by_status'],
+    total_agents: 0,
+    total_cost_usd: 0,
+    budget_remaining_usd: 0,
+    budget_used_percent: 0,
+    cost_7d_trend: [],
+    active_agents_count: 0,
+    idle_agents_count: 0,
+    ...overrides,
+  }
+}
 
 vi.mock('@/hooks/usePolling', () => ({
   usePolling: vi.fn().mockReturnValue({
@@ -45,17 +64,15 @@ describe('StatusBar', () => {
 
   it('shows live values from analytics store', () => {
     useAnalyticsStore.setState({
-      overview: {
+      overview: makeOverview({
         total_tasks: 42,
-        tasks_by_status: {} as never,
         total_agents: 12,
         total_cost_usd: 85.5,
         budget_remaining_usd: 414.5,
         budget_used_percent: 17.1,
-        cost_7d_trend: [],
         active_agents_count: 8,
         idle_agents_count: 3,
-      },
+      }),
     })
 
     render(<StatusBar />)
@@ -76,17 +93,15 @@ describe('StatusBar', () => {
 
   it('shows budget percentage when data loaded', () => {
     useAnalyticsStore.setState({
-      overview: {
+      overview: makeOverview({
         total_tasks: 10,
-        tasks_by_status: { in_review: 3 } as never,
         total_agents: 5,
         total_cost_usd: 50,
         budget_remaining_usd: 450,
         budget_used_percent: 10,
-        cost_7d_trend: [],
         active_agents_count: 3,
         idle_agents_count: 2,
-      },
+      }),
     })
     render(<StatusBar />)
     expect(screen.getByText('10%')).toBeInTheDocument()
@@ -94,19 +109,29 @@ describe('StatusBar', () => {
 
   it('shows pending approvals count when non-zero', () => {
     useAnalyticsStore.setState({
-      overview: {
+      overview: makeOverview({
         total_tasks: 10,
-        tasks_by_status: { in_review: 3 } as never,
+        tasks_by_status: {
+          created: 0, assigned: 0, in_progress: 0, in_review: 3, completed: 0,
+          blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
+        } as OverviewMetrics['tasks_by_status'],
         total_agents: 5,
         total_cost_usd: 50,
         budget_remaining_usd: 450,
         budget_used_percent: 10,
-        cost_7d_trend: [],
         active_agents_count: 3,
         idle_agents_count: 2,
-      },
+      }),
     })
     render(<StatusBar />)
     expect(screen.getByText('3 pending')).toBeInTheDocument()
+  })
+
+  it('shows formatted currency for cost display', () => {
+    useAnalyticsStore.setState({
+      overview: makeOverview({ total_cost_usd: 1234.56 }),
+    })
+    render(<StatusBar />)
+    expect(screen.getByText('$1,234.56')).toBeInTheDocument()
   })
 })

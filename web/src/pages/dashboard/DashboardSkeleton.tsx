@@ -19,7 +19,9 @@ export function DashboardSkeleton() {
         <SkeletonCard header lines={4} />
         <SkeletonCard header lines={4} />
       </div>
-      <SkeletonCard header lines={3} data-testid="skeleton-chart" />
+      <div data-testid="skeleton-chart">
+        <SkeletonCard header lines={3} />
+      </div>
     </div>
   )
 }
