@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
 
 describe('ProgressGauge', () => {
@@ -67,5 +68,22 @@ describe('ProgressGauge', () => {
     render(<ProgressGauge value={50} max={0} />)
 
     expect(screen.getByText('100%')).toBeInTheDocument()
+  })
+
+  it('always clamps percentage between 0 and 100 (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.float({ min: -1000, max: 1000, noNaN: true }),
+        fc.float({ min: 1, max: 1000, noNaN: true }),
+        (value, max) => {
+          const { unmount } = render(<ProgressGauge value={value} max={max} />)
+          const text = screen.getByText(/%$/)
+          const percentage = parseInt(text.textContent ?? '0')
+          expect(percentage).toBeGreaterThanOrEqual(0)
+          expect(percentage).toBeLessThanOrEqual(100)
+          unmount()
+        },
+      ),
+    )
   })
 })

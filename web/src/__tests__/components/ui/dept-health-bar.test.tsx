@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 
 describe('DeptHealthBar', () => {
@@ -71,5 +72,35 @@ describe('DeptHealthBar', () => {
     )
 
     expect(container.firstChild).toHaveClass('my-class')
+  })
+
+  it('clamps health above 100 to 100% (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 101, max: 1000 }), (health) => {
+        const { unmount } = render(<DeptHealthBar {...defaultProps} health={health} />)
+        expect(screen.getByText('100%')).toBeInTheDocument()
+        unmount()
+      }),
+    )
+  })
+
+  it('clamps negative health to 0% (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -1000, max: -1 }), (health) => {
+        const { unmount } = render(<DeptHealthBar {...defaultProps} health={health} />)
+        expect(screen.getByText('0%')).toBeInTheDocument()
+        unmount()
+      }),
+    )
+  })
+
+  it('displays health within 0-100 as-is (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 100 }), (health) => {
+        const { unmount } = render(<DeptHealthBar {...defaultProps} health={health} />)
+        expect(screen.getByText(`${health}%`)).toBeInTheDocument()
+        unmount()
+      }),
+    )
   })
 })

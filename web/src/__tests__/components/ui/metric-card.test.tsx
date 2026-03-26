@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { MetricCard } from '@/components/ui/metric-card'
 
 describe('MetricCard', () => {
@@ -84,5 +85,32 @@ describe('MetricCard', () => {
     )
 
     expect(container.querySelector('svg')).not.toBeInTheDocument()
+  })
+
+  it('renders any numeric value correctly (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -999999, max: 999999 }), (num) => {
+        const { unmount } = render(<MetricCard label="Test" value={num} />)
+        expect(screen.getByText(String(num))).toBeInTheDocument()
+        unmount()
+      }),
+    )
+  })
+
+  it('formats change badge for any percentage (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 100 }),
+        fc.constantFrom('up', 'down') as fc.Arbitrary<'up' | 'down'>,
+        (value, direction) => {
+          const { unmount } = render(
+            <MetricCard label="Test" value={0} change={{ value, direction }} />,
+          )
+          const prefix = direction === 'up' ? '+' : '-'
+          expect(screen.getByText(new RegExp(`\\${prefix}${value}%`))).toBeInTheDocument()
+          unmount()
+        },
+      ),
+    )
   })
 })

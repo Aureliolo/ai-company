@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { AgentCard } from '@/components/ui/agent-card'
 
 describe('AgentCard', () => {
@@ -67,5 +68,29 @@ describe('AgentCard', () => {
     const { container } = render(<AgentCard {...defaultProps} className="my-class" />)
 
     expect(container.firstChild).toHaveClass('my-class')
+  })
+
+  it('renders initials for any valid two-word name (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.tuple(
+          fc.string({ minLength: 1, maxLength: 20 }),
+          fc.string({ minLength: 1, maxLength: 20 }),
+        )
+          .filter(([first, last]) => /^[A-Za-z]/.test(first) && /^[A-Za-z]/.test(last))
+          .map(([first, last]) => `${first} ${last}`),
+        (name) => {
+          const { unmount } = render(
+            <AgentCard {...defaultProps} name={name} />,
+          )
+          const words = name.trim().split(/\s+/)
+          const expectedInitials = words.length >= 2
+            ? `${words[0]![0]!.toUpperCase()}${words[words.length - 1]![0]!.toUpperCase()}`
+            : words[0]![0]!.toUpperCase()
+          expect(screen.getByText(expectedInitials)).toBeInTheDocument()
+          unmount()
+        },
+      ),
+    )
   })
 })

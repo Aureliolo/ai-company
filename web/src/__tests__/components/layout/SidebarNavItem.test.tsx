@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { Users } from 'lucide-react'
 import { SidebarNavItem } from '@/components/layout/SidebarNavItem'
 import { renderWithRouter } from '../../test-utils'
@@ -71,5 +72,29 @@ describe('SidebarNavItem', () => {
 
     const dot = document.querySelector('.rounded-full.size-2')
     expect(dot).not.toBeInTheDocument()
+  })
+
+  it('caps badge display at 99+ for any count > 99 (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 100, max: 10000 }), (count) => {
+        const { unmount } = renderWithRouter(
+          <SidebarNavItem to="/test" icon={Users} label="Test" collapsed={false} badge={count} />,
+        )
+        expect(screen.getByText('99+')).toBeInTheDocument()
+        unmount()
+      }),
+    )
+  })
+
+  it('displays exact count for badge values 1-99 (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 99 }), (count) => {
+        const { unmount } = renderWithRouter(
+          <SidebarNavItem to="/test" icon={Users} label="Test" collapsed={false} badge={count} />,
+        )
+        expect(screen.getByText(String(count))).toBeInTheDocument()
+        unmount()
+      }),
+    )
   })
 })

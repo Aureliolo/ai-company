@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { Settings } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 
@@ -47,5 +48,14 @@ describe('SectionCard', () => {
     )
 
     expect(container.firstChild).toHaveClass('my-class')
+  })
+
+  it('renders without crashing for any title (property)', () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 100 }), (title) => {
+        const { unmount } = render(<SectionCard title={title}>Content</SectionCard>)
+        unmount()
+      }),
+    )
   })
 })

@@ -74,14 +74,14 @@ export function MetricCard({
           {subText && (
             <span className="text-xs text-muted-foreground">{subText}</span>
           )}
-          {change && <ChangeBadge {...change} />}
+          {change && <ChangeBadge {...change} className={subText ? undefined : 'ml-auto'} />}
         </div>
       )}
     </div>
   )
 }
 
-function ChangeBadge({ value, direction }: { value: number; direction: 'up' | 'down' }) {
+function ChangeBadge({ value, direction, className }: { value: number; direction: 'up' | 'down'; className?: string }) {
   const isUp = direction === 'up'
   const label = isUp ? `Up ${value} percent` : `Down ${value} percent`
 
@@ -94,6 +94,7 @@ function ChangeBadge({ value, direction }: { value: number; direction: 'up' | 'd
         isUp
           ? 'bg-success/8 text-success border border-success/20'
           : 'bg-danger/8 text-danger border border-danger/20',
+        className,
       )}
     >
       {isUp ? '+' : '-'}{value}%

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { Avatar } from '@/components/ui/avatar'
 
 describe('Avatar', () => {
@@ -58,5 +59,25 @@ describe('Avatar', () => {
     const avatar = screen.getByRole('img')
     expect(avatar).toBeInTheDocument()
     expect(avatar.textContent).toBe('')
+  })
+
+  it('renders without crashing for arbitrary names (property)', () => {
+    fc.assert(
+      fc.property(fc.string(), (name) => {
+        const { unmount } = render(<Avatar name={name} />)
+        unmount()
+      }),
+    )
+  })
+
+  it('initials are at most 2 characters (property)', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (name) => {
+        const { container, unmount } = render(<Avatar name={name} />)
+        const text = container.textContent ?? ''
+        expect(text.length).toBeLessThanOrEqual(2)
+        unmount()
+      }),
+    )
   })
 })

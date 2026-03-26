@@ -1,4 +1,5 @@
 import { render } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { Sparkline } from '@/components/ui/sparkline'
 
 describe('Sparkline', () => {
@@ -71,5 +72,34 @@ describe('Sparkline', () => {
 
     expect(svg).toBeInTheDocument()
     expect(container.querySelector('polyline')).toBeInTheDocument()
+  })
+
+  it('renders SVG for any data array with length > 1 (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.float({ min: -1000, max: 1000, noNaN: true }), { minLength: 2, maxLength: 50 }),
+        (data) => {
+          const { container, unmount } = render(<Sparkline data={data} />)
+          expect(container.querySelector('svg')).toBeInTheDocument()
+          unmount()
+        },
+      ),
+    )
+  })
+
+  it('respects custom dimensions for any valid size (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 10, max: 500 }),
+        fc.integer({ min: 10, max: 200 }),
+        (width, height) => {
+          const { container, unmount } = render(<Sparkline data={[1, 2, 3]} width={width} height={height} />)
+          const svg = container.querySelector('svg')
+          expect(svg).toHaveAttribute('width', String(width))
+          expect(svg).toHaveAttribute('height', String(height))
+          unmount()
+        },
+      ),
+    )
   })
 })
