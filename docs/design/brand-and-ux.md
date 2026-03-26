@@ -172,7 +172,7 @@ This was discovered during the design exploration (#765) and caused layout break
 ## Accessibility
 
 - WCAG AA contrast minimum on all text (4.5:1 on backgrounds, 3:1 for large text)
-- `prefers-reduced-motion` support planned (disable infinite animations, reduce transition durations)
+- `prefers-reduced-motion` supported: `AnimatedPresence` uses `reducedPageVariants` (opacity-only fade), skeleton shimmer disabled via CSS media query, Framer Motion's `useReducedMotion()` hook used for runtime detection
 - Keyboard navigation for all interactive elements
 - `aria-hidden="true"` on decorative icons
 - Escape key closes overlays/drawers
@@ -206,6 +206,20 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |
 | `Button` | `button.tsx` | shadcn standard | Standard button component (shadcn/ui). |
 
+### Interaction Components
+
+| Component | File | Props | Purpose |
+|-----------|------|-------|---------|
+| `Toast` / `ToastContainer` | `toast.tsx` | `toast` (ToastItem), `onDismiss`, `maxVisible?` | Notification toasts (success/error/warning/info) with auto-dismiss queue, Framer Motion animations. Mount `ToastContainer` once in AppLayout. |
+| `Skeleton` variants | `skeleton.tsx` | `shimmer?`, `lines?`, `rows?`, `columns?` | Loading placeholders: `Skeleton` (base), `SkeletonText`, `SkeletonCard`, `SkeletonMetric`, `SkeletonTable`. Shimmer respects `prefers-reduced-motion`. |
+| `EmptyState` | `empty-state.tsx` | `icon?`, `title`, `description?`, `action?` | No-data / no-results placeholder with optional action button. |
+| `ErrorBoundary` | `error-boundary.tsx` | `fallback?`, `onReset?`, `level?` | React error boundary with retry. Levels: `page` (full-height), `section` (card), `component` (inline). |
+| `ConfirmDialog` | `confirm-dialog.tsx` | `open`, `onOpenChange`, `title`, `onConfirm`, `variant?`, `loading?` | Confirmation modal built on Radix AlertDialog. Variants: `default`, `destructive`. |
+| `CommandPalette` | `command-palette.tsx` | `className?` | Global Cmd+K search built with cmdk. Focus-trapped, fuzzy search, scope toggle, recent items. |
+| `InlineEdit` | `inline-edit.tsx` | `value`, `onSave`, `validate?`, `type?`, `disabled?` | Click-to-edit with Enter/Escape, inline validation, optimistic save via `useFlash`. |
+| `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Framer Motion AnimatePresence with reduced-motion fallback. |
+| `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
+
 ### Utility Functions
 
 | Function | File | Purpose |
@@ -213,6 +227,14 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `cn()` | `lib/utils.ts` | Tailwind class merging (clsx + twMerge). Use in every component. |
 | `getStatusColor()` | `lib/utils.ts` | Maps `AgentRuntimeStatus` to `SemanticColor \| "text-secondary"` token name (`offline` maps to `"text-secondary"`). |
 | `getHealthColor()` | `lib/utils.ts` | Maps 0-100 percentage to `SemanticColor` (>=75 success, >=50 accent, >=25 warning, <25 danger). |
+
+### Animation Hooks
+
+| Hook | File | Purpose |
+|------|------|---------|
+| `useFlash()` | `hooks/useFlash.ts` | Real-time update flash effect. Returns `{ flashing, flashClassName, triggerFlash, flashStyle }`. Uses `STATUS_FLASH` timing constants. |
+| `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colors. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
+| `useCommandPalette()` | `hooks/useCommandPalette.ts` | Global command palette state. `registerCommands()` adds page-local commands (cleanup on unmount). `open()` / `close()` / `toggle()`. |
 
 ### Types
 

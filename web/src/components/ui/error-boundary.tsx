@@ -65,11 +65,19 @@ class ErrorBoundaryInner extends Component<
   }
 }
 
+/** Show detailed errors in dev, generic message in production. */
+function getSafeMessage(error: Error): string {
+  if (import.meta.env.DEV) return error.message
+  return 'An unexpected error occurred. Please try again.'
+}
+
 function DefaultErrorFallback({
   error,
   resetErrorBoundary,
   level,
 }: ErrorFallbackProps) {
+  const message = getSafeMessage(error)
+
   if (level === 'page') {
     return (
       <div
@@ -79,7 +87,7 @@ function DefaultErrorFallback({
         <AlertTriangle className="size-12 text-danger" strokeWidth={1.5} aria-hidden="true" />
         <div className="space-y-1 text-center">
           <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
-          <p className="max-w-md text-sm text-muted-foreground">{error.message}</p>
+          <p className="max-w-md text-sm text-muted-foreground">{message}</p>
         </div>
         <Button onClick={resetErrorBoundary}>Try Again</Button>
       </div>
@@ -93,7 +101,7 @@ function DefaultErrorFallback({
         className="inline-flex items-center gap-2 text-sm text-danger"
       >
         <AlertTriangle className="size-4" aria-hidden="true" />
-        <span>{error.message}</span>
+        <span>{message}</span>
         <button
           onClick={resetErrorBoundary}
           className="text-accent underline underline-offset-2 hover:text-accent-foreground"
@@ -113,7 +121,7 @@ function DefaultErrorFallback({
       <AlertTriangle className="size-8 text-danger" strokeWidth={1.5} aria-hidden="true" />
       <div className="space-y-1 text-center">
         <p className="text-sm font-medium text-foreground">Something went wrong</p>
-        <p className="text-xs text-muted-foreground">{error.message}</p>
+        <p className="text-xs text-muted-foreground">{message}</p>
       </div>
       <Button size="sm" onClick={resetErrorBoundary}>
         Try Again

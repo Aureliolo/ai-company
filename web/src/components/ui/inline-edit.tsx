@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useFlash } from '@/hooks/useFlash'
@@ -35,6 +35,10 @@ export function InlineEdit({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { flashClassName, triggerFlash } = useFlash()
+  const errorId = useId()
+
+  // Track whether save was triggered by Enter (to skip blur-triggered save)
+  const saveInProgressRef = useRef(false)
 
   // Sync when prop value changes externally (ref-based to avoid setState-in-effect)
   const prevValueRef = useRef(value)
@@ -65,11 +69,17 @@ export function InlineEdit({
   }, [value])
 
   const save = useCallback(async () => {
+    // Prevent double-save (Enter triggers save, then blur fires save again)
+    if (saveInProgressRef.current) return
+    if (state !== 'editing') return
+    saveInProgressRef.current = true
+
     // Validate
     if (validate) {
       const validationError = validate(editValue)
       if (validationError) {
         setError(validationError)
+        saveInProgressRef.current = false
         return
       }
     }
@@ -85,8 +95,10 @@ export function InlineEdit({
       const message = err instanceof Error ? err.message : 'Save failed'
       setError(message)
       setState('editing')
+    } finally {
+      saveInProgressRef.current = false
     }
-  }, [editValue, onSave, validate, triggerFlash])
+  }, [editValue, onSave, validate, triggerFlash, state])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -101,6 +113,12 @@ export function InlineEdit({
     [save, cancel],
   )
 
+  const handleBlur = useCallback(() => {
+    // Skip if save is already in progress (Enter key) or not in editing state
+    if (saveInProgressRef.current || state !== 'editing') return
+    save()
+  }, [save, state])
+
   if (state === 'display') {
     return (
       <div className={cn('inline-block', className)}>
@@ -109,6 +127,7 @@ export function InlineEdit({
           onClick={startEditing}
           disabled={disabled}
           data-inline-display=""
+          aria-label={`Edit: ${value || placeholder || 'empty'}`}
           className={cn(
             'cursor-pointer border-b border-dashed border-transparent text-left transition-colors',
             !disabled && 'hover:border-border-bright',
@@ -134,7 +153,7 @@ export function InlineEdit({
             setError(null)
           }}
           onKeyDown={handleKeyDown}
-          onBlur={save}
+          onBlur={handleBlur}
           disabled={state === 'saving'}
           className={cn(
             'rounded-md border bg-surface px-2 py-1 text-sm text-foreground outline-none',
@@ -143,7 +162,7 @@ export function InlineEdit({
             state === 'saving' && 'pointer-events-none opacity-60',
           )}
           aria-invalid={error ? true : undefined}
-          aria-errormessage={error ? 'inline-edit-error' : undefined}
+          aria-errormessage={error ? errorId : undefined}
         />
         {state === 'saving' && (
           <Loader2
@@ -153,7 +172,7 @@ export function InlineEdit({
         )}
       </div>
       {error && (
-        <p id="inline-edit-error" className="mt-1 text-xs text-danger">
+        <p id={errorId} className="mt-1 text-xs text-danger">
           {error}
         </p>
       )}

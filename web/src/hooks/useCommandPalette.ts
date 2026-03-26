@@ -104,7 +104,7 @@ export function useCommandPalette() {
 
   const open = useCallback(() => setOpen(true), [])
   const close = useCallback(() => setOpen(false), [])
-  const toggle = useCallback(() => setOpen(!openState), [])
+  const toggle = useCallback(() => setOpen(!getOpenSnapshot()), [])
 
   return {
     commands,

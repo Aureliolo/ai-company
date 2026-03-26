@@ -194,6 +194,7 @@ export function Sidebar() {
           <button
             onClick={openCommandPalette}
             title="Search (Cmd+K)"
+            aria-label="Search commands"
             className={SIDEBAR_BUTTON_CLASS}
           >
             <Command

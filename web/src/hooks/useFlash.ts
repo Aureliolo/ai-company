@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { STATUS_FLASH } from '@/lib/motion'
 
 interface UseFlashOptions {
@@ -49,6 +49,15 @@ export function useFlash(options?: UseFlashOptions): UseFlashReturn {
       timerRef.current = null
     }, totalMs)
   }, [totalMs])
+
+  // Clear timer on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current)
+      }
+    }
+  }, [])
 
   const flashClassName = flashing ? 'so-flash-active' : ''
 

@@ -34,6 +34,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   const { commands, isOpen, close, toggle } = useCommandPalette()
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<'global' | 'local'>('global')
+  const panelRef = useRef<HTMLDivElement>(null)
 
   // Global keyboard shortcuts: Cmd+K / Ctrl+K to toggle, Escape to close
   useEffect(() => {
@@ -114,7 +115,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         aria-hidden="true"
       />
       {/* Panel */}
-      <div className="flex items-start justify-center pt-[15vh]">
+      <div className="flex items-start justify-center pt-[15vh]" ref={panelRef}>
         <Command
           className={cn(
             'relative w-full max-w-[640px] rounded-xl border border-border-bright bg-surface shadow-lg',

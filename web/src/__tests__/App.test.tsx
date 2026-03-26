@@ -64,11 +64,15 @@ describe('App', () => {
     useSetupStore.setState({ setupComplete: true })
 
     render(<App />)
-    // Wait for lazy-loaded layout to render
-    await waitFor(() => {
-      // Verify sidebar navigation is present
-      expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument()
-    })
+    // Wait for lazy-loaded layout to render (increased timeout for concurrent test runs
+    // where module resolution may take longer due to framer-motion/cmdk imports)
+    await waitFor(
+      () => {
+        // Verify sidebar navigation is present
+        expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument()
+      },
+      { timeout: 5000 },
+    )
     // Verify main content area exists
     expect(screen.getByRole('main')).toBeInTheDocument()
     // Verify brand text is present in the app

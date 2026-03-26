@@ -124,11 +124,11 @@ src/synthorg/
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules (18 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
-  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates)
+  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions)
   lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
   pages/          # Lazy-loaded page components (one per route)
   router/         # React Router config, route constants, auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, domain shells)
+  stores/         # Zustand stores (auth, WebSocket, toast, domain shells)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
@@ -158,6 +158,15 @@ site/             # Astro landing page (synthorg.io)
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |
 | `Button` | `@/components/ui/button` | Standard button (shadcn) |
+| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout) |
+| `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
+| `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
+| `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |
+| `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Radix AlertDialog) with `default` / `destructive` variants and `loading` state |
+| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
+| `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
+| `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Framer Motion AnimatePresence keyed by route) |
+| `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
 
 ### Design Token Rules
 
