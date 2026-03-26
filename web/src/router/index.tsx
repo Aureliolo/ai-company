@@ -30,7 +30,7 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
     <Suspense
       fallback={
         <div className="flex h-screen items-center justify-center">
-          <span className="text-sm text-surface-400">Loading...</span>
+          <span className="text-sm text-muted-foreground">Loading...</span>
         </div>
       }
     >

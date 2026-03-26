@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { Users } from 'lucide-react'
 import { SidebarNavItem } from '@/components/layout/SidebarNavItem'
 import { renderWithRouter } from '../../test-utils'
@@ -54,22 +55,45 @@ describe('SidebarNavItem', () => {
   })
 
   it('renders dot indicator when dotColor is provided', () => {
-    renderWithRouter(
-      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} dotColor="bg-success-500" />,
+    const { container } = renderWithRouter(
+      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} dotColor="bg-success" />,
     )
 
     expect(screen.getByText('Agents')).toBeInTheDocument()
-    // The dot is rendered as a decorative span with the given color class
-    const dot = document.querySelector('.bg-success-500.rounded-full')
+    const dot = container.querySelector('.bg-success.rounded-full')
     expect(dot).toBeInTheDocument()
   })
 
   it('does not render dot indicator when dotColor is not provided', () => {
-    renderWithRouter(
+    const { container } = renderWithRouter(
       <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} />,
     )
 
-    const dot = document.querySelector('.rounded-full.size-2')
+    const dot = container.querySelector('.rounded-full.size-2')
     expect(dot).not.toBeInTheDocument()
+  })
+
+  it('caps badge display at 99+ for any count > 99 (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 100, max: 10000 }), (count) => {
+        const { unmount } = renderWithRouter(
+          <SidebarNavItem to="/test" icon={Users} label="Test" collapsed={false} badge={count} />,
+        )
+        expect(screen.getByText('99+')).toBeInTheDocument()
+        unmount()
+      }),
+    )
+  })
+
+  it('displays exact count for badge values 1-99 (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 99 }), (count) => {
+        const { unmount } = renderWithRouter(
+          <SidebarNavItem to="/test" icon={Users} label="Test" collapsed={false} badge={count} />,
+        )
+        expect(screen.getByText(String(count))).toBeInTheDocument()
+        unmount()
+      }),
+    )
   })
 })

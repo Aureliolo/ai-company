@@ -12,7 +12,7 @@ function FullScreenLoading() {
       role="status"
       aria-live="polite"
     >
-      <div className="text-surface-500 text-sm">Loading...</div>
+      <div className="text-text-secondary text-sm">Loading...</div>
     </div>
   )
 }
@@ -24,15 +24,15 @@ function FullScreenError({ onRetry }: { onRetry: () => void }) {
       className="flex h-screen flex-col items-center justify-center gap-4"
       role="alert"
     >
-      <div className="text-surface-500 text-sm">
+      <div className="text-text-secondary text-sm">
         Failed to check setup status.
       </div>
       <button
         onClick={onRetry}
         className={
-          'rounded-md bg-brand-400 px-4 py-2 text-sm'
-          + ' font-medium text-white transition-colors'
-          + ' hover:bg-brand-500'
+          'rounded-md bg-primary px-4 py-2 text-sm'
+          + ' font-medium text-primary-foreground transition-colors'
+          + ' hover:bg-primary/80'
         }
       >
         Retry
