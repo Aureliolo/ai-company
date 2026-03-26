@@ -45,7 +45,6 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REJECTED,
     API_AUTH_FAILED,
     API_RESOURCE_NOT_FOUND,
-    API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_CONTEXT_LOADED,
@@ -503,11 +502,6 @@ class ApprovalsController(Controller):
         """
         if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
             msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="action_type",
-                max_length=QUERY_MAX_LENGTH,
-            )
             raise ApiValidationError(msg)
 
         app_state: AppState = state.app_state

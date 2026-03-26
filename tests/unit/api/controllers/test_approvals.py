@@ -448,60 +448,34 @@ class TestApprovalUrgencyFields:
         assert data["seconds_remaining"] is None
         assert data["urgency_level"] == "no_expiry"
 
-    async def test_urgency_critical_under_1hr(
+    @pytest.mark.parametrize(
+        ("approval_id", "ttl_seconds", "expected_urgency"),
+        [
+            ("crit-001", 1800, "critical"),
+            ("high-001", 7200, "high"),
+            ("norm-001", 86400, "normal"),
+        ],
+    )
+    async def test_urgency_level_by_ttl(
         self,
         test_client: TestClient[Any],
         approval_store: ApprovalStore,
+        approval_id: str,
+        ttl_seconds: int,
+        expected_urgency: str,
     ) -> None:
         await _seed_item(
             approval_store,
-            approval_id="crit-001",
-            ttl_seconds=1800,
+            approval_id=approval_id,
+            ttl_seconds=ttl_seconds,
         )
         resp = test_client.get(
-            f"{_BASE}/crit-001",
+            f"{_BASE}/{approval_id}",
             headers=_READ_HEADERS,
         )
         data = resp.json()["data"]
-        assert data["urgency_level"] == "critical"
+        assert data["urgency_level"] == expected_urgency
         assert data["seconds_remaining"] is not None
-        assert data["seconds_remaining"] < 3600
-
-    async def test_urgency_high_under_4hrs(
-        self,
-        test_client: TestClient[Any],
-        approval_store: ApprovalStore,
-    ) -> None:
-        await _seed_item(
-            approval_store,
-            approval_id="high-001",
-            ttl_seconds=7200,
-        )
-        resp = test_client.get(
-            f"{_BASE}/high-001",
-            headers=_READ_HEADERS,
-        )
-        data = resp.json()["data"]
-        assert data["urgency_level"] == "high"
-        assert 3600 <= data["seconds_remaining"] < 14400
-
-    async def test_urgency_normal_over_4hrs(
-        self,
-        test_client: TestClient[Any],
-        approval_store: ApprovalStore,
-    ) -> None:
-        await _seed_item(
-            approval_store,
-            approval_id="norm-001",
-            ttl_seconds=86400,
-        )
-        resp = test_client.get(
-            f"{_BASE}/norm-001",
-            headers=_READ_HEADERS,
-        )
-        data = resp.json()["data"]
-        assert data["urgency_level"] == "normal"
-        assert data["seconds_remaining"] >= 14400
 
     def test_create_approval_includes_urgency(
         self,
@@ -569,22 +543,31 @@ class TestApprovalUrgencyFields:
         assert data["urgency_level"] == "no_expiry"
         assert data["seconds_remaining"] is None
 
-    async def test_urgency_boundary_at_1hr(
+    @pytest.mark.parametrize(
+        ("approval_id", "boundary_seconds", "expected_urgency"),
+        [
+            ("boundary-1h", 3600, "high"),
+            ("boundary-4h", 14400, "normal"),
+        ],
+    )
+    async def test_urgency_boundary(
         self,
         test_client: TestClient[Any],
         approval_store: ApprovalStore,
+        approval_id: str,
+        boundary_seconds: int,
+        expected_urgency: str,
     ) -> None:
         frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
         item = ApprovalItem(
-            id="boundary-1h",
+            id=approval_id,
             action_type="code_merge",
             title="Boundary test",
             description="desc",
             requested_by="agent-dev",
             risk_level=ApprovalRiskLevel.MEDIUM,
             created_at=frozen_now,
-            # Exactly 3600s in the future -- should land in HIGH (not critical).
-            expires_at=frozen_now + timedelta(seconds=3600),
+            expires_at=frozen_now + timedelta(seconds=boundary_seconds),
         )
         await approval_store.add(item)
         with patch(
@@ -593,41 +576,11 @@ class TestApprovalUrgencyFields:
             mock_dt.now.return_value = frozen_now
             mock_dt.side_effect = datetime
             resp = test_client.get(
-                f"{_BASE}/boundary-1h",
+                f"{_BASE}/{approval_id}",
                 headers=_READ_HEADERS,
             )
         data = resp.json()["data"]
-        assert data["urgency_level"] == "high"
-
-    async def test_urgency_boundary_at_4hrs(
-        self,
-        test_client: TestClient[Any],
-        approval_store: ApprovalStore,
-    ) -> None:
-        frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
-        item = ApprovalItem(
-            id="boundary-4h",
-            action_type="code_merge",
-            title="Boundary test",
-            description="desc",
-            requested_by="agent-dev",
-            risk_level=ApprovalRiskLevel.MEDIUM,
-            created_at=frozen_now,
-            # Exactly 14400s in the future -- should land in NORMAL (not high).
-            expires_at=frozen_now + timedelta(seconds=14400),
-        )
-        await approval_store.add(item)
-        with patch(
-            "synthorg.api.controllers.approvals.datetime",
-        ) as mock_dt:
-            mock_dt.now.return_value = frozen_now
-            mock_dt.side_effect = datetime
-            resp = test_client.get(
-                f"{_BASE}/boundary-4h",
-                headers=_READ_HEADERS,
-            )
-        data = resp.json()["data"]
-        assert data["urgency_level"] == "normal"
+        assert data["urgency_level"] == expected_urgency
 
     async def test_expired_approval_shows_zero_seconds(
         self,

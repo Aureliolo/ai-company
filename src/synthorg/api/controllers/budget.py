@@ -240,7 +240,7 @@ class BudgetController(Controller):
             task_id=task_id,
         )
         daily, period = _build_summaries(records)
-        logger.debug(
+        logger.info(
             API_BUDGET_RECORDS_LISTED,
             agent_id=agent_id,
             task_id=task_id,

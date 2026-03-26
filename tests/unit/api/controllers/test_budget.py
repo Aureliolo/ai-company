@@ -161,6 +161,8 @@ class TestBudgetSummaries:
         assert period["record_count"] == 3
         assert period["total_cost_usd"] == pytest.approx(0.60)
         assert period["avg_cost_usd"] == pytest.approx(0.20)
+        assert period["total_input_tokens"] == 300
+        assert period["total_output_tokens"] == 150
 
     def test_period_summary_empty(
         self,
@@ -230,6 +232,8 @@ class TestBudgetSummaries:
         assert len(body["data"]) == 1
         assert body["period_summary"]["record_count"] == 2
         assert body["period_summary"]["total_cost_usd"] == pytest.approx(0.20)
+        assert body["period_summary"]["total_input_tokens"] == 200
+        assert body["period_summary"]["total_output_tokens"] == 100
 
 
 @pytest.mark.unit

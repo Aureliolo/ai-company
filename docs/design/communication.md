@@ -428,8 +428,9 @@ analytics fields. Per-participant metrics are derived from
 
 Duration is computed from the meeting timestamps, not from contributions:
 
-- **`meeting_duration_seconds`** (`float | null`): duration computed from
-  `ended_at - started_at`. `null` when no minutes are available.
+- **`meeting_duration_seconds`** (`float | null`, `>= 0.0`): duration computed
+  from `ended_at - started_at`, clamped to `0.0` when negative. `null` when no
+  minutes are available.
 
 These fields are applied to all meeting endpoints (list, detail, trigger).
 

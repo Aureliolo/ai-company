@@ -16,10 +16,7 @@ from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import (
-    API_MEETING_TRIGGERED,
-    API_VALIDATION_FAILED,
-)
+from synthorg.observability.events.api import API_MEETING_TRIGGERED
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
 
 logger = get_logger(__name__)
@@ -130,7 +127,7 @@ def _to_meeting_response(record: MeetingRecord) -> MeetingResponse:
             sorted(usage, key=usage.__getitem__, reverse=True),
         )
         delta = record.minutes.ended_at - record.minutes.started_at
-        duration = delta.total_seconds()
+        duration = max(0.0, delta.total_seconds())
 
     return MeetingResponse(
         **record.model_dump(),
@@ -173,11 +170,6 @@ class MeetingController(Controller):
             Paginated meeting records with analytics fields.
         """
         if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="meeting_type",
-                max_length=QUERY_MAX_LENGTH,
-            )
             msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
             raise ApiValidationError(msg)
 
