@@ -1,12 +1,15 @@
 /*
- * SynthOrg Design Tokens -- Warm Ops Palette
+ * SynthOrg Design Tokens -- Single Source of Truth
  *
- * CSS custom properties for the Warm Ops dark-mode-only color system.
- * Use these in non-Tailwind contexts: inline styles, third-party library
- * theming (Recharts, XyFlow), SVG styling, and canvas rendering.
+ * All --so-* variables are the canonical token definitions. global.css
+ * references these via @theme inline so Tailwind generates utility classes
+ * that resolve at runtime (e.g. `text-accent` -> `var(--so-accent)`).
  *
- * For Tailwind components, use utility classes (e.g. `text-accent`, `bg-bg-card`)
- * which map to the @theme block in global.css.
+ * Non-Tailwind contexts (Recharts, XyFlow, canvas, inline styles) use
+ * --so-* variables directly.
+ *
+ * Theme switching: override --so-* values in a class (e.g. `.theme-*`,
+ * `.density-*`) and all Tailwind utilities + raw references update.
  *
  * WCAG AA verified -- all text/background combinations pass 4.5:1 minimum.
  * See docs/design/ux-guidelines.md Section 5.1 for the full contrast matrix.
@@ -41,7 +44,7 @@
   --so-font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --so-font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 
-  /* -- Spacing (4px sub-grid, semantic scale -- not strict 8px multipliers) -- */
+  /* -- Spacing (4px sub-grid, semantic scale) -- */
   --so-space-1: 4px;
   --so-space-2: 8px;
   --so-space-3: 12px;
@@ -66,4 +69,32 @@
   --so-overlay-hover: rgba(255, 255, 255, 0.04);
   --so-overlay-active: rgba(56, 189, 248, 0.06);
   --so-overlay-flash: rgba(56, 189, 248, 0.10);
+}
+
+/*
+ * Density axis -- controls card padding, section gaps, grid gaps.
+ * Switch density by adding .density-dense or .density-sparse to <html>.
+ * Default (balanced) applies via :root.
+ *
+ * Density levels from brand-and-ux.md:
+ *   Dense:    p-3/12px  gap-3/12px  text-2xl  text-xs
+ *   Balanced: p-4/16px  gap-4/16px  text-3xl  text-sm   (default)
+ *   Sparse:   p-5/20px  gap-6/24px  text-3xl  text-sm
+ */
+:root {
+  --so-density-card-padding: var(--so-space-4);
+  --so-density-section-gap: var(--so-space-4);
+  --so-density-grid-gap: var(--so-space-4);
+}
+
+.density-dense {
+  --so-density-card-padding: var(--so-space-3);
+  --so-density-section-gap: var(--so-space-3);
+  --so-density-grid-gap: var(--so-space-3);
+}
+
+.density-sparse {
+  --so-density-card-padding: var(--so-space-5);
+  --so-density-section-gap: var(--so-space-6);
+  --so-density-grid-gap: var(--so-space-6);
 }

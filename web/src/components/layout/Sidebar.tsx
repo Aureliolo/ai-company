@@ -26,8 +26,8 @@ export const STORAGE_KEY = 'sidebar_collapsed'
 
 const SIDEBAR_BUTTON_CLASS = cn(
   'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
-  'text-surface-500 transition-colors',
-  'hover:bg-surface-100 hover:text-surface-700',
+  'text-text-secondary transition-colors',
+  'hover:bg-card-hover hover:text-foreground',
 )
 
 function readCollapsed(): boolean {
@@ -62,16 +62,16 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-surface-100 bg-surface-50 transition-[width] duration-200',
+        'flex h-full flex-col border-r border-border bg-surface transition-[width] duration-200',
         collapsed ? 'w-14' : 'w-[220px]',
       )}
     >
       {/* Header */}
-      <div className="flex h-14 shrink-0 items-center border-b border-surface-100 px-3">
+      <div className="flex h-14 shrink-0 items-center border-b border-border px-3">
         {collapsed ? (
-          <span className="mx-auto text-lg font-bold text-brand-400">S</span>
+          <span className="mx-auto text-lg font-bold text-accent">S</span>
         ) : (
-          <span className="text-lg font-bold text-brand-400">SynthOrg</span>
+          <span className="text-lg font-bold text-accent">SynthOrg</span>
         )}
       </div>
 
@@ -113,9 +113,9 @@ export function Sidebar() {
         </div>
 
         {/* Workspace section */}
-        <div className="mt-4 border-t border-surface-100 pt-3">
+        <div className="mt-4 border-t border-border pt-3">
           {!collapsed && (
-            <span className="mb-2 block px-3 text-xs font-medium uppercase tracking-wider text-surface-400">
+            <span className="mb-2 block px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Workspace
             </span>
           )}
@@ -156,7 +156,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom section (non-navigation controls) */}
-      <div className="border-t border-surface-100 px-2 py-3">
+      <div className="border-t border-border px-2 py-3">
         <div className="flex flex-col gap-1">
           {/* Collapse toggle */}
           <button
@@ -190,7 +190,7 @@ export function Sidebar() {
 
           {/* Cmd+K hint */}
           {!collapsed && (
-            <div className="flex items-center gap-3 px-3 py-2 text-xs text-surface-400">
+            <div className="flex items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
               <Command className="size-4 shrink-0" aria-hidden="true" />
               <span>Cmd+K to search</span>
             </div>
@@ -204,12 +204,12 @@ export function Sidebar() {
             )}
           >
             <span
-              className="size-2 rounded-full bg-success-500"
+              className="size-2 rounded-full bg-success"
               title="Connected"
               aria-label="Connection status: connected"
             />
             {!collapsed && (
-              <span className="text-xs text-surface-400">Connected</span>
+              <span className="text-xs text-muted-foreground">Connected</span>
             )}
           </div>
 
@@ -223,10 +223,10 @@ export function Sidebar() {
             >
               {!collapsed && (
                 <div className="flex-1 truncate">
-                  <div className="text-sm font-medium text-surface-700">
+                  <div className="text-sm font-medium text-foreground">
                     {user.username}
                   </div>
-                  <div className="text-xs text-surface-400">{user.role}</div>
+                  <div className="text-xs text-muted-foreground">{user.role}</div>
                 </div>
               )}
               <button
@@ -234,9 +234,9 @@ export function Sidebar() {
                 title="Logout"
                 aria-label="Logout"
                 className={cn(
-                  'rounded-md p-1 text-surface-400',
+                  'rounded-md p-1 text-muted-foreground',
                   'transition-colors',
-                  'hover:bg-surface-100 hover:text-surface-700',
+                  'hover:bg-card-hover hover:text-foreground',
                 )}
               >
                 <LogOut className="size-4" aria-hidden="true" />

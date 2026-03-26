@@ -1,71 +1,47 @@
+@import "./design-tokens.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
-
-  --color-surface-0: #020617;
-  --color-surface-50: #0f172a;
-  --color-surface-100: #1e293b;
-  --color-surface-200: #334155;
-  --color-surface-300: #475569;
-  --color-surface-400: #64748b;
-  --color-surface-500: #94a3b8;
-  --color-surface-600: #cbd5e1;
-  --color-surface-700: #e2e8f0;
-  --color-surface-800: #f1f5f9;
-  --color-surface-900: #f8fafc;
-
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
-}
-
-/* Scrollbar styling -- Firefox */
-html {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-surface-300) var(--color-surface-50);
-}
-
-/* Scrollbar styling -- WebKit/Blink */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-surface-50);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-surface-300);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-surface-400);
-}
+/*
+ * SynthOrg Theme Bridge
+ *
+ * All values reference --so-* CSS custom properties from design-tokens.css.
+ * This creates a single source of truth: change --so-* values (via a theme
+ * class, density class, or user preference) and every Tailwind utility +
+ * shadcn component updates at runtime.
+ *
+ * @theme inline generates utility classes that resolve as var() references,
+ * keeping compiled CSS lean and enabling dynamic theme switching.
+ */
 
 @theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  /* ---- SynthOrg semantic tokens ---- */
+  --color-accent: var(--so-accent);
+  --color-accent-dim: var(--so-accent-dim);
+  --color-success: var(--so-success);
+  --color-warning: var(--so-warning);
+  --color-danger: var(--so-danger);
+  --color-text-secondary: var(--so-text-secondary);
+  --color-surface: var(--so-bg-surface);
+  --color-card-hover: var(--so-bg-card-hover);
+  --color-border-bright: var(--so-border-bright);
+
+  /* ---- Typography ---- */
+  --font-heading: var(--so-font-sans);
+  --font-sans: var(--so-font-sans);
+  --font-mono: var(--so-font-mono);
+
+  /* ---- Density-derived spacing ---- */
+  --spacing-card: var(--so-density-card-padding);
+  --spacing-section-gap: var(--so-density-section-gap);
+  --spacing-grid-gap: var(--so-density-grid-gap);
+
+  /* ---- shadcn bridge (Radix/shadcn components use these token names) ---- */
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -84,7 +60,6 @@ html {
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -106,73 +81,69 @@ html {
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+/*
+ * Map shadcn's CSS variables to --so-* tokens.
+ * Dark-only app: :root and .dark have identical values so that
+ * both base utilities and dark: prefixed utilities resolve correctly.
+ */
+:root, .dark {
+  --background: var(--so-bg-base);
+  --foreground: var(--so-text-primary);
+  --card: var(--so-bg-card);
+  --card-foreground: var(--so-text-primary);
+  --popover: var(--so-bg-surface);
+  --popover-foreground: var(--so-text-primary);
+  --primary: var(--so-accent);
+  --primary-foreground: var(--so-bg-base);
+  --secondary: var(--so-bg-surface);
+  --secondary-foreground: var(--so-text-primary);
+  --muted: var(--so-bg-card);
+  --muted-foreground: var(--so-text-muted);
+  --accent: var(--so-bg-card-hover);
+  --accent-foreground: var(--so-text-primary);
+  --destructive: var(--so-danger);
+  --border: var(--so-border);
+  --input: var(--so-border-bright);
+  --ring: var(--so-accent);
+  --chart-1: var(--so-accent);
+  --chart-2: var(--so-success);
+  --chart-3: var(--so-warning);
+  --chart-4: var(--so-danger);
+  --chart-5: var(--so-accent-dim);
+  --radius: 0.5rem;
+  --sidebar: var(--so-bg-surface);
+  --sidebar-foreground: var(--so-text-primary);
+  --sidebar-primary: var(--so-accent);
+  --sidebar-primary-foreground: var(--so-bg-base);
+  --sidebar-accent: var(--so-bg-card);
+  --sidebar-accent-foreground: var(--so-text-primary);
+  --sidebar-border: var(--so-border);
+  --sidebar-ring: var(--so-accent);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+/* Scrollbar styling -- Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--so-border-bright) var(--so-bg-surface);
+}
+
+/* Scrollbar styling -- WebKit/Blink */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--so-bg-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--so-border-bright);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--so-text-muted);
 }
 
 @layer base {

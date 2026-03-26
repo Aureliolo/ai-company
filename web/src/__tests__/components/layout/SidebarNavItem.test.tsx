@@ -55,12 +55,12 @@ describe('SidebarNavItem', () => {
 
   it('renders dot indicator when dotColor is provided', () => {
     renderWithRouter(
-      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} dotColor="bg-success-500" />,
+      <SidebarNavItem to="/agents" icon={Users} label="Agents" collapsed={false} dotColor="bg-success" />,
     )
 
     expect(screen.getByText('Agents')).toBeInTheDocument()
     // The dot is rendered as a decorative span with the given color class
-    const dot = document.querySelector('.bg-success-500.rounded-full')
+    const dot = document.querySelector('.bg-success.rounded-full')
     expect(dot).toBeInTheDocument()
   })
 
