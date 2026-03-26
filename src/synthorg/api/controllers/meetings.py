@@ -13,7 +13,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
-from synthorg.communication.meeting.models import MeetingRecord  # noqa: TC001
+from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
@@ -74,6 +74,63 @@ class TriggerMeetingRequest(BaseModel):
         return self
 
 
+class MeetingResponse(MeetingRecord):
+    """Meeting record enriched with per-participant analytics.
+
+    Attributes:
+        token_usage_by_participant: Total tokens per agent.
+        contribution_rank: Agent IDs sorted by total tokens (desc).
+        meeting_duration_seconds: Duration in seconds (completed only).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    token_usage_by_participant: dict[str, int] = Field(
+        default_factory=dict,
+        description="Total tokens consumed per participant",
+    )
+    contribution_rank: tuple[str, ...] = Field(
+        default=(),
+        description="Agent IDs sorted by contribution (descending)",
+    )
+    meeting_duration_seconds: float | None = Field(
+        default=None,
+        description="Meeting duration in seconds (null if not completed)",
+    )
+
+
+def _to_meeting_response(record: MeetingRecord) -> MeetingResponse:
+    """Convert a MeetingRecord to a MeetingResponse with analytics.
+
+    Args:
+        record: The domain-layer meeting record.
+
+    Returns:
+        Response DTO with per-participant token usage and duration.
+    """
+    usage: dict[str, int] = {}
+    rank: tuple[str, ...] = ()
+    duration: float | None = None
+
+    if record.minutes is not None:
+        for c in record.minutes.contributions:
+            usage[c.agent_id] = (
+                usage.get(c.agent_id, 0) + c.input_tokens + c.output_tokens
+            )
+        rank = tuple(
+            sorted(usage, key=usage.__getitem__, reverse=True),
+        )
+        delta = record.minutes.ended_at - record.minutes.started_at
+        duration = delta.total_seconds()
+
+    return MeetingResponse(
+        **record.model_dump(),
+        token_usage_by_participant=usage,
+        contribution_rank=rank,
+        meeting_duration_seconds=duration,
+    )
+
+
 class MeetingController(Controller):
     """Meetings resource controller.
 
@@ -92,7 +149,7 @@ class MeetingController(Controller):
         limit: PaginationLimit = 50,
         status: MeetingStatus | None = None,
         meeting_type: Annotated[str, Parameter(max_length=128)] | None = None,
-    ) -> PaginatedResponse[MeetingRecord]:
+    ) -> PaginatedResponse[MeetingResponse]:
         """List meeting records with optional filters.
 
         Args:
@@ -103,7 +160,7 @@ class MeetingController(Controller):
             meeting_type: Optional meeting type name filter.
 
         Returns:
-            Paginated meeting records.
+            Paginated meeting records with analytics fields.
         """
         if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
             msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
@@ -118,14 +175,15 @@ class MeetingController(Controller):
             records = tuple(r for r in records if r.meeting_type_name == meeting_type)
 
         page, meta = paginate(records, offset=offset, limit=limit)
-        return PaginatedResponse(data=page, pagination=meta)
+        enriched = tuple(_to_meeting_response(r) for r in page)
+        return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{meeting_id:str}")
     async def get_meeting(
         self,
         state: State,
         meeting_id: PathId,
-    ) -> ApiResponse[MeetingRecord]:
+    ) -> ApiResponse[MeetingResponse]:
         """Get a meeting record by ID.
 
         Args:
@@ -133,7 +191,7 @@ class MeetingController(Controller):
             meeting_id: Meeting identifier.
 
         Returns:
-            Meeting record envelope.
+            Meeting response envelope with analytics fields.
 
         Raises:
             NotFoundError: If the meeting is not found.
@@ -143,7 +201,7 @@ class MeetingController(Controller):
 
         for record in records:
             if record.meeting_id == meeting_id:
-                return ApiResponse(data=record)
+                return ApiResponse(data=_to_meeting_response(record))
 
         logger.warning(
             MEETING_NOT_FOUND,
@@ -161,7 +219,7 @@ class MeetingController(Controller):
         self,
         state: State,
         data: TriggerMeetingRequest,
-    ) -> ApiResponse[tuple[MeetingRecord, ...]]:
+    ) -> ApiResponse[tuple[MeetingResponse, ...]]:
         """Trigger event-based meetings by event name.
 
         Args:
@@ -169,12 +227,12 @@ class MeetingController(Controller):
             data: Trigger request with event name and context.
 
         Returns:
-            Tuple of meeting records for all triggered meetings.
+            Tuple of meeting responses for all triggered meetings.
         """
         scheduler = state.app_state.meeting_scheduler
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context,
         )
-
-        return ApiResponse(data=records)
+        enriched = tuple(_to_meeting_response(r) for r in records)
+        return ApiResponse(data=enriched)

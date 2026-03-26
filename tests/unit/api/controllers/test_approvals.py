@@ -421,6 +421,139 @@ class TestRejectApproval:
 
 
 @pytest.mark.unit
+class TestApprovalUrgencyFields:
+    """Tests for computed seconds_remaining and urgency_level fields."""
+
+    async def test_list_includes_urgency_fields(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, ttl_seconds=7200)
+        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert "seconds_remaining" in item
+        assert "urgency_level" in item
+
+    async def test_urgency_no_expiry(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        resp = test_client.get(f"{_BASE}/approval-001", headers=_READ_HEADERS)
+        data = resp.json()["data"]
+        assert data["seconds_remaining"] is None
+        assert data["urgency_level"] == "no_expiry"
+
+    async def test_urgency_critical_under_1hr(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(
+            approval_store,
+            approval_id="crit-001",
+            ttl_seconds=1800,
+        )
+        resp = test_client.get(
+            f"{_BASE}/crit-001",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "critical"
+        assert data["seconds_remaining"] is not None
+        assert data["seconds_remaining"] < 3600
+
+    async def test_urgency_high_under_4hrs(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(
+            approval_store,
+            approval_id="high-001",
+            ttl_seconds=7200,
+        )
+        resp = test_client.get(
+            f"{_BASE}/high-001",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "high"
+        assert 3600 <= data["seconds_remaining"] < 14400
+
+    async def test_urgency_normal_over_4hrs(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(
+            approval_store,
+            approval_id="norm-001",
+            ttl_seconds=86400,
+        )
+        resp = test_client.get(
+            f"{_BASE}/norm-001",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "normal"
+        assert data["seconds_remaining"] >= 14400
+
+    def test_create_approval_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            _BASE,
+            json=_create_payload(ttl_seconds=600),
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "critical"
+        assert data["seconds_remaining"] is not None
+
+    async def test_approve_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        resp = test_client.post(
+            f"{_BASE}/approval-001/approve",
+            json={"comment": "ok"},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "no_expiry"
+        assert data["seconds_remaining"] is None
+
+    def test_get_approval_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Create an approval first
+        resp = test_client.post(
+            _BASE,
+            json=_create_payload(),
+            headers=_WRITE_HEADERS,
+        )
+        approval_id = resp.json()["data"]["id"]
+        resp = test_client.get(
+            f"{_BASE}/{approval_id}",
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "urgency_level" in data
+        assert "seconds_remaining" in data
+
+
+@pytest.mark.unit
 class TestApprovalPathParamValidation:
     def test_oversized_approval_id_rejected(self, test_client: TestClient[Any]) -> None:
         long_id = "x" * 129

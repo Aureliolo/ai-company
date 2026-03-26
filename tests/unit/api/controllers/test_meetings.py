@@ -1,7 +1,7 @@
 """Tests for meeting controller."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,11 +10,13 @@ from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.communication.meeting.enums import (
+    MeetingPhase,
     MeetingProtocolType,
     MeetingStatus,
 )
 from synthorg.communication.meeting.models import (
     MeetingAgenda,
+    MeetingContribution,
     MeetingMinutes,
     MeetingRecord,
 )
@@ -28,16 +30,61 @@ from tests.unit.api.conftest import (
 )
 
 
-def _make_minutes(meeting_id: str = "mtg-abc123") -> MeetingMinutes:
+def _make_minutes(
+    meeting_id: str = "mtg-abc123",
+    *,
+    with_contributions: bool = False,
+) -> MeetingMinutes:
     """Create minimal valid MeetingMinutes."""
     now = datetime.now(UTC)
+    contributions: tuple[MeetingContribution, ...] = ()
+    total_input = 0
+    total_output = 0
+
+    if with_contributions:
+        contributions = (
+            MeetingContribution(
+                agent_id="agent-alpha",
+                content="First point",
+                phase=MeetingPhase.ROUND_ROBIN_TURN,
+                turn_number=0,
+                input_tokens=100,
+                output_tokens=200,
+                timestamp=now,
+            ),
+            MeetingContribution(
+                agent_id="agent-beta",
+                content="Second point",
+                phase=MeetingPhase.ROUND_ROBIN_TURN,
+                turn_number=1,
+                input_tokens=150,
+                output_tokens=250,
+                timestamp=now,
+            ),
+            MeetingContribution(
+                agent_id="agent-alpha",
+                content="Follow-up",
+                phase=MeetingPhase.DISCUSSION,
+                turn_number=2,
+                input_tokens=50,
+                output_tokens=100,
+                timestamp=now,
+            ),
+        )
+        total_input = sum(c.input_tokens for c in contributions)
+        total_output = sum(c.output_tokens for c in contributions)
+
+    started = now - timedelta(seconds=120)
     return MeetingMinutes(
         meeting_id=meeting_id,
         protocol_type=MeetingProtocolType.ROUND_ROBIN,
         leader_id="leader-id",
         participant_ids=("participant-1",),
         agenda=MeetingAgenda(title="Test"),
-        started_at=now,
+        contributions=contributions,
+        total_input_tokens=total_input,
+        total_output_tokens=total_output,
+        started_at=started,
         ended_at=now,
     )
 
@@ -70,6 +117,23 @@ def mock_orchestrator() -> MagicMock:
         _make_record("mtg-002", "retro", MeetingStatus.FAILED),
     )
     orch.get_records = MagicMock(return_value=records)
+    return orch
+
+
+@pytest.fixture
+def mock_orchestrator_with_contributions() -> MagicMock:
+    """Mock orchestrator with records that include contributions."""
+    orch = MagicMock(spec=MeetingOrchestrator)
+    completed = MeetingRecord(
+        meeting_id="mtg-rich",
+        meeting_type_name="standup",
+        protocol_type=MeetingProtocolType.ROUND_ROBIN,
+        status=MeetingStatus.COMPLETED,
+        token_budget=5000,
+        minutes=_make_minutes("mtg-rich", with_contributions=True),
+    )
+    failed = _make_record("mtg-fail", "retro", MeetingStatus.FAILED)
+    orch.get_records = MagicMock(return_value=(completed, failed))
     return orch
 
 
@@ -236,6 +300,113 @@ class TestMeetingController:
             body = resp.json()
             assert body["success"] is True
             assert body["data"] == []
+
+
+@pytest.fixture
+def analytics_client(
+    mock_orchestrator_with_contributions: MagicMock,
+    mock_scheduler: MagicMock,
+) -> Iterator[TestClient[Any]]:
+    """Test client with meeting records that include contributions."""
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.auth.service import AuthService
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.config.schema import RootConfig
+
+    persistence = FakePersistenceBackend()
+    bus = FakeMessageBus()
+    auth_service = AuthService(
+        __import__(
+            "synthorg.api.auth.config",
+            fromlist=["AuthConfig"],
+        ).AuthConfig(
+            jwt_secret="test-secret-that-is-at-least-32-characters-long",
+        ),
+    )
+
+    from tests.unit.api.conftest import _seed_test_users
+
+    _seed_test_users(persistence, auth_service)
+
+    app = create_app(
+        config=RootConfig(company_name="test-company"),
+        persistence=persistence,
+        message_bus=bus,
+        cost_tracker=CostTracker(),
+        approval_store=ApprovalStore(),
+        auth_service=auth_service,
+        meeting_orchestrator=mock_orchestrator_with_contributions,
+        meeting_scheduler=mock_scheduler,
+    )
+    with TestClient(app) as client:
+        client.headers.update(make_auth_headers("ceo"))
+        yield client
+
+
+@pytest.mark.unit
+class TestMeetingAnalytics:
+    """Tests for computed meeting analytics fields."""
+
+    def test_list_includes_analytics_fields(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings")
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert "token_usage_by_participant" in item
+        assert "contribution_rank" in item
+        assert "meeting_duration_seconds" in item
+
+    def test_token_usage_by_participant(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        data = resp.json()["data"]
+        usage = data["token_usage_by_participant"]
+        # agent-alpha: (100+200) + (50+100) = 450
+        assert usage["agent-alpha"] == 450
+        # agent-beta: (150+250) = 400
+        assert usage["agent-beta"] == 400
+
+    def test_contribution_rank_sorted_desc(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        data = resp.json()["data"]
+        rank = data["contribution_rank"]
+        assert rank == ["agent-alpha", "agent-beta"]
+
+    def test_meeting_duration_seconds(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        data = resp.json()["data"]
+        assert data["meeting_duration_seconds"] == 120.0
+
+    def test_analytics_empty_for_non_completed(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings/mtg-fail")
+        data = resp.json()["data"]
+        assert data["token_usage_by_participant"] == {}
+        assert data["contribution_rank"] == []
+        assert data["meeting_duration_seconds"] is None
+
+    def test_get_meeting_includes_analytics(
+        self,
+        analytics_client: TestClient[Any],
+    ) -> None:
+        resp = analytics_client.get("/api/v1/meetings/mtg-rich")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "token_usage_by_participant" in data
+        assert "contribution_rank" in data
+        assert "meeting_duration_seconds" in data
 
 
 @pytest.mark.unit

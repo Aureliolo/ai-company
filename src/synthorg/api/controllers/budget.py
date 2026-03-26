@@ -1,13 +1,18 @@
 """Budget controller -- read-only access to cost data."""
 
+from collections import defaultdict
 from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.dto import (
+    ApiResponse,
+    ErrorDetail,
+    PaginationMeta,
+)
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -32,6 +37,135 @@ class AgentSpending(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+
+
+class DailySummary(BaseModel):
+    """Per-day cost aggregation.
+
+    Attributes:
+        date: ISO date string (YYYY-MM-DD).
+        total_cost_usd: Sum of cost_usd for the day.
+        total_input_tokens: Sum of input tokens for the day.
+        total_output_tokens: Sum of output tokens for the day.
+        record_count: Number of cost records on this day.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    date: str = Field(description="ISO date (YYYY-MM-DD)")
+    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_input_tokens: int = Field(
+        ge=0,
+        description="Total input tokens",
+    )
+    total_output_tokens: int = Field(
+        ge=0,
+        description="Total output tokens",
+    )
+    record_count: int = Field(ge=0, description="Number of records")
+
+
+class PeriodSummary(BaseModel):
+    """Overall stats across all matching cost records.
+
+    Attributes:
+        avg_cost_usd: Average cost per record (0.0 if no records).
+        total_cost_usd: Sum of cost_usd across all records.
+        total_input_tokens: Sum of input tokens.
+        total_output_tokens: Sum of output tokens.
+        record_count: Total number of records.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    avg_cost_usd: float = Field(ge=0.0, description="Average cost per record")
+    total_cost_usd: float = Field(ge=0.0, description="Total cost in USD")
+    total_input_tokens: int = Field(
+        ge=0,
+        description="Total input tokens",
+    )
+    total_output_tokens: int = Field(
+        ge=0,
+        description="Total output tokens",
+    )
+    record_count: int = Field(ge=0, description="Number of records")
+
+
+class CostRecordListResponse(BaseModel):
+    """Paginated cost records with summary aggregations.
+
+    Attributes:
+        data: Page of cost records.
+        error: Error message (``None`` on success).
+        error_detail: Structured error metadata (``None`` on success).
+        pagination: Pagination metadata.
+        daily_summary: Per-day cost aggregations (all matching records).
+        period_summary: Overall stats across all matching records.
+        success: Whether the request succeeded (computed from ``error``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    data: tuple[CostRecord, ...] = ()
+    error: str | None = None
+    error_detail: ErrorDetail | None = None
+    pagination: PaginationMeta
+    daily_summary: tuple[DailySummary, ...] = ()
+    period_summary: PeriodSummary
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def success(self) -> bool:
+        """Whether the request succeeded (derived from ``error``)."""
+        return self.error is None
+
+
+def _build_summaries(
+    records: tuple[CostRecord, ...],
+) -> tuple[tuple[DailySummary, ...], PeriodSummary]:
+    """Compute daily and period summaries from cost records.
+
+    Args:
+        records: All filtered cost records (not just the current page).
+
+    Returns:
+        Tuple of (daily summaries sorted chronologically, period summary).
+    """
+    if not records:
+        return (), PeriodSummary(
+            avg_cost_usd=0.0,
+            total_cost_usd=0.0,
+            total_input_tokens=0,
+            total_output_tokens=0,
+            record_count=0,
+        )
+
+    by_day: dict[str, list[CostRecord]] = defaultdict(list)
+    for r in records:
+        by_day[r.timestamp.strftime("%Y-%m-%d")].append(r)
+
+    daily = tuple(
+        DailySummary(
+            date=date,
+            total_cost_usd=sum(r.cost_usd for r in day_records),
+            total_input_tokens=sum(r.input_tokens for r in day_records),
+            total_output_tokens=sum(r.output_tokens for r in day_records),
+            record_count=len(day_records),
+        )
+        for date, day_records in sorted(by_day.items())
+    )
+
+    total_cost = sum(r.cost_usd for r in records)
+    count = len(records)
+    period = PeriodSummary(
+        avg_cost_usd=total_cost / count,
+        total_cost_usd=total_cost,
+        total_input_tokens=sum(r.input_tokens for r in records),
+        total_output_tokens=sum(r.output_tokens for r in records),
+        record_count=count,
+    )
+
+    return daily, period
 
 
 class BudgetController(Controller):
@@ -66,8 +200,11 @@ class BudgetController(Controller):
         task_id: Annotated[str, Parameter(max_length=128)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
-    ) -> PaginatedResponse[CostRecord]:
-        """List cost records with optional filters.
+    ) -> CostRecordListResponse:
+        """List cost records with optional filters and summaries.
+
+        Summaries are computed from all matching records, not just
+        the current page.
 
         Args:
             state: Application state.
@@ -77,15 +214,21 @@ class BudgetController(Controller):
             limit: Page size.
 
         Returns:
-            Paginated cost record list.
+            Paginated cost records with daily and period summaries.
         """
         app_state: AppState = state.app_state
         records = await app_state.cost_tracker.get_records(
             agent_id=agent_id,
             task_id=task_id,
         )
+        daily, period = _build_summaries(records)
         page, meta = paginate(records, offset=offset, limit=limit)
-        return PaginatedResponse(data=page, pagination=meta)
+        return CostRecordListResponse(
+            data=page,
+            pagination=meta,
+            daily_summary=daily,
+            period_summary=period,
+        )
 
     @get("/agents/{agent_id:str}")
     async def get_agent_spending(

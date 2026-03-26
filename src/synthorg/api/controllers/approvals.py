@@ -1,6 +1,7 @@
 """Approvals controller -- human approval queue CRUD."""
 
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from litestar import Controller, Request, get, post
 from litestar.channels import ChannelsPlugin  # noqa: TC002
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from pydantic import ConfigDict, Field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
@@ -55,6 +57,67 @@ if TYPE_CHECKING:
     from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
+
+_URGENCY_CRITICAL_SECONDS: float = 3600.0
+_URGENCY_HIGH_SECONDS: float = 14400.0
+
+
+class UrgencyLevel(StrEnum):
+    """How urgently a pending approval needs attention.
+
+    Thresholds are based on time remaining until expiry.
+    """
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    NORMAL = "normal"
+    NO_EXPIRY = "no_expiry"
+
+
+class ApprovalResponse(ApprovalItem):
+    """Approval item enriched with computed urgency fields.
+
+    Attributes:
+        seconds_remaining: Seconds until expiry (``None`` if no TTL).
+        urgency_level: Urgency classification based on time remaining.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    seconds_remaining: float | None = Field(
+        description="Seconds until expiry (null if no TTL set)",
+    )
+    urgency_level: UrgencyLevel = Field(
+        description="Urgency classification based on remaining time",
+    )
+
+
+def _to_approval_response(item: ApprovalItem) -> ApprovalResponse:
+    """Convert an ApprovalItem to an ApprovalResponse with urgency fields.
+
+    Args:
+        item: The domain-layer approval item.
+
+    Returns:
+        Response DTO with computed ``seconds_remaining`` and ``urgency_level``.
+    """
+    now = datetime.now(UTC)
+    if item.expires_at is None:
+        seconds_remaining = None
+        urgency = UrgencyLevel.NO_EXPIRY
+    else:
+        seconds_remaining = max(0.0, (item.expires_at - now).total_seconds())
+        if seconds_remaining < _URGENCY_CRITICAL_SECONDS:
+            urgency = UrgencyLevel.CRITICAL
+        elif seconds_remaining < _URGENCY_HIGH_SECONDS:
+            urgency = UrgencyLevel.HIGH
+        else:
+            urgency = UrgencyLevel.NORMAL
+    return ApprovalResponse(
+        **item.model_dump(),
+        seconds_remaining=seconds_remaining,
+        urgency_level=urgency,
+    )
 
 
 def _require_channels_plugin(
@@ -330,7 +393,7 @@ class ApprovalsController(Controller):
         action_type: Annotated[str, Parameter(max_length=128)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
-    ) -> PaginatedResponse[ApprovalItem]:
+    ) -> PaginatedResponse[ApprovalResponse]:
         """List approval items with optional filters.
 
         Args:
@@ -342,7 +405,7 @@ class ApprovalsController(Controller):
             limit: Page size.
 
         Returns:
-            Paginated approval list.
+            Paginated approval list with urgency fields.
         """
         if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
             msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
@@ -355,14 +418,15 @@ class ApprovalsController(Controller):
             action_type=action_type,
         )
         page, meta = paginate(items, offset=offset, limit=limit)
-        return PaginatedResponse(data=page, pagination=meta)
+        enriched = tuple(_to_approval_response(i) for i in page)
+        return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{approval_id:str}", guards=[require_read_access])
     async def get_approval(
         self,
         state: State,
         approval_id: PathId,
-    ) -> ApiResponse[ApprovalItem]:
+    ) -> ApiResponse[ApprovalResponse]:
         """Get a single approval item by ID.
 
         Args:
@@ -370,7 +434,7 @@ class ApprovalsController(Controller):
             approval_id: Approval identifier.
 
         Returns:
-            Approval item envelope.
+            Approval response envelope with urgency fields.
 
         Raises:
             NotFoundError: If the approval is not found.
@@ -385,7 +449,7 @@ class ApprovalsController(Controller):
                 id=approval_id,
             )
             raise NotFoundError(msg)
-        return ApiResponse(data=item)
+        return ApiResponse(data=_to_approval_response(item))
 
     @post(guards=[require_write_access], status_code=201)
     async def create_approval(
@@ -393,7 +457,7 @@ class ApprovalsController(Controller):
         state: State,
         data: CreateApprovalRequest,
         request: Request[Any, Any, Any],
-    ) -> ApiResponse[ApprovalItem]:
+    ) -> ApiResponse[ApprovalResponse]:
         """Create a new approval item.
 
         The ``requested_by`` field is populated from the authenticated
@@ -453,7 +517,7 @@ class ApprovalsController(Controller):
             action_type=item.action_type,
             risk_level=item.risk_level.value,
         )
-        return ApiResponse(data=item)
+        return ApiResponse(data=_to_approval_response(item))
 
     @post(
         "/{approval_id:str}/approve",
@@ -466,7 +530,7 @@ class ApprovalsController(Controller):
         approval_id: PathId,
         data: ApproveRequest,
         request: Request[Any, Any, Any],
-    ) -> ApiResponse[ApprovalItem]:
+    ) -> ApiResponse[ApprovalResponse]:
         """Approve a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
@@ -479,7 +543,7 @@ class ApprovalsController(Controller):
             request: The incoming HTTP request.
 
         Returns:
-            Updated approval item envelope.
+            Updated approval response with urgency fields.
 
         Raises:
             NotFoundError: If the approval is not found.
@@ -535,7 +599,7 @@ class ApprovalsController(Controller):
             task_id=saved.task_id,
         )
 
-        return ApiResponse(data=saved)
+        return ApiResponse(data=_to_approval_response(saved))
 
     @post(
         "/{approval_id:str}/reject",
@@ -548,7 +612,7 @@ class ApprovalsController(Controller):
         approval_id: PathId,
         data: RejectRequest,
         request: Request[Any, Any, Any],
-    ) -> ApiResponse[ApprovalItem]:
+    ) -> ApiResponse[ApprovalResponse]:
         """Reject a pending approval item.
 
         The ``decided_by`` field is populated from the authenticated
@@ -561,7 +625,7 @@ class ApprovalsController(Controller):
             request: The incoming HTTP request.
 
         Returns:
-            Updated approval item envelope.
+            Updated approval response with urgency fields.
 
         Raises:
             NotFoundError: If the approval is not found.
@@ -617,4 +681,4 @@ class ApprovalsController(Controller):
             task_id=saved.task_id,
         )
 
-        return ApiResponse(data=saved)
+        return ApiResponse(data=_to_approval_response(saved))
