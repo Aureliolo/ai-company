@@ -63,6 +63,7 @@ def _make_lifecycle_event(
 def _make_task_metric(
     *,
     agent_id: str = _AGENT_ID,
+    started_at: datetime | None = None,
     completed_at: datetime | None = None,
     is_success: bool = True,
 ) -> TaskMetricRecord:
@@ -70,6 +71,7 @@ def _make_task_metric(
         agent_id=agent_id,
         task_id="task-001",
         task_type=TaskType.DEVELOPMENT,
+        started_at=started_at,
         completed_at=completed_at or _NOW,
         is_success=is_success,
         duration_seconds=10.0,
@@ -135,6 +137,25 @@ class TestActivityFeed:
         body = resp.json()
         assert body["pagination"]["total"] == 1
         assert body["data"][0]["event_type"] == "task_completed"
+
+    async def test_feed_with_task_started(
+        self,
+        test_client: TestClient[Any],
+        performance_tracker: PerformanceTracker,
+    ) -> None:
+        await performance_tracker.record_task_metric(
+            _make_task_metric(
+                started_at=_NOW - timedelta(hours=2),
+                completed_at=_NOW - timedelta(hours=1),
+            ),
+        )
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Both task_completed and task_started from same record
+        assert body["pagination"]["total"] == 2
+        types = {d["event_type"] for d in body["data"]}
+        assert types == {"task_completed", "task_started"}
 
     async def test_filter_by_type(
         self,

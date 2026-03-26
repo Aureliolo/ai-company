@@ -197,6 +197,8 @@ class AgentEngine:
         plan_execute_config: Optional configuration for the
             plan-execute loop.  Passed to ``build_execution_loop``
             when auto-selection picks ``"plan_execute"``.
+        provider_registry: Optional registry of completion providers.
+            Used for runtime provider CRUD and model discovery.
         tool_invocation_tracker: Optional tracker for recording tool
             invocations in the activity timeline.  Passed through to
             each ``ToolInvoker`` created by ``_make_tool_invoker``.
