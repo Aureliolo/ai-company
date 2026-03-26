@@ -23,12 +23,13 @@ def _create_payload(
         "password": "secure-password-12chars",
         "role": "manager",
     }
-    defaults.update(overrides)
-    return defaults
+    return {**defaults, **overrides}
 
 
 @pytest.mark.unit
 class TestCreateUser:
+    """CEO-only user creation with role, password, and uniqueness validation."""
+
     def test_create_manager(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
             _BASE,
@@ -136,6 +137,8 @@ class TestCreateUser:
 
 @pytest.mark.unit
 class TestListUsers:
+    """List users endpoint returns seeded data and enforces CEO guard."""
+
     def test_list_returns_seeded_users(
         self,
         test_client: TestClient[Any],
@@ -146,6 +149,7 @@ class TestListUsers:
         assert body["success"] is True
         # Seeded users: one per HumanRole (6), minus system = 5
         assert len(body["data"]) == 5
+        assert all("password_hash" not in u for u in body["data"])
 
     def test_list_blocked_for_observer(
         self,
@@ -160,6 +164,8 @@ class TestListUsers:
 
 @pytest.mark.unit
 class TestGetUser:
+    """Get user by ID with not-found handling."""
+
     def test_get_existing_user(
         self,
         test_client: TestClient[Any],
@@ -177,7 +183,9 @@ class TestGetUser:
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["username"] == "get-test"
+        data = resp.json()["data"]
+        assert data["username"] == "get-test"
+        assert "password_hash" not in data
 
     def test_get_nonexistent_returns_404(
         self,
@@ -192,6 +200,8 @@ class TestGetUser:
 
 @pytest.mark.unit
 class TestUpdateUserRole:
+    """Role update with CEO demotion, promotion, and system-user guards."""
+
     def test_update_role(self, test_client: TestClient[Any]) -> None:
         create_resp = test_client.post(
             _BASE,
@@ -206,7 +216,9 @@ class TestUpdateUserRole:
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 200
-        assert resp.json()["data"]["role"] == "observer"
+        data = resp.json()["data"]
+        assert data["role"] == "observer"
+        assert "password_hash" not in data
 
     def test_update_to_system_rejected(
         self,
@@ -286,6 +298,8 @@ class TestUpdateUserRole:
 
 @pytest.mark.unit
 class TestDeleteUser:
+    """User deletion with self-delete, system-user, and CEO guards."""
+
     def test_delete_user(self, test_client: TestClient[Any]) -> None:
         create_resp = test_client.post(
             _BASE,

@@ -28,6 +28,7 @@ from synthorg.observability.events.api import (
     API_USER_UPDATED,
     API_VALIDATION_FAILED,
 )
+from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
@@ -223,7 +224,12 @@ class UserController(Controller):
                 created_at=now,
                 updated_at=now,
             )
-            await app_state.persistence.users.save(user)
+            try:
+                await app_state.persistence.users.save(user)
+            except QueryError:
+                msg = "A CEO user already exists"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                raise ConflictError(msg)  # noqa: B904
 
         logger.info(
             API_USER_CREATED,
@@ -315,7 +321,12 @@ class UserController(Controller):
             updated = user.model_copy(
                 update={"role": data.role, "updated_at": now},
             )
-            await app_state.persistence.users.save(updated)
+            try:
+                await app_state.persistence.users.save(updated)
+            except QueryError:
+                msg = "A CEO user already exists"
+                logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+                raise ConflictError(msg)  # noqa: B904
 
         logger.info(
             API_USER_UPDATED,
