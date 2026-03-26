@@ -65,6 +65,31 @@ describe('InlineEdit', () => {
     expect(screen.getByText('Required')).toBeInTheDocument()
   })
 
+  it('can retry save after validation error', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(
+      <InlineEdit
+        value="Hello"
+        onSave={onSave}
+        validate={(v) => (v.length === 0 ? 'Required' : null)}
+      />,
+    )
+
+    // First attempt: clear and Enter triggers validation error
+    await user.click(screen.getByText('Hello'))
+    await user.clear(screen.getByRole('textbox'))
+    await user.keyboard('{Enter}')
+    expect(screen.getByText('Required')).toBeInTheDocument()
+
+    // Second attempt: type valid value and save succeeds
+    await user.type(screen.getByRole('textbox'), 'Valid')
+    await user.keyboard('{Enter}')
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith('Valid')
+    })
+  })
+
   it('error from save shows inline error', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn().mockRejectedValue(new Error('Server error'))
@@ -156,11 +181,11 @@ describe('InlineEdit', () => {
     it('display renders generated values', () => {
       fc.assert(
         fc.property(fc.string({ minLength: 1, maxLength: 50 }), (value) => {
-          const { unmount } = render(
+          const { container, unmount } = render(
             <InlineEdit value={value} onSave={vi.fn()} />,
           )
           // Value should be displayed
-          const el = document.body.querySelector('[data-inline-display]')
+          const el = container.querySelector('[data-inline-display]')
           expect(el?.textContent).toBe(value)
           unmount()
         }),

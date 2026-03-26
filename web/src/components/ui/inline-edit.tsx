@@ -40,12 +40,14 @@ export function InlineEdit({
   // Track whether save was triggered by Enter (to skip blur-triggered save)
   const saveInProgressRef = useRef(false)
 
-  // Sync when prop value changes externally (ref-based to avoid setState-in-effect)
+  // Sync editValue when prop value changes externally while in display mode
   const prevValueRef = useRef(value)
-  if (value !== prevValueRef.current && state === 'display') {
-    setEditValue(value)
-  }
-  prevValueRef.current = value
+  useEffect(() => {
+    if (value !== prevValueRef.current && state === 'display') {
+      setEditValue(value)
+    }
+    prevValueRef.current = value
+  }, [value, state])
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -102,7 +104,7 @@ export function InlineEdit({
     } finally {
       saveInProgressRef.current = false
     }
-  }, [editValue, onSave, validate, triggerFlash, state])
+  }, [editValue, onSave, validate, triggerFlash, state, value])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
