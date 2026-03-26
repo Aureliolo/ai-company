@@ -1,4 +1,4 @@
-"""Pure functions for building agent activity timelines.
+"""Activity timeline models and pure functions for building agent timelines.
 
 Merges lifecycle events, task metrics, cost records, tool invocations,
 and delegation records into a unified chronological timeline, and
@@ -97,7 +97,7 @@ def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
 
 
 def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
-    """Convert a task metric record to a task_completed activity event."""
+    """Convert a task metric record to a task_completed event (success or failure)."""
     status = "succeeded" if record.is_success else "failed"
     desc = (
         f"Task {record.task_id} {status} "
@@ -117,10 +117,14 @@ def _task_metric_to_activity(record: TaskMetricRecord) -> ActivityEvent:
 def _task_metric_to_started_activity(
     record: TaskMetricRecord,
 ) -> ActivityEvent:
-    """Convert a task metric with ``started_at`` to a task_started event."""
+    """Convert a task metric with ``started_at`` to a task_started event.
+
+    Caller must ensure ``record.started_at`` is not None.
+    """
+    assert record.started_at is not None  # noqa: S101
     return ActivityEvent(
         event_type="task_started",
-        timestamp=record.started_at,  # type: ignore[arg-type]
+        timestamp=record.started_at,
         description=f"Task {record.task_id} started",
         related_ids={
             "task_id": str(record.task_id),

@@ -24,8 +24,13 @@ logger = get_logger(__name__)
 class DelegationRecordStore:
     """In-memory, append-only delegation record store with filtering.
 
-    Provides both a sync ``record_sync`` method (for callers in sync
-    context like :class:`DelegationService`) and async query methods.
+    Provides both a sync ``record_sync`` method (for callers that
+    cannot await) and async query methods.
+
+    Concurrency note: ``record_sync`` does not acquire ``_lock``.
+    The lock serialises concurrent async readers only.  Append-only
+    semantics and cooperative asyncio scheduling make single-call
+    sync writes safe (``list.append`` cannot be interrupted).
     """
 
     def __init__(self) -> None:

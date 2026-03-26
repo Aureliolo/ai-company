@@ -52,7 +52,7 @@ class ToolInvocationRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
-        """Enforce success/error_message field correlation."""
+        """Reject error_message when the invocation succeeded."""
         if self.is_success and self.error_message is not None:
             msg = "error_message must be None when is_success is True"
             raise ValueError(msg)

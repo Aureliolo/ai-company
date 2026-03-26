@@ -22,8 +22,24 @@ from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests.unit.api.conftest import FakePersistenceBackend
 
-_NOW = datetime.now(UTC)
+_NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 _AGENT_ID = "00000000-0000-0000-0000-000000000aaa"
+
+
+class _FrozenDatetime(datetime):
+    """Subclass that makes ``now()`` return the fixed ``_NOW``."""
+
+    @classmethod
+    def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
+        return _NOW
+
+
+@pytest.fixture(autouse=True)
+def _freeze_controller_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure the activities controller sees a deterministic 'now'."""
+    import synthorg.api.controllers.activities as mod
+
+    monkeypatch.setattr(mod, "datetime", _FrozenDatetime)
 
 
 def _make_lifecycle_event(

@@ -132,3 +132,57 @@ class TestDelegationRecordStore:
         store.record_sync(_make_record())
         records = await store.get_all_records()
         assert isinstance(records, tuple)
+
+    async def test_delegator_time_range_filtering(self) -> None:
+        """Time range filtering works on get_records_as_delegator."""
+        store = DelegationRecordStore()
+        store.record_sync(
+            _make_record(
+                delegation_id="del-old",
+                delegator_id="alice",
+                timestamp=_NOW - timedelta(hours=3),
+            ),
+        )
+        store.record_sync(
+            _make_record(
+                delegation_id="del-mid",
+                delegator_id="alice",
+                timestamp=_NOW - timedelta(hours=1),
+            ),
+        )
+
+        # Half-open interval: start <= ts < end
+        records = await store.get_records_as_delegator(
+            "alice",
+            start=_NOW - timedelta(hours=2),
+            end=_NOW,
+        )
+        assert len(records) == 1
+        assert records[0].delegation_id == "del-mid"
+
+    async def test_delegatee_time_range_filtering(self) -> None:
+        """Time range filtering works on get_records_as_delegatee."""
+        store = DelegationRecordStore()
+        store.record_sync(
+            _make_record(
+                delegation_id="del-old",
+                delegatee_id="bob",
+                timestamp=_NOW - timedelta(hours=3),
+            ),
+        )
+        store.record_sync(
+            _make_record(
+                delegation_id="del-mid",
+                delegatee_id="bob",
+                timestamp=_NOW - timedelta(hours=1),
+            ),
+        )
+
+        # Half-open interval: start <= ts < end
+        records = await store.get_records_as_delegatee(
+            "bob",
+            start=_NOW - timedelta(hours=2),
+            end=_NOW,
+        )
+        assert len(records) == 1
+        assert records[0].delegation_id == "del-mid"

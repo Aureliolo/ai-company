@@ -1,14 +1,14 @@
 """Bridge between ToolInvoker and invocation tracking.
 
-Best-effort recording of tool invocations for the activity timeline.
-Extracted to keep ``invoker.py`` under the 800-line limit.
+Separates activity-tracking concerns from tool execution logic in
+``invoker.py``.  Best-effort: failures here never affect tool results.
 """
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.tool import TOOL_INVOKE_EXECUTION_ERROR
+from synthorg.observability.events.tool import TOOL_INVOCATION_RECORD_FAILED
 from synthorg.tools.invocation_record import ToolInvocationRecord
 
 if TYPE_CHECKING:
@@ -50,9 +50,8 @@ async def record_tool_invocation(
         raise
     except Exception:
         logger.warning(
-            TOOL_INVOKE_EXECUTION_ERROR,
+            TOOL_INVOCATION_RECORD_FAILED,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
-            note="Failed to record invocation for activity tracking",
             exc_info=True,
         )

@@ -79,8 +79,8 @@ class ActivityController(Controller):
 
         Merges lifecycle events, task metrics, cost records, tool
         invocations, and delegation records into a unified
-        chronological timeline, most recent first.  If any data
-        source is unavailable, it is omitted gracefully.
+        chronological timeline, most recent first.  Non-lifecycle
+        data sources degrade gracefully when unavailable.
 
         Args:
             state: Application state.
@@ -104,19 +104,37 @@ class ActivityController(Controller):
         )
 
         task_metrics = _fetch_task_metrics(app_state, agent_id, since, now)
-        async with asyncio.TaskGroup() as tg:
-            cost_task = tg.create_task(
-                _fetch_cost_records(app_state, agent_id, since, now),
+        try:
+            async with asyncio.TaskGroup() as tg:
+                cost_task = tg.create_task(
+                    _fetch_cost_records(app_state, agent_id, since, now),
+                )
+                tool_task = tg.create_task(
+                    _fetch_tool_invocations(app_state, agent_id, since, now),
+                )
+                del_task = tg.create_task(
+                    _fetch_delegation_records(app_state, agent_id, since, now),
+                )
+        except ExceptionGroup as eg:
+            fatal = eg.subgroup((MemoryError, RecursionError))
+            if fatal is not None:
+                raise fatal from eg
+            svc = eg.subgroup(ServiceUnavailableError)
+            if svc is not None:
+                raise svc from eg
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="activities",
+                error_count=len(eg.exceptions),
+                exc_info=True,
             )
-            tool_task = tg.create_task(
-                _fetch_tool_invocations(app_state, agent_id, since, now),
-            )
-            del_task = tg.create_task(
-                _fetch_delegation_records(app_state, agent_id, since, now),
-            )
-        cost_records = cost_task.result()
-        tool_invocations = tool_task.result()
-        sent, received = del_task.result()
+            cost_task = tool_task = del_task = None  # type: ignore[assignment]
+        cost_records = cost_task.result() if cost_task is not None else ()
+        tool_invocations = tool_task.result() if tool_task is not None else ()
+        if del_task is not None:
+            sent, received = del_task.result()
+        else:
+            sent, received = (), ()
 
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
@@ -180,6 +198,8 @@ async def _fetch_cost_records(
     now: datetime,
 ) -> tuple[CostRecord, ...]:
     """Fetch cost records, falling back to empty on failure."""
+    if not app_state.has_cost_tracker:
+        return ()
     try:
         return await app_state.cost_tracker.get_records(
             agent_id=agent_id,

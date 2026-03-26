@@ -191,6 +191,11 @@ class AppState:
         return self._require_service(self._message_bus, "message_bus")
 
     @property
+    def has_cost_tracker(self) -> bool:
+        """Check whether the cost tracker is configured."""
+        return self._cost_tracker is not None
+
+    @property
     def cost_tracker(self) -> CostTracker:
         """Return cost tracker or raise 503."""
         return self._require_service(self._cost_tracker, "cost_tracker")

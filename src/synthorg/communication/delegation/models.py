@@ -109,7 +109,7 @@ class DelegationRecord(BaseModel):
         refinement: Context provided by the delegator.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     delegation_id: NotBlankStr = Field(
         description="Unique delegation identifier",

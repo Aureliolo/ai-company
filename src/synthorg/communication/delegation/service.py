@@ -29,6 +29,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.delegation import (
     DELEGATION_CREATED,
     DELEGATION_LOOP_ESCALATED,
+    DELEGATION_RECORD_STORE_FAILED,
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
     DELEGATION_SUB_TASK_FAILED,
@@ -194,10 +195,9 @@ class DelegationService:
                 raise
             except Exception:
                 logger.warning(
-                    DELEGATION_CREATED,
+                    DELEGATION_RECORD_STORE_FAILED,
                     delegator=request.delegator_id,
                     delegatee=request.delegatee_id,
-                    note="Failed to record delegation in activity store",
                     exc_info=True,
                 )
 

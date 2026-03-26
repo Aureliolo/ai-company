@@ -440,3 +440,81 @@ class TestDelegationServiceHelpers:
         assert service.get_supervisor_of("cto") == "ceo"
         assert service.get_supervisor_of("dev") == "cto"
         assert service.get_supervisor_of("ceo") is None
+
+
+@pytest.mark.unit
+class TestDelegationServiceRecordStore:
+    """Tests for record_store integration in _record_delegation."""
+
+    async def test_successful_delegation_populates_record_store(self) -> None:
+        from synthorg.communication.delegation.record_store import (
+            DelegationRecordStore,
+        )
+
+        store = DelegationRecordStore()
+        service, _ = _build_service()
+        service._record_store = store
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        service.delegate(request, delegator, delegatee)
+
+        records = await store.get_all_records()
+        assert len(records) == 1
+        assert records[0].delegator_id == "ceo"
+        assert records[0].delegatee_id == "cto"
+
+    def test_record_store_failure_does_not_block_delegation(self) -> None:
+        from unittest.mock import MagicMock
+
+        from synthorg.communication.delegation.record_store import (
+            DelegationRecordStore,
+        )
+
+        store = MagicMock(spec=DelegationRecordStore)
+        store.record_sync.side_effect = RuntimeError("storage failure")
+
+        service, _ = _build_service()
+        service._record_store = store
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        # Should not raise -- recording failure is best-effort
+        result = service.delegate(request, delegator, delegatee)
+        assert result.success is True
+
+    def test_memory_error_in_record_store_propagates(self) -> None:
+        from unittest.mock import MagicMock
+
+        from synthorg.communication.delegation.record_store import (
+            DelegationRecordStore,
+        )
+
+        store = MagicMock(spec=DelegationRecordStore)
+        store.record_sync.side_effect = MemoryError("oom")
+
+        service, _ = _build_service()
+        service._record_store = store
+
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        with pytest.raises(MemoryError):
+            service.delegate(request, delegator, delegatee)
