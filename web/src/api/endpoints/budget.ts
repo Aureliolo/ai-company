@@ -1,16 +1,51 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { AgentSpending, ApiResponse, BudgetConfig, CostRecord, PaginatedResponse, PaginationParams } from '../types'
+import { apiClient, unwrap, type PaginatedResult, ApiRequestError } from '../client'
+import type {
+  AgentSpending,
+  ApiResponse,
+  BudgetConfig,
+  CostRecord,
+  DailySummary,
+  ErrorDetail,
+  PaginationParams,
+  PeriodSummary,
+} from '../types'
+
+export interface CostRecordListResult extends PaginatedResult<CostRecord> {
+  daily_summary: DailySummary[]
+  period_summary: PeriodSummary
+}
 
 export async function getBudgetConfig(): Promise<BudgetConfig> {
   const response = await apiClient.get<ApiResponse<BudgetConfig>>('/budget/config')
   return unwrap(response)
 }
 
+interface CostRecordListResponseBody {
+  success: boolean
+  data: CostRecord[]
+  error?: string
+  error_detail?: ErrorDetail | null
+  pagination: { total: number; offset: number; limit: number }
+  daily_summary: DailySummary[]
+  period_summary: PeriodSummary
+}
+
 export async function listCostRecords(
   params?: PaginationParams & { agent_id?: string; task_id?: string },
-): Promise<PaginatedResult<CostRecord>> {
-  const response = await apiClient.get<PaginatedResponse<CostRecord>>('/budget/records', { params })
-  return unwrapPaginated<CostRecord>(response)
+): Promise<CostRecordListResult> {
+  const response = await apiClient.get<CostRecordListResponseBody>('/budget/records', { params })
+  const body = response.data
+  if (!body?.success) {
+    throw new ApiRequestError(body?.error ?? 'Unknown API error', body?.error_detail ?? null)
+  }
+  return {
+    data: body.data,
+    total: body.pagination.total,
+    offset: body.pagination.offset,
+    limit: body.pagination.limit,
+    daily_summary: body.daily_summary,
+    period_summary: body.period_summary,
+  }
 }
 
 export async function getAgentSpending(agentId: string): Promise<AgentSpending> {

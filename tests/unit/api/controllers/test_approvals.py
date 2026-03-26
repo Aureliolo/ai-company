@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
@@ -418,6 +419,194 @@ class TestRejectApproval:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestApprovalUrgencyFields:
+    """Tests for computed seconds_remaining and urgency_level fields."""
+
+    async def test_list_includes_urgency_fields(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, ttl_seconds=7200)
+        resp = test_client.get(_BASE, headers=_READ_HEADERS)
+        assert resp.status_code == 200
+        item = resp.json()["data"][0]
+        assert "seconds_remaining" in item
+        assert "urgency_level" in item
+
+    async def test_urgency_no_expiry(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        resp = test_client.get(f"{_BASE}/approval-001", headers=_READ_HEADERS)
+        data = resp.json()["data"]
+        assert data["seconds_remaining"] is None
+        assert data["urgency_level"] == "no_expiry"
+
+    @pytest.mark.parametrize(
+        ("approval_id", "ttl_seconds", "expected_urgency"),
+        [
+            ("crit-001", 1800, "critical"),
+            ("high-001", 7200, "high"),
+            ("norm-001", 86400, "normal"),
+        ],
+    )
+    async def test_urgency_level_by_ttl(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+        approval_id: str,
+        ttl_seconds: int,
+        expected_urgency: str,
+    ) -> None:
+        await _seed_item(
+            approval_store,
+            approval_id=approval_id,
+            ttl_seconds=ttl_seconds,
+        )
+        resp = test_client.get(
+            f"{_BASE}/{approval_id}",
+            headers=_READ_HEADERS,
+        )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == expected_urgency
+        assert data["seconds_remaining"] is not None
+
+    def test_create_approval_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            _BASE,
+            json=_create_payload(ttl_seconds=600),
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "critical"
+        assert data["seconds_remaining"] is not None
+
+    async def test_approve_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store)
+        resp = test_client.post(
+            f"{_BASE}/approval-001/approve",
+            json={"comment": "ok"},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "no_expiry"
+        assert data["seconds_remaining"] is None
+
+    def test_get_approval_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        # Create an approval first
+        resp = test_client.post(
+            _BASE,
+            json=_create_payload(),
+            headers=_WRITE_HEADERS,
+        )
+        approval_id = resp.json()["data"]["id"]
+        resp = test_client.get(
+            f"{_BASE}/{approval_id}",
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "urgency_level" in data
+        assert "seconds_remaining" in data
+
+    async def test_reject_includes_urgency(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        await _seed_item(approval_store, approval_id="rej-001")
+        resp = test_client.post(
+            f"{_BASE}/rej-001/reject",
+            json={"reason": "Too risky"},
+            headers=_WRITE_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["urgency_level"] == "no_expiry"
+        assert data["seconds_remaining"] is None
+
+    @pytest.mark.parametrize(
+        ("approval_id", "boundary_seconds", "expected_urgency"),
+        [
+            ("boundary-1h", 3600, "high"),
+            ("boundary-4h", 14400, "normal"),
+        ],
+    )
+    async def test_urgency_boundary(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+        approval_id: str,
+        boundary_seconds: int,
+        expected_urgency: str,
+    ) -> None:
+        frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+        item = ApprovalItem(
+            id=approval_id,
+            action_type="code_merge",
+            title="Boundary test",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.MEDIUM,
+            created_at=frozen_now,
+            expires_at=frozen_now + timedelta(seconds=boundary_seconds),
+        )
+        await approval_store.add(item)
+        with patch(
+            "synthorg.api.controllers.approvals.datetime",
+        ) as mock_dt:
+            mock_dt.now.return_value = frozen_now
+            mock_dt.side_effect = datetime
+            resp = test_client.get(
+                f"{_BASE}/{approval_id}",
+                headers=_READ_HEADERS,
+            )
+        data = resp.json()["data"]
+        assert data["urgency_level"] == expected_urgency
+
+    async def test_expired_approval_shows_zero_seconds(
+        self,
+        test_client: TestClient[Any],
+        approval_store: ApprovalStore,
+    ) -> None:
+        now = datetime.now(UTC)
+        item = ApprovalItem(
+            id="exp-001",
+            action_type="code_merge",
+            title="Expired item",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.LOW,
+            created_at=now - timedelta(hours=2),
+            expires_at=now - timedelta(hours=1),
+        )
+        approval_store._items[item.id] = item
+        resp = test_client.get(
+            f"{_BASE}/exp-001",
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["seconds_remaining"] == 0.0
+        assert data["urgency_level"] == "critical"
 
 
 @pytest.mark.unit
