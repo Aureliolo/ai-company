@@ -18,6 +18,8 @@ class SemanticAnalysisConfig(BaseModel):
         llm_model: Model for LLM-based semantic analysis.
         llm_temperature: Temperature for LLM analysis.
         llm_max_tokens: Maximum tokens for LLM response.
+        llm_max_retries: Maximum retry attempts on LLM parse failure.
+        max_file_bytes: Maximum bytes per file for semantic analysis.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

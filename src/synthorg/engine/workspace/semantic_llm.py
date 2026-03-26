@@ -245,7 +245,13 @@ def _read_file_contents(
     files: list[str],
     max_file_bytes: int,
 ) -> dict[str, str]:
-    """Read file contents, skipping unreadable files with logging."""
+    """Read file contents, skipping unreadable files with logging.
+
+    Unlike ``_read_sources`` in :mod:`semantic_analyzer`, this logs
+    read errors at WARNING because LLM ingestion failures are
+    operationally more significant, and enforces ``max_file_bytes``
+    to avoid exceeding LLM token limits.
+    """
     resolved_root = root.resolve()
     contents: dict[str, str] = {}
     for file_path in files:

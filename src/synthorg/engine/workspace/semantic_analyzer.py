@@ -173,13 +173,12 @@ class AstSemanticAnalyzer:
         Returns:
             Tuple of semantic MergeConflict instances.
         """
+        py_files = _filter_files(changed_files, self._config)
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_START,
             workspace_id=workspace.workspace_id,
-            file_count=len(changed_files),
+            file_count=len(py_files),
         )
-
-        py_files = _filter_files(changed_files, self._config)
         if not py_files:
             return self._log_complete(workspace.workspace_id, 0, 0)
 

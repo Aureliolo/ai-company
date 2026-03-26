@@ -26,7 +26,6 @@ pytestmark = pytest.mark.unit
 class TestCheckRemovedReferences:
     """Tests for detecting references to names removed by merge."""
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         (
             "base_sources",
@@ -126,7 +125,6 @@ class TestCheckRemovedReferences:
         if description_contains is not None:
             assert any(description_contains in c.description for c in conflicts)
 
-    @pytest.mark.unit
     def test_empty_sources_no_conflict(self) -> None:
         """Empty sources yield an empty tuple."""
         conflicts = check_removed_references(
@@ -135,7 +133,6 @@ class TestCheckRemovedReferences:
         )
         assert conflicts == ()
 
-    @pytest.mark.unit
     def test_syntax_error_in_source_skipped(self) -> None:
         """Unparseable files are skipped without raising."""
         base_sources = {
@@ -160,7 +157,6 @@ class TestCheckRemovedReferences:
 class TestCheckSignatureChanges:
     """Tests for detecting function signature incompatibilities."""
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         (
             "base_sources",
@@ -282,7 +278,6 @@ class TestCheckSignatureChanges:
 class TestCheckDuplicateDefinitions:
     """Tests for detecting duplicate top-level definitions."""
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         (
             "merged_sources",
@@ -361,7 +356,6 @@ class TestCheckDuplicateDefinitions:
         if description_contains is not None:
             assert any(description_contains in c.description for c in conflicts)
 
-    @pytest.mark.unit
     def test_empty_sources(self) -> None:
         """Empty sources yield an empty tuple."""
         conflicts = check_duplicate_definitions(
@@ -369,7 +363,6 @@ class TestCheckDuplicateDefinitions:
         )
         assert conflicts == ()
 
-    @pytest.mark.unit
     def test_syntax_error_skipped(self) -> None:
         """Unparseable files are skipped without raising."""
         merged_sources = {"bad.py": "def foo(\n"}
@@ -387,7 +380,6 @@ class TestCheckDuplicateDefinitions:
 class TestCheckImportConflicts:
     """Tests for detecting imports of removed exports."""
 
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         (
             "base_sources",
@@ -466,7 +458,6 @@ class TestCheckImportConflicts:
         if description_contains is not None:
             assert any(description_contains in c.description for c in conflicts)
 
-    @pytest.mark.unit
     def test_empty_sources(self) -> None:
         """Empty sources yield an empty tuple."""
         conflicts = check_import_conflicts(
