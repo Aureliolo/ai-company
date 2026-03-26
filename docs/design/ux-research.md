@@ -24,7 +24,7 @@ Rather than incrementally fixing each page within the Vue stack, the team evalua
 | **TypeScript DX** | Good but JSX errors less descriptive | Better TS error messages, especially for AI-assisted development | Good | Minimal TS involvement |
 | **State management** | Pinia (Vue-specific) | Zustand (framework-agnostic, minimal API surface) | Runes (built-in) | Server state |
 | **Ecosystem maturity** | Large but smaller than React | Largest ecosystem, most third-party libraries | Growing rapidly | Niche |
-| **Visualization libraries** | ECharts, VueFlow | Recharts, @xyflow/react, Recharts | D3-based options | Server-rendered charts |
+| **Visualization libraries** | ECharts, VueFlow | Recharts, @xyflow/react | D3-based options | Server-rendered charts |
 
 ## Decision
 

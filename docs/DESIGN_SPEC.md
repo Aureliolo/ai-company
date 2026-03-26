@@ -10,25 +10,25 @@ The design specification has been split into focused documentation pages for bet
 
 | Page | Sections | Description |
 |------|----------|-------------|
-| [Design Overview](docs/design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
-| [Agents & HR](docs/design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, promotions |
-| [Organization & Templates](docs/design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
-| [Communication](docs/design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
-| [Task & Workflow Engine](docs/design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown |
-| [Memory & Persistence](docs/design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
-| [Operations](docs/design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
-| [Brand Identity & UX](docs/design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
-| [Page Structure & IA](docs/design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
-| [UX Design Guidelines](docs/design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |
-| [UX Research](docs/design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
+| [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
+| [Agents & HR](design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, promotions |
+| [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
+| [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
+| [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown |
+| [Memory & Persistence](design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
+| [Operations](design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
+| [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
+| [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
+| [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |
+| [UX Research](design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
 
 ## Supporting Pages
 
 | Page | Description |
 |------|-------------|
-| [Tech Stack](docs/architecture/tech-stack.md) | Technology choices and engineering conventions |
-| [Decision Log](docs/architecture/decisions.md) | All design decisions, organized by domain |
-| [Research & Prior Art](docs/reference/research.md) | Framework comparison and scaling research |
-| [Industry Standards](docs/reference/standards.md) | MCP, A2A, and other standards |
-| [Open Questions & Risks](docs/roadmap/open-questions.md) | Unresolved questions and risk mitigations |
-| [Future Vision](docs/roadmap/future-vision.md) | Backlog features and scaling path |
+| [Tech Stack](architecture/tech-stack.md) | Technology choices and engineering conventions |
+| [Decision Log](architecture/decisions.md) | All design decisions, organized by domain |
+| [Research & Prior Art](reference/research.md) | Framework comparison and scaling research |
+| [Industry Standards](reference/standards.md) | MCP, A2A, and other standards |
+| [Open Questions & Risks](roadmap/open-questions.md) | Unresolved questions and risk mitigations |
+| [Future Vision](roadmap/future-vision.md) | Backlog features and scaling path |
