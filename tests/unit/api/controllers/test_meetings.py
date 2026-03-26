@@ -110,12 +110,16 @@ def _make_minutes(
         total_input = sum(c.input_tokens for c in contributions)
         total_output = sum(c.output_tokens for c in contributions)
 
+    participant_ids = (
+        ("agent-alpha", "agent-beta") if with_contributions else ("participant-1",)
+    )
+
     started = now - timedelta(seconds=120)
     return MeetingMinutes(
         meeting_id=meeting_id,
         protocol_type=MeetingProtocolType.ROUND_ROBIN,
         leader_id="leader-id",
-        participant_ids=("participant-1",),
+        participant_ids=participant_ids,
         agenda=MeetingAgenda(title="Test"),
         contributions=contributions,
         total_input_tokens=total_input,
