@@ -45,6 +45,7 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REJECTED,
     API_AUTH_FAILED,
     API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_CONTEXT_LOADED,
@@ -66,7 +67,8 @@ _URGENCY_HIGH_SECONDS: float = 14400.0
 class UrgencyLevel(StrEnum):
     """How urgently a pending approval needs attention.
 
-    Thresholds are based on time remaining until expiry.
+    Thresholds: ``critical`` < 1 hour, ``high`` < 4 hours,
+    ``normal`` >= 4 hours, ``no_expiry`` when no TTL is set.
     """
 
     CRITICAL = "critical"
@@ -79,7 +81,8 @@ class ApprovalResponse(ApprovalItem):
     """Approval item enriched with computed urgency fields.
 
     Attributes:
-        seconds_remaining: Seconds until expiry (``None`` if no TTL).
+        seconds_remaining: Seconds until expiry, clamped to 0.0 for
+            expired items (``None`` if no TTL).
         urgency_level: Urgency classification based on time remaining.
     """
 
@@ -94,16 +97,20 @@ class ApprovalResponse(ApprovalItem):
     )
 
 
-def _to_approval_response(item: ApprovalItem) -> ApprovalResponse:
+def _to_approval_response(
+    item: ApprovalItem,
+    *,
+    now: datetime,
+) -> ApprovalResponse:
     """Convert an ApprovalItem to an ApprovalResponse with urgency fields.
 
     Args:
         item: The domain-layer approval item.
+        now: Reference timestamp for computing seconds remaining.
 
     Returns:
         Response DTO with computed ``seconds_remaining`` and ``urgency_level``.
     """
-    now = datetime.now(UTC)
     if item.expires_at is None:
         seconds_remaining = None
         urgency = UrgencyLevel.NO_EXPIRY
@@ -380,6 +387,90 @@ async def _signal_resume_intent(  # noqa: PLR0913
         )
 
 
+async def _get_approval_or_404(
+    app_state: AppState,
+    approval_id: str,
+) -> ApprovalItem:
+    """Fetch an approval item or raise NotFoundError.
+
+    Args:
+        app_state: Application state containing the approval store.
+        approval_id: Approval identifier.
+
+    Returns:
+        The matching approval item.
+
+    Raises:
+        NotFoundError: If the approval is not found.
+    """
+    item = await app_state.approval_store.get(approval_id)
+    if item is None:
+        msg = f"Approval {approval_id!r} not found"
+        logger.warning(
+            API_RESOURCE_NOT_FOUND,
+            resource="approval",
+            id=approval_id,
+        )
+        raise NotFoundError(msg)
+    return item
+
+
+async def _save_decision_and_notify(  # noqa: PLR0913
+    app_state: AppState,
+    request: Request[Any, Any, Any],
+    approval_id: str,
+    updated: ApprovalItem,
+    *,
+    approved: bool,
+    decided_by: str,
+    decision_reason: str | None,
+    ws_event: WsEventType,
+) -> ApprovalItem:
+    """Persist decision, publish event, log, and trigger resume.
+
+    Args:
+        app_state: Application state.
+        request: The incoming HTTP request.
+        approval_id: Approval identifier.
+        updated: The updated approval item to persist.
+        approved: Whether the action was approved.
+        decided_by: Who made the decision.
+        decision_reason: Optional reason for the decision.
+        ws_event: WebSocket event type to publish.
+
+    Returns:
+        The saved approval item.
+
+    Raises:
+        ConflictError: If the approval is no longer pending.
+    """
+    saved = await app_state.approval_store.save_if_pending(updated)
+    if saved is None:
+        msg = "Approval is no longer pending (already decided or expired)"
+        logger.warning(
+            API_APPROVAL_CONFLICT,
+            approval_id=approval_id,
+            note=msg,
+        )
+        raise ConflictError(msg)
+
+    _publish_approval_event(request, ws_event, updated)
+    _log_approval_decision(
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+    )
+    await _signal_resume_intent(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+        decision_reason=decision_reason,
+        task_id=saved.task_id,
+    )
+    return saved
+
+
 class ApprovalsController(Controller):
     """Human approval queue -- list, create, approve, reject."""
 
@@ -411,6 +502,11 @@ class ApprovalsController(Controller):
         """
         if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
             msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="action_type",
+                max_length=QUERY_MAX_LENGTH,
+            )
             raise ApiValidationError(msg)
 
         app_state: AppState = state.app_state
@@ -420,7 +516,8 @@ class ApprovalsController(Controller):
             action_type=action_type,
         )
         page, meta = paginate(items, offset=offset, limit=limit)
-        enriched = tuple(_to_approval_response(i) for i in page)
+        now = datetime.now(UTC)
+        enriched = tuple(_to_approval_response(i, now=now) for i in page)
         return PaginatedResponse(data=enriched, pagination=meta)
 
     @get("/{approval_id:str}", guards=[require_read_access])
@@ -442,16 +539,8 @@ class ApprovalsController(Controller):
             NotFoundError: If the approval is not found.
         """
         app_state: AppState = state.app_state
-        item = await app_state.approval_store.get(approval_id)
-        if item is None:
-            msg = f"Approval {approval_id!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-            )
-            raise NotFoundError(msg)
-        return ApiResponse(data=_to_approval_response(item))
+        item = await _get_approval_or_404(app_state, approval_id)
+        return ApiResponse(data=_to_approval_response(item, now=datetime.now(UTC)))
 
     @post(guards=[require_write_access], status_code=201)
     async def create_approval(
@@ -519,7 +608,7 @@ class ApprovalsController(Controller):
             action_type=item.action_type,
             risk_level=item.risk_level.value,
         )
-        return ApiResponse(data=_to_approval_response(item))
+        return ApiResponse(data=_to_approval_response(item, now=now))
 
     @post(
         "/{approval_id:str}/approve",
@@ -552,15 +641,7 @@ class ApprovalsController(Controller):
             ConflictError: If the approval is not in PENDING status.
         """
         app_state: AppState = state.app_state
-        item = await app_state.approval_store.get(approval_id)
-        if item is None:
-            msg = f"Approval {approval_id!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-            )
-            raise NotFoundError(msg)
+        item = await _get_approval_or_404(app_state, approval_id)
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
@@ -572,36 +653,18 @@ class ApprovalsController(Controller):
                 "decision_reason": data.comment,
             },
         )
-        saved = await app_state.approval_store.save_if_pending(updated)
-        if saved is None:
-            msg = "Approval is no longer pending (already decided or expired)"
-            logger.warning(
-                API_APPROVAL_CONFLICT,
-                approval_id=approval_id,
-                note=msg,
-            )
-            raise ConflictError(msg)
-
-        _publish_approval_event(
-            request,
-            WsEventType.APPROVAL_APPROVED,
-            updated,
-        )
-        _log_approval_decision(
-            approval_id,
-            approved=True,
-            decided_by=auth_user.username,
-        )
-        await _signal_resume_intent(
+        saved = await _save_decision_and_notify(
             app_state,
+            request,
             approval_id,
+            updated,
             approved=True,
             decided_by=auth_user.username,
             decision_reason=data.comment,
-            task_id=saved.task_id,
+            ws_event=WsEventType.APPROVAL_APPROVED,
         )
 
-        return ApiResponse(data=_to_approval_response(saved))
+        return ApiResponse(data=_to_approval_response(saved, now=now))
 
     @post(
         "/{approval_id:str}/reject",
@@ -634,15 +697,7 @@ class ApprovalsController(Controller):
             ConflictError: If the approval is not in PENDING status.
         """
         app_state: AppState = state.app_state
-        item = await app_state.approval_store.get(approval_id)
-        if item is None:
-            msg = f"Approval {approval_id!r} not found"
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="approval",
-                id=approval_id,
-            )
-            raise NotFoundError(msg)
+        item = await _get_approval_or_404(app_state, approval_id)
 
         auth_user = _resolve_decision(request, item, approval_id)
         now = datetime.now(UTC)
@@ -654,33 +709,15 @@ class ApprovalsController(Controller):
                 "decision_reason": data.reason,
             },
         )
-        saved = await app_state.approval_store.save_if_pending(updated)
-        if saved is None:
-            msg = "Approval is no longer pending (already decided or expired)"
-            logger.warning(
-                API_APPROVAL_CONFLICT,
-                approval_id=approval_id,
-                note=msg,
-            )
-            raise ConflictError(msg)
-
-        _publish_approval_event(
-            request,
-            WsEventType.APPROVAL_REJECTED,
-            updated,
-        )
-        _log_approval_decision(
-            approval_id,
-            approved=False,
-            decided_by=auth_user.username,
-        )
-        await _signal_resume_intent(
+        saved = await _save_decision_and_notify(
             app_state,
+            request,
             approval_id,
+            updated,
             approved=False,
             decided_by=auth_user.username,
             decision_reason=data.reason,
-            task_id=saved.task_id,
+            ws_event=WsEventType.APPROVAL_REJECTED,
         )
 
-        return ApiResponse(data=_to_approval_response(saved))
+        return ApiResponse(data=_to_approval_response(saved, now=now))

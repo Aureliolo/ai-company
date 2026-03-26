@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
@@ -573,7 +574,7 @@ class TestApprovalUrgencyFields:
         test_client: TestClient[Any],
         approval_store: ApprovalStore,
     ) -> None:
-        now = datetime.now(UTC)
+        frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
         item = ApprovalItem(
             id="boundary-1h",
             action_type="code_merge",
@@ -581,16 +582,20 @@ class TestApprovalUrgencyFields:
             description="desc",
             requested_by="agent-dev",
             risk_level=ApprovalRiskLevel.MEDIUM,
-            created_at=now,
-            # 3605s in the future -- after processing the remaining
-            # time will still be >= 3600s, landing in HIGH (not critical).
-            expires_at=now + timedelta(seconds=3605),
+            created_at=frozen_now,
+            # Exactly 3600s in the future -- should land in HIGH (not critical).
+            expires_at=frozen_now + timedelta(seconds=3600),
         )
         await approval_store.add(item)
-        resp = test_client.get(
-            f"{_BASE}/boundary-1h",
-            headers=_READ_HEADERS,
-        )
+        with patch(
+            "synthorg.api.controllers.approvals.datetime",
+        ) as mock_dt:
+            mock_dt.now.return_value = frozen_now
+            mock_dt.side_effect = datetime
+            resp = test_client.get(
+                f"{_BASE}/boundary-1h",
+                headers=_READ_HEADERS,
+            )
         data = resp.json()["data"]
         assert data["urgency_level"] == "high"
 
@@ -599,7 +604,7 @@ class TestApprovalUrgencyFields:
         test_client: TestClient[Any],
         approval_store: ApprovalStore,
     ) -> None:
-        now = datetime.now(UTC)
+        frozen_now = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
         item = ApprovalItem(
             id="boundary-4h",
             action_type="code_merge",
@@ -607,16 +612,20 @@ class TestApprovalUrgencyFields:
             description="desc",
             requested_by="agent-dev",
             risk_level=ApprovalRiskLevel.MEDIUM,
-            created_at=now,
-            # 14405s in the future -- after processing the remaining
-            # time will still be >= 14400s, landing in NORMAL (not high).
-            expires_at=now + timedelta(seconds=14405),
+            created_at=frozen_now,
+            # Exactly 14400s in the future -- should land in NORMAL (not high).
+            expires_at=frozen_now + timedelta(seconds=14400),
         )
         await approval_store.add(item)
-        resp = test_client.get(
-            f"{_BASE}/boundary-4h",
-            headers=_READ_HEADERS,
-        )
+        with patch(
+            "synthorg.api.controllers.approvals.datetime",
+        ) as mock_dt:
+            mock_dt.now.return_value = frozen_now
+            mock_dt.side_effect = datetime
+            resp = test_client.get(
+                f"{_BASE}/boundary-4h",
+                headers=_READ_HEADERS,
+            )
         data = resp.json()["data"]
         assert data["urgency_level"] == "normal"
 

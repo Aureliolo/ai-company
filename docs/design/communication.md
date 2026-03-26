@@ -418,12 +418,16 @@ skipping the registry-dependent steps (2--4).
 ### Meeting API Response Enrichment
 
 The meeting REST API enriches every `MeetingRecord` response with computed
-analytics fields derived from `MeetingMinutes.contributions`:
+analytics fields. Per-participant metrics are derived from
+`MeetingMinutes.contributions`:
 
 - **`token_usage_by_participant`** (`dict[str, int]`): total tokens (input +
   output) consumed per agent. Empty when no minutes are available.
-- **`contribution_rank`** (`list[str]`): agent IDs sorted by total token usage
-  descending. Empty when no minutes are available.
+- **`contribution_rank`** (`tuple[str, ...]`): agent IDs sorted by total token
+  usage descending. Empty when no minutes are available.
+
+Duration is computed from the meeting timestamps, not from contributions:
+
 - **`meeting_duration_seconds`** (`float | null`): duration computed from
   `ended_at - started_at`. `null` when no minutes are available.
 

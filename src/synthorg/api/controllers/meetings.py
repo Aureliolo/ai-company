@@ -16,6 +16,10 @@ from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_MEETING_TRIGGERED,
+    API_VALIDATION_FAILED,
+)
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
 
 logger = get_logger(__name__)
@@ -80,7 +84,8 @@ class MeetingResponse(MeetingRecord):
     Attributes:
         token_usage_by_participant: Total tokens per agent.
         contribution_rank: Agent IDs sorted by total tokens (desc).
-        meeting_duration_seconds: Duration in seconds (completed only).
+        meeting_duration_seconds: Duration in seconds (populated when
+            minutes are present, ``None`` otherwise).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -89,14 +94,14 @@ class MeetingResponse(MeetingRecord):
         default_factory=dict,
         description="Total tokens consumed per participant",
     )
-    contribution_rank: tuple[str, ...] = Field(
+    contribution_rank: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Agent IDs sorted by contribution (descending)",
     )
     meeting_duration_seconds: float | None = Field(
         default=None,
         ge=0.0,
-        description="Meeting duration in seconds (null if not completed)",
+        description="Meeting duration in seconds (null if no minutes)",
     )
 
 
@@ -107,7 +112,10 @@ def _to_meeting_response(record: MeetingRecord) -> MeetingResponse:
         record: The domain-layer meeting record.
 
     Returns:
-        Response DTO with per-participant token usage and duration.
+        Response DTO with per-participant token usage (sum of input +
+        output tokens across all contributions), contribution ranking
+        by total tokens descending, and duration (when minutes are
+        present).
     """
     usage: dict[str, int] = {}
     rank: tuple[str, ...] = ()
@@ -164,6 +172,11 @@ class MeetingController(Controller):
             Paginated meeting records with analytics fields.
         """
         if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="meeting_type",
+                max_length=QUERY_MAX_LENGTH,
+            )
             msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
             raise ApiValidationError(msg)
 
@@ -236,4 +249,9 @@ class MeetingController(Controller):
             context=data.context,
         )
         enriched = tuple(_to_meeting_response(r) for r in records)
+        logger.info(
+            API_MEETING_TRIGGERED,
+            event_name=data.event_name,
+            meetings_triggered=len(records),
+        )
         return ApiResponse(data=enriched)

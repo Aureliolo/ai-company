@@ -1,5 +1,6 @@
 """Budget controller -- read-only access to cost data."""
 
+import math
 from collections import defaultdict
 from typing import Annotated, Self
 
@@ -21,6 +22,7 @@ from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_BUDGET_RECORDS_LISTED
 
 logger = get_logger(__name__)
 
@@ -69,11 +71,11 @@ class PeriodSummary(BaseModel):
     """Overall stats across all matching cost records.
 
     Attributes:
-        avg_cost_usd: Average cost per record (0.0 if no records).
         total_cost_usd: Sum of cost_usd across all records.
         total_input_tokens: Sum of input tokens.
         total_output_tokens: Sum of output tokens.
         record_count: Total number of records.
+        avg_cost_usd: Average cost per record (computed, 0.0 if none).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -100,6 +102,8 @@ class PeriodSummary(BaseModel):
 
 class CostRecordListResponse(BaseModel):
     """Paginated cost records with summary aggregations.
+
+    ``error`` and ``error_detail`` must both be set or both be ``None``.
 
     Attributes:
         data: Page of cost records.
@@ -159,12 +163,12 @@ def _build_summaries(
 
     by_day: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
-        by_day[r.timestamp.strftime("%Y-%m-%d")].append(r)
+        by_day[r.timestamp.date().isoformat()].append(r)
 
     daily = tuple(
         DailySummary(
             date=date,
-            total_cost_usd=sum(r.cost_usd for r in day_records),
+            total_cost_usd=math.fsum(r.cost_usd for r in day_records),
             total_input_tokens=sum(r.input_tokens for r in day_records),
             total_output_tokens=sum(r.output_tokens for r in day_records),
             record_count=len(day_records),
@@ -173,7 +177,7 @@ def _build_summaries(
     )
 
     period = PeriodSummary(
-        total_cost_usd=sum(r.cost_usd for r in records),
+        total_cost_usd=math.fsum(r.cost_usd for r in records),
         total_input_tokens=sum(r.input_tokens for r in records),
         total_output_tokens=sum(r.output_tokens for r in records),
         record_count=len(records),
@@ -236,6 +240,12 @@ class BudgetController(Controller):
             task_id=task_id,
         )
         daily, period = _build_summaries(records)
+        logger.debug(
+            API_BUDGET_RECORDS_LISTED,
+            agent_id=agent_id,
+            task_id=task_id,
+            record_count=len(records),
+        )
         page, meta = paginate(records, offset=offset, limit=limit)
         return CostRecordListResponse(
             data=page,

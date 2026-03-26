@@ -5,6 +5,7 @@ import type {
   BudgetConfig,
   CostRecord,
   DailySummary,
+  ErrorDetail,
   PaginationParams,
   PeriodSummary,
 } from '../types'
@@ -23,6 +24,7 @@ interface CostRecordListResponseBody {
   success: boolean
   data: CostRecord[]
   error?: string
+  error_detail?: ErrorDetail | null
   pagination: { total: number; offset: number; limit: number }
   daily_summary: DailySummary[]
   period_summary: PeriodSummary
@@ -34,7 +36,7 @@ export async function listCostRecords(
   const response = await apiClient.get<CostRecordListResponseBody>('/budget/records', { params })
   const body = response.data
   if (!body?.success) {
-    throw new ApiRequestError(body?.error ?? 'Unknown API error')
+    throw new ApiRequestError(body?.error ?? 'Unknown API error', body?.error_detail ?? null)
   }
   return {
     data: body.data,

@@ -128,6 +128,8 @@ class TestBudgetSummaries:
         dates = [d["date"] for d in daily]
         assert "2026-03-01" in dates
         assert "2026-03-02" in dates
+        # Verify chronological sort order
+        assert dates == sorted(dates)
         # Day 1 has 2 records with known aggregates
         day1 = next(d for d in daily if d["date"] == "2026-03-01")
         assert day1["record_count"] == 2
@@ -199,3 +201,140 @@ class TestBudgetSummaries:
         assert len(body["data"]) == 1
         assert body["period_summary"]["record_count"] == 3
         assert body["period_summary"]["total_cost_usd"] == pytest.approx(0.30)
+
+    async def test_summaries_respect_agent_filter(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        for agent in ("alice", "alice", "bob"):
+            await cost_tracker.record(
+                CostRecord(
+                    agent_id=agent,
+                    task_id="task-1",
+                    provider="test-provider",
+                    model="test-model-001",
+                    input_tokens=100,
+                    output_tokens=50,
+                    cost_usd=0.10,
+                    timestamp=datetime(2026, 3, 1, tzinfo=UTC),
+                ),
+            )
+        resp = test_client.get(
+            "/api/v1/budget/records",
+            params={"agent_id": "alice", "limit": 1},
+            headers=_HEADERS,
+        )
+        body = resp.json()
+        # Page has 1 record, summaries cover 2 (alice only, not bob)
+        assert len(body["data"]) == 1
+        assert body["period_summary"]["record_count"] == 2
+        assert body["period_summary"]["total_cost_usd"] == pytest.approx(0.20)
+
+
+@pytest.mark.unit
+class TestCostRecordListResponseValidator:
+    """Tests for CostRecordListResponse error/error_detail consistency."""
+
+    def test_error_without_error_detail_raises(self) -> None:
+        from synthorg.api.controllers.budget import (
+            CostRecordListResponse,
+            PeriodSummary,
+        )
+        from synthorg.api.dto import PaginationMeta
+
+        msg = "error must be accompanied by error_detail"
+        with pytest.raises(ValueError, match=msg):
+            CostRecordListResponse(
+                error="something went wrong",
+                pagination=PaginationMeta(total=0, offset=0, limit=50),
+                period_summary=PeriodSummary(
+                    total_cost_usd=0.0,
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    record_count=0,
+                ),
+            )
+
+    def test_error_detail_without_error_raises(self) -> None:
+        from synthorg.api.controllers.budget import (
+            CostRecordListResponse,
+            PeriodSummary,
+        )
+        from synthorg.api.dto import ErrorDetail, PaginationMeta
+        from synthorg.api.errors import ErrorCategory, ErrorCode
+
+        detail = ErrorDetail(
+            detail="test detail",
+            error_code=ErrorCode.VALIDATION_ERROR,
+            error_category=ErrorCategory.VALIDATION,
+            instance="req-001",
+            title="Test",
+            type="about:blank",
+        )
+        msg = "error_detail requires error to be set"
+        with pytest.raises(ValueError, match=msg):
+            CostRecordListResponse(
+                error_detail=detail,
+                pagination=PaginationMeta(
+                    total=0,
+                    offset=0,
+                    limit=50,
+                ),
+                period_summary=PeriodSummary(
+                    total_cost_usd=0.0,
+                    total_input_tokens=0,
+                    total_output_tokens=0,
+                    record_count=0,
+                ),
+            )
+
+    def test_both_error_and_detail_accepted(self) -> None:
+        from synthorg.api.controllers.budget import (
+            CostRecordListResponse,
+            PeriodSummary,
+        )
+        from synthorg.api.dto import ErrorDetail, PaginationMeta
+        from synthorg.api.errors import ErrorCategory, ErrorCode
+
+        resp = CostRecordListResponse(
+            error="bad request",
+            error_detail=ErrorDetail(
+                detail="bad request detail",
+                error_code=ErrorCode.VALIDATION_ERROR,
+                error_category=ErrorCategory.VALIDATION,
+                instance="req-002",
+                title="Bad Request",
+                type="about:blank",
+            ),
+            pagination=PaginationMeta(
+                total=0,
+                offset=0,
+                limit=50,
+            ),
+            period_summary=PeriodSummary(
+                total_cost_usd=0.0,
+                total_input_tokens=0,
+                total_output_tokens=0,
+                record_count=0,
+            ),
+        )
+        assert resp.success is False
+
+    def test_success_true_when_no_error(self) -> None:
+        from synthorg.api.controllers.budget import (
+            CostRecordListResponse,
+            PeriodSummary,
+        )
+        from synthorg.api.dto import PaginationMeta
+
+        resp = CostRecordListResponse(
+            pagination=PaginationMeta(total=0, offset=0, limit=50),
+            period_summary=PeriodSummary(
+                total_cost_usd=0.0,
+                total_input_tokens=0,
+                total_output_tokens=0,
+                record_count=0,
+            ),
+        )
+        assert resp.success is True

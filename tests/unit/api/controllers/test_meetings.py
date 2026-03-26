@@ -30,6 +30,42 @@ from tests.unit.api.conftest import (
 )
 
 
+def _create_meeting_test_app(
+    *,
+    meeting_orchestrator: MagicMock,
+    meeting_scheduler: MagicMock,
+) -> Any:
+    """Build a Litestar test app with the given meeting services."""
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.auth.config import AuthConfig
+    from synthorg.api.auth.service import AuthService
+    from synthorg.budget.tracker import CostTracker
+    from synthorg.config.schema import RootConfig
+
+    persistence = FakePersistenceBackend()
+    bus = FakeMessageBus()
+    auth_service = AuthService(
+        AuthConfig(
+            jwt_secret="test-secret-that-is-at-least-32-characters-long",
+        ),
+    )
+
+    from tests.unit.api.conftest import _seed_test_users
+
+    _seed_test_users(persistence, auth_service)
+
+    return create_app(
+        config=RootConfig(company_name="test-company"),
+        persistence=persistence,
+        message_bus=bus,
+        cost_tracker=CostTracker(),
+        approval_store=ApprovalStore(),
+        auth_service=auth_service,
+        meeting_orchestrator=meeting_orchestrator,
+        meeting_scheduler=meeting_scheduler,
+    )
+
+
 def _make_minutes(
     meeting_id: str = "mtg-abc123",
     *,
@@ -155,32 +191,7 @@ def meeting_client(
     mock_scheduler: MagicMock,
 ) -> Iterator[TestClient[Any]]:
     """Test client with meeting orchestrator and scheduler configured."""
-    from synthorg.api.approval_store import ApprovalStore
-    from synthorg.api.auth.service import AuthService
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-
-    persistence = FakePersistenceBackend()
-    bus = FakeMessageBus()
-    auth_service = AuthService(
-        __import__(
-            "synthorg.api.auth.config",
-            fromlist=["AuthConfig"],
-        ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long"),
-    )
-
-    # Seed test users so JWT validation succeeds.
-    from tests.unit.api.conftest import _seed_test_users
-
-    _seed_test_users(persistence, auth_service)
-
-    app = create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=persistence,
-        message_bus=bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
+    app = _create_meeting_test_app(
         meeting_orchestrator=mock_orchestrator,
         meeting_scheduler=mock_scheduler,
     )
@@ -325,33 +336,7 @@ def analytics_client(
     mock_scheduler: MagicMock,
 ) -> Iterator[TestClient[Any]]:
     """Test client with meeting records that include contributions."""
-    from synthorg.api.approval_store import ApprovalStore
-    from synthorg.api.auth.service import AuthService
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.config.schema import RootConfig
-
-    persistence = FakePersistenceBackend()
-    bus = FakeMessageBus()
-    auth_service = AuthService(
-        __import__(
-            "synthorg.api.auth.config",
-            fromlist=["AuthConfig"],
-        ).AuthConfig(
-            jwt_secret="test-secret-that-is-at-least-32-characters-long",
-        ),
-    )
-
-    from tests.unit.api.conftest import _seed_test_users
-
-    _seed_test_users(persistence, auth_service)
-
-    app = create_app(
-        config=RootConfig(company_name="test-company"),
-        persistence=persistence,
-        message_bus=bus,
-        cost_tracker=CostTracker(),
-        approval_store=ApprovalStore(),
-        auth_service=auth_service,
+    app = _create_meeting_test_app(
         meeting_orchestrator=mock_orchestrator_with_contributions,
         meeting_scheduler=mock_scheduler,
     )
@@ -521,17 +506,18 @@ class TestTriggerMeetingRequestValidation:
 def _create_app_without_explicit_meetings() -> Any:
     """Create app without explicit meeting services (auto-wired)."""
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.api.auth.config import AuthConfig
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
 
     persistence = FakePersistenceBackend()
     bus = FakeMessageBus()
-    auth_config = __import__(
-        "synthorg.api.auth.config",
-        fromlist=["AuthConfig"],
-    ).AuthConfig(jwt_secret="test-secret-that-is-at-least-32-characters-long")
-    auth_service = AuthService(auth_config)
+    auth_service = AuthService(
+        AuthConfig(
+            jwt_secret="test-secret-that-is-at-least-32-characters-long",
+        ),
+    )
 
     from tests.unit.api.conftest import _seed_test_users
 
