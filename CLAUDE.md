@@ -140,6 +140,61 @@ cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
 site/             # Astro landing page (synthorg.io)
 ```
 
+## Web Dashboard Design System (MANDATORY)
+
+### Component Reuse
+
+**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. These are the shared building blocks -- every page composes from them:
+
+| Component | Import | Use for |
+|-----------|--------|---------|
+| `StatusBadge` | `@/components/ui/status-badge` | Agent/task/system status indicators (colored dot + optional label) |
+| `MetricCard` | `@/components/ui/metric-card` | Numeric KPIs with sparkline, change badge, progress bar |
+| `Sparkline` | `@/components/ui/sparkline` | Inline SVG trend lines (used inside MetricCard or standalone) |
+| `SectionCard` | `@/components/ui/section-card` | Titled card wrapper with icon and action slot |
+| `AgentCard` | `@/components/ui/agent-card` | Agent display: avatar, name, role, status, current task |
+| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department health: animated fill bar + percentage + counts |
+| `ProgressGauge` | `@/components/ui/progress-gauge` | Circular gauge for budget/utilization (0-100%) |
+| `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
+| `Avatar` | `@/components/ui/avatar` | Circular initials avatar with department-colored border |
+| `Button` | `@/components/ui/button` | Standard button (shadcn) |
+
+### Design Token Rules
+
+- **Colors**: use Tailwind semantic classes (`text-foreground`, `bg-card`, `text-accent`, `text-success`, `bg-danger`, etc.) or CSS variables (`var(--so-accent)`). NEVER hardcode hex values in `.tsx`/`.ts` files.
+- **Typography**: use `font-sans` or `font-mono` (maps to Geist tokens). NEVER set `fontFamily` directly.
+- **Spacing**: use density-aware tokens (`p-card`, `gap-section-gap`, `gap-grid-gap`) or standard Tailwind spacing. NEVER hardcode pixel values for layout spacing.
+- **Shadows/Borders**: use token variables (`var(--so-shadow-card-hover)`, `border-border`, `border-bright`).
+
+### Creating New Components
+
+When a new shared component is needed (not covered by the inventory above):
+1. Place it in `web/src/components/ui/` with a descriptive kebab-case filename
+2. Create a `.stories.tsx` file alongside it with all states (default, hover, loading, error, empty)
+3. Export props as a TypeScript interface
+4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
+5. Import `cn` from `@/lib/utils` for conditional class merging
+
+### What NOT to Do
+
+- **Do NOT** recreate status dots inline -- use `<StatusBadge>`
+- **Do NOT** build card-with-header layouts from scratch -- use `<SectionCard>`
+- **Do NOT** create metric displays with `text-metric font-bold` -- use `<MetricCard>`
+- **Do NOT** render initials circles manually -- use `<Avatar>`
+- **Do NOT** create complex (>8 line) JSX inside `.map()` -- extract to a shared component
+- **Do NOT** use `rgba()` with hardcoded values -- use design token variables
+
+### Enforcement
+
+A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on every Edit/Write to `web/src/` files. It catches:
+- Hardcoded hex colors and rgba values
+- Hardcoded font-family declarations
+- New components without Storybook stories
+- Duplicate patterns that should use existing shared components
+- Complex `.map()` blocks that should be extracted
+
+Fix all violations before proceeding -- do not suppress or ignore hook output.
+
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`.

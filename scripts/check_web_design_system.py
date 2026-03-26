@@ -1,0 +1,438 @@
+"""Design system validation for web dashboard files.
+
+Checks web/src/ files for design system violations and proposes shared
+building blocks when duplicate patterns are detected. Runs as a
+PostToolUse hook on Edit/Write operations targeting web/src/ files.
+
+When invoked as a hook, reads JSON from stdin with the tool input.
+Also supports direct CLI invocation for testing.
+
+Exit codes:
+    0 -- no issues found (or file not in web/src/)
+    1 -- violations found (prints warnings to stdout)
+
+Usage (hook mode -- reads JSON from stdin):
+    echo '{"tool_input":{"file_path":"web/src/pages/Foo.tsx"}}' |
+        python scripts/check_web_design_system.py
+
+Usage (CLI mode -- for testing):
+    python scripts/check_web_design_system.py <file_path> [--project-root <root>]
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+# ── Thresholds ────────────────────────────────────────────────────────
+_SHORT_HEX_LEN = 4  # #abc (3 digits + hash)
+_MIN_PATH_DEPTH = 2  # web/<something>
+_MAP_BLOCK_COMPLEXITY = 8  # lines in .map() before suggesting extraction
+_REPEATED_PATTERN_MIN = 3  # icon+text rows before suggesting DataRow
+
+# ── Allowed raw hex values ────────────────────────────────────────────
+# These appear in design-tokens.css and are the canonical definitions.
+# Any OTHER hex color in a .tsx/.ts/.css file is a violation.
+ALLOWED_HEX_COLORS: set[str] = {
+    "#38bdf8",
+    "#0ea5e9",  # accent, accent-dim
+    "#10b981",  # success
+    "#f59e0b",  # warning
+    "#ef4444",  # danger
+    "#e2e8f0",
+    "#94a3b8",
+    "#8b95a5",  # text-primary, text-secondary, text-muted
+    "#0a0a12",
+    "#0f0f1a",
+    "#13131f",
+    "#181828",  # bg-base, bg-surface, bg-card, bg-card-hover
+    "#1e1e2e",
+    "#2a2a3e",  # border, border-bright
+}
+
+# ── Patterns that should use design tokens ────────────────────────────
+HARDCODED_COLOR_RE = re.compile(
+    r"""(?x)
+    (?:
+        # Tailwind arbitrary color values: text-[#abc], bg-[#abc123]
+        (?:text|bg|border|fill|stroke|ring|shadow|outline|from|to|via)
+        -\[(?P<tw_hex>\#[0-9a-fA-F]{3,8})\]
+    )
+    |
+    (?:
+        # CSS color properties with hex values
+        (?:color|background(?:-color)?|border(?:-color)?|fill|stroke|outline-color)
+        \s*:\s*(?P<css_hex>\#[0-9a-fA-F]{3,8})
+    )
+    |
+    (?:
+        # Inline style hex colors in JSX: style={{ color: '#abc' }}
+        (?:color|backgroundColor|borderColor|fill|stroke)
+        \s*:\s*['"](?P<jsx_hex>\#[0-9a-fA-F]{3,8})['"]
+    )
+    """,
+)
+
+HARDCODED_RGBA_RE = re.compile(
+    r"(?:rgba?)\(\s*\d+\s*,\s*\d+\s*,\s*\d+",
+)
+
+HARDCODED_FONT_RE = re.compile(
+    r"""(?x)
+    font-family\s*:\s*(?!var\()
+    |
+    fontFamily\s*:\s*['"](?!var\()
+    """,
+)
+
+# ── Files to skip ────────────────────────────────────────────────────
+_SKIP_PATHS: set[str] = {"design-tokens.css", "global.css"}
+_SKIP_DIRS: set[str] = {"__tests__", "node_modules", ".storybook"}
+_COMMENT_PREFIXES = ("//", "/*", "*")
+
+
+def _normalize_hex(h: str) -> str:
+    """Normalize hex color to lowercase 6-digit form."""
+    h = h.lower()
+    if len(h) == _SHORT_HEX_LEN:
+        return f"#{h[1] * 2}{h[2] * 2}{h[3] * 2}"
+    return h
+
+
+def _is_allowed_file(file_path: Path, project_root: Path) -> bool:
+    """Check if the file should be validated."""
+    rel = file_path.relative_to(project_root)
+    parts = rel.parts
+
+    if file_path.name in _SKIP_PATHS:
+        return False
+    if any(skip_dir in parts for skip_dir in _SKIP_DIRS):
+        return False
+    if not (len(parts) >= _MIN_PATH_DEPTH and parts[0] == "web"):
+        return False
+    return file_path.suffix in {".tsx", ".ts", ".css"}
+
+
+def _is_in_comment_context(line: str, match_start: int) -> bool:
+    """Rough heuristic: skip matches inside comments."""
+    prefix = line[:match_start]
+    if "//" in prefix:
+        comment_pos = prefix.index("//")
+        in_string = False
+        for i, ch in enumerate(prefix):
+            if ch in ("'", '"', "`") and (i == 0 or prefix[i - 1] != "\\"):
+                in_string = not in_string
+            if i == comment_pos and not in_string:
+                return True
+    return "/*" in prefix and "*/" not in prefix[prefix.index("/*") :]
+
+
+def check_hardcoded_colors(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded color values that should use design tokens."""
+    warnings: list[str] = []
+    rel_path = file_path.relative_to(project_root)
+
+    for line_num, line in enumerate(content.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(_COMMENT_PREFIXES):
+            continue
+
+        for m in HARDCODED_COLOR_RE.finditer(line):
+            hex_val = m.group("tw_hex") or m.group("css_hex") or m.group("jsx_hex")
+            if (
+                hex_val
+                and _normalize_hex(hex_val) not in ALLOWED_HEX_COLORS
+                and not _is_in_comment_context(line, m.start())
+            ):
+                warnings.append(
+                    f"  {rel_path}:{line_num}: Hardcoded color `{hex_val}` "
+                    f"-- use a design token (--so-*) or Tailwind semantic class instead.\n"
+                    f"    {stripped}"
+                )
+
+        warnings.extend(
+            f"  {rel_path}:{line_num}: Hardcoded rgba() "
+            f"-- use a design token variable instead.\n"
+            f"    {stripped}"
+            for m in HARDCODED_RGBA_RE.finditer(line)
+            if not _is_in_comment_context(line, m.start()) and "var(--" not in line
+        )
+
+    return warnings
+
+
+def check_hardcoded_fonts(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded font-family declarations."""
+    warnings: list[str] = []
+    rel_path = file_path.relative_to(project_root)
+
+    for line_num, line in enumerate(content.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(_COMMENT_PREFIXES):
+            continue
+
+        warnings.extend(
+            f"  {rel_path}:{line_num}: Hardcoded font-family "
+            f"-- use `font-sans` or `font-mono` (maps to Geist tokens).\n"
+            f"    {stripped}"
+            for m in HARDCODED_FONT_RE.finditer(line)
+            if not _is_in_comment_context(line, m.start())
+        )
+
+    return warnings
+
+
+def check_missing_story(file_path: Path, project_root: Path) -> list[str]:
+    """Check that new components in components/ui/ have a .stories.tsx file."""
+    rel_path = file_path.relative_to(project_root)
+    parts = rel_path.parts
+
+    if not (
+        "components" in parts
+        and file_path.suffix == ".tsx"
+        and ".stories." not in file_path.name
+        and file_path.name != "index.tsx"
+        and "__tests__" not in parts
+    ):
+        return []
+
+    story_path = file_path.with_suffix("").with_suffix(".stories.tsx")
+    if story_path.exists():
+        return []
+    return [
+        f"  {rel_path}: New component without Storybook story "
+        f"-- create `{story_path.name}` alongside it."
+    ]
+
+
+def _check_status_dot(content: str, content_lower: str, rel_path: Path) -> list[str]:
+    """Check for inline status dot patterns that should use StatusBadge."""
+    patterns = [
+        r"(?:size-[12]\.?5?|w-[23]|h-[23])\s+.*rounded-full.*(?:bg-success|bg-danger|bg-warning|bg-accent)",
+        r"(?:bg-success|bg-danger|bg-warning|bg-accent).*rounded-full.*(?:size-[12]\.?5?|w-[23]|h-[23])",
+    ]
+    for pattern in patterns:
+        if (
+            re.search(pattern, content)
+            and "statusbadge" not in content_lower
+            and "status-badge" not in content_lower
+        ):
+            return [
+                f"  {rel_path}: Inline status dot pattern detected "
+                f"-- use `<StatusBadge>` from `@/components/ui/status-badge` instead."
+            ]
+    return []
+
+
+def _check_avatar(content: str, content_lower: str, rel_path: Path) -> list[str]:
+    """Check for inline avatar patterns that should use Avatar."""
+    pattern = r"rounded-full.*(?:flex|inline-flex).*(?:items-center|justify-center).*(?:text-xs|text-sm|text-micro)"
+    has_avatar_import = (
+        "<Avatar" in content
+        or "from './avatar'" in content
+        or "from '@/components/ui/avatar'" in content
+    )
+    if (
+        re.search(pattern, content)
+        and not has_avatar_import
+        and ("avatar" not in content_lower or "import" not in content_lower)
+    ):
+        return [
+            f"  {rel_path}: Inline avatar/initials circle pattern detected "
+            f"-- use `<Avatar>` from `@/components/ui/avatar` instead."
+        ]
+    return []
+
+
+def _check_metric(content: str, content_lower: str, rel_path: Path) -> list[str]:
+    """Check for inline metric patterns that should use MetricCard."""
+    patterns = [
+        r"text-metric.*font-bold.*font-mono",
+        r"font-mono.*text-metric.*font-bold",
+    ]
+    for pattern in patterns:
+        if (
+            re.search(pattern, content)
+            and "metriccard" not in content_lower
+            and "metric-card" not in content_lower
+        ):
+            return [
+                f"  {rel_path}: Inline metric display pattern detected "
+                f"-- use `<MetricCard>` from `@/components/ui/metric-card` instead."
+            ]
+    return []
+
+
+def check_duplicate_patterns(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Detect patterns that duplicate existing shared components."""
+    rel_path = file_path.relative_to(project_root)
+    parts = rel_path.parts
+
+    if "components" in parts and "ui" in parts:
+        return []
+
+    content_lower = content.lower()
+    warnings: list[str] = []
+
+    warnings.extend(_check_status_dot(content, content_lower, rel_path))
+    warnings.extend(_check_avatar(content, content_lower, rel_path))
+    warnings.extend(_check_metric(content, content_lower, rel_path))
+
+    # Check for card patterns that should use SectionCard
+    if (
+        "border border-border bg-card" in content
+        and "border-b border-border" in content
+        and "SectionCard" not in content
+        and "section-card" not in content
+        and file_path.name
+        not in {"section-card.tsx", "metric-card.tsx", "agent-card.tsx"}
+    ):
+        warnings.append(
+            f"  {rel_path}: Card-with-header pattern detected "
+            f"-- use `<SectionCard>` from `@/components/ui/section-card` instead."
+        )
+
+    return warnings
+
+
+def propose_shared_components(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Propose new shared building blocks when repeated patterns are found."""
+    rel_path = file_path.relative_to(project_root)
+    parts = rel_path.parts
+
+    if "components" in parts and "ui" in parts:
+        return []
+
+    proposals: list[str] = []
+
+    # Detect complex list items in .map() that should be extracted
+    map_blocks = re.findall(
+        r"\.map\(\s*\([^)]*\)\s*=>\s*\(([\s\S]*?)\)\s*\)",
+        content,
+    )
+    for block in map_blocks:
+        line_count = block.count("\n")
+        if line_count > _MAP_BLOCK_COMPLEXITY and (
+            ("className" in block and "border" in block) or "rounded" in block
+        ):
+            proposals.append(
+                f"  {rel_path}: Complex list item ({line_count} lines) in .map() "
+                f"-- consider extracting to a shared component in "
+                f"`web/src/components/ui/` with a Storybook story."
+            )
+
+    # Detect repeated icon+text row layouts
+    icon_label_value = re.findall(
+        r'<(?:div|span)[^>]*className="[^"]*(?:flex|inline-flex)[^"]*items-center[^"]*gap[^"]*"[^>]*>'
+        r"[\s\S]*?<(?:Icon|Lucide|\w+Icon)",
+        content,
+    )
+    if len(icon_label_value) >= _REPEATED_PATTERN_MIN:
+        proposals.append(
+            f"  {rel_path}: {len(icon_label_value)} repeated icon+text row patterns "
+            f"-- consider a `<DataRow icon label value />` shared component."
+        )
+
+    return proposals
+
+
+def check_file(file_path: Path, project_root: Path) -> list[str]:
+    """Run all checks on a single file."""
+    if not _is_allowed_file(file_path, project_root):
+        return []
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except OSError, UnicodeDecodeError:
+        return []
+
+    all_warnings: list[str] = []
+    all_warnings.extend(check_hardcoded_colors(content, file_path, project_root))
+    all_warnings.extend(check_hardcoded_fonts(content, file_path, project_root))
+    all_warnings.extend(check_missing_story(file_path, project_root))
+    all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
+    all_warnings.extend(propose_shared_components(content, file_path, project_root))
+
+    return all_warnings
+
+
+def _resolve_project_root(file_path: Path, explicit_root: str | None) -> Path:
+    """Find the project root directory."""
+    if explicit_root:
+        return Path(explicit_root).resolve()
+    candidate = file_path.parent
+    while candidate != candidate.parent:
+        if (candidate / "pyproject.toml").exists() or (candidate / ".git").exists():
+            return candidate
+        candidate = candidate.parent
+    return Path.cwd()
+
+
+def _get_file_path_from_stdin() -> str | None:
+    """Try to read the file path from hook JSON on stdin."""
+    if sys.stdin.isatty():
+        return None
+    try:
+        data = json.load(sys.stdin)
+        return data.get("tool_input", {}).get("file_path")
+    except json.JSONDecodeError, AttributeError:
+        return None
+
+
+def main() -> int:
+    """Entry point: hook mode (stdin JSON) or CLI mode (positional arg)."""
+    stdin_path = _get_file_path_from_stdin()
+
+    if stdin_path:
+        file_path = Path(stdin_path).resolve()
+        project_root = _resolve_project_root(file_path, None)
+    else:
+        parser = argparse.ArgumentParser(
+            description="Check web design system adherence",
+        )
+        parser.add_argument("file_path", help="File to check")
+        parser.add_argument(
+            "--project-root",
+            default=None,
+            help="Project root (default: auto-detect)",
+        )
+        args = parser.parse_args()
+        file_path = Path(args.file_path).resolve()
+        project_root = _resolve_project_root(file_path, args.project_root)
+
+    warnings = check_file(file_path, project_root)
+
+    if warnings:
+        print("DESIGN SYSTEM VIOLATIONS:")
+        print()
+        for w in warnings:
+            print(w)
+        print()
+        print(
+            "Reference: CLAUDE.md 'Web Dashboard' section and "
+            "docs/design/brand-and-ux.md 'Component Inventory'."
+        )
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
