@@ -182,7 +182,7 @@ def _parse_conflicts_from_args(
             reason="invalid_conflicts_type",
             error=msg,
         )
-        raise TypeError(msg)
+        raise ValueError(msg)  # noqa: TRY004 -- must be ValueError for retry loop
 
     conflicts: list[MergeConflict] = []
     for item in raw_conflicts:
