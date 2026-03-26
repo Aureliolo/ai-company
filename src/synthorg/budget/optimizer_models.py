@@ -313,8 +313,8 @@ class ApprovalDecision(BaseModel):
     Attributes:
         approved: Whether the operation is approved.
         reason: Explanation for the decision.
-        budget_remaining_usd: Remaining budget in USD (may be negative
-            if over budget).
+        budget_remaining_usd: Remaining budget in configured currency
+            (may be negative if over budget).
         budget_used_percent: Percentage of budget consumed.
         alert_level: Current budget alert level.
         conditions: Any conditions attached to approval.
@@ -325,7 +325,9 @@ class ApprovalDecision(BaseModel):
     approved: bool = Field(description="Whether the operation is approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
     budget_remaining_usd: float = Field(
-        description="Remaining budget in USD (negative when over budget)",
+        description=(
+            "Remaining budget in configured currency (negative when over budget)"
+        ),
     )
     budget_used_percent: float = Field(
         ge=0.0,

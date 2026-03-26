@@ -37,7 +37,7 @@ class Authority(BaseModel):
         can_approve: Task types this role can approve.
         reports_to: Role this position reports to.
         can_delegate_to: Roles this position can delegate tasks to.
-        budget_limit: Maximum USD spend per task.
+        budget_limit: Maximum spend per task in configured currency.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -57,7 +57,7 @@ class Authority(BaseModel):
     budget_limit: float = Field(
         default=0.0,
         ge=0.0,
-        description="Maximum USD per task",
+        description="Maximum spend per task in configured currency",
     )
 
 

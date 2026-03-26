@@ -139,6 +139,7 @@ class ActivityController(Controller):
         else:
             sent, received = (), ()
 
+        budget_cfg = await app_state.config_resolver.get_budget_config()
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
@@ -146,6 +147,7 @@ class ActivityController(Controller):
             tool_invocations=tool_invocations,
             delegation_records_sent=sent,
             delegation_records_received=received,
+            currency=budget_cfg.currency,
         )
 
         if event_type is not None:

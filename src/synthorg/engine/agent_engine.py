@@ -9,7 +9,7 @@ import contextlib
 import time
 from typing import TYPE_CHECKING
 
-from synthorg.budget.currency import get_currency_symbol
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
 from synthorg.engine._security_factory import (
@@ -768,17 +768,17 @@ class AgentEngine:
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""
         tool_defs = tool_invoker.get_permitted_definitions() if tool_invoker else ()
-        cur_symbol = (
-            get_currency_symbol(self._budget_enforcer.currency)
+        cur_code = (
+            self._budget_enforcer.currency
             if self._budget_enforcer is not None
-            else "$"
+            else DEFAULT_CURRENCY
         )
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
             available_tools=tool_defs,
             effective_autonomy=effective_autonomy,
-            currency_symbol=cur_symbol,
+            currency=cur_code,
         )
 
         ctx = AgentContext.from_identity(
@@ -794,7 +794,7 @@ class AgentEngine:
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
-                content=format_task_instruction(task, currency_symbol=cur_symbol),
+                content=format_task_instruction(task, currency=cur_code),
             ),
         )
 

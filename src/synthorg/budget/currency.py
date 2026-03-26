@@ -9,38 +9,44 @@ remains in a single base currency; see the ``budget.currency`` setting
 for the configured display currency.
 """
 
+from types import MappingProxyType
 from typing import Final
 
-CURRENCY_SYMBOLS: Final[dict[str, str]] = {
-    "AUD": "A$",
-    "BRL": "R$",
-    "CAD": "CA$",
-    "CHF": "CHF",
-    "CNY": "\u00a5",
-    "CZK": "K\u010d",
-    "DKK": "kr",
-    "EUR": "\u20ac",
-    "GBP": "\u00a3",
-    "HKD": "HK$",
-    "HUF": "Ft",
-    "IDR": "Rp",
-    "ILS": "\u20aa",
-    "INR": "\u20b9",
-    "JPY": "\u00a5",
-    "KRW": "\u20a9",
-    "MXN": "MX$",
-    "NOK": "kr",
-    "NZD": "NZ$",
-    "PLN": "z\u0142",
-    "SEK": "kr",
-    "SGD": "S$",
-    "THB": "\u0e3f",
-    "TRY": "\u20ba",
-    "TWD": "NT$",
-    "USD": "$",
-    "VND": "\u20ab",
-    "ZAR": "R",
-}
+DEFAULT_CURRENCY: Final[str] = "EUR"
+"""Default ISO 4217 currency code used across the system."""
+
+CURRENCY_SYMBOLS: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        "AUD": "A$",
+        "BRL": "R$",
+        "CAD": "CA$",
+        "CHF": "CHF",
+        "CNY": "\u00a5",
+        "CZK": "K\u010d",
+        "DKK": "kr",
+        "EUR": "\u20ac",
+        "GBP": "\u00a3",
+        "HKD": "HK$",
+        "HUF": "Ft",
+        "IDR": "Rp",
+        "ILS": "\u20aa",
+        "INR": "\u20b9",
+        "JPY": "\u00a5",
+        "KRW": "\u20a9",
+        "MXN": "MX$",
+        "NOK": "kr",
+        "NZD": "NZ$",
+        "PLN": "z\u0142",
+        "SEK": "kr",
+        "SGD": "S$",
+        "THB": "\u0e3f",
+        "TRY": "\u20ba",
+        "TWD": "NT$",
+        "USD": "$",
+        "VND": "\u20ab",
+        "ZAR": "R",
+    }
+)
 """Mapping of common ISO 4217 currency codes to display symbols."""
 
 ZERO_DECIMAL_CURRENCIES: Final[frozenset[str]] = frozenset(
@@ -85,7 +91,7 @@ def get_currency_symbol(code: str) -> str:
 
 def format_cost(
     value: float,
-    currency: str = "EUR",
+    currency: str = DEFAULT_CURRENCY,
     *,
     precision: int | None = None,
 ) -> str:
@@ -108,10 +114,11 @@ def format_cost(
     if precision is None:
         precision = 0 if currency in ZERO_DECIMAL_CURRENCIES else 2
     symbol = get_currency_symbol(currency)
-    return f"{symbol}{value:,.{precision}f}"
+    sign = "-" if value < 0 else ""
+    return f"{sign}{symbol}{abs(value):,.{precision}f}"
 
 
-def format_cost_detail(value: float, currency: str = "EUR") -> str:
+def format_cost_detail(value: float, currency: str = DEFAULT_CURRENCY) -> str:
     """Format a cost value with 4-decimal precision for detail views.
 
     Used in activity feeds and line-item displays where sub-cent

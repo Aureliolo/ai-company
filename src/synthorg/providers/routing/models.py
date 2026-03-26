@@ -13,8 +13,8 @@ class ResolvedModel(BaseModel):
         provider_name: Provider that owns this model (e.g. ``"acme-provider"``).
         model_id: Concrete model identifier (e.g. ``"acme-large-001"``).
         alias: Short alias used in routing rules, if any.
-        cost_per_1k_input: Cost per 1 000 input tokens in USD.
-        cost_per_1k_output: Cost per 1 000 output tokens in USD.
+        cost_per_1k_input: Cost per 1 000 input tokens.
+        cost_per_1k_output: Cost per 1 000 output tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
     """
@@ -27,12 +27,12 @@ class ResolvedModel(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens in USD",
+        description="Cost per 1k input tokens",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens in USD",
+        description="Cost per 1k output tokens",
     )
     max_context: int = Field(
         default=200_000,
@@ -67,7 +67,7 @@ class RoutingRequest(BaseModel):
         agent_level: Seniority level of the requesting agent.
         task_type: Task type label (e.g. ``"development"``).
         model_override: Explicit model reference for manual routing.
-        remaining_budget: Per-request cost ceiling in USD.  Compared against
+        remaining_budget: Per-request cost ceiling.  Compared against
             each model's ``total_cost_per_1k`` (i.e.
             ``cost_per_1k_input + cost_per_1k_output``) to filter
             models that exceed this threshold.  This is **not** a

@@ -336,9 +336,9 @@ class BaseCompletionProvider(ABC):
         Args:
             input_tokens: Number of input tokens (must be >= 0).
             output_tokens: Number of output tokens (must be >= 0).
-            cost_per_1k_input: Cost per 1 000 input tokens in USD
+            cost_per_1k_input: Cost per 1 000 input tokens
                 (finite and >= 0).
-            cost_per_1k_output: Cost per 1 000 output tokens in USD
+            cost_per_1k_output: Cost per 1 000 output tokens
                 (finite and >= 0).
 
         Returns:

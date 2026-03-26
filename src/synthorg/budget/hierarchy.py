@@ -99,7 +99,7 @@ class BudgetHierarchy(BaseModel):
     reserve at the company level.
 
     Attributes:
-        total_monthly: Total company monthly budget in USD.
+        total_monthly: Total company monthly budget in configured currency.
         departments: Department budget allocations.
     """
 
@@ -107,7 +107,7 @@ class BudgetHierarchy(BaseModel):
 
     total_monthly: float = Field(
         ge=0.0,
-        description="Total company monthly budget in USD",
+        description="Total company monthly budget in configured currency",
     )
     departments: tuple[DepartmentBudget, ...] = Field(
         default=(),

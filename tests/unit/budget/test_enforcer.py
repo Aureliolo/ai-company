@@ -150,6 +150,30 @@ def _patch_periods() -> Iterator[None]:
         yield
 
 
+# ── Currency property ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCurrencyProperty:
+    """Tests for BudgetEnforcer.currency property."""
+
+    def test_returns_configured_currency(self) -> None:
+        cfg = _make_budget_config(total_monthly=100.0)
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=CostTracker(budget_config=cfg),
+        )
+        assert enforcer.currency == "EUR"
+
+    def test_returns_custom_currency(self) -> None:
+        cfg = BudgetConfig(currency="GBP")
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=CostTracker(budget_config=cfg),
+        )
+        assert enforcer.currency == "GBP"
+
+
 # ── Pre-flight checks ───────────────────────────────────────────────
 
 
@@ -199,6 +223,31 @@ class TestCheckCanExecute:
                 BudgetExhaustedError,
                 match="Monthly budget exhausted",
             ),
+        ):
+            await enforcer.check_can_execute("alice")
+
+    async def test_error_message_includes_currency_symbol(self) -> None:
+        """BudgetExhaustedError uses the configured currency symbol."""
+        cfg = BudgetConfig(
+            total_monthly=100.0,
+            per_task_limit=100.0,
+            per_agent_daily_limit=100.0,
+            currency="GBP",
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                cost_usd=100.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with (
+            _patch_periods(),
+            pytest.raises(BudgetExhaustedError, match="\u00a3"),
         ):
             await enforcer.check_can_execute("alice")
 

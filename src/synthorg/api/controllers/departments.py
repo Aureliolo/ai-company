@@ -51,6 +51,7 @@ class DepartmentHealth(BaseModel):
         collaboration_score: Mean collaboration score across agents.
         utilization_percent: Derived (computed_field) from
             active_agent_count / agent_count.
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -58,6 +59,7 @@ class DepartmentHealth(BaseModel):
     department_name: NotBlankStr = Field(description="Department name")
     agent_count: int = Field(ge=0, description="Total agents")
     active_agent_count: int = Field(ge=0, description="Active agents")
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
     avg_performance_score: float | None = Field(
         default=None,
         ge=0.0,
@@ -252,6 +254,8 @@ def _build_degraded_health(
     dept_name: str,
     agent_count: int,
     now: datetime,
+    *,
+    currency: str = "EUR",
 ) -> DepartmentHealth:
     """Build a minimal DepartmentHealth for when queries fail."""
     return DepartmentHealth(
@@ -265,6 +269,7 @@ def _build_degraded_health(
             now,
             BucketSize.DAY,
         ),
+        currency=currency,
     )
 
 
@@ -276,6 +281,8 @@ def _build_health_from_data(  # noqa: PLR0913
     agent_ids: tuple[str, ...],
     snapshots: tuple[AgentPerformanceSnapshot, ...],
     now: datetime,
+    *,
+    currency: str = "EUR",
 ) -> DepartmentHealth:
     """Build DepartmentHealth from resolved query results."""
     agent_id_set = frozenset(agent_ids)
@@ -296,6 +303,7 @@ def _build_health_from_data(  # noqa: PLR0913
         collaboration_score=_mean_optional(
             [s.overall_collaboration_score for s in snapshots],
         ),
+        currency=currency,
     )
 
 

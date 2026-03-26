@@ -25,6 +25,7 @@ from synthorg.budget._optimizer_helpers import (
     _group_records_by_agent,
 )
 from synthorg.budget.billing import billing_period_start
+from synthorg.budget.currency import format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
     AnomalyDetectionResult,
@@ -189,6 +190,7 @@ class CostOptimizer:
                 window_starts,
                 window_duration,
                 self._config,
+                currency=self._budget_config.currency,
             )
             if anomaly is not None:
                 logger.warning(
@@ -696,8 +698,10 @@ class CostOptimizer:
             return ApprovalDecision(
                 approved=False,
                 reason=(
-                    f"Denied: projected cost ${projected_cost:.2f} "
-                    f"would exceed hard stop ${hard_stop_limit:.2f}"
+                    f"Denied: projected cost "
+                    f"{format_cost(projected_cost, self._budget_config.currency)} "
+                    f"would exceed hard stop "
+                    f"{format_cost(hard_stop_limit, self._budget_config.currency)}"
                 ),
                 budget_remaining_usd=remaining,
                 budget_used_percent=used_pct,
@@ -719,8 +723,10 @@ class CostOptimizer:
         warn_threshold = self._config.approval_warn_threshold_usd
         if estimated_cost_usd >= warn_threshold:
             conditions.append(
-                f"High-cost operation: ${estimated_cost_usd:.2f} "
-                f"(threshold: ${warn_threshold:.2f})"
+                f"High-cost operation: "
+                f"{format_cost(estimated_cost_usd, self._budget_config.currency)} "
+                f"(threshold: "
+                f"{format_cost(warn_threshold, self._budget_config.currency)})"
             )
 
         if projected_alert in (BudgetAlertLevel.WARNING, BudgetAlertLevel.CRITICAL):

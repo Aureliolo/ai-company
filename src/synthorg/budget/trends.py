@@ -71,7 +71,8 @@ class ForecastPoint(BaseModel):
 
     Attributes:
         day: Calendar date.
-        projected_spend_usd: Projected cumulative spend for this day.
+        projected_spend_usd: Projected cumulative spend for this day
+            in configured currency.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -79,7 +80,7 @@ class ForecastPoint(BaseModel):
     day: date = Field(description="Calendar date")
     projected_spend_usd: float = Field(
         ge=0.0,
-        description="Projected cumulative spend in USD",
+        description="Projected cumulative spend in configured currency",
     )
 
 
@@ -374,7 +375,7 @@ def _build_projections(
     """Build cumulative daily projection points.
 
     Args:
-        avg_daily: Average daily spend in USD.
+        avg_daily: Average daily spend in configured currency.
         horizon_days: Number of days to project.
         today: Reference date for projection start.
 

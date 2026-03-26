@@ -391,6 +391,7 @@ export interface DailySummary {
   total_input_tokens: number
   total_output_tokens: number
   record_count: number
+  currency: string
 }
 
 export interface PeriodSummary {
@@ -399,6 +400,7 @@ export interface PeriodSummary {
   total_input_tokens: number
   total_output_tokens: number
   record_count: number
+  currency: string
 }
 
 export interface BudgetAlertConfig {
@@ -421,11 +423,13 @@ export interface BudgetConfig {
   per_agent_daily_limit: number
   auto_downgrade: AutoDowngradeConfig
   reset_day: number
+  currency: string
 }
 
 export interface AgentSpending {
   agent_id: string
   total_cost_usd: number
+  currency: string
 }
 
 // ── Analytics ────────────────────────────────────────────────
@@ -440,6 +444,7 @@ export interface OverviewMetrics {
   cost_7d_trend: readonly TrendDataPoint[]
   active_agents_count: number
   idle_agents_count: number
+  currency: string
 }
 
 export type TrendPeriod = '7d' | '30d' | '90d'

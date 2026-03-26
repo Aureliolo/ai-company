@@ -78,7 +78,7 @@ class TestFormatCost:
 
     def test_negative_value(self) -> None:
         result = format_cost(-10.50, "USD")
-        assert result == "$-10.50"
+        assert result == "-$10.50"
 
     def test_vnd_zero_decimal(self) -> None:
         assert format_cost(500000.0, "VND") == "\u20ab500,000"

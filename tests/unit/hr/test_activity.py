@@ -209,6 +209,28 @@ class TestMergeActivityTimeline:
         assert "succeeded" in timeline[1].description
         assert "\u20ac" in timeline[1].description
 
+    def test_currency_passed_to_task_metric_descriptions(self) -> None:
+        task = _make_task_metric(task_id="task-usd", cost_usd=1.5)
+        timeline = merge_activity_timeline(
+            lifecycle_events=(),
+            task_metrics=(task,),
+            currency="USD",
+        )
+        completed = [e for e in timeline if e.event_type == "task_completed"]
+        assert len(completed) == 1
+        assert "$" in completed[0].description
+
+    def test_currency_passed_to_cost_record_descriptions(self) -> None:
+        cost = _make_cost_record(cost_usd=0.05)
+        timeline = merge_activity_timeline(
+            lifecycle_events=(),
+            task_metrics=(),
+            cost_records=(cost,),
+            currency="GBP",
+        )
+        assert len(timeline) == 1
+        assert "\u00a3" in timeline[0].description
+
     def test_identical_timestamps_stable_sort(self) -> None:
         ts = _NOW - timedelta(days=1)
         hired = _make_lifecycle_event(

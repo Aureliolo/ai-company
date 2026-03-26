@@ -313,7 +313,7 @@ class CompanyTemplate(BaseModel):
         departments: Template department definitions.
         workflow: Workflow name.
         communication: Communication pattern name.
-        budget_monthly: Default monthly budget in USD.
+        budget_monthly: Default monthly budget in configured currency.
         autonomy: Autonomy configuration dict (e.g. ``{"level": "semi"}``).
         workflow_handoffs: Cross-department workflow handoff definitions.
         escalation_paths: Cross-department escalation path definitions.
@@ -346,7 +346,7 @@ class CompanyTemplate(BaseModel):
     budget_monthly: float = Field(
         default=50.0,
         ge=0.0,
-        description="Default monthly budget in USD",
+        description="Default monthly budget in configured currency",
     )
     autonomy: dict[str, Any] = Field(
         default_factory=lambda: {"level": "semi"},

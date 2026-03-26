@@ -10,6 +10,7 @@ import statistics
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from synthorg.budget.currency import format_cost
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.optimizer_models import (
     AgentEfficiency,
@@ -114,6 +115,8 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     window_starts: tuple[datetime, ...],
     window_duration: timedelta,
     config: CostOptimizerConfig,
+    *,
+    currency: str = "EUR",
 ) -> SpendingAnomaly | None:
     """Detect a spike anomaly for a single agent.
 
@@ -143,8 +146,10 @@ def _detect_spike_anomaly(  # noqa: PLR0913
             anomaly_type=AnomalyType.SPIKE,
             severity=AnomalySeverity.HIGH,
             description=(
-                f"Agent {agent_id!r} went from $0.00 baseline "
-                f"to ${current:.2f} in the latest window"
+                f"Agent {agent_id!r} went from "
+                f"{format_cost(0.0, currency)} baseline "
+                f"to {format_cost(current, currency)} "
+                f"in the latest window"
             ),
             current_value=current,
             baseline_value=0.0,
@@ -178,8 +183,10 @@ def _detect_spike_anomaly(  # noqa: PLR0913
         anomaly_type=AnomalyType.SPIKE,
         severity=severity,
         description=(
-            f"Agent {agent_id!r} spent ${current:.2f} vs "
-            f"${mean:.2f} baseline ({effective_deviation:.1f}x)"
+            f"Agent {agent_id!r} spent "
+            f"{format_cost(current, currency)} vs "
+            f"{format_cost(mean, currency)} baseline "
+            f"({effective_deviation:.1f}x)"
         ),
         current_value=current,
         baseline_value=round(mean, BUDGET_ROUNDING_PRECISION),

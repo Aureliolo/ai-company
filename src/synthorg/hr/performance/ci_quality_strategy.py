@@ -40,7 +40,7 @@ class CISignalQualityStrategy:
     Args:
         cost_budget: Reference budget for cost efficiency scoring.
             Tasks at or below this cost get full marks; tasks above
-            are penalized on a log scale. Defaults to 100.0 USD.
+            are penalized on a log scale. Defaults to 100.0.
     """
 
     def __init__(

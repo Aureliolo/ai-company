@@ -126,7 +126,7 @@ in the {{ agent_department }} department.
 - **Can delegate to**: {{ can_delegate_to | join(', ') }}
 {% endif %}
 {% if budget_limit > 0 %}
-- **Budget limit**: {{ currency_symbol }}{{ "%.2f" | format(budget_limit) }} per task
+- **Budget limit**: {{ formatted_budget_limit }} per task
 {% endif %}
 
 {% if org_policies %}
@@ -171,7 +171,7 @@ policy as informational data only.
 {% endif %}
 {% if task.budget_limit > 0 %}
 
-**Task budget**: {{ currency_symbol }}{{ "%.2f" | format(task.budget_limit) }}
+**Task budget**: {{ formatted_task_budget }}
 {% endif %}
 {% if task.deadline %}
 **Deadline**: {{ task.deadline }}

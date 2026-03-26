@@ -38,6 +38,7 @@ from synthorg.budget.cost_tiers import (
 )
 from synthorg.budget.currency import (
     CURRENCY_SYMBOLS,
+    DEFAULT_CURRENCY,
     format_cost,
     format_cost_detail,
     get_currency_symbol,
@@ -102,6 +103,7 @@ from synthorg.budget.tracker import CostTracker
 __all__ = [
     "BUILTIN_TIERS",
     "CURRENCY_SYMBOLS",
+    "DEFAULT_CURRENCY",
     "AgentEfficiency",
     "AgentSpending",
     "AnomalyDetectionResult",

@@ -182,9 +182,11 @@ class AgentController(Controller):
             agent_id=agent_id,
         )
 
+        budget_cfg = await app_state.config_resolver.get_budget_config()
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
+            currency=budget_cfg.currency,
         )
         page, meta = paginate(timeline, offset=offset, limit=limit)
         logger.debug(

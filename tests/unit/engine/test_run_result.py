@@ -213,7 +213,7 @@ class TestFormatTaskInstruction:
         assert "JWT-based authentication" in result
         assert "## Acceptance Criteria" in result
         assert "- Login endpoint returns JWT token" in result
-        assert "$5.00" in result
+        assert "\u20ac5.00" in result
 
     def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
         result = format_task_instruction(sample_task_with_criteria)
@@ -290,8 +290,43 @@ class TestFormatTaskInstruction:
         )
         result = format_task_instruction(task)
 
-        assert "$10.00" in result
+        assert "\u20ac10.00" in result
         assert "Deadline" not in result
+
+    def test_budget_with_eur_currency(self) -> None:
+        task = Task(
+            id="task-eur",
+            title="EUR budget task",
+            description="Budget in EUR.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="someone",
+            status=TaskStatus.ASSIGNED,
+            budget_limit=10.0,
+        )
+        result = format_task_instruction(task, currency="EUR")
+
+        assert "\u20ac10.00" in result
+
+    def test_budget_with_jpy_zero_decimal(self) -> None:
+        task = Task(
+            id="task-jpy",
+            title="JPY budget task",
+            description="Budget in JPY.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="someone",
+            status=TaskStatus.ASSIGNED,
+            budget_limit=500.0,
+        )
+        result = format_task_instruction(task, currency="JPY")
+
+        assert "\u00a5500" in result
+        assert ".00" not in result
 
 
 @pytest.mark.unit

@@ -47,8 +47,8 @@ class ProviderModelConfig(BaseModel):
     Attributes:
         id: Model identifier (e.g. ``"example-medium-001"``).
         alias: Short alias for referencing this model in routing rules.
-        cost_per_1k_input: Cost per 1 000 input tokens in USD.
-        cost_per_1k_output: Cost per 1 000 output tokens in USD.
+        cost_per_1k_input: Cost per 1 000 input tokens.
+        cost_per_1k_output: Cost per 1 000 output tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
     """
@@ -63,12 +63,12 @@ class ProviderModelConfig(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens in USD",
+        description="Cost per 1k input tokens",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens in USD",
+        description="Cost per 1k output tokens",
     )
     max_context: int = Field(
         default=200_000,

@@ -65,6 +65,7 @@ class OverviewMetrics(BaseModel):
         cost_7d_trend: Daily spend sparkline for the last 7 days.
         active_agents_count: Number of active agents.
         idle_agents_count: Number of non-active agents.
+        currency: ISO 4217 currency code.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -79,8 +80,9 @@ class OverviewMetrics(BaseModel):
     )
     budget_remaining_usd: float = Field(
         ge=0.0,
-        description="Remaining budget for the current billing period",
+        description="Remaining budget in configured currency",
     )
+    currency: str = Field(default="EUR", description="ISO 4217 currency code")
     budget_used_percent: float = Field(
         ge=0.0,
         description="Percentage of monthly budget used (>100 = overrun)",
@@ -365,6 +367,7 @@ async def _assemble_overview(  # noqa: PLR0913
     counts = Counter(t.status.value for t in all_tasks)
     by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
+    budget_cfg = await app_state.config_resolver.get_budget_config()
     budget = await _resolve_budget_context(app_state, total_cost, now=now)
     # Overview sparkline uses daily buckets intentionally (not hourly
     # like /trends?period=7d) to produce a compact 7-point sparkline.
@@ -400,6 +403,7 @@ async def _assemble_overview(  # noqa: PLR0913
         cost_7d_trend=cost_7d,
         active_agents_count=active,
         idle_agents_count=idle,
+        currency=budget_cfg.currency,
     )
 
 

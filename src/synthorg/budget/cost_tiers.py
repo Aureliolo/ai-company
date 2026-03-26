@@ -28,7 +28,7 @@ class CostTierDefinition(BaseModel):
         display_name: Human-readable name.
         description: What this tier represents.
         price_range_min: Minimum cost_per_1k_total for models in this
-            tier (USD).
+            tier.
         price_range_max: Maximum cost_per_1k_total; ``None`` means
             unbounded above.
         color: Hex color for UI rendering.
@@ -47,12 +47,12 @@ class CostTierDefinition(BaseModel):
     price_range_min: float = Field(
         default=0.0,
         ge=0.0,
-        description="Minimum cost_per_1k_total (USD)",
+        description="Minimum cost_per_1k_total",
     )
     price_range_max: float | None = Field(
         default=None,
         ge=0.0,
-        description="Maximum cost_per_1k_total (USD); None = unbounded",
+        description="Maximum cost_per_1k_total; None = unbounded",
     )
     color: str = Field(
         default="#6b7280",

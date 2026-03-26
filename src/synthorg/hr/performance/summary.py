@@ -36,7 +36,7 @@ class AgentPerformanceSummary(BaseModel):
             (30d window, falling back to 7d).
         success_rate_percent: Task success rate as percentage
             (30d window, falling back to 7d).
-        cost_per_task_usd: Average cost per task
+        cost_per_task_usd: Average cost per task in configured currency
             (30d window, falling back to 7d).
         quality_score: Overall quality score (0.0-10.0).
         collaboration_score: Overall collaboration score (0.0-10.0).
@@ -74,7 +74,7 @@ class AgentPerformanceSummary(BaseModel):
     cost_per_task_usd: float | None = Field(
         default=None,
         ge=0.0,
-        description="Average cost per task in USD (30d window, falling back to 7d)",
+        description=("Average cost per task (30d window, falling back to 7d)"),
     )
     quality_score: float | None = Field(
         default=None,
