@@ -157,7 +157,8 @@ class MeetingController(Controller):
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
         status: MeetingStatus | None = None,
-        meeting_type: Annotated[str, Parameter(max_length=128)] | None = None,
+        meeting_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
+        | None = None,
     ) -> PaginatedResponse[MeetingResponse]:
         """List meeting records with optional filters.
 

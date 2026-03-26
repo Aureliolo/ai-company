@@ -483,7 +483,8 @@ class ApprovalsController(Controller):
         state: State,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: Annotated[str, Parameter(max_length=128)] | None = None,
+        action_type: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)]
+        | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[ApprovalResponse]:

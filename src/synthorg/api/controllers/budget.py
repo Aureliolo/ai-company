@@ -16,7 +16,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
@@ -214,8 +214,8 @@ class BudgetController(Controller):
     async def list_cost_records(
         self,
         state: State,
-        agent_id: Annotated[str, Parameter(max_length=128)] | None = None,
-        task_id: Annotated[str, Parameter(max_length=128)] | None = None,
+        agent_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
+        task_id: Annotated[str, Parameter(max_length=QUERY_MAX_LENGTH)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> CostRecordListResponse:
