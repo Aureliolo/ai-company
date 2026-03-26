@@ -226,10 +226,14 @@ class UserController(Controller):
             )
             try:
                 await app_state.persistence.users.save(user)
-            except QueryError:
-                msg = "A CEO user already exists"
+            except QueryError as exc:
+                cause = str(exc.__cause__) if exc.__cause__ else ""
+                if "users.username" in cause:
+                    msg = f"Username already taken: {data.username}"
+                else:
+                    msg = "A CEO user already exists"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg)  # noqa: B904
+                raise ConflictError(msg) from exc
 
         logger.info(
             API_USER_CREATED,
@@ -323,10 +327,10 @@ class UserController(Controller):
             )
             try:
                 await app_state.persistence.users.save(updated)
-            except QueryError:
+            except QueryError as exc:
                 msg = "A CEO user already exists"
                 logger.warning(API_RESOURCE_CONFLICT, reason=msg)
-                raise ConflictError(msg)  # noqa: B904
+                raise ConflictError(msg) from exc
 
         logger.info(
             API_USER_UPDATED,
