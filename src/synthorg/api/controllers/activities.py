@@ -3,7 +3,10 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -249,6 +252,27 @@ async def _fetch_tool_invocations(
         return ()
 
 
+async def _safe_delegation_query(
+    coro: Awaitable[tuple[DelegationRecord, ...]],
+    error_label: str,
+) -> tuple[DelegationRecord, ...]:
+    """Run a delegation store query with graceful degradation."""
+    try:
+        return await coro
+    except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
+        raise
+    except Exception:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            error=error_label,
+            exc_info=True,
+        )
+        return ()
+
+
 async def _fetch_delegation_records(
     app_state: AppState,
     agent_id: str | None,
@@ -262,38 +286,23 @@ async def _fetch_delegation_records(
     """
     if not app_state.has_delegation_record_store:
         return (), ()
-    try:
-        store = app_state.delegation_record_store
-        if agent_id is not None:
-            sent = await store.get_records_as_delegator(
-                agent_id,
-                start=since,
-                end=now,
-            )
-            received = await store.get_records_as_delegatee(
-                agent_id,
-                start=since,
-                end=now,
-            )
-        else:
-            # Org-wide: each record generates both perspectives.
-            all_records = await store.get_all_records(
-                start=since,
-                end=now,
-            )
-            sent = all_records
-            received = all_records
-    except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
-        raise
-    except Exception:
-        logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="activities",
-            error="delegation_record_store_unavailable",
-            exc_info=True,
+    store = app_state.delegation_record_store
+    if agent_id is None:
+        # Org-wide: each record generates both perspectives.
+        all_records = await _safe_delegation_query(
+            store.get_all_records(start=since, end=now),
+            "delegation_record_store_unavailable",
         )
-        return (), ()
-    else:
-        return sent, received
+        return all_records, all_records
+
+    # Agent-specific: fetch each perspective independently so a
+    # failure in one does not discard the other.
+    sent = await _safe_delegation_query(
+        store.get_records_as_delegator(agent_id, start=since, end=now),
+        "delegation_delegator_query_failed",
+    )
+    received = await _safe_delegation_query(
+        store.get_records_as_delegatee(agent_id, start=since, end=now),
+        "delegation_delegatee_query_failed",
+    )
+    return sent, received
