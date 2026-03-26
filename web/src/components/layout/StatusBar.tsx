@@ -5,52 +5,52 @@ export function StatusBar() {
     <div
       className={cn(
         'flex h-8 shrink-0 items-center gap-6',
-        'border-b border-surface-100 bg-surface-0 px-6',
+        'border-b border-border bg-background px-6',
         'text-[11px] tracking-wide font-mono',
-        'text-surface-500 select-none',
+        'text-text-secondary select-none',
       )}
     >
-      <span className="text-[10px] uppercase tracking-widest text-surface-400">
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
         SynthOrg
       </span>
 
       <Divider />
 
       <StatusItem>
-        <Dot color="bg-brand-400" />
+        <Dot color="bg-accent" />
         <span>-- agents</span>
       </StatusItem>
 
       <StatusItem>
-        <Dot color="bg-success-500" />
+        <Dot color="bg-success" />
         <span>-- active</span>
       </StatusItem>
 
       <StatusItem>
-        <Dot color="bg-warning-500" />
+        <Dot color="bg-warning" />
         <span>-- tasks</span>
       </StatusItem>
 
       <Divider />
 
       <StatusItem>
-        <span className="text-surface-400">spend</span>
-        <span className="ml-1.5 text-surface-700">$--</span>
-        <span className="ml-1 text-surface-400">today</span>
+        <span className="text-muted-foreground">spend</span>
+        <span className="ml-1.5 text-foreground">$--</span>
+        <span className="ml-1 text-muted-foreground">today</span>
       </StatusItem>
 
       <div className="flex-1" />
 
       <StatusItem>
-        <Dot color="bg-success-500" />
-        <span className="text-surface-400">all systems nominal</span>
+        <Dot color="bg-success" />
+        <span className="text-muted-foreground">all systems nominal</span>
       </StatusItem>
     </div>
   )
 }
 
 function Divider() {
-  return <span className="h-3 w-px shrink-0 bg-surface-100" />
+  return <span className="h-3 w-px shrink-0 bg-border" />
 }
 
 function Dot({ color }: { color: string }) {

@@ -29,8 +29,8 @@ export function SidebarNavItem({
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-          'text-surface-500 hover:bg-surface-100 hover:text-surface-700',
-          isActive && 'bg-surface-100 text-brand-400',
+          'text-text-secondary hover:bg-card-hover hover:text-foreground',
+          isActive && 'bg-card text-accent',
           collapsed && 'justify-center px-0',
         )
       }
@@ -43,7 +43,7 @@ export function SidebarNavItem({
             <span
               className={cn(
                 'flex size-5 items-center justify-center',
-                'rounded-full bg-danger-500',
+                'rounded-full bg-danger',
                 'text-xs font-semibold text-white',
               )}
             >

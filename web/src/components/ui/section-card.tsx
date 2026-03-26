@@ -1,0 +1,37 @@
+import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
+
+interface SectionCardProps {
+  title: string
+  icon?: LucideIcon
+  action?: ReactNode
+  children: ReactNode
+  className?: string
+}
+
+export function SectionCard({
+  title,
+  icon: Icon,
+  action,
+  children,
+  className,
+}: SectionCardProps) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border border-border bg-card',
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2 border-b border-border px-card py-3">
+        {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <h3 className="flex-1 text-sm font-semibold text-foreground">{title}</h3>
+        {action}
+      </div>
+      <div className="p-card">
+        {children}
+      </div>
+    </div>
+  )
+}
