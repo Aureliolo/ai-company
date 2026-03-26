@@ -454,7 +454,7 @@ async def _save_decision_and_notify(  # noqa: PLR0913
         )
         raise ConflictError(msg)
 
-    _publish_approval_event(request, ws_event, updated)
+    _publish_approval_event(request, ws_event, saved)
     _log_approval_decision(
         approval_id,
         approved=approved,
