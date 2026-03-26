@@ -44,7 +44,7 @@ const THREE_DECIMAL_CURRENCIES = new Set(['BHD','IQD','JOD','KWD','LYD','OMR','T
 /**
  * Format a currency value using the given ISO 4217 currency code.
  */
-export function formatCurrency(value: number, currencyCode: string = 'USD'): string {
+export function formatCurrency(value: number, currencyCode: string = 'EUR'): string {
   if (!Number.isFinite(value)) return '--'
   try {
     return new Intl.NumberFormat('en-US', {

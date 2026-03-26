@@ -75,10 +75,10 @@ describe('formatRelativeTime', () => {
 })
 
 describe('formatCurrency', () => {
-  it('defaults to USD', () => {
+  it('defaults to EUR', () => {
     const result = formatCurrency(42.5)
     expect(result).toContain('42.50')
-    expect(result).toContain('$')
+    expect(result).toContain('\u20ac')
   })
 
   it('formats USD values', () => {

@@ -13,7 +13,7 @@ import math
 from types import MappingProxyType
 from typing import Final
 
-DEFAULT_CURRENCY: Final[str] = "USD"
+DEFAULT_CURRENCY: Final[str] = "EUR"
 """Default ISO 4217 currency code.
 
 Overridden at runtime by the ``budget.currency`` setting.  This constant

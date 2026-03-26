@@ -207,7 +207,7 @@ class TestMergeActivityTimeline:
         assert "failed" in timeline[0].description
         assert timeline[1].related_ids["task_id"] == "task-a"
         assert "succeeded" in timeline[1].description
-        assert "$" in timeline[1].description
+        assert "\u20ac" in timeline[1].description
 
     def test_currency_passed_to_task_metric_descriptions(self) -> None:
         task = _make_task_metric(task_id="task-usd", cost_usd=1.5)
@@ -367,7 +367,7 @@ class TestCostIncurredEvents:
         assert evt.timestamp == _NOW
         assert "test-medium-001" in evt.description
         assert "500+100 tokens" in evt.description
-        assert "$0.0025" in evt.description
+        assert "\u20ac0.0025" in evt.description
         assert evt.related_ids["agent_id"] == "agent-001"
         assert evt.related_ids["task_id"] == "task-001"
 

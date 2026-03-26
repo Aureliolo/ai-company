@@ -12,7 +12,7 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>()((set) => ({
-  currency: 'USD',
+  currency: 'EUR',
   fetchCurrency: async () => {
     try {
       const entries = await settingsApi.getNamespaceSettings('budget')
