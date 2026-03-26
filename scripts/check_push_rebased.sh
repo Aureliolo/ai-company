@@ -14,7 +14,7 @@ set -euo pipefail
 COMMAND=$(jq -r '.tool_input.command // ""' 2>/dev/null)
 
 # Only check git push commands (match anywhere for compound commands)
-if ! echo "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
+if ! printf '%s\n' "$COMMAND" | grep -qE '\bgit[[:space:]]+push\b'; then
     exit 0
 fi
 
