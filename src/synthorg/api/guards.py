@@ -102,10 +102,12 @@ def require_read_access(
     connection: ASGIConnection,  # type: ignore[type-arg]
     _: object,
 ) -> None:
-    """Guard that allows all recognised roles.
+    """Guard that allows all human roles (excludes SYSTEM).
 
-    Checks ``connection.user.role`` for any valid role
-    including ``observer`` and ``board_member``.
+    Checks ``connection.user.role`` for any human role
+    including ``observer`` and ``board_member``.  The internal
+    ``system`` role is excluded -- use ``require_roles()`` for
+    endpoints the CLI needs to reach.
 
     Args:
         connection: The incoming connection.
@@ -138,7 +140,14 @@ def require_roles(
 
     Returns:
         A guard function compatible with Litestar's guard protocol.
+
+    Raises:
+        ValueError: If no roles are provided.
     """
+    if not roles:
+        msg = "require_roles() requires at least one role"
+        raise ValueError(msg)
+
     allowed = frozenset(roles)
     label = ",".join(sorted(r.value for r in allowed))
 
@@ -156,6 +165,8 @@ def require_roles(
             )
             raise PermissionDeniedException(detail="Access denied")
 
+    guard.__name__ = f"require_roles({label})"
+    guard.__qualname__ = f"require_roles({label})"
     return guard
 
 

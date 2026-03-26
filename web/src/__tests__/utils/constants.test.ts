@@ -46,8 +46,11 @@ describe('constants', () => {
     it('contains expected roles', () => {
       expect(WRITE_ROLES).toContain('ceo')
       expect(WRITE_ROLES).toContain('manager')
+      expect(WRITE_ROLES).toContain('pair_programmer')
+      expect(WRITE_ROLES).not.toContain('board_member')
       expect(WRITE_ROLES).not.toContain('observer')
       expect(WRITE_ROLES).not.toContain('system')
+      expect(WRITE_ROLES).toHaveLength(3)
     })
   })
 

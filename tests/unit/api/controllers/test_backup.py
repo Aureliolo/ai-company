@@ -341,6 +341,37 @@ class TestRestoreConfirmGate:
 
 
 @pytest.mark.unit
+class TestBackupGuards:
+    """HTTP-level guard tests for backup controller access control."""
+
+    def test_ceo_can_access(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/admin/backups",
+            headers=make_auth_headers("ceo"),
+        )
+        # 200 = guard passed (may return empty list)
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize(
+        "role",
+        ["manager", "board_member", "pair_programmer", "observer"],
+    )
+    def test_non_admin_blocked(
+        self,
+        test_client: TestClient[Any],
+        role: str,
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/admin/backups",
+            headers=make_auth_headers(role),
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.unit
 class TestBackupPathParamValidation:
     """Path parameter validation via Litestar Parameter constraints."""
 

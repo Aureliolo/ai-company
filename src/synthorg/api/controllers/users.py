@@ -1,5 +1,6 @@
 """User management controller -- CEO-only CRUD for human users."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -19,10 +20,13 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
     API_USER_CREATED,
     API_USER_DELETED,
     API_USER_LISTED,
     API_USER_UPDATED,
+    API_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -32,6 +36,9 @@ _MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].defau
 
 # Roles that cannot be assigned via the user management API.
 _FORBIDDEN_ROLES: frozenset[HumanRole] = frozenset({HumanRole.SYSTEM})
+
+# Serializes CEO uniqueness check-then-act sequences.
+_CEO_LOCK = asyncio.Lock()
 
 
 # -- Request / Response DTOs -------------------------------------------
@@ -69,6 +76,7 @@ class UserResponse(BaseModel):
 
 
 def _to_response(user: User) -> UserResponse:
+    """Map a ``User`` domain model to the public ``UserResponse`` DTO."""
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -77,6 +85,80 @@ def _to_response(user: User) -> UserResponse:
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
+
+
+# -- Validation helpers ------------------------------------------------
+
+
+def _validate_assignable_role(role: HumanRole) -> None:
+    """Reject roles that cannot be assigned via the API."""
+    if role in _FORBIDDEN_ROLES:
+        msg = f"Cannot assign role: {role.value}"
+        logger.warning(API_VALIDATION_FAILED, reason=msg)
+        raise ApiValidationError(msg)
+
+
+async def _get_user_or_404(
+    app_state: AppState,
+    user_id: str,
+) -> User:
+    """Fetch a user by ID, raising NotFoundError if missing."""
+    user = await app_state.persistence.users.get(user_id)
+    if user is None:
+        msg = f"User not found: {user_id}"
+        logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
+        raise NotFoundError(msg)
+    return user
+
+
+async def _validate_ceo_create(app_state: AppState) -> None:
+    """Reject creation of a second CEO."""
+    ceo_count = await app_state.persistence.users.count_by_role(
+        HumanRole.CEO,
+    )
+    if ceo_count > 0:
+        msg = "A CEO user already exists"
+        logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+        raise ConflictError(msg)
+
+
+async def _validate_username_unique(
+    app_state: AppState,
+    username: str,
+) -> None:
+    """Reject duplicate usernames."""
+    existing = await app_state.persistence.users.get_by_username(username)
+    if existing is not None:
+        msg = f"Username already taken: {username}"
+        logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+        raise ConflictError(msg)
+
+
+async def _validate_role_change(
+    app_state: AppState,
+    user: User,
+    new_role: HumanRole,
+) -> None:
+    """Validate CEO-related constraints on role changes."""
+    # Prevent removing the only CEO
+    if user.role == HumanRole.CEO and new_role != HumanRole.CEO:
+        ceo_count = await app_state.persistence.users.count_by_role(
+            HumanRole.CEO,
+        )
+        if ceo_count <= 1:
+            msg = "Cannot change the only CEO's role"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg)
+
+    # Prevent creating a second CEO
+    if new_role == HumanRole.CEO and user.role != HumanRole.CEO:
+        ceo_count = await app_state.persistence.users.count_by_role(
+            HumanRole.CEO,
+        )
+        if ceo_count > 0:
+            msg = "A CEO user already exists"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg)
 
 
 # -- Controller --------------------------------------------------------
@@ -115,48 +197,37 @@ class UserController(Controller):
         """
         app_state: AppState = state.app_state
 
-        if data.role in _FORBIDDEN_ROLES:
-            msg = f"Cannot assign role: {data.role.value}"
-            raise ApiValidationError(msg)
-
-        if data.role == HumanRole.CEO:
-            ceo_count = await app_state.persistence.users.count_by_role(
-                HumanRole.CEO,
-            )
-            if ceo_count > 0:
-                msg = "A CEO user already exists"
-                raise ConflictError(msg)
-
-        existing = await app_state.persistence.users.get_by_username(
-            data.username,
-        )
-        if existing is not None:
-            msg = f"Username already taken: {data.username}"
-            raise ConflictError(msg)
+        _validate_assignable_role(data.role)
 
         if len(data.password) < _MIN_PASSWORD_LENGTH:
             msg = f"Password must be at least {_MIN_PASSWORD_LENGTH} characters"
+            logger.warning(API_VALIDATION_FAILED, reason=msg)
             raise ApiValidationError(msg)
 
-        now = datetime.now(UTC)
-        password_hash = await app_state.auth_service.hash_password_async(
-            data.password,
-        )
-        user = User(
-            id=str(uuid.uuid4()),
-            username=data.username,
-            password_hash=password_hash,
-            role=data.role,
-            must_change_password=True,
-            created_at=now,
-            updated_at=now,
-        )
-        await app_state.persistence.users.save(user)
+        async with _CEO_LOCK:
+            if data.role == HumanRole.CEO:
+                await _validate_ceo_create(app_state)
+
+            await _validate_username_unique(app_state, data.username)
+
+            now = datetime.now(UTC)
+            password_hash = await app_state.auth_service.hash_password_async(
+                data.password,
+            )
+            user = User(
+                id=str(uuid.uuid4()),
+                username=data.username,
+                password_hash=password_hash,
+                role=data.role,
+                must_change_password=True,
+                created_at=now,
+                updated_at=now,
+            )
+            await app_state.persistence.users.save(user)
 
         logger.info(
             API_USER_CREATED,
             user_id=user.id,
-            username=user.username,
             role=user.role.value,
         )
         return ApiResponse(data=_to_response(user))
@@ -165,19 +236,21 @@ class UserController(Controller):
     async def list_users(
         self,
         state: State,
-    ) -> ApiResponse[list[UserResponse]]:
+    ) -> ApiResponse[tuple[UserResponse, ...]]:
         """List all human users (excludes system user).
 
         Args:
             state: Application state.
 
         Returns:
-            List of user responses.
+            Tuple of user responses.
         """
         app_state: AppState = state.app_state
         users = await app_state.persistence.users.list_users()
         logger.debug(API_USER_LISTED, count=len(users))
-        return ApiResponse(data=[_to_response(u) for u in users])
+        return ApiResponse(
+            data=tuple(_to_response(u) for u in users),
+        )
 
     @get("/{user_id:str}")
     async def get_user(
@@ -198,10 +271,7 @@ class UserController(Controller):
             NotFoundError: If the user is not found.
         """
         app_state: AppState = state.app_state
-        user = await app_state.persistence.users.get(user_id)
-        if user is None:
-            msg = f"User not found: {user_id}"
-            raise NotFoundError(msg)
+        user = await _get_user_or_404(app_state, user_id)
         return ApiResponse(data=_to_response(user))
 
     @patch("/{user_id:str}")
@@ -224,47 +294,28 @@ class UserController(Controller):
         Raises:
             NotFoundError: If the user is not found.
             ApiValidationError: If the target role is SYSTEM.
-            ConflictError: If changing the only CEO's role or
-                assigning a second CEO.
+            ConflictError: If the target user is the system user,
+                changing the only CEO's role, or assigning a
+                second CEO.
         """
         app_state: AppState = state.app_state
 
-        if data.role in _FORBIDDEN_ROLES:
-            msg = f"Cannot assign role: {data.role.value}"
-            raise ApiValidationError(msg)
-
-        user = await app_state.persistence.users.get(user_id)
-        if user is None:
-            msg = f"User not found: {user_id}"
-            raise NotFoundError(msg)
+        _validate_assignable_role(data.role)
+        user = await _get_user_or_404(app_state, user_id)
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot modify the system user"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
-        # Prevent removing the only CEO
-        if user.role == HumanRole.CEO and data.role != HumanRole.CEO:
-            ceo_count = await app_state.persistence.users.count_by_role(
-                HumanRole.CEO,
-            )
-            if ceo_count <= 1:
-                msg = "Cannot change the only CEO's role"
-                raise ConflictError(msg)
+        async with _CEO_LOCK:
+            await _validate_role_change(app_state, user, data.role)
 
-        # Prevent creating a second CEO
-        if data.role == HumanRole.CEO and user.role != HumanRole.CEO:
-            ceo_count = await app_state.persistence.users.count_by_role(
-                HumanRole.CEO,
+            now = datetime.now(UTC)
+            updated = user.model_copy(
+                update={"role": data.role, "updated_at": now},
             )
-            if ceo_count > 0:
-                msg = "A CEO user already exists"
-                raise ConflictError(msg)
-
-        now = datetime.now(UTC)
-        updated = user.model_copy(
-            update={"role": data.role, "updated_at": now},
-        )
-        await app_state.persistence.users.save(updated)
+            await app_state.persistence.users.save(updated)
 
         logger.info(
             API_USER_UPDATED,
@@ -290,34 +341,37 @@ class UserController(Controller):
 
         Raises:
             NotFoundError: If the user is not found.
-            ConflictError: If attempting to delete the CEO or
-                the system user.
+            ConflictError: If attempting to delete your own account,
+                the system user, or the CEO.
         """
         app_state: AppState = state.app_state
         auth_user: AuthenticatedUser = request.scope["user"]
 
-        user = await app_state.persistence.users.get(user_id)
-        if user is None:
-            msg = f"User not found: {user_id}"
-            raise NotFoundError(msg)
+        user = await _get_user_or_404(app_state, user_id)
+
+        if user.id == auth_user.user_id:
+            msg = "Cannot delete your own account"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
+            raise ConflictError(msg)
 
         if user.role == HumanRole.SYSTEM:
             msg = "Cannot delete the system user"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
         if user.role == HumanRole.CEO:
             msg = "Cannot delete the CEO user"
+            logger.warning(API_RESOURCE_CONFLICT, reason=msg)
             raise ConflictError(msg)
 
-        if user.id == auth_user.user_id:
-            msg = "Cannot delete your own account"
-            raise ConflictError(msg)
-
-        await app_state.persistence.users.delete(user_id)
+        deleted = await app_state.persistence.users.delete(user_id)
+        if not deleted:
+            msg = f"User not found: {user_id}"
+            logger.warning(API_RESOURCE_NOT_FOUND, reason=msg)
+            raise NotFoundError(msg)
 
         logger.info(
             API_USER_DELETED,
             user_id=user.id,
-            username=user.username,
-            deleted_by=auth_user.username,
+            deleted_by_user_id=auth_user.user_id,
         )

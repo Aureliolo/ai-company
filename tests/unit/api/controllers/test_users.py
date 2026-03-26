@@ -44,41 +44,27 @@ class TestCreateUser:
         assert data["must_change_password"] is True
         assert "password_hash" not in data
 
-    def test_create_board_member(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
-            _BASE,
-            json=_create_payload(
-                username="board-user",
-                role="board_member",
-            ),
-            headers=_CEO_HEADERS,
-        )
-        assert resp.status_code == 201
-        assert resp.json()["data"]["role"] == "board_member"
-
-    def test_create_pair_programmer(
+    @pytest.mark.parametrize(
+        ("username", "role"),
+        [
+            ("board-user", "board_member"),
+            ("pp-user", "pair_programmer"),
+            ("obs-user", "observer"),
+        ],
+    )
+    def test_create_valid_roles(
         self,
         test_client: TestClient[Any],
+        username: str,
+        role: str,
     ) -> None:
         resp = test_client.post(
             _BASE,
-            json=_create_payload(
-                username="pp-user",
-                role="pair_programmer",
-            ),
+            json=_create_payload(username=username, role=role),
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 201
-        assert resp.json()["data"]["role"] == "pair_programmer"
-
-    def test_create_observer(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.post(
-            _BASE,
-            json=_create_payload(username="obs-user", role="observer"),
-            headers=_CEO_HEADERS,
-        )
-        assert resp.status_code == 201
-        assert resp.json()["data"]["role"] == "observer"
+        assert resp.json()["data"]["role"] == role
 
     def test_create_second_ceo_rejected(
         self,
@@ -106,11 +92,13 @@ class TestCreateUser:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        test_client.post(
+        first = test_client.post(
             _BASE,
             json=_create_payload(username="dup-user"),
             headers=_CEO_HEADERS,
         )
+        assert first.status_code == 201
+
         resp = test_client.post(
             _BASE,
             json=_create_payload(username="dup-user"),
@@ -156,8 +144,8 @@ class TestListUsers:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        # At least the seeded non-system users exist
-        assert len(body["data"]) >= 1
+        # Seeded users: one per HumanRole (6), minus system = 5
+        assert len(body["data"]) == 5
 
     def test_list_blocked_for_observer(
         self,
@@ -237,6 +225,17 @@ class TestUpdateUserRole:
             headers=_CEO_HEADERS,
         )
         assert resp.status_code == 422
+
+    def test_update_system_user_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.patch(
+            f"{_BASE}/{_SYSTEM_USER_ID}",
+            json={"role": "manager"},
+            headers=_CEO_HEADERS,
+        )
+        assert resp.status_code == 409
 
     def test_update_nonexistent_returns_404(
         self,
@@ -328,11 +327,12 @@ class TestDeleteUser:
         )
         assert resp.status_code == 409
 
-    def test_delete_ceo_rejected(
+    def test_delete_ceo_self_rejected(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        # The seeded CEO user -- find its ID from list
+        # The authenticated CEO attempts to delete themselves --
+        # self-deletion check fires before the CEO role check.
         list_resp = test_client.get(_BASE, headers=_CEO_HEADERS)
         ceo_users = [u for u in list_resp.json()["data"] if u["role"] == "ceo"]
         assert len(ceo_users) > 0
