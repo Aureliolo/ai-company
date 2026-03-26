@@ -14,6 +14,7 @@ from synthorg.api.dto import (
     ErrorDetail,
     PaginationMeta,
 )
+from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -22,7 +23,10 @@ from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_BUDGET_RECORDS_LISTED
+from synthorg.observability.events.api import (
+    API_BUDGET_RECORDS_LISTED,
+    API_VALIDATION_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -234,6 +238,20 @@ class BudgetController(Controller):
         Returns:
             Paginated cost records with daily and period summaries.
         """
+        # Manual check retained: Litestar Parameter(max_length=...) on
+        # query params crashes the worker instead of returning a proper
+        # RFC 9457 error response.
+        for field_name, value in (("agent_id", agent_id), ("task_id", task_id)):
+            if value is not None and len(value) > QUERY_MAX_LENGTH:
+                msg = f"{field_name} exceeds maximum length of {QUERY_MAX_LENGTH}"
+                logger.warning(
+                    API_VALIDATION_FAILED,
+                    field=field_name,
+                    actual_length=len(value),
+                    max_length=QUERY_MAX_LENGTH,
+                )
+                raise ApiValidationError(msg)
+
         app_state: AppState = state.app_state
         records = await app_state.cost_tracker.get_records(
             agent_id=agent_id,

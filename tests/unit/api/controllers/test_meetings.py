@@ -293,9 +293,11 @@ class TestMeetingController:
         )
         assert resp.status_code == 200
         item = resp.json()["data"][0]
-        assert "token_usage_by_participant" in item
-        assert "contribution_rank" in item
-        assert "meeting_duration_seconds" in item
+        # _make_record with default args produces a COMPLETED record
+        # with empty-contributions minutes (120s duration).
+        assert item["token_usage_by_participant"] == {}
+        assert item["contribution_rank"] == []
+        assert item["meeting_duration_seconds"] == 120.0
 
     def test_oversized_meeting_id_rejected(
         self,

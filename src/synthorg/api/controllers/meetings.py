@@ -16,7 +16,10 @@ from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_MEETING_TRIGGERED
+from synthorg.observability.events.api import (
+    API_MEETING_TRIGGERED,
+    API_VALIDATION_FAILED,
+)
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
 
 logger = get_logger(__name__)
@@ -174,6 +177,12 @@ class MeetingController(Controller):
         # RFC 9457 error response.
         if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
             msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
+            logger.warning(
+                API_VALIDATION_FAILED,
+                field="meeting_type",
+                actual_length=len(meeting_type),
+                max_length=QUERY_MAX_LENGTH,
+            )
             raise ApiValidationError(msg)
 
         orchestrator = state.app_state.meeting_orchestrator
