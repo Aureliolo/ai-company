@@ -34,6 +34,7 @@ Colors are **state-driven**, not decorative. Every colored element answers: "wha
 | `bg-base` | Page background | `#0a0a12` | Deepest background layer |
 | `bg-surface` | Sidebar, elevated surfaces | `#0f0f1a` | Sidebar, panels, raised areas |
 | `bg-card` | Card backgrounds | `#13131f` | All card containers |
+| `bg-card-hover` | Card hover state | `#181828` | Card background on mouse-over |
 | `border` | Default borders | `#1e1e2e` | Card borders, dividers |
 | `border-bright` | Interactive/hover borders | `#2a2a3e` | Focus rings, hover states |
 
