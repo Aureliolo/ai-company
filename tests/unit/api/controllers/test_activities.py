@@ -415,3 +415,51 @@ class TestActivityFeed:
         ]
         assert len(delegation_events) == 1
         assert delegation_events[0]["event_type"] == "delegation_sent"
+
+    async def test_graceful_degradation_broken_tool_tracker(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        tool_invocation_tracker: ToolInvocationTracker,
+    ) -> None:
+        """Endpoint returns 200 when tool tracker raises."""
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+
+        # Monkey-patch get_records to raise
+        async def _raise(**_kw: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        tool_invocation_tracker.get_records = _raise  # type: ignore[assignment]
+
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pagination"]["total"] >= 1
+
+    async def test_graceful_degradation_broken_delegation_store(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        delegation_record_store: DelegationRecordStore,
+    ) -> None:
+        """Endpoint returns 200 when delegation store raises."""
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+
+        # Monkey-patch methods to raise
+        async def _raise(*_a: object, **_kw: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        delegation_record_store.get_all_records = _raise  # type: ignore[assignment]
+        delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
+        delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
+
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["pagination"]["total"] >= 1

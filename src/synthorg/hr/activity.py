@@ -187,6 +187,7 @@ def _delegation_to_sent_activity(
             "delegation_id": str(record.delegation_id),
             "delegatee_id": str(record.delegatee_id),
             "original_task_id": str(record.original_task_id),
+            "delegated_task_id": str(record.delegated_task_id),
         },
     )
 
@@ -207,6 +208,7 @@ def _delegation_to_received_activity(
             "delegation_id": str(record.delegation_id),
             "delegator_id": str(record.delegator_id),
             "original_task_id": str(record.original_task_id),
+            "delegated_task_id": str(record.delegated_task_id),
         },
     )
 

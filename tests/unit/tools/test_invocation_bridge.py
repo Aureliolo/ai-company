@@ -99,14 +99,22 @@ class TestRecordToolInvocation:
         # Should not raise
         await record_tool_invocation(invoker, tool_call, result)
 
-    async def test_memory_error_propagates(self) -> None:
+    @pytest.mark.parametrize(
+        "exc_class",
+        [MemoryError, RecursionError],
+        ids=["memory_error", "recursion_error"],
+    )
+    async def test_fatal_error_propagates(
+        self,
+        exc_class: type[BaseException],
+    ) -> None:
         tracker = AsyncMock(spec=ToolInvocationTracker)
-        tracker.record.side_effect = MemoryError("oom")
+        tracker.record.side_effect = exc_class("fatal")
         invoker = _make_invoker(tracker=tracker)
         tool_call = _make_tool_call()
         result = _make_result()
 
-        with pytest.raises(MemoryError):
+        with pytest.raises(exc_class):
             await record_tool_invocation(invoker, tool_call, result)
 
     async def test_error_message_truncated_to_2048(self) -> None:

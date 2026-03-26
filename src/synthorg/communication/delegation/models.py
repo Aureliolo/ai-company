@@ -19,7 +19,7 @@ class DelegationRequest(BaseModel):
         constraints: Extra constraints for the delegatee.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     delegator_id: NotBlankStr = Field(
         description="Agent ID of the delegator",
@@ -56,7 +56,7 @@ class DelegationResult(BaseModel):
         blocked_by: Mechanism name that blocked, if applicable.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     success: bool = Field(description="Whether delegation succeeded")
     delegated_task: Task | None = Field(

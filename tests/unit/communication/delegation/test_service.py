@@ -486,15 +486,22 @@ class TestDelegationServiceRecordStore:
             delegatee_id="cto",
             task=task,
         )
-        # Should not raise -- recording failure is best-effort
         result = service.delegate(request, delegator, delegatee)
         assert result.success is True
 
-    def test_memory_error_in_record_store_propagates(self) -> None:
+    @pytest.mark.parametrize(
+        "exc_class",
+        [MemoryError, RecursionError],
+        ids=["memory_error", "recursion_error"],
+    )
+    def test_fatal_error_in_record_store_propagates(
+        self,
+        exc_class: type[BaseException],
+    ) -> None:
         from unittest.mock import MagicMock
 
         store = MagicMock(spec=DelegationRecordStore)
-        store.record_sync.side_effect = MemoryError("oom")
+        store.record_sync.side_effect = exc_class("fatal")
 
         service, _ = _build_service(record_store=store)
 
@@ -506,24 +513,5 @@ class TestDelegationServiceRecordStore:
             delegatee_id="cto",
             task=task,
         )
-        with pytest.raises(MemoryError):
-            service.delegate(request, delegator, delegatee)
-
-    def test_recursion_error_in_record_store_propagates(self) -> None:
-        from unittest.mock import MagicMock
-
-        store = MagicMock(spec=DelegationRecordStore)
-        store.record_sync.side_effect = RecursionError("max depth")
-
-        service, _ = _build_service(record_store=store)
-
-        task = _make_task()
-        delegator = _make_agent("ceo", "ceo")
-        delegatee = _make_agent("cto", "cto")
-        request = DelegationRequest(
-            delegator_id="ceo",
-            delegatee_id="cto",
-            task=task,
-        )
-        with pytest.raises(RecursionError):
+        with pytest.raises(exc_class):
             service.delegate(request, delegator, delegatee)

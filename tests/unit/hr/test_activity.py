@@ -500,6 +500,7 @@ class TestDelegationEvents:
         assert evt.related_ids["delegatee_id"] == "agent-worker"
         assert evt.related_ids["delegation_id"] == "del-001"
         assert evt.related_ids["original_task_id"] == "task-parent"
+        assert evt.related_ids["delegated_task_id"] == "del-abc123"
 
     def test_delegation_received_event(self) -> None:
         record = _make_delegation_record(
@@ -524,6 +525,7 @@ class TestDelegationEvents:
         assert evt.related_ids["agent_id"] == "agent-worker"
         assert evt.related_ids["delegator_id"] == "agent-manager"
         assert evt.related_ids["delegation_id"] == "del-001"
+        assert evt.related_ids["delegated_task_id"] == "del-abc123"
 
     def test_delegation_dual_perspective(self) -> None:
         """Same record produces both sent and received events."""

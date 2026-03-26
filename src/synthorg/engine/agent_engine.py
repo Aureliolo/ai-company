@@ -92,7 +92,6 @@ from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage
 from synthorg.security.audit import AuditLog
 from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
-from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
@@ -129,6 +128,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
