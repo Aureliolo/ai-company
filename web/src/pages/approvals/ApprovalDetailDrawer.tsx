@@ -290,7 +290,11 @@ export function ApprovalDetailDrawer({
                       <div key={key} className="flex items-center gap-2 text-xs">
                         <dt className="font-mono text-muted-foreground">{key}:</dt>
                         <dd className="text-secondary">
-                          {typeof value === 'string' ? value : String(value)}
+                          {typeof value === 'string'
+                            ? value
+                            : typeof value === 'object' && value !== null
+                              ? JSON.stringify(value)
+                              : String(value ?? '')}
                         </dd>
                       </div>
                     ))}

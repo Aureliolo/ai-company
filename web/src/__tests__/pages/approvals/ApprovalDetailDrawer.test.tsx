@@ -155,6 +155,37 @@ describe('ApprovalDetailDrawer', () => {
     expect(toasts.some((t) => t.title === 'Please provide a rejection reason')).toBe(true)
   })
 
+  it('successful approve submits with comment', async () => {
+    const user = userEvent.setup()
+    renderDrawer()
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    await user.type(screen.getByLabelText('Approval comment'), 'Looks good')
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    expect(defaultHandlers.onApprove).toHaveBeenCalledWith('test-1', { comment: 'Looks good' })
+  })
+
+  it('successful reject submits with reason', async () => {
+    const user = userEvent.setup()
+    renderDrawer()
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+    await user.type(screen.getByLabelText('Rejection reason'), 'Missing documentation')
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+    expect(defaultHandlers.onReject).toHaveBeenCalledWith('test-1', { reason: 'Missing documentation' })
+  })
+
+  it('Escape does not close drawer when confirm dialog is open', async () => {
+    const user = userEvent.setup()
+    renderDrawer()
+    // Open approve confirm dialog
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    expect(screen.getByText('Approve Action')).toBeInTheDocument()
+    // Escape closes the Radix AlertDialog but should NOT close the drawer
+    await user.keyboard('{Escape}')
+    expect(defaultHandlers.onClose).not.toHaveBeenCalled()
+    // Drawer itself is still mounted
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('focus is trapped within the drawer', async () => {
     const user = userEvent.setup()
     renderDrawer()
