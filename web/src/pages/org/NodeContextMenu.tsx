@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef, useEffect, useMemo } from 'react'
 import { Pencil, Trash2, UserPlus, ArrowRightLeft, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
@@ -110,12 +110,26 @@ export function NodeContextMenu({
   const items =
     nodeType === 'department' ? departmentItems : nodeType === 'ceo' ? ceoItems : agentItems
 
+  // Clamp menu position to viewport bounds
+  const menuWidth = 180
+  const menuItemHeight = 32
+  const menuPadding = 8
+  const menuHeight = items.length * menuItemHeight + menuPadding
+  const margin = 8
+  const boundedPosition = useMemo(() => ({
+    x: Math.min(position.x, window.innerWidth - menuWidth - margin),
+    y: Math.min(position.y, window.innerHeight - menuHeight - margin),
+  }), [position.x, position.y, menuHeight])
+
+  const menuLabel = nodeType === 'department' ? 'Department actions' : 'Agent actions'
+
   return (
     <div
       ref={menuRef}
       className="fixed z-50 min-w-[180px] rounded-lg border border-border bg-card p-1 shadow-lg"
-      style={{ top: position.y, left: position.x }}
+      style={{ top: boundedPosition.y, left: boundedPosition.x }}
       role="menu"
+      aria-label={menuLabel}
       data-testid="node-context-menu"
     >
       {items.map((item) => (
