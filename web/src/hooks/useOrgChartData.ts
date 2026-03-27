@@ -27,13 +27,12 @@ export function useOrgChartData(): UseOrgChartDataReturn {
   const error = useCompanyStore((s) => s.error)
   const runtimeStatuses = useAgentsStore((s) => s.runtimeStatuses)
 
-  // Initial data fetch
+  // Initial data fetch (sequential: health depends on config being loaded)
   useEffect(() => {
     const companyStore = useCompanyStore.getState()
-    Promise.allSettled([
-      companyStore.fetchCompanyData(),
-      companyStore.fetchDepartmentHealths(),
-    ])
+    companyStore.fetchCompanyData().then(() => {
+      companyStore.fetchDepartmentHealths()
+    })
   }, [])
 
   // Polling for department health refresh

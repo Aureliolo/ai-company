@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NodeContextMenu } from '@/pages/org/NodeContextMenu'
 
 describe('NodeContextMenu', () => {

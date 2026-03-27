@@ -173,14 +173,15 @@ function OrgChartInner() {
 
   const handleViewModeChange = useCallback(
     (mode: ViewMode) => {
-      setViewMode(mode)
       if (mode === 'force') {
         addToast({
           variant: 'info',
           title: 'Communication view -- not yet available',
           description: 'Force-directed layout requires communication data APIs',
         })
+        return
       }
+      setViewMode(mode)
     },
     [addToast],
   )
@@ -294,11 +295,9 @@ export default function OrgChartPage() {
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Org Chart</h1>
-        <Link to={ROUTES.ORG_EDIT}>
-          <Button variant="outline" size="sm">
-            Edit Organization
-          </Button>
-        </Link>
+        <Button asChild variant="outline" size="sm">
+          <Link to={ROUTES.ORG_EDIT}>Edit Organization</Link>
+        </Button>
       </div>
 
       <ErrorBoundary level="section">

@@ -71,10 +71,14 @@ export function applyDagreLayout(
 
   // Compute group node positions and dimensions from their children,
   // then adjust children to group-relative positions (immutably)
+  let emptyGroupIndex = 0
   const positionedGroups = groupNodes.map((group) => {
     const children = [...positionedLeafMap.values()].filter((n) => n.parentId === group.id)
     if (children.length === 0) {
-      return { ...group, position: { x: 0, y: 0 }, style: { width: 200, height: 100 } }
+      const col = emptyGroupIndex % 3
+      const row = Math.floor(emptyGroupIndex / 3)
+      emptyGroupIndex++
+      return { ...group, position: { x: col * 240, y: row * 140 }, style: { width: 200, height: 100 } }
     }
 
     const padding = DEFAULT_GROUP_PADDING

@@ -126,7 +126,7 @@ export function buildOrgTree(
       const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
       const teamLead = findHighestSeniority(teamMembers)
       for (const member of teamMembers) {
-        if (teamLead && member.id !== teamLead.id) {
+        if (teamLead && member.id !== teamLead.id && !teamMemberSet.has(member.id)) {
           teamMemberSet.set(member.id, teamLead.id)
         }
       }
@@ -228,6 +228,6 @@ function findDepartmentHead(
   ceo: AgentConfig | null,
 ): AgentConfig | null {
   // Department head is the highest-seniority member, excluding CEO
-  const candidates = ceo ? members.filter((m) => m.id !== ceo.id) : [...members]
+  const candidates = ceo ? members.filter((m) => m.id !== ceo.id) : members
   return findHighestSeniority(candidates)
 }
