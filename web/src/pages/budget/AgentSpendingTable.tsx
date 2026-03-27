@@ -40,8 +40,61 @@ function compareRows(
   return dir === 'desc' ? -cmp : cmp
 }
 
+function ColumnHeader({ col, sortKey, sortDir, onSort }: {
+  col: typeof COLUMNS[number]
+  sortKey: SortKey
+  sortDir: SortDirection
+  onSort: (key: SortKey) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => col.sortable && onSort(col.key)}
+      className={cn(
+        'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:text-foreground',
+        col.sortable && 'cursor-pointer hover:text-foreground',
+        col.width,
+        col.key !== 'agentName' && 'justify-end',
+      )}
+      aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+    >
+      {col.label}
+      {sortKey === col.key && (
+        sortDir === 'asc'
+          ? <ArrowUp className="size-3" aria-hidden="true" />
+          : <ArrowDown className="size-3" aria-hidden="true" />
+      )}
+    </button>
+  )
+}
+
+function SpendingRow({ row, currency }: {
+  row: AgentSpendingRow
+  currency?: string
+}) {
+  return (
+    <div className="flex items-center gap-4 px-4 py-3">
+      <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+        {row.agentName}
+      </span>
+      <span className="w-28 text-right font-mono text-xs text-foreground">
+        {formatCurrency(row.totalCost, currency)}
+      </span>
+      <span className="w-24 text-right font-mono text-xs text-text-secondary">
+        {row.budgetPercent.toFixed(1)}%
+      </span>
+      <span className="w-20 text-right font-mono text-xs text-text-secondary">
+        {row.taskCount}
+      </span>
+      <span className="w-28 text-right font-mono text-xs text-text-muted">
+        {formatCurrency(row.costPerTask, currency)}
+      </span>
+    </div>
+  )
+}
+
 export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) {
-  const [sortKey, setSortKey] = useState<SortKey | null>('totalCost')
+  const [sortKey, setSortKey] = useState<SortKey>('totalCost')
   const [sortDir, setSortDir] = useState<SortDirection>('desc')
 
   const handleSort = useCallback((key: SortKey) => {
@@ -53,10 +106,10 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
     }
   }, [sortKey])
 
-  const sorted = useMemo(() => {
-    if (!sortKey) return rows
-    return [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir))
-  }, [rows, sortKey, sortDir])
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
+    [rows, sortKey, sortDir],
+  )
 
   return (
     <SectionCard title="Agent Spending" icon={Users}>
@@ -70,48 +123,14 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
         <div className="rounded-lg border border-border">
           <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
             {COLUMNS.map((col) => (
-              <button
-                key={col.key}
-                type="button"
-                onClick={() => col.sortable && handleSort(col.key)}
-                className={cn(
-                  'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:text-foreground',
-                  col.sortable && 'cursor-pointer hover:text-foreground',
-                  col.width,
-                  col.key !== 'agentName' && 'justify-end',
-                )}
-                aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
-              >
-                {col.label}
-                {sortKey === col.key && (
-                  sortDir === 'asc'
-                    ? <ArrowUp className="size-3" aria-hidden="true" />
-                    : <ArrowDown className="size-3" aria-hidden="true" />
-                )}
-              </button>
+              <ColumnHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
             ))}
           </div>
 
           <StaggerGroup className="divide-y divide-border">
             {sorted.map((row) => (
               <StaggerItem key={row.agentId}>
-                <div className="flex items-center gap-4 px-4 py-3">
-                  <span className="flex-1 truncate text-[13px] font-medium text-foreground">
-                    {row.agentName}
-                  </span>
-                  <span className="w-28 text-right font-mono text-xs text-foreground">
-                    {formatCurrency(row.totalCost, currency)}
-                  </span>
-                  <span className="w-24 text-right font-mono text-xs text-text-secondary">
-                    {row.budgetPercent.toFixed(1)}%
-                  </span>
-                  <span className="w-20 text-right font-mono text-xs text-text-secondary">
-                    {row.taskCount}
-                  </span>
-                  <span className="w-28 text-right font-mono text-xs text-text-muted">
-                    {formatCurrency(row.costPerTask, currency)}
-                  </span>
-                </div>
+                <SpendingRow row={row} currency={currency} />
               </StaggerItem>
             ))}
           </StaggerGroup>

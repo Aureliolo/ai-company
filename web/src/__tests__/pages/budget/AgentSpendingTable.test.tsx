@@ -33,6 +33,9 @@ describe('AgentSpendingTable', () => {
     for (const row of rows) {
       expect(screen.getByText(row.agentName)).toBeInTheDocument()
     }
+    // Verify exact count -- no extra rows rendered
+    const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
+    expect(agentCells).toHaveLength(4)
   })
 
   it('renders all column headers', () => {
