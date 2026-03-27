@@ -95,10 +95,9 @@ export function applyDagreLayout(
     contentMaxY = Math.max(contentMaxY, node.position.y + h)
   }
 
-  // Compute group node positions and dimensions from their children,
-  // then adjust children to group-relative positions (immutably)
+  // Step 1: Compute group positions and dimensions (pure, no side effects)
   let emptyGroupIndex = 0
-  const positionedGroups = groupNodes.map((group) => {
+  const groupResults = groupNodes.map((group) => {
     const children = [...positionedLeafMap.values()].filter((n) => n.parentId === group.id)
     if (children.length === 0) {
       const isLR = direction === 'LR'
@@ -107,7 +106,12 @@ export function applyDagreLayout(
       emptyGroupIndex++
       const xOffset = isLR ? minor * 240 : contentMaxX + DEFAULT_GROUP_PADDING * 2 + major * 240
       const yOffset = isLR ? contentMaxY + DEFAULT_GROUP_PADDING * 2 + major * 160 : minor * 160
-      return { ...group, position: { x: xOffset, y: yOffset }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
+      return {
+        node: { ...group, position: { x: xOffset, y: yOffset }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } },
+        children: [] as Node[],
+        groupX: 0,
+        groupY: 0,
+      }
     }
 
     const padding = DEFAULT_GROUP_PADDING
@@ -130,7 +134,16 @@ export function applyDagreLayout(
     const groupWidth = maxX - minX + padding * 2
     const groupHeight = maxY - minY + padding * 2 + GROUP_NODE_HEADER_HEIGHT
 
-    // Make children positions relative to group (immutable update via map)
+    return {
+      node: { ...group, position: { x: groupX, y: groupY }, style: { ...group.style, width: groupWidth, height: groupHeight } },
+      children,
+      groupX,
+      groupY,
+    }
+  })
+
+  // Step 2: Adjust children to group-relative positions
+  for (const { children, groupX, groupY } of groupResults) {
     for (const child of children) {
       positionedLeafMap.set(child.id, {
         ...child,
@@ -140,13 +153,9 @@ export function applyDagreLayout(
         },
       })
     }
+  }
 
-    return {
-      ...group,
-      position: { x: groupX, y: groupY },
-      style: { ...group.style, width: groupWidth, height: groupHeight },
-    }
-  })
+  const positionedGroups = groupResults.map((r) => r.node)
 
   return [...positionedGroups, ...positionedLeafMap.values()]
 }
