@@ -46,7 +46,7 @@ export function useOrgEditData(): UseOrgEditDataReturn {
   const departmentHealths = useCompanyStore((s) => s.departmentHealths)
   const loading = useCompanyStore((s) => s.loading)
   const error = useCompanyStore((s) => s.error)
-  const saving = useCompanyStore((s) => s.saving)
+  const saving = useCompanyStore((s) => s.savingCount > 0)
   const saveError = useCompanyStore((s) => s.saveError)
 
   // Mutations (stable references via store actions)

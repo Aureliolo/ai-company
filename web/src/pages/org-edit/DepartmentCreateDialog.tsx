@@ -12,6 +12,7 @@ export interface DepartmentCreateDialogProps {
   onOpenChange: (open: boolean) => void
   existingNames: readonly string[]
   onCreate: (data: CreateDepartmentRequest) => Promise<Department>
+  disabled?: boolean
 }
 
 interface FormState {
@@ -26,7 +27,7 @@ const INITIAL_FORM: FormState = {
   budget_percent: '0',
 }
 
-export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCreate }: DepartmentCreateDialogProps) {
+export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCreate, disabled }: DepartmentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -131,7 +132,7 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
               <Dialog.Close asChild>
                 <Button variant="outline" disabled={submitting}>Cancel</Button>
               </Dialog.Close>
-              <Button disabled={submitting} onClick={handleSubmit}>
+              <Button disabled={submitting || disabled} onClick={handleSubmit}>
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create Department
               </Button>

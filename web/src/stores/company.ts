@@ -32,7 +32,7 @@ interface CompanyState {
   loading: boolean
   error: string | null
   healthError: string | null
-  saving: boolean
+  savingCount: number
   saveError: string | null
 
   fetchCompanyData: () => Promise<void>
@@ -59,7 +59,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   loading: false,
   error: null,
   healthError: null,
-  saving: false,
+  savingCount: 0,
   saveError: null,
 
   fetchCompanyData: async () => {
@@ -110,128 +110,128 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   // ── Mutations ──────────────────────────────────────────────
 
   updateCompany: async (data) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const updated = await apiUpdateCompany(data)
-      set({ config: updated, saving: false })
+      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   createDepartment: async (data) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const dept = await apiCreateDepartment(data)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: [...prev.departments, dept] } } : {}),
-      })
+      }))
       return dept
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   updateDepartment: async (name, data) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const dept = await apiUpdateDepartment(name, data)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: prev.departments.map((d) => (d.name === name ? dept : d)) } } : {}),
-      })
+      }))
       return dept
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   deleteDepartment: async (name) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       await apiDeleteDepartment(name)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, departments: prev.departments.filter((d) => d.name !== name) } } : {}),
-      })
+      }))
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   reorderDepartments: async (orderedNames) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const updated = await apiReorderDepartments({ department_names: orderedNames })
-      set({ config: updated, saving: false })
+      set((s) => ({ config: updated, savingCount: Math.max(0, s.savingCount - 1) }))
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   createAgent: async (data) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const agent = await apiCreateAgent(data)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: [...prev.agents, agent] } } : {}),
-      })
+      }))
       return agent
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   updateAgent: async (name, data) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const agent = await apiUpdateAgent(name, data)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: prev.agents.map((a) => (a.name === name ? agent : a)) } } : {}),
-      })
+      }))
       return agent
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   deleteAgent: async (name) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       await apiDeleteAgent(name)
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? { config: { ...prev, agents: prev.agents.filter((a) => a.name !== name) } } : {}),
-      })
+      }))
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },
 
   reorderAgents: async (deptName, orderedIds) => {
-    set({ saving: true, saveError: null })
+    set((s) => ({ savingCount: s.savingCount + 1, saveError: null }))
     try {
       const updatedDept = await apiReorderAgents(deptName, { agent_ids: orderedIds })
       const prev = get().config
-      set({
-        saving: false,
+      set((s) => ({
+        savingCount: Math.max(0, s.savingCount - 1),
         ...(prev ? {
           config: {
             ...prev,
@@ -240,9 +240,9 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
             ),
           },
         } : {}),
-      })
+      }))
     } catch (err) {
-      set({ saving: false, saveError: getErrorMessage(err) })
+      set((s) => ({ savingCount: Math.max(0, s.savingCount - 1), saveError: getErrorMessage(err) }))
       throw err
     }
   },

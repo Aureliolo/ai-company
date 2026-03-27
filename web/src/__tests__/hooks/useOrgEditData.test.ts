@@ -46,7 +46,7 @@ function resetStore() {
     departmentHealths: [],
     loading: false,
     error: null,
-    saving: false,
+    savingCount: 0,
     saveError: null,
     fetchCompanyData: mockFetchCompanyData,
     fetchDepartmentHealths: mockFetchDepartmentHealths,
@@ -115,7 +115,7 @@ describe('useOrgEditData', () => {
   })
 
   it('returns saving and saveError from store', () => {
-    useCompanyStore.setState({ saving: true, saveError: 'Save failed' })
+    useCompanyStore.setState({ savingCount: 1, saveError: 'Save failed' })
     const { result } = renderHook(() => useOrgEditData())
     expect(result.current.saving).toBe(true)
     expect(result.current.saveError).toBe('Save failed')

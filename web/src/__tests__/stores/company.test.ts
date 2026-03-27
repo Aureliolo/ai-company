@@ -65,7 +65,7 @@ function resetStore() {
     loading: false,
     error: null,
     healthError: null,
-    saving: false,
+    savingCount: 0,
     saveError: null,
   })
 }
@@ -83,7 +83,7 @@ describe('useCompanyStore', () => {
     expect(state.loading).toBe(false)
     expect(state.error).toBeNull()
     expect(state.healthError).toBeNull()
-    expect(state.saving).toBe(false)
+    expect(state.savingCount).toBe(0)
     expect(state.saveError).toBeNull()
   })
 
@@ -209,7 +209,7 @@ describe('useCompanyStore', () => {
 
       await useCompanyStore.getState().updateCompany({ company_name: 'New Name' })
       expect(useCompanyStore.getState().config?.company_name).toBe('New Name')
-      expect(useCompanyStore.getState().saving).toBe(false)
+      expect(useCompanyStore.getState().savingCount).toBe(0)
     })
 
     it('sets saveError on failure', async () => {
@@ -218,7 +218,7 @@ describe('useCompanyStore', () => {
 
       await expect(useCompanyStore.getState().updateCompany({ company_name: 'X' })).rejects.toThrow('Forbidden')
       expect(useCompanyStore.getState().saveError).toBe('Forbidden')
-      expect(useCompanyStore.getState().saving).toBe(false)
+      expect(useCompanyStore.getState().savingCount).toBe(0)
     })
   })
 
@@ -292,7 +292,7 @@ describe('useCompanyStore', () => {
         useCompanyStore.getState().reorderDepartments(['product', 'engineering']),
       ).rejects.toThrow('Reorder denied')
       expect(useCompanyStore.getState().saveError).toBe('Reorder denied')
-      expect(useCompanyStore.getState().saving).toBe(false)
+      expect(useCompanyStore.getState().savingCount).toBe(0)
     })
   })
 
@@ -343,7 +343,7 @@ describe('useCompanyStore', () => {
 
       await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])
       expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_ids: ['a-2', 'a-1'] })
-      expect(useCompanyStore.getState().saving).toBe(false)
+      expect(useCompanyStore.getState().savingCount).toBe(0)
     })
 
     it('sets saveError on failure', async () => {
@@ -354,7 +354,7 @@ describe('useCompanyStore', () => {
         useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1']),
       ).rejects.toThrow('Reorder failed')
       expect(useCompanyStore.getState().saveError).toBe('Reorder failed')
-      expect(useCompanyStore.getState().saving).toBe(false)
+      expect(useCompanyStore.getState().savingCount).toBe(0)
     })
   })
 

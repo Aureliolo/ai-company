@@ -173,6 +173,7 @@ export function DepartmentsTab({
           onOpenChange={setCreateOpen}
           existingNames={[]}
           onCreate={onCreateDepartment}
+          disabled={saving}
         />
       </div>
     )
