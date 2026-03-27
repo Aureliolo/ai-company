@@ -45,8 +45,8 @@ describe('setup-validation property tests', () => {
   it('company name with 1-200 non-whitespace chars + response is always valid', () => {
     fc.assert(
       fc.property(
-        fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,199}$/).filter(
-          (s) => s.trim().length > 0 && s.length <= 200,
+        fc.string({ minLength: 1, maxLength: 250 }).filter(
+          (s) => s.trim().length > 0 && s.trim().length <= 200,
         ),
         (name) => {
           const result = validateCompanyStep({
@@ -121,12 +121,12 @@ describe('setup-validation property tests', () => {
   it('validation result always has errors array', () => {
     fc.assert(
       fc.property(
-        fc.oneof(fc.constant(null), fc.string({ minLength: 0, maxLength: 50 })),
-        (template) => {
+        fc.boolean(),
+        (hasResponse) => {
           const result = validateCompanyStep({
             companyName: 'Test',
             companyDescription: '',
-            companyResponse: template === null ? null : makeCompanyResponse(),
+            companyResponse: hasResponse ? makeCompanyResponse() : null,
           })
           expect(Array.isArray(result.errors)).toBe(true)
         },
