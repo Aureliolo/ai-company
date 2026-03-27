@@ -62,7 +62,9 @@ export default function AgentDetailPage() {
         <AgentIdentityHeader agent={agent} />
       </ErrorBoundary>
 
-      <ProseInsight insights={insights} />
+      <ErrorBoundary level="section">
+        <ProseInsight insights={insights} />
+      </ErrorBoundary>
 
       <ErrorBoundary level="section">
         <PerformanceMetrics cards={performanceCards} />

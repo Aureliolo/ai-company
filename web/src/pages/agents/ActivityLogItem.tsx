@@ -15,9 +15,12 @@ export function ActivityLogItem({ event }: ActivityLogItemProps) {
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground">{event.description}</p>
       </div>
-      <span className="text-micro font-mono text-muted-foreground shrink-0">
+      <time
+        dateTime={event.timestamp}
+        className="text-micro font-mono text-muted-foreground shrink-0"
+      >
         {formatRelativeTime(event.timestamp)}
-      </span>
+      </time>
     </div>
   )
 }

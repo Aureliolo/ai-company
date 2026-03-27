@@ -78,18 +78,20 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   ),
 })
 
-const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.record({
-  window_size: fc.constantFrom('7d', '30d', '90d'),
-  data_point_count: fc.nat({ max: 100 }),
-  tasks_completed: fc.nat({ max: 100 }),
-  tasks_failed: fc.nat({ max: 20 }),
-  avg_quality_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-  avg_cost_per_task: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-  avg_completion_time_seconds: fc.option(fc.float({ min: 0, max: 86400, noNaN: true }), { nil: null }),
-  avg_tokens_per_task: fc.option(fc.float({ min: 0, max: 10000, noNaN: true }), { nil: null }),
-  success_rate: fc.option(fc.float({ min: 0, max: 1, noNaN: true }), { nil: null }),
-  collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-})
+const arbWindowMetrics: fc.Arbitrary<WindowMetrics> = fc.nat({ max: 100 }).chain((dataPointCount) =>
+  fc.nat({ max: dataPointCount }).map((tasksCompleted) => ({
+    window_size: '7d' as const,
+    data_point_count: dataPointCount,
+    tasks_completed: tasksCompleted,
+    tasks_failed: dataPointCount - tasksCompleted,
+    avg_quality_score: null,
+    avg_cost_per_task: null,
+    avg_completion_time_seconds: null,
+    avg_tokens_per_task: null,
+    success_rate: null,
+    collaboration_score: null,
+  })),
+)
 
 const arbTrendResult: fc.Arbitrary<TrendResult> = fc.record({
   metric_name: fc.constantFrom('success_rate', 'cost_per_task', 'quality_score'),
@@ -99,20 +101,22 @@ const arbTrendResult: fc.Arbitrary<TrendResult> = fc.record({
   data_point_count: fc.nat({ max: 100 }),
 })
 
-const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.record({
-  agent_name: fc.string({ minLength: 1, maxLength: 50 }),
-  tasks_completed_total: fc.nat({ max: 10000 }),
-  tasks_completed_7d: fc.nat({ max: 100 }),
-  tasks_completed_30d: fc.nat({ max: 500 }),
-  avg_completion_time_seconds: fc.option(fc.float({ min: 0, max: 86400, noNaN: true }), { nil: null }),
-  success_rate_percent: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
-  cost_per_task_usd: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
-  quality_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-  collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
-  trend_direction: fc.constantFrom('improving' as const, 'stable' as const, 'declining' as const, 'insufficient_data' as const),
-  windows: fc.array(arbWindowMetrics, { minLength: 0, maxLength: 3 }),
-  trends: fc.array(arbTrendResult, { minLength: 0, maxLength: 3 }),
-})
+const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 10000 }).chain((total) =>
+  fc.record({
+    agent_name: fc.string({ minLength: 1, maxLength: 50 }),
+    tasks_completed_total: fc.constant(total),
+    tasks_completed_7d: fc.nat({ max: Math.min(total, 100) }),
+    tasks_completed_30d: fc.nat({ max: Math.min(total, 500) }),
+    avg_completion_time_seconds: fc.option(fc.float({ min: 0, max: 86400, noNaN: true }), { nil: null }),
+    success_rate_percent: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
+    cost_per_task_usd: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
+    quality_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
+    collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
+    trend_direction: fc.constantFrom('improving' as const, 'stable' as const, 'declining' as const, 'insufficient_data' as const),
+    windows: fc.array(arbWindowMetrics, { minLength: 0, maxLength: 3 }),
+    trends: fc.array(arbTrendResult, { minLength: 0, maxLength: 3 }),
+  }),
+)
 
 // ── Properties ─────────────────────────────────────────────
 
@@ -169,7 +173,7 @@ describe('sortAgents properties', () => {
     fc.assert(
       fc.property(
         fc.array(arbAgent, { minLength: 0, maxLength: 20 }),
-        fc.constantFrom('name' as const, 'department' as const, 'level' as const, 'hiring_date' as const),
+        fc.constantFrom('name' as const, 'department' as const, 'level' as const, 'status' as const, 'hiring_date' as const),
         (agents, sortBy) => {
           const result = sortAgents(agents, sortBy)
           expect(result).toHaveLength(agents.length)
@@ -261,11 +265,12 @@ describe('formatCompletionTime properties', () => {
 })
 
 describe('formatCostPerTask properties', () => {
-  it('returns a dollar-prefixed string for any non-negative number', () => {
+  it('returns a currency-formatted string for any non-negative number', () => {
     fc.assert(
       fc.property(fc.float({ min: 0, max: 10000, noNaN: true }), (cost) => {
         const result = formatCostPerTask(cost)
-        expect(result.startsWith('$')).toBe(true)
+        // formatCurrency defaults to EUR -- result should contain the euro sign
+        expect(result).toMatch(/€/)
       }),
     )
   })

@@ -146,10 +146,10 @@ Global search overlay: navigate to any page, search agents by name, search tasks
 **Trigger**: Bell icon in sidebar bottom + unread badge
 Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
 
-#### Agent Detail Panel
+#### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
-Slide-in panel with tabbed content (Overview, Performance, Access, Activity). Not a separate route -- overlays the current page. URL updates to `/agents/{name}` for deep linking and back-button support.
+Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
 
 ---
 
@@ -217,7 +217,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/approvals` | Approvals | Pending queue |
 | `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
 | `/agents` | Agents | Profile list |
-| `/agents/:agentName` | Agent detail | Slide-in panel, URL-addressable |
+| `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
 | `/meetings` | Meetings | Meeting history |
@@ -250,7 +250,8 @@ Single WebSocket connection per session, established after login. Client subscri
 | **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
 | **Budget** | `budget` | Cost records added, budget alerts |
 | **Approvals** | `approvals` | Approval submitted/approved/rejected/expired |
-| **Agents** | `agents` | Agent status changes |
+| **Agents** (list) | `agents` | Agent status changes |
+| **Agents** (detail) | `agents`, `tasks` | Agent status and task changes for selected agent |
 | **Messages** | `messages` | New messages sent |
 | **Meetings** | `meetings` | Meeting started/completed/failed |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
@@ -324,8 +325,8 @@ Every backend controller has a home in the page structure. No orphans.
 | ApprovalsController | Approvals, Dashboard |
 | SettingsController | Settings |
 | BackupController | Settings (backup namespace) |
-| AutonomyController | Agent Detail panel (Access tab) |
-| CollaborationController | Agent Detail panel (Performance tab) |
+| AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
+| CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CoordinationController | Task Board (task detail action) |
 | ProjectController | Excluded (stub) |
 | ArtifactController | Excluded (stub, pending #612) |
@@ -345,7 +346,7 @@ How this page structure supports the 10 design principles from #762:
 | 5 | Progressive disclosure | Dashboard summary to page detail. Agent list to agent detail page. Org chart node to agent detail |
 | 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board and Approvals |
 | 7 | Typography carries information | Geist Mono for metrics/values/agent names. Geist Sans for labels/descriptions |
-| 8 | Prose alongside metrics | Agent detail: biography narrative next to performance numbers. Budget: cost context explanations |
+| 8 | Prose alongside metrics | Agent detail: prose insights alongside performance metrics. Budget: cost context explanations |
 | 9 | Every pixel earns its place | No placeholder pages (Artifacts, Projects excluded). No "Coming Soon" stubs |
 | 10 | One component, one look | Consistent card/panel/badge patterns across all pages via shadcn/ui primitives |
 

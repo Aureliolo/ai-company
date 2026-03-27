@@ -11,16 +11,15 @@ interface TaskHistoryProps {
 }
 
 export function TaskHistory({ tasks, className }: TaskHistoryProps) {
-  // Sort by created_at descending (most recent first)
+  // Sort by created_at descending (most recent first); skip tasks with invalid dates
   const sorted = [...tasks]
-    .filter((t) => t.created_at)
+    .filter((t) => t.created_at && !Number.isNaN(new Date(t.created_at).getTime()))
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
 
   // Compute max duration for relative bar widths
   const maxDurationMs = sorted.reduce((max, task) => {
-    if (!task.created_at) return max
-    const end = task.updated_at ?? task.created_at
-    const duration = new Date(end).getTime() - new Date(task.created_at).getTime()
+    const end = task.updated_at ?? task.created_at!
+    const duration = new Date(end).getTime() - new Date(task.created_at!).getTime()
     return Math.max(max, duration)
   }, 1)
 

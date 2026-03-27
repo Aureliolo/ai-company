@@ -59,6 +59,8 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
   useEffect(() => {
     polling.start()
     return () => polling.stop()
+    // polling is a new object each render but start/stop are stable --
+    // including it would restart polling on every render
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [agentName])
 

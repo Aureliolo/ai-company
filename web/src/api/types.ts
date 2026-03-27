@@ -359,9 +359,10 @@ export interface ToolPermissions {
 }
 
 /**
- * Agent identity as returned by the API.
- * Mirrors backend AgentIdentity with serialization adaptations
- * (UUIDs as strings, dates as ISO strings, authority omitted from listing response).
+ * Agent identity as returned by the /agents API endpoints.
+ * Models the enriched agent shape combining config + runtime state
+ * (the backend currently serves config-level data; typed sub-objects
+ * here anticipate the full DTO shape from the agent controller).
  */
 export interface AgentConfig {
   id: string

@@ -121,7 +121,7 @@ describe('fetchAgents', () => {
     const state = useAgentsStore.getState()
     expect(state.agents).toHaveLength(0)
     expect(state.listLoading).toBe(false)
-    expect(state.listError).toBeTruthy()
+    expect(state.listError).toBe('Network error')
   })
 
   it('sets loading to true during fetch', async () => {
@@ -171,7 +171,7 @@ describe('fetchAgentDetail', () => {
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toEqual(agent)
     expect(state.performance).toBeNull()
-    expect(state.detailError).toBeNull()
+    expect(state.detailError).toBe('Some data failed to load: performance metrics. Displayed data may be incomplete.')
   })
 
   it('degrades gracefully when tasks and history fail', async () => {
@@ -189,7 +189,7 @@ describe('fetchAgentDetail', () => {
     expect(state.performance).toBeDefined()
     expect(state.agentTasks).toHaveLength(0)
     expect(state.careerHistory).toHaveLength(0)
-    expect(state.detailError).toBeNull()
+    expect(state.detailError).toBe('Some data failed to load: task history, career history. Displayed data may be incomplete.')
   })
 
   it('sets error when agent fetch fails', async () => {
@@ -203,7 +203,7 @@ describe('fetchAgentDetail', () => {
 
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toBeNull()
-    expect(state.detailError).toBeTruthy()
+    expect(state.detailError).toBe('Not found')
   })
 })
 
@@ -212,7 +212,11 @@ describe('fetchMoreActivity', () => {
     const existingEvents = [
       { event_type: 'task_completed', timestamp: '2026-03-26T12:00:00Z', description: 'Task done', related_ids: {} },
     ]
-    useAgentsStore.setState({ activity: existingEvents, activityTotal: 5 })
+    useAgentsStore.setState({
+      activity: existingEvents,
+      activityTotal: 1,
+      selectedAgent: makeAgent({ name: 'Alice Smith' }),
+    })
 
     const newEvents = [
       { event_type: 'hired', timestamp: '2026-03-25T10:00:00Z', description: 'Agent hired', related_ids: {} },
@@ -222,6 +226,7 @@ describe('fetchMoreActivity', () => {
     await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
+    expect(useAgentsStore.getState().activityTotal).toBe(5)
   })
 
   it('caps activity at MAX_ACTIVITIES (100)', async () => {
@@ -231,7 +236,7 @@ describe('fetchMoreActivity', () => {
       description: `Event ${i}`,
       related_ids: {},
     }))
-    useAgentsStore.setState({ activity: existingEvents, activityTotal: 200 })
+    useAgentsStore.setState({ activity: existingEvents, activityTotal: 200, selectedAgent: makeAgent({ name: 'Alice Smith' }) })
 
     const newEvents = Array.from({ length: 5 }, (_, i) => ({
       event_type: 'hired',
@@ -250,7 +255,7 @@ describe('fetchMoreActivity', () => {
     const existingEvents = [
       { event_type: 'task_completed', timestamp: '2026-03-26T12:00:00Z', description: 'Task done', related_ids: {} },
     ]
-    useAgentsStore.setState({ activity: existingEvents, activityTotal: 5 })
+    useAgentsStore.setState({ activity: existingEvents, activityTotal: 5, selectedAgent: makeAgent({ name: 'Alice Smith' }) })
 
     vi.mocked(getAgentActivity).mockRejectedValue(new Error('Network error'))
 

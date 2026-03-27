@@ -1,8 +1,21 @@
 import { Search } from 'lucide-react'
 import { useAgentsStore } from '@/stores/agents'
-import { DEPARTMENT_NAME_VALUES, SENIORITY_LEVEL_VALUES, AGENT_STATUS_VALUES } from '@/api/types'
+import {
+  DEPARTMENT_NAME_VALUES,
+  SENIORITY_LEVEL_VALUES,
+  AGENT_STATUS_VALUES,
+  type DepartmentName,
+  type SeniorityLevel,
+  type AgentStatus,
+} from '@/api/types'
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
+import type { AgentSortKey } from '@/utils/agents'
+
+const VALID_DEPARTMENTS = new Set<string>(DEPARTMENT_NAME_VALUES)
+const VALID_LEVELS = new Set<string>(SENIORITY_LEVEL_VALUES)
+const VALID_STATUSES = new Set<string>(AGENT_STATUS_VALUES)
+const VALID_SORT_KEYS = new Set<string>(['name', 'department', 'level', 'status', 'hiring_date'])
 
 export function AgentFilters({ className }: { className?: string }) {
   const searchQuery = useAgentsStore((s) => s.searchQuery)
@@ -35,7 +48,10 @@ export function AgentFilters({ className }: { className?: string }) {
       {/* Department */}
       <select
         value={departmentFilter ?? ''}
-        onChange={(e) => setDepartmentFilter(e.target.value ? e.target.value as typeof departmentFilter : null)}
+        onChange={(e) => {
+          const v = e.target.value
+          setDepartmentFilter(v && VALID_DEPARTMENTS.has(v) ? v as DepartmentName : null)
+        }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by department"
       >
@@ -48,7 +64,10 @@ export function AgentFilters({ className }: { className?: string }) {
       {/* Level */}
       <select
         value={levelFilter ?? ''}
-        onChange={(e) => setLevelFilter(e.target.value ? e.target.value as typeof levelFilter : null)}
+        onChange={(e) => {
+          const v = e.target.value
+          setLevelFilter(v && VALID_LEVELS.has(v) ? v as SeniorityLevel : null)
+        }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by level"
       >
@@ -61,7 +80,10 @@ export function AgentFilters({ className }: { className?: string }) {
       {/* Status */}
       <select
         value={statusFilter ?? ''}
-        onChange={(e) => setStatusFilter(e.target.value ? e.target.value as typeof statusFilter : null)}
+        onChange={(e) => {
+          const v = e.target.value
+          setStatusFilter(v && VALID_STATUSES.has(v) ? v as AgentStatus : null)
+        }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by status"
       >
@@ -74,7 +96,10 @@ export function AgentFilters({ className }: { className?: string }) {
       {/* Sort */}
       <select
         value={sortBy}
-        onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+        onChange={(e) => {
+          const v = e.target.value
+          if (VALID_SORT_KEYS.has(v)) setSortBy(v as AgentSortKey)
+        }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Sort agents by"
       >

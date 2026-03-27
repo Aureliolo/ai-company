@@ -15,7 +15,7 @@ export function CareerTimelineEvent({ event, isLast }: CareerTimelineEventProps)
     <div className="relative flex gap-4 pb-6 last:pb-0">
       {/* Timeline line */}
       {!isLast && (
-        <div className="absolute left-[7px] top-4 bottom-0 w-px bg-border" />
+        <div className="absolute left-1.5 top-4 bottom-0 w-px bg-border" />
       )}
 
       {/* Dot */}

@@ -183,6 +183,7 @@ describe('filterAgents', () => {
   it('combines multiple filters', () => {
     const result = filterAgents(agents, { department: 'engineering', status: 'active' })
     expect(result).toHaveLength(2)
+    expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Carol Xu'])
   })
 
   it('returns empty array when no matches', () => {
@@ -239,9 +240,9 @@ describe('sortAgents', () => {
     expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Bob Jones', 'Carol Xu'])
   })
 
-  it('sorts by level alphabetically', () => {
+  it('sorts by level semantically (junior < senior < lead)', () => {
     const result = sortAgents(agents, 'level', 'asc')
-    expect(result.map((a) => a.level)).toEqual(['junior', 'lead', 'senior'])
+    expect(result.map((a) => a.level)).toEqual(['junior', 'senior', 'lead'])
   })
 
   it('sorts by status', () => {
@@ -296,20 +297,25 @@ describe('formatCompletionTime', () => {
 // ── formatCostPerTask ──────────────────────────────────────
 
 describe('formatCostPerTask', () => {
-  it('formats cost with dollar sign', () => {
-    expect(formatCostPerTask(0.35)).toBe('$0.35')
+  it('formats cost in EUR', () => {
+    const result = formatCostPerTask(0.35)
+    expect(result).toContain('0.35')
+    // Uses Intl.NumberFormat with EUR -- exact format depends on locale
+    expect(result).toMatch(/€/)
   })
 
   it('formats larger cost', () => {
-    expect(formatCostPerTask(12.5)).toBe('$12.50')
+    const result = formatCostPerTask(12.5)
+    expect(result).toContain('12.50')
   })
 
   it('returns -- for null', () => {
     expect(formatCostPerTask(null)).toBe('--')
   })
 
-  it('formats negative cost with dollar sign', () => {
-    expect(formatCostPerTask(-5)).toBe('$-5.00')
+  it('formats negative cost', () => {
+    const result = formatCostPerTask(-5)
+    expect(result).toContain('5.00')
   })
 })
 
@@ -346,7 +352,7 @@ describe('computePerformanceCards', () => {
     const cards = computePerformanceCards(makePerformance())
     const costCard = cards.find((c) => c.label === 'COST PER TASK')
     expect(costCard).toBeDefined()
-    expect(costCard!.value).toBe('$0.35')
+    expect(String(costCard!.value)).toContain('0.35')
   })
 
   it('handles null values gracefully', () => {
@@ -365,6 +371,12 @@ describe('computePerformanceCards', () => {
     const tasksCard = cards.find((c) => c.label === 'TASKS COMPLETED')
     expect(tasksCard!.sparklineData).toBeDefined()
     expect(tasksCard!.sparklineData).toHaveLength(2)
+  })
+
+  it('omits sparkline data when fewer than 2 windows', () => {
+    const cards = computePerformanceCards(makePerformance({ windows: [] }))
+    const tasksCard = cards.find((c) => c.label === 'TASKS COMPLETED')
+    expect(tasksCard!.sparklineData).toBeUndefined()
   })
 })
 

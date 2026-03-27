@@ -54,7 +54,10 @@ interface AgentsState {
   clearDetail: () => void
 }
 
-export const useAgentsStore = create<AgentsState>()((set) => ({
+// Track the latest requested agent name to prevent stale responses from overwriting
+let _detailRequestName = ''
+
+export const useAgentsStore = create<AgentsState>()((set, get) => ({
   // List page defaults
   agents: [],
   totalAgents: 0,
@@ -94,6 +97,7 @@ export const useAgentsStore = create<AgentsState>()((set) => ({
   },
 
   fetchAgentDetail: async (name: string) => {
+    _detailRequestName = name
     set({ detailLoading: true, detailError: null })
     try {
       const [agentResult, perfResult, tasksResult, activityResult, historyResult] =
@@ -105,12 +109,22 @@ export const useAgentsStore = create<AgentsState>()((set) => ({
           getAgentHistory(name),
         ])
 
+      // Guard against stale responses from rapid navigation
+      if (_detailRequestName !== name) return
+
       const agent = agentResult.status === 'fulfilled' ? agentResult.value : null
       if (!agent) {
         const reason = agentResult.status === 'rejected' ? agentResult.reason : null
         set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Agent not found') })
         return
       }
+
+      // Collect partial failure warnings for secondary endpoints
+      const partialErrors: string[] = []
+      if (perfResult.status === 'rejected') partialErrors.push('performance metrics')
+      if (tasksResult.status === 'rejected') partialErrors.push('task history')
+      if (activityResult.status === 'rejected') partialErrors.push('activity')
+      if (historyResult.status === 'rejected') partialErrors.push('career history')
 
       set({
         selectedAgent: agent,
@@ -120,23 +134,36 @@ export const useAgentsStore = create<AgentsState>()((set) => ({
         activityTotal: activityResult.status === 'fulfilled' ? activityResult.value.total : 0,
         careerHistory: historyResult.status === 'fulfilled' ? historyResult.value : [],
         detailLoading: false,
-        detailError: null,
+        detailError: partialErrors.length > 0
+          ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
+          : null,
       })
     } catch (err) {
+      if (_detailRequestName !== name) return
       set({ detailLoading: false, detailError: getErrorMessage(err) })
     }
   },
 
   fetchMoreActivity: async (name: string, offset: number) => {
+    const { activity, selectedAgent } = get()
+    // Short-circuit if at client cap or agent changed
+    if (activity.length >= MAX_ACTIVITIES) return
+    if (selectedAgent && selectedAgent.name !== name) return
+
     try {
       const result = await getAgentActivity(name, { offset, limit: 20 })
-      set((state) => ({
-        activity: [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES),
-        activityTotal: result.total,
-      }))
+      // Ignore response if agent changed while fetching
+      if (get().selectedAgent?.name !== name) return
+      set((state) => {
+        const merged = [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES)
+        return {
+          activity: merged,
+          activityTotal: Math.min(result.total, MAX_ACTIVITIES),
+        }
+      })
     } catch (err) {
       // Pagination failure -- existing data preserved, log for debugging
-      console.warn('Failed to load more activity:', err)
+      console.warn('Failed to load more activity:', getErrorMessage(err))
     }
   },
 

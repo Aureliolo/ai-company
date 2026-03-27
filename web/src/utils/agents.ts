@@ -25,6 +25,7 @@ import type {
 } from '@/api/types'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import type { AgentRuntimeStatus, SemanticColor } from '@/lib/utils'
+import { formatCurrency } from '@/utils/format'
 
 // ── Filter / Sort types ────────────────────────────────────
 
@@ -81,6 +82,14 @@ export function filterAgents(
 
 // ── Sorting ────────────────────────────────────────────────
 
+// Semantic ordering for ordinal fields (lexicographic comparison is incorrect)
+const LEVEL_RANK: Record<SeniorityLevel, number> = {
+  junior: 0, mid: 1, senior: 2, lead: 3, principal: 4, director: 5, vp: 6, c_suite: 7,
+}
+const STATUS_RANK: Record<AgentStatus, number> = {
+  active: 0, onboarding: 1, on_leave: 2, terminated: 3,
+}
+
 /** Sort agents by a given key. Does not mutate the input. */
 export function sortAgents(
   agents: readonly AgentConfig[],
@@ -91,8 +100,18 @@ export function sortAgents(
   const dir = direction === 'asc' ? 1 : -1
 
   sorted.sort((a, b) => {
-    const va = a[sortBy]
-    const vb = b[sortBy]
+    let va: string | number = a[sortBy]
+    let vb: string | number = b[sortBy]
+
+    // Use semantic rank for ordinal fields
+    if (sortBy === 'level') {
+      va = LEVEL_RANK[a.level]
+      vb = LEVEL_RANK[b.level]
+    } else if (sortBy === 'status') {
+      va = STATUS_RANK[a.status]
+      vb = STATUS_RANK[b.status]
+    }
+
     if (va < vb) return -1 * dir
     if (va > vb) return 1 * dir
     return 0
@@ -113,10 +132,10 @@ export function formatCompletionTime(seconds: number | null): string {
   return `${mins}m`
 }
 
-/** Format a USD cost value with dollar sign. */
+/** Format a cost value using the project's configured currency (defaults to EUR). */
 export function formatCostPerTask(cost: number | null): string {
   if (cost == null) return '--'
-  return `$${cost.toFixed(2)}`
+  return formatCurrency(cost)
 }
 
 // ── Performance cards ──────────────────────────────────────
@@ -158,7 +177,10 @@ export function computePerformanceCards(
 
 // ── Prose insights ─────────────────────────────────────────
 
-/** Generate 0-3 human-readable insight sentences from performance data. */
+/**
+ * Generate 0-3 human-readable insight sentences from performance data.
+ * The agent parameter is accepted for future personality-based insights but not yet used.
+ */
 export function generateInsights(
   _agent: AgentConfig,
   perf: AgentPerformanceSummary | null,
