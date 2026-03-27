@@ -4,36 +4,42 @@ import { ApprovalDetailDrawer } from '@/pages/approvals/ApprovalDetailDrawer'
 import { makeApproval } from '../../helpers/factories'
 import { useToastStore } from '@/stores/toast'
 
+// Mock components must be at module scope for eslint @eslint-react/component-hook-factories
+function MockAnimatePresence({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
+}
+
+function MockDiv(props: React.ComponentProps<'div'> & Record<string, unknown>) {
+  return (
+    <div className={props.className} onClick={props.onClick}>
+      {props.children}
+    </div>
+  )
+}
+
+function MockAside(props: React.ComponentProps<'aside'> & Record<string, unknown>) {
+  return (
+    <aside
+      className={props.className}
+      role={props.role}
+      aria-modal={props['aria-modal']}
+      aria-label={props['aria-label']}
+      ref={props.ref as React.Ref<HTMLElement>}
+    >
+      {props.children}
+    </aside>
+  )
+}
+
 // Mock framer-motion to avoid animation timing issues in tests
 vi.mock('framer-motion', async () => {
   const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
   return {
     ...actual,
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    AnimatePresence: MockAnimatePresence,
     motion: {
-      div: (props: React.ComponentProps<'div'> & Record<string, unknown>) => (
-        <div className={props.className} onClick={props.onClick}>
-          {props.children}
-        </div>
-      ),
-      aside: ({
-        children,
-        className,
-        role,
-        'aria-modal': ariaModal,
-        'aria-label': ariaLabel,
-        ...rest
-      }: React.ComponentProps<'aside'> & Record<string, unknown>) => (
-        <aside
-          className={className}
-          role={role}
-          aria-modal={ariaModal}
-          aria-label={ariaLabel}
-          ref={rest.ref as React.Ref<HTMLElement>}
-        >
-          {children}
-        </aside>
-      ),
+      div: MockDiv,
+      aside: MockAside,
     },
   }
 })
