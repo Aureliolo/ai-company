@@ -230,17 +230,17 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       const updatedDept = await apiReorderAgents(deptName, { agent_ids: orderedIds })
       const prev = get().config
-      if (prev) {
-        set({
+      set({
+        saving: false,
+        ...(prev ? {
           config: {
             ...prev,
             departments: prev.departments.map((d) =>
               d.name === deptName ? updatedDept : d,
             ),
           },
-        })
-      }
-      set({ saving: false })
+        } : {}),
+      })
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
       throw err

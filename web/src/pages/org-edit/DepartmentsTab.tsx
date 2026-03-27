@@ -45,15 +45,18 @@ function SortableDepartmentCard({
   health,
   agentCount,
   onClick,
+  disabled,
 }: {
   dept: Department
   health: DepartmentHealth | null
   agentCount: number
   onClick: () => void
+  disabled?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: dept.name,
     data: { dept },
+    disabled,
   })
 
   const style = {
@@ -63,7 +66,7 @@ function SortableDepartmentCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...(disabled ? {} : { ...attributes, ...listeners })}>
       <button
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
@@ -200,6 +203,7 @@ export function DepartmentsTab({
                   health={healthMap.get(dept.name) ?? null}
                   agentCount={getAgentCount(dept.name)}
                   onClick={() => setEditDept(dept)}
+                  disabled={saving}
                 />
               </StaggerItem>
             ))}
