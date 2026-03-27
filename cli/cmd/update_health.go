@@ -87,7 +87,11 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 // promptHealthRecover asks the user whether to recover or run init.
 // Returns (true, nil) if the user chose to abort.
 func promptHealthRecover(cmd *cobra.Command) (bool, error) {
-	if !GetGlobalOpts(cmd.Context()).ShouldPrompt() {
+	opts := GetGlobalOpts(cmd.Context())
+	if !opts.ShouldPrompt() {
+		if opts.Yes {
+			return false, nil // --yes: auto-recover (default is yes)
+		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
 			"\nNon-interactive mode: run 'synthorg init' to restore a clean installation.")
 		return true, nil

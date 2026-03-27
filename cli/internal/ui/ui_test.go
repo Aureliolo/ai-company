@@ -451,19 +451,18 @@ func TestQuietModeSuppresses(t *testing.T) {
 		t.Errorf("quiet mode should suppress all non-essential output, got: %q", buf.String())
 	}
 
-	// Success, Warn, Error, Plain should still print.
+	// Success and Warn are suppressed in quiet mode (errors only).
 	u.Success("ok")
-	if !strings.Contains(buf.String(), "ok") {
-		t.Error("quiet mode should still print Success")
+	if buf.Len() != 0 {
+		t.Errorf("quiet mode should suppress Success, got: %q", buf.String())
 	}
-	buf.Reset()
 
 	u.Warn("caution")
-	if !strings.Contains(buf.String(), "caution") {
-		t.Error("quiet mode should still print Warn")
+	if buf.Len() != 0 {
+		t.Errorf("quiet mode should suppress Warn, got: %q", buf.String())
 	}
-	buf.Reset()
 
+	// Error and Plain should still print.
 	u.Error("fail")
 	if !strings.Contains(buf.String(), "fail") {
 		t.Error("quiet mode should still print Error")
@@ -688,8 +687,8 @@ func TestSpinnerQuietMode(t *testing.T) {
 		t.Error("quiet spinner should produce no output on start")
 	}
 	s.Success("done")
-	if !strings.Contains(buf.String(), "done") {
-		t.Error("quiet spinner Success should still print")
+	if buf.Len() != 0 {
+		t.Errorf("quiet spinner Success should be suppressed (errors only), got: %q", buf.String())
 	}
 }
 

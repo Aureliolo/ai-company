@@ -104,8 +104,8 @@ func isDevChannelMismatch(channel, ver string) bool {
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
 // re-exec the updated binary.
-func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.CheckResult) error {
-	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
+func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult) error {
+	out.Step(fmt.Sprintf("New version available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
 
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
 	if err != nil {
@@ -115,7 +115,7 @@ func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.C
 		return nil
 	}
 
-	_, _ = fmt.Fprintln(out, "Downloading...")
+	out.Step("Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
 		return fmt.Errorf("downloading update: %w", err)
@@ -124,9 +124,9 @@ func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.C
 	if err := selfupdate.Replace(binary); err != nil {
 		return fmt.Errorf("replacing binary: %w", err)
 	}
-	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
-	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
-		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v"))
+	out.Success(fmt.Sprintf("CLI updated to %s", result.LatestVersion))
+	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
+		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v")))
 
 	return errReexec
 }
@@ -149,33 +149,34 @@ func updateCLI(cmd *cobra.Command) error {
 	}
 
 	ctx := cmd.Context()
-	out := cmd.OutOrStdout()
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Warn on dev builds.
 	if version.Version == "dev" {
-		_, _ = fmt.Fprintln(out, "Warning: running a dev build -- update check will always report an update available.")
+		out.Warn("Running a dev build -- update check will always report an update available.")
 	}
 
 	channel := resolveUpdateChannel(ctx)
 	if channel == "dev" {
-		_, _ = fmt.Fprintln(out, "Checking for updates (dev channel)...")
+		out.Step("Checking for updates (dev channel)...")
 	} else {
-		_, _ = fmt.Fprintln(out, "Checking for updates...")
+		out.Step("Checking for updates...")
 	}
 
 	if isDevChannelMismatch(channel, version.Version) {
-		_, _ = fmt.Fprintln(out,
-			"Note: running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
+		out.Warn("Running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
 	}
 
 	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
+		errUI.Warn(fmt.Sprintf("Could not check for updates: %v", err))
 		return nil
 	}
 
 	if !result.UpdateAvail {
-		_, _ = fmt.Fprintf(out, "CLI is up to date (%s)\n", result.CurrentVersion)
+		out.Success(fmt.Sprintf("CLI is up to date (%s)", result.CurrentVersion))
 		return nil
 	}
 
@@ -498,7 +499,12 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	if !GetGlobalOpts(ctx).ShouldPrompt() {
+	opts := GetGlobalOpts(ctx)
+	if !opts.ShouldPrompt() {
+		if opts.Yes {
+			// --yes: auto-restart (default is yes)
+			return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
+		}
 		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
 	}
@@ -510,8 +516,6 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	if !restart {
 		return false, nil
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 }
 

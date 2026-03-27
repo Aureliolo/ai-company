@@ -86,19 +86,23 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 // confirmAndCleanup prompts the user and removes approved images.
 // Returns (true, nil) when at least one image was removed.
 func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
-	if !GetGlobalOpts(ctx).ShouldPrompt() {
+	opts := GetGlobalOpts(ctx)
+	if !opts.ShouldPrompt() && !opts.Yes {
 		out.HintNextStep("Non-interactive mode: run interactively or use --yes to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
 
-	var remove bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
-			Value(&remove),
-	))
-	if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
-		return false, err
+	// --yes auto-confirms; otherwise prompt interactively.
+	remove := opts.Yes
+	if !remove {
+		form := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
+				Value(&remove),
+		))
+		if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
+			return false, err
+		}
 	}
 	if !remove {
 		return false, nil
