@@ -101,12 +101,14 @@ const arbTrendResult: fc.Arbitrary<TrendResult> = fc.record({
   data_point_count: fc.nat({ max: 100 }),
 })
 
-const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 10000 }).chain((total) =>
-  fc.record({
-    agent_name: fc.string({ minLength: 1, maxLength: 50 }),
-    tasks_completed_total: fc.constant(total),
-    tasks_completed_7d: fc.nat({ max: Math.min(total, 100) }),
-    tasks_completed_30d: fc.nat({ max: Math.min(total, 500) }),
+const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 10000 }).chain((total) => {
+  const max30d = Math.min(total, 500)
+  return fc.nat({ max: max30d }).chain((completed30d) =>
+    fc.record({
+      agent_name: fc.string({ minLength: 1, maxLength: 50 }),
+      tasks_completed_total: fc.constant(total),
+      tasks_completed_7d: fc.nat({ max: Math.min(completed30d, 100) }),
+      tasks_completed_30d: fc.constant(completed30d),
     avg_completion_time_seconds: fc.option(fc.float({ min: 0, max: 86400, noNaN: true }), { nil: null }),
     success_rate_percent: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
     cost_per_task_usd: fc.option(fc.float({ min: 0, max: 100, noNaN: true }), { nil: null }),
@@ -115,8 +117,8 @@ const arbPerformance: fc.Arbitrary<AgentPerformanceSummary> = fc.nat({ max: 1000
     trend_direction: fc.constantFrom('improving' as const, 'stable' as const, 'declining' as const, 'insufficient_data' as const),
     windows: fc.array(arbWindowMetrics, { minLength: 0, maxLength: 3 }),
     trends: fc.array(arbTrendResult, { minLength: 0, maxLength: 3 }),
-  }),
-)
+  }))
+})
 
 // ── Properties ─────────────────────────────────────────────
 

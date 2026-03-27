@@ -14,6 +14,25 @@ interface AgentGridViewProps {
   className?: string
 }
 
+function AgentGridItem({ agent }: { agent: AgentConfig }) {
+  return (
+    <StaggerItem>
+      <Link
+        to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agent.name))}
+        className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded-lg"
+      >
+        <AgentCard
+          name={agent.name}
+          role={agent.role}
+          department={agent.department}
+          status={toRuntimeStatus(agent.status)}
+          timestamp={formatRelativeTime(agent.hiring_date)}
+        />
+      </Link>
+    </StaggerItem>
+  )
+}
+
 export function AgentGridView({ agents, className }: AgentGridViewProps) {
   if (agents.length === 0) {
     return (
@@ -33,20 +52,7 @@ export function AgentGridView({ agents, className }: AgentGridViewProps) {
       )}
     >
       {agents.map((agent) => (
-        <StaggerItem key={agent.id}>
-          <Link
-            to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agent.name))}
-            className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded-lg"
-          >
-            <AgentCard
-              name={agent.name}
-              role={agent.role}
-              department={agent.department}
-              status={toRuntimeStatus(agent.status)}
-              timestamp={formatRelativeTime(agent.hiring_date)}
-            />
-          </Link>
-        </StaggerItem>
+        <AgentGridItem key={agent.id} agent={agent} />
       ))}
     </StaggerGroup>
   )

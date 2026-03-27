@@ -42,9 +42,12 @@ export function CareerTimelineEvent({ event, isLast }: CareerTimelineEventProps)
           )}>
             {formatLabel(event.event_type)}
           </span>
-          <span className="text-micro font-mono text-muted-foreground">
+          <time
+            dateTime={event.timestamp}
+            className="text-micro font-mono text-muted-foreground"
+          >
             {formatDate(event.timestamp)}
-          </span>
+          </time>
         </div>
         {event.description && (
           <p className="mt-0.5 text-sm text-secondary-foreground">{event.description}</p>

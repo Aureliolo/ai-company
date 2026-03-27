@@ -36,9 +36,12 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           {agent.autonomy_level && (
             <StatPill label="AUTONOMY" value={formatLabel(agent.autonomy_level)} />
           )}
-          <span className="text-micro font-mono text-muted-foreground">
+          <time
+            dateTime={agent.hiring_date}
+            className="text-micro font-mono text-muted-foreground"
+          >
             Hired {formatDate(agent.hiring_date)}
-          </span>
+          </time>
         </div>
       </div>
     </div>

@@ -206,6 +206,61 @@ describe('fetchAgentDetail', () => {
     expect(state.selectedAgent).toBeNull()
     expect(state.detailError).toBe('Not found')
   })
+
+  it('rejects stale responses when a newer fetch starts', async () => {
+    const agentA = makeAgent({ name: 'Alice Smith' })
+    const agentB = makeAgent({ name: 'Bob Jones', role: 'Designer' })
+
+    // Control resolution order: A resolves after B
+    let resolveA!: (v: AgentConfig) => void
+    let resolveB!: (v: AgentConfig) => void
+    vi.mocked(getAgent)
+      .mockImplementationOnce(() => new Promise((r) => { resolveA = r }))
+      .mockImplementationOnce(() => new Promise((r) => { resolveB = r }))
+    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
+    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
+    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
+    vi.mocked(getAgentHistory).mockResolvedValue([])
+
+    // Start both fetches
+    const promiseA = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+    const promiseB = useAgentsStore.getState().fetchAgentDetail('Bob Jones')
+
+    // Resolve B first (newer), then A (stale)
+    resolveB(agentB)
+    await promiseB
+
+    expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
+
+    // Resolve A (stale) -- should be rejected by staleness guard
+    resolveA(agentA)
+    await promiseA
+
+    // Store should still show Bob, not Alice
+    expect(useAgentsStore.getState().selectedAgent?.name).toBe('Bob Jones')
+  })
+
+  it('rejects in-flight responses after clearDetail', async () => {
+    let resolveAgent!: (v: AgentConfig) => void
+    vi.mocked(getAgent).mockImplementation(() => new Promise((r) => { resolveAgent = r }))
+    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
+    vi.mocked(listTasks).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
+    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
+    vi.mocked(getAgentHistory).mockResolvedValue([])
+
+    const promise = useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+
+    // Navigate away (clearDetail resets staleness token)
+    useAgentsStore.getState().clearDetail()
+    expect(useAgentsStore.getState().selectedAgent).toBeNull()
+
+    // Late response arrives -- should be rejected
+    resolveAgent(makeAgent())
+    await promise
+
+    expect(useAgentsStore.getState().selectedAgent).toBeNull()
+    expect(useAgentsStore.getState().detailLoading).toBe(false)
+  })
 })
 
 describe('fetchMoreActivity', () => {

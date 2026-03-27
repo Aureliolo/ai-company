@@ -18,8 +18,8 @@ export function ProseInsight({ insights, className }: ProseInsightProps) {
     >
       <Lightbulb className="size-4 shrink-0 text-accent mt-0.5" aria-hidden="true" />
       <div className="space-y-1">
-        {insights.map((insight) => (
-          <p key={insight} className="text-sm italic text-secondary-foreground">
+        {insights.map((insight, index) => (
+          <p key={index} className="text-sm italic text-secondary-foreground">
             {insight}
           </p>
         ))}
