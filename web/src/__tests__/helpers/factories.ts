@@ -1,4 +1,4 @@
-import type { AgentConfig, CompanyConfig, Department, DepartmentHealth, Task } from '@/api/types'
+import type { AgentConfig, ApprovalResponse, CompanyConfig, Department, DepartmentHealth, Task } from '@/api/types'
 
 export function makeTask(id: string, overrides?: Partial<Task>): Task
 export function makeTask(id: string, title: string, overrides?: Partial<Task>): Task
@@ -108,6 +108,28 @@ export function makeDepartmentHealth(name: string, overrides?: Partial<Departmen
     agent_count: 3,
     task_count: 5,
     cost_usd: 12.5,
+    ...overrides,
+  }
+}
+
+export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>): ApprovalResponse {
+  return {
+    id,
+    action_type: 'code:create',
+    title: `Approval ${id}`,
+    description: 'Test approval description',
+    requested_by: 'agent-eng',
+    risk_level: 'medium',
+    status: 'pending',
+    task_id: null,
+    metadata: {},
+    decided_by: null,
+    decision_reason: null,
+    created_at: new Date(Date.now() - 3600_000).toISOString(),
+    decided_at: null,
+    expires_at: null,
+    seconds_remaining: null,
+    urgency_level: 'no_expiry',
     ...overrides,
   }
 }
