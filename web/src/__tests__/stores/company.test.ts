@@ -96,9 +96,9 @@ describe('useCompanyStore', () => {
     expect(state.error).toBeNull()
   })
 
-  it('fetchCompanyData sets error on failure', async () => {
+  it('fetchCompanyData sets error on failure and rethrows', async () => {
     mockGetCompanyConfig.mockRejectedValue(new Error('Network error'))
-    await useCompanyStore.getState().fetchCompanyData()
+    await expect(useCompanyStore.getState().fetchCompanyData()).rejects.toThrow('Network error')
     const state = useCompanyStore.getState()
     expect(state.config).toBeNull()
     expect(state.loading).toBe(false)

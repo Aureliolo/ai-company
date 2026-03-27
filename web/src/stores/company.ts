@@ -69,6 +69,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       set({ config, loading: false, error: null })
     } catch (err) {
       set({ loading: false, error: getErrorMessage(err) })
+      throw err
     }
   },
 

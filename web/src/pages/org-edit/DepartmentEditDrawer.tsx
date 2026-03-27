@@ -75,14 +75,12 @@ export function DepartmentEditDrawer({
       <Drawer open={open} onClose={onClose} title={department ? `Edit: ${department.display_name ?? department.name}` : 'Edit Department'}>
         {department && (
           <div className="space-y-5">
-            {health && (
-              <DeptHealthBar
-                name={health.display_name}
-                health={health.health_percent}
-                agentCount={health.agent_count}
-                taskCount={health.task_count}
-              />
-            )}
+            <DeptHealthBar
+              name={department.display_name ?? department.name}
+              health={health?.health_percent}
+              agentCount={health?.agent_count ?? 0}
+              taskCount={health?.task_count}
+            />
 
             <InputField
               label="Display Name"

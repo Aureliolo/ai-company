@@ -155,7 +155,7 @@ export function DepartmentsTab({
     return (
       <div className="space-y-4">
         <div className="flex justify-end">
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Department
           </Button>
@@ -164,7 +164,6 @@ export function DepartmentsTab({
           icon={Building2}
           title="No departments"
           description="Create your first department to get started."
-          action={{ label: 'Add Department', onClick: () => setCreateOpen(true) }}
         />
         <DepartmentCreateDialog
           open={createOpen}
@@ -179,7 +178,7 @@ export function DepartmentsTab({
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />
           Add Department
         </Button>
