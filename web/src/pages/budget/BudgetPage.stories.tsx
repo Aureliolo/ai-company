@@ -1,0 +1,171 @@
+import type { Meta, StoryObj } from '@storybook/react'
+import { MemoryRouter } from 'react-router'
+import { useBudgetStore } from '@/stores/budget'
+import type {
+  BudgetConfig,
+  CostRecord,
+  ForecastResponse,
+  OverviewMetrics,
+  TrendDataPoint,
+} from '@/api/types'
+import BudgetPage from '@/pages/BudgetPage'
+
+const mockOverview: OverviewMetrics = {
+  total_tasks: 42,
+  tasks_by_status: {} as Record<string, number>,
+  total_agents: 8,
+  total_cost_usd: 42.17,
+  budget_remaining_usd: 57.83,
+  budget_used_percent: 42,
+  cost_7d_trend: [
+    { timestamp: '2026-03-20', value: 4 },
+    { timestamp: '2026-03-21', value: 5 },
+    { timestamp: '2026-03-22', value: 6 },
+    { timestamp: '2026-03-23', value: 7 },
+    { timestamp: '2026-03-24', value: 6 },
+    { timestamp: '2026-03-25', value: 8 },
+    { timestamp: '2026-03-26', value: 6 },
+  ] as TrendDataPoint[],
+  active_agents_count: 5,
+  idle_agents_count: 3,
+  currency: 'EUR',
+}
+
+const mockBudgetConfig: BudgetConfig = {
+  total_monthly: 100,
+  alerts: { warn_at: 75, critical_at: 90, hard_stop_at: 100 },
+  per_task_limit: 5,
+  per_agent_daily_limit: 20,
+  auto_downgrade: { enabled: true, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
+  reset_day: 1,
+  currency: 'EUR',
+}
+
+const mockForecast: ForecastResponse = {
+  horizon_days: 14,
+  projected_total_usd: 80,
+  daily_projections: [
+    { day: '2026-03-27', projected_spend_usd: 48 },
+    { day: '2026-03-28', projected_spend_usd: 54 },
+  ],
+  days_until_exhausted: 20,
+  confidence: 0.82,
+  avg_daily_spend_usd: 6.02,
+  currency: 'EUR',
+}
+
+const mockCostRecords: CostRecord[] = [
+  { agent_id: 'a1', task_id: 't1', provider: 'prov-a', model: 'm1', input_tokens: 500, output_tokens: 200, cost_usd: 15, timestamp: '2026-03-25T10:00:00Z', call_category: 'productive' },
+  { agent_id: 'a1', task_id: 't2', provider: 'prov-a', model: 'm1', input_tokens: 300, output_tokens: 100, cost_usd: 8, timestamp: '2026-03-25T11:00:00Z', call_category: 'coordination' },
+  { agent_id: 'a2', task_id: 't3', provider: 'prov-b', model: 'm2', input_tokens: 800, output_tokens: 400, cost_usd: 12, timestamp: '2026-03-25T12:00:00Z', call_category: 'productive' },
+  { agent_id: 'a3', task_id: 't4', provider: 'prov-a', model: 'm1', input_tokens: 200, output_tokens: 100, cost_usd: 5, timestamp: '2026-03-25T13:00:00Z', call_category: 'system' },
+  { agent_id: 'a2', task_id: 't5', provider: 'prov-b', model: 'm2', input_tokens: 100, output_tokens: 50, cost_usd: 2.17, timestamp: '2026-03-25T14:00:00Z', call_category: null },
+]
+
+function setStoreState(overrides: Record<string, unknown> = {}) {
+  useBudgetStore.setState({
+    overview: mockOverview,
+    budgetConfig: mockBudgetConfig,
+    forecast: mockForecast,
+    costRecords: mockCostRecords,
+    dailySummary: [],
+    periodSummary: null,
+    trends: {
+      period: '30d',
+      metric: 'spend',
+      bucket_size: 'day',
+      data_points: mockOverview.cost_7d_trend,
+    },
+    activities: [
+      { id: '1', timestamp: '2026-03-26T10:00:00Z', agent_name: 'CFO Bot', action_type: 'budget.record_added' as const, description: 'recorded a cost', task_id: null, department: null },
+      { id: '2', timestamp: '2026-03-26T09:00:00Z', agent_name: 'CFO Bot', action_type: 'budget.alert' as const, description: 'triggered a budget alert', task_id: null, department: null },
+    ],
+    agentNameMap: new Map([['a1', 'Alpha'], ['a2', 'Beta'], ['a3', 'Gamma']]),
+    agentDeptMap: new Map([['a1', 'Engineering'], ['a2', 'Engineering'], ['a3', 'Operations']]),
+    aggregationPeriod: 'daily' as const,
+    loading: false,
+    error: null,
+    // Override store actions with no-ops to prevent live side effects in Storybook
+    fetchBudgetData: async () => {},
+    fetchOverview: async () => {},
+    fetchTrends: async () => {},
+    updateFromWsEvent: () => {},
+    ...overrides,
+  })
+}
+
+const meta: Meta<typeof BudgetPage> = {
+  title: 'Pages/Budget',
+  component: BudgetPage,
+  parameters: { a11y: { test: 'error' } },
+  decorators: [
+    (Story) => (
+      <MemoryRouter>
+        <div className="p-6">
+          <Story />
+        </div>
+      </MemoryRouter>
+    ),
+  ],
+}
+
+export default meta
+type Story = StoryObj<typeof BudgetPage>
+
+export const WithData: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState()
+      return <Story />
+    },
+  ],
+}
+
+export const AmberZone: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState({
+        overview: { ...mockOverview, budget_used_percent: 82, budget_remaining_usd: 18, total_cost_usd: 82 },
+      })
+      return <Story />
+    },
+  ],
+}
+
+export const RedZone: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState({
+        overview: { ...mockOverview, budget_used_percent: 96, budget_remaining_usd: 4, total_cost_usd: 96 },
+      })
+      return <Story />
+    },
+  ],
+}
+
+export const Loading: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState({ overview: null, loading: true })
+      return <Story />
+    },
+  ],
+}
+
+export const Error: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState({ error: 'Failed to load budget data. Please try again.' })
+      return <Story />
+    },
+  ],
+}
+
+export const Empty: Story = {
+  decorators: [
+    (Story) => {
+      setStoreState({ costRecords: [], activities: [] })
+      return <Story />
+    },
+  ],
+}

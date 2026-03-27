@@ -1,0 +1,254 @@
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import { TrendingUp } from 'lucide-react'
+import { SectionCard } from '@/components/ui/section-card'
+import { StatPill } from '@/components/ui/stat-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { formatCurrency } from '@/utils/format'
+import type { BudgetAlertConfig, ForecastResponse, TrendDataPoint } from '@/api/types'
+
+export interface SpendBurnChartProps {
+  trendData: readonly TrendDataPoint[]
+  forecast: ForecastResponse | null
+  budgetTotal: number
+  budgetRemaining?: number
+  alerts?: BudgetAlertConfig
+  currency?: string
+}
+
+interface ChartDataPoint {
+  label: string
+  actual?: number
+  projected?: number
+}
+
+function parseChartDate(dateStr: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!match) return new Date(dateStr)
+  const [, year, month, day] = match
+  return new Date(Number(year), Number(month) - 1, Number(day))
+}
+
+function formatDayLabel(dateStr: string): string {
+  const date = parseChartDate(dateStr)
+  if (Number.isNaN(date.getTime())) return dateStr
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function getTodayLabel(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+function buildChartData(
+  trendData: readonly TrendDataPoint[],
+  forecast: ForecastResponse | null,
+): ChartDataPoint[] {
+  let points: ChartDataPoint[] = trendData.map((p) => ({
+    label: formatDayLabel(p.timestamp),
+    actual: p.value,
+  }))
+
+  if (forecast && forecast.daily_projections.length > 0) {
+    // Bridge: last actual point also gets projected value for continuity
+    if (points.length > 0) {
+      const last = points[points.length - 1]!
+      points = [...points.slice(0, -1), { ...last, projected: last.actual }]
+    }
+    const forecastPoints: ChartDataPoint[] = forecast.daily_projections.map((fp) => ({
+      label: formatDayLabel(fp.day),
+      projected: fp.projected_spend_usd,
+    }))
+    points = [...points, ...forecastPoints]
+  }
+
+  return points
+}
+
+function ChartTooltipContent({ active, payload, label, currency }: {
+  active?: boolean
+  payload?: Array<{ value: number; dataKey: string }>
+  label?: string
+  currency?: string
+}) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
+      <p className="mb-1 font-sans text-text-secondary">{label}</p>
+      {payload.map((entry) => (
+        <p key={entry.dataKey} className="font-mono text-foreground">
+          {entry.dataKey === 'projected' ? 'Forecast: ' : 'Spend: '}
+          {formatCurrency(entry.value, currency)}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+export function SpendBurnChart({
+  trendData,
+  forecast,
+  budgetTotal,
+  budgetRemaining,
+  alerts,
+  currency,
+}: SpendBurnChartProps) {
+  const chartData = buildChartData(trendData, forecast)
+  const hasData = trendData.length > 0
+  const todayLabel = getTodayLabel()
+
+  return (
+    <SectionCard
+      title="Spend Burn"
+      icon={TrendingUp}
+      action={
+        <div className="flex gap-2">
+          {budgetRemaining !== undefined && (
+            <StatPill label="Remaining" value={formatCurrency(budgetRemaining, currency)} />
+          )}
+          {forecast && (
+            <>
+              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd, currency)} />
+              {forecast.days_until_exhausted !== null && (
+                <StatPill label="Days left" value={forecast.days_until_exhausted} />
+              )}
+              <StatPill label="Confidence" value={Number.isFinite(forecast.confidence) ? `${Math.round(forecast.confidence * 100)}%` : '--'} />
+            </>
+          )}
+        </div>
+      }
+    >
+      {!hasData ? (
+        <EmptyState
+          icon={TrendingUp}
+          title="No spend data available"
+          description="Cost records will appear as agents consume tokens"
+        />
+      ) : (
+        <div className="h-80 w-full" data-testid="spend-burn-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--so-border)"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                axisLine={{ stroke: 'var(--so-border)' }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v: number) => formatCurrency(v, currency)}
+                width={64}
+              />
+              <Tooltip content={<ChartTooltipContent currency={currency} />} />
+
+              {budgetTotal > 0 && (
+                <ReferenceLine
+                  y={budgetTotal}
+                  stroke="var(--so-danger)"
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                  label={{
+                    value: 'Budget',
+                    position: 'right',
+                    fontSize: 10,
+                    fill: 'var(--so-danger)',
+                  }}
+                />
+              )}
+
+              {alerts && budgetTotal > 0 && (
+                <ReferenceLine
+                  y={(budgetTotal * alerts.warn_at) / 100}
+                  stroke="var(--so-warning)"
+                  strokeDasharray="4 4"
+                  strokeWidth={1}
+                  label={{
+                    value: `Warn (${alerts.warn_at}%)`,
+                    position: 'right',
+                    fontSize: 10,
+                    fill: 'var(--so-warning)',
+                  }}
+                />
+              )}
+
+              {alerts && budgetTotal > 0 && (
+                <ReferenceLine
+                  y={(budgetTotal * alerts.critical_at) / 100}
+                  stroke="var(--so-danger)"
+                  strokeDasharray="2 2"
+                  strokeWidth={1}
+                  label={{
+                    value: `Critical (${alerts.critical_at}%)`,
+                    position: 'right',
+                    fontSize: 10,
+                    fill: 'var(--so-danger)',
+                  }}
+                />
+              )}
+
+              <ReferenceLine
+                x={todayLabel}
+                stroke="var(--so-text-muted)"
+                strokeDasharray="3 3"
+                strokeWidth={1}
+                label={{
+                  value: 'Today',
+                  position: 'top',
+                  fontSize: 10,
+                  fill: 'var(--so-text-muted)',
+                }}
+              />
+
+              <defs>
+                <linearGradient id="spendActualFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--so-accent)" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="var(--so-accent)" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="spendForecastFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--so-warning)" stopOpacity={0.15} />
+                  <stop offset="100%" stopColor="var(--so-warning)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+
+              <Area
+                type="monotone"
+                dataKey="actual"
+                stroke="var(--so-accent)"
+                fill="url(#spendActualFill)"
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls={false}
+              />
+              {forecast && (
+                <Area
+                  type="monotone"
+                  dataKey="projected"
+                  stroke="var(--so-warning)"
+                  fill="url(#spendForecastFill)"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  dot={false}
+                  connectNulls={false}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </SectionCard>
+  )
+}
