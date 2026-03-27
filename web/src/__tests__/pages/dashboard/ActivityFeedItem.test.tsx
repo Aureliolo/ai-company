@@ -1,0 +1,51 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { ActivityFeedItem } from '@/pages/dashboard/ActivityFeedItem'
+import type { ActivityItem } from '@/api/types'
+
+function makeActivity(overrides: Partial<ActivityItem> = {}): ActivityItem {
+  return {
+    id: 'test-1',
+    timestamp: '2026-03-26T10:00:00Z',
+    agent_name: 'agent-cto',
+    action_type: 'task.created',
+    description: 'created a task',
+    task_id: null,
+    department: null,
+    ...overrides,
+  }
+}
+
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
+
+describe('ActivityFeedItem', () => {
+  it('renders agent name', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ agent_name: 'alice' })} />)
+    expect(screen.getByText('alice')).toBeInTheDocument()
+  })
+
+  it('renders description text', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ description: 'deployed service' })} />)
+    expect(screen.getByText('deployed service')).toBeInTheDocument()
+  })
+
+  it('renders relative timestamp', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity()} />)
+    // formatRelativeTime will produce some timestamp string
+    const timestampEl = screen.getByTestId('activity-timestamp')
+    expect(timestampEl).toBeInTheDocument()
+  })
+
+  it('handles null task_id without error', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ task_id: null })} />)
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('renders task link when task_id is present', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ task_id: 'task-42' })} />)
+    const link = screen.getByRole('link')
+    expect(link).toHaveAttribute('href', '/tasks/task-42')
+  })
+})

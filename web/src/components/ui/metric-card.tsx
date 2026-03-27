@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { Sparkline } from './sparkline'
 
-interface MetricCardProps {
+export interface MetricCardProps {
   label: string
   value: string | number
   change?: { value: number; direction: 'up' | 'down' }

@@ -480,6 +480,29 @@ export interface ForecastResponse {
   currency: string
 }
 
+// ── Activities ──────────────────────────────────────────────
+
+export interface ActivityItem {
+  id: string
+  timestamp: string
+  agent_name: string
+  action_type: WsEventType
+  description: string
+  task_id: string | null
+  department: DepartmentName | null
+}
+
+// ── Department Health ───────────────────────────────────────
+
+export interface DepartmentHealth {
+  name: DepartmentName
+  display_name: string
+  health_percent: number
+  agent_count: number
+  task_count: number
+  cost_usd: number | null
+}
+
 // ── Company / Organization ───────────────────────────────────
 
 export interface Department {
@@ -818,6 +841,22 @@ export type WsEventType =
   | 'coordination.phase_completed'
   | 'coordination.completed'
   | 'coordination.failed'
+
+export const WS_EVENT_TYPE_VALUES = [
+  'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
+  'agent.hired', 'agent.fired', 'agent.status_changed',
+  'budget.record_added', 'budget.alert',
+  'message.sent',
+  'system.error', 'system.startup', 'system.shutdown',
+  'approval.submitted', 'approval.approved', 'approval.rejected', 'approval.expired',
+  'meeting.started', 'meeting.completed', 'meeting.failed',
+  'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
+] as const satisfies readonly WsEventType[]
+
+export const DEPARTMENT_NAME_VALUES = [
+  'executive', 'product', 'design', 'engineering', 'quality_assurance',
+  'data_analytics', 'operations', 'creative_marketing', 'security',
+] as const satisfies readonly DepartmentName[]
 
 export interface WsEvent {
   event_type: WsEventType
