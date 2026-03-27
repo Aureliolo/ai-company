@@ -29,6 +29,7 @@ export function WizardNavigation({
   return (
     <div className="flex items-center justify-between border-t border-border px-2 pt-4">
       <Button
+        type="button"
         variant="ghost"
         onClick={onBack}
         disabled={isFirst}
@@ -39,6 +40,7 @@ export function WizardNavigation({
       </Button>
       {!isLast && (
         <Button
+          type="button"
           onClick={onNext}
           disabled={nextDisabled || loading}
           className="gap-2"

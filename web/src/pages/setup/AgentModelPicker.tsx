@@ -31,7 +31,7 @@ export function AgentModelPicker({
     return opts
   }, [providers])
 
-  const currentValue = `${currentProvider}::${currentModelId}`
+  const currentValue = currentProvider && currentModelId ? `${currentProvider}::${currentModelId}` : ''
 
   return (
     <SelectField

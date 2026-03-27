@@ -23,6 +23,20 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 }
 
 /**
+ * Canonical category key to display label (reverse of CATEGORY_LABELS).
+ * Used by getCategoryLabel for O(1) lookup.
+ */
+const CATEGORY_TO_LABEL: Readonly<Record<string, string>> = {
+  startup: 'Startup',
+  'dev-shop': 'Development',
+  product: 'Product',
+  enterprise: 'Enterprise',
+  consultancy: 'Professional Services',
+  research: 'Research',
+  other: 'Other',
+}
+
+/**
  * Reverse mapping: display label to canonical category key.
  * Used to group templates by display category.
  */
@@ -105,10 +119,8 @@ export function categorizeTemplates(
  * Get a human-readable label for a category key.
  */
 export function getCategoryLabel(category: string): string {
-  // Check if this category key has a known label
-  for (const [label, key] of Object.entries(LABEL_TO_CATEGORY)) {
-    if (key === category) return label
-  }
+  const label = CATEGORY_TO_LABEL[category]
+  if (label) return label
   // Title-case the key as fallback, splitting on `-` and `_`
   return category
     .split(/[-_]/)

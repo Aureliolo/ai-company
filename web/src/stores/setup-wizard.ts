@@ -449,6 +449,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   },
 
   async testProviderConnection(name) {
+    set({ providersError: null })
     try {
       return await testConnection(name)
     } catch (err) {
