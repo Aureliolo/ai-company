@@ -1,0 +1,157 @@
+import { useCallback, useState } from 'react'
+import { cn } from '@/lib/utils'
+import { Avatar } from '@/components/ui/avatar'
+import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
+import { PriorityBadge } from '@/components/ui/task-status-indicator'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { EmptyState } from '@/components/ui/empty-state'
+import { getTaskTypeLabel } from '@/utils/tasks'
+import { formatRelativeTime, formatCurrency } from '@/utils/format'
+import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
+import type { Task } from '@/api/types'
+
+type SortKey = 'status' | 'title' | 'assignee' | 'priority' | 'type' | 'deadline' | 'cost'
+type SortDirection = 'asc' | 'desc'
+
+export interface TaskListViewProps {
+  tasks: Task[]
+  onSelectTask: (taskId: string) => void
+}
+
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+const COLUMNS: { key: SortKey; label: string; width: string; sortable: boolean }[] = [
+  { key: 'status', label: 'Status', width: 'w-20', sortable: true },
+  { key: 'title', label: 'Title', width: 'flex-1', sortable: true },
+  { key: 'assignee', label: 'Assignee', width: 'w-32', sortable: true },
+  { key: 'priority', label: 'Priority', width: 'w-24', sortable: true },
+  { key: 'type', label: 'Type', width: 'w-24', sortable: true },
+  { key: 'deadline', label: 'Deadline', width: 'w-24', sortable: true },
+  { key: 'cost', label: 'Cost', width: 'w-20', sortable: true },
+]
+
+function compareTasks(a: Task, b: Task, key: SortKey, dir: SortDirection): number {
+  let cmp = 0
+  switch (key) {
+    case 'status': cmp = a.status.localeCompare(b.status); break
+    case 'title': cmp = a.title.localeCompare(b.title); break
+    case 'assignee': cmp = (a.assigned_to ?? '').localeCompare(b.assigned_to ?? ''); break
+    case 'priority': cmp = (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9); break
+    case 'type': cmp = a.type.localeCompare(b.type); break
+    case 'deadline': cmp = (a.deadline ?? '').localeCompare(b.deadline ?? ''); break
+    case 'cost': cmp = (a.cost_usd ?? 0) - (b.cost_usd ?? 0); break
+  }
+  return dir === 'desc' ? -cmp : cmp
+}
+
+export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDir, setSortDir] = useState<SortDirection>('asc')
+
+  const handleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }, [sortKey])
+
+  const sorted = sortKey
+    ? [...tasks].sort((a, b) => compareTasks(a, b, sortKey, sortDir))
+    : tasks
+
+  if (tasks.length === 0) {
+    return (
+      <EmptyState
+        icon={Inbox}
+        title="No tasks found"
+        description="Try adjusting your filters or create a new task"
+      />
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-border">
+      {/* Table header */}
+      <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
+        {COLUMNS.map((col) => (
+          <button
+            key={col.key}
+            type="button"
+            onClick={() => col.sortable && handleSort(col.key)}
+            className={cn(
+              'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
+              col.sortable && 'cursor-pointer hover:text-foreground',
+              col.width,
+            )}
+            aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+          >
+            {col.label}
+            {sortKey === col.key && (
+              sortDir === 'asc'
+                ? <ArrowUp className="size-3" aria-hidden="true" />
+                : <ArrowDown className="size-3" aria-hidden="true" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Table body */}
+      <StaggerGroup className="divide-y divide-border">
+        {sorted.map((task) => (
+          <StaggerItem key={task.id}>
+            <TaskListRow task={task} onSelectTask={onSelectTask} />
+          </StaggerItem>
+        ))}
+      </StaggerGroup>
+    </div>
+  )
+}
+
+function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId: string) => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelectTask(task.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelectTask(task.id)
+        }
+      }}
+      className="flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+      aria-label={`Task: ${task.title}`}
+    >
+      <span className="w-20">
+        <TaskStatusIndicator status={task.status} label />
+      </span>
+      <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+        {task.title}
+      </span>
+      <span className="w-32">
+        {task.assigned_to ? (
+          <span className="flex items-center gap-1.5">
+            <Avatar name={task.assigned_to} size="sm" />
+            <span className="truncate text-xs text-text-secondary">{task.assigned_to}</span>
+          </span>
+        ) : (
+          <span className="text-xs text-text-muted">Unassigned</span>
+        )}
+      </span>
+      <span className="w-24">
+        <PriorityBadge priority={task.priority} />
+      </span>
+      <span className="w-24 text-xs text-text-secondary">
+        {getTaskTypeLabel(task.type)}
+      </span>
+      <span className="w-24 font-mono text-[10px] text-text-muted">
+        {task.deadline ? formatRelativeTime(task.deadline) : '--'}
+      </span>
+      <span className="w-20 text-right font-mono text-[10px] text-text-muted">
+        {task.cost_usd != null ? formatCurrency(task.cost_usd, 'USD') : '--'}
+      </span>
+    </div>
+  )
+}

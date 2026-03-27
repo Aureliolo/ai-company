@@ -319,7 +319,7 @@ For settings values, agent names, and editable fields:
 
 ### 3.4 Drag-and-Drop
 
-For task board kanban columns and org chart editing (v0.6+):
+For task board kanban columns (v0.5.0) and org chart editing (v0.6+):
 
 | Phase | Behavior |
 |-------|----------|

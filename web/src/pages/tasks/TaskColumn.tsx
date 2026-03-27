@@ -1,0 +1,101 @@
+import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Inbox } from 'lucide-react'
+import { cn, type SemanticColor } from '@/lib/utils'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { TaskCard } from './TaskCard'
+import type { KanbanColumn } from '@/utils/tasks'
+import type { Task } from '@/api/types'
+
+const COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
+  success: 'bg-success',
+  accent: 'bg-accent',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  'text-secondary': 'bg-text-secondary',
+}
+
+export interface TaskColumnProps {
+  column: KanbanColumn
+  tasks: Task[]
+  onSelectTask: (taskId: string) => void
+}
+
+function SortableTaskCard({ task, onSelectTask }: { task: Task; onSelectTask: (id: string) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id, data: { task, status: task.status } })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TaskCard task={task} onSelect={onSelectTask} isDragging={isDragging} />
+    </div>
+  )
+}
+
+export function TaskColumn({ column, tasks, onSelectTask }: TaskColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: { columnId: column.id, statuses: column.statuses },
+  })
+
+  const taskIds = tasks.map((t) => t.id)
+
+  return (
+    <div
+      className="flex w-72 shrink-0 flex-col"
+      data-column-id={column.id}
+    >
+      {/* Column header */}
+      <div className="mb-3 flex items-center gap-2 px-1">
+        <span className={cn('size-2 rounded-full', COLOR_CLASSES[column.color])} />
+        <span className="text-[13px] font-semibold text-foreground">
+          {column.label}
+        </span>
+        <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-mono text-text-muted">
+          {tasks.length}
+        </span>
+      </div>
+
+      {/* Droppable zone */}
+      <div
+        ref={setNodeRef}
+        className={cn(
+          'flex min-h-[120px] flex-1 flex-col gap-2 rounded-lg border border-transparent p-1 transition-colors',
+          isOver && 'border-accent bg-accent/5',
+        )}
+      >
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {tasks.length > 0 ? (
+            <StaggerGroup className="flex flex-col gap-2">
+              {tasks.map((task) => (
+                <StaggerItem key={task.id}>
+                  <SortableTaskCard task={task} onSelectTask={onSelectTask} />
+                </StaggerItem>
+              ))}
+            </StaggerGroup>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="No tasks"
+              description={`No tasks in ${column.label.toLowerCase()}`}
+              className="py-8"
+            />
+          )}
+        </SortableContext>
+      </div>
+    </div>
+  )
+}
