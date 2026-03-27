@@ -60,11 +60,11 @@ const mockDepartments: DepartmentHealth[] = [
 ]
 
 const mockActivities: ActivityItem[] = [
-  { id: '1', timestamp: new Date(Date.now() - 60_000).toISOString(), agent_name: 'agent-cto', action_type: 'task.created', description: 'Created auth module task', task_id: 'task-42', department: 'engineering' },
-  { id: '2', timestamp: new Date(Date.now() - 120_000).toISOString(), agent_name: 'agent-designer', action_type: 'task.status_changed', description: 'Completed wireframe review', task_id: 'task-38', department: 'design' },
-  { id: '3', timestamp: new Date(Date.now() - 300_000).toISOString(), agent_name: 'agent-devops', action_type: 'agent.status_changed', description: 'Changed status to idle', task_id: null, department: 'operations' },
-  { id: '4', timestamp: new Date(Date.now() - 600_000).toISOString(), agent_name: 'agent-qa', action_type: 'approval.submitted', description: 'Requested deployment approval', task_id: 'task-40', department: 'quality_assurance' },
-  { id: '5', timestamp: new Date(Date.now() - 900_000).toISOString(), agent_name: 'agent-eng-2', action_type: 'budget.record_added', description: 'Recorded $2.30 cost', task_id: 'task-35', department: 'engineering' },
+  { id: '1', timestamp: '2026-03-26T12:00:00.000Z', agent_name: 'agent-cto', action_type: 'task.created', description: 'Created auth module task', task_id: 'task-42', department: 'engineering' },
+  { id: '2', timestamp: '2026-03-26T11:59:00.000Z', agent_name: 'agent-designer', action_type: 'task.status_changed', description: 'Completed wireframe review', task_id: 'task-38', department: 'design' },
+  { id: '3', timestamp: '2026-03-26T11:55:00.000Z', agent_name: 'agent-devops', action_type: 'agent.status_changed', description: 'Changed status to idle', task_id: null, department: 'operations' },
+  { id: '4', timestamp: '2026-03-26T11:50:00.000Z', agent_name: 'agent-qa', action_type: 'approval.submitted', description: 'Requested deployment approval', task_id: 'task-40', department: 'quality_assurance' },
+  { id: '5', timestamp: '2026-03-26T11:45:00.000Z', agent_name: 'agent-eng-2', action_type: 'budget.record_added', description: 'Recorded a cost', task_id: 'task-35', department: 'engineering' },
 ]
 
 function setStoreState(overrides: Partial<ReturnType<typeof useAnalyticsStore.getState>> = {}) {
