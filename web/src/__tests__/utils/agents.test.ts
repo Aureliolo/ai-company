@@ -239,6 +239,21 @@ describe('sortAgents', () => {
     expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Bob Jones', 'Carol Xu'])
   })
 
+  it('sorts by level alphabetically', () => {
+    const result = sortAgents(agents, 'level', 'asc')
+    expect(result.map((a) => a.level)).toEqual(['junior', 'lead', 'senior'])
+  })
+
+  it('sorts by status', () => {
+    const statusAgents = [
+      makeAgent({ name: 'A', status: 'terminated' }),
+      makeAgent({ name: 'B', status: 'active' }),
+      makeAgent({ name: 'C', status: 'onboarding' }),
+    ]
+    const result = sortAgents(statusAgents, 'status', 'asc')
+    expect(result.map((a) => a.status)).toEqual(['active', 'onboarding', 'terminated'])
+  })
+
   it('does not mutate original array', () => {
     const original = [...agents]
     sortAgents(agents, 'name', 'asc')
@@ -251,6 +266,10 @@ describe('sortAgents', () => {
 describe('formatCompletionTime', () => {
   it('formats seconds under a minute', () => {
     expect(formatCompletionTime(45)).toBe('45s')
+  })
+
+  it('formats exactly 60 seconds as 1 minute', () => {
+    expect(formatCompletionTime(60)).toBe('1m')
   })
 
   it('formats minutes', () => {
@@ -287,6 +306,10 @@ describe('formatCostPerTask', () => {
 
   it('returns -- for null', () => {
     expect(formatCostPerTask(null)).toBe('--')
+  })
+
+  it('formats negative cost with dollar sign', () => {
+    expect(formatCostPerTask(-5)).toBe('$-5.00')
   })
 })
 
@@ -363,6 +386,18 @@ describe('generateInsights', () => {
     const insights = generateInsights(makeAgent(), makePerformance({ trend_direction: 'improving' }))
     const hasTrend = insights.some((i) => i.toLowerCase().includes('improving') || i.toLowerCase().includes('upward'))
     expect(hasTrend).toBe(true)
+  })
+
+  it('mentions declining trend', () => {
+    const insights = generateInsights(makeAgent(), makePerformance({ trend_direction: 'declining' }))
+    const hasDeclining = insights.some((i) => i.toLowerCase().includes('declining') || i.toLowerCase().includes('attention'))
+    expect(hasDeclining).toBe(true)
+  })
+
+  it('does not generate quality insight below threshold', () => {
+    const insights = generateInsights(makeAgent(), makePerformance({ quality_score: 7.9, trend_direction: 'stable' }))
+    const hasQuality = insights.some((i) => i.toLowerCase().includes('quality'))
+    expect(hasQuality).toBe(false)
   })
 
   it('returns empty array when performance is null', () => {

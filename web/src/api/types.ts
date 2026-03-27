@@ -387,6 +387,10 @@ export const TREND_DIRECTION_VALUES = [
   'improving', 'stable', 'declining', 'insufficient_data',
 ] as const satisfies readonly TrendDirection[]
 
+/**
+ * Aggregate metrics for a rolling time window.
+ * Invariant: tasks_completed + tasks_failed === data_point_count (enforced server-side).
+ */
 export interface WindowMetrics {
   window_size: string
   data_point_count: number
@@ -429,7 +433,7 @@ export interface AgentActivityEvent {
   event_type: string
   timestamp: string
   description: string
-  related_ids: Record<string, string>
+  readonly related_ids: Readonly<Record<string, string>>
 }
 
 export type CareerEventType = 'hired' | 'fired' | 'promoted' | 'demoted' | 'onboarded'
@@ -443,7 +447,7 @@ export interface CareerEvent {
   timestamp: string
   description: string
   initiated_by: string
-  metadata: Record<string, string>
+  readonly metadata: Readonly<Record<string, string>>
 }
 
 // ── Budget ───────────────────────────────────────────────────

@@ -174,6 +174,24 @@ describe('fetchAgentDetail', () => {
     expect(state.detailError).toBeNull()
   })
 
+  it('degrades gracefully when tasks and history fail', async () => {
+    const agent = makeAgent()
+    vi.mocked(getAgent).mockResolvedValue(agent)
+    vi.mocked(getAgentPerformance).mockResolvedValue(makePerformance())
+    vi.mocked(listTasks).mockRejectedValue(new Error('tasks fail'))
+    vi.mocked(getAgentActivity).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 })
+    vi.mocked(getAgentHistory).mockRejectedValue(new Error('history fail'))
+
+    await useAgentsStore.getState().fetchAgentDetail('Alice Smith')
+
+    const state = useAgentsStore.getState()
+    expect(state.selectedAgent).toEqual(agent)
+    expect(state.performance).toBeDefined()
+    expect(state.agentTasks).toHaveLength(0)
+    expect(state.careerHistory).toHaveLength(0)
+    expect(state.detailError).toBeNull()
+  })
+
   it('sets error when agent fetch fails', async () => {
     vi.mocked(getAgent).mockRejectedValue(new Error('Not found'))
     vi.mocked(getAgentPerformance).mockRejectedValue(new Error('fail'))
@@ -205,6 +223,42 @@ describe('fetchMoreActivity', () => {
 
     expect(useAgentsStore.getState().activity).toHaveLength(2)
   })
+
+  it('caps activity at MAX_ACTIVITIES (100)', async () => {
+    const existingEvents = Array.from({ length: 99 }, (_, i) => ({
+      event_type: 'task_completed',
+      timestamp: `2026-03-26T${String(i).padStart(2, '0')}:00:00Z`,
+      description: `Event ${i}`,
+      related_ids: {},
+    }))
+    useAgentsStore.setState({ activity: existingEvents, activityTotal: 200 })
+
+    const newEvents = Array.from({ length: 5 }, (_, i) => ({
+      event_type: 'hired',
+      timestamp: `2026-03-25T${String(i).padStart(2, '0')}:00:00Z`,
+      description: `New event ${i}`,
+      related_ids: {},
+    }))
+    vi.mocked(getAgentActivity).mockResolvedValue({ data: newEvents, total: 200, offset: 99, limit: 20 })
+
+    await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 99)
+
+    expect(useAgentsStore.getState().activity).toHaveLength(100)
+  })
+
+  it('preserves existing data on failure', async () => {
+    const existingEvents = [
+      { event_type: 'task_completed', timestamp: '2026-03-26T12:00:00Z', description: 'Task done', related_ids: {} },
+    ]
+    useAgentsStore.setState({ activity: existingEvents, activityTotal: 5 })
+
+    vi.mocked(getAgentActivity).mockRejectedValue(new Error('Network error'))
+
+    await useAgentsStore.getState().fetchMoreActivity('Alice Smith', 1)
+
+    expect(useAgentsStore.getState().activity).toHaveLength(1)
+    expect(useAgentsStore.getState().activity[0]!.description).toBe('Task done')
+  })
 })
 
 describe('filter setters', () => {
@@ -231,6 +285,11 @@ describe('filter setters', () => {
   it('sets sort by', () => {
     useAgentsStore.getState().setSortBy('department')
     expect(useAgentsStore.getState().sortBy).toBe('department')
+  })
+
+  it('sets sort direction', () => {
+    useAgentsStore.getState().setSortDirection('desc')
+    expect(useAgentsStore.getState().sortDirection).toBe('desc')
   })
 })
 

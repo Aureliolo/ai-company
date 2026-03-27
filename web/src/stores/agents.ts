@@ -134,8 +134,9 @@ export const useAgentsStore = create<AgentsState>()((set) => ({
         activity: [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES),
         activityTotal: result.total,
       }))
-    } catch {
-      // Silent failure for pagination -- existing data remains
+    } catch (err) {
+      // Pagination failure -- existing data preserved, log for debugging
+      console.warn('Failed to load more activity:', err)
     }
   },
 
