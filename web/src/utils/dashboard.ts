@@ -1,3 +1,6 @@
+import {
+  DEPARTMENT_NAME_VALUES,
+} from '@/api/types'
 import type {
   ActivityItem,
   BudgetConfig,
@@ -13,10 +16,7 @@ import { formatCurrency } from '@/utils/format'
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 
-const VALID_DEPARTMENT_NAMES: ReadonlySet<string> = new Set<DepartmentName>([
-  'executive', 'product', 'design', 'engineering', 'quality_assurance',
-  'data_analytics', 'operations', 'creative_marketing', 'security',
-])
+const VALID_DEPARTMENT_NAMES: ReadonlySet<string> = new Set<string>(DEPARTMENT_NAME_VALUES)
 
 const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
   'task.created': 'created a task',

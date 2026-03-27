@@ -842,6 +842,22 @@ export type WsEventType =
   | 'coordination.completed'
   | 'coordination.failed'
 
+export const WS_EVENT_TYPE_VALUES = [
+  'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
+  'agent.hired', 'agent.fired', 'agent.status_changed',
+  'budget.record_added', 'budget.alert',
+  'message.sent',
+  'system.error', 'system.startup', 'system.shutdown',
+  'approval.submitted', 'approval.approved', 'approval.rejected', 'approval.expired',
+  'meeting.started', 'meeting.completed', 'meeting.failed',
+  'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
+] as const satisfies readonly WsEventType[]
+
+export const DEPARTMENT_NAME_VALUES = [
+  'executive', 'product', 'design', 'engineering', 'quality_assurance',
+  'data_analytics', 'operations', 'creative_marketing', 'security',
+] as const satisfies readonly DepartmentName[]
+
 export interface WsEvent {
   event_type: WsEventType
   channel: WsChannel

@@ -5,6 +5,10 @@ import { useDashboardData } from '@/hooks/useDashboardData'
 const mockFetchDashboardData = vi.fn().mockResolvedValue(undefined)
 const mockFetchOverview = vi.fn().mockResolvedValue(undefined)
 const mockUpdateFromWsEvent = vi.fn()
+const { mockPollingStart, mockPollingStop } = vi.hoisted(() => ({
+  mockPollingStart: vi.fn(),
+  mockPollingStop: vi.fn(),
+}))
 
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: vi.fn().mockReturnValue({
@@ -18,8 +22,8 @@ vi.mock('@/hooks/usePolling', () => ({
   usePolling: vi.fn().mockReturnValue({
     active: false,
     error: null,
-    start: vi.fn(),
-    stop: vi.fn(),
+    start: mockPollingStart,
+    stop: mockPollingStop,
   }),
 }))
 
@@ -81,21 +85,13 @@ describe('useDashboardData', () => {
     expect(result.current.error).toBe('Something broke')
   })
 
-  it('sets up WebSocket with 5 channel bindings', async () => {
+  it('sets up WebSocket with exactly 5 channel bindings', async () => {
     const { useWebSocket } = await import('@/hooks/useWebSocket')
     renderHook(() => useDashboardData())
 
-    expect(useWebSocket).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bindings: expect.arrayContaining([
-          expect.objectContaining({ channel: 'tasks' }),
-          expect.objectContaining({ channel: 'agents' }),
-          expect.objectContaining({ channel: 'budget' }),
-          expect.objectContaining({ channel: 'system' }),
-          expect.objectContaining({ channel: 'approvals' }),
-        ]),
-      }),
-    )
+    const callArgs = vi.mocked(useWebSocket).mock.calls[0]![0]
+    const channels = callArgs.bindings.map((b) => b.channel)
+    expect(channels).toEqual(['tasks', 'agents', 'budget', 'system', 'approvals'])
   })
 
   it('returns wsConnected from useWebSocket', () => {
@@ -104,15 +100,9 @@ describe('useDashboardData', () => {
   })
 
   it('starts polling on mount', async () => {
-    const { usePolling } = await import('@/hooks/usePolling')
-    const mockStart = vi.fn()
-    vi.mocked(usePolling).mockReturnValue({
-      active: false, error: null, start: mockStart, stop: vi.fn(),
-    })
-
     renderHook(() => useDashboardData())
     await waitFor(() => {
-      expect(mockStart).toHaveBeenCalled()
+      expect(mockPollingStart).toHaveBeenCalled()
     })
   })
 })

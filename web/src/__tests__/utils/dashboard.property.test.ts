@@ -5,24 +5,14 @@ import {
   describeEvent,
   wsEventToActivityItem,
 } from '@/utils/dashboard'
-import type { BudgetConfig, DepartmentHealth, DepartmentName, OverviewMetrics, TrendDataPoint, WsEvent, WsEventType } from '@/api/types'
+import {
+  WS_EVENT_TYPE_VALUES,
+  DEPARTMENT_NAME_VALUES,
+} from '@/api/types'
+import type { BudgetConfig, DepartmentHealth, OverviewMetrics, TrendDataPoint, WsEvent } from '@/api/types'
 
-const WS_EVENT_TYPES: WsEventType[] = [
-  'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
-  'agent.hired', 'agent.fired', 'agent.status_changed',
-  'budget.record_added', 'budget.alert',
-  'message.sent',
-  'system.error', 'system.startup', 'system.shutdown',
-  'approval.submitted', 'approval.approved', 'approval.rejected', 'approval.expired',
-  'meeting.started', 'meeting.completed', 'meeting.failed',
-  'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
-]
-
-const DEPT_NAMES: DepartmentName[] = [
-  'executive', 'product', 'design', 'engineering',
-  'quality_assurance', 'data_analytics', 'operations',
-  'creative_marketing', 'security',
-]
+const WS_EVENT_TYPES = [...WS_EVENT_TYPE_VALUES]
+const DEPT_NAMES = [...DEPARTMENT_NAME_VALUES]
 
 const arbIsoTimestamp = fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
   (ms) => new Date(ms).toISOString(),

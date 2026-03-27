@@ -3,12 +3,12 @@ import { MemoryRouter } from 'react-router'
 import type { UseDashboardDataReturn } from '@/hooks/useDashboardData'
 import type { OverviewMetrics, BudgetConfig } from '@/api/types'
 
-function makeTasksByStatus(overrides: Partial<Record<string, number>> = {}): OverviewMetrics['tasks_by_status'] {
+function makeTasksByStatus(overrides: Partial<OverviewMetrics['tasks_by_status']> = {}): OverviewMetrics['tasks_by_status'] {
   return {
     created: 0, assigned: 0, in_progress: 0, in_review: 0, completed: 0,
     blocked: 0, failed: 0, interrupted: 0, cancelled: 0,
     ...overrides,
-  } as OverviewMetrics['tasks_by_status']
+  }
 }
 
 const mockOverview: OverviewMetrics = {

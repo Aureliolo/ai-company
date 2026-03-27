@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { useAnalyticsStore } from '@/stores/analytics'
 import { StatusBar } from '@/components/layout/StatusBar'
+import { formatCurrency } from '@/utils/format'
 import type { OverviewMetrics } from '@/api/types'
 
 function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics {
@@ -132,7 +133,7 @@ describe('StatusBar', () => {
       overview: makeOverview({ total_cost_usd: 1234.56 }),
     })
     render(<StatusBar />)
-    expect(screen.getByText(/1,234\.56/)).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(1234.56, 'EUR'))).toBeInTheDocument()
   })
 
   it('shows formatted currency for non-default currency', () => {
@@ -140,6 +141,6 @@ describe('StatusBar', () => {
       overview: makeOverview({ total_cost_usd: 99.5, currency: 'GBP' }),
     })
     render(<StatusBar />)
-    expect(screen.getByText(/99\.50/)).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(99.5, 'GBP'))).toBeInTheDocument()
   })
 })

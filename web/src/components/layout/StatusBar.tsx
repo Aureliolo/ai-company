@@ -42,7 +42,8 @@ export function StatusBar() {
       const health: HealthStatus = await getHealth()
       setHealthStatus(health.status)
     } catch {
-      setHealthStatus('down')
+      // Preserve last known state on transient failures; only real health
+      // payloads should set 'degraded' or 'down'
     }
   }, [])
 

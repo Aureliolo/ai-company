@@ -19,4 +19,9 @@ describe('DashboardSkeleton', () => {
     const sectionsRow = screen.getByTestId('skeleton-sections-row')
     expect(sectionsRow.children).toHaveLength(2)
   })
+
+  it('renders chart skeleton', () => {
+    render(<DashboardSkeleton />)
+    expect(screen.getByTestId('skeleton-chart')).toBeInTheDocument()
+  })
 })

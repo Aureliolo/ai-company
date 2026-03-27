@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import * as fc from 'fast-check'
 import { ActivityFeed } from '@/pages/dashboard/ActivityFeed'
 import type { ActivityItem } from '@/api/types'
 
@@ -38,9 +39,19 @@ describe('ActivityFeed', () => {
   })
 
   it('caps displayed items at 10', () => {
-    renderWithRouter(<ActivityFeed activities={makeActivities(15)} />)
-    // Only 10 should render
-    expect(screen.queryByText('agent-10')).not.toBeInTheDocument()
-    expect(screen.getByText('agent-9')).toBeInTheDocument()
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 50 }), (count) => {
+        const { unmount } = renderWithRouter(<ActivityFeed activities={makeActivities(count)} />)
+        const visible = Math.min(count, 10)
+        for (let i = 0; i < visible; i++) {
+          expect(screen.getByText(`agent-${i}`)).toBeInTheDocument()
+        }
+        if (count > 10) {
+          expect(screen.queryByText('agent-10')).not.toBeInTheDocument()
+        }
+        unmount()
+      }),
+      { numRuns: 20 },
+    )
   })
 })

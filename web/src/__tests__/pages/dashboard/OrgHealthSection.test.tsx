@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { OrgHealthSection } from '@/pages/dashboard/OrgHealthSection'
+import { formatCurrency } from '@/utils/format'
 import type { DepartmentHealth } from '@/api/types'
 
 function makeDepts(count: number): DepartmentHealth[] {
@@ -44,12 +45,12 @@ describe('OrgHealthSection', () => {
   it('renders department cost when cost_usd is non-null (EUR default)', () => {
     const depts = makeDepts(1).map((d) => ({ ...d, cost_usd: 24.5 }))
     render(<OrgHealthSection departments={depts} overallHealth={80} />)
-    expect(screen.getByText(/24\.50/)).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(24.5))).toBeInTheDocument()
   })
 
   it('renders department cost in specified currency', () => {
     const depts = makeDepts(1).map((d) => ({ ...d, cost_usd: 100 }))
     render(<OrgHealthSection departments={depts} overallHealth={80} currency="JPY" />)
-    expect(screen.getByText(/100/)).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(100, 'JPY'))).toBeInTheDocument()
   })
 })
