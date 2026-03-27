@@ -48,7 +48,6 @@ export function applyDagreLayout(
   }
 
   for (const edge of edges) {
-    // Only add edges between nodes that exist in the graph
     if (g.hasNode(edge.source) && g.hasNode(edge.target)) {
       g.setEdge(edge.source, edge.target)
     }
@@ -56,25 +55,23 @@ export function applyDagreLayout(
 
   layout(g)
 
-  // Map positioned leaf nodes
-  const positionedLeaves = leafNodes.map((node) => {
+  // Map positioned leaf nodes (dagre returns center coords; React Flow uses top-left)
+  const positionedLeafMap = new Map<string, Node>()
+  for (const node of leafNodes) {
     const dagreNode = g.node(node.id) as { x: number; y: number; width: number; height: number }
-    // Dagre returns center coordinates; React Flow uses top-left
-    const position = {
-      x: dagreNode.x - dagreNode.width / 2,
-      y: dagreNode.y - dagreNode.height / 2,
-    }
+    positionedLeafMap.set(node.id, {
+      ...node,
+      position: {
+        x: dagreNode.x - dagreNode.width / 2,
+        y: dagreNode.y - dagreNode.height / 2,
+      },
+    })
+  }
 
-    // If the node has a parent group, make position relative to the group
-    if (node.parentId) {
-      return { ...node, position }
-    }
-    return { ...node, position }
-  })
-
-  // Compute group node positions and dimensions from their children
+  // Compute group node positions and dimensions from their children,
+  // then adjust children to group-relative positions (immutably)
   const positionedGroups = groupNodes.map((group) => {
-    const children = positionedLeaves.filter((n) => n.parentId === group.id)
+    const children = [...positionedLeafMap.values()].filter((n) => n.parentId === group.id)
     if (children.length === 0) {
       return { ...group, position: { x: 0, y: 0 }, style: { width: 200, height: 100 } }
     }
@@ -95,27 +92,19 @@ export function applyDagreLayout(
     }
 
     const groupX = minX - padding
-    const groupY = minY - padding - 40 // Extra space for header
+    const groupY = minY - padding - 40
     const groupWidth = maxX - minX + padding * 2
     const groupHeight = maxY - minY + padding * 2 + 40
 
-    // Make children positions relative to group
-    const adjustedChildren = positionedLeaves
-      .filter((n) => n.parentId === group.id)
-      .map((child) => ({
+    // Make children positions relative to group (immutable update via map)
+    for (const child of children) {
+      positionedLeafMap.set(child.id, {
         ...child,
         position: {
           x: child.position.x - groupX,
           y: child.position.y - groupY,
         },
-      }))
-
-    // Update the leaves in-place for relative positioning
-    for (const adj of adjustedChildren) {
-      const idx = positionedLeaves.findIndex((n) => n.id === adj.id)
-      if (idx !== -1) {
-        positionedLeaves[idx] = adj
-      }
+      })
     }
 
     return {
@@ -125,5 +114,5 @@ export function applyDagreLayout(
     }
   })
 
-  return [...positionedGroups, ...positionedLeaves]
+  return [...positionedGroups, ...positionedLeafMap.values()]
 }

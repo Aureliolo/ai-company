@@ -132,4 +132,12 @@ describe('OrgChartPage', () => {
     renderPage()
     expect(screen.getByTestId('org-chart-toolbar')).toBeInTheDocument()
   })
+
+  it('does not show skeleton when loading with existing nodes', () => {
+    mockLoading = true
+    mockNodes = [{ id: '1', position: { x: 0, y: 0 }, data: {} }]
+    renderPage()
+    expect(screen.queryByLabelText('Loading org chart')).not.toBeInTheDocument()
+    expect(screen.getByTestId('react-flow')).toBeInTheDocument()
+  })
 })

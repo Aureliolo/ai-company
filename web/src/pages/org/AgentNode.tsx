@@ -30,6 +30,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
         isOffline && 'opacity-50',
       )}
       data-testid="agent-node"
+      aria-label={`Agent: ${data.name}, ${data.role}, ${data.runtimeStatus}`}
     >
       <Handle type="target" position={Position.Top} className="!bg-border-bright !size-1.5" />
 

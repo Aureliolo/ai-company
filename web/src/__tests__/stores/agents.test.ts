@@ -126,6 +126,7 @@ beforeEach(() => {
     careerHistory: [],
     detailLoading: false,
     detailError: null,
+    runtimeStatuses: {},
   })
 })
 
@@ -409,5 +410,62 @@ describe('clearDetail', () => {
     expect(state.careerHistory).toHaveLength(0)
     expect(state.detailLoading).toBe(false)
     expect(state.detailError).toBeNull()
+  })
+})
+
+describe('runtime statuses (org chart)', () => {
+  it('updateRuntimeStatus sets status for an agent', () => {
+    useAgentsStore.getState().updateRuntimeStatus('agent-1', 'active')
+    expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
+  })
+
+  it('updateFromWsEvent updates status on agent.status_changed', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_id: 'agent-1', status: 'active' },
+    })
+    expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
+  })
+
+  it('updateFromWsEvent ignores events with missing agent_id', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { status: 'active' },
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+  })
+
+  it('updateFromWsEvent ignores events with missing status', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_id: 'agent-1' },
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+  })
+
+  it('updateFromWsEvent ignores invalid status values', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'agent.status_changed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_id: 'agent-1', status: 'invalid_status' },
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+  })
+
+  it('updateFromWsEvent ignores non-status events', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'task.created',
+      channel: 'tasks',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: {},
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 })

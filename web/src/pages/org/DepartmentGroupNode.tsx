@@ -25,6 +25,7 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
         bgClasses,
       )}
       data-testid="department-group-node"
+      aria-label={`Department: ${data.displayName}, health ${data.healthPercent}%`}
     >
       <div className="mb-2">
         <div className="flex items-center justify-between">

@@ -84,6 +84,19 @@ describe('buildOrgTree', () => {
     expect(ceoNode!.data.name).toBe('Alice')
   })
 
+  it('falls back to c_suite agent in non-executive department as CEO', () => {
+    const agents = [
+      makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
+      makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    const ceoNode = result.nodes.find((n) => n.type === 'ceo')
+    expect(ceoNode).toBeDefined()
+    expect(ceoNode!.data.name).toBe('CTO')
+  })
+
   it('falls back to highest-seniority agent as CEO when no executive dept', () => {
     const agents = [
       makeAgent({ id: 'lead-1', name: 'Carol', department: 'engineering', level: 'lead' }),

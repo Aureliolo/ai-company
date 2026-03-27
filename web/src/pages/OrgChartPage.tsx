@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { AlertTriangle, GitBranch } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -31,7 +31,13 @@ const edgeTypes = { hierarchy: HierarchyEdge }
 
 const VIEWPORT_KEY = 'synthorg:orgchart:viewport'
 
-function saveViewport(viewport: { x: number; y: number; zoom: number }) {
+interface ViewportState {
+  x: number
+  y: number
+  zoom: number
+}
+
+function saveViewport(viewport: ViewportState) {
   try {
     localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
   } catch {
@@ -39,10 +45,19 @@ function saveViewport(viewport: { x: number; y: number; zoom: number }) {
   }
 }
 
-function loadViewport(): { x: number; y: number; zoom: number } | undefined {
+function loadViewport(): ViewportState | undefined {
   try {
     const stored = localStorage.getItem(VIEWPORT_KEY)
-    if (stored) return JSON.parse(stored) as { x: number; y: number; zoom: number }
+    if (!stored) return undefined
+    const parsed: unknown = JSON.parse(stored)
+    if (
+      typeof parsed === 'object' && parsed !== null &&
+      typeof (parsed as Record<string, unknown>).x === 'number' &&
+      typeof (parsed as Record<string, unknown>).y === 'number' &&
+      typeof (parsed as Record<string, unknown>).zoom === 'number'
+    ) {
+      return parsed as ViewportState
+    }
   } catch {
     // Invalid stored value
   }
@@ -62,6 +77,7 @@ function OrgChartInner() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; label: string } | null>(null)
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const addToast = useToastStore((s) => s.add)
+  const navigate = useNavigate()
 
   const defaultViewport = useMemo(() => loadViewport(), [])
 
@@ -91,15 +107,25 @@ function OrgChartInner() {
     [],
   )
 
+  const handleNodeClick = useCallback(
+    (_event: ReactMouseEvent, node: Node) => {
+      if (node.type === 'agent' || node.type === 'ceo') {
+        const name = (node.data as { name: string }).name
+        navigate(`/agents/${encodeURIComponent(name)}`)
+      }
+    },
+    [navigate],
+  )
+
   const handleViewDetails = useCallback(
     (nodeId: string) => {
       const node = nodes.find((n) => n.id === nodeId)
       if (node && (node.type === 'agent' || node.type === 'ceo')) {
         const name = (node.data as { name: string }).name
-        window.location.href = `/agents/${encodeURIComponent(name)}`
+        navigate(`/agents/${encodeURIComponent(name)}`)
       }
     },
-    [nodes],
+    [nodes, navigate],
   )
 
   const handleDelete = useCallback(
@@ -120,8 +146,22 @@ function OrgChartInner() {
     setDeleteConfirm(null)
   }, [addToast])
 
+  const handleViewModeChange = useCallback(
+    (mode: ViewMode) => {
+      setViewMode(mode)
+      if (mode === 'force') {
+        addToast({
+          variant: 'info',
+          title: 'Communication view -- not yet available',
+          description: 'Force-directed layout requires communication data APIs',
+        })
+      }
+    },
+    [addToast],
+  )
+
   const handleMoveEnd = useCallback(
-    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+    (_event: unknown, viewport: ViewportState) => {
       saveViewport(viewport)
     },
     [],
@@ -143,7 +183,7 @@ function OrgChartInner() {
         description="Set up your company and agents to see the org chart"
         action={{
           label: 'Edit Organization',
-          onClick: () => { window.location.href = ROUTES.ORG_EDIT },
+          onClick: () => navigate(ROUTES.ORG_EDIT),
         }}
       />
     )
@@ -169,7 +209,7 @@ function OrgChartInner() {
       <div className="flex items-center justify-between pb-3">
         <OrgChartToolbar
           viewMode={viewMode}
-          onViewModeChange={setViewMode}
+          onViewModeChange={handleViewModeChange}
           onFitView={() => fitView({ padding: 0.2 })}
           onZoomIn={() => zoomIn()}
           onZoomOut={() => zoomOut()}
@@ -187,6 +227,7 @@ function OrgChartInner() {
           fitView={!defaultViewport}
           fitViewOptions={{ padding: 0.2 }}
           onMoveEnd={handleMoveEnd}
+          onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
           onPaneClick={handlePaneClick}
           nodesConnectable={false}

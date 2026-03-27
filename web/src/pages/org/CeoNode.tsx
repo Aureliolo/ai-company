@@ -15,9 +15,10 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
       className={cn(
         'rounded-lg border border-accent/30 bg-card px-4 py-3',
         'min-w-[180px] max-w-[220px]',
-        'shadow-[0_0_12px_var(--color-accent)/0.15]',
+        'shadow-sm shadow-accent/15',
       )}
       data-testid="ceo-node"
+      aria-label={`CEO: ${data.name}, ${data.companyName}`}
     >
       <Handle type="target" position={Position.Top} className="!bg-accent !size-1.5" />
 

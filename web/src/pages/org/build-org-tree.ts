@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { AgentConfig, CompanyConfig, DepartmentHealth, DepartmentName } from '@/api/types'
+import type { AgentConfig, CompanyConfig, DepartmentHealth, DepartmentName, SeniorityLevel } from '@/api/types'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import { resolveRuntimeStatus } from './status-mapping'
 
@@ -10,7 +10,7 @@ export interface AgentNodeData {
   name: string
   role: string
   department: DepartmentName
-  level: string
+  level: SeniorityLevel
   runtimeStatus: AgentRuntimeStatus
   [key: string]: unknown
 }
