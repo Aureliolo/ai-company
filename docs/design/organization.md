@@ -338,7 +338,7 @@ shown when no admin exists), Template (choose a company template with category g
 side-by-side comparison), Company (name, description, currency, and model tier profile),
 Agents (customize names, roles, and model assignments), Providers (configure LLM providers
 with auto-detection for local instances and manual addition for cloud providers), Theme (set
-UI preferences for palette, density, animation, and sidebar), and Complete (review summary
+UI preferences for palette, density, animation, sidebar, and typography), and Complete (review summary
 and launch). When a template is selected, all template agents are auto-created with models
 matched to configured providers via a tier classification engine that respects each agent's
 priority axis (quality, speed, cost, or balanced). All configuration is persisted to the

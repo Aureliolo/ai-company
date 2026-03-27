@@ -110,7 +110,7 @@ function ComparisonRowEntry({ row, templates }: ComparisonRowProps) {
                 isDifferent && 'bg-accent/5',
               )}
             >
-              {row.label === 'Tags' && Array.isArray(value) ? (
+              {row.label === 'Tags' && Array.isArray(value) && value.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
                   {value.map((tag: string) => (
                     <StatPill key={tag} label="" value={tag} className="text-compact" />
