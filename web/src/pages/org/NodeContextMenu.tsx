@@ -45,7 +45,7 @@ export function NodeContextMenu({
   // Close on outside click or Escape
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose()
       }
     }

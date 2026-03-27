@@ -17,14 +17,23 @@ function InteractiveToolbar() {
 
 const meta = {
   title: 'OrgChart/OrgChartToolbar',
-  component: InteractiveToolbar,
+  component: OrgChartToolbar,
   tags: ['autodocs'],
   parameters: {
     a11y: { test: 'error' },
   },
-} satisfies Meta<typeof InteractiveToolbar>
+  render: () => <InteractiveToolbar />,
+} satisfies Meta<typeof OrgChartToolbar>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Default: Story = {}
+export const Default: Story = {
+  args: {
+    viewMode: 'hierarchy',
+    onViewModeChange: () => {},
+    onFitView: () => {},
+    onZoomIn: () => {},
+    onZoomOut: () => {},
+  },
+}

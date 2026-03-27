@@ -50,7 +50,9 @@ export const useCompanyStore = create<CompanyState>()((set) => ({
     // Handle agent lifecycle events that affect company structure
     if (event.event_type === 'agent.hired' || event.event_type === 'agent.fired') {
       // Re-fetch company config to get updated agent list
-      useCompanyStore.getState().fetchCompanyData()
+      useCompanyStore.getState().fetchCompanyData().catch(() => {
+        // Error is already set in store state by fetchCompanyData
+      })
     }
   },
 }))
