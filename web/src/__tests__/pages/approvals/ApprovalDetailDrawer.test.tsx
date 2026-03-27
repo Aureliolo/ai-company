@@ -74,7 +74,7 @@ function renderDrawer(
 
 beforeEach(() => {
   vi.clearAllMocks()
-  useToastStore.getState().toasts = []
+  useToastStore.setState({ toasts: [] })
 })
 
 describe('ApprovalDetailDrawer', () => {
@@ -184,5 +184,6 @@ describe('ApprovalDetailDrawer', () => {
   it('hides approve/reject buttons for non-pending approvals', () => {
     renderDrawer({ status: 'approved' })
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
   })
 })
