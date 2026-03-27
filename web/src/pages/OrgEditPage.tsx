@@ -84,8 +84,9 @@ export default function OrgEditPage() {
             : undefined,
         })
         useToastStore.getState().add({ variant: 'success', title: 'Configuration saved' })
-      } catch {
+      } catch (err) {
         useToastStore.getState().add({ variant: 'error', title: 'Failed to save configuration' })
+        throw err
       }
     },
     [updateCompany],

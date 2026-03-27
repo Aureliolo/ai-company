@@ -68,10 +68,15 @@ export function AgentEditDrawer({
 
   const handleSave = useCallback(async () => {
     if (!agent) return
+    const trimmedName = form.name.trim()
+    if (!trimmedName) {
+      setSubmitError('Name is required')
+      return
+    }
     setSubmitError(null)
     try {
       await onUpdate(agent.name, {
-        name: form.name.trim() || undefined,
+        name: trimmedName,
         role: form.role.trim() || undefined,
         department: form.department as UpdateAgentOrgRequest['department'],
         level: form.level,

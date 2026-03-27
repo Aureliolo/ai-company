@@ -20,6 +20,7 @@ import type {
   UpdateAgentOrgRequest,
 } from '@/api/types'
 import { toRuntimeStatus } from '@/utils/agents'
+import { useToastStore } from '@/stores/toast'
 import { AgentCard } from '@/components/ui/agent-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -62,6 +63,8 @@ function SortableAgentItem({
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
         onClick={onClick}
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit agent ${agent.name}`}
       >
         <AgentCard
@@ -136,6 +139,7 @@ export function AgentsTab({
         await onReorderAgents(draggedAgent.department, orderedIds)
       } catch {
         rollback()
+        useToastStore.getState().add({ variant: 'error', title: 'Failed to reorder agents' })
       }
     },
     [config, agentsByDept, optimisticReorderAgents, onReorderAgents],
@@ -154,7 +158,6 @@ export function AgentsTab({
           icon={Users}
           title="No agents"
           description="Create your first agent to get started."
-          action={{ label: 'Add Agent', onClick: () => setCreateOpen(true) }}
         />
         <AgentCreateDialog
           open={createOpen}

@@ -25,6 +25,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 
@@ -67,6 +68,8 @@ function SortableDepartmentCard({
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
         onClick={onClick}
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit department ${dept.display_name ?? dept.name}`}
       >
         <SectionCard title={dept.display_name ?? dept.name} icon={Building2}>
@@ -141,6 +144,7 @@ export function DepartmentsTab({
         await onReorderDepartments(orderedNames)
       } catch {
         rollback()
+        useToastStore.getState().add({ variant: 'error', title: 'Failed to reorder departments' })
       }
     },
     [config, optimisticReorderDepartments, onReorderDepartments],
