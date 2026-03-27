@@ -9,7 +9,7 @@ import { applyDagreLayout } from '@/pages/org/layout'
 import type { WsChannel } from '@/api/types'
 
 const ORG_POLL_INTERVAL = 30_000
-const ORG_CHANNELS = ['agents', 'system'] as const satisfies readonly WsChannel[]
+const ORG_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]
 
 export interface UseOrgChartDataReturn {
   nodes: Node[]

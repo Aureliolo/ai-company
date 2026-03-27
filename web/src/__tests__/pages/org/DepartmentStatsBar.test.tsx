@@ -14,9 +14,15 @@ describe('DepartmentStatsBar', () => {
     expect(screen.getByText('Tasks')).toBeInTheDocument()
   })
 
-  it('renders cost when provided', () => {
+  it('renders cost with default USD currency', () => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={45.8} />)
     expect(screen.getByText(formatCurrency(45.8, 'USD'))).toBeInTheDocument()
+    expect(screen.getByText('Cost')).toBeInTheDocument()
+  })
+
+  it('forwards explicit currency to formatCurrency', () => {
+    render(<DepartmentStatsBar agentCount={1} activeCount={0} taskCount={0} costUsd={100} currency="EUR" />)
+    expect(screen.getByText(formatCurrency(100, 'EUR'))).toBeInTheDocument()
     expect(screen.getByText('Cost')).toBeInTheDocument()
   })
 
