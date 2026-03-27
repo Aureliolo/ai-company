@@ -96,22 +96,26 @@ describe('useCompanyStore', () => {
     expect(healths[0]!.name).toBe('engineering')
   })
 
-  it('updateFromWsEvent triggers re-fetch on agent.hired', async () => {
+  it('updateFromWsEvent triggers re-fetch of config and health on agent.hired', async () => {
     mockGetCompanyConfig.mockResolvedValue(mockConfig)
+    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
     useCompanyStore.getState().updateFromWsEvent({
       event_type: 'agent.hired',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
     })
-    // fetchCompanyData is called asynchronously
     await vi.waitFor(() => {
       expect(mockGetCompanyConfig).toHaveBeenCalled()
     })
+    await vi.waitFor(() => {
+      expect(mockGetDepartmentHealth).toHaveBeenCalled()
+    })
   })
 
-  it('updateFromWsEvent triggers re-fetch on agent.fired', async () => {
+  it('updateFromWsEvent triggers re-fetch of config and health on agent.fired', async () => {
     mockGetCompanyConfig.mockResolvedValue(mockConfig)
+    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
     useCompanyStore.getState().updateFromWsEvent({
       event_type: 'agent.fired',
       channel: 'agents',
@@ -120,6 +124,9 @@ describe('useCompanyStore', () => {
     })
     await vi.waitFor(() => {
       expect(mockGetCompanyConfig).toHaveBeenCalled()
+    })
+    await vi.waitFor(() => {
+      expect(mockGetDepartmentHealth).toHaveBeenCalled()
     })
   })
 

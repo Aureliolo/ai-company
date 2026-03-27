@@ -27,26 +27,24 @@ export function useOrgChartData(): UseOrgChartDataReturn {
   const error = useCompanyStore((s) => s.error)
   const runtimeStatuses = useAgentsStore((s) => s.runtimeStatuses)
 
-  // Initial data fetch (sequential: health depends on config being loaded)
-  useEffect(() => {
-    const companyStore = useCompanyStore.getState()
-    companyStore.fetchCompanyData().then(() => {
-      if (useCompanyStore.getState().config) {
-        companyStore.fetchDepartmentHealths()
-      }
-    })
-  }, [])
-
   // Polling for department health refresh
   const pollFn = useCallback(async () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
   }, [])
   const polling = usePolling(pollFn, ORG_POLL_INTERVAL)
 
+  // Initial data fetch (sequential: health depends on config being loaded)
+  // Polling starts only after initial fetch completes to avoid racing
   useEffect(() => {
-    polling.start()
+    const companyStore = useCompanyStore.getState()
+    companyStore.fetchCompanyData().then(() => {
+      if (useCompanyStore.getState().config) {
+        companyStore.fetchDepartmentHealths()
+      }
+      polling.start()
+    })
     return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling.start/stop are stable but reference identity triggers false positive
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling ref identity is stable
   }, [])
 
   // WebSocket bindings for real-time updates

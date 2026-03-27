@@ -219,13 +219,13 @@ function OrgChartInner() {
     <div className="flex h-full flex-col">
       {/* Error banners */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
       )}
       {!wsConnected && wsSetupError && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+        <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
           Real-time updates unavailable: {wsSetupError}
         </div>

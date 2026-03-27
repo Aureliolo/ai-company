@@ -4,14 +4,14 @@ import { DepartmentStatsBar } from '@/pages/org/DepartmentStatsBar'
 import { formatCurrency } from '@/utils/format'
 
 describe('DepartmentStatsBar', () => {
-  it.each([
-    [5, 'Agents'],
-    [3, 'Active'],
-    [8, 'Tasks'],
-  ])('renders %s with label %s', (value, label) => {
+  it('renders all stat values and labels', () => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
-    expect(screen.getByText(String(value))).toBeInTheDocument()
-    expect(screen.getByText(label)).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('Agents')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('Active')).toBeInTheDocument()
+    expect(screen.getByText('8')).toBeInTheDocument()
+    expect(screen.getByText('Tasks')).toBeInTheDocument()
   })
 
   it('renders cost when provided', () => {

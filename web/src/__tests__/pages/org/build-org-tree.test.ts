@@ -155,6 +155,25 @@ describe('buildOrgTree', () => {
     expect(ceoEdges.map((e) => e.target).sort()).toEqual(['cpo', 'cto'])
   })
 
+  it('breaks ties deterministically for same-level peers (first in array wins)', () => {
+    const agents = [
+      makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
+      makeAgent({ id: 'vp-a', name: 'VP Alpha', department: 'engineering', level: 'vp' }),
+      makeAgent({ id: 'vp-b', name: 'VP Beta', department: 'engineering', level: 'vp' }),
+      makeAgent({ id: 'vp-c', name: 'VP Gamma', department: 'engineering', level: 'vp' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    // Department head should be vp-a (first VP in array order)
+    const ceoEdges = result.edges.filter((e) => e.source === 'ceo')
+    expect(ceoEdges.map((e) => e.target)).toEqual(['vp-a'])
+
+    // vp-a is dept head; vp-b and vp-c report to vp-a
+    const headEdges = result.edges.filter((e) => e.source === 'vp-a')
+    expect(headEdges.map((e) => e.target).sort()).toEqual(['vp-b', 'vp-c'])
+  })
+
   it('creates edges from department head to team members', () => {
     const agents = [
       makeAgent({ id: 'lead', name: 'Lead', department: 'engineering', level: 'lead' }),
