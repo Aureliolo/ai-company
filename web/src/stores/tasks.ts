@@ -36,10 +36,13 @@ interface TasksState {
   handleWsEvent: (event: WsEvent) => void
 
   // Optimistic helpers
+  pendingTransitions: Set<string>
   optimisticTransition: (taskId: string, targetStatus: TaskStatus) => () => void
   upsertTask: (task: Task) => void
   removeTask: (taskId: string) => void
 }
+
+const pendingTransitions = new Set<string>()
 
 export const useTasksStore = create<TasksState>()((set, get) => ({
   tasks: [],
@@ -48,6 +51,7 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
   loading: false,
   loadingDetail: false,
   error: null,
+  pendingTransitions,
 
   fetchTasks: async (filters) => {
     set({ loading: true, error: null })
@@ -111,6 +115,7 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
         Array.isArray(candidate.dependencies) &&
         Array.isArray(candidate.acceptance_criteria)
       ) {
+        if (pendingTransitions.has(candidate.id as string)) return
         get().upsertTask(candidate as unknown as Task)
       } else {
         console.error('[tasks/ws] Received malformed task payload, skipping upsert', {
@@ -126,21 +131,30 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     const prev = get().tasks
     const taskIdx = prev.findIndex((t) => t.id === taskId)
     if (taskIdx === -1) return () => {}
+    pendingTransitions.add(taskId)
     const oldTask = prev[taskIdx]!
     const updated = { ...oldTask, status: targetStatus }
     const newTasks = [...prev]
     newTasks[taskIdx] = updated
     set({ tasks: newTasks })
-    return () => set({ tasks: prev })
+    return () => {
+      pendingTransitions.delete(taskId)
+      set({ tasks: prev })
+    }
   },
 
   upsertTask: (task) => {
+    pendingTransitions.delete(task.id)
     set((s) => {
       const idx = s.tasks.findIndex((t) => t.id === task.id)
-      if (idx === -1) return { tasks: [task, ...s.tasks], total: s.total + 1 }
-      const newTasks = [...s.tasks]
-      newTasks[idx] = task
-      return { tasks: newTasks }
+      const newTasks = idx === -1 ? [task, ...s.tasks] : [...s.tasks]
+      if (idx !== -1) newTasks[idx] = task
+      const selectedTask = s.selectedTask?.id === task.id ? task : s.selectedTask
+      return {
+        tasks: newTasks,
+        selectedTask,
+        ...(idx === -1 ? { total: s.total + 1 } : {}),
+      }
     })
   },
 

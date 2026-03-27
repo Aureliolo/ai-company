@@ -67,9 +67,9 @@ describe('useTaskBoardData', () => {
   })
 
   it('triggers initial fetch on mount', async () => {
-    const fetchTasks = vi.spyOn(useTasksStore.getState(), 'fetchTasks')
+    const { listTasks } = await import('@/api/endpoints/tasks')
     renderHook(() => useTaskBoardData())
-    await waitFor(() => expect(fetchTasks).toHaveBeenCalled())
-    expect(fetchTasks).toHaveBeenCalledWith({ limit: 200 })
+    await waitFor(() => expect(listTasks).toHaveBeenCalled())
+    expect(listTasks).toHaveBeenCalledWith({ limit: 200 })
   })
 })

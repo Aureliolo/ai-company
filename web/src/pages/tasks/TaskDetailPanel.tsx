@@ -49,10 +49,13 @@ export function TaskDetailPanel({
 
   const availableTransitions = getAvailableTransitions(task.status)
 
-  // Close panel on Escape key
+  // Close panel on Escape key (skip when a dialog is open)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (document.querySelector('[role="alertdialog"], [role="dialog"][aria-modal="true"]')) return
+        onClose()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)

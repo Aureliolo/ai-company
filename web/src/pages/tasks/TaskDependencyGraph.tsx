@@ -7,6 +7,7 @@ import type { Task } from '@/api/types'
 export interface TaskDependencyGraphProps {
   tasks: Task[]
   onSelectTask: (taskId: string) => void
+  height?: string | number
 }
 
 function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
@@ -76,7 +77,7 @@ function buildGraph(tasks: Task[]): { nodes: Node[]; edges: Edge[] } {
   return { nodes, edges }
 }
 
-export function TaskDependencyGraph({ tasks, onSelectTask }: TaskDependencyGraphProps) {
+export function TaskDependencyGraph({ tasks, onSelectTask, height = 400 }: TaskDependencyGraphProps) {
   const { nodes, edges } = useMemo(() => buildGraph(tasks), [tasks])
 
   if (nodes.length === 0) {
@@ -88,7 +89,7 @@ export function TaskDependencyGraph({ tasks, onSelectTask }: TaskDependencyGraph
   }
 
   return (
-    <div className="h-[400px] rounded-lg border border-border bg-surface">
+    <div className="rounded-lg border border-border bg-surface" style={{ height: typeof height === 'number' ? `${height}px` : height }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}

@@ -36,6 +36,26 @@ describe('TaskListView', () => {
     expect(onSelect).toHaveBeenCalledWith('t1')
   })
 
+  it('calls onSelectTask on Enter key', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    render(<TaskListView tasks={tasks} onSelectTask={onSelect} />)
+    const row = screen.getByLabelText('Task: First task')
+    row.focus()
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledWith('t1')
+  })
+
+  it('calls onSelectTask on Space key', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    render(<TaskListView tasks={tasks} onSelectTask={onSelect} />)
+    const row = screen.getByLabelText('Task: First task')
+    row.focus()
+    await user.keyboard(' ')
+    expect(onSelect).toHaveBeenCalledWith('t1')
+  })
+
   it('renders empty state when no tasks', () => {
     render(<TaskListView tasks={[]} onSelectTask={() => {}} />)
     expect(screen.getByText('No tasks found')).toBeInTheDocument()

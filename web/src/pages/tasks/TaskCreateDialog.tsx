@@ -128,7 +128,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         created_by: form.created_by.trim(),
         assigned_to: form.assigned_to.trim() || undefined,
         estimated_complexity: form.estimated_complexity,
-        budget_limit: form.budget_limit ? (Number.isFinite(Number(form.budget_limit)) && Number(form.budget_limit) >= 0 ? Number(form.budget_limit) : undefined) : undefined,
+        budget_limit: form.budget_limit ? Number(form.budget_limit) : undefined,
       }
       await onCreate(data)
       setForm(INITIAL_FORM)

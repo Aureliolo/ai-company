@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskDetailPanel } from '@/pages/tasks/TaskDetailPanel'
 import type { Task } from '@/api/types'
@@ -138,8 +138,9 @@ describe('TaskDetailPanel', () => {
     const onClose = vi.fn()
     render(<TaskDetailPanel task={mockTask} onClose={onClose} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={onDelete} />)
     await user.click(screen.getByRole('button', { name: 'Delete' }))
-    // Confirm dialog should appear
-    const confirmButton = screen.getByRole('button', { name: 'Delete' })
+    // Confirm dialog should appear -- find the confirm button inside the dialog
+    const dialog = screen.getByRole('alertdialog')
+    const confirmButton = within(dialog).getByRole('button', { name: 'Delete' })
     await user.click(confirmButton)
     expect(onDelete).toHaveBeenCalledWith('task-1')
   })

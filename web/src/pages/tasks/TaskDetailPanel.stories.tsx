@@ -40,7 +40,7 @@ const meta = {
   title: 'Tasks/TaskDetailPanel',
   component: TaskDetailPanel,
   tags: ['autodocs'],
-  parameters: { layout: 'fullscreen' },
+  parameters: { layout: 'fullscreen', a11y: { test: 'error' } },
 } satisfies Meta<typeof TaskDetailPanel>
 
 export default meta

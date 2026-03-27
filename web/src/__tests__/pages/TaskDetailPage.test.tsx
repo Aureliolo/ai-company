@@ -74,15 +74,17 @@ describe('TaskDetailPage', () => {
   })
 
   it('renders loading spinner when loadingDetail is true', async () => {
+    mockGetTask.mockReturnValue(new Promise(() => {}))
     resetStore({ loadingDetail: true })
     await renderDetailPage()
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 
   it('renders loading spinner when task is null', async () => {
+    mockGetTask.mockReturnValue(new Promise(() => {}))
     resetStore({ selectedTask: null, loadingDetail: false })
     await renderDetailPage()
-    // Should show spinner since task is null
+    // Should show spinner since task is null (fetch is pending)
     expect(screen.queryByText('Test task')).not.toBeInTheDocument()
   })
 

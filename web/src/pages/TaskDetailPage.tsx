@@ -28,6 +28,7 @@ export default function TaskDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
 
   useEffect(() => {
@@ -68,12 +69,13 @@ export default function TaskDetailPage() {
   const handleCancel = useCallback(async () => {
     if (!task) return
     try {
-      await useTasksStore.getState().cancelTask(task.id, { reason: 'Cancelled by user' })
+      await useTasksStore.getState().cancelTask(task.id, { reason: cancelReason.trim() || 'Cancelled by user' })
       setCancelOpen(false)
+      setCancelReason('')
     } catch {
       useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
     }
-  }, [task])
+  }, [task, cancelReason])
 
   if (error && !task) {
     return (
@@ -261,13 +263,21 @@ export default function TaskDetailPage() {
 
       <ConfirmDialog
         open={cancelOpen}
-        onOpenChange={setCancelOpen}
+        onOpenChange={(open) => { setCancelOpen(open); if (!open) setCancelReason('') }}
         title="Cancel Task"
-        description="Are you sure you want to cancel this task?"
+        description="Are you sure? Please provide a reason for cancellation."
         confirmLabel="Cancel Task"
         variant="destructive"
         onConfirm={handleCancel}
-      />
+      >
+        <textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="Reason for cancellation..."
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          aria-label="Cancellation reason"
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteOpen}

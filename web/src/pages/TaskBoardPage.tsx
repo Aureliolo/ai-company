@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   DndContext,
@@ -32,8 +32,9 @@ import { TaskFilterBar } from './tasks/TaskFilterBar'
 import { TaskListView } from './tasks/TaskListView'
 import { TaskDetailPanel } from './tasks/TaskDetailPanel'
 import { TaskCreateDialog } from './tasks/TaskCreateDialog'
-import { TaskDependencyGraph } from './tasks/TaskDependencyGraph'
 import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
+
+const TaskDependencyGraph = lazy(() => import('./tasks/TaskDependencyGraph').then((m) => ({ default: m.TaskDependencyGraph })))
 
 export default function TaskBoardPage() {
   const {
@@ -204,8 +205,13 @@ export default function TaskBoardPage() {
 
   // Create task
   const handleCreateTask = useCallback(async (data: Parameters<typeof createTask>[0]) => {
-    await createTask(data)
-    useToastStore.getState().add({ variant: 'success', title: 'Task created' })
+    try {
+      await createTask(data)
+      useToastStore.getState().add({ variant: 'success', title: 'Task created' })
+    } catch (err) {
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to create task', description: getErrorMessage(err) })
+      throw err
+    }
   }, [createTask])
 
   // Skeleton on initial load
@@ -269,7 +275,9 @@ export default function TaskBoardPage() {
 
       {showDeps && (
         <ErrorBoundary level="section">
-          <TaskDependencyGraph tasks={filteredTasks} onSelectTask={handleSelectTask} />
+          <Suspense fallback={<div className="h-[400px] rounded-lg border border-border bg-surface animate-pulse" />}>
+            <TaskDependencyGraph tasks={filteredTasks} onSelectTask={handleSelectTask} />
+          </Suspense>
         </ErrorBoundary>
       )}
 
@@ -309,7 +317,7 @@ export default function TaskBoardPage() {
 
       {/* Detail panel overlay */}
       <AnimatePresence>
-        {selectedTaskId && selectedTask && (
+        {selectedTaskId && selectedTask && selectedTask.id === selectedTaskId && (
           <TaskDetailPanel
             task={selectedTask}
             onClose={handleClosePanel}

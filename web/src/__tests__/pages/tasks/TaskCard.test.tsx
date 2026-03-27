@@ -83,8 +83,7 @@ describe('TaskCard', () => {
   })
 
   it('renders deadline when set', () => {
-    const futureDate = new Date(Date.now() + 86400000 * 3).toISOString()
-    render(<TaskCard task={makeTask({ deadline: futureDate })} onSelect={() => {}} />)
+    render(<TaskCard task={makeTask({ deadline: '2099-01-01T00:00:00.000Z' })} onSelect={() => {}} />)
     // Should render some deadline text (relative time)
     expect(screen.getByTitle(/Deadline/)).toBeInTheDocument()
   })
