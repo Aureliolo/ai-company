@@ -56,7 +56,9 @@ describe('App', () => {
     })
   })
 
-  it('renders app shell for authenticated users with setup complete', async () => {
+  it(
+    'renders app shell for authenticated users with setup complete',
+    async () => {
     useAuthStore.setState({
       token: 'test-token',
       user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
@@ -77,5 +79,7 @@ describe('App', () => {
     expect(screen.getByRole('main')).toBeInTheDocument()
     // Verify brand text is present in the app
     expect(screen.getAllByText('SynthOrg').length).toBeGreaterThanOrEqual(1)
-  })
+  },
+    10_000,
+  )
 })

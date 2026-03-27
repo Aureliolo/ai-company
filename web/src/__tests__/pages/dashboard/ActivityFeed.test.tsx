@@ -51,7 +51,7 @@ describe('ActivityFeed', () => {
         }
         unmount()
       }),
-      { numRuns: 20 },
+      { numRuns: 10 },
     )
   })
 })

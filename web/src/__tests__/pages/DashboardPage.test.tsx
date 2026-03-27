@@ -61,8 +61,10 @@ vi.mock('@/hooks/useDashboardData', () => {
   return { [hookName]: () => getDashboardData() }
 })
 
-async function renderDashboard() {
-  const { default: DashboardPage } = await import('@/pages/DashboardPage')
+// Static import: vi.mock is hoisted so the mock is applied before import
+import DashboardPage from '@/pages/DashboardPage'
+
+function renderDashboard() {
   return render(
     <MemoryRouter>
       <DashboardPage />
@@ -75,69 +77,69 @@ describe('DashboardPage', () => {
     hookReturn = { ...defaultHookReturn }
   })
 
-  it('renders page heading', async () => {
-    await renderDashboard()
+  it('renders page heading', () => {
+    renderDashboard()
     expect(screen.getByText('Overview')).toBeInTheDocument()
   })
 
-  it('renders loading skeleton when loading with no data', async () => {
+  it('renders loading skeleton when loading with no data', () => {
     hookReturn = { ...defaultHookReturn, loading: true, overview: null }
-    await renderDashboard()
-    expect(screen.getByRole('status')).toBeInTheDocument()
+    renderDashboard()
+    expect(screen.getByLabelText('Loading dashboard')).toBeInTheDocument()
   })
 
-  it('renders 4 metric cards', async () => {
-    await renderDashboard()
+  it('renders 4 metric cards', () => {
+    renderDashboard()
     expect(screen.getByText('TASKS')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE AGENTS')).toBeInTheDocument()
     expect(screen.getByText('SPEND')).toBeInTheDocument()
     expect(screen.getByText('IN REVIEW')).toBeInTheDocument()
   })
 
-  it('renders metric values', async () => {
-    await renderDashboard()
+  it('renders metric values', () => {
+    renderDashboard()
     expect(screen.getByText('24')).toBeInTheDocument() // total_tasks
     expect(screen.getByText('5')).toBeInTheDocument()  // active_agents
   })
 
-  it('renders Org Health section', async () => {
-    await renderDashboard()
+  it('renders Org Health section', () => {
+    renderDashboard()
     expect(screen.getByText('Org Health')).toBeInTheDocument()
   })
 
-  it('renders Activity section', async () => {
-    await renderDashboard()
+  it('renders Activity section', () => {
+    renderDashboard()
     expect(screen.getByText('Activity')).toBeInTheDocument()
   })
 
-  it('renders Budget Burn section', async () => {
-    await renderDashboard()
+  it('renders Budget Burn section', () => {
+    renderDashboard()
     expect(screen.getByText('Budget Burn')).toBeInTheDocument()
   })
 
-  it('shows error banner when error is set', async () => {
+  it('shows error banner when error is set', () => {
     hookReturn = { ...defaultHookReturn, error: 'Connection lost' }
-    await renderDashboard()
+    renderDashboard()
     expect(screen.getByText('Connection lost')).toBeInTheDocument()
   })
 
-  it('does not show skeleton when loading but data already exists', async () => {
+  it('does not show skeleton when loading but data already exists', () => {
     hookReturn = { ...defaultHookReturn, loading: true }
-    await renderDashboard()
+    renderDashboard()
     // Should show the page, not the skeleton
     expect(screen.getByText('Overview')).toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Loading dashboard')).not.toBeInTheDocument()
   })
 
-  it('shows WebSocket disconnect warning when not connected', async () => {
+  it('shows WebSocket disconnect warning when not connected', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
-    await renderDashboard()
+    renderDashboard()
     expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
   })
 
-  it('shows custom wsSetupError message when provided', async () => {
+  it('shows custom wsSetupError message when provided', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
-    await renderDashboard()
+    renderDashboard()
     expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
   })
 })

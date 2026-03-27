@@ -1,6 +1,28 @@
 import fc from 'fast-check'
-import { AxiosError, type AxiosResponse } from 'axios'
+import { vi } from 'vitest'
 import { getErrorMessage } from '@/utils/errors'
+
+// Mock axios to prevent fetch adapter capability detection (creates unresolved
+// ReadableStream promises that trigger --detect-async-leaks)
+vi.mock('axios', () => ({
+  default: {
+    isAxiosError: (err: unknown) =>
+      typeof err === 'object' && err !== null && (err as Record<string, unknown>).isAxiosError === true,
+  },
+  isAxiosError: (err: unknown) =>
+    typeof err === 'object' && err !== null && (err as Record<string, unknown>).isAxiosError === true,
+}))
+
+/** Build a fake AxiosError-shaped object without importing the real class. */
+function makeFakeAxiosError(status: number, data: unknown) {
+  const err = new Error('Request failed') as Error & {
+    isAxiosError: boolean
+    response: { status: number; data: unknown }
+  }
+  err.isAxiosError = true
+  err.response = { status, data }
+  return err
+}
 
 describe('errors property tests', () => {
   it('getErrorMessage never returns empty string', () => {
@@ -19,19 +41,7 @@ describe('errors property tests', () => {
 
     fc.assert(
       fc.property(statusArb, bodyArb, (status, body) => {
-        const error = new AxiosError(
-          'Request failed',
-          'ERR_BAD_RESPONSE',
-          undefined,
-          undefined,
-          {
-            status,
-            data: { error: body },
-            headers: {},
-            statusText: 'Error',
-            config: {} as AxiosResponse['config'],
-          } as AxiosResponse,
-        )
+        const error = makeFakeAxiosError(status, { error: body })
         const msg = getErrorMessage(error)
         expect(msg).not.toContain(body)
       }),
