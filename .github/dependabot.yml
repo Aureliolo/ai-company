@@ -10,11 +10,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 10
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
     labels:
@@ -30,11 +28,9 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 10
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
     labels:
@@ -50,11 +46,9 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
@@ -70,11 +64,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
@@ -90,11 +82,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 10
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
     labels:
@@ -111,11 +101,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 10
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
@@ -132,11 +120,9 @@ updates:
     commit-message:
       prefix: "ci"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
@@ -152,11 +138,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 10
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
     labels:
@@ -173,11 +157,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     ignore:
@@ -196,11 +178,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
@@ -217,11 +197,9 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-      major:
-        update-types: [major]
-    open-pull-requests-limit: 5
+      all:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
     reviewers:
       - Aureliolo
     labels:
