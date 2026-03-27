@@ -13,6 +13,7 @@ const DEFAULT_NODE_WIDTH = 160
 const DEFAULT_NODE_HEIGHT = 80
 const DEFAULT_GROUP_PADDING = 40
 const GROUP_NODE_HEADER_HEIGHT = 40
+const EMPTY_GROUP_HEIGHT = 120 // matches DepartmentGroupNode min-h-[120px]
 
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
@@ -26,18 +27,25 @@ export function applyDagreLayout(
   edges: Edge[],
   options: LayoutOptions = {},
 ): Node[] {
-  const { direction = 'TB', nodeSep = 60, rankSep = 100 } = options
+  const { direction = 'TB' } = options
+  let { nodeSep = 60, rankSep = 100 } = options
 
   // Separate group nodes from leaf nodes
   const groupNodes = nodes.filter((n) => n.type === 'department')
   const leafNodes = nodes.filter((n) => n.type !== 'department')
+
+  // Increase spacing to account for department group chrome (padding + header)
+  if (groupNodes.length > 0) {
+    nodeSep += DEFAULT_GROUP_PADDING * 2
+    rankSep += GROUP_NODE_HEADER_HEIGHT + DEFAULT_GROUP_PADDING
+  }
 
   if (leafNodes.length === 0) {
     // No agent nodes -- place department groups on a grid
     return nodes.map((n, i) => {
       const col = i % 3
       const row = Math.floor(i / 3)
-      return { ...n, position: { x: col * 240, y: row * 140 }, style: { ...n.style, width: 200, height: 100 } }
+      return { ...n, position: { x: col * 240, y: row * 160 }, style: { ...n.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
     })
   }
 
@@ -94,7 +102,7 @@ export function applyDagreLayout(
       const col = emptyGroupIndex % 3
       const row = Math.floor(emptyGroupIndex / 3)
       emptyGroupIndex++
-      return { ...group, position: { x: xOffset + col * 240, y: row * 140 }, style: { ...group.style, width: 200, height: 100 } }
+      return { ...group, position: { x: xOffset + col * 240, y: row * 160 }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
     }
 
     const padding = DEFAULT_GROUP_PADDING
