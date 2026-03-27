@@ -57,7 +57,10 @@ export function AgentEditDrawer({
     }
   }, [agent])
 
-  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name }))
+  const deptOptions = useMemo(
+    () => departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name })),
+    [departments],
+  )
   const hiredDate = useMemo(
     () => agent ? new Date(agent.hiring_date).toLocaleDateString() : '',
     [agent],

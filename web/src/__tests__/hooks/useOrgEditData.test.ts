@@ -71,11 +71,21 @@ describe('useOrgEditData', () => {
     resetStore()
   })
 
-  it('calls fetchCompanyData on mount', async () => {
+  it('calls fetchCompanyData on mount and starts polling', async () => {
     renderHook(() => useOrgEditData())
     await waitFor(() => {
       expect(mockFetchCompanyData).toHaveBeenCalledTimes(1)
     })
+    expect(mockPollingStart).toHaveBeenCalled()
+  })
+
+  it('stops polling on unmount', async () => {
+    const { unmount } = renderHook(() => useOrgEditData())
+    await waitFor(() => {
+      expect(mockFetchCompanyData).toHaveBeenCalledTimes(1)
+    })
+    unmount()
+    expect(mockPollingStop).toHaveBeenCalled()
   })
 
   it('returns loading state from store', () => {

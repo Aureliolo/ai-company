@@ -62,6 +62,9 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
         spellCheck={false}
         aria-label="YAML editor"
       />
+      <p className="text-xs text-text-muted">
+        Save applies company-level settings only. Use the GUI tabs to manage agents and departments.
+      </p>
       {parseError && (
         <p className="text-xs text-danger" role="alert">{parseError}</p>
       )}
