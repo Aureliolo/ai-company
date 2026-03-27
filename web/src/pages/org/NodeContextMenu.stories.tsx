@@ -5,6 +5,9 @@ const meta = {
   title: 'OrgChart/NodeContextMenu',
   component: NodeContextMenu,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
   decorators: [
     (Story) => (
       <div style={{ height: 300, position: 'relative' }}>
@@ -30,6 +33,15 @@ export const DepartmentMenu: Story = {
   args: {
     nodeId: 'dept-engineering',
     nodeType: 'department',
+    position: { x: 100, y: 50 },
+    onClose: () => {},
+  },
+}
+
+export const CeoMenu: Story = {
+  args: {
+    nodeId: 'ceo-1',
+    nodeType: 'ceo',
     position: { x: 100, y: 50 },
     onClose: () => {},
   },

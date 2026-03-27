@@ -24,7 +24,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
     <div
       className={cn(
         'rounded-lg border border-border bg-card px-3 py-2',
-        'min-w-[140px] max-w-[180px]',
+        'min-w-36 max-w-44',
         'ring-1',
         STATUS_RING_CLASSES[statusColor] ?? 'ring-border',
         isOffline && 'opacity-50',
@@ -32,7 +32,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
       data-testid="agent-node"
       aria-label={`Agent: ${data.name}, ${data.role}, ${data.runtimeStatus}`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-border-bright !size-1.5" />
+      <Handle type="target" position={Position.Top} className="bg-border-bright! size-1.5!" />
 
       <div className="flex items-center gap-2">
         <Avatar name={data.name} size="sm" />
@@ -52,7 +52,7 @@ function AgentNodeComponent({ data }: NodeProps<AgentNodeType>) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-border-bright !size-1.5" />
+      <Handle type="source" position={Position.Bottom} className="bg-border-bright! size-1.5!" />
     </div>
   )
 }

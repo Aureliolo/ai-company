@@ -3,15 +3,13 @@ import { useCompanyStore } from '@/stores/company'
 
 vi.mock('@/api/endpoints/company', () => ({
   getCompanyConfig: vi.fn(),
-  listDepartments: vi.fn(),
   getDepartmentHealth: vi.fn(),
 }))
 
-import { getCompanyConfig, listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
-import type { CompanyConfig, Department, DepartmentHealth, PaginationMeta } from '@/api/types'
+import { getCompanyConfig, getDepartmentHealth } from '@/api/endpoints/company'
+import type { CompanyConfig, DepartmentHealth } from '@/api/types'
 
 const mockGetCompanyConfig = vi.mocked(getCompanyConfig)
-const mockListDepartments = vi.mocked(listDepartments)
 const mockGetDepartmentHealth = vi.mocked(getDepartmentHealth)
 
 const mockConfig: CompanyConfig = {
@@ -67,22 +65,27 @@ describe('useCompanyStore', () => {
   })
 
   it('fetchDepartmentHealths populates array on success', async () => {
-    const mockDept: Department = { name: 'engineering', display_name: 'Engineering', teams: [] }
-    const mockPagination: PaginationMeta = { total: 1, offset: 0, limit: 100 }
-    mockListDepartments.mockResolvedValue({ data: [mockDept], ...mockPagination })
+    useCompanyStore.setState({ config: mockConfig })
     mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
 
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(useCompanyStore.getState().departmentHealths).toEqual([mockDeptHealth])
   })
 
+  it('fetchDepartmentHealths does nothing without config', async () => {
+    await useCompanyStore.getState().fetchDepartmentHealths()
+    expect(mockGetDepartmentHealth).not.toHaveBeenCalled()
+  })
+
   it('fetchDepartmentHealths filters out failed health fetches', async () => {
-    const depts: Department[] = [
-      { name: 'engineering', display_name: 'Engineering', teams: [] },
-      { name: 'product', display_name: 'Product', teams: [] },
-    ]
-    const mockPagination: PaginationMeta = { total: 2, offset: 0, limit: 100 }
-    mockListDepartments.mockResolvedValue({ data: depts, ...mockPagination })
+    const configWithTwoDepts: CompanyConfig = {
+      ...mockConfig,
+      departments: [
+        { name: 'engineering', display_name: 'Engineering', teams: [] },
+        { name: 'product', display_name: 'Product', teams: [] },
+      ],
+    }
+    useCompanyStore.setState({ config: configWithTwoDepts })
     mockGetDepartmentHealth
       .mockResolvedValueOnce(mockDeptHealth)
       .mockRejectedValueOnce(new Error('Not found'))
@@ -102,6 +105,19 @@ describe('useCompanyStore', () => {
       payload: {},
     })
     // fetchCompanyData is called asynchronously
+    await vi.waitFor(() => {
+      expect(mockGetCompanyConfig).toHaveBeenCalled()
+    })
+  })
+
+  it('updateFromWsEvent triggers re-fetch on agent.fired', async () => {
+    mockGetCompanyConfig.mockResolvedValue(mockConfig)
+    useCompanyStore.getState().updateFromWsEvent({
+      event_type: 'agent.fired',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: {},
+    })
     await vi.waitFor(() => {
       expect(mockGetCompanyConfig).toHaveBeenCalled()
     })

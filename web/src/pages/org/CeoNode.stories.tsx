@@ -35,6 +35,9 @@ const meta = {
   title: 'OrgChart/CeoNode',
   component: Wrapper,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof Wrapper>
 
 export default meta
@@ -64,6 +67,34 @@ export const Idle: Story = {
       level: 'c_suite',
       runtimeStatus: 'idle',
       companyName: 'Acme Corp',
+    },
+  },
+}
+
+export const Error: Story = {
+  args: {
+    data: {
+      agentId: 'ceo-1',
+      name: 'Amara Okafor',
+      role: 'CEO',
+      department: 'executive',
+      level: 'c_suite',
+      runtimeStatus: 'error',
+      companyName: 'SynthOrg',
+    },
+  },
+}
+
+export const Offline: Story = {
+  args: {
+    data: {
+      agentId: 'ceo-1',
+      name: 'Amara Okafor',
+      role: 'CEO',
+      department: 'executive',
+      level: 'c_suite',
+      runtimeStatus: 'offline',
+      companyName: 'SynthOrg',
     },
   },
 }

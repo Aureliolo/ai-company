@@ -23,9 +23,32 @@ import { HierarchyEdge } from './org/HierarchyEdge'
 import { OrgChartToolbar, type ViewMode } from './org/OrgChartToolbar'
 import { OrgChartSkeleton } from './org/OrgChartSkeleton'
 import { NodeContextMenu } from './org/NodeContextMenu'
+import type { AgentNodeData, DepartmentGroupData } from './org/build-org-tree'
 import { ROUTES } from '@/router/routes'
 
-// Memoized outside component to prevent re-renders
+const VALID_NODE_TYPES = new Set(['agent', 'ceo', 'department'])
+
+function getNodeLabel(node: Node): string {
+  switch (node.type) {
+    case 'agent':
+    case 'ceo':
+      return (node.data as AgentNodeData).name
+    case 'department':
+      return (node.data as DepartmentGroupData).displayName
+    default:
+      return node.id
+  }
+}
+
+function getAgentName(node: Node): string | undefined {
+  if (node.type === 'agent' || node.type === 'ceo') {
+    const name = (node.data as AgentNodeData).name
+    return typeof name === 'string' ? name : undefined
+  }
+  return undefined
+}
+
+// Declared outside component for stable reference identity (prevents unnecessary re-renders)
 const nodeTypes = { agent: AgentNode, ceo: CeoNode, department: DepartmentGroupNode }
 const edgeTypes = { hierarchy: HierarchyEdge }
 
@@ -97,7 +120,8 @@ function OrgChartInner() {
   const handleNodeContextMenu = useCallback(
     (event: ReactMouseEvent, node: Node) => {
       event.preventDefault()
-      const nodeType = (node.type === 'department' ? 'department' : node.type === 'ceo' ? 'ceo' : 'agent') as ContextMenuState['nodeType']
+      if (!VALID_NODE_TYPES.has(node.type ?? '')) return
+      const nodeType = node.type as ContextMenuState['nodeType']
       setContextMenu({
         nodeId: node.id,
         nodeType,
@@ -109,8 +133,8 @@ function OrgChartInner() {
 
   const handleNodeClick = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
-      if (node.type === 'agent' || node.type === 'ceo') {
-        const name = (node.data as { name: string }).name
+      const name = getAgentName(node)
+      if (name) {
         navigate(`/agents/${encodeURIComponent(name)}`)
       }
     },
@@ -120,8 +144,9 @@ function OrgChartInner() {
   const handleViewDetails = useCallback(
     (nodeId: string) => {
       const node = nodes.find((n) => n.id === nodeId)
-      if (node && (node.type === 'agent' || node.type === 'ceo')) {
-        const name = (node.data as { name: string }).name
+      if (!node) return
+      const name = getAgentName(node)
+      if (name) {
         navigate(`/agents/${encodeURIComponent(name)}`)
       }
     },
@@ -131,7 +156,7 @@ function OrgChartInner() {
   const handleDelete = useCallback(
     (nodeId: string) => {
       const node = nodes.find((n) => n.id === nodeId)
-      const label = node ? String((node.data as { name?: string; displayName?: string }).name ?? (node.data as { displayName?: string }).displayName ?? nodeId) : nodeId
+      const label = node ? getNodeLabel(node).slice(0, 64) : nodeId
       setDeleteConfirm({ nodeId, label })
     },
     [nodes],

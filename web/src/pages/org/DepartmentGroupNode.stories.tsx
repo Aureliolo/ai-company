@@ -36,6 +36,9 @@ const meta = {
   title: 'OrgChart/DepartmentGroupNode',
   component: Wrapper,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof Wrapper>
 
 export default meta

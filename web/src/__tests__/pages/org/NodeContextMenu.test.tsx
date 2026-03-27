@@ -3,12 +3,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { NodeContextMenu } from '@/pages/org/NodeContextMenu'
 
 describe('NodeContextMenu', () => {
-  const baseProps = {
-    nodeId: 'agent-1',
-    nodeType: 'agent' as const,
-    position: { x: 100, y: 100 },
-    onClose: vi.fn(),
+  let baseProps: {
+    nodeId: string
+    nodeType: 'agent' | 'ceo' | 'department'
+    position: { x: number; y: number }
+    onClose: () => void
   }
+
+  beforeEach(() => {
+    baseProps = {
+      nodeId: 'agent-1',
+      nodeType: 'agent' as const,
+      position: { x: 100, y: 100 },
+      onClose: vi.fn(),
+    }
+  })
 
   it('renders menu for agent node', () => {
     render(<NodeContextMenu {...baseProps} />)
@@ -55,6 +64,6 @@ describe('NodeContextMenu', () => {
   it('menu items have role="menuitem"', () => {
     render(<NodeContextMenu {...baseProps} />)
     const items = screen.getAllByRole('menuitem')
-    expect(items.length).toBeGreaterThanOrEqual(4)
+    expect(items).toHaveLength(4)
   })
 })

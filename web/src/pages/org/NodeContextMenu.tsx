@@ -96,7 +96,19 @@ export function NodeContextMenu({
     },
   ]
 
-  const items = nodeType === 'department' ? departmentItems : agentItems
+  const ceoItems: MenuItem[] = [
+    {
+      label: 'View Details',
+      icon: Eye,
+      action: () => {
+        onViewDetails?.(nodeId)
+        onClose()
+      },
+    },
+  ]
+
+  const items =
+    nodeType === 'department' ? departmentItems : nodeType === 'ceo' ? ceoItems : agentItems
 
   return (
     <div
@@ -109,6 +121,7 @@ export function NodeContextMenu({
       {items.map((item) => (
         <button
           key={item.label}
+          type="button"
           onClick={item.action}
           role="menuitem"
           className={cn(

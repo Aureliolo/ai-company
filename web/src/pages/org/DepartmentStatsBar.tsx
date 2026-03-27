@@ -7,7 +7,7 @@ interface DepartmentStatsBarProps {
   activeCount: number
   taskCount: number
   costUsd: number | null
-  currency?: string
+  currency?: string // defaults to 'USD' to match costUsd field semantics
   className?: string
 }
 
@@ -16,7 +16,7 @@ export function DepartmentStatsBar({
   activeCount,
   taskCount,
   costUsd,
-  currency,
+  currency = 'USD',
   className,
 }: DepartmentStatsBarProps) {
   return (

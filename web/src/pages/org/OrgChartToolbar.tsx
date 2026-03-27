@@ -35,6 +35,7 @@ export function OrgChartToolbar({
           size="sm"
           onClick={() => onViewModeChange('hierarchy')}
           aria-label="Hierarchy view"
+          aria-pressed={viewMode === 'hierarchy'}
           className="h-7 gap-1.5 rounded-r-none px-2 text-xs"
         >
           <GitBranch className="size-3.5" aria-hidden="true" />
@@ -45,6 +46,7 @@ export function OrgChartToolbar({
           size="sm"
           onClick={() => onViewModeChange('force')}
           aria-label="Communication view"
+          aria-pressed={viewMode === 'force'}
           className="h-7 gap-1.5 rounded-l-none px-2 text-xs"
         >
           <Network className="size-3.5" aria-hidden="true" />

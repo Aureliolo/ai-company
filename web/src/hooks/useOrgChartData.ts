@@ -45,7 +45,7 @@ export function useOrgChartData(): UseOrgChartDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling.start/stop are stable but reference identity triggers false positive
   }, [])
 
   // WebSocket bindings for real-time updates

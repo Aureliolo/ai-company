@@ -20,7 +20,7 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
       data-testid="ceo-node"
       aria-label={`CEO: ${data.name}, ${data.companyName}`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-accent !size-1.5" />
+      <Handle type="target" position={Position.Top} className="bg-accent! size-1.5!" />
 
       <div className="mb-1 text-center font-sans text-micro font-medium tracking-wide text-accent">
         {data.companyName}
@@ -44,7 +44,7 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-accent !size-1.5" />
+      <Handle type="source" position={Position.Bottom} className="bg-accent! size-1.5!" />
     </div>
   )
 }

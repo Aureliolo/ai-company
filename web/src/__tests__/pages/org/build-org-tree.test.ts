@@ -239,7 +239,7 @@ describe('buildOrgTree', () => {
     expect(new Set(edgeIds).size).toBe(edgeIds.length)
   })
 
-  it('skips departments with no agents', () => {
+  it('renders empty departments with zero agent count', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
@@ -254,8 +254,11 @@ describe('buildOrgTree', () => {
     const result = buildOrgTree(config, {}, [])
 
     const deptNodes = result.nodes.filter((n) => n.type === 'department')
-    expect(deptNodes).toHaveLength(1)
-    expect(deptNodes[0]!.data.departmentName).toBe('engineering')
+    expect(deptNodes).toHaveLength(2)
+    // Empty department is still rendered
+    const productDept = deptNodes.find((n) => n.data.departmentName === 'product')
+    expect(productDept).toBeDefined()
+    expect(productDept!.data.agentCount).toBe(0)
   })
 
   it('assigns correct node types', () => {
@@ -270,7 +273,7 @@ describe('buildOrgTree', () => {
     expect(types).toEqual(['agent', 'ceo', 'department', 'department'])
   })
 
-  it('defaults health to 100% when no health data provided', () => {
+  it('returns null health when no health data provided', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
@@ -278,7 +281,8 @@ describe('buildOrgTree', () => {
     const result = buildOrgTree(config, {}, [])
 
     const deptNode = result.nodes.find((n) => n.type === 'department')
-    expect(deptNode!.data.healthPercent).toBe(100)
+    expect(deptNode!.data.healthPercent).toBeNull()
+    expect(deptNode!.data.taskCount).toBeNull()
   })
 
   it('includes companyName in CEO node data', () => {
@@ -287,7 +291,7 @@ describe('buildOrgTree', () => {
     ]
     const config = makeConfig(agents)
     config.company_name = 'Acme Inc'
-    const result = buildOrgTree({ ...config, company_name: 'Acme Inc' }, {}, [])
+    const result = buildOrgTree(config, {}, [])
 
     const ceoNode = result.nodes.find((n) => n.type === 'ceo')
     expect(ceoNode!.data.companyName).toBe('Acme Inc')

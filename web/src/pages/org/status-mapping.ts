@@ -3,7 +3,8 @@ import type { AgentRuntimeStatus } from '@/lib/utils'
 
 /**
  * Map HR (administrative) agent status to an initial runtime status.
- * The runtime status may later be overridden by WebSocket events.
+ * Both 'active' and 'onboarding' map to 'idle' because actual runtime
+ * activity is determined by WebSocket events, not administrative status.
  */
 export function mapHrToRuntime(hrStatus: AgentStatus): AgentRuntimeStatus {
   switch (hrStatus) {
@@ -11,7 +12,6 @@ export function mapHrToRuntime(hrStatus: AgentStatus): AgentRuntimeStatus {
     case 'on_leave':
       return 'offline'
     case 'onboarding':
-      return 'idle'
     case 'active':
       return 'idle'
   }

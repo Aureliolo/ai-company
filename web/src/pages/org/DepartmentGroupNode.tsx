@@ -14,8 +14,8 @@ const HEALTH_BG_CLASSES: Record<string, string> = {
 }
 
 function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) {
-  const healthColor = getHealthColor(data.healthPercent)
-  const bgClasses = HEALTH_BG_CLASSES[healthColor] ?? 'bg-card/50 border-border'
+  const healthColor = data.healthPercent !== null ? getHealthColor(data.healthPercent) : null
+  const bgClasses = (healthColor && HEALTH_BG_CLASSES[healthColor]) ?? 'bg-card/50 border-border'
 
   return (
     <div
@@ -25,7 +25,7 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
         bgClasses,
       )}
       data-testid="department-group-node"
-      aria-label={`Department: ${data.displayName}, health ${data.healthPercent}%`}
+      aria-label={`Department: ${data.displayName}${data.healthPercent !== null ? `, health ${data.healthPercent}%` : ''}`}
     >
       <div className="mb-2">
         <div className="flex items-center justify-between">
@@ -33,13 +33,13 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
             {data.displayName}
           </span>
           <span className="font-mono text-micro font-medium text-muted-foreground">
-            {data.healthPercent}%
+            {data.healthPercent !== null ? `${data.healthPercent}%` : '--'}
           </span>
         </div>
         <DepartmentStatsBar
           agentCount={data.agentCount}
           activeCount={data.activeCount}
-          taskCount={data.taskCount}
+          taskCount={data.taskCount ?? 0}
           costUsd={data.costUsd}
           className="mt-1.5"
         />

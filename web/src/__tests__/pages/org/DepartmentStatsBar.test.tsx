@@ -4,27 +4,19 @@ import { DepartmentStatsBar } from '@/pages/org/DepartmentStatsBar'
 import { formatCurrency } from '@/utils/format'
 
 describe('DepartmentStatsBar', () => {
-  it('renders agent count', () => {
+  it.each([
+    [5, 'Agents'],
+    [3, 'Active'],
+    [8, 'Tasks'],
+  ])('renders %s with label %s', (value, label) => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
-    expect(screen.getByText('5')).toBeInTheDocument()
-    expect(screen.getByText('Agents')).toBeInTheDocument()
-  })
-
-  it('renders active count', () => {
-    render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
-    expect(screen.getByText('3')).toBeInTheDocument()
-    expect(screen.getByText('Active')).toBeInTheDocument()
-  })
-
-  it('renders task count', () => {
-    render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
-    expect(screen.getByText('8')).toBeInTheDocument()
-    expect(screen.getByText('Tasks')).toBeInTheDocument()
+    expect(screen.getByText(String(value))).toBeInTheDocument()
+    expect(screen.getByText(label)).toBeInTheDocument()
   })
 
   it('renders cost when provided', () => {
     render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={45.8} />)
-    expect(screen.getByText(formatCurrency(45.8))).toBeInTheDocument()
+    expect(screen.getByText(formatCurrency(45.8, 'USD'))).toBeInTheDocument()
     expect(screen.getByText('Cost')).toBeInTheDocument()
   })
 

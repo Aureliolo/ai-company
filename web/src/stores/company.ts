@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getCompanyConfig, listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
+import { getCompanyConfig, getDepartmentHealth } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import type { CompanyConfig, DepartmentHealth, WsEvent } from '@/api/types'
 
@@ -31,12 +31,10 @@ export const useCompanyStore = create<CompanyState>()((set) => ({
 
   fetchDepartmentHealths: async () => {
     try {
-      const deptResult = await listDepartments({ limit: 100 })
-      const healthPromises = deptResult.data.map((dept) =>
-        getDepartmentHealth(dept.name).catch((err: unknown) => {
-          console.warn(`Failed to fetch health for ${dept.name}:`, err)
-          return null
-        }),
+      const config = useCompanyStore.getState().config
+      if (!config) return
+      const healthPromises = config.departments.map((dept) =>
+        getDepartmentHealth(dept.name).catch(() => null),
       )
       const healthResults = await Promise.all(healthPromises)
       const departmentHealths = healthResults.filter(
@@ -44,12 +42,12 @@ export const useCompanyStore = create<CompanyState>()((set) => ({
       )
       set({ departmentHealths })
     } catch (err) {
-      console.warn('Failed to fetch department health:', err)
+      set({ error: getErrorMessage(err) })
     }
   },
 
   updateFromWsEvent: (event) => {
-    // Handle system events that affect company structure
+    // Handle agent lifecycle events that affect company structure
     if (event.event_type === 'agent.hired' || event.event_type === 'agent.fired') {
       // Re-fetch company config to get updated agent list
       useCompanyStore.getState().fetchCompanyData()

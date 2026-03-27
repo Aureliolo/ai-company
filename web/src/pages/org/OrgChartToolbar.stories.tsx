@@ -19,6 +19,9 @@ const meta = {
   title: 'OrgChart/OrgChartToolbar',
   component: InteractiveToolbar,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof InteractiveToolbar>
 
 export default meta

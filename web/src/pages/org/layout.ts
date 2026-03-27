@@ -12,6 +12,7 @@ export interface LayoutOptions {
 const DEFAULT_NODE_WIDTH = 160
 const DEFAULT_NODE_HEIGHT = 80
 const DEFAULT_GROUP_PADDING = 40
+const GROUP_NODE_HEADER_HEIGHT = 40
 
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
@@ -92,9 +93,9 @@ export function applyDagreLayout(
     }
 
     const groupX = minX - padding
-    const groupY = minY - padding - 40
+    const groupY = minY - padding - GROUP_NODE_HEADER_HEIGHT
     const groupWidth = maxX - minX + padding * 2
-    const groupHeight = maxY - minY + padding * 2 + 40
+    const groupHeight = maxY - minY + padding * 2 + GROUP_NODE_HEADER_HEIGHT
 
     // Make children positions relative to group (immutable update via map)
     for (const child of children) {

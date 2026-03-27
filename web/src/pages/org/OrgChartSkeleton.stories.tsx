@@ -5,9 +5,12 @@ const meta = {
   title: 'OrgChart/OrgChartSkeleton',
   component: OrgChartSkeleton,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
   decorators: [
     (Story) => (
-      <div style={{ height: 400, background: 'var(--background)' }}>
+      <div style={{ height: 400 }}>
         <Story />
       </div>
     ),

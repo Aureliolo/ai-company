@@ -64,7 +64,7 @@ describe('applyDagreLayout', () => {
     expect(parent.position.y).toBeLessThan(child.position.y)
   })
 
-  it('excludes department group nodes from dagre layout', () => {
+  it('handles department group nodes separately from dagre layout', () => {
     const nodes = [
       makeNode('dept-eng', { type: 'department' }),
       makeNode('agent-1', { parentId: 'dept-eng' }),

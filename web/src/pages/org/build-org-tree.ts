@@ -23,17 +23,17 @@ export interface CeoNodeData extends AgentNodeData {
 export interface DepartmentGroupData {
   departmentName: DepartmentName
   displayName: string
-  healthPercent: number
+  healthPercent: number | null
   agentCount: number
   activeCount: number
-  taskCount: number
+  taskCount: number | null
   costUsd: number | null
   [key: string]: unknown
 }
 
 // ── Seniority ordering ──────────────────────────────────────
 
-const SENIORITY_RANK: Record<string, number> = {
+const SENIORITY_RANK: Record<SeniorityLevel, number> = {
   c_suite: 7,
   vp: 6,
   director: 5,
@@ -44,7 +44,7 @@ const SENIORITY_RANK: Record<string, number> = {
   junior: 0,
 }
 
-function seniorityOf(level: string): number {
+function seniorityOf(level: SeniorityLevel): number {
   return SENIORITY_RANK[level] ?? -1
 }
 
@@ -95,8 +95,6 @@ export function buildOrgTree(
   // Build department group nodes + agent nodes
   for (const dept of config.departments) {
     const deptMembers = deptAgents.get(dept.name) ?? []
-    if (deptMembers.length === 0) continue
-
     const health = healthMap.get(dept.name)
     const activeCount = deptMembers.filter(
       (a) => resolveRuntimeStatus(a.id, a.status, runtimeStatuses) === 'active',
@@ -111,10 +109,10 @@ export function buildOrgTree(
       data: {
         departmentName: dept.name,
         displayName: dept.display_name,
-        healthPercent: health?.health_percent ?? 100,
+        healthPercent: health?.health_percent ?? null,
         agentCount: deptMembers.length,
         activeCount,
-        taskCount: health?.task_count ?? 0,
+        taskCount: health?.task_count ?? null,
         costUsd: health?.cost_usd ?? null,
       } satisfies DepartmentGroupData,
     })
@@ -123,7 +121,7 @@ export function buildOrgTree(
     const head = findDepartmentHead(deptMembers, ceo)
 
     // Build team membership map for this department
-    const teamMemberSet = new Map<string, string>() // agentName -> teamLeadName
+    const teamMemberSet = new Map<string, string>() // agentId -> teamLeadId
     for (const team of dept.teams) {
       const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
       const teamLead = findHighestSeniority(teamMembers)
