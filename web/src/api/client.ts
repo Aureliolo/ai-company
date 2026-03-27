@@ -3,6 +3,7 @@
  */
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
+import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
@@ -40,7 +41,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError<{ error?: string; success?: boolean }>) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // Clear credentials synchronously to prevent stale-token retries
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
