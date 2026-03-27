@@ -82,8 +82,9 @@ describe('categorizeTemplates', () => {
     const result = categorizeTemplates(templates)
     const keys = [...result.keys()]
 
-    // Verify order matches CATEGORY_ORDER for present categories
-    const expectedOrder = CATEGORY_ORDER.filter((c) => result.has(c))
+    // Derive expected order from fixture tags, not the function under test
+    const fixtureCategories = new Set(['research', 'startup', 'dev-shop', 'enterprise'])
+    const expectedOrder = CATEGORY_ORDER.filter((c) => fixtureCategories.has(c))
     expect(keys).toEqual(expectedOrder)
   })
 })

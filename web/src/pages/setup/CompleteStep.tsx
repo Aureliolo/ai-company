@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { EmptyState } from '@/components/ui/empty-state'
+import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
@@ -54,12 +54,7 @@ export function CompleteStep() {
   }, [wizardCompleteSetup, companyResponse, navigate])
 
   if (!companyResponse) {
-    return (
-      <EmptyState
-        title="Setup incomplete"
-        description="Go back and complete all previous steps before finishing."
-      />
-    )
+    return <SkipWizardForm />
   }
 
   return (

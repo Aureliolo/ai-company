@@ -3,6 +3,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types'
+import type { CurrencyCode } from '@/utils/currencies'
 import { getCategoryLabel } from '@/utils/template-categories'
 import { TemplateCostBadge } from './TemplateCostBadge'
 
@@ -11,7 +12,7 @@ export interface TemplateCompareDrawerProps {
   onClose: () => void
   templates: readonly TemplateInfoResponse[]
   estimatedCosts: ReadonlyMap<string, number>
-  currency: string
+  currency: CurrencyCode
   onSelect: (name: string) => void
   onRemove: (name: string) => void
 }

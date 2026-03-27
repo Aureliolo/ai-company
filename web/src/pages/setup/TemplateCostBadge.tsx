@@ -1,15 +1,17 @@
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/utils/format'
+import type { CurrencyCode } from '@/utils/currencies'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 export interface TemplateCostBadgeProps {
   monthlyCost: number
-  currency?: string
+  currency?: CurrencyCode
   className?: string
 }
 
 export function TemplateCostBadge({
   monthlyCost,
-  currency = 'EUR',
+  currency = DEFAULT_CURRENCY,
   className,
 }: TemplateCostBadgeProps) {
   return (

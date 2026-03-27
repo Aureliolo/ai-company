@@ -3,27 +3,27 @@
 import type { TemplateInfoResponse } from '@/api/types'
 
 /**
- * Known category tags mapped to display labels.
+ * Direct mapping from template tag to canonical category key.
  * Templates are categorized by the first tag that matches a known category.
  */
-const CATEGORY_LABELS: Readonly<Record<string, string>> = {
-  startup: 'Startup',
-  solo: 'Startup',
-  'small-team': 'Startup',
-  mvp: 'Startup',
-  'dev-shop': 'Development',
-  'data-team': 'Development',
-  product: 'Product',
-  agile: 'Product',
-  enterprise: 'Enterprise',
-  'full-company': 'Enterprise',
-  consultancy: 'Professional Services',
-  agency: 'Professional Services',
-  research: 'Research',
+const TAG_TO_CATEGORY: Readonly<Record<string, string>> = {
+  startup: 'startup',
+  solo: 'startup',
+  'small-team': 'startup',
+  mvp: 'startup',
+  'dev-shop': 'dev-shop',
+  'data-team': 'dev-shop',
+  product: 'product',
+  agile: 'product',
+  enterprise: 'enterprise',
+  'full-company': 'enterprise',
+  consultancy: 'consultancy',
+  agency: 'consultancy',
+  research: 'research',
 }
 
 /**
- * Canonical category key to display label (reverse of CATEGORY_LABELS).
+ * Canonical category key to display label.
  * Used by getCategoryLabel for O(1) lookup.
  */
 const CATEGORY_TO_LABEL: Readonly<Record<string, string>> = {
@@ -34,20 +34,6 @@ const CATEGORY_TO_LABEL: Readonly<Record<string, string>> = {
   consultancy: 'Professional Services',
   research: 'Research',
   other: 'Other',
-}
-
-/**
- * Reverse mapping: display label to canonical category key.
- * Used to group templates by display category.
- */
-const LABEL_TO_CATEGORY: Readonly<Record<string, string>> = {
-  Startup: 'startup',
-  Development: 'dev-shop',
-  Product: 'product',
-  Enterprise: 'enterprise',
-  'Professional Services': 'consultancy',
-  Research: 'research',
-  Other: 'other',
 }
 
 /** Ordered list of category keys for display. */
@@ -67,10 +53,8 @@ export const CATEGORY_ORDER: readonly string[] = [
  */
 function getTemplateCategory(template: TemplateInfoResponse): string {
   for (const tag of template.tags) {
-    const label = CATEGORY_LABELS[tag]
-    if (label) {
-      return LABEL_TO_CATEGORY[label] ?? 'other'
-    }
+    const category = TAG_TO_CATEGORY[tag]
+    if (category) return category
   }
   return 'other'
 }

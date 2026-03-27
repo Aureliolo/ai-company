@@ -35,19 +35,12 @@ export const Disabled: Story = {
   args: { label: 'Enable feature', checked: true, disabled: true, onChange: () => {} },
 }
 
-function InteractiveToggle() {
+function InteractiveToggle({ label, description }: { label: string; description?: string }) {
   const [checked, setChecked] = useState(false)
-  return (
-    <ToggleField
-      label="Set a budget limit"
-      description="Budget enforcement prevents agents from exceeding this limit."
-      checked={checked}
-      onChange={setChecked}
-    />
-  )
+  return <ToggleField label={label} description={description} checked={checked} onChange={setChecked} />
 }
 
 export const Interactive: Story = {
-  args: { label: 'Budget limit', checked: false, onChange: () => {} },
-  render: () => <InteractiveToggle />,
+  args: { label: 'Set a budget limit', description: 'Budget enforcement prevents agents from exceeding this limit.', checked: false, onChange: () => {} },
+  render: (args) => <InteractiveToggle label={args.label} description={args.description} />,
 }

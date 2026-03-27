@@ -2,12 +2,13 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types'
+import type { CurrencyCode } from '@/utils/currencies'
 import { TemplateCostBadge } from './TemplateCostBadge'
 
 export interface TemplateCardProps {
   template: TemplateInfoResponse
   estimatedCost: number
-  currency: string
+  currency: CurrencyCode
   selected: boolean
   compared: boolean
   recommended?: boolean

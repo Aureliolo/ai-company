@@ -1,5 +1,6 @@
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import type { TemplateInfoResponse } from '@/api/types'
+import type { CurrencyCode } from '@/utils/currencies'
 import { getCategoryLabel } from '@/utils/template-categories'
 import { TemplateCard } from './TemplateCard'
 
@@ -7,7 +8,7 @@ export interface TemplateCategoryGroupProps {
   category: string
   templates: readonly TemplateInfoResponse[]
   estimatedCosts: ReadonlyMap<string, number>
-  currency: string
+  currency: CurrencyCode
   selectedTemplate: string | null
   comparedTemplates: readonly string[]
   compareDisabled: boolean

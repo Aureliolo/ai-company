@@ -39,6 +39,7 @@ export function WizardShell() {
   const stepsCompleted = useSetupWizardStore((s) => s.stepsCompleted)
   const setStep = useSetupWizardStore((s) => s.setStep)
   const canNavigateTo = useSetupWizardStore((s) => s.canNavigateTo)
+  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
   // Sync URL -> store on mount and URL changes
   useEffect(() => {
@@ -95,7 +96,12 @@ export function WizardShell() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate(`/setup/complete`)}
+              onClick={() => {
+                for (const s of stepOrder) {
+                  if (s !== 'complete') markStepComplete(s)
+                }
+                navigate('/setup/complete')
+              }}
               className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Skip wizard (advanced)

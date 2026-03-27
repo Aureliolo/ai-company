@@ -28,6 +28,7 @@ import {
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import type { CurrencyCode } from '@/utils/currencies'
 
 export type WizardStep =
   | 'account'
@@ -82,7 +83,7 @@ interface SetupWizardState {
   // Company
   companyName: string
   companyDescription: string
-  currency: string
+  currency: CurrencyCode
   budgetCapEnabled: boolean
   budgetCap: number | null
   companyResponse: SetupCompanyResponse | null
@@ -132,7 +133,7 @@ interface SetupWizardState {
   // Company actions
   setCompanyName: (name: string) => void
   setCompanyDescription: (desc: string) => void
-  setCurrency: (currency: string) => void
+  setCurrency: (currency: CurrencyCode) => void
   setBudgetCapEnabled: (enabled: boolean) => void
   setBudgetCap: (cap: number | null) => void
   submitCompany: () => Promise<void>

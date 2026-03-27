@@ -9,6 +9,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
 import { estimateMonthlyCost } from '@/utils/cost-estimator'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
+import type { CurrencyCode } from '@/utils/currencies'
 import { TemplateVariables } from './TemplateVariables'
 import { CostEstimatePanel } from './CostEstimatePanel'
 
@@ -117,7 +118,7 @@ export function CompanyStep() {
           label="Display Currency"
           options={[...CURRENCY_OPTIONS]}
           value={currency}
-          onChange={setCurrency}
+          onChange={(value) => setCurrency(value as CurrencyCode)}
         />
 
         <SelectField

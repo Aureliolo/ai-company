@@ -1,6 +1,5 @@
 import { MetricCard } from '@/components/ui/metric-card'
-import { StatusBadge } from '@/components/ui/status-badge'
-import { Avatar } from '@/components/ui/avatar'
+import { AgentCard } from '@/components/ui/agent-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
@@ -29,16 +28,7 @@ export function ThemePreview({ settings }: ThemePreviewProps) {
       </div>
 
       {/* Agent card mock */}
-      <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
-        <Avatar name="Akira Tanaka" size="sm" />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">Akira Tanaka</span>
-            <StatusBadge status="idle" label />
-          </div>
-          <span className="text-xs text-muted-foreground">CEO, executive</span>
-        </div>
-      </div>
+      <AgentCard name="Akira Tanaka" role="CEO" department="executive" status="idle" />
 
       {/* Health bar */}
       <DeptHealthBar name="Engineering" health={72} agentCount={3} taskCount={15} />

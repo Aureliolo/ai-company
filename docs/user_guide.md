@@ -73,7 +73,7 @@ After the containers are running, open the web dashboard at [http://localhost:30
 3. **Company** -- name your synthetic organization, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
 4. **Agents** -- customize agent names, roles, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
 5. **Providers** -- configure LLM providers. Local providers (e.g. Ollama) are auto-detected; cloud providers can be added manually. Model discovery verifies each connection.
-6. **Theme** -- set UI preferences including color palette, layout density, animation level, and sidebar position.
+6. **Theme** -- set UI preferences including color palette, typography, layout density, animation level, and sidebar position.
 7. **Complete** -- review a summary of your configuration and launch the organization.
 
 All substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
