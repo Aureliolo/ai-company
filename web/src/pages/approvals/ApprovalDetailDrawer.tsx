@@ -289,7 +289,9 @@ export function ApprovalDetailDrawer({
                     {Object.entries(approval.metadata).map(([key, value]) => (
                       <div key={key} className="flex items-center gap-2 text-xs">
                         <dt className="font-mono text-muted-foreground">{key}:</dt>
-                        <dd className="text-secondary">{value}</dd>
+                        <dd className="text-secondary">
+                          {typeof value === 'string' ? value : String(value)}
+                        </dd>
                       </div>
                     ))}
                   </dl>

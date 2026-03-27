@@ -155,16 +155,28 @@ describe('ApprovalDetailDrawer', () => {
     expect(toasts.some((t) => t.title === 'Please provide a rejection reason')).toBe(true)
   })
 
-  it('focus is trapped within the drawer', () => {
+  it('focus is trapped within the drawer', async () => {
+    const user = userEvent.setup()
     renderDrawer()
     const dialog = screen.getByRole('dialog')
-    // The first focusable element should receive focus when the drawer opens
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+
     const focusableElements = dialog.querySelectorAll<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     )
-    expect(focusableElements.length).toBeGreaterThan(0)
-    // The dialog should have aria-modal="true" to indicate focus trapping
-    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(focusableElements.length).toBeGreaterThan(1)
+    const first = focusableElements[0]!
+    const last = focusableElements[focusableElements.length - 1]!
+
+    // Tab forward past last element wraps to first
+    last.focus()
+    expect(document.activeElement).toBe(last)
+    await user.tab()
+    expect(document.activeElement).toBe(first)
+
+    // Shift+Tab from first element wraps to last
+    await user.tab({ shift: true })
+    expect(document.activeElement).toBe(last)
   })
 
   it('renders nothing when open is false', () => {
