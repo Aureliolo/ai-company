@@ -71,10 +71,12 @@ export function filterAgents(
     result = result.filter((a) => a.status === filters.status)
   }
   if (filters.search) {
-    const q = filters.search.toLowerCase()
-    result = result.filter(
-      (a) => a.name.toLowerCase().includes(q) || a.role.toLowerCase().includes(q),
-    )
+    const q = filters.search.trim().toLowerCase()
+    if (q) {
+      result = result.filter(
+        (a) => a.name.toLowerCase().includes(q) || a.role.toLowerCase().includes(q),
+      )
+    }
   }
 
   return result

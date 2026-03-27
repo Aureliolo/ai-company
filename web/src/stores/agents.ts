@@ -183,7 +183,9 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   setSortBy: (key) => set({ sortBy: key }),
   setSortDirection: (dir) => set({ sortDirection: dir }),
 
-  clearDetail: () =>
+  clearDetail: () => {
+    // Invalidate any in-flight fetchAgentDetail responses
+    _detailRequestName = ''
     set({
       selectedAgent: null,
       performance: null,
@@ -194,5 +196,6 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       careerHistory: [],
       detailLoading: false,
       detailError: null,
-    }),
+    })
+  },
 }))
