@@ -319,14 +319,11 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 
 	previousIDs := captureImageIDsForCleanup(ctx, cmd, info, state)
 
-	digestPins, err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose)
+	updatedState, err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose)
 	if err != nil {
 		return err
 	}
 
-	updatedState := state
-	updatedState.ImageTag = tag
-	updatedState.VerifiedDigests = digestPins
 	return postPullActions(cmd, info, safeDir, state, updatedState, previousIDs)
 }
 
@@ -390,8 +387,8 @@ func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
 // If any step fails, the previous compose.yml is restored. When
 // preserveCompose is true, only image references are patched in the
 // existing compose instead of regenerating from the template.
-// Returns the verified digest pins (nil when --skip-verify is used).
-func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (map[string]string, error) {
+// Returns the persisted state with updated ImageTag and VerifiedDigests.
+func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (config.State, error) {
 	out := ui.NewUI(cmd.OutOrStdout())
 
 	// Back up existing compose.yml for rollback on failure.
@@ -420,12 +417,12 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, preserveCompose, out, errOut)
 	if err != nil {
 		rollback()
-		return nil, err
+		return state, err
 	}
 
 	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
 		rollback()
-		return nil, err
+		return state, err
 	}
 
 	// Persist config only after successful pull so a failed pull
@@ -435,9 +432,9 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	updatedState.VerifiedDigests = digestPins
 	if err := config.Save(updatedState); err != nil {
 		rollback()
-		return nil, fmt.Errorf("saving config: %w", err)
+		return state, fmt.Errorf("saving config: %w", err)
 	}
-	return digestPins, nil
+	return updatedState, nil
 }
 
 // verifyAndPinForUpdate runs image verification and updates the compose
