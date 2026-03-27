@@ -69,8 +69,12 @@ export default function TaskDetailPage() {
 
   const handleCancel = useCallback(async () => {
     if (!task) return
+    if (!cancelReason.trim()) {
+      useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
+      return
+    }
     try {
-      await useTasksStore.getState().cancelTask(task.id, { reason: cancelReason.trim() || 'Cancelled by user' })
+      await useTasksStore.getState().cancelTask(task.id, { reason: cancelReason.trim() })
       setCancelOpen(false)
       setCancelReason('')
     } catch {
@@ -215,8 +219,8 @@ export default function TaskDetailPage() {
                 Acceptance Criteria
               </span>
               <ul className="mt-1.5 space-y-1">
-                {task.acceptance_criteria.map((criterion) => (
-                  <li key={criterion.description} className="flex items-start gap-2 text-sm text-text-secondary">
+                {task.acceptance_criteria.map((criterion, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-text-secondary">
                     <span className={cn('mt-0.5 size-4 shrink-0 rounded border', criterion.met ? 'border-success bg-success/20' : 'border-border')} />
                     {criterion.description}
                   </li>

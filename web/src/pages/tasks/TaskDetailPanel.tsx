@@ -256,8 +256,8 @@ export function TaskDetailPanel({
                     Acceptance Criteria
                   </span>
                   <ul className="mt-1.5 space-y-1">
-                    {task.acceptance_criteria.map((criterion) => (
-                      <li key={criterion.description} className="flex items-start gap-2 text-xs text-text-secondary">
+                    {task.acceptance_criteria.map((criterion, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-xs text-text-secondary">
                         <span className={cn('mt-0.5 size-3.5 shrink-0 rounded border', criterion.met ? 'border-success bg-success/20' : 'border-border')} />
                         {criterion.description}
                       </li>

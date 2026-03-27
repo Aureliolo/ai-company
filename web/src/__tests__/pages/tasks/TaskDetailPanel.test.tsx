@@ -145,6 +145,17 @@ describe('TaskDetailPanel', () => {
     expect(onDelete).toHaveBeenCalledWith('task-1')
   })
 
+  it('rejects cancel with empty reason', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn().mockResolvedValue(undefined)
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={onCancel} onDelete={noop} />)
+    await user.click(screen.getByRole('button', { name: 'Cancel Task' }))
+    // Do NOT fill reason -- click confirm immediately
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Task' }))
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('calls onCancel after confirm dialog confirmation', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn().mockResolvedValue(undefined)
