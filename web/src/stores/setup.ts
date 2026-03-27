@@ -10,8 +10,11 @@ interface SetupState {
   fetchSetupStatus: () => Promise<void>
 }
 
+// Dev-only: skip setup check when auth bypass is active
+const DEV_SETUP_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
+
 export const useSetupStore = create<SetupState>()((set, get) => ({
-  setupComplete: null,
+  setupComplete: DEV_SETUP_BYPASS ? true : null,
   loading: false,
   error: false,
 

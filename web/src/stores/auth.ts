@@ -44,7 +44,15 @@ interface AuthState {
 
 // ── Initial state from localStorage ─────────────────────────
 
+// Dev-only fake user for bypassing auth when no backend is running.
+// Active only when VITE_DEV_AUTH_BYPASS=true AND import.meta.env.DEV.
+const DEV_AUTH_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
+const DEV_USER: UserInfoResponse | null = DEV_AUTH_BYPASS
+  ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false }
+  : null
+
 function getInitialToken(): string | null {
+  if (DEV_AUTH_BYPASS) return 'dev-bypass-token'
   const storedToken = localStorage.getItem('auth_token')
   const expiresAt = Number(localStorage.getItem('auth_token_expires_at') ?? 0)
   if (storedToken && Date.now() < expiresAt) {
@@ -102,7 +110,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 
   return {
     token: initialToken,
-    user: null,
+    user: DEV_USER,
     loading: false,
     _mustChangePasswordFallback: localStorage.getItem('auth_must_change_password') === 'true',
 
