@@ -23,6 +23,7 @@ const FORECAST = {
   days_until_exhausted: 45,
   confidence: 0.82,
   avg_daily_spend_usd: 6.27,
+  currency: 'EUR',
 }
 
 const meta = {

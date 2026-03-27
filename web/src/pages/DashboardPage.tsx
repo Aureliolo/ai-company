@@ -60,6 +60,7 @@ export default function DashboardPage() {
           <OrgHealthSection
             departments={departmentHealths}
             overallHealth={orgHealthPercent}
+            currency={overview?.currency}
           />
         </ErrorBoundary>
         <ErrorBoundary level="section">
@@ -73,6 +74,7 @@ export default function DashboardPage() {
           forecast={forecast}
           budgetTotal={budgetConfig?.total_monthly ?? 0}
           budgetRemaining={overview?.budget_remaining_usd}
+          currency={overview?.currency}
         />
       </ErrorBoundary>
     </div>

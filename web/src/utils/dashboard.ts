@@ -58,7 +58,7 @@ export function computeMetricCards(
     },
     {
       label: 'SPEND',
-      value: formatCurrency(overview.total_cost_usd),
+      value: formatCurrency(overview.total_cost_usd, overview.currency),
       sparklineData:
         overview.cost_7d_trend.length >= 2
           ? overview.cost_7d_trend.map((p) => p.value)

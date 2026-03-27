@@ -36,6 +36,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     ],
     active_agents_count: 5,
     idle_agents_count: 4,
+    currency: 'EUR',
     ...overrides,
   }
 }
@@ -53,6 +54,7 @@ function makeBudgetConfig(overrides: Partial<BudgetConfig> = {}): BudgetConfig {
       boundary: 'task_assignment',
     },
     reset_day: 1,
+    currency: 'EUR',
     ...overrides,
   }
 }
@@ -81,11 +83,20 @@ describe('computeMetricCards', () => {
     expect(agentsCard!.subText).toContain('3')
   })
 
-  it('includes Spend card with formatted currency', () => {
+  it('includes Spend card with formatted currency (EUR default)', () => {
     const cards = computeMetricCards(makeOverview({ total_cost_usd: 42.17 }), makeBudgetConfig())
     const spendCard = cards.find((c) => c.label === 'SPEND')
     expect(spendCard).toBeDefined()
-    expect(spendCard!.value).toBe('$42.17')
+    expect(spendCard!.value).toContain('42.17')
+  })
+
+  it('formats Spend card value in overview currency', () => {
+    const cards = computeMetricCards(
+      makeOverview({ total_cost_usd: 100, currency: 'GBP' }),
+      makeBudgetConfig(),
+    )
+    const spendCard = cards.find((c) => c.label === 'SPEND')
+    expect(spendCard!.value).toContain('100.00')
   })
 
   it('includes sparkline data for spend card from cost_7d_trend', () => {

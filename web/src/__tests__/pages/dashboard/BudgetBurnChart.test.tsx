@@ -20,6 +20,7 @@ const SAMPLE_FORECAST: ForecastResponse = {
   days_until_exhausted: null,
   confidence: 0.85,
   avg_daily_spend_usd: 6.2,
+  currency: 'EUR',
 }
 
 describe('BudgetBurnChart', () => {
@@ -53,7 +54,7 @@ describe('BudgetBurnChart', () => {
       <BudgetBurnChart trendData={SAMPLE_TREND} forecast={SAMPLE_FORECAST} budgetTotal={500} />,
     )
     expect(screen.getByText('Avg/day')).toBeInTheDocument()
-    expect(screen.getByText('$6.20')).toBeInTheDocument()
+    expect(screen.getByText(/6\.20/)).toBeInTheDocument()
   })
 
   it('renders days left when days_until_exhausted is non-null', () => {

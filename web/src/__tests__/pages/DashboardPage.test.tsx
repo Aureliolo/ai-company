@@ -27,6 +27,7 @@ const mockOverview: OverviewMetrics = {
   ],
   active_agents_count: 5,
   idle_agents_count: 4,
+  currency: 'EUR',
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -36,6 +37,7 @@ const mockBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
+  currency: 'EUR',
 }
 
 const defaultHookReturn: UseDashboardDataReturn = {

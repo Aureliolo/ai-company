@@ -41,9 +41,15 @@ describe('OrgHealthSection', () => {
     expect(meters.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders department cost when cost_usd is non-null', () => {
+  it('renders department cost when cost_usd is non-null (EUR default)', () => {
     const depts = makeDepts(1).map((d) => ({ ...d, cost_usd: 24.5 }))
     render(<OrgHealthSection departments={depts} overallHealth={80} />)
-    expect(screen.getByText('$24.50')).toBeInTheDocument()
+    expect(screen.getByText(/24\.50/)).toBeInTheDocument()
+  })
+
+  it('renders department cost in specified currency', () => {
+    const depts = makeDepts(1).map((d) => ({ ...d, cost_usd: 100 }))
+    render(<OrgHealthSection departments={depts} overallHealth={80} currency="JPY" />)
+    expect(screen.getByText(/100/)).toBeInTheDocument()
   })
 })

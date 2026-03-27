@@ -20,6 +20,7 @@ interface BudgetBurnChartProps {
   forecast: ForecastResponse | null
   budgetTotal: number
   budgetRemaining?: number
+  currency?: string
 }
 
 interface ChartDataPoint {
@@ -90,7 +91,7 @@ function ChartTooltipContent({ active, payload, label }: {
   )
 }
 
-export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemaining }: BudgetBurnChartProps) {
+export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemaining, currency }: BudgetBurnChartProps) {
   const chartData = buildChartData(trendData, forecast)
   const hasData = trendData.length > 0
   const todayLabel = getTodayLabel()
@@ -102,11 +103,11 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
       action={
         <div className="flex gap-2">
           {budgetRemaining !== undefined && (
-            <StatPill label="Remaining" value={formatCurrency(budgetRemaining)} />
+            <StatPill label="Remaining" value={formatCurrency(budgetRemaining, currency)} />
           )}
           {forecast && (
             <>
-              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd)} />
+              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd, forecast.currency)} />
               {forecast.days_until_exhausted !== null && (
                 <StatPill label="Days left" value={forecast.days_until_exhausted} />
               )}

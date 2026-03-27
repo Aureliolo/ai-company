@@ -20,6 +20,7 @@ export function StatusBar() {
   const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count ?? 0)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks ?? 0)
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
+  const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
   const pendingApprovals = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review ?? 0)
 
@@ -54,7 +55,7 @@ export function StatusBar() {
   const statusCfg = STATUS_CONFIG[healthStatus]
   const costDisplay =
     totalCost !== undefined && totalCost !== null
-      ? formatCurrency(totalCost)
+      ? formatCurrency(totalCost, currency)
       : '$--'
 
   return (

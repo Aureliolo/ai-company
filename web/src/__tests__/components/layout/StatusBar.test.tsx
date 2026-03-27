@@ -17,6 +17,7 @@ function makeOverview(overrides: Partial<OverviewMetrics> = {}): OverviewMetrics
     cost_7d_trend: [],
     active_agents_count: 0,
     idle_agents_count: 0,
+    currency: 'EUR',
     ...overrides,
   }
 }
@@ -127,11 +128,19 @@ describe('StatusBar', () => {
     expect(screen.getByText('3 pending')).toBeInTheDocument()
   })
 
-  it('shows formatted currency for cost display', () => {
+  it('shows formatted currency for cost display (EUR default)', () => {
     useAnalyticsStore.setState({
       overview: makeOverview({ total_cost_usd: 1234.56 }),
     })
     render(<StatusBar />)
-    expect(screen.getByText('$1,234.56')).toBeInTheDocument()
+    expect(screen.getByText(/1,234\.56/)).toBeInTheDocument()
+  })
+
+  it('shows formatted currency for non-default currency', () => {
+    useAnalyticsStore.setState({
+      overview: makeOverview({ total_cost_usd: 99.5, currency: 'GBP' }),
+    })
+    render(<StatusBar />)
+    expect(screen.getByText(/99\.50/)).toBeInTheDocument()
   })
 })

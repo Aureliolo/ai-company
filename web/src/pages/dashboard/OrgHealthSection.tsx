@@ -10,9 +10,10 @@ import type { DepartmentHealth } from '@/api/types'
 interface OrgHealthSectionProps {
   departments: readonly DepartmentHealth[]
   overallHealth: number | null
+  currency?: string
 }
 
-function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
+function DepartmentRow({ dept, currency }: { dept: DepartmentHealth; currency?: string }) {
   return (
     <div>
       <DeptHealthBar
@@ -23,14 +24,14 @@ function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
       />
       {dept.cost_usd !== null && (
         <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
-          {formatCurrency(dept.cost_usd)}
+          {formatCurrency(dept.cost_usd, currency)}
         </span>
       )}
     </div>
   )
 }
 
-export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectionProps) {
+export function OrgHealthSection({ departments, overallHealth, currency }: OrgHealthSectionProps) {
   return (
     <SectionCard title="Org Health" icon={Building2}>
       {departments.length === 0 ? (
@@ -49,7 +50,7 @@ export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectio
           <StaggerGroup className="space-y-3">
             {departments.map((dept) => (
               <StaggerItem key={dept.name}>
-                <DepartmentRow dept={dept} />
+                <DepartmentRow dept={dept} currency={currency} />
               </StaggerItem>
             ))}
           </StaggerGroup>

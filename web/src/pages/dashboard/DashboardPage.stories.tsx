@@ -25,6 +25,7 @@ const mockOverview: OverviewMetrics = {
   ],
   active_agents_count: 5,
   idle_agents_count: 4,
+  currency: 'EUR',
 }
 
 const mockBudgetConfig: BudgetConfig = {
@@ -34,6 +35,7 @@ const mockBudgetConfig: BudgetConfig = {
   per_agent_daily_limit: 20,
   auto_downgrade: { enabled: false, threshold: 90, downgrade_map: [], boundary: 'task_assignment' },
   reset_day: 1,
+  currency: 'EUR',
 }
 
 const mockForecast: ForecastResponse = {
@@ -47,6 +49,7 @@ const mockForecast: ForecastResponse = {
   days_until_exhausted: null,
   confidence: 0.85,
   avg_daily_spend_usd: 6.3,
+  currency: 'EUR',
 }
 
 const mockDepartments: DepartmentHealth[] = [

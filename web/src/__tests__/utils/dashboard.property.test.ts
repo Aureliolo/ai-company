@@ -53,6 +53,7 @@ const arbOverview: fc.Arbitrary<OverviewMetrics> = fc.record({
   cost_7d_trend: fc.array(arbTrendPoint, { minLength: 0, maxLength: 14 }),
   active_agents_count: fc.nat({ max: 100 }),
   idle_agents_count: fc.nat({ max: 100 }),
+  currency: fc.constant('EUR'),
 })
 
 const arbBudgetConfig: fc.Arbitrary<BudgetConfig> = fc.record({
@@ -71,6 +72,7 @@ const arbBudgetConfig: fc.Arbitrary<BudgetConfig> = fc.record({
     boundary: fc.constant('task_assignment' as const),
   }),
   reset_day: fc.integer({ min: 1, max: 28 }),
+  currency: fc.constant('EUR'),
 })
 
 describe('computeMetricCards (properties)', () => {

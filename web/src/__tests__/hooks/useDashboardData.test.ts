@@ -68,6 +68,7 @@ describe('useDashboardData', () => {
       total_agents: 5,
       total_cost_usd: 50, budget_remaining_usd: 450, budget_used_percent: 10,
       cost_7d_trend: [], active_agents_count: 3, idle_agents_count: 2,
+      currency: 'EUR',
     }
     useAnalyticsStore.setState({ overview: mockOverview })
     const { result } = renderHook(() => useDashboardData())
