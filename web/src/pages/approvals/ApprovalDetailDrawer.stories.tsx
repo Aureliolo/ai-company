@@ -25,6 +25,9 @@ const base: ApprovalResponse = {
 const meta: Meta<typeof ApprovalDetailDrawer> = {
   title: 'Pages/Approvals/ApprovalDetailDrawer',
   component: ApprovalDetailDrawer,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     open: true,
     onClose: fn(),

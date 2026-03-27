@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type {
   ApprovalFilters,
   ApprovalResponse,
@@ -19,6 +20,7 @@ interface ApprovalsState {
   loading: boolean
   loadingDetail: boolean
   error: string | null
+  detailError: string | null
 
   // CRUD
   fetchApprovals: (filters?: ApprovalFilters) => Promise<void>
@@ -43,11 +45,12 @@ interface ApprovalsState {
   clearSelection: () => void
 
   // Batch operations
-  batchApprove: (ids: string[], comment?: string) => Promise<{ succeeded: number; failed: number }>
-  batchReject: (ids: string[], reason: string) => Promise<{ succeeded: number; failed: number }>
+  batchApprove: (ids: string[], comment?: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
+  batchReject: (ids: string[], reason: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
 }
 
 const pendingTransitions = new Set<string>()
+const MAX_BATCH_SIZE = 50
 
 /** Clear module-level pendingTransitions -- test-only. */
 export function _resetPendingTransitions(): void {
@@ -61,6 +64,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   loading: false,
   loadingDetail: false,
   error: null,
+  detailError: null,
   pendingTransitions,
   selectedIds: new Set<string>(),
 
@@ -68,19 +72,27 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     set({ loading: true, error: null })
     try {
       const result = await approvalsApi.listApprovals(filters)
-      set({ approvals: result.data, total: result.total, loading: false })
+      // Merge: preserve items with pending optimistic transitions
+      const merged = result.data.map((serverItem) => {
+        if (pendingTransitions.has(serverItem.id)) {
+          const existing = get().approvals.find((a) => a.id === serverItem.id)
+          return existing ?? serverItem
+        }
+        return serverItem
+      })
+      set({ approvals: merged, total: result.total, loading: false })
     } catch (err) {
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
 
   fetchApproval: async (id) => {
-    set({ loadingDetail: true })
+    set({ loadingDetail: true, detailError: null, selectedApproval: null })
     try {
       const approval = await approvalsApi.getApproval(id)
-      set({ selectedApproval: approval, loadingDetail: false })
+      set({ selectedApproval: approval, loadingDetail: false, detailError: null })
     } catch (err) {
-      set({ loadingDetail: false, error: getErrorMessage(err) })
+      set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
   },
 
@@ -105,13 +117,17 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
         typeof candidate.status === 'string' &&
         typeof candidate.title === 'string' &&
         typeof candidate.risk_level === 'string' &&
-        typeof candidate.action_type === 'string'
+        typeof candidate.action_type === 'string' &&
+        typeof candidate.description === 'string' &&
+        typeof candidate.requested_by === 'string' &&
+        typeof candidate.created_at === 'string' &&
+        (candidate.metadata === undefined || candidate.metadata === null || (typeof candidate.metadata === 'object' && !Array.isArray(candidate.metadata)))
       ) {
         if (pendingTransitions.has(candidate.id)) return
         get().upsertApproval(candidate as unknown as ApprovalResponse)
       } else {
         console.error('[approvals/ws] Received malformed approval payload, skipping upsert', {
-          id: candidate.id,
+          id: sanitizeForLog(candidate.id),
           hasTitle: typeof candidate.title === 'string',
           hasStatus: typeof candidate.status === 'string',
         })
@@ -122,32 +138,44 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   optimisticApprove: (id) => {
     const prev = get().approvals
     const idx = prev.findIndex((a) => a.id === id)
-    if (idx === -1) return () => {}
+    if (idx === -1) {
+      console.warn('[approvals] optimisticApprove: approval not found in store', id)
+      return () => {}
+    }
     pendingTransitions.add(id)
+    const prevSelectedIds = get().selectedIds
+    const newSelectedIds = new Set(prevSelectedIds)
+    newSelectedIds.delete(id)
     const oldApproval = prev[idx]!
     const updated = { ...oldApproval, status: 'approved' as const, decided_at: new Date().toISOString() }
     const newApprovals = [...prev]
     newApprovals[idx] = updated
-    set({ approvals: newApprovals })
+    set({ approvals: newApprovals, selectedIds: newSelectedIds })
     return () => {
       pendingTransitions.delete(id)
-      set({ approvals: prev })
+      set({ approvals: prev, selectedIds: prevSelectedIds })
     }
   },
 
   optimisticReject: (id) => {
     const prev = get().approvals
     const idx = prev.findIndex((a) => a.id === id)
-    if (idx === -1) return () => {}
+    if (idx === -1) {
+      console.warn('[approvals] optimisticReject: approval not found in store', id)
+      return () => {}
+    }
     pendingTransitions.add(id)
+    const prevSelectedIds = get().selectedIds
+    const newSelectedIds = new Set(prevSelectedIds)
+    newSelectedIds.delete(id)
     const oldApproval = prev[idx]!
     const updated = { ...oldApproval, status: 'rejected' as const, decided_at: new Date().toISOString() }
     const newApprovals = [...prev]
     newApprovals[idx] = updated
-    set({ approvals: newApprovals })
+    set({ approvals: newApprovals, selectedIds: newSelectedIds })
     return () => {
       pendingTransitions.delete(id)
-      set({ approvals: prev })
+      set({ approvals: prev, selectedIds: prevSelectedIds })
     }
   },
 
@@ -199,6 +227,10 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   },
 
   batchApprove: async (ids, comment) => {
+    if (ids.length > MAX_BATCH_SIZE) {
+      return { succeeded: 0, failed: ids.length, failedReasons: [`Batch size exceeds maximum of ${MAX_BATCH_SIZE}`] }
+    }
+
     const rollbacks: Map<string, () => void> = new Map()
 
     for (const id of ids) {
@@ -212,6 +244,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
 
     let succeeded = 0
     let failed = 0
+    const failedReasons: string[] = []
     for (let i = 0; i < results.length; i++) {
       const result = results[i]!
       const id = ids[i]!
@@ -221,15 +254,20 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
+        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
         failed++
       }
     }
 
     get().clearSelection()
-    return { succeeded, failed }
+    return { succeeded, failed, failedReasons }
   },
 
   batchReject: async (ids, reason) => {
+    if (ids.length > MAX_BATCH_SIZE) {
+      return { succeeded: 0, failed: ids.length, failedReasons: [`Batch size exceeds maximum of ${MAX_BATCH_SIZE}`] }
+    }
+
     const rollbacks: Map<string, () => void> = new Map()
 
     for (const id of ids) {
@@ -243,6 +281,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
 
     let succeeded = 0
     let failed = 0
+    const failedReasons: string[] = []
     for (let i = 0; i < results.length; i++) {
       const result = results[i]!
       const id = ids[i]!
@@ -252,11 +291,12 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       } else {
         const rollback = rollbacks.get(id)
         if (rollback) rollback()
+        failedReasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason))
         failed++
       }
     }
 
     get().clearSelection()
-    return { succeeded, failed }
+    return { succeeded, failed, failedReasons }
   },
 }))

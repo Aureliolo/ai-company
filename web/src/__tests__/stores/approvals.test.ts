@@ -24,6 +24,7 @@ function resetStore() {
     loading: false,
     loadingDetail: false,
     error: null,
+    detailError: null,
     selectedIds: new Set(),
   })
 }
@@ -97,7 +98,7 @@ describe('fetchApproval', () => {
     await useApprovalsStore.getState().fetchApproval('999')
 
     expect(useApprovalsStore.getState().loadingDetail).toBe(false)
-    expect(useApprovalsStore.getState().error).toBe('Not found')
+    expect(useApprovalsStore.getState().detailError).toBe('Not found')
   })
 })
 
@@ -363,7 +364,7 @@ describe('batchApprove', () => {
 
     const result = await useApprovalsStore.getState().batchApprove(['1', '2'], 'Approved')
 
-    expect(result).toEqual({ succeeded: 2, failed: 0 })
+    expect(result).toEqual({ succeeded: 2, failed: 0, failedReasons: [] })
     expect(useApprovalsStore.getState().selectedIds.size).toBe(0)
   })
 
@@ -378,7 +379,7 @@ describe('batchApprove', () => {
 
     const result = await useApprovalsStore.getState().batchApprove(['1', '2'])
 
-    expect(result).toEqual({ succeeded: 1, failed: 1 })
+    expect(result).toEqual({ succeeded: 1, failed: 1, failedReasons: ['Server error'] })
     // Item 2 should be rolled back to pending
     expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
   })
@@ -396,7 +397,7 @@ describe('batchReject', () => {
 
     const result = await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
 
-    expect(result).toEqual({ succeeded: 2, failed: 0 })
+    expect(result).toEqual({ succeeded: 2, failed: 0, failedReasons: [] })
     expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
     expect(api.rejectApproval).toHaveBeenCalledWith('2', { reason: 'Too risky' })
   })
@@ -412,7 +413,7 @@ describe('batchReject', () => {
 
     const result = await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
 
-    expect(result).toEqual({ succeeded: 1, failed: 1 })
+    expect(result).toEqual({ succeeded: 1, failed: 1, failedReasons: ['Server error'] })
     expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
   })
 })

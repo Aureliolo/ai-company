@@ -35,6 +35,7 @@ function resetStore() {
     loading: false,
     loadingDetail: false,
     error: null,
+    detailError: null,
     selectedIds: new Set(),
     fetchApprovals: mockFetchApprovals,
     handleWsEvent: mockHandleWsEvent,
@@ -50,7 +51,7 @@ describe('useApprovalsData', () => {
   it('calls fetchApprovals on mount', async () => {
     renderHook(() => useApprovalsData())
     await waitFor(() => {
-      expect(mockFetchApprovals).toHaveBeenCalledTimes(1)
+      expect(mockFetchApprovals).toHaveBeenCalledWith({ limit: 200 })
     })
   })
 

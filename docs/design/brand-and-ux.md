@@ -248,6 +248,12 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getApprovalStatusColor()` | `utils/approvals.ts` | Maps `ApprovalStatus` to `SemanticColor \| "text-secondary"`. |
 | `getApprovalStatusLabel()` | `utils/approvals.ts` | Maps `ApprovalStatus` to display label. |
 | `getUrgencyColor()` | `utils/approvals.ts` | Maps `UrgencyLevel` to `SemanticColor \| "text-secondary"`. |
+| `formatUrgency()` | `utils/approvals.ts` | Formats `seconds_remaining` into human-readable countdown string. |
+| `groupByRiskLevel()` | `utils/approvals.ts` | Groups approvals into `Map<ApprovalRiskLevel, ApprovalResponse[]>` sorted critical-to-low. |
+| `filterApprovals()` | `utils/approvals.ts` | Client-side filtering by status, risk level, action type, and search text. |
+| `RISK_LEVEL_ORDER` | `utils/approvals.ts` | Numeric ordering map for risk levels (critical=0 through low=3). |
+| `DOT_COLOR_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "accent-dim"` to Tailwind background classes. |
+| `URGENCY_BADGE_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "text-secondary"` to Tailwind badge classes. |
 
 ### Animation Hooks
 
@@ -269,6 +275,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `ApprovalStatus` | `api/types` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
 | `ApprovalRiskLevel` | `api/types` | `"low"`, `"medium"`, `"high"`, `"critical"` |
 | `UrgencyLevel` | `api/types` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
+| `ApprovalPageFilters` | `utils/approvals` | Filter shape: `status?`, `riskLevel?`, `actionType?`, `search?` |
 
 ### When to Create a New Shared Component
 

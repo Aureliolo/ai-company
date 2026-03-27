@@ -131,6 +131,24 @@ export function groupByRiskLevel(
   return result
 }
 
+// ── Shared CSS class mappings ───────────────────────────────
+
+export const DOT_COLOR_CLASSES: Record<SemanticColor | 'accent-dim', string> = {
+  danger: 'bg-danger',
+  warning: 'bg-warning',
+  accent: 'bg-accent',
+  'accent-dim': 'bg-accent-dim',
+  success: 'bg-success',
+}
+
+export const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
+  danger: 'border-danger/30 bg-danger/10 text-danger',
+  warning: 'border-warning/30 bg-warning/10 text-warning',
+  accent: 'border-accent/30 bg-accent/10 text-accent',
+  success: 'border-success/30 bg-success/10 text-success',
+  'text-secondary': 'border-border bg-surface text-secondary',
+}
+
 // ── Client-side filtering ───────────────────────────────────
 
 export interface ApprovalPageFilters {
@@ -144,7 +162,7 @@ export function filterApprovals(
   approvals: readonly ApprovalResponse[],
   filters: ApprovalPageFilters,
 ): ApprovalResponse[] {
-  let result = approvals as ApprovalResponse[]
+  let result = [...approvals]
 
   if (filters.status) {
     result = result.filter((a) => a.status === filters.status)

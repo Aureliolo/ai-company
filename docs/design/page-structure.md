@@ -53,7 +53,7 @@ P&L management dashboard -- not a billing tab. Current period spend vs budget, p
 
 #### Approvals (`/approvals`)
 
-Pending decisions queue -- agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level badges, action type labels, approve/reject with comment, history view. Sidebar badge shows live pending count.
+Pending decisions queue -- agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count.
 
 **API endpoints**: `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`
 **WS channels**: `approvals`
@@ -349,7 +349,7 @@ How this page structure supports the 10 design principles from #762:
 | 3 | Navigation recedes, content shines | Collapsible sidebar (220px to 56px). No persistent drawers competing with content |
 | 4 | Status arrives, doesn't flash | WS events update Zustand stores; animation profile is "status-driven" (only changed elements animate) |
 | 5 | Progressive disclosure | Dashboard summary to page detail. Agent list to agent detail page. Org chart node to agent detail |
-| 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board and Approvals |
+| 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board |
 | 7 | Typography carries information | Geist Mono for metrics/values/agent names. Geist Sans for labels/descriptions |
 | 8 | Prose alongside metrics | Agent detail: prose insights alongside performance metrics. Budget: cost context explanations |
 | 9 | Every pixel earns its place | No placeholder pages (Artifacts, Projects excluded). No "Coming Soon" stubs |

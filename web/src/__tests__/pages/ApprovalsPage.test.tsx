@@ -12,6 +12,7 @@ const defaultReturn: UseApprovalsDataReturn = {
   loading: false,
   loadingDetail: false,
   error: null,
+  detailError: null,
   wsConnected: true,
   wsSetupError: null,
   fetchApproval: vi.fn(),
@@ -24,8 +25,8 @@ const defaultReturn: UseApprovalsDataReturn = {
   selectAllInGroup: vi.fn(),
   deselectAllInGroup: vi.fn(),
   clearSelection: vi.fn(),
-  batchApprove: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0 }),
-  batchReject: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0 }),
+  batchApprove: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, failedReasons: [] }),
+  batchReject: vi.fn().mockResolvedValue({ succeeded: 0, failed: 0, failedReasons: [] }),
 }
 
 let hookReturn = { ...defaultReturn }

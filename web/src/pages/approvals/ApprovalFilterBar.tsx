@@ -2,8 +2,8 @@ import { X } from 'lucide-react'
 import { getRiskLevelLabel, getApprovalStatusLabel, type ApprovalPageFilters } from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus } from '@/api/types'
 
-const STATUSES: ApprovalStatus[] = ['pending', 'approved', 'rejected', 'expired']
-const RISK_LEVELS: ApprovalRiskLevel[] = ['critical', 'high', 'medium', 'low']
+const STATUSES = ['pending', 'approved', 'rejected', 'expired'] as const satisfies readonly ApprovalStatus[]
+const RISK_LEVELS = ['critical', 'high', 'medium', 'low'] as const satisfies readonly ApprovalRiskLevel[]
 
 export interface ApprovalFilterBarProps {
   filters: ApprovalPageFilters
@@ -78,12 +78,12 @@ export function ApprovalFilterBar({
           value={filters.search ?? ''}
           onChange={(e) => updateFilter('search', e.target.value || undefined)}
           placeholder="Search approvals..."
-          className="h-8 w-48 rounded-md border border-border bg-surface px-2 text-xs text-foreground placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+          className="h-8 w-48 rounded-md border border-border bg-surface px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent"
           aria-label="Search approvals"
         />
 
         {/* Counts */}
-        <span className="text-xs text-text-muted">
+        <span className="text-xs text-muted-foreground">
           {pendingCount} pending / {totalCount} total
         </span>
       </div>
@@ -106,7 +106,7 @@ export function ApprovalFilterBar({
           <button
             type="button"
             onClick={clearFilters}
-            className="text-xs text-text-muted hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Clear all
           </button>
@@ -118,7 +118,7 @@ export function ApprovalFilterBar({
 
 function FilterPill({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] text-text-secondary">
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[10px] text-secondary">
       {label}
       <button
         type="button"

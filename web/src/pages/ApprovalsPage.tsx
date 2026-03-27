@@ -17,12 +17,16 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
+import { getErrorMessage } from '@/utils/errors'
 import { ApprovalCard } from './approvals/ApprovalCard'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
 import type { ApprovalRiskLevel } from '@/api/types'
+
+const VALID_STATUSES: ReadonlySet<string> = new Set(['pending', 'approved', 'rejected', 'expired'])
+const VALID_RISK_LEVELS: ReadonlySet<string> = new Set(['critical', 'high', 'medium', 'low'])
 
 export default function ApprovalsPage() {
   const {
@@ -44,6 +48,7 @@ export default function ApprovalsPage() {
     clearSelection,
     batchApprove,
     batchReject,
+    detailError,
   } = useApprovalsData()
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -54,19 +59,23 @@ export default function ApprovalsPage() {
   const [batchLoading, setBatchLoading] = useState(false)
 
   // URL-synced filters
-  const filters: ApprovalPageFilters = useMemo(() => ({
-    status: searchParams.get('status') as ApprovalPageFilters['status'] ?? undefined,
-    riskLevel: searchParams.get('risk') as ApprovalPageFilters['riskLevel'] ?? undefined,
-    actionType: searchParams.get('type') ?? undefined,
-    search: searchParams.get('search') ?? undefined,
-  }), [searchParams])
+  const filters: ApprovalPageFilters = useMemo(() => {
+    const rawStatus = searchParams.get('status')
+    const rawRisk = searchParams.get('risk')
+    return {
+      status: rawStatus && VALID_STATUSES.has(rawStatus) ? rawStatus as ApprovalPageFilters['status'] : undefined,
+      riskLevel: rawRisk && VALID_RISK_LEVELS.has(rawRisk) ? rawRisk as ApprovalPageFilters['riskLevel'] : undefined,
+      actionType: searchParams.get('type') ?? undefined,
+      search: searchParams.get('search') ?? undefined,
+    }
+  }, [searchParams])
 
   const selectedId = searchParams.get('selected')
 
   const handleFiltersChange = useCallback((newFilters: ApprovalPageFilters) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      // Preserve selected
+      // Replace filter params while preserving the 'selected' param for drawer state
       const sel = next.get('selected')
       // Clear old filter params
       next.delete('status')
@@ -100,25 +109,26 @@ export default function ApprovalsPage() {
     })
   }, [setSearchParams])
 
-  // Open drawer if URL has selected param on mount
+  // Open drawer if URL has selected param (refetch when ID changes)
   useEffect(() => {
-    if (selectedId && !selectedApproval) {
+    if (selectedId && selectedApproval?.id !== selectedId) {
       fetchApproval(selectedId)
     }
-  }, [selectedId]) // eslint-disable-line @eslint-react/exhaustive-deps
+  }, [fetchApproval, selectedApproval?.id, selectedId])
 
-  // Single item approve/reject via optimistic update
+  // Single item approve -- optimistic update with rollback on failure
   const handleApproveOne = useCallback(async (id: string) => {
     const rollback = optimisticApprove(id)
     try {
       await approveOne(id)
       useToastStore.getState().add({ variant: 'success', title: 'Approval granted' })
-    } catch {
+    } catch (err) {
       rollback()
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to approve' })
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to approve', description: getErrorMessage(err) })
     }
   }, [approveOne, optimisticApprove])
 
+  // Single item reject -- opens drawer for the user to provide a reason
   const handleRejectOne = useCallback(async (id: string) => {
     // For single reject, open the drawer so user can enter reason
     handleSelectApproval(id)
@@ -137,8 +147,8 @@ export default function ApprovalsPage() {
       } else {
         useToastStore.getState().add({ variant: 'warning', title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
       }
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed' })
+    } catch (err) {
+      useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed', description: getErrorMessage(err) })
     } finally {
       setBatchLoading(false)
     }
@@ -160,8 +170,8 @@ export default function ApprovalsPage() {
       } else {
         useToastStore.getState().add({ variant: 'warning', title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
       }
-    } catch {
-      useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed' })
+    } catch (err) {
+      useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed', description: getErrorMessage(err) })
     } finally {
       setBatchLoading(false)
     }
@@ -266,7 +276,7 @@ export default function ApprovalsPage() {
               icon={Icon}
               action={
                 pendingIds.length > 0 ? (
-                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -305,14 +315,15 @@ export default function ApprovalsPage() {
 
       {/* Detail drawer */}
       <AnimatePresence>
-        {selectedId && selectedApproval && (
+        {!!selectedId && (
           <ApprovalDetailDrawer
             approval={selectedApproval}
             open={!!selectedId}
             onClose={handleCloseDrawer}
-            onApprove={approveOne}
-            onReject={rejectOne}
+            onApprove={async (id, data) => { await approveOne(id, data) }}
+            onReject={async (id, data) => { await rejectOne(id, data) }}
             loading={loadingDetail}
+            error={detailError}
           />
         )}
       </AnimatePresence>
@@ -344,7 +355,8 @@ export default function ApprovalsPage() {
           value={batchComment}
           onChange={(e) => setBatchComment(e.target.value)}
           placeholder="Optional comment..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          maxLength={2000}
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
           aria-label="Batch approval comment"
         />
       </ConfirmDialog>
@@ -364,7 +376,8 @@ export default function ApprovalsPage() {
           value={batchReason}
           onChange={(e) => setBatchReason(e.target.value)}
           placeholder="Reason for rejection..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          maxLength={2000}
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
           aria-label="Batch rejection reason"
         />
       </ConfirmDialog>

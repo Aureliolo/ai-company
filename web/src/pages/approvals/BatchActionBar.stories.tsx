@@ -5,6 +5,9 @@ import { BatchActionBar } from './BatchActionBar'
 const meta: Meta<typeof BatchActionBar> = {
   title: 'Pages/Approvals/BatchActionBar',
   component: BatchActionBar,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     onApproveAll: fn(),
     onRejectAll: fn(),

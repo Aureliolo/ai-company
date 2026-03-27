@@ -19,20 +19,22 @@ export interface UseApprovalsDataReturn {
   loading: boolean
   loadingDetail: boolean
   error: string | null
+  detailError: string | null
   wsConnected: boolean
   wsSetupError: string | null
   fetchApproval: (id: string) => Promise<void>
   approveOne: (id: string, data?: ApproveRequest) => Promise<ApprovalResponse>
   rejectOne: (id: string, data: RejectRequest) => Promise<ApprovalResponse>
   optimisticApprove: (id: string) => () => void
+  /** Optimistic reject with rollback -- available for consumers that collect reason inline. */
   optimisticReject: (id: string) => () => void
   selectedIds: Set<string>
   toggleSelection: (id: string) => void
   selectAllInGroup: (ids: string[]) => void
   deselectAllInGroup: (ids: string[]) => void
   clearSelection: () => void
-  batchApprove: (ids: string[], comment?: string) => Promise<{ succeeded: number; failed: number }>
-  batchReject: (ids: string[], reason: string) => Promise<{ succeeded: number; failed: number }>
+  batchApprove: (ids: string[], comment?: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
+  batchReject: (ids: string[], reason: string) => Promise<{ succeeded: number; failed: number; failedReasons: string[] }>
 }
 
 export function useApprovalsData(): UseApprovalsDataReturn {
@@ -42,6 +44,7 @@ export function useApprovalsData(): UseApprovalsDataReturn {
   const loading = useApprovalsStore((s) => s.loading)
   const loadingDetail = useApprovalsStore((s) => s.loadingDetail)
   const error = useApprovalsStore((s) => s.error)
+  const detailError = useApprovalsStore((s) => s.detailError)
   const fetchApproval = useApprovalsStore((s) => s.fetchApproval)
   const approveOne = useApprovalsStore((s) => s.approveOne)
   const rejectOne = useApprovalsStore((s) => s.rejectOne)
@@ -70,7 +73,7 @@ export function useApprovalsData(): UseApprovalsDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-  }, []) // eslint-disable-line @eslint-react/exhaustive-deps
+  }, [polling])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(
@@ -95,6 +98,7 @@ export function useApprovalsData(): UseApprovalsDataReturn {
     loading,
     loadingDetail,
     error,
+    detailError,
     wsConnected,
     wsSetupError,
     fetchApproval,

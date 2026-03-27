@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Clock, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, type SemanticColor } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/useFlash'
 import { formatUrgency, getRiskLevelColor, getRiskLevelLabel, getUrgencyColor } from '@/utils/approvals'
@@ -16,18 +16,20 @@ export interface ApprovalCardProps {
   className?: string
 }
 
-const DOT_COLOR_CLASSES: Record<string, string> = {
+const DOT_COLOR_CLASSES: Record<SemanticColor | 'accent-dim', string> = {
   danger: 'bg-danger',
   warning: 'bg-warning',
   accent: 'bg-accent',
   'accent-dim': 'bg-accent-dim',
+  success: 'bg-success',
 }
 
-const URGENCY_BADGE_CLASSES: Record<string, string> = {
+const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   danger: 'border-danger/30 bg-danger/10 text-danger',
   warning: 'border-warning/30 bg-warning/10 text-warning',
   accent: 'border-accent/30 bg-accent/10 text-accent',
-  'text-secondary': 'border-border bg-surface text-text-secondary',
+  success: 'border-success/30 bg-success/10 text-success',
+  'text-secondary': 'border-border bg-surface text-secondary',
 }
 
 export function ApprovalCard({
@@ -61,8 +63,13 @@ export function ApprovalCard({
     setCountdown(approval.seconds_remaining)
   }
 
+  // Local countdown -- ticks seconds_remaining by -1 every second.
+  // Effect dep is a boolean (not countdown itself) to avoid restarting
+  // the interval on every tick. Also stops when card leaves pending status.
+  const shouldTick = isPending && countdown !== null && countdown > 0
+
   useEffect(() => {
-    if (countdown === null || countdown <= 0) return
+    if (!shouldTick) return
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) return 0
@@ -70,7 +77,7 @@ export function ApprovalCard({
       })
     }, 1000)
     return () => clearInterval(timer)
-  }, [countdown !== null && countdown > 0]) // eslint-disable-line @eslint-react/exhaustive-deps
+  }, [shouldTick])
 
   return (
     <div
@@ -117,7 +124,7 @@ export function ApprovalCard({
           >
             {approval.title}
           </button>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-secondary">
             <span className="font-mono">{approval.action_type}</span>
             <span aria-hidden="true">--</span>
             <span>{approval.requested_by}</span>
@@ -131,15 +138,15 @@ export function ApprovalCard({
               'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] font-medium shrink-0',
               URGENCY_BADGE_CLASSES[urgencyColor],
             )}
-            aria-hidden="true"
+            aria-label={`Expires in ${formatUrgency(countdown)}`}
           >
             <Clock className="size-3" aria-hidden="true" />
-            {formatUrgency(countdown)}
+            <span aria-hidden="true">{formatUrgency(countdown)}</span>
           </span>
         )}
 
         {isPending && countdown === null && (
-          <span className="text-[11px] text-text-muted shrink-0">No expiry</span>
+          <span className="text-[11px] text-muted-foreground shrink-0">No expiry</span>
         )}
       </div>
 

@@ -24,6 +24,9 @@ const base: ApprovalResponse = {
 const meta: Meta<typeof ApprovalTimeline> = {
   title: 'Pages/Approvals/ApprovalTimeline',
   component: ApprovalTimeline,
+  parameters: {
+    a11y: { test: 'error' },
+  },
 }
 export default meta
 

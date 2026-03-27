@@ -125,7 +125,7 @@ export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>):
     metadata: {},
     decided_by: null,
     decision_reason: null,
-    created_at: new Date(Date.now() - 3600_000).toISOString(),
+    created_at: new Date(Date.now() - 3600_000).toISOString(), // 1 hour ago
     decided_at: null,
     expires_at: null,
     seconds_remaining: null,

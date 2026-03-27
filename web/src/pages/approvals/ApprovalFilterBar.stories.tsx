@@ -6,6 +6,9 @@ import type { ApprovalPageFilters } from '@/utils/approvals'
 const meta: Meta<typeof ApprovalFilterBar> = {
   title: 'Pages/Approvals/ApprovalFilterBar',
   component: ApprovalFilterBar,
+  parameters: {
+    a11y: { test: 'error' },
+  },
 }
 export default meta
 

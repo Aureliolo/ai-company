@@ -4,6 +4,9 @@ import { ApprovalsSkeleton } from './ApprovalsSkeleton'
 const meta: Meta<typeof ApprovalsSkeleton> = {
   title: 'Pages/Approvals/ApprovalsSkeleton',
   component: ApprovalsSkeleton,
+  parameters: {
+    a11y: { test: 'error' },
+  },
 }
 export default meta
 

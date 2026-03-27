@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Calendar, Check, Loader2, Shield, Tag, User, X } from 'lucide-react'
+import { AlertTriangle, Calendar, Check, Loader2, Shield, Tag, User, X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -21,9 +21,10 @@ export interface ApprovalDetailDrawerProps {
   approval: ApprovalResponse | null
   open: boolean
   onClose: () => void
-  onApprove: (id: string, data?: ApproveRequest) => Promise<unknown>
-  onReject: (id: string, data: RejectRequest) => Promise<unknown>
+  onApprove: (id: string, data?: ApproveRequest) => Promise<void>
+  onReject: (id: string, data: RejectRequest) => Promise<void>
   loading?: boolean
+  error?: string | null
 }
 
 const PANEL_VARIANTS = {
@@ -53,6 +54,7 @@ export function ApprovalDetailDrawer({
   onApprove,
   onReject,
   loading,
+  error: detailError,
 }: ApprovalDetailDrawerProps) {
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -63,23 +65,25 @@ export function ApprovalDetailDrawer({
   const isPending = approval?.status === 'pending'
   const riskColor = approval ? getRiskLevelColor(approval.risk_level) : 'accent'
   const panelRef = useRef<HTMLElement>(null)
+  const openerRef = useRef<Element | null>(null)
 
-  // Close on Escape (skip when ConfirmDialog is open)
+  // Close on Escape (skip when any confirmation dialog is open)
   useEffect(() => {
     if (!open) return
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (document.querySelector('[role="alertdialog"], [role="dialog"][aria-modal="true"]')) return
+        if (approveOpen || rejectOpen) return
         onClose()
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
+  }, [open, onClose, approveOpen, rejectOpen])
 
   // Focus trap -- keep Tab cycling within the panel
   useEffect(() => {
     if (!open) return
+    openerRef.current = document.activeElement
     const panel = panelRef.current
     if (!panel) return
     const focusable = panel.querySelectorAll<HTMLElement>(
@@ -104,7 +108,13 @@ export function ApprovalDetailDrawer({
       }
     }
     document.addEventListener('keydown', handleTab)
-    return () => document.removeEventListener('keydown', handleTab)
+    return () => {
+      document.removeEventListener('keydown', handleTab)
+      if (openerRef.current instanceof HTMLElement) {
+        openerRef.current.focus()
+      }
+      openerRef.current = null
+    }
   }, [open])
 
   const handleApprove = useCallback(async () => {
@@ -139,7 +149,9 @@ export function ApprovalDetailDrawer({
     }
   }, [approval, reason, onReject])
 
-  if (!open || !approval) return null
+  if (!open) return null
+
+  const showLoadingState = loading || !approval
 
   return (
     <>
@@ -156,67 +168,75 @@ export function ApprovalDetailDrawer({
       {/* Panel */}
       <motion.aside
         ref={panelRef}
-        className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-lg"
+        className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-[var(--so-shadow-card-hover)]"
         variants={PANEL_VARIANTS}
         initial="initial"
         animate="animate"
         exit="exit"
         role="dialog"
         aria-modal="true"
-        aria-label={`Approval detail: ${approval.title}`}
+        aria-label={approval ? `Approval detail: ${approval.title}` : 'Approval detail'}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn('size-2 rounded-full', RISK_DOT_CLASSES[riskColor])}
-              aria-hidden="true"
-            />
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none',
-                RISK_BADGE_CLASSES[riskColor],
-              )}
-            >
-              {getRiskLevelLabel(approval.risk_level)}
-            </span>
-            <span className="text-xs text-text-secondary">
-              {getApprovalStatusLabel(approval.status)}
-            </span>
+        {showLoadingState && !detailError && (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
-            <X className="size-4" />
-          </Button>
-        </div>
+        )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {loading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="size-6 animate-spin text-text-muted" />
+        {detailError && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <AlertTriangle className="size-8 text-danger" />
+            <p className="text-sm text-danger">{detailError}</p>
+            <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          </div>
+        )}
+
+        {!showLoadingState && approval && (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn('size-2 rounded-full', RISK_DOT_CLASSES[riskColor])}
+                  aria-hidden="true"
+                />
+                <span
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                    RISK_BADGE_CLASSES[riskColor],
+                  )}
+                >
+                  {getRiskLevelLabel(approval.risk_level)}
+                </span>
+                <span className="text-xs text-secondary">
+                  {getApprovalStatusLabel(approval.status)}
+                </span>
+              </div>
+              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
+                <X className="size-4" />
+              </Button>
             </div>
-          )}
 
-          {!loading && (
-            <>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
               {/* Title */}
               <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
 
               {/* Description */}
               {approval.description && (
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Description
-                  </label>
-                  <p className="mt-1 text-sm text-text-secondary">{approval.description}</p>
+                  </span>
+                  <p className="mt-1 text-sm text-secondary">{approval.description}</p>
                 </div>
               )}
 
               {/* Timeline */}
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Timeline
-                </label>
+                </span>
                 <ApprovalTimeline approval={approval} className="mt-2" />
               </div>
 
@@ -240,10 +260,10 @@ export function ApprovalDetailDrawer({
               {/* Decision reason */}
               {approval.decision_reason && (
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Reason
-                  </label>
-                  <p className="mt-1 rounded border border-border bg-surface p-2 text-sm text-text-secondary">
+                  </span>
+                  <p className="mt-1 rounded border border-border bg-surface p-2 text-sm text-secondary">
                     {approval.decision_reason}
                   </p>
                 </div>
@@ -252,55 +272,55 @@ export function ApprovalDetailDrawer({
               {/* Task link */}
               {approval.task_id && (
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Linked Task
-                  </label>
-                  <p className="mt-1 font-mono text-xs text-text-secondary">{approval.task_id}</p>
+                  </span>
+                  <p className="mt-1 font-mono text-xs text-secondary">{approval.task_id}</p>
                 </div>
               )}
 
               {/* Metadata */}
               {Object.keys(approval.metadata).length > 0 && (
                 <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Metadata
-                  </label>
+                  </span>
                   <dl className="mt-1 space-y-1">
                     {Object.entries(approval.metadata).map(([key, value]) => (
                       <div key={key} className="flex items-center gap-2 text-xs">
-                        <dt className="font-mono text-text-muted">{key}:</dt>
-                        <dd className="text-text-secondary">{value}</dd>
+                        <dt className="font-mono text-muted-foreground">{key}:</dt>
+                        <dd className="text-secondary">{value}</dd>
                       </div>
                     ))}
                   </dl>
                 </div>
               )}
-            </>
-          )}
-        </div>
+            </div>
 
-        {/* Footer actions */}
-        {isPending && (
-          <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 border-success/30 text-success hover:bg-success/10"
-              onClick={() => setApproveOpen(true)}
-            >
-              <Check className="size-3.5" />
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
-              onClick={() => setRejectOpen(true)}
-            >
-              <X className="size-3.5" />
-              Reject
-            </Button>
-          </div>
+            {/* Footer actions */}
+            {isPending && (
+              <div className="flex items-center justify-end gap-2 border-t border-border px-6 py-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 border-success/30 text-success hover:bg-success/10"
+                  onClick={() => setApproveOpen(true)}
+                >
+                  <Check className="size-3.5" />
+                  Approve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 border-danger/30 text-danger hover:bg-danger/10"
+                  onClick={() => setRejectOpen(true)}
+                >
+                  <X className="size-3.5" />
+                  Reject
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </motion.aside>
 
@@ -318,8 +338,9 @@ export function ApprovalDetailDrawer({
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="Optional comment..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
           aria-label="Approval comment"
+          maxLength={2000}
         />
       </ConfirmDialog>
 
@@ -338,20 +359,21 @@ export function ApprovalDetailDrawer({
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="Reason for rejection..."
-          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-16"
           aria-label="Rejection reason"
+          maxLength={2000}
         />
       </ConfirmDialog>
     </>
   )
 }
 
-function MetaField({ icon: Icon, label, value }: { icon: typeof Tag; label: string; value: string }) {
+function MetaField({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-3.5 text-text-muted" aria-hidden="true" />
+      <Icon className="mt-0.5 size-3.5 text-muted-foreground" aria-hidden="true" />
       <div>
-        <span className="block text-[10px] text-text-muted">{label}</span>
+        <span className="block text-[10px] text-muted-foreground">{label}</span>
         <span className="block text-xs text-foreground">{value}</span>
       </div>
     </div>

@@ -12,29 +12,8 @@ import {
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
-import type { ApprovalResponse, ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types'
-
-function makeApproval(overrides: Partial<ApprovalResponse> = {}): ApprovalResponse {
-  return {
-    id: 'apr-1',
-    action_type: 'code:create',
-    title: 'Create auth module',
-    description: 'Create the authentication module',
-    requested_by: 'agent-eng',
-    risk_level: 'medium',
-    status: 'pending',
-    task_id: null,
-    metadata: {},
-    decided_by: null,
-    decision_reason: null,
-    created_at: '2026-03-27T10:00:00Z',
-    decided_at: null,
-    expires_at: null,
-    seconds_remaining: null,
-    urgency_level: 'no_expiry',
-    ...overrides,
-  }
-}
+import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types'
+import { makeApproval } from '@/__tests__/helpers/factories'
 
 // ── Risk level color mapping ──────────────────────────────────
 
@@ -65,10 +44,13 @@ describe('getRiskLevelLabel', () => {
 // ── Risk level icons ──────────────────────────────────────────
 
 describe('getRiskLevelIcon', () => {
-  it('returns a truthy value for each risk level', () => {
+  it('returns a React component (LucideIcon) for each risk level', () => {
     const levels: ApprovalRiskLevel[] = ['critical', 'high', 'medium', 'low']
     for (const level of levels) {
-      expect(getRiskLevelIcon(level)).toBeTruthy()
+      const icon = getRiskLevelIcon(level)
+      expect(icon).toBeDefined()
+      expect(typeof icon).toBe('object')
+      expect(icon).toHaveProperty('$$typeof')
     }
   })
 
@@ -165,11 +147,11 @@ describe('RISK_LEVEL_ORDER', () => {
 describe('groupByRiskLevel', () => {
   it('groups approvals by risk level in order', () => {
     const approvals = [
-      makeApproval({ id: '1', risk_level: 'low' }),
-      makeApproval({ id: '2', risk_level: 'critical' }),
-      makeApproval({ id: '3', risk_level: 'medium' }),
-      makeApproval({ id: '4', risk_level: 'critical' }),
-      makeApproval({ id: '5', risk_level: 'high' }),
+      makeApproval('1', { risk_level: 'low' }),
+      makeApproval('2', { risk_level: 'critical' }),
+      makeApproval('3', { risk_level: 'medium' }),
+      makeApproval('4', { risk_level: 'critical' }),
+      makeApproval('5', { risk_level: 'high' }),
     ]
 
     const groups = groupByRiskLevel(approvals)
@@ -188,7 +170,7 @@ describe('groupByRiskLevel', () => {
   })
 
   it('omits risk levels with no approvals', () => {
-    const approvals = [makeApproval({ id: '1', risk_level: 'high' })]
+    const approvals = [makeApproval('1', { risk_level: 'high' })]
     const groups = groupByRiskLevel(approvals)
     expect(groups.size).toBe(1)
     expect(groups.has('high')).toBe(true)
@@ -200,10 +182,10 @@ describe('groupByRiskLevel', () => {
 
 describe('filterApprovals', () => {
   const approvals = [
-    makeApproval({ id: '1', status: 'pending', risk_level: 'critical', action_type: 'deploy:production', title: 'Deploy API' }),
-    makeApproval({ id: '2', status: 'approved', risk_level: 'high', action_type: 'code:create', title: 'Create service' }),
-    makeApproval({ id: '3', status: 'pending', risk_level: 'medium', action_type: 'code:create', title: 'Refactor utils' }),
-    makeApproval({ id: '4', status: 'rejected', risk_level: 'low', action_type: 'docs:write', title: 'Update readme' }),
+    makeApproval('1', { status: 'pending', risk_level: 'critical', action_type: 'deploy:production', title: 'Deploy API' }),
+    makeApproval('2', { status: 'approved', risk_level: 'high', action_type: 'code:create', title: 'Create service' }),
+    makeApproval('3', { status: 'pending', risk_level: 'medium', action_type: 'code:create', title: 'Refactor utils' }),
+    makeApproval('4', { status: 'rejected', risk_level: 'low', action_type: 'docs:write', title: 'Update readme' }),
   ]
 
   it('returns all when no filters', () => {
@@ -231,7 +213,7 @@ describe('filterApprovals', () => {
   })
 
   it('filters by search (description)', () => {
-    const items = [makeApproval({ id: '10', description: 'Critical auth fix' })]
+    const items = [makeApproval('10', { description: 'Critical auth fix' })]
     const result = filterApprovals(items, { search: 'auth' })
     expect(result).toHaveLength(1)
   })
@@ -242,7 +224,7 @@ describe('filterApprovals', () => {
   })
 
   it('search matches title when description is empty', () => {
-    const items = [makeApproval({ id: '10', title: 'Deploy API', description: '' })]
+    const items = [makeApproval('10', { title: 'Deploy API', description: '' })]
     const result = filterApprovals(items, { search: 'deploy' })
     expect(result).toHaveLength(1)
   })

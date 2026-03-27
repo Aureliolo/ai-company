@@ -32,6 +32,9 @@ const actions = {
 const meta: Meta<typeof ApprovalCard> = {
   title: 'Pages/Approvals/ApprovalCard',
   component: ApprovalCard,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: { ...actions, selected: false },
   decorators: [(Story) => <div className="max-w-md"><Story /></div>],
 }
