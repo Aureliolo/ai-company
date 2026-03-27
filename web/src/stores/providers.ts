@@ -13,6 +13,7 @@ import {
   discoverModels as apiDiscoverModels,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { normalizeProviders, type ProviderWithName } from '@/utils/providers'
 import type {
   CreateFromPresetRequest,
@@ -76,7 +77,8 @@ interface ProvidersState {
   setSortDirection: (dir: 'asc' | 'desc') => void
 }
 
-// Track latest requested provider name to prevent stale responses
+// Track latest request IDs to prevent stale responses
+let _listRequestId = 0
 let _detailRequestName = ''
 
 export const useProvidersStore = create<ProvidersState>()((set, get) => ({
@@ -110,26 +112,35 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     // Skip if a CRUD mutation is in flight
     if (get().mutating) return
 
+    const requestId = ++_listRequestId
     set({ listLoading: true, listError: null })
     try {
       const record = await listProviders()
+      if (requestId !== _listRequestId) return
       const providers = normalizeProviders(record)
-      set({ providers, listLoading: false })
+      set({ providers })
 
-      // Fetch health in parallel (best-effort)
+      // Fetch health in parallel (best-effort, with logging)
       const names = providers.map((p) => p.name)
       const healthResults = await Promise.allSettled(
         names.map((name) => getProviderHealth(name)),
       )
+      if (requestId !== _listRequestId) return
       const healthMap: Record<string, ProviderHealthSummary> = {}
       for (let i = 0; i < names.length; i++) {
         const result = healthResults[i]!
         if (result.status === 'fulfilled') {
           healthMap[names[i]!] = result.value
+        } else {
+          console.warn(
+            `Failed to fetch health for provider "${names[i]}":`,
+            sanitizeForLog(result.reason),
+          )
         }
       }
-      set({ healthMap })
+      set({ healthMap, listLoading: false })
     } catch (err) {
+      if (requestId !== _listRequestId) return
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },
@@ -162,8 +173,14 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
       }
 
       const partialErrors: string[] = []
-      if (modelsResult.status === 'rejected') partialErrors.push('models')
-      if (healthResult.status === 'rejected') partialErrors.push('health')
+      if (modelsResult.status === 'rejected') {
+        console.warn('Failed to load models:', sanitizeForLog(modelsResult.reason))
+        partialErrors.push(`models (${getErrorMessage(modelsResult.reason)})`)
+      }
+      if (healthResult.status === 'rejected') {
+        console.warn('Failed to load health:', sanitizeForLog(healthResult.reason))
+        partialErrors.push(`health (${getErrorMessage(healthResult.reason)})`)
+      }
 
       set({
         selectedProvider: provider,
@@ -183,7 +200,8 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   },
 
   fetchPresets: async () => {
-    if (get().presets.length > 0) return // Already cached
+    // Presets are static backend data -- cache for the session lifetime
+    if (get().presets.length > 0) return
     set({ presetsLoading: true, presetsError: null })
     try {
       const presets = await listPresets()
@@ -269,7 +287,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     set({ mutating: true })
     try {
       await apiDeleteProvider(name)
-      // Optimistic removal from local state
+      // Remove from local state after successful deletion
       set((state) => ({
         providers: state.providers.filter((p) => p.name !== name),
       }))

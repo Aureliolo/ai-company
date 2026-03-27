@@ -5,8 +5,9 @@ can add them with minimal configuration (e.g. just an API key).
 """
 
 from types import MappingProxyType
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -40,10 +41,24 @@ class ProviderPreset(BaseModel):
     driver: NotBlankStr
     litellm_provider: NotBlankStr
     auth_type: AuthType
-    supported_auth_types: tuple[AuthType, ...] = (AuthType.API_KEY,)
+    supported_auth_types: tuple[AuthType, ...] = Field(
+        default=(AuthType.API_KEY,),
+        min_length=1,
+    )
     default_base_url: NotBlankStr | None = None
     candidate_urls: tuple[NotBlankStr, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_auth_type_in_supported(self) -> Self:
+        """Ensure default auth_type is in the supported set."""
+        if self.auth_type not in self.supported_auth_types:
+            msg = (
+                f"auth_type {self.auth_type!r} not in "
+                f"supported_auth_types {self.supported_auth_types!r}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 # ── Cloud providers ────────────────────────────────────────────

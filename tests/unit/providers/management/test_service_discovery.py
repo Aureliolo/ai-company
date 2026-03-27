@@ -373,6 +373,7 @@ class TestSelfConnectionGuard:
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
+            supported_auth_types=(AuthType.NONE,),
             candidate_urls=(base_url,),
         )
         await service.create_provider(
@@ -414,6 +415,7 @@ class TestSelfConnectionGuard:
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
+            supported_auth_types=(AuthType.NONE,),
             default_base_url=self_url,
         )
         await service.create_provider(
@@ -452,6 +454,7 @@ class TestSelfConnectionGuard:
             driver="litellm",
             litellm_provider="test-local",
             auth_type=AuthType.NONE,
+            supported_auth_types=(AuthType.NONE,),
             candidate_urls=(self_url,),
         )
         await service.create_provider(

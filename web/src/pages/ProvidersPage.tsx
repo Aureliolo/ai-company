@@ -10,12 +10,13 @@ import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormDrawer } from './providers/ProviderFormDrawer'
 import { useProvidersStore } from '@/stores/providers'
 
+
 export default function ProvidersPage() {
-  const { filteredProviders, healthMap, loading, error } = useProvidersData()
+  const { filteredProviders, healthMap, loading, error, providers } = useProvidersData()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
-  const hasData = filteredProviders.length > 0 || useProvidersStore.getState().providers.length > 0
+  const hasData = filteredProviders.length > 0 || providers.length > 0
 
   return (
     <div className="flex flex-col gap-section-gap">

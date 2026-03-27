@@ -31,12 +31,14 @@ export function ProviderFilters() {
       <input
         type="text"
         placeholder="Search providers..."
+        aria-label="Search providers"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="h-8 rounded-md border border-border bg-bg-surface px-3 text-sm text-foreground placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent"
       />
 
       <select
+        aria-label="Filter by health status"
         value={healthFilter ?? ''}
         onChange={(e) => {
           const v = e.target.value
@@ -52,6 +54,7 @@ export function ProviderFilters() {
       </select>
 
       <select
+        aria-label="Sort providers"
         value={sortBy}
         onChange={(e) => {
           const v = e.target.value

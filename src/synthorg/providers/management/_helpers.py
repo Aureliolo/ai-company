@@ -70,6 +70,7 @@ _AUTH_OWNED_FIELDS: dict[AuthType, tuple[str, ...]] = {
     ),
     AuthType.CUSTOM_HEADER: ("custom_header_name", "custom_header_value"),
     AuthType.SUBSCRIPTION: ("subscription_token", "tos_accepted_at"),
+    AuthType.NONE: (),
 }
 
 

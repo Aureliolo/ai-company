@@ -529,22 +529,7 @@ def _validate_provider_name(v: str) -> str:
 
 
 class CreateProviderRequest(BaseModel):
-    """Payload for creating a new provider.
-
-    Attributes:
-        name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
-        driver: Driver backend name.
-        auth_type: Authentication type.
-        api_key: API key for api_key/oauth auth types.
-        base_url: Provider API base URL.
-        oauth_token_url: OAuth token endpoint.
-        oauth_client_id: OAuth client identifier.
-        oauth_client_secret: OAuth client secret.
-        oauth_scope: OAuth scope string.
-        custom_header_name: Custom auth header name.
-        custom_header_value: Custom auth header value.
-        models: Model configurations.
-    """
+    """Payload for creating a new provider."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -553,7 +538,7 @@ class CreateProviderRequest(BaseModel):
     litellm_provider: NotBlankStr | None = None
     auth_type: AuthType = AuthType.API_KEY
     api_key: NotBlankStr | None = None
-    subscription_token: str | None = None
+    subscription_token: NotBlankStr | None = None
     tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
@@ -574,24 +559,8 @@ class UpdateProviderRequest(BaseModel):
     """Payload for updating a provider (partial update).
 
     All fields are optional -- only provided fields are updated.
-
-    Attributes:
-        driver: New driver name.
-        litellm_provider: New LiteLLM routing identifier.
-        auth_type: New authentication type.
-        api_key: New API key.
-        clear_api_key: Explicitly clear the API key.
-        subscription_token: New subscription OAuth token.
-        clear_subscription_token: Explicitly clear the subscription token.
-        tos_accepted: Whether ToS was accepted for subscription auth.
-        base_url: New base URL.
-        oauth_token_url: New OAuth token URL.
-        oauth_client_id: New OAuth client ID.
-        oauth_client_secret: New OAuth client secret.
-        oauth_scope: New OAuth scope.
-        custom_header_name: New custom header name.
-        custom_header_value: New custom header value.
-        models: New model configurations.
+    ``tos_accepted``: only ``True`` re-stamps the timestamp;
+    ``False`` and ``None`` are no-ops (acceptance cannot be retracted).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -601,7 +570,7 @@ class UpdateProviderRequest(BaseModel):
     auth_type: AuthType | None = None
     api_key: NotBlankStr | None = None
     clear_api_key: bool = False
-    subscription_token: str | None = None
+    subscription_token: NotBlankStr | None = None
     clear_subscription_token: bool = False
     tos_accepted: bool | None = None
     base_url: NotBlankStr | None = None
@@ -672,22 +641,6 @@ class ProviderResponse(BaseModel):
     """Safe provider config for API responses -- secrets stripped.
 
     Non-secret auth fields are included for frontend edit form UX.
-
-    Attributes:
-        driver: Driver backend name.
-        litellm_provider: LiteLLM routing identifier.
-        auth_type: Authentication type.
-        base_url: Provider API base URL.
-        models: Model configurations.
-        has_api_key: Whether an API key is configured.
-        has_oauth_credentials: Whether OAuth credentials are configured.
-        has_custom_header: Whether a custom header is configured.
-        has_subscription_token: Whether a subscription token is configured.
-        tos_accepted_at: When subscription ToS was accepted.
-        oauth_token_url: OAuth token endpoint URL (non-secret).
-        oauth_client_id: OAuth client identifier (non-secret).
-        oauth_scope: OAuth scope string (non-secret).
-        custom_header_name: Name of custom auth header (non-secret).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -709,18 +662,7 @@ class ProviderResponse(BaseModel):
 
 
 class CreateFromPresetRequest(BaseModel):
-    """Payload for creating a provider from a preset.
-
-    Attributes:
-        preset_name: Preset identifier to use.
-        name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
-        auth_type: Override auth type (for presets supporting multiple).
-        api_key: Override API key for presets that need one.
-        subscription_token: Subscription OAuth token.
-        tos_accepted: Whether subscription ToS was accepted.
-        base_url: Override default base URL.
-        models: Override default models.
-    """
+    """Payload for creating a provider from a preset."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -728,7 +670,7 @@ class CreateFromPresetRequest(BaseModel):
     name: NotBlankStr = Field(max_length=64)
     auth_type: AuthType | None = None
     api_key: NotBlankStr | None = None
-    subscription_token: str | None = None
+    subscription_token: NotBlankStr | None = None
     tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None

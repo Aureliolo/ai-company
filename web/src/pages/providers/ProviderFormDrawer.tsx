@@ -42,7 +42,6 @@ export function ProviderFormDrawer({
   const [baseUrl, setBaseUrl] = useState('')
   const [litellmProvider, setLitellmProvider] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   // ToS dialog
   const [showTosDialog, setShowTosDialog] = useState(false)
@@ -104,9 +103,13 @@ export function ProviderFormDrawer({
     setBaseUrl('')
     setLitellmProvider('')
     setSubmitting(false)
-    setError(null)
     setTosAccepted(false)
   }, [])
+
+  // Reset form when mode switches (e.g., edit -> create without closing)
+  useEffect(() => {
+    if (mode === 'create' && open) resetForm()
+  }, [mode, open, resetForm])
 
   const handleClose = useCallback(() => {
     resetForm()
@@ -114,7 +117,6 @@ export function ProviderFormDrawer({
   }, [resetForm, onClose])
 
   const handleSubmit = useCallback(async () => {
-    setError(null)
     setSubmitting(true)
 
     try {
@@ -153,8 +155,6 @@ export function ProviderFormDrawer({
         })
         if (result) handleClose()
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setSubmitting(false)
     }
@@ -264,13 +264,6 @@ export function ProviderFormDrawer({
                   placeholder="anthropic, openai, ollama..."
                   hint="LiteLLM routing identifier for model name prefixing"
                 />
-              )}
-
-              {/* Error display */}
-              {error && (
-                <div className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
-                  {error}
-                </div>
               )}
 
               {/* Submit */}

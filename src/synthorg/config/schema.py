@@ -95,7 +95,7 @@ class ProviderConfig(BaseModel):
         auth_type: Authentication type for this provider.
         api_key: API key (typically injected by secret management).
         subscription_token: OAuth bearer token for subscription-based auth
-            (e.g. Claude Pro/Max).  Encrypted at rest.
+            (e.g. provider subscription plans).  Encrypted at rest.
         tos_accepted_at: Timestamp when the user accepted the subscription
             Terms of Service warning.  Required when ``auth_type`` is
             ``SUBSCRIPTION``.
@@ -145,7 +145,7 @@ class ProviderConfig(BaseModel):
         repr=False,
         description="API key",
     )
-    subscription_token: str | None = Field(
+    subscription_token: NotBlankStr | None = Field(
         default=None,
         repr=False,
         description="OAuth bearer token for subscription-based auth",

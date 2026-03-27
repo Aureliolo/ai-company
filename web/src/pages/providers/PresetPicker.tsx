@@ -26,6 +26,8 @@ export function PresetPicker({ presets, selected, onSelect, loading }: PresetPic
         <button
           key={preset.name}
           type="button"
+          aria-pressed={selected === preset.name}
+          aria-label={`Select ${preset.display_name} preset`}
           onClick={() => onSelect(preset.name === selected ? null : preset.name)}
           className={cn(
             'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',
@@ -48,6 +50,8 @@ export function PresetPicker({ presets, selected, onSelect, loading }: PresetPic
       {/* Custom option */}
       <button
         type="button"
+        aria-pressed={selected === '__custom__'}
+        aria-label="Select custom provider"
         onClick={() => onSelect(selected === '__custom__' ? null : '__custom__')}
         className={cn(
           'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',

@@ -207,6 +207,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `Button` | `button.tsx` | shadcn standard | Standard button component (shadcn/ui). |
 | `TaskStatusIndicator` | `task-status-indicator.tsx` | `status: TaskStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Task status dot with optional label and pulse animation. |
 | `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority colored pill badge. |
+| `ProviderHealthBadge` | `provider-health-badge.tsx` | `status: ProviderHealthStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Provider health status dot (up/degraded/down) with optional label. |
 
 ### Interaction Components
 
