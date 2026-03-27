@@ -117,11 +117,12 @@ export function NodeContextMenu({
   const menuHeight = items.length * menuItemHeight + menuPadding
   const margin = 8
   const boundedPosition = useMemo(() => ({
-    x: Math.min(position.x, window.innerWidth - menuWidth - margin),
-    y: Math.min(position.y, window.innerHeight - menuHeight - margin),
+    x: Math.max(margin, Math.min(position.x, window.innerWidth - menuWidth - margin)),
+    y: Math.max(margin, Math.min(position.y, window.innerHeight - menuHeight - margin)),
   }), [position.x, position.y, menuHeight])
 
-  const menuLabel = nodeType === 'department' ? 'Department actions' : 'Agent actions'
+  const menuLabel =
+    nodeType === 'department' ? 'Department actions' : nodeType === 'ceo' ? 'CEO actions' : 'Agent actions'
 
   return (
     <div

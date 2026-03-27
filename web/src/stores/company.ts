@@ -40,7 +40,7 @@ export const useCompanyStore = create<CompanyState>()((set) => ({
       const departmentHealths = healthResults.filter(
         (h): h is DepartmentHealth => h !== null,
       )
-      set({ departmentHealths })
+      set({ departmentHealths, error: null })
     } catch (err) {
       set({ error: getErrorMessage(err) })
     }
