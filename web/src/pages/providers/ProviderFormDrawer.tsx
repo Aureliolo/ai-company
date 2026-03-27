@@ -269,7 +269,15 @@ export function ProviderFormDrawer({
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
-                  hint={!preset?.default_base_url && !isCustom ? 'Optional for known cloud providers' : undefined}
+                  hint={
+                    isCustom || mode === 'edit'
+                      ? undefined
+                      : preset && !preset.default_base_url
+                        ? 'Required for this provider'
+                        : !preset?.default_base_url
+                          ? 'Optional for known cloud providers'
+                          : undefined
+                  }
                 />
               )}
 

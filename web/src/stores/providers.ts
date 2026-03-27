@@ -170,6 +170,10 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
         set({
           detailLoading: false,
           detailError: getErrorMessage(reason ?? 'Provider not found'),
+          selectedProvider: null,
+          selectedProviderModels: [],
+          selectedProviderHealth: null,
+          testConnectionResult: null,
         })
         return
       }
