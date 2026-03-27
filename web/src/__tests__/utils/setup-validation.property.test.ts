@@ -107,7 +107,7 @@ describe('setup-validation property tests', () => {
         (providerNames) => {
           const unique = [...new Set(providerNames)]
           const agents = unique.map((p) => makeAgent({ model_provider: p }))
-          const providers: Record<string, ProviderConfig> = {}
+          const providers: Record<string, ProviderConfig> = Object.create(null) as Record<string, ProviderConfig>
           for (const name of unique) {
             providers[name] = makeProvider()
           }

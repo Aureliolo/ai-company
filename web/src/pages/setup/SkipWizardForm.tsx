@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
+import { getErrorMessage } from '@/utils/errors'
 
 export function SkipWizardForm() {
   const navigate = useNavigate()
@@ -16,7 +17,8 @@ export function SkipWizardForm() {
   const setCompanyNameStore = useSetupWizardStore((s) => s.setCompanyName)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault()
     const trimmed = companyName.trim()
     if (!trimmed) {
       setError('Company name is required')
@@ -27,17 +29,7 @@ export function SkipWizardForm() {
     try {
       setCompanyNameStore(trimmed)
       await submitCompany()
-      const companyErr = useSetupWizardStore.getState().companyError
-      if (companyErr) {
-        setError(companyErr)
-        return
-      }
       await wizardCompleteSetup()
-      const completionErr = useSetupWizardStore.getState().completionError
-      if (completionErr) {
-        setError(completionErr)
-        return
-      }
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
         variant: 'success',
@@ -46,7 +38,7 @@ export function SkipWizardForm() {
       })
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Setup failed')
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -61,7 +53,7 @@ export function SkipWizardForm() {
         </p>
       </div>
 
-      <div className="space-y-4 rounded-lg border border-border bg-card p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border border-border bg-card p-6">
         <InputField
           label="Company Name"
           required
@@ -77,10 +69,10 @@ export function SkipWizardForm() {
           </div>
         )}
 
-        <Button onClick={handleSubmit} disabled={loading} className="w-full">
+        <Button type="submit" disabled={loading} className="w-full">
           {loading ? 'Setting up...' : 'Complete Setup'}
         </Button>
-      </div>
+      </form>
     </div>
   )
 }

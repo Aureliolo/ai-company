@@ -128,6 +128,7 @@ export function WizardShell() {
             currentStep={currentStep}
             onBack={handleBack}
             onNext={handleNext}
+            nextDisabled={!stepsCompleted[currentStep]}
           />
         </div>
       </div>
