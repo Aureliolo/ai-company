@@ -440,7 +440,7 @@ func TestQuietModeSuppresses(t *testing.T) {
 	u.Divider()
 	u.InlineKV("a", "b")
 	u.HintNextStep("do this")
-	u.HintTip("try that")
+	u.HintTip(t.Name() + " try that")
 	u.HintGuidance("guidance")
 	u.HintError("error hint")
 	u.Link("label", "http://example.com")
@@ -614,19 +614,21 @@ func TestHintCategories(t *testing.T) {
 		}
 		buf.Reset()
 
-		u.HintTip("try this")
-		if !strings.Contains(buf.String(), "try this") {
+		tip1 := t.Name() + " try this"
+		u.HintTip(tip1)
+		if !strings.Contains(buf.String(), tip1) {
 			t.Error("auto mode should show HintTip first time")
 		}
 		buf.Reset()
 
-		u.HintTip("try this") // same message again
+		u.HintTip(tip1) // same message again
 		if buf.Len() != 0 {
 			t.Error("auto mode should suppress duplicate HintTip")
 		}
 
-		u.HintTip("different tip") // different message
-		if !strings.Contains(buf.String(), "different tip") {
+		tip2 := t.Name() + " different tip"
+		u.HintTip(tip2) // different message
+		if !strings.Contains(buf.String(), tip2) {
 			t.Error("auto mode should show new HintTip")
 		}
 		buf.Reset()
@@ -655,13 +657,12 @@ func TestHintCategories(t *testing.T) {
 
 		u.HintError("error")
 		u.HintNextStep("next")
-		u.HintTip("tip")
-		u.HintGuidance("guide")
-		// Error and NextStep still show in never mode (they're always shown unless --quiet)
-		// Only tips and guidance are suppressed.
-		// Actually, let's check: HintError and HintNextStep always show unless quiet.
-		// HintTip is suppressed in never mode.
-		// HintGuidance is suppressed in never mode.
+		neverTip := t.Name() + " tip-never"
+		neverGuide := t.Name() + " guide-never"
+		u.HintTip(neverTip)
+		u.HintGuidance(neverGuide)
+		// HintError and HintNextStep always show unless quiet.
+		// HintTip and HintGuidance are suppressed in never mode.
 		out := buf.String()
 		if !strings.Contains(out, "error") {
 			t.Error("never mode should still show HintError")
@@ -669,10 +670,10 @@ func TestHintCategories(t *testing.T) {
 		if !strings.Contains(out, "next") {
 			t.Error("never mode should still show HintNextStep")
 		}
-		if strings.Contains(out, "tip") {
+		if strings.Contains(out, neverTip) {
 			t.Error("never mode should suppress HintTip")
 		}
-		if strings.Contains(out, "guide") {
+		if strings.Contains(out, neverGuide) {
 			t.Error("never mode should suppress HintGuidance")
 		}
 	})
