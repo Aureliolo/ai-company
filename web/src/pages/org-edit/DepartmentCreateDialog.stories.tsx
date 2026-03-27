@@ -1,5 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
+import type { Department } from '@/api/types'
+
+const stubDept: Department = {
+  name: 'engineering',
+  display_name: 'New Department',
+  teams: [],
+}
 
 const meta = {
   title: 'OrgEdit/DepartmentCreateDialog',
@@ -11,7 +18,7 @@ const meta = {
     open: true,
     onOpenChange: () => {},
     existingNames: ['engineering', 'product'],
-    onCreate: async () => ({}) as never,
+    onCreate: async () => stubDept,
   },
 } satisfies Meta<typeof DepartmentCreateDialog>
 

@@ -206,7 +206,7 @@ export function DepartmentsTab({
         <DragOverlay>
           {activeDept && (
             <div className="rounded-lg border border-accent bg-card p-card shadow-lg">
-              <p className="text-sm font-semibold text-foreground">{activeDept.display_name}</p>
+              <p className="text-sm font-semibold text-foreground">{activeDept.display_name ?? activeDept.name}</p>
             </div>
           )}
         </DragOverlay>

@@ -246,7 +246,8 @@ Single WebSocket connection per session, established after login. Client subscri
 | Page | Channels | Events of Interest |
 |------|----------|--------------------|
 | **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All -- aggregated into health indicators, activity feed, badge counts |
-| **Org Chart** | `agents`, `system` | Agent hired/fired, status changes |
+| **Org Chart** (read-only) | `agents`, `system` | Agent hired/fired, status changes |
+| **Org Chart** (edit mode) | `agents` | Agent hired/fired (triggers config refresh) |
 | **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
 | **Budget** | `budget` | Cost records added, budget alerts |
 | **Approvals** | `approvals` | Approval submitted/approved/rejected/expired |

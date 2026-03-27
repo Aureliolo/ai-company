@@ -36,7 +36,7 @@ export function DepartmentEditDrawer({
   useEffect(() => {
     if (department) {
       setDisplayName(department.display_name ?? department.name)
-      setBudgetPercent('0')
+      setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
       setSubmitError(null)
     }
   }, [department])
@@ -72,7 +72,7 @@ export function DepartmentEditDrawer({
 
   return (
     <>
-      <Drawer open={open} onClose={onClose} title={department ? `Edit: ${department.display_name}` : 'Edit Department'}>
+      <Drawer open={open} onClose={onClose} title={department ? `Edit: ${department.display_name ?? department.name}` : 'Edit Department'}>
         {department && (
           <div className="space-y-5">
             {health && (
@@ -144,7 +144,7 @@ export function DepartmentEditDrawer({
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title={`Delete ${department?.display_name ?? 'department'}?`}
+        title={`Delete ${department?.display_name ?? department?.name ?? 'department'}?`}
         description="This will remove the department and unassign all its agents."
         variant="destructive"
         confirmLabel="Delete"

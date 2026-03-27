@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import type { AgentConfig, Department, SeniorityLevel, UpdateAgentOrgRequest } from '@/api/types'
 import { SENIORITY_LEVEL_VALUES, AGENT_STATUS_VALUES } from '@/api/types'
@@ -58,6 +58,10 @@ export function AgentEditDrawer({
   }, [agent])
 
   const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name }))
+  const hiredDate = useMemo(
+    () => agent ? new Date(agent.hiring_date).toLocaleDateString() : '',
+    [agent],
+  )
 
   const handleSave = useCallback(async () => {
     if (!agent) return
@@ -97,7 +101,7 @@ export function AgentEditDrawer({
           <div className="space-y-5">
             <div className="flex items-center gap-2">
               <StatusBadge status={toRuntimeStatus(agent.status)} label />
-              <span className="text-xs text-text-secondary">Hired: {new Date(agent.hiring_date).toLocaleDateString()}</span>
+              <span className="text-xs text-text-secondary">Hired: {hiredDate}</span>
             </div>
 
             <InputField

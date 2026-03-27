@@ -116,35 +116,40 @@ describe('useOrgEditData', () => {
     expect(result.current.wsConnected).toBe(true)
   })
 
-  it('returns wsSetupError from WebSocket hook', async () => {
-    const { useWebSocket } = await import('@/hooks/useWebSocket')
-    vi.mocked(useWebSocket).mockReturnValue({
-      connected: false,
-      reconnectExhausted: false,
-      setupError: 'Auth token expired',
+  describe('wsSetupError passthrough', () => {
+    afterEach(async () => {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      vi.mocked(useWebSocket).mockReturnValue({
+        connected: true,
+        reconnectExhausted: false,
+        setupError: null,
+      })
     })
-    const { result } = renderHook(() => useOrgEditData())
-    expect(result.current.wsSetupError).toBe('Auth token expired')
-    // Restore default mock
-    vi.mocked(useWebSocket).mockReturnValue({
-      connected: true,
-      reconnectExhausted: false,
-      setupError: null,
+
+    it('returns wsSetupError from WebSocket hook', async () => {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      vi.mocked(useWebSocket).mockReturnValue({
+        connected: false,
+        reconnectExhausted: false,
+        setupError: 'Auth token expired',
+      })
+      const { result } = renderHook(() => useOrgEditData())
+      expect(result.current.wsSetupError).toBe('Auth token expired')
     })
   })
 
-  it('exposes all mutation functions', () => {
+  it('exposes mutation functions wired to the store', () => {
     const { result } = renderHook(() => useOrgEditData())
-    expect(result.current.updateCompany).toBeTypeOf('function')
-    expect(result.current.createDepartment).toBeTypeOf('function')
-    expect(result.current.updateDepartment).toBeTypeOf('function')
-    expect(result.current.deleteDepartment).toBeTypeOf('function')
-    expect(result.current.reorderDepartments).toBeTypeOf('function')
-    expect(result.current.createAgent).toBeTypeOf('function')
-    expect(result.current.updateAgent).toBeTypeOf('function')
-    expect(result.current.deleteAgent).toBeTypeOf('function')
-    expect(result.current.reorderAgents).toBeTypeOf('function')
-    expect(result.current.optimisticReorderDepartments).toBeTypeOf('function')
-    expect(result.current.optimisticReorderAgents).toBeTypeOf('function')
+    expect(result.current.updateCompany).toBe(mockUpdateCompany)
+    expect(result.current.createDepartment).toBe(mockCreateDepartment)
+    expect(result.current.updateDepartment).toBe(mockUpdateDepartment)
+    expect(result.current.deleteDepartment).toBe(mockDeleteDepartment)
+    expect(result.current.reorderDepartments).toBe(mockReorderDepartments)
+    expect(result.current.createAgent).toBe(mockCreateAgent)
+    expect(result.current.updateAgent).toBe(mockUpdateAgent)
+    expect(result.current.deleteAgent).toBe(mockDeleteAgent)
+    expect(result.current.reorderAgents).toBe(mockReorderAgents)
+    expect(result.current.optimisticReorderDepartments).toBe(mockOptReorderDepts)
+    expect(result.current.optimisticReorderAgents).toBe(mockOptReorderAgents)
   })
 })

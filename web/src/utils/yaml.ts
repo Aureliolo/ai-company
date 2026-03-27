@@ -43,5 +43,14 @@ export function validateCompanyYaml(parsed: Record<string, unknown>): string | n
   if ('departments' in parsed && !Array.isArray(parsed.departments)) {
     return 'departments must be an array'
   }
+  if ('autonomy_level' in parsed && typeof parsed.autonomy_level !== 'string') {
+    return 'autonomy_level must be a string'
+  }
+  if ('budget_monthly' in parsed && typeof parsed.budget_monthly !== 'number') {
+    return 'budget_monthly must be a number'
+  }
+  if ('communication_pattern' in parsed && typeof parsed.communication_pattern !== 'string') {
+    return 'communication_pattern must be a string'
+  }
   return null
 }

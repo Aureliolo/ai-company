@@ -86,8 +86,8 @@ const meta = {
   args: {
     config: mockConfig,
     saving: false,
-    onCreateAgent: async () => ({}) as never,
-    onUpdateAgent: async () => ({}) as never,
+    onCreateAgent: async () => mockAgents[0]!,
+    onUpdateAgent: async () => mockAgents[0]!,
     onDeleteAgent: async () => {},
     onReorderAgents: async () => {},
     optimisticReorderAgents: () => () => {},

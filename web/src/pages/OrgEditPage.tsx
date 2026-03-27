@@ -18,6 +18,8 @@ import { YamlEditorPanel } from './org-edit/YamlEditorPanel'
 
 type TabValue = 'general' | 'agents' | 'departments'
 
+const VALID_TABS: ReadonlySet<string> = new Set<string>(['general', 'agents', 'departments'])
+
 const TRIGGER_CLASSES = cn(
   'px-4 py-2 text-sm font-medium text-text-secondary transition-colors',
   'data-[state=active]:text-foreground data-[state=active]:border-b-2 data-[state=active]:border-accent',
@@ -50,7 +52,6 @@ export default function OrgEditPage() {
     optimisticReorderAgents,
   } = useOrgEditData()
 
-  const VALID_TABS: ReadonlySet<string> = new Set<string>(['general', 'agents', 'departments'])
   const rawTab = searchParams.get('tab') ?? 'general'
   const activeTab: TabValue = VALID_TABS.has(rawTab) ? (rawTab as TabValue) : 'general'
 
