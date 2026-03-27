@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { getPasswordStrength } from '@/utils/password-strength'
 
 describe('getPasswordStrength', () => {
@@ -33,14 +34,21 @@ describe('getPasswordStrength', () => {
   })
 
   it('percent never exceeds 100', () => {
-    const result = getPasswordStrength('A'.repeat(100) + '1!' + 'a')
-    expect(result.percent).toBeLessThanOrEqual(100)
+    fc.assert(
+      fc.property(fc.string(), (pw) => {
+        const result = getPasswordStrength(pw)
+        expect(result.percent).toBeGreaterThanOrEqual(0)
+        expect(result.percent).toBeLessThanOrEqual(100)
+      }),
+    )
   })
 
   it('always returns a color string', () => {
-    const cases = ['', 'a', 'abcdefgh', 'Abcdefgh1234', 'MyStr0ngPassword!']
-    for (const pw of cases) {
-      expect(getPasswordStrength(pw).color).toMatch(/^bg-/)
-    }
+    fc.assert(
+      fc.property(fc.string(), (pw) => {
+        const result = getPasswordStrength(pw)
+        expect(result.color).toMatch(/^bg-/)
+      }),
+    )
   })
 })

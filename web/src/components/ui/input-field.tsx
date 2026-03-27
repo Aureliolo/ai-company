@@ -1,18 +1,26 @@
 import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
-export interface InputFieldProps extends Omit<React.ComponentProps<'input'>, 'id'> {
+interface BaseFieldProps {
   label: string
   error?: string | null
   hint?: string
-  /** Render a textarea instead of input. */
-  multiline?: boolean
-  rows?: number
+}
+
+interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>, 'id'> {
+  multiline?: false
   ref?: React.Ref<HTMLInputElement>
 }
 
+interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'textarea'>, 'id'> {
+  multiline: true
+  ref?: React.Ref<HTMLTextAreaElement>
+}
+
+export type InputFieldProps = InputProps | TextareaProps
+
 export function InputField({
-  label, error, hint, multiline, rows = 3, className, ref, ...props
+  label, error, hint, multiline, className, ref, ...props
 }: InputFieldProps) {
   const id = useId()
   const errorId = `${id}-error`
@@ -38,22 +46,21 @@ export function InputField({
         <textarea
           id={id}
           ref={ref as React.Ref<HTMLTextAreaElement>}
-          rows={rows}
           aria-invalid={hasError}
           aria-errormessage={hasError ? errorId : undefined}
-          aria-describedby={hint ? hintId : undefined}
+          aria-describedby={hint && !hasError ? hintId : undefined}
           className={cn(inputClasses, 'resize-y')}
           {...(props as React.ComponentProps<'textarea'>)}
         />
       ) : (
         <input
           id={id}
-          ref={ref}
+          ref={ref as React.Ref<HTMLInputElement>}
           aria-invalid={hasError}
           aria-errormessage={hasError ? errorId : undefined}
-          aria-describedby={hint ? hintId : undefined}
+          aria-describedby={hint && !hasError ? hintId : undefined}
           className={inputClasses}
-          {...props}
+          {...(props as React.ComponentProps<'input'>)}
         />
       )}
       {hint && !hasError && (

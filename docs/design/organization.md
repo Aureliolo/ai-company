@@ -333,16 +333,18 @@ Scalars (`company_name`, `company_type`)
 
 ## Company Builder
 
-The web dashboard includes a setup wizard with six substantive steps (Welcome, Admin,
-Provider, Names, Company, Review Org) followed by a completion screen. The Names step lets
-users choose which cultural locales are used for Faker-based agent name generation (e.g.,
-English, Portuguese, Yoruba); selected locales are persisted and applied when templates render
-agent names. When a template is selected in the Company step, all template agents are
-auto-created with models matched to configured providers via a tier classification
-engine that respects each agent's priority axis (quality, speed, cost, or balanced). The Review Org step lets users inspect agents and reassign models before completing
-setup. All configuration is persisted to the database via REST API calls. To re-run the
-setup wizard from scratch, use `synthorg wipe` (walks you through an interactive backup,
-wipes all data, and optionally restarts the stack to re-open the wizard).
+The web dashboard includes a setup wizard with seven steps: Account (conditional -- only
+shown when no admin exists), Template (choose a company template with category grouping and
+side-by-side comparison), Company (name, description, currency, and model tier profile),
+Agents (customize names, roles, and model assignments), Providers (configure LLM providers
+with auto-detection for local instances and manual addition for cloud providers), Theme (set
+UI preferences for palette, density, animation, and sidebar), and Complete (review summary
+and launch). When a template is selected, all template agents are auto-created with models
+matched to configured providers via a tier classification engine that respects each agent's
+priority axis (quality, speed, cost, or balanced). All configuration is persisted to the
+database via REST API calls. To re-run the setup wizard from scratch, use `synthorg wipe`
+(walks you through an interactive backup, wipes all data, and optionally restarts the stack
+to re-open the wizard).
 
 ---
 

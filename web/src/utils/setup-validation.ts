@@ -60,7 +60,7 @@ export function validateCompanyStep(input: CompanyStepInput): StepValidationResu
     errors.push(`Company name must be ${MAX_COMPANY_NAME_LENGTH} characters or less`)
   }
 
-  if (input.companyDescription.length > MAX_DESCRIPTION_LENGTH) {
+  if (input.companyDescription.trim().length > MAX_DESCRIPTION_LENGTH) {
     errors.push(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
   }
 
@@ -85,8 +85,7 @@ export function validateAgentsStep(input: AgentsStepInput): StepValidationResult
     return { valid: false, errors }
   }
 
-  for (let i = 0; i < input.agents.length; i++) {
-    const agent = input.agents[i]!
+  for (const agent of input.agents) {
     if (!agent.model_provider || !agent.model_id) {
       errors.push(`Agent "${agent.name}" is missing a model assignment`)
     }

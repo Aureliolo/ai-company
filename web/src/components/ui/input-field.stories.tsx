@@ -5,6 +5,9 @@ const meta = {
   title: 'UI/InputField',
   component: InputField,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof InputField>
 
 export default meta

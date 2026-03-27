@@ -33,7 +33,7 @@ const makeCompanyResponse = (
 })
 
 const makeProvider = (overrides: Partial<ProviderConfig> = {}): ProviderConfig => ({
-  driver: 'openai',
+  driver: 'test-provider',
   auth_type: 'api_key',
   base_url: null,
   models: [],

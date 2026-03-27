@@ -39,7 +39,10 @@ export function AgentModelPicker({
       options={options}
       value={currentValue}
       onChange={(val) => {
-        const [provider, modelId] = val.split('::')
+        const sepIdx = val.indexOf('::')
+        if (sepIdx === -1) return
+        const provider = val.slice(0, sepIdx)
+        const modelId = val.slice(sepIdx + 2)
         if (provider && modelId) {
           onChange(provider, modelId)
         }

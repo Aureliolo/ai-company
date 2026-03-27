@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { SelectField } from './select-field'
+import { CURRENCY_OPTIONS } from '@/utils/currencies'
 
-const currencies = [
-  { value: 'EUR', label: 'EUR - Euro' },
-  { value: 'USD', label: 'USD - US Dollar' },
-  { value: 'GBP', label: 'GBP - British Pound' },
-  { value: 'JPY', label: 'JPY - Japanese Yen' },
-]
+const currencies = CURRENCY_OPTIONS.slice(0, 4)
 
 const meta = {
   title: 'UI/SelectField',
   component: SelectField,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof SelectField>
 
 export default meta

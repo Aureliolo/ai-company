@@ -39,11 +39,30 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, handleKeyDown])
 
-  // Focus trap: focus the panel when opened
+  // Move initial focus to panel and trap Tab cycling within it
   useEffect(() => {
-    if (open && panelRef.current) {
-      panelRef.current.focus()
+    if (!open || !panelRef.current) return
+    panelRef.current.focus()
+
+    const panel = panelRef.current
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
     }
+    document.addEventListener('keydown', handleTab)
+    return () => document.removeEventListener('keydown', handleTab)
   }, [open])
 
   return createPortal(
@@ -57,7 +76,7 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
             animate="visible"
             exit="hidden"
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 bg-black/40"
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -74,7 +93,7 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
             tabIndex={-1}
             className={cn(
               'fixed inset-y-0 right-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',
-              'border-l border-border bg-card shadow-xl',
+              'border-l border-border bg-card shadow-[var(--so-shadow-card-hover)]',
               className,
             )}
           >
@@ -82,6 +101,7 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-foreground">{title}</h2>
               <button
+                type="button"
                 onClick={onClose}
                 aria-label="Close"
                 className={cn(

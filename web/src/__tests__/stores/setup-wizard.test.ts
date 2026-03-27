@@ -163,6 +163,7 @@ describe('setup wizard store', () => {
           source: 'builtin',
           tags: ['startup'],
           skill_patterns: [],
+          variables: [],
         },
       ])
 
@@ -183,7 +184,7 @@ describe('setup wizard store', () => {
 
       const state = useSetupWizardStore.getState()
       // getErrorMessage extracts the message from the Error object
-      expect(state.templatesError).toBeTruthy()
+      expect(state.templatesError).toBe('Network error')
       expect(state.templatesLoading).toBe(false)
     })
   })

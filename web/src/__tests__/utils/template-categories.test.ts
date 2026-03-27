@@ -14,6 +14,7 @@ const makeTemplate = (
   source: 'builtin',
   tags: [],
   skill_patterns: [],
+  variables: [],
   ...overrides,
 })
 

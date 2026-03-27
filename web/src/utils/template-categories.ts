@@ -109,6 +109,9 @@ export function getCategoryLabel(category: string): string {
   for (const [label, key] of Object.entries(LABEL_TO_CATEGORY)) {
     if (key === category) return label
   }
-  // Title-case the key as fallback
-  return category.charAt(0).toUpperCase() + category.slice(1)
+  // Title-case the key as fallback, splitting on `-` and `_`
+  return category
+    .split(/[-_]/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }

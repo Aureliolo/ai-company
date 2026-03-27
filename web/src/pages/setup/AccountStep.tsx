@@ -6,6 +6,8 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { cn } from '@/lib/utils'
 
+const MIN_PASSWORD_LENGTH = 12
+
 export function AccountStep() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -25,8 +27,8 @@ export function AccountStep() {
       setError('Username is required')
       return
     }
-    if (password.length < 12) {
-      setError('Password must be at least 12 characters')
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
       return
     }
     if (password !== confirmPassword) {
@@ -72,9 +74,9 @@ export function AccountStep() {
             required
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
-            placeholder="Min 12 characters"
+            placeholder={`Min ${MIN_PASSWORD_LENGTH} characters`}
             disabled={loading}
-            hint="Min 12 characters"
+            hint={`Min ${MIN_PASSWORD_LENGTH} characters`}
           />
           {password.length > 0 && (
             <div className="flex items-center gap-2">

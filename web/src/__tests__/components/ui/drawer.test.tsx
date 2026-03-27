@@ -90,10 +90,9 @@ describe('Drawer', () => {
     render(<Drawer open={true} onClose={handleClose} title="Test">Content</Drawer>)
     // The overlay is the element with aria-hidden="true"
     const overlay = screen.getByRole('dialog').previousElementSibling
-    if (overlay) {
-      await user.click(overlay)
-      expect(handleClose).toHaveBeenCalledOnce()
-    }
+    expect(overlay).toBeInTheDocument()
+    await user.click(overlay!)
+    expect(handleClose).toHaveBeenCalledOnce()
   })
 
   it('calls onClose on Escape key', async () => {

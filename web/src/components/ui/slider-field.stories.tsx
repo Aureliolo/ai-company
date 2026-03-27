@@ -6,6 +6,9 @@ const meta = {
   title: 'UI/SliderField',
   component: SliderField,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof SliderField>
 
 export default meta

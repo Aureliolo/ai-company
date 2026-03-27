@@ -1111,6 +1111,14 @@ export type SkillPattern =
   | 'inversion'
   | 'pipeline'
 
+export interface TemplateVariable {
+  readonly name: string
+  readonly description: string
+  readonly var_type: string
+  readonly default: string | number | boolean | null
+  readonly required: boolean
+}
+
 export interface TemplateInfoResponse {
   name: string
   display_name: string
@@ -1118,6 +1126,7 @@ export interface TemplateInfoResponse {
   source: 'builtin' | 'user'
   tags: readonly string[]
   skill_patterns: readonly SkillPattern[]
+  variables: readonly TemplateVariable[]
 }
 
 export interface SetupCompanyRequest {

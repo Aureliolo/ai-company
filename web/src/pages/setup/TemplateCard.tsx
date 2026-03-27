@@ -10,6 +10,7 @@ export interface TemplateCardProps {
   currency: string
   selected: boolean
   compared: boolean
+  recommended?: boolean
   onSelect: () => void
   onToggleCompare: () => void
   compareDisabled: boolean
@@ -21,6 +22,7 @@ export function TemplateCard({
   currency,
   selected,
   compared,
+  recommended,
   onSelect,
   onToggleCompare,
   compareDisabled,
@@ -29,7 +31,7 @@ export function TemplateCard({
     <div
       className={cn(
         'flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors',
-        selected ? 'border-accent shadow-[0_0_12px_var(--so-accent)/15%]' : 'border-border',
+        selected ? 'border-accent shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]' : 'border-border',
         'hover:bg-card-hover',
       )}
     >
@@ -48,7 +50,14 @@ export function TemplateCard({
 
       {/* Name + description */}
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-foreground">{template.display_name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">{template.display_name}</h3>
+          {recommended && (
+            <span className="inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-compact font-medium text-accent">
+              Recommended
+            </span>
+          )}
+        </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
       </div>
 

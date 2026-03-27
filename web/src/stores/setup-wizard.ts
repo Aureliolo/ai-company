@@ -443,22 +443,35 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     } catch (err) {
       console.error('setup-wizard: createProviderFromPreset failed:', err)
       set({ providersError: getErrorMessage(err) })
+      throw err
     }
   },
 
   async testProviderConnection(name) {
-    return testConnection(name)
+    try {
+      return await testConnection(name)
+    } catch (err) {
+      console.error('setup-wizard: testProviderConnection failed:', err)
+      set({ providersError: getErrorMessage(err) })
+      throw err
+    }
   },
 
   async probeAllPresets() {
     const { presets } = get()
     set({ probing: true })
+    const entries = await Promise.allSettled(
+      presets.map(async (preset) => {
+        const result = await probePreset(preset.name)
+        return [preset.name, result] as const
+      }),
+    )
     const results: Record<string, ProbePresetResponse> = {}
-    for (const preset of presets) {
-      try {
-        results[preset.name] = await probePreset(preset.name)
-      } catch (err) {
-        console.error(`setup-wizard: probe failed for preset "${preset.name}":`, err)
+    for (const entry of entries) {
+      if (entry.status === 'fulfilled') {
+        results[entry.value[0]] = entry.value[1]
+      } else {
+        console.error('setup-wizard: probe failed for preset:', entry.reason)
       }
     }
     set({ probeResults: results, probing: false })

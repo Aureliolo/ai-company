@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
+import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
@@ -25,6 +26,10 @@ const STEP_COMPONENTS: Record<WizardStep, React.ComponentType> = {
   complete: CompleteStep,
 }
 
+function isWizardStep(value: string, stepOrder: readonly WizardStep[]): value is WizardStep {
+  return stepOrder.includes(value as WizardStep)
+}
+
 export function WizardShell() {
   const navigate = useNavigate()
   const { step: urlStep } = useParams<{ step?: string }>()
@@ -41,10 +46,9 @@ export function WizardShell() {
       navigate(`/setup/${stepOrder[0]}`, { replace: true })
       return
     }
-    const step = urlStep as WizardStep
-    if (stepOrder.includes(step)) {
-      if (canNavigateTo(step)) {
-        setStep(step)
+    if (isWizardStep(urlStep, stepOrder)) {
+      if (canNavigateTo(urlStep)) {
+        setStep(urlStep)
       } else {
         const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
         navigate(`/setup/${firstIncomplete ?? stepOrder[0]}`, { replace: true })
@@ -88,13 +92,14 @@ export function WizardShell() {
         {/* Skip wizard link */}
         {(currentStep === 'account' || currentStep === 'template') && (
           <div className="mb-2 text-center">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => navigate(`/setup/complete`)}
               className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Skip wizard (advanced)
-            </button>
+            </Button>
           </div>
         )}
 

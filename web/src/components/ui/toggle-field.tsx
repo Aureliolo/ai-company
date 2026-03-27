@@ -39,12 +39,12 @@ export function ToggleField({
         <span
           className={cn(
             'block h-4 w-4 rounded-full bg-foreground transition-transform',
-            checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+            checked ? 'translate-x-4' : 'translate-x-0.5',
           )}
         />
       </button>
       <div className="flex flex-col gap-0.5">
-        <label htmlFor={id} className="text-sm font-medium text-foreground cursor-pointer">
+        <label htmlFor={id} className={cn('text-sm font-medium', disabled ? 'cursor-default text-muted-foreground' : 'cursor-pointer text-foreground')}>
           {label}
         </label>
         {description && (

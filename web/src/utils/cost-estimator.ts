@@ -11,11 +11,23 @@ export const DEFAULT_INPUT_OUTPUT_RATIO = 0.7
 /** Days per month used in cost projection. */
 const DAYS_PER_MONTH = 30
 
+interface TierCost {
+  readonly input: number
+  readonly output: number
+}
+
 /** Fallback cost per 1K tokens when a model is not found in provider data. */
-export const TIER_FALLBACK_COSTS: Readonly<Record<string, { input: number; output: number }>> = {
+export const TIER_FALLBACK_COSTS: Readonly<Record<string, TierCost>> = {
   large: { input: 0.015, output: 0.075 },
   medium: { input: 0.003, output: 0.015 },
   small: { input: 0.0005, output: 0.0025 },
+}
+
+const DEFAULT_TIER_COST: TierCost = { input: 0.003, output: 0.015 }
+
+/** Get fallback costs for a tier, defaulting to medium if tier is unknown. */
+function getTierCosts(tier: string): TierCost {
+  return TIER_FALLBACK_COSTS[tier] ?? DEFAULT_TIER_COST
 }
 
 interface CostEstimateOptions {
@@ -81,9 +93,9 @@ export function estimateMonthlyCost(
       outputCostPer1k = model.cost_per_1k_output
     } else {
       usedFallback = true
-      const fallback = TIER_FALLBACK_COSTS[agent.tier] ?? TIER_FALLBACK_COSTS.medium!
-      inputCostPer1k = fallback!.input
-      outputCostPer1k = fallback!.output
+      const fallback = getTierCosts(agent.tier)
+      inputCostPer1k = fallback.input
+      outputCostPer1k = fallback.output
     }
 
     const dailyInputTokens = dailyTokens * inputRatio
@@ -126,12 +138,12 @@ interface TierCount {
 export function estimateTemplateCost(tiers: readonly TierCount[]): number {
   let total = 0
   for (const { tier, count } of tiers) {
-    const fallback = TIER_FALLBACK_COSTS[tier] ?? TIER_FALLBACK_COSTS.medium!
+    const fallback = getTierCosts(tier)
     const dailyInputTokens = DEFAULT_DAILY_TOKENS_PER_AGENT * DEFAULT_INPUT_OUTPUT_RATIO
     const dailyOutputTokens = DEFAULT_DAILY_TOKENS_PER_AGENT * (1 - DEFAULT_INPUT_OUTPUT_RATIO)
     const dailyCostPerAgent =
-      (dailyInputTokens / 1000) * fallback!.input +
-      (dailyOutputTokens / 1000) * fallback!.output
+      (dailyInputTokens / 1000) * fallback.input +
+      (dailyOutputTokens / 1000) * fallback.output
     total += dailyCostPerAgent * DAYS_PER_MONTH * count
   }
   return total

@@ -6,6 +6,9 @@ const meta = {
   title: 'UI/ToggleField',
   component: ToggleField,
   tags: ['autodocs'],
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof ToggleField>
 
 export default meta

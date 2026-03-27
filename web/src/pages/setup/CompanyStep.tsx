@@ -13,6 +13,7 @@ import { TemplateVariables } from './TemplateVariables'
 import { CostEstimatePanel } from './CostEstimatePanel'
 
 export function CompanyStep() {
+  const templates = useSetupWizardStore((s) => s.templates)
   const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
   const companyName = useSetupWizardStore((s) => s.companyName)
   const companyDescription = useSetupWizardStore((s) => s.companyDescription)
@@ -34,6 +35,12 @@ export function CompanyStep() {
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
+
+  // Resolve the full template object for the selected template
+  const selectedTemplateObj = useMemo(
+    () => templates.find((t) => t.name === selectedTemplate) ?? null,
+    [templates, selectedTemplate],
+  )
 
   // Validate and track completion
   const validation = useMemo(() => validateCompanyStep({
@@ -112,11 +119,23 @@ export function CompanyStep() {
           value={currency}
           onChange={setCurrency}
         />
+
+        <SelectField
+          label="Model Tier Profile"
+          options={[
+            { value: 'economy', label: 'Economy' },
+            { value: 'balanced', label: 'Balanced' },
+            { value: 'premium', label: 'Premium' },
+          ]}
+          value={String(templateVariables.model_tier_profile ?? 'balanced')}
+          onChange={(v) => setTemplateVariable('model_tier_profile', v)}
+          hint="Influences which model tiers are assigned to agents and affects cost estimates."
+        />
       </div>
 
       {/* Template variables */}
       <TemplateVariables
-        variables={[]}
+        variables={selectedTemplateObj?.variables ?? []}
         values={templateVariables}
         onChange={setTemplateVariable}
       />
@@ -125,7 +144,9 @@ export function CompanyStep() {
       {!companyResponse && (
         <Button
           onClick={handleApplyTemplate}
-          disabled={!companyName.trim() || companyLoading}
+          disabled={validation.errors.some(
+            (e) => e !== 'Apply the template to continue',
+          ) || companyLoading}
           className="w-full"
         >
           {companyLoading ? 'Applying Template...' : 'Apply Template'}
@@ -158,8 +179,8 @@ export function CompanyStep() {
             <div className="rounded-lg border border-border bg-card p-4">
               <h3 className="mb-2 text-sm font-semibold text-foreground">Generated Agents</h3>
               <ul className="space-y-1 text-xs text-muted-foreground">
-                {agents.map((agent, i) => (
-                  <li key={i}>
+                {agents.map((agent) => (
+                  <li key={agent.name}>
                     {agent.name} ({agent.department}) - {agent.tier} model
                   </li>
                 ))}
@@ -173,6 +194,7 @@ export function CompanyStep() {
             currency={currency}
             budgetCapEnabled={budgetCapEnabled}
             budgetCap={budgetCap}
+            agents={agents}
             onBudgetCapEnabledChange={setBudgetCapEnabled}
             onBudgetCapChange={setBudgetCap}
           />

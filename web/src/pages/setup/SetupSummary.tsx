@@ -76,8 +76,8 @@ export function SetupSummary({
       {/* Agent roster */}
       <SectionCard title="Agent Roster" icon={Users}>
         <div className="space-y-2">
-          {agents.map((agent, i) => (
-            <div key={i} className="flex items-center gap-3 rounded-md border border-border p-2">
+          {agents.map((agent) => (
+            <div key={`${agent.name}-${agent.role}`} className="flex items-center gap-3 rounded-md border border-border p-2">
               <Avatar name={agent.name} size="sm" />
               <div className="flex-1">
                 <span className="text-sm font-medium text-foreground">{agent.name}</span>

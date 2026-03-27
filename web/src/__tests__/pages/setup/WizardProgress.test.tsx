@@ -63,6 +63,7 @@ describe('WizardProgress', () => {
     )
     const buttons = screen.getAllByRole('button')
     const templateButton = buttons.find((b) => b.textContent?.includes('Template'))!
+    expect(templateButton).toBeInTheDocument()
     await user.click(templateButton)
     expect(handleClick).toHaveBeenCalledWith('template')
   })
@@ -95,6 +96,7 @@ describe('WizardProgress', () => {
     // Template step should have a checkmark (Check icon renders as svg)
     const buttons = screen.getAllByRole('button')
     const templateButton = buttons.find((b) => b.textContent?.includes('Template'))!
+    expect(templateButton).toBeInTheDocument()
     expect(templateButton.querySelector('svg')).toBeInTheDocument()
   })
 

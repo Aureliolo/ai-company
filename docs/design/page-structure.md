@@ -128,7 +128,7 @@ Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or
 
 #### Setup Wizard (`/setup`)
 
-Multi-step first-run flow: template selection, company creation, agent configuration, provider setup, completion. Each step is URL-addressable (`/setup/{step}`). Redirects to `/` if setup is already complete.
+Multi-step first-run flow: account creation (conditional), template selection, company creation, agent configuration, provider setup, theme customization, and completion. Each step is URL-addressable (`/setup/{step}`). Redirects to `/` if setup is already complete.
 
 **API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/company`, `POST /setup/agent`, `GET /setup/agents`, `PUT /setup/agents/{agent_index}/name`, `PUT /setup/agents/{agent_index}/model`, `POST /setup/agents/{agent_index}/randomize-name`, `GET /setup/name-locales/available`, `GET /setup/name-locales`, `PUT /setup/name-locales`, `POST /setup/complete`
 

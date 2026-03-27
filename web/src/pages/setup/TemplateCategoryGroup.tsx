@@ -11,6 +11,7 @@ export interface TemplateCategoryGroupProps {
   selectedTemplate: string | null
   comparedTemplates: readonly string[]
   compareDisabled: boolean
+  recommendedTemplates?: ReadonlySet<string>
   onSelect: (name: string) => void
   onToggleCompare: (name: string) => void
 }
@@ -23,6 +24,7 @@ export function TemplateCategoryGroup({
   selectedTemplate,
   comparedTemplates,
   compareDisabled,
+  recommendedTemplates,
   onSelect,
   onToggleCompare,
 }: TemplateCategoryGroupProps) {
@@ -40,6 +42,7 @@ export function TemplateCategoryGroup({
               currency={currency}
               selected={selectedTemplate === template.name}
               compared={comparedTemplates.includes(template.name)}
+              recommended={recommendedTemplates?.has(template.name)}
               onSelect={() => onSelect(template.name)}
               onToggleCompare={() => onToggleCompare(template.name)}
               compareDisabled={compareDisabled}

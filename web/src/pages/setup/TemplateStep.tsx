@@ -11,6 +11,23 @@ import { LayoutGrid } from 'lucide-react'
 
 const MAX_COMPARE = 3
 
+/** Template size tags used for agent count heuristics. */
+const TAG_SOLO = 'solo'
+const TAG_SMALL_TEAM = 'small-team'
+const TAG_ENTERPRISE = 'enterprise'
+const TAG_FULL_COMPANY = 'full-company'
+
+/** Estimated agent counts per template size category. */
+const AGENT_COUNT_SOLO = 1
+const AGENT_COUNT_SMALL_TEAM = 3
+const AGENT_COUNT_LARGE = 12
+const AGENT_COUNT_DEFAULT = 5
+
+/** Tier distribution ratios for cost estimation. */
+const TIER_RATIO_LARGE = 0.2
+const TIER_RATIO_MEDIUM = 0.5
+const TIER_RATIO_SMALL_COMPLEMENT = 0.7
+
 export function TemplateStep() {
   const templates = useSetupWizardStore((s) => s.templates)
   const templatesLoading = useSetupWizardStore((s) => s.templatesLoading)
@@ -26,10 +43,10 @@ export function TemplateStep() {
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
   useEffect(() => {
-    if (templates.length === 0 && !templatesLoading) {
+    if (templates.length === 0 && !templatesLoading && !templatesError) {
       fetchTemplates()
     }
-  }, [templates.length, templatesLoading, fetchTemplates])
+  }, [templates.length, templatesLoading, templatesError, fetchTemplates])
 
   // Track step completion
   useEffect(() => {
@@ -40,7 +57,32 @@ export function TemplateStep() {
     }
   }, [selectedTemplate, markStepComplete, markStepIncomplete])
 
+  const providers = useSetupWizardStore((s) => s.providers)
+
   const categorized = useMemo(() => categorizeTemplates(templates), [templates])
+
+  // Determine recommended templates based on configured providers
+  const recommendedTemplates = useMemo(() => {
+    const recommended = new Set<string>()
+    const providerCount = Object.keys(providers).length
+    const smallTags = new Set([TAG_SOLO, TAG_SMALL_TEAM, 'startup', 'mvp'])
+    const largeTags = new Set([TAG_ENTERPRISE, TAG_FULL_COMPANY])
+
+    for (const template of templates) {
+      if (providerCount === 0) {
+        // No providers configured yet -- recommend small/simple templates
+        if (template.tags.some((tag) => smallTags.has(tag))) {
+          recommended.add(template.name)
+        }
+      } else {
+        // Providers configured -- recommend larger templates
+        if (template.tags.some((tag) => largeTags.has(tag))) {
+          recommended.add(template.name)
+        }
+      }
+    }
+    return recommended
+  }, [templates, providers])
 
   // Estimate costs per template (using tier fallbacks since no providers yet)
   const estimatedCosts = useMemo(() => {
@@ -49,14 +91,14 @@ export function TemplateStep() {
     // so we use a simple heuristic based on template tags
     for (const template of templates) {
       // Rough estimate: small templates = fewer agents, lower tiers
-      const agentEstimate = template.tags.includes('solo') ? 1
-        : template.tags.includes('small-team') ? 3
-        : template.tags.includes('enterprise') || template.tags.includes('full-company') ? 12
-        : 5
+      const agentEstimate = template.tags.includes(TAG_SOLO) ? AGENT_COUNT_SOLO
+        : template.tags.includes(TAG_SMALL_TEAM) ? AGENT_COUNT_SMALL_TEAM
+        : template.tags.includes(TAG_ENTERPRISE) || template.tags.includes(TAG_FULL_COMPANY) ? AGENT_COUNT_LARGE
+        : AGENT_COUNT_DEFAULT
       const cost = estimateTemplateCost([
-        { tier: 'large', count: Math.max(1, Math.floor(agentEstimate * 0.2)) },
-        { tier: 'medium', count: Math.floor(agentEstimate * 0.5) },
-        { tier: 'small', count: Math.max(0, agentEstimate - Math.floor(agentEstimate * 0.7)) },
+        { tier: 'large', count: Math.max(1, Math.floor(agentEstimate * TIER_RATIO_LARGE)) },
+        { tier: 'medium', count: Math.floor(agentEstimate * TIER_RATIO_MEDIUM) },
+        { tier: 'small', count: Math.max(0, agentEstimate - Math.floor(agentEstimate * TIER_RATIO_SMALL_COMPLEMENT)) },
       ])
       costs.set(template.name, cost)
     }
@@ -148,6 +190,7 @@ export function TemplateStep() {
           selectedTemplate={selectedTemplate}
           comparedTemplates={comparedTemplates}
           compareDisabled={comparedTemplates.length >= MAX_COMPARE}
+          recommendedTemplates={recommendedTemplates}
           onSelect={handleSelect}
           onToggleCompare={handleToggleCompare}
         />

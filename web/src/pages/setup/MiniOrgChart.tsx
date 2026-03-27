@@ -27,6 +27,48 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
+interface AgentNodeProps {
+  agent: SetupAgentSummary
+  agentX: number
+  agentY: number
+  deptX: number
+  deptY: number
+}
+
+function AgentNode({ agent, agentX, agentY, deptX, deptY }: AgentNodeProps) {
+  return (
+    <g>
+      {/* Line from dept to agent */}
+      <line
+        x1={deptX}
+        y1={deptY + NODE_HEIGHT / 2}
+        x2={agentX}
+        y2={agentY - AVATAR_RADIUS}
+        className="stroke-border"
+        strokeWidth={1}
+      />
+      {/* Agent circle */}
+      <circle
+        cx={agentX}
+        cy={agentY}
+        r={AVATAR_RADIUS}
+        className="fill-card stroke-accent/40"
+        strokeWidth={1}
+      >
+        <title>{`${agent.name} - ${agent.role}`}</title>
+      </circle>
+      <text
+        x={agentX}
+        y={agentY + 3}
+        textAnchor="middle"
+        className="fill-foreground text-[8px] font-medium"
+      >
+        {getInitials(agent.name)}
+      </text>
+    </g>
+  )
+}
+
 export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   const departments = useMemo(() => {
     const deptMap = new Map<string, SetupAgentSummary[]>()
@@ -81,9 +123,9 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
         <circle cx={rootX} cy={rootY} r={8} className="fill-accent" />
 
         {/* Lines from root to departments */}
-        {deptPositions.map((pos, i) => (
+        {deptPositions.map((pos) => (
           <line
-            key={`root-${i}`}
+            key={`root-${pos.dept.name}`}
             x1={rootX}
             y1={rootY + 8}
             x2={pos.x}
@@ -94,7 +136,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
         ))}
 
         {/* Department nodes */}
-        {deptPositions.map((pos, deptIdx) => (
+        {deptPositions.map((pos) => (
           <g key={pos.dept.name}>
             {/* Dept label */}
             <rect
@@ -121,35 +163,14 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
               const agentY = pos.y + V_GAP
 
               return (
-                <g key={`${deptIdx}-${agentIdx}`}>
-                  {/* Line from dept to agent */}
-                  <line
-                    x1={pos.x}
-                    y1={pos.y + NODE_HEIGHT / 2}
-                    x2={agentX}
-                    y2={agentY - AVATAR_RADIUS}
-                    className="stroke-border"
-                    strokeWidth={1}
-                  />
-                  {/* Agent circle */}
-                  <circle
-                    cx={agentX}
-                    cy={agentY}
-                    r={AVATAR_RADIUS}
-                    className="fill-card stroke-accent/40"
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={agentX}
-                    y={agentY + 3}
-                    textAnchor="middle"
-                    className="fill-foreground text-[8px] font-medium"
-                  >
-                    {getInitials(agent.name)}
-                  </text>
-                  {/* Tooltip title */}
-                  <title>{`${agent.name} - ${agent.role}`}</title>
-                </g>
+                <AgentNode
+                  key={agent.name}
+                  agent={agent}
+                  agentX={agentX}
+                  agentY={agentY}
+                  deptX={pos.x}
+                  deptY={pos.y}
+                />
               )
             })}
           </g>

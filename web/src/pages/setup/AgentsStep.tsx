@@ -6,6 +6,7 @@ import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateAgentsStep } from '@/utils/setup-validation'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupAgentCard } from './SetupAgentCard'
+import { Button } from '@/components/ui/button'
 import { Users } from 'lucide-react'
 
 export function AgentsStep() {
@@ -22,10 +23,10 @@ export function AgentsStep() {
 
   // Fetch agents if not already loaded (e.g., direct URL navigation)
   useEffect(() => {
-    if (agents.length === 0 && !agentsLoading) {
-      fetchAgents()
+    if (agents.length === 0 && !agentsLoading && !agentsError) {
+      void fetchAgents()
     }
-  }, [agents.length, agentsLoading, fetchAgents])
+  }, [agents.length, agentsLoading, agentsError, fetchAgents])
 
   // Track step completion
   useEffect(() => {
@@ -69,6 +70,19 @@ export function AgentsStep() {
     )
   }
 
+  if (agents.length === 0 && agentsError) {
+    return (
+      <div className="space-y-4">
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          {agentsError}
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void fetchAgents()}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
   if (agents.length === 0) {
     return (
       <EmptyState
@@ -100,7 +114,7 @@ export function AgentsStep() {
       {/* Agent cards */}
       <StaggerGroup className="space-y-3">
         {agents.map((agent, index) => (
-          <StaggerItem key={index}>
+          <StaggerItem key={agent.name}>
             <SetupAgentCard
               agent={agent}
               index={index}

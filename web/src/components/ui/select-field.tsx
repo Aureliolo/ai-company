@@ -50,7 +50,7 @@ export function SelectField({
         disabled={disabled}
         aria-invalid={hasError}
         aria-errormessage={hasError ? errorId : undefined}
-        aria-describedby={hint ? hintId : undefined}
+        aria-describedby={hint && !hasError ? hintId : undefined}
         className={cn(
           'w-full rounded-md border bg-surface px-3 py-2 text-sm text-foreground',
           'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',

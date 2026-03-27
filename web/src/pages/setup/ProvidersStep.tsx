@@ -16,6 +16,8 @@ export function ProvidersStep() {
   const probing = useSetupWizardStore((s) => s.probing)
   const providersLoading = useSetupWizardStore((s) => s.providersLoading)
   const providersError = useSetupWizardStore((s) => s.providersError)
+  const presetsLoading = useSetupWizardStore((s) => s.presetsLoading)
+  const presetsError = useSetupWizardStore((s) => s.presetsError)
 
   const fetchProviders = useSetupWizardStore((s) => s.fetchProviders)
   const fetchPresets = useSetupWizardStore((s) => s.fetchPresets)
@@ -30,17 +32,17 @@ export function ProvidersStep() {
 
   // Fetch providers on mount
   useEffect(() => {
-    if (providersCount === 0 && !providersLoading) {
+    if (providersCount === 0 && !providersLoading && !providersError) {
       fetchProviders()
     }
-  }, [providersCount, providersLoading, fetchProviders])
+  }, [providersCount, providersLoading, providersError, fetchProviders])
 
   // Fetch presets on mount
   useEffect(() => {
-    if (presets.length === 0) {
+    if (presets.length === 0 && !presetsLoading && !presetsError) {
       fetchPresets()
     }
-  }, [presets.length, fetchPresets])
+  }, [presets.length, presetsLoading, presetsError, fetchPresets])
 
   // Auto-probe local presets
   useEffect(() => {
@@ -102,6 +104,12 @@ export function ProvidersStep() {
         </div>
       )}
 
+      {presetsError && (
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          {presetsError}
+        </div>
+      )}
+
       {/* Missing provider warnings */}
       {missingProviders.length > 0 && (
         <div className="rounded-md border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
@@ -150,8 +158,8 @@ export function ProvidersStep() {
       {/* Validation messages */}
       {!validation.valid && validation.errors.length > 0 && (
         <ul className="space-y-1 text-xs text-muted-foreground">
-          {validation.errors.map((err, i) => (
-            <li key={i}>{err}</li>
+          {validation.errors.map((err) => (
+            <li key={err}>{err}</li>
           ))}
         </ul>
       )}

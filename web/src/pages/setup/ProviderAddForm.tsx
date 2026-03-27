@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/utils/errors'
 import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
 
 export interface ProviderAddFormProps {
@@ -28,8 +30,10 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
     try {
       const result = await onTest(providerName.trim())
       setTestResult(result)
-    } catch {
-      setError('Connection test failed')
+    } catch (err) {
+      console.error('ProviderAddForm: test connection failed:', err)
+      setError(getErrorMessage(err))
+      setApiKey('')
     } finally {
       setTesting(false)
     }
@@ -46,8 +50,9 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
       setProviderName('')
       setApiKey('')
       setTestResult(null)
-    } catch {
-      setError('Failed to create provider')
+    } catch (err) {
+      console.error('ProviderAddForm: create provider failed:', err)
+      setError(getErrorMessage(err))
     } finally {
       setAdding(false)
     }
@@ -116,7 +121,12 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
           </div>
 
           {testResult && (
-            <div className={`rounded-md border px-3 py-2 text-sm ${testResult.success ? 'border-success/30 bg-success/5 text-success' : 'border-danger/30 bg-danger/5 text-danger'}`}>
+            <div className={cn(
+              'rounded-md border px-3 py-2 text-sm',
+              testResult.success
+                ? 'border-success/30 bg-success/5 text-success'
+                : 'border-danger/30 bg-danger/5 text-danger',
+            )}>
               {testResult.success
                 ? `Connected! ${testResult.model_tested ? `Model: ${testResult.model_tested}` : ''} (${testResult.latency_ms}ms)`
                 : `Failed: ${testResult.error ?? 'Unknown error'}`}

@@ -68,13 +68,15 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 
 After the containers are running, open the web dashboard at [http://localhost:3000](http://localhost:3000). On a fresh install, the **setup wizard** will appear automatically and guide you through:
 
-1. **Create an admin account** -- set up the first admin (CEO) user.
-2. **Configure an LLM provider** -- select a preset (Ollama, OpenRouter, etc.) or add a custom provider. Model discovery verifies the connection automatically.
-3. **Choose name locales** -- select "All (worldwide)" for diverse agent names from 57 Latin-script locales, or pick specific regions. Defaults to worldwide.
-4. **Create your company** -- name your synthetic organization. The **Startup** template is selected by default; switch to **Start Blank** if you want an empty organization. When a template is selected, agents are auto-created with models matched to your configured providers.
-5. **Review your organization** -- inspect the auto-created agents and adjust model assignments if needed. If no template was used, you can create agents manually.
+1. **Account** (conditional) -- create the first admin user. This step only appears when no admin account exists yet.
+2. **Template** -- choose a company template. Templates are grouped by category (Startup, Development, Enterprise, etc.) with side-by-side comparison and cost estimates.
+3. **Company** -- name your synthetic organization, set a description, choose a display currency, and select a model tier profile (Economy, Balanced, or Premium).
+4. **Agents** -- customize agent names, roles, and model assignments. Agents are pre-populated from the selected template with models matched to configured providers.
+5. **Providers** -- configure LLM providers. Local providers (e.g. Ollama) are auto-detected; cloud providers can be added manually. Model discovery verifies each connection.
+6. **Theme** -- set UI preferences including color palette, layout density, animation level, and sidebar position.
+7. **Complete** -- review a summary of your configuration and launch the organization.
 
-The wizard shows seven steps (Welcome, then the five above, then Complete). All five substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
+All substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
 

@@ -48,7 +48,7 @@ export function TemplateVariables({ variables, values, onChange }: TemplateVaria
               min={v.var_type === 'int' ? 1 : 0}
               max={v.var_type === 'int' ? 50 : 1000}
               step={v.var_type === 'int' ? 1 : 10}
-              formatValue={v.var_type === 'float' ? (val) => `$${val}` : undefined}
+              formatValue={undefined}
               onChange={(val) => onChange(v.name, val)}
             />
           )
