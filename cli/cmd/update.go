@@ -156,7 +156,7 @@ func updateCLI(cmd *cobra.Command) error {
 		_, _ = fmt.Fprintln(out, "Warning: running a dev build -- update check will always report an update available.")
 	}
 
-	channel := resolveUpdateChannel()
+	channel := resolveUpdateChannel(ctx)
 	if channel == "dev" {
 		_, _ = fmt.Fprintln(out, "Checking for updates (dev channel)...")
 	} else {
@@ -184,10 +184,8 @@ func updateCLI(cmd *cobra.Command) error {
 
 // resolveUpdateChannel reads the update channel from config, defaulting to
 // "stable" if the config cannot be loaded or the channel is empty.
-// Uses resolveDataDir directly since this runs before GlobalOpts is available
-// (called from PersistentPreRunE's sibling in the update command setup).
-func resolveUpdateChannel() string {
-	if state, err := config.Load(resolveDataDir()); err == nil && state.Channel != "" {
+func resolveUpdateChannel(ctx context.Context) string {
+	if state, err := config.Load(GetGlobalOpts(ctx).DataDir); err == nil && state.Channel != "" {
 		return state.Channel
 	}
 	return "stable"
@@ -389,7 +387,7 @@ func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool
 // existing compose instead of regenerating from the template.
 // Returns the persisted state with updated ImageTag and VerifiedDigests.
 func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (config.State, error) {
-	opts := GetGlobalOpts(cmd.Context())
+	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	// Back up existing compose.yml for rollback on failure.

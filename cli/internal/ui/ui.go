@@ -179,17 +179,29 @@ func (u *UI) Step(msg string) {
 }
 
 // Success prints a success status line (green).
+// Suppressed in JSON mode to avoid leaking human text into JSON stdout.
 func (u *UI) Success(msg string) {
+	if u.jsonMode {
+		return
+	}
 	u.printLine(u.success, u.icon(IconSuccess, PlainIconSuccess), msg)
 }
 
 // Warn prints a warning status line (orange).
+// Suppressed in JSON mode to avoid leaking human text into JSON stdout.
 func (u *UI) Warn(msg string) {
+	if u.jsonMode {
+		return
+	}
 	u.printLine(u.warn, u.icon(IconWarning, PlainIconWarning), msg)
 }
 
 // Error prints an error status line (red).
+// Suppressed in JSON mode to avoid leaking human text into JSON stdout.
 func (u *UI) Error(msg string) {
+	if u.jsonMode {
+		return
+	}
 	u.printLine(u.err, u.icon(IconError, PlainIconError), msg)
 }
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 	"testing"
 )
 
@@ -89,11 +90,15 @@ func TestShouldPromptWithYes(t *testing.T) {
 func TestShouldPromptDefault(t *testing.T) {
 	t.Parallel()
 	opts := &GlobalOpts{}
-	// In CI/test environments, stdin is a pipe (non-TTY), so ShouldPrompt
-	// must return false. If this test ever runs with a real TTY stdin
-	// (e.g. manual `go test`), the result would be true -- both are valid.
+
+	// Detect actual stdin state to make the assertion deterministic.
+	stdinIsTTY := false
+	if fi, err := os.Stdin.Stat(); err == nil {
+		stdinIsTTY = fi.Mode()&os.ModeCharDevice != 0
+	}
+
 	got := opts.ShouldPrompt()
-	if got {
-		t.Log("ShouldPrompt() returned true -- stdin appears to be a TTY (expected in interactive test runs)")
+	if got != stdinIsTTY {
+		t.Errorf("ShouldPrompt() = %v, want %v (stdin TTY = %v)", got, stdinIsTTY, stdinIsTTY)
 	}
 }

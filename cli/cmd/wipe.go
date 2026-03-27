@@ -178,6 +178,9 @@ func (wc *wipeContext) runForm(form *huh.Form) error {
 
 // confirmWipe prompts for final destructive-action confirmation.
 func (wc *wipeContext) confirmWipe() (bool, error) {
+	if !wc.shouldPrompt() {
+		return true, nil // --yes: auto-confirm wipe
+	}
 	var confirmed bool
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -317,9 +320,18 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 	return true, nil
 }
 
+// shouldPrompt reports whether interactive prompts should be shown.
+// Returns false when --yes is active, allowing non-interactive automation.
+func (wc *wipeContext) shouldPrompt() bool {
+	return GetGlobalOpts(wc.ctx).ShouldPrompt()
+}
+
 // promptStartForBackup asks whether to start containers so a backup
 // can be created.
 func (wc *wipeContext) promptStartForBackup() (bool, error) {
+	if !wc.shouldPrompt() {
+		return true, nil // default: yes, start for backup
+	}
 	startOK := true
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -340,6 +352,9 @@ func (wc *wipeContext) promptStartForBackup() (bool, error) {
 
 // promptForBackup asks whether the user wants a backup before wiping.
 func (wc *wipeContext) promptForBackup() (bool, error) {
+	if !wc.shouldPrompt() {
+		return true, nil // default: yes, create backup
+	}
 	wantBackup := true
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -367,6 +382,10 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 		wc.errOut.Warn("Could not determine home directory; defaulting to temp directory")
 	}
 	defaultPath := filepath.Join(homeDir, fmt.Sprintf("synthorg-backup-%s.tar.gz", time.Now().Format("20060102-150405")))
+
+	if !wc.shouldPrompt() {
+		return filepath.Abs(defaultPath)
+	}
 
 	savePath := defaultPath
 	if err := wc.runForm(huh.NewForm(huh.NewGroup(
@@ -416,6 +435,9 @@ func (wc *wipeContext) checkOverwrite(path string) error {
 	}
 	if info.IsDir() {
 		return fmt.Errorf("save path must be a file, not a directory: %s", path)
+	}
+	if !wc.shouldPrompt() {
+		return nil // --yes: auto-overwrite
 	}
 	var overwrite bool
 	err = wc.runForm(huh.NewForm(huh.NewGroup(
@@ -563,6 +585,9 @@ func tarDirectory(srcDir, dstPath string) error {
 // container start failure). Returns nil to continue, or errWipeCancelled
 // to abort the wipe cleanly.
 func (wc *wipeContext) askContinueWithoutBackup(title string) error {
+	if !wc.shouldPrompt() {
+		return nil // --yes: continue without backup
+	}
 	var proceed bool
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -589,6 +614,9 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 // promptStartAfterWipe asks whether to start containers after the wipe.
 // Ctrl-C is treated as "No" because the wipe has already completed.
 func (wc *wipeContext) promptStartAfterWipe() (bool, error) {
+	if !wc.shouldPrompt() {
+		return true, nil // default: yes, start after wipe
+	}
 	startAfter := true
 	err := wc.runForm(huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
