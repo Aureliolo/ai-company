@@ -12,6 +12,24 @@ interface OrgHealthSectionProps {
   overallHealth: number | null
 }
 
+function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
+  return (
+    <div>
+      <DeptHealthBar
+        name={dept.display_name}
+        health={dept.health_percent}
+        agentCount={dept.agent_count}
+        taskCount={dept.task_count}
+      />
+      {dept.cost_usd !== null && (
+        <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
+          {formatCurrency(dept.cost_usd)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectionProps) {
   return (
     <SectionCard title="Org Health" icon={Building2}>
@@ -31,19 +49,7 @@ export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectio
           <StaggerGroup className="space-y-3">
             {departments.map((dept) => (
               <StaggerItem key={dept.name}>
-                <div>
-                  <DeptHealthBar
-                    name={dept.display_name}
-                    health={dept.health_percent}
-                    agentCount={dept.agent_count}
-                    taskCount={dept.task_count}
-                  />
-                  {dept.cost_usd !== null && (
-                    <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
-                      {formatCurrency(dept.cost_usd)}
-                    </span>
-                  )}
-                </div>
+                <DepartmentRow dept={dept} />
               </StaggerItem>
             ))}
           </StaggerGroup>

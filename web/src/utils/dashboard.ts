@@ -41,10 +41,9 @@ const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
 
 export function computeMetricCards(
   overview: OverviewMetrics,
-  budget: BudgetConfig,
+  budget: BudgetConfig | null,
 ): DashboardMetricCardData[] {
   const spendTrend = computeSpendTrend(overview.cost_7d_trend)
-  const costCurrent = Math.min(overview.total_cost_usd, budget.total_monthly)
 
   return [
     {
@@ -65,7 +64,9 @@ export function computeMetricCards(
           ? overview.cost_7d_trend.map((p) => p.value)
           : undefined,
       change: spendTrend,
-      progress: { current: costCurrent, total: budget.total_monthly },
+      progress: budget
+        ? { current: Math.min(overview.total_cost_usd, budget.total_monthly), total: budget.total_monthly }
+        : undefined,
       subText: `${Math.round(overview.budget_used_percent)}% of budget`,
     },
     {

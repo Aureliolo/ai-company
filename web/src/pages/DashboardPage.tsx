@@ -27,8 +27,7 @@ export default function DashboardPage() {
     return <DashboardSkeleton />
   }
 
-  const metricCards =
-    overview && budgetConfig ? computeMetricCards(overview, budgetConfig) : []
+  const metricCards = overview ? computeMetricCards(overview, budgetConfig) : []
 
   return (
     <div className="space-y-6">
