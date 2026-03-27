@@ -178,8 +178,8 @@ export function ApprovalDetailDrawer({
         aria-label={approval ? `Approval detail: ${approval.title}` : 'Approval detail'}
       >
         {showLoadingState && !detailError && (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <div className="flex flex-1 items-center justify-center" role="status" aria-label="Loading approval">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
           </div>
         )}
 

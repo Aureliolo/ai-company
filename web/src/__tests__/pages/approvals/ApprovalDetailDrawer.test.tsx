@@ -96,10 +96,7 @@ describe('ApprovalDetailDrawer', () => {
         {...defaultHandlers}
       />,
     )
-    const dialog = screen.getByRole('dialog')
-    // The Loader2 spinner has an animate-spin class
-    const spinner = dialog.querySelector('.animate-spin')
-    expect(spinner).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Loading approval' })).toBeInTheDocument()
   })
 
   it('shows error state when error prop is provided', () => {
