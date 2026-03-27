@@ -197,6 +197,7 @@ export function buildOrgTree(
 
 // ── Helper functions ────────────────────────────────────────
 
+/** Return the highest-seniority agent. Ties are broken by array order (first wins). */
 function findHighestSeniority(agents: readonly AgentConfig[]): AgentConfig | null {
   if (agents.length === 0) return null
   return agents.reduce((best, curr) =>
@@ -204,6 +205,7 @@ function findHighestSeniority(agents: readonly AgentConfig[]): AgentConfig | nul
   )
 }
 
+/** Identify the CEO. Ties at each priority level are broken by array order (first wins). */
 function findCeo(agents: readonly AgentConfig[]): AgentConfig | null {
   // Prefer c_suite in executive department
   const execCSuite = agents.filter(

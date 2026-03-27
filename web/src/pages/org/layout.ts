@@ -33,7 +33,12 @@ export function applyDagreLayout(
   const leafNodes = nodes.filter((n) => n.type !== 'department')
 
   if (leafNodes.length === 0) {
-    return nodes.map((n) => ({ ...n, position: { x: 0, y: 0 } }))
+    // No agent nodes -- place department groups on a grid
+    return nodes.map((n, i) => {
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      return { ...n, position: { x: col * 240, y: row * 140 }, style: { ...n.style, width: 200, height: 100 } }
+    })
   }
 
   // Build dagre graph from leaf nodes only
