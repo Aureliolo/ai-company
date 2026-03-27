@@ -40,7 +40,8 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {

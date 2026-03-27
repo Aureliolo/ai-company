@@ -75,7 +75,8 @@ func init() {
 
 func runConfigShow(cmd *cobra.Command, _ []string) error {
 	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	safeDir, err := config.SecurePath(dir)
 	if err != nil {
@@ -86,7 +87,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(statePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			out.Warn("Not initialized -- no config found at " + statePath)
-			out.Hint("Run 'synthorg init' to set up")
+			out.HintNextStep("Run 'synthorg init' to set up")
 			return nil
 		}
 		return fmt.Errorf("checking config file: %w", err)
@@ -174,7 +175,8 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 func runConfigSet(cmd *cobra.Command, args []string) error {
 	key, value := args[0], args[1]
 	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	state, err := config.Load(dir)
 	if err != nil {

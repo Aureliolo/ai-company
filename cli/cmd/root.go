@@ -8,15 +8,21 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
+// Flag variables for persistent flags.
 var (
-	dataDir    string
-	skipVerify bool
+	flagDataDir    string
+	flagSkipVerify bool
+	flagQuiet      bool
+	flagVerbose    int
+	flagNoColor    bool
+	flagPlain      bool
+	flagJSON       bool
+	flagYes        bool
 )
 
 var rootCmd = &cobra.Command{
@@ -28,26 +34,81 @@ Run 'synthorg init' to set up a new installation, then 'synthorg start'
 to launch the backend and web dashboard containers.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		return setupGlobalOpts(cmd)
+	},
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory (default: platform-appropriate)")
-	rootCmd.PersistentFlags().BoolVar(&skipVerify, "skip-verify", false,
+	pf := rootCmd.PersistentFlags()
+	pf.StringVar(&flagDataDir, "data-dir", "", "data directory (default: platform-appropriate)")
+	pf.BoolVar(&flagSkipVerify, "skip-verify", false,
 		"skip container image signature and provenance verification (NOT RECOMMENDED)")
+	pf.BoolVarP(&flagQuiet, "quiet", "q", false, "suppress non-essential output (errors only)")
+	pf.CountVarP(&flagVerbose, "verbose", "v", "increase verbosity (-v=verbose, -vv=trace)")
+	pf.BoolVar(&flagNoColor, "no-color", false, "disable ANSI color output")
+	pf.BoolVar(&flagPlain, "plain", false, "ASCII-only output (no Unicode, no spinners, no box drawing)")
+	pf.BoolVar(&flagJSON, "json", false, "output machine-readable JSON")
+	pf.BoolVarP(&flagYes, "yes", "y", false, "assume yes for all prompts (non-interactive mode)")
 
-	// Allow SYNTHORG_SKIP_VERIFY env var as fallback for CI/air-gapped environments.
-	if v := os.Getenv("SYNTHORG_SKIP_VERIFY"); v != "" {
-		switch strings.ToLower(v) {
-		case "1", "true", "yes":
-			skipVerify = true
-		}
+	// Allow SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars as fallback.
+	if envBool(EnvNoVerify) || envBool(EnvSkipVerify) {
+		flagSkipVerify = true
 	}
 }
 
-// resolveDataDir returns the effective data directory, using the flag value or
-// the platform default. Symlinks are resolved to prevent traversal issues.
+// setupGlobalOpts resolves the effective configuration from flags, env vars,
+// and config file, then stores GlobalOpts in the command context.
+func setupGlobalOpts(cmd *cobra.Command) error {
+	// Validate mutual exclusivity.
+	if flagQuiet && flagVerbose > 0 {
+		return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+	}
+	if flagPlain && flagJSON {
+		return fmt.Errorf("--plain and --json are mutually exclusive")
+	}
+
+	// Resolve --no-color from env if flag not explicitly set.
+	noColor := flagNoColor
+	if !cmd.Flags().Changed("no-color") && noColorFromEnv() {
+		noColor = true
+	}
+
+	// Resolve --quiet from env if flag not explicitly set.
+	quiet := flagQuiet
+	if !cmd.Flags().Changed("quiet") && envBool("SYNTHORG_QUIET") {
+		quiet = true
+	}
+
+	// Resolve --yes from env if flag not explicitly set.
+	yes := flagYes
+	if !cmd.Flags().Changed("yes") && envBool("SYNTHORG_YES") {
+		yes = true
+	}
+
+	opts := &GlobalOpts{
+		DataDir:    resolveDataDir(),
+		SkipVerify: flagSkipVerify,
+		Quiet:      quiet,
+		Verbose:    flagVerbose,
+		NoColor:    noColor,
+		Plain:      flagPlain,
+		JSON:       flagJSON,
+		Yes:        yes,
+		Hints:      "auto", // default; will be overridden by config in PR 2
+	}
+
+	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
+	return nil
+}
+
+// resolveDataDir returns the effective data directory, using the flag value,
+// env var, or the platform default. Symlinks are resolved to prevent traversal.
 func resolveDataDir() string {
-	dir := dataDir
+	dir := flagDataDir
+	if dir == "" {
+		dir = envString(EnvDataDir)
+	}
 	if dir == "" {
 		dir = config.DataDir()
 	}

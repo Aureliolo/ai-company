@@ -36,8 +36,9 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 	ctx := cmd.Context()
 	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
-	errUI := ui.NewUI(cmd.ErrOrStderr())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	state, err := config.Load(dir)
 	if err != nil {
@@ -238,7 +239,8 @@ func rejectUnsafeDir(dir string) error {
 // removeDataDir removes the data directory. On Windows, if the running
 // binary lives inside the directory, it removes everything except the binary.
 func removeDataDir(cmd *cobra.Command, dir string) error {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	execPath, execErr := os.Executable()
 	if execErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
@@ -299,10 +301,11 @@ func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string) error {
 }
 
 func removeUnixBinary(cmd *cobra.Command, execPath string) error {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	if err := os.Remove(execPath); err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-		out.Hint(fmt.Sprintf("Manually remove: %s", execPath))
+		out.HintNextStep(fmt.Sprintf("Manually remove: %s", execPath))
 	} else {
 		out.Success("CLI binary removed")
 	}
@@ -314,7 +317,8 @@ func removeUnixBinary(cmd *cobra.Command, execPath string) error {
 // and the .bat file itself. Uses a temp .bat instead of inline cmd /c
 // because goto/labels don't work in single-line cmd /c commands.
 func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
 
@@ -371,10 +375,11 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 }
 
 func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) error {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Warn(fmt.Sprintf("Could not schedule automatic cleanup: %v", cause))
 	escaped := strings.ReplaceAll(execPath, "'", "''")
-	out.Hint(fmt.Sprintf("To finish cleanup after exit, run: powershell -Command \"Remove-Item -LiteralPath '%s'\"", escaped))
+	out.HintNextStep(fmt.Sprintf("To finish cleanup after exit, run: powershell -Command \"Remove-Item -LiteralPath '%s'\"", escaped))
 	return nil
 }
 

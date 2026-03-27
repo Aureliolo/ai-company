@@ -34,7 +34,8 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("synthorg init requires an interactive terminal")
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Logo(version.Version)
 
 	answers, err := runSetupForm()
@@ -58,7 +59,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("existing config at %s is unreadable: %w (delete it manually to force a fresh init)", existing, loadErr)
 		}
 		existingSettingsKey = oldState.SettingsKey
-		errOut := ui.NewUI(cmd.ErrOrStderr())
+		errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 		errOut.Warn("Existing config at " + existing + " will be overwritten.")
 		errOut.Warn("A new JWT secret will be generated -- running containers will need a restart.")
 		if existingSettingsKey == "" {
@@ -95,7 +96,7 @@ func printInitSuccess(out *ui.UI, dataDir string) {
 	out.KeyValue("Compose file", filepath.Join(dataDir, "compose.yml"))
 	out.KeyValue("Config", config.StatePath(dataDir))
 	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
-	out.Hint("Run 'synthorg start' to launch.")
+	out.HintNextStep("Run 'synthorg start' to launch.")
 }
 
 // setupAnswers holds raw form input before validation.

@@ -53,8 +53,9 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("checking compose.yml: %w", err)
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	out.Logo(version.Version)
 
@@ -106,7 +107,7 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
 		sp.Error("Health check failed")
-		errOut.Hint("Run 'synthorg doctor' for diagnostics.")
+		errOut.HintError("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 	sp.Success("Backend healthy")
@@ -157,7 +158,7 @@ func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, sta
 // verifyAndPinImages verifies image signatures (unless --skip-verify) and
 // pins the verified digests in the compose file and config.
 func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
-	if skipVerify {
+	if flagSkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		return nil
 	}
@@ -175,7 +176,7 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 	if err != nil {
 		sp.Error("Image verification failed")
 		if isTransportError(err) {
-			errOut.Hint("Use --skip-verify for air-gapped environments")
+			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 		return fmt.Errorf("image verification failed: %w", err)
 	}

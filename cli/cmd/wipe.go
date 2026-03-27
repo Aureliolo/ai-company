@@ -88,8 +88,9 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
@@ -125,7 +126,7 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return err
 	}
 	if !confirmed {
-		wc.out.Hint("Wipe cancelled.")
+		wc.out.HintGuidance("Wipe cancelled.")
 		return nil
 	}
 
@@ -157,13 +158,13 @@ func (wc *wipeContext) confirmAndWipe() error {
 
 	if startAfter {
 		setupURL := fmt.Sprintf("http://localhost:%d/setup", wc.state.WebPort)
-		wc.out.Hint(fmt.Sprintf("Opening %s", setupURL))
+		wc.out.HintNextStep(fmt.Sprintf("Opening %s", setupURL))
 		if err := openBrowser(wc.ctx, setupURL); err != nil {
 			wc.errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
-			wc.errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
+			wc.errOut.HintNextStep(fmt.Sprintf("Open %s manually in your browser.", setupURL))
 		}
 	} else {
-		wc.out.Hint("Run 'synthorg start' when you're ready to set up again.")
+		wc.out.HintNextStep("Run 'synthorg start' when you're ready to set up again.")
 	}
 
 	return nil
@@ -331,7 +332,7 @@ func (wc *wipeContext) promptStartForBackup() (bool, error) {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Wipe cancelled.")
+			wc.out.HintGuidance("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
 		return false, fmt.Errorf("start prompt: %w", err)
@@ -352,7 +353,7 @@ func (wc *wipeContext) promptForBackup() (bool, error) {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Wipe cancelled.")
+			wc.out.HintGuidance("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
 		return false, fmt.Errorf("backup prompt: %w", err)
@@ -377,7 +378,7 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 			Value(&savePath),
 	))); err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Wipe cancelled.")
+			wc.out.HintGuidance("Wipe cancelled.")
 			return "", errWipeCancelled
 		}
 		return "", fmt.Errorf("save path prompt: %w", err)
@@ -428,13 +429,13 @@ func (wc *wipeContext) checkOverwrite(path string) error {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Overwrite declined -- wipe cancelled.")
+			wc.out.HintGuidance("Overwrite declined -- wipe cancelled.")
 			return errWipeCancelled
 		}
 		return fmt.Errorf("overwrite prompt: %w", err)
 	}
 	if !overwrite {
-		wc.out.Hint("Overwrite declined -- wipe cancelled.")
+		wc.out.HintGuidance("Overwrite declined -- wipe cancelled.")
 		return errWipeCancelled
 	}
 	return nil
@@ -455,7 +456,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	if err := copyBackupFromContainer(wc.ctx, wc.info, wc.safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
 		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
-		wc.errOut.Hint("The backup exists in the container but will be destroyed by the wipe.")
+		wc.errOut.HintError("The backup exists in the container but will be destroyed by the wipe.")
 		return wc.askContinueWithoutBackup(
 			"Backup was created but could not be copied locally. Continue with wipe anyway?",
 		)
@@ -575,13 +576,13 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.Hint("Wipe cancelled.")
+			wc.out.HintGuidance("Wipe cancelled.")
 			return errWipeCancelled
 		}
 		return fmt.Errorf("continue prompt: %w", err)
 	}
 	if !proceed {
-		wc.out.Hint("Wipe cancelled.")
+		wc.out.HintGuidance("Wipe cancelled.")
 		return errWipeCancelled
 	}
 	return nil

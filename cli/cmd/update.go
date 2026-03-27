@@ -193,26 +193,7 @@ func resolveUpdateChannel() string {
 	return "stable"
 }
 
-// ChildExitError carries the exit code from a re-exec'd child process.
-// The program entrypoint inspects this via ChildExitCode to call os.Exit
-// with the child's code instead of printing a generic error message.
-type ChildExitError struct {
-	Code int
-}
-
-func (e *ChildExitError) Error() string {
-	return fmt.Sprintf("re-launched CLI exited with code %d", e.Code)
-}
-
-// ChildExitCode extracts the exit code from err if it is a ChildExitError.
-// Returns (code, true) if found, (0, false) otherwise.
-func ChildExitCode(err error) (int, bool) {
-	var ce *ChildExitError
-	if errors.As(err, &ce) {
-		return ce.Code, true
-	}
-	return 0, false
-}
+// ChildExitError and ChildExitCode are defined in exitcodes.go.
 
 // reexecUpdate spawns the new binary with the same arguments so the rest
 // of the update (compose refresh, image pull) uses the new embedded template.
@@ -242,10 +223,10 @@ func reexecUpdate(cmd *cobra.Command) error {
 	// Reconstruct args from known flags instead of forwarding os.Args
 	// to avoid silently propagating unexpected flags.
 	reArgs := []string{"update", "--skip-cli-update"}
-	if dataDir != "" {
-		reArgs = append(reArgs, "--data-dir", dataDir)
+	if flagDataDir != "" {
+		reArgs = append(reArgs, "--data-dir", flagDataDir)
 	}
-	if skipVerify {
+	if flagSkipVerify {
 		reArgs = append(reArgs, "--skip-verify")
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --skip-verify is being carried forward to the re-launched CLI.")
 	}
@@ -389,7 +370,8 @@ func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
 // existing compose instead of regenerating from the template.
 // Returns the persisted state with updated ImageTag and VerifiedDigests.
 func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (config.State, error) {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
@@ -410,7 +392,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		}
 	}
 
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Verify + write compose atomically: compose.yml is only updated after
 	// verification succeeds (or when --skip-verify explicitly skips it).
@@ -444,7 +426,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	updatedState := state
 	updatedState.ImageTag = tag
 
-	if skipVerify {
+	if flagSkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		if err := writeOrPatchCompose(updatedState, nil, safeDir, preserveCompose); err != nil {
 			return nil, err
@@ -463,7 +445,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	if err != nil {
 		sp.Error("Image verification failed")
 		if isTransportError(err) {
-			errOut.Hint("Use --skip-verify for air-gapped environments")
+			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}

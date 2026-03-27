@@ -36,7 +36,8 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
@@ -62,7 +63,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	// Hint about auto-cleanup when images were removed and flag is not enabled.
 	if removedAny && !state.AutoCleanup {
 		out.Blank()
-		out.Hint("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
+		out.HintTip("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
 	}
 	return nil
 }
@@ -88,7 +89,7 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 // Returns (true, nil) when at least one image was removed.
 func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
 	if !isInteractive() {
-		out.Hint("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
+		out.HintGuidance("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
 
@@ -134,7 +135,7 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
 	if skipped := len(old) - removed; skipped > 0 {
-		out.Hint(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
+		out.HintError(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
 	}
 
 	return removed > 0, nil

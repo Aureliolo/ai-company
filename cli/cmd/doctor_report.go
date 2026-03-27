@@ -28,7 +28,8 @@ func init() {
 func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	state, err := config.Load(dir)
 	if err != nil {
@@ -58,8 +59,8 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Bug Report")
-	out.Hint("1. Open the URL below in your browser")
-	out.Hint("2. Attach the diagnostic file to the issue")
+	out.HintNextStep("1. Open the URL below in your browser")
+	out.HintNextStep("2. Attach the diagnostic file to the issue")
 	_, _ = fmt.Fprintln(out.Writer())
 	_, _ = fmt.Fprintln(out.Writer(), issueURL)
 

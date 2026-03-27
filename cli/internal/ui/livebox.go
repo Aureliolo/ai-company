@@ -18,6 +18,7 @@ type liveBoxLine struct {
 // LiveBox renders a bordered box whose content lines update in place.
 // Each line shows an animated spinner until marked finished. On non-TTY
 // writers, each finish prints a plain status line instead.
+// In quiet mode, no box is rendered; only finish lines print.
 type LiveBox struct {
 	ui         *UI
 	title      string
@@ -54,8 +55,12 @@ func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
 	// Compute inner width from the widest possible line content.
 	// Format: "  <label>  <status>" -- status is at most a few chars.
 	maxContentW := 0
+	icon := IconSuccess
+	if u.plain {
+		icon = PlainIconSuccess
+	}
 	for _, line := range lines {
-		w := lipgloss.Width(fmt.Sprintf("  %-*s %s", maxLabelW, line.label, IconSuccess))
+		w := lipgloss.Width(fmt.Sprintf("  %-*s %s", maxLabelW, line.label, icon))
 		if w > maxContentW {
 			maxContentW = w
 		}
@@ -72,8 +77,13 @@ func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
 		done:   make(chan struct{}),
 	}
 
-	if !u.isTTY {
-		// Non-TTY: print the title as a step, updates come as plain lines.
+	// Quiet mode: no box at all, just individual finish lines.
+	if u.quiet {
+		return lb
+	}
+
+	if !u.isTTY || u.plain {
+		// Non-TTY or plain: print the title as a step, updates come as plain lines.
 		u.Step(lb.title)
 		return lb
 	}
@@ -104,10 +114,13 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 	lb.lines[index].status = stripControlStrict(status)
 	lb.lines[index].finished = true
 
-	if !lb.ui.isTTY {
-		// Non-TTY: print a status line immediately.
-		// Compare the stored (already-stripped) value, not the raw input.
-		if lb.lines[index].status == IconError {
+	if !lb.ui.isTTY || lb.ui.plain || lb.ui.quiet {
+		// Non-TTY, plain, or quiet: print a status line immediately.
+		errorIcon := IconError
+		if lb.ui.plain {
+			errorIcon = PlainIconError
+		}
+		if lb.lines[index].status == errorIcon {
 			lb.ui.Error(lb.lines[index].label)
 		} else {
 			lb.ui.Success(lb.lines[index].label)
@@ -198,9 +211,9 @@ func (lb *LiveBox) allFinished() bool {
 }
 
 // redraw moves the cursor up over the content + bottom border and redraws them.
-// No-op on non-TTY writers to avoid emitting raw ANSI escape sequences.
+// No-op on non-TTY, plain, or quiet writers.
 func (lb *LiveBox) redraw(contentLines []string) {
-	if !lb.ui.isTTY {
+	if !lb.ui.isTTY || lb.ui.plain || lb.ui.quiet {
 		return
 	}
 	moveUp := len(lb.lines) + 1 // content lines + bottom border
