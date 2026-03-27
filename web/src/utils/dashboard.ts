@@ -2,6 +2,7 @@ import type {
   ActivityItem,
   BudgetConfig,
   DepartmentHealth,
+  DepartmentName,
   OverviewMetrics,
   TrendDataPoint,
   WsEvent,
@@ -11,6 +12,11 @@ import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
+
+const VALID_DEPARTMENT_NAMES: ReadonlySet<string> = new Set<DepartmentName>([
+  'executive', 'product', 'design', 'engineering', 'quality_assurance',
+  'data_analytics', 'operations', 'creative_marketing', 'security',
+])
 
 const EVENT_DESCRIPTIONS: Partial<Record<WsEventType, string>> = {
   'task.created': 'created a task',
@@ -109,8 +115,8 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
   const taskId =
     typeof payload.task_id === 'string' ? payload.task_id : null
   const department =
-    typeof payload.department === 'string'
-      ? (payload.department as ActivityItem['department'])
+    typeof payload.department === 'string' && VALID_DEPARTMENT_NAMES.has(payload.department)
+      ? (payload.department as DepartmentName)
       : null
 
   const description =

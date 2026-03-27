@@ -33,7 +33,7 @@ function buildChartData(
   trendData: readonly TrendDataPoint[],
   forecast: ForecastResponse | null,
 ): ChartDataPoint[] {
-  const points: ChartDataPoint[] = trendData.map((p) => ({
+  let points: ChartDataPoint[] = trendData.map((p) => ({
     label: formatDayLabel(p.timestamp),
     actual: p.value,
   }))
@@ -42,14 +42,13 @@ function buildChartData(
     // Bridge: last actual point also gets projected value for continuity
     if (points.length > 0) {
       const last = points[points.length - 1]!
-      points[points.length - 1] = { ...last, projected: last.actual }
+      points = [...points.slice(0, -1), { ...last, projected: last.actual }]
     }
-    for (const fp of forecast.daily_projections) {
-      points.push({
-        label: formatDayLabel(fp.day),
-        projected: fp.projected_spend_usd,
-      })
-    }
+    const forecastPoints: ChartDataPoint[] = forecast.daily_projections.map((fp) => ({
+      label: formatDayLabel(fp.day),
+      projected: fp.projected_spend_usd,
+    }))
+    points = [...points, ...forecastPoints]
   }
 
   return points
@@ -123,7 +122,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        <div className="h-48 w-full">
+        <div className="h-48 w-full" data-testid="budget-burn-chart">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid

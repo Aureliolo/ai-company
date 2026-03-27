@@ -23,13 +23,15 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
           description="Agent actions will appear here in real time"
         />
       ) : (
-        <StaggerGroup className="divide-y divide-border">
-          {visible.map((item) => (
-            <StaggerItem key={item.id}>
-              <ActivityFeedItem activity={item} />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+        <div role="log" aria-live="polite">
+          <StaggerGroup className="divide-y divide-border">
+            {visible.map((item) => (
+              <StaggerItem key={item.id}>
+                <ActivityFeedItem activity={item} />
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </div>
       )}
     </SectionCard>
   )

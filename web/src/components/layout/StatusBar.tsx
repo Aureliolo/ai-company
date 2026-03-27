@@ -7,24 +7,26 @@ import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import type { HealthStatus } from '@/api/types'
 
-type SystemStatus = 'ok' | 'degraded' | 'down'
+type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
 const STATUS_CONFIG: Record<SystemStatus, { color: string; label: string }> = {
+  unknown: { color: 'bg-muted-foreground', label: 'checking...' },
   ok: { color: 'bg-success', label: 'all systems nominal' },
   degraded: { color: 'bg-warning', label: 'system degraded' },
   down: { color: 'bg-danger', label: 'system down' },
 }
 
 export function StatusBar() {
-  const totalAgents = useAnalyticsStore((s) => s.overview?.total_agents ?? 0)
-  const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count ?? 0)
-  const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks ?? 0)
+  const totalAgents = useAnalyticsStore((s) => s.overview?.total_agents)
+  const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count)
+  const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks)
+  const dataLoaded = useAnalyticsStore((s) => s.overview !== null)
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
-  const pendingApprovals = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review ?? 0)
+  const pendingApprovals = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
 
-  const [healthStatus, setHealthStatus] = useState<SystemStatus>('ok')
+  const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
 
   // Trigger overview fetch on mount if data isn't loaded yet
   useEffect(() => {
@@ -75,17 +77,17 @@ export function StatusBar() {
 
       <StatusItem>
         <Dot color="bg-accent" />
-        <span>{totalAgents} agents</span>
+        <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
       </StatusItem>
 
       <StatusItem>
         <Dot color="bg-success" />
-        <span>{activeAgents} active</span>
+        <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
       </StatusItem>
 
       <StatusItem>
         <Dot color="bg-warning" />
-        <span>{totalTasks} tasks</span>
+        <span>{dataLoaded ? `${totalTasks} tasks` : '--'}</span>
       </StatusItem>
 
       <Divider />
@@ -105,7 +107,7 @@ export function StatusBar() {
         </span>
       </StatusItem>
 
-      {pendingApprovals > 0 && (
+      {pendingApprovals != null && pendingApprovals > 0 && (
         <StatusItem>
           <Dot color="bg-danger" />
           <span>{pendingApprovals} pending</span>

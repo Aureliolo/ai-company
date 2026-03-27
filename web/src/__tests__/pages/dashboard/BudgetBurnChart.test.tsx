@@ -35,18 +35,17 @@ describe('BudgetBurnChart', () => {
   })
 
   it('renders chart when data is provided', () => {
-    const { container } = render(
+    render(
       <BudgetBurnChart trendData={SAMPLE_TREND} forecast={SAMPLE_FORECAST} budgetTotal={500} />,
     )
-    // Recharts renders an SVG
-    expect(container.querySelector('svg')).toBeInTheDocument()
+    expect(screen.getByTestId('budget-burn-chart')).toBeInTheDocument()
   })
 
   it('renders without forecast', () => {
-    const { container } = render(
+    render(
       <BudgetBurnChart trendData={SAMPLE_TREND} forecast={null} budgetTotal={500} />,
     )
-    expect(container.querySelector('svg')).toBeInTheDocument()
+    expect(screen.getByTestId('budget-burn-chart')).toBeInTheDocument()
   })
 
   it('renders forecast info when available', () => {

@@ -3,12 +3,14 @@ import { MemoryRouter } from 'react-router'
 import { ActivityFeed } from './ActivityFeed'
 import type { ActivityItem } from '@/api/types'
 
+const FIXED_BASE = new Date('2026-03-26T12:00:00.000Z')
+
 function makeActivities(count: number): ActivityItem[] {
   const eventTypes = ['task.created', 'task.updated', 'agent.status_changed', 'budget.record_added', 'approval.submitted'] as const
   const agents = ['agent-cto', 'agent-eng-lead', 'agent-designer', 'agent-qa', 'agent-devops'] as const
   return Array.from({ length: count }, (_, i) => ({
     id: `activity-${i}`,
-    timestamp: new Date(Date.now() - i * 120_000).toISOString(),
+    timestamp: new Date(FIXED_BASE.getTime() - i * 120_000).toISOString(),
     agent_name: agents[i % agents.length]!,
     action_type: eventTypes[i % eventTypes.length]!,
     description: `Performed action #${i + 1}`,

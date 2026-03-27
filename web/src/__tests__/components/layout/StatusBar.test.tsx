@@ -57,10 +57,9 @@ describe('StatusBar', () => {
 
   it('shows placeholder values when no data loaded', () => {
     render(<StatusBar />)
-    // Should show 0 or -- for agent/task counts
-    expect(screen.getByText('0 agents')).toBeInTheDocument()
-    expect(screen.getByText('0 active')).toBeInTheDocument()
-    expect(screen.getByText('0 tasks')).toBeInTheDocument()
+    // Should show -- placeholders, not zeros
+    const dashes = screen.getAllByText('--')
+    expect(dashes.length).toBeGreaterThanOrEqual(3)
   })
 
   it('shows live values from analytics store', () => {
@@ -82,9 +81,9 @@ describe('StatusBar', () => {
     expect(screen.getByText('42 tasks')).toBeInTheDocument()
   })
 
-  it('renders system status indicator', () => {
+  it('renders unknown system status before first poll', () => {
     render(<StatusBar />)
-    expect(screen.getByText('all systems nominal')).toBeInTheDocument()
+    expect(screen.getByText('checking...')).toBeInTheDocument()
   })
 
   it('shows cost placeholder when no data loaded', () => {

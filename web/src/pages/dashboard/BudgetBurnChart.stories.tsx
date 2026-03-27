@@ -69,6 +69,9 @@ export const Empty: Story = {
 const NEAR_BUDGET_TREND = TREND_DATA.map((p) => ({ ...p, value: p.value * 10 }))
 const NEAR_BUDGET_FORECAST = {
   ...FORECAST,
+  projected_total_usd: FORECAST.projected_total_usd * 10,
+  avg_daily_spend_usd: FORECAST.avg_daily_spend_usd * 10,
+  days_until_exhausted: 4,
   daily_projections: FORECAST.daily_projections.map((p) => ({
     ...p,
     projected_spend_usd: p.projected_spend_usd * 10,
