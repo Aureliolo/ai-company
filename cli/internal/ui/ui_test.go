@@ -500,7 +500,7 @@ func TestPlainModeASCIIIcons(t *testing.T) {
 	}
 
 	// Should NOT contain Unicode icons.
-	for _, icon := range []string{IconSuccess, IconError, IconInProgress, IconHint} {
+	for _, icon := range []string{IconSuccess, IconError, IconInProgress, IconWarning} {
 		if strings.Contains(out, icon) {
 			t.Errorf("plain mode should not contain Unicode icon %q", icon)
 		}
