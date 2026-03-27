@@ -1,0 +1,70 @@
+import { formatLabel } from '@/utils/format'
+import { cn } from '@/lib/utils'
+import type { Task } from '@/api/types'
+
+interface TaskHistoryBarProps {
+  task: Task
+  maxDurationMs: number
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  development: 'bg-accent',
+  design: 'bg-success',
+  research: 'bg-warning',
+  review: 'bg-accent-dim',
+  meeting: 'bg-muted-foreground',
+  admin: 'bg-muted-foreground',
+}
+
+function getBarWidth(task: Task, maxDurationMs: number): number {
+  if (!task.created_at || maxDurationMs <= 0) return 20
+  const end = task.updated_at ?? task.created_at
+  const durationMs = new Date(end).getTime() - new Date(task.created_at).getTime()
+  const pct = Math.max(20, Math.min(100, (durationMs / maxDurationMs) * 100))
+  return pct
+}
+
+function formatDuration(task: Task): string {
+  if (!task.created_at) return '--'
+  const end = task.updated_at ?? task.created_at
+  const durationMs = new Date(end).getTime() - new Date(task.created_at).getTime()
+  const seconds = Math.floor(durationMs / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours}h ${mins}m`
+}
+
+export function TaskHistoryBar({ task, maxDurationMs }: TaskHistoryBarProps) {
+  const isActive = task.status === 'in_progress'
+  const barColor = TYPE_COLORS[task.type] ?? 'bg-accent'
+  const width = getBarWidth(task, maxDurationMs)
+
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-sans text-foreground truncate">{task.title}</span>
+          <span className="text-micro font-mono text-muted-foreground shrink-0">
+            {formatLabel(task.type)}
+          </span>
+        </div>
+        <div className="relative h-2 w-full rounded-full bg-border overflow-hidden">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-[900ms]',
+              barColor,
+              isActive && 'animate-pulse',
+            )}
+            style={{ width: `${width}%` }}
+          />
+        </div>
+      </div>
+      <span className="text-micro font-mono text-muted-foreground shrink-0 w-12 text-right">
+        {formatDuration(task)}
+      </span>
+    </div>
+  )
+}

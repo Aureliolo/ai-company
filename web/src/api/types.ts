@@ -43,6 +43,14 @@ export type SeniorityLevel =
 
 export type AgentStatus = 'active' | 'onboarding' | 'on_leave' | 'terminated'
 
+export const SENIORITY_LEVEL_VALUES = [
+  'junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite',
+] as const satisfies readonly SeniorityLevel[]
+
+export const AGENT_STATUS_VALUES = [
+  'active', 'onboarding', 'on_leave', 'terminated',
+] as const satisfies readonly AgentStatus[]
+
 export type AutonomyLevel = 'full' | 'semi' | 'supervised' | 'locked'
 
 export type HumanRole =
@@ -369,6 +377,73 @@ export interface AgentConfig {
   tools: ToolPermissions
   autonomy_level: AutonomyLevel | null
   hiring_date: string
+}
+
+// ── Agent Performance ────────────────────────────────────────
+
+export type TrendDirection = 'improving' | 'stable' | 'declining' | 'insufficient_data'
+
+export const TREND_DIRECTION_VALUES = [
+  'improving', 'stable', 'declining', 'insufficient_data',
+] as const satisfies readonly TrendDirection[]
+
+export interface WindowMetrics {
+  window_size: string
+  data_point_count: number
+  tasks_completed: number
+  tasks_failed: number
+  avg_quality_score: number | null
+  avg_cost_per_task: number | null
+  avg_completion_time_seconds: number | null
+  avg_tokens_per_task: number | null
+  success_rate: number | null
+  collaboration_score: number | null
+}
+
+export interface TrendResult {
+  metric_name: string
+  window_size: string
+  direction: TrendDirection
+  slope: number
+  data_point_count: number
+}
+
+export interface AgentPerformanceSummary {
+  agent_name: string
+  tasks_completed_total: number
+  tasks_completed_7d: number
+  tasks_completed_30d: number
+  avg_completion_time_seconds: number | null
+  success_rate_percent: number | null
+  cost_per_task_usd: number | null
+  quality_score: number | null
+  collaboration_score: number | null
+  trend_direction: TrendDirection
+  readonly windows: readonly WindowMetrics[]
+  readonly trends: readonly TrendResult[]
+}
+
+// ── Agent Activity & Career ─────────────────────────────────
+
+export interface AgentActivityEvent {
+  event_type: string
+  timestamp: string
+  description: string
+  related_ids: Record<string, string>
+}
+
+export type CareerEventType = 'hired' | 'fired' | 'promoted' | 'demoted' | 'onboarded'
+
+export const CAREER_EVENT_TYPE_VALUES = [
+  'hired', 'fired', 'promoted', 'demoted', 'onboarded',
+] as const satisfies readonly CareerEventType[]
+
+export interface CareerEvent {
+  event_type: CareerEventType
+  timestamp: string
+  description: string
+  initiated_by: string
+  metadata: Record<string, string>
 }
 
 // ── Budget ───────────────────────────────────────────────────
