@@ -6,7 +6,7 @@ export function WizardSkeleton() {
       <div className="w-full max-w-4xl space-y-8 px-4">
         {/* Progress bar skeleton */}
         <div className="flex items-center justify-center gap-4">
-          {Array.from({ length: 6 }, (_, i) => (
+          {Array.from({ length: 7 }, (_, i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton className="size-8 rounded-full" />
               <Skeleton className="h-3 w-12" />

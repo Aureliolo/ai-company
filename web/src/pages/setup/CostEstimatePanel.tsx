@@ -18,10 +18,26 @@ export interface CostEstimatePanelProps {
   onBudgetCapChange: (cap: number | null) => void
 }
 
+interface AgentRowData {
+  readonly name: string
+  readonly modelId: string
+  readonly monthlyCost: number
+  readonly agentIndex: number
+}
+
 interface DepartmentGroup {
   readonly department: string
-  readonly agents: readonly { name: string; modelId: string; monthlyCost: number }[]
+  readonly agents: readonly AgentRowData[]
   readonly subtotal: number
+}
+
+function AgentRow({ agent, currency }: { agent: AgentRowData; currency: string }) {
+  return (
+    <li className="flex items-center justify-between text-compact text-muted-foreground">
+      <span>{agent.name} <span className="text-muted-foreground/60">({agent.modelId})</span></span>
+      <span>{formatCurrency(agent.monthlyCost, currency)}</span>
+    </li>
+  )
 }
 
 export function CostEstimatePanel({
@@ -40,14 +56,14 @@ export function CostEstimatePanel({
     if (!estimate || estimate.perAgentBreakdown.length === 0) return []
     if (!agents || agents.length === 0) return []
 
-    const groups = new Map<string, { name: string; modelId: string; monthlyCost: number }[]>()
+    const groups = new Map<string, AgentRowData[]>()
 
     for (const entry of estimate.perAgentBreakdown) {
       const agent = agents[entry.agentIndex]
       const dept = agent?.department ?? 'Unassigned'
       const name = agent?.name ?? `Agent ${entry.agentIndex}`
       const existing = groups.get(dept)
-      const item = { name, modelId: entry.modelId, monthlyCost: entry.monthlyCost }
+      const item: AgentRowData = { name, modelId: entry.modelId, monthlyCost: entry.monthlyCost, agentIndex: entry.agentIndex }
       if (existing) {
         existing.push(item)
       } else {
@@ -105,10 +121,7 @@ export function CostEstimatePanel({
                   </div>
                   <ul className="space-y-0.5 pl-3">
                     {group.agents.map((agent) => (
-                      <li key={agent.name} className="flex items-center justify-between text-compact text-muted-foreground">
-                        <span>{agent.name} <span className="text-muted-foreground/60">({agent.modelId})</span></span>
-                        <span>{formatCurrency(agent.monthlyCost, currency)}</span>
-                      </li>
+                      <AgentRow key={agent.agentIndex} agent={agent} currency={currency} />
                     ))}
                   </ul>
                 </div>

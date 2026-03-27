@@ -25,6 +25,7 @@ const panelVariants = {
 
 export function Drawer({ open, onClose, title, children, className }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<Element | null>(null)
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -39,9 +40,10 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, handleKeyDown])
 
-  // Move initial focus to panel and trap Tab cycling within it
+  // Save opener, move initial focus to panel, and trap Tab cycling within it
   useEffect(() => {
     if (!open || !panelRef.current) return
+    openerRef.current = document.activeElement
     panelRef.current.focus()
 
     const panel = panelRef.current
@@ -62,7 +64,14 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
       }
     }
     document.addEventListener('keydown', handleTab)
-    return () => document.removeEventListener('keydown', handleTab)
+    return () => {
+      document.removeEventListener('keydown', handleTab)
+      // Restore focus to the element that opened the drawer
+      if (openerRef.current instanceof HTMLElement) {
+        openerRef.current.focus()
+      }
+      openerRef.current = null
+    }
   }, [open])
 
   return createPortal(

@@ -495,6 +495,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     } catch (err) {
       console.error('setup-wizard: completeSetup failed:', err)
       set({ completionError: getErrorMessage(err), completing: false })
+      throw err
     }
   },
 

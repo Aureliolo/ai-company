@@ -16,8 +16,11 @@ export function ThemePreview({ settings }: ThemePreviewProps) {
   return (
     <div
       className="space-y-4 rounded-lg border border-border bg-background p-4"
+      data-palette={settings.palette}
       data-density={settings.density}
       data-animation={settings.animation}
+      data-sidebar={settings.sidebar}
+      data-typography={settings.typography}
     >
       {/* Metric cards */}
       <div className="grid grid-cols-2 gap-3">

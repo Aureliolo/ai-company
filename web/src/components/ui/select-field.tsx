@@ -48,6 +48,8 @@ export function SelectField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        required={required}
+        aria-required={required}
         aria-invalid={hasError}
         aria-errormessage={hasError ? errorId : undefined}
         aria-describedby={hint && !hasError ? hintId : undefined}

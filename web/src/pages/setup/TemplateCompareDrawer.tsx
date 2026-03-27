@@ -86,6 +86,47 @@ function valuesAreEqual(templates: readonly TemplateInfoResponse[], getValue: (t
   })
 }
 
+interface ComparisonRowProps {
+  row: ComparisonRow
+  templates: readonly TemplateInfoResponse[]
+}
+
+function ComparisonRowEntry({ row, templates }: ComparisonRowProps) {
+  const isDifferent = !valuesAreEqual(templates, row.getValue)
+  return (
+    <div>
+      <h4 className="mb-1 text-compact uppercase tracking-wide text-muted-foreground">
+        {row.label}
+      </h4>
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
+        {templates.map((t) => {
+          const value = row.getValue(t)
+          const display = Array.isArray(value) ? value.join(', ') : String(value)
+          return (
+            <div
+              key={t.name}
+              className={cn(
+                'rounded px-2 py-1 text-xs text-foreground',
+                isDifferent && 'bg-accent/5',
+              )}
+            >
+              {row.label === 'Tags' && Array.isArray(value) ? (
+                <div className="flex flex-wrap gap-1">
+                  {value.map((tag: string) => (
+                    <StatPill key={tag} label="" value={tag} className="text-compact" />
+                  ))}
+                </div>
+              ) : (
+                display || '--'
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function TemplateCompareDrawer({
   open,
   onClose,
@@ -112,41 +153,9 @@ export function TemplateCompareDrawer({
         </div>
 
         {/* Comparison rows */}
-        {COMPARISON_ROWS.map((row) => {
-          const isDifferent = !valuesAreEqual(templates, row.getValue)
-          return (
-            <div key={row.label}>
-              <h4 className="mb-1 text-compact uppercase tracking-wide text-muted-foreground">
-                {row.label}
-              </h4>
-              <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>
-                {templates.map((t) => {
-                  const value = row.getValue(t)
-                  const display = Array.isArray(value) ? value.join(', ') : String(value)
-                  return (
-                    <div
-                      key={t.name}
-                      className={cn(
-                        'rounded px-2 py-1 text-xs text-foreground',
-                        isDifferent && 'bg-accent/5',
-                      )}
-                    >
-                      {row.label === 'Tags' && Array.isArray(value) ? (
-                        <div className="flex flex-wrap gap-1">
-                          {value.map((tag: string) => (
-                            <StatPill key={tag} label="" value={tag} className="text-compact" />
-                          ))}
-                        </div>
-                      ) : (
-                        display || '--'
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
+        {COMPARISON_ROWS.map((row) => (
+          <ComparisonRowEntry key={row.label} row={row} templates={templates} />
+        ))}
 
         {/* Action buttons */}
         <div className="grid gap-4 border-t border-border pt-4" style={{ gridTemplateColumns: `repeat(${templates.length}, 1fr)` }}>

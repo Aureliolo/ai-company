@@ -1,12 +1,43 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { StatusBadge } from '@/components/ui/status-badge'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateProvidersStep } from '@/utils/setup-validation'
+import type { ProviderConfig } from '@/api/types'
 import { ProviderProbeResults } from './ProviderProbeResults'
 import { ProviderAddForm } from './ProviderAddForm'
 import { Server } from 'lucide-react'
+
+/** Derive provider status from auth type and credential indicators. */
+function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {
+  if (config.auth_type === 'none') return 'idle'
+  if (config.auth_type === 'api_key') return config.has_api_key ? 'idle' : 'error'
+  if (config.auth_type === 'oauth') return config.has_oauth_credentials ? 'idle' : 'error'
+  if (config.auth_type === 'custom_header') return config.has_custom_header ? 'idle' : 'error'
+  return config.has_api_key ? 'idle' : 'error'
+}
+
+interface ProviderRowProps {
+  name: string
+  config: ProviderConfig
+}
+
+function ProviderRow({ name, config }: ProviderRowProps) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border p-3">
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-foreground">{name}</span>
+        <span className="text-xs text-muted-foreground">{config.driver}</span>
+        <span className="text-xs text-muted-foreground">{config.models.length} models</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <StatusBadge status={getProviderStatus(config)} label />
+      </div>
+    </div>
+  )
+}
 
 export function ProvidersStep() {
   const agents = useSetupWizardStore((s) => s.agents)
@@ -137,19 +168,7 @@ export function ProvidersStep() {
         <SectionCard title="Configured Providers" icon={Server}>
           <div className="space-y-2">
             {providerEntries.map(([name, config]) => (
-              <div key={name} className="flex items-center justify-between rounded-md border border-border p-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-foreground">{name}</span>
-                  <span className="text-xs text-muted-foreground">{config.driver}</span>
-                  <span className="text-xs text-muted-foreground">{config.models.length} models</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge
-                    status={config.has_api_key ? 'idle' : 'error'}
-                    label
-                  />
-                </div>
-              </div>
+              <ProviderRow key={name} name={name} config={config} />
             ))}
           </div>
         </SectionCard>

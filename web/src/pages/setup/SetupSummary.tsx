@@ -5,9 +5,19 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { Avatar } from '@/components/ui/avatar'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { CostEstimate } from '@/utils/cost-estimator'
 import { formatCurrency } from '@/utils/format'
 import { Building2, Users, Server } from 'lucide-react'
+
+/** Derive provider status from auth type and credential indicators. */
+function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {
+  if (config.auth_type === 'none') return 'idle'
+  if (config.auth_type === 'api_key') return config.has_api_key ? 'idle' : 'error'
+  if (config.auth_type === 'oauth') return config.has_oauth_credentials ? 'idle' : 'error'
+  if (config.auth_type === 'custom_header') return config.has_custom_header ? 'idle' : 'error'
+  return config.has_api_key ? 'idle' : 'error'
+}
 
 export interface SetupSummaryProps {
   companyResponse: SetupCompanyResponse
@@ -15,6 +25,7 @@ export interface SetupSummaryProps {
   providers: Readonly<Record<string, ProviderConfig>>
   costEstimate: CostEstimate | null
   currency: string
+  budgetCapEnabled: boolean
   budgetCap: number | null
 }
 
@@ -24,6 +35,7 @@ export function SetupSummary({
   providers,
   costEstimate,
   currency,
+  budgetCapEnabled,
   budgetCap,
 }: SetupSummaryProps) {
   return (
@@ -48,7 +60,7 @@ export function SetupSummary({
             <span className="text-sm text-muted-foreground">Currency:</span>
             <span className="text-sm font-medium text-foreground">{currency}</span>
           </div>
-          {budgetCap !== null && (
+          {budgetCapEnabled && budgetCap !== null && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Budget Cap:</span>
               <span className="text-sm font-medium text-foreground">{formatCurrency(budgetCap, currency)}/mo</span>
@@ -101,7 +113,7 @@ export function SetupSummary({
                 <span className="text-sm font-medium text-foreground">{name}</span>
                 <span className="text-xs text-muted-foreground">{config.models.length} models</span>
               </div>
-              <StatusBadge status={config.has_api_key ? 'idle' : 'error'} label />
+              <StatusBadge status={getProviderStatus(config)} label />
             </div>
           ))}
           {Object.keys(providers).length === 0 && (

@@ -26,7 +26,6 @@ const AGENT_COUNT_DEFAULT = 5
 /** Tier distribution ratios for cost estimation. */
 const TIER_RATIO_LARGE = 0.2
 const TIER_RATIO_MEDIUM = 0.5
-const TIER_RATIO_SMALL_COMPLEMENT = 0.7
 
 export function TemplateStep() {
   const templates = useSetupWizardStore((s) => s.templates)
@@ -95,10 +94,13 @@ export function TemplateStep() {
         : template.tags.includes(TAG_SMALL_TEAM) ? AGENT_COUNT_SMALL_TEAM
         : template.tags.includes(TAG_ENTERPRISE) || template.tags.includes(TAG_FULL_COMPANY) ? AGENT_COUNT_LARGE
         : AGENT_COUNT_DEFAULT
+      const largeCount = Math.max(1, Math.floor(agentEstimate * TIER_RATIO_LARGE))
+      const mediumCount = Math.floor(agentEstimate * TIER_RATIO_MEDIUM)
+      const smallCount = Math.max(0, agentEstimate - largeCount - mediumCount)
       const cost = estimateTemplateCost([
-        { tier: 'large', count: Math.max(1, Math.floor(agentEstimate * TIER_RATIO_LARGE)) },
-        { tier: 'medium', count: Math.floor(agentEstimate * TIER_RATIO_MEDIUM) },
-        { tier: 'small', count: Math.max(0, agentEstimate - Math.floor(agentEstimate * TIER_RATIO_SMALL_COMPLEMENT)) },
+        { tier: 'large', count: largeCount },
+        { tier: 'medium', count: mediumCount },
+        { tier: 'small', count: smallCount },
       ])
       costs.set(template.name, cost)
     }

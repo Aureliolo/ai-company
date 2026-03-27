@@ -33,7 +33,6 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
     } catch (err) {
       console.error('ProviderAddForm: test connection failed:', err)
       setError(getErrorMessage(err))
-      setApiKey('')
     } finally {
       setTesting(false)
     }

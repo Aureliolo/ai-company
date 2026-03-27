@@ -164,7 +164,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
 
               return (
                 <AgentNode
-                  key={agent.name}
+                  key={`${agent.name}-${agentIdx}`}
                   agent={agent}
                   agentX={agentX}
                   agentY={agentY}

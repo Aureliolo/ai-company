@@ -19,6 +19,7 @@ export function CompleteStep() {
   const agents = useSetupWizardStore((s) => s.agents)
   const providers = useSetupWizardStore((s) => s.providers)
   const currency = useSetupWizardStore((s) => s.currency)
+  const budgetCapEnabled = useSetupWizardStore((s) => s.budgetCapEnabled)
   const budgetCap = useSetupWizardStore((s) => s.budgetCap)
   const completing = useSetupWizardStore((s) => s.completing)
   const completionError = useSetupWizardStore((s) => s.completionError)
@@ -80,6 +81,7 @@ export function CompleteStep() {
         providers={providers}
         costEstimate={costEstimate}
         currency={currency}
+        budgetCapEnabled={budgetCapEnabled}
         budgetCap={budgetCap}
       />
 

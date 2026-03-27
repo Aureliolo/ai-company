@@ -6,10 +6,8 @@
  * for available currencies, this should be replaced with an API call.
  */
 
-import type { SelectOption } from '@/components/ui/select-field'
-
 /** ISO 4217 currency codes with display labels, ordered by usage frequency. */
-export const CURRENCY_OPTIONS: readonly SelectOption[] = [
+export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'EUR', label: 'EUR - Euro' },
   { value: 'USD', label: 'USD - US Dollar' },
   { value: 'GBP', label: 'GBP - British Pound' },

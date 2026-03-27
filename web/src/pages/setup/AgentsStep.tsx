@@ -114,7 +114,7 @@ export function AgentsStep() {
       {/* Agent cards */}
       <StaggerGroup className="space-y-3">
         {agents.map((agent, index) => (
-          <StaggerItem key={agent.name}>
+          <StaggerItem key={`agent-${index}`}>
             <SetupAgentCard
               agent={agent}
               index={index}

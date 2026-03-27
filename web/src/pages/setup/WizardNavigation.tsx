@@ -21,7 +21,8 @@ export function WizardNavigation({
   nextLabel,
   loading,
 }: WizardNavigationProps) {
-  const currentIdx = stepOrder.indexOf(currentStep)
+  const rawIdx = stepOrder.indexOf(currentStep)
+  const currentIdx = rawIdx === -1 ? 0 : rawIdx
   const isFirst = currentIdx === 0
   const isLast = currentIdx === stepOrder.length - 1
 
