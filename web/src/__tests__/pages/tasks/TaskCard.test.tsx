@@ -88,4 +88,22 @@ describe('TaskCard', () => {
     render(<TaskCard task={makeTask({ title: 'My task' })} onSelect={() => {}} />)
     expect(screen.getByLabelText('Task: My task')).toBeInTheDocument()
   })
+
+  it('renders cost when cost_usd is set and > 0', () => {
+    render(<TaskCard task={makeTask({ cost_usd: 5.25 })} onSelect={() => {}} />)
+    expect(screen.getByText(/5\.25/)).toBeInTheDocument()
+  })
+
+  it('does not render cost when cost_usd is 0', () => {
+    render(<TaskCard task={makeTask({ cost_usd: 0 })} onSelect={() => {}} />)
+    // Cost element should not be present since cost is 0
+    expect(screen.queryByText(/\$0\.00/)).not.toBeInTheDocument()
+  })
+
+  it('renders deadline when set', () => {
+    const futureDate = new Date(Date.now() + 86400000 * 3).toISOString()
+    render(<TaskCard task={makeTask({ deadline: futureDate })} onSelect={() => {}} />)
+    // Should render some deadline text (relative time)
+    expect(screen.getByTitle(/Deadline/)).toBeInTheDocument()
+  })
 })

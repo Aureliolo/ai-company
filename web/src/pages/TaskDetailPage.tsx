@@ -10,7 +10,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
-import { getTaskStatusLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
+import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import type { Priority, TaskStatus } from '@/api/types'
@@ -55,29 +55,37 @@ export default function TaskDetailPage() {
 
   const handleDelete = useCallback(async () => {
     if (!task) return
-    await useTasksStore.getState().deleteTask(task.id)
-    setDeleteOpen(false)
-    navigate(ROUTES.TASKS)
+    try {
+      await useTasksStore.getState().deleteTask(task.id)
+      setDeleteOpen(false)
+      navigate(ROUTES.TASKS)
+    } catch {
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
+    }
   }, [task, navigate])
 
   const handleCancel = useCallback(async () => {
     if (!task) return
-    await useTasksStore.getState().cancelTask(task.id, { reason: 'Cancelled by user' })
-    setCancelOpen(false)
+    try {
+      await useTasksStore.getState().cancelTask(task.id, { reason: 'Cancelled by user' })
+      setCancelOpen(false)
+    } catch {
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
+    }
   }, [task])
+
+  if (error && !task) {
+    return (
+      <div className="py-20 text-center text-sm text-danger">
+        {error}
+      </div>
+    )
+  }
 
   if (loadingDetail || !task) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="size-8 animate-spin text-text-muted" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="py-20 text-center text-sm text-danger">
-        {error}
       </div>
     )
   }
@@ -156,7 +164,7 @@ export default function TaskDetailPage() {
 
           {/* Metadata */}
           <div className="grid grid-cols-3 gap-4 rounded-lg border border-border p-4 text-sm">
-            <div><span className="block text-[10px] text-text-muted">Type</span><span className="capitalize text-foreground">{task.type.replace('_', ' ')}</span></div>
+            <div><span className="block text-[10px] text-text-muted">Type</span><span className="text-foreground">{getTaskTypeLabel(task.type)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Complexity</span><span className="capitalize text-foreground">{task.estimated_complexity}</span></div>
             <div><span className="block text-[10px] text-text-muted">Project</span><span className="text-foreground">{task.project}</span></div>
             <div><span className="block text-[10px] text-text-muted">Created</span><span className="font-mono text-xs text-foreground">{formatDate(task.created_at)}</span></div>

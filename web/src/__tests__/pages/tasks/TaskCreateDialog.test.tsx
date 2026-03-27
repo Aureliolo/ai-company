@@ -66,4 +66,19 @@ describe('TaskCreateDialog', () => {
     await user.click(screen.getByText('Create Task'))
     expect(screen.getByText('Server error')).toBeInTheDocument()
   })
+
+  it('calls onOpenChange(false) on successful creation', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
+
+    await user.type(screen.getByPlaceholderText('Task title'), 'My task')
+    await user.type(screen.getByPlaceholderText('Describe the task...'), 'Desc')
+    await user.type(screen.getByPlaceholderText('Project name'), 'proj')
+    await user.type(screen.getByPlaceholderText('Agent or user'), 'agent')
+
+    await user.click(screen.getByText('Create Task'))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
 })

@@ -6,7 +6,6 @@ import type {
   CancelTaskRequest,
   CreateTaskRequest,
   Task,
-  TaskFilters,
   TaskStatus,
   TransitionTaskRequest,
   UpdateTaskRequest,
@@ -34,7 +33,7 @@ export interface UseTaskBoardDataReturn {
   optimisticTransition: (taskId: string, targetStatus: TaskStatus) => () => void
 }
 
-export function useTaskBoardData(serverFilters?: TaskFilters): UseTaskBoardDataReturn {
+export function useTaskBoardData(): UseTaskBoardDataReturn {
   const tasks = useTasksStore((s) => s.tasks)
   const selectedTask = useTasksStore((s) => s.selectedTask)
   const total = useTasksStore((s) => s.total)
@@ -49,15 +48,15 @@ export function useTaskBoardData(serverFilters?: TaskFilters): UseTaskBoardDataR
   const deleteTask = useTasksStore((s) => s.deleteTask)
   const optimisticTransition = useTasksStore((s) => s.optimisticTransition)
 
-  // Initial data fetch
+  // Initial data fetch -- always fetches all tasks; filtering is client-side
   useEffect(() => {
-    useTasksStore.getState().fetchTasks({ ...serverFilters, limit: 200 })
-  }, []) // eslint-disable-line @eslint-react/exhaustive-deps
+    useTasksStore.getState().fetchTasks({ limit: 200 })
+  }, [])
 
   // Lightweight polling for task refresh
   const pollFn = useCallback(async () => {
-    await useTasksStore.getState().fetchTasks({ ...serverFilters, limit: 200 })
-  }, []) // eslint-disable-line @eslint-react/exhaustive-deps
+    await useTasksStore.getState().fetchTasks({ limit: 200 })
+  }, [])
 
   const polling = usePolling(pollFn, TASK_POLL_INTERVAL)
 

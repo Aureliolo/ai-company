@@ -63,6 +63,21 @@ export function getPriorityLabel(priority: Priority): string {
   return PRIORITY_LABELS[priority]
 }
 
+// ── Task type labels ────────────────────────────────────────
+
+const TASK_TYPE_LABELS: Record<TaskType, string> = {
+  development: 'Development',
+  design: 'Design',
+  research: 'Research',
+  review: 'Review',
+  meeting: 'Meeting',
+  admin: 'Admin',
+}
+
+export function getTaskTypeLabel(type: TaskType): string {
+  return TASK_TYPE_LABELS[type]
+}
+
 // ── Kanban column definitions ───────────────────────────────
 
 export type KanbanColumnId =

@@ -115,4 +115,20 @@ describe('TaskDetailPanel', () => {
     render(<TaskDetailPanel task={cancelled} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
     expect(screen.queryByRole('button', { name: 'Cancel Task' })).not.toBeInTheDocument()
   })
+
+  it('calls onTransition when transition button is clicked', async () => {
+    const user = userEvent.setup()
+    const onTransition = vi.fn().mockResolvedValue(undefined)
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={onTransition} onCancel={noop} onDelete={noop} />)
+    await user.click(screen.getByRole('button', { name: 'In Review' }))
+    expect(onTransition).toHaveBeenCalledWith('task-1', { target_status: 'in_review', expected_version: 2 })
+  })
+
+  it('closes panel on Escape key', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<TaskDetailPanel task={mockTask} onClose={onClose} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
 })

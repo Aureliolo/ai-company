@@ -258,6 +258,22 @@ describe('filterTasks', () => {
   it('handles empty task list', () => {
     expect(filterTasks([], { status: 'assigned' })).toHaveLength(0)
   })
+
+  it('handles search with empty description', () => {
+    const tasksWithEmpty = [
+      makeTask({ id: 't1', title: 'Find me', description: '' }),
+    ]
+    const result = filterTasks(tasksWithEmpty, { search: 'find' })
+    expect(result).toHaveLength(1)
+    expect(result[0]!.id).toBe('t1')
+  })
+
+  it('search does not crash on empty description', () => {
+    const tasksWithEmpty = [
+      makeTask({ id: 't1', description: '' }),
+    ]
+    expect(() => filterTasks(tasksWithEmpty, { search: 'anything' })).not.toThrow()
+  })
 })
 
 // ── VALID_TRANSITIONS ───────────────────────────────────────

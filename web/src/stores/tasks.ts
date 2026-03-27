@@ -100,8 +100,11 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
 
   handleWsEvent: (event) => {
     const { payload } = event
-    if (payload.task && typeof payload.task === 'object') {
-      get().upsertTask(payload.task as Task)
+    if (payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)) {
+      const candidate = payload.task as Record<string, unknown>
+      if (typeof candidate.id === 'string' && typeof candidate.status === 'string') {
+        get().upsertTask(candidate as unknown as Task)
+      }
     }
   },
 

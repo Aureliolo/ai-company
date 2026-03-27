@@ -309,5 +309,27 @@ describe('useTasksStore', () => {
       useTasksStore.getState().handleWsEvent(event)
       expect(useTasksStore.getState().tasks).toHaveLength(0)
     })
+
+    it('ignores events with non-object truthy task value', () => {
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: 'task-id-string' },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(0)
+    })
+
+    it('ignores events with task object missing required fields', () => {
+      const event: WsEvent = {
+        event_type: 'task.created',
+        channel: 'tasks',
+        timestamp: new Date().toISOString(),
+        payload: { task: { title: 'incomplete' } },
+      }
+      useTasksStore.getState().handleWsEvent(event)
+      expect(useTasksStore.getState().tasks).toHaveLength(0)
+    })
   })
 })

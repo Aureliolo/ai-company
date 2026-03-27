@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, Loader2, Calendar, GitBranch, User, Tag, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -9,7 +9,7 @@ import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { Avatar } from '@/components/ui/avatar'
 import { springDefault, overlayBackdrop } from '@/lib/motion'
-import { getTaskStatusLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
+import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
 import type { Task, Priority, UpdateTaskRequest, TransitionTaskRequest, CancelTaskRequest, TaskStatus } from '@/api/types'
 
@@ -47,6 +47,15 @@ export function TaskDetailPanel({
 
   const availableTransitions = getAvailableTransitions(task.status)
 
+  // Close panel on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   const handleTransition = useCallback(async (targetStatus: TaskStatus) => {
     setTransitioning(targetStatus)
     try {
@@ -57,15 +66,23 @@ export function TaskDetailPanel({
   }, [task.id, task.version, onTransition])
 
   const handleCancel = useCallback(async () => {
-    await onCancel(task.id, { reason: cancelReason })
-    setCancelOpen(false)
-    setCancelReason('')
+    try {
+      await onCancel(task.id, { reason: cancelReason })
+      setCancelOpen(false)
+      setCancelReason('')
+    } catch {
+      // Error handling is the caller's responsibility via the onCancel prop
+    }
   }, [task.id, cancelReason, onCancel])
 
   const handleDelete = useCallback(async () => {
-    await onDelete(task.id)
-    setDeleteOpen(false)
-    onClose()
+    try {
+      await onDelete(task.id)
+      setDeleteOpen(false)
+      onClose()
+    } catch {
+      // Error handling is the caller's responsibility via the onDelete prop
+    }
   }, [task.id, onDelete, onClose])
 
   return (
@@ -166,7 +183,7 @@ export function TaskDetailPanel({
 
               {/* Metadata grid */}
               <div className="grid grid-cols-2 gap-4 rounded-lg border border-border p-3">
-                <MetaField icon={Tag} label="Type" value={task.type.replace('_', ' ')} />
+                <MetaField icon={Tag} label="Type" value={getTaskTypeLabel(task.type)} />
                 <MetaField icon={Layers} label="Complexity" value={task.estimated_complexity} />
                 <MetaField icon={Calendar} label="Created" value={formatDate(task.created_at)} />
                 <MetaField icon={Calendar} label="Updated" value={formatDate(task.updated_at)} />

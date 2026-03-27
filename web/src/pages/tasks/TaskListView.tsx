@@ -4,6 +4,7 @@ import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
+import { getTaskTypeLabel } from '@/utils/tasks'
 import { formatRelativeTime, formatCurrency } from '@/utils/format'
 import { Inbox } from 'lucide-react'
 import type { Task } from '@/api/types'
@@ -84,8 +85,8 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
               <span className="w-24">
                 <PriorityBadge priority={task.priority} />
               </span>
-              <span className="w-24 text-xs capitalize text-text-secondary">
-                {task.type.replace('_', ' ')}
+              <span className="w-24 text-xs text-text-secondary">
+                {getTaskTypeLabel(task.type)}
               </span>
               <span className="w-24 font-mono text-[10px] text-text-muted">
                 {task.deadline ? formatRelativeTime(task.deadline) : '--'}
