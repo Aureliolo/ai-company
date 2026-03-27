@@ -131,7 +131,7 @@ export function ApprovalCard({
               'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] font-medium shrink-0',
               URGENCY_BADGE_CLASSES[urgencyColor],
             )}
-            aria-live="polite"
+            aria-hidden="true"
           >
             <Clock className="size-3" aria-hidden="true" />
             {formatUrgency(countdown)}

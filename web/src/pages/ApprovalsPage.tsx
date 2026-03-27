@@ -128,14 +128,19 @@ export default function ApprovalsPage() {
   const handleBatchApprove = useCallback(async () => {
     setBatchLoading(true)
     const ids = Array.from(selectedIds)
-    const result = await batchApprove(ids, batchComment.trim() || undefined)
-    setBatchLoading(false)
-    setBatchApproveOpen(false)
-    setBatchComment('')
-    if (result.failed === 0) {
-      useToastStore.getState().add({ variant: 'success', title: `Approved ${result.succeeded} items` })
-    } else {
-      useToastStore.getState().add({ variant: 'warning', title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+    try {
+      const result = await batchApprove(ids, batchComment.trim() || undefined)
+      setBatchApproveOpen(false)
+      setBatchComment('')
+      if (result.failed === 0) {
+        useToastStore.getState().add({ variant: 'success', title: `Approved ${result.succeeded} items` })
+      } else {
+        useToastStore.getState().add({ variant: 'warning', title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+      }
+    } catch {
+      useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed' })
+    } finally {
+      setBatchLoading(false)
     }
   }, [selectedIds, batchApprove, batchComment])
 
@@ -146,14 +151,19 @@ export default function ApprovalsPage() {
     }
     setBatchLoading(true)
     const ids = Array.from(selectedIds)
-    const result = await batchReject(ids, batchReason.trim())
-    setBatchLoading(false)
-    setBatchRejectOpen(false)
-    setBatchReason('')
-    if (result.failed === 0) {
-      useToastStore.getState().add({ variant: 'success', title: `Rejected ${result.succeeded} items` })
-    } else {
-      useToastStore.getState().add({ variant: 'warning', title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+    try {
+      const result = await batchReject(ids, batchReason.trim())
+      setBatchRejectOpen(false)
+      setBatchReason('')
+      if (result.failed === 0) {
+        useToastStore.getState().add({ variant: 'success', title: `Rejected ${result.succeeded} items` })
+      } else {
+        useToastStore.getState().add({ variant: 'warning', title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+      }
+    } catch {
+      useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed' })
+    } finally {
+      setBatchLoading(false)
     }
   }, [selectedIds, batchReject, batchReason])
 

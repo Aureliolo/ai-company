@@ -216,6 +216,10 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/budget/forecast` | Budget forecast | Projection charts |
 | `/approvals` | Approvals | Pending queue |
 | `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
+| `/approvals?risk=:level` | Approvals (filtered) | Filter by risk level |
+| `/approvals?type=:type` | Approvals (filtered) | Filter by action type |
+| `/approvals?search=:query` | Approvals (filtered) | Search by title/description |
+| `/approvals?selected=:id` | Approvals (detail) | Side panel overlay for approval detail |
 | `/agents` | Agents | Profile list |
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/messages` | Messages | Channel feed |

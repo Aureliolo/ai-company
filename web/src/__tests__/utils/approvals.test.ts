@@ -6,6 +6,7 @@ import {
   getApprovalStatusColor,
   getApprovalStatusLabel,
   getRiskLevelColor,
+  getRiskLevelIcon,
   getRiskLevelLabel,
   getUrgencyColor,
   groupByRiskLevel,
@@ -58,6 +59,22 @@ describe('getRiskLevelLabel', () => {
     ['low', 'Low'],
   ])('maps %s to %s', (level, expected) => {
     expect(getRiskLevelLabel(level)).toBe(expected)
+  })
+})
+
+// ── Risk level icons ──────────────────────────────────────────
+
+describe('getRiskLevelIcon', () => {
+  it('returns a truthy value for each risk level', () => {
+    const levels: ApprovalRiskLevel[] = ['critical', 'high', 'medium', 'low']
+    for (const level of levels) {
+      expect(getRiskLevelIcon(level)).toBeTruthy()
+    }
+  })
+
+  it('returns distinct icons for each risk level', () => {
+    const icons = new Set(['critical', 'high', 'medium', 'low'].map((l) => getRiskLevelIcon(l as ApprovalRiskLevel)))
+    expect(icons.size).toBe(4)
   })
 })
 
@@ -222,6 +239,12 @@ describe('filterApprovals', () => {
   it('search is case-insensitive', () => {
     const result = filterApprovals(approvals, { search: 'DEPLOY' })
     expect(result.map((a) => a.id)).toEqual(['1'])
+  })
+
+  it('search matches title when description is empty', () => {
+    const items = [makeApproval({ id: '10', title: 'Deploy API', description: '' })]
+    const result = filterApprovals(items, { search: 'deploy' })
+    expect(result).toHaveLength(1)
   })
 
   it('combines multiple filters with AND', () => {

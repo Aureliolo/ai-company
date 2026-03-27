@@ -49,6 +49,11 @@ interface ApprovalsState {
 
 const pendingTransitions = new Set<string>()
 
+/** Clear module-level pendingTransitions -- test-only. */
+export function _resetPendingTransitions(): void {
+  pendingTransitions.clear()
+}
+
 export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   approvals: [],
   selectedApproval: null,

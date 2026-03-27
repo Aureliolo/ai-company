@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useApprovalsStore } from '@/stores/approvals'
+import { useApprovalsStore, _resetPendingTransitions } from '@/stores/approvals'
 import { makeApproval } from '../helpers/factories'
 import type { ApprovalResponse, WsEvent } from '@/api/types'
 
@@ -16,6 +16,7 @@ async function importApi() {
 }
 
 function resetStore() {
+  _resetPendingTransitions()
   useApprovalsStore.setState({
     approvals: [],
     selectedApproval: null,
@@ -116,6 +117,13 @@ describe('approveOne', () => {
     expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
     expect(api.approveApproval).toHaveBeenCalledWith('1', { comment: 'LGTM' })
   })
+
+  it('propagates error when API fails', async () => {
+    const api = await importApi()
+    vi.mocked(api.approveApproval).mockRejectedValue(new Error('Server error'))
+
+    await expect(useApprovalsStore.getState().approveOne('1')).rejects.toThrow('Server error')
+  })
 })
 
 // ── rejectOne ───────────────────────────────────────────────
@@ -132,6 +140,13 @@ describe('rejectOne', () => {
 
     expect(result.status).toBe('rejected')
     expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
+  })
+
+  it('propagates error when API fails', async () => {
+    const api = await importApi()
+    vi.mocked(api.rejectApproval).mockRejectedValue(new Error('Server error'))
+
+    await expect(useApprovalsStore.getState().rejectOne('1', { reason: 'x' })).rejects.toThrow('Server error')
   })
 })
 
@@ -271,6 +286,20 @@ describe('handleWsEvent', () => {
     expect(useApprovalsStore.getState().approvals).toHaveLength(0)
   })
 
+  it('ignores array-typed approval payload', () => {
+    useApprovalsStore.setState({ approvals: [] })
+
+    const event: WsEvent = {
+      event_type: 'approval.submitted',
+      channel: 'approvals',
+      timestamp: '2026-03-27T12:00:00Z',
+      payload: { approval: [makeApproval('1')] as unknown },
+    }
+    useApprovalsStore.getState().handleWsEvent(event)
+
+    expect(useApprovalsStore.getState().approvals).toHaveLength(0)
+  })
+
   it('skips when approval is in pendingTransitions', () => {
     const approval = makeApproval('1', { status: 'pending' })
     useApprovalsStore.setState({ approvals: [approval] })
@@ -370,5 +399,20 @@ describe('batchReject', () => {
     expect(result).toEqual({ succeeded: 2, failed: 0 })
     expect(api.rejectApproval).toHaveBeenCalledWith('1', { reason: 'Too risky' })
     expect(api.rejectApproval).toHaveBeenCalledWith('2', { reason: 'Too risky' })
+  })
+
+  it('rolls back failed items and returns mixed counts', async () => {
+    const api = await importApi()
+    const items = [makeApproval('1'), makeApproval('2')]
+    useApprovalsStore.setState({ approvals: items, selectedIds: new Set(['1', '2']) })
+
+    vi.mocked(api.rejectApproval)
+      .mockResolvedValueOnce(makeApproval('1', { status: 'rejected' }))
+      .mockRejectedValueOnce(new Error('Server error'))
+
+    const result = await useApprovalsStore.getState().batchReject(['1', '2'], 'Too risky')
+
+    expect(result).toEqual({ succeeded: 1, failed: 1 })
+    expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
   })
 })

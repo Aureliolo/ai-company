@@ -242,6 +242,12 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getTaskTypeLabel()` | `utils/tasks.ts` | Maps `TaskType` to display label. |
 | `getProviderHealthColor()` | `utils/providers.ts` | Maps `ProviderHealthStatus` to `SemanticColor`. |
 | `toRuntimeStatus()` | `utils/agents.ts` | Maps API-layer `AgentStatus` (HR lifecycle) to `AgentRuntimeStatus` for UI components. |
+| `getRiskLevelColor()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to `SemanticColor \| "accent-dim"`. |
+| `getRiskLevelLabel()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to display label. |
+| `getRiskLevelIcon()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to `LucideIcon`. |
+| `getApprovalStatusColor()` | `utils/approvals.ts` | Maps `ApprovalStatus` to `SemanticColor \| "text-secondary"`. |
+| `getApprovalStatusLabel()` | `utils/approvals.ts` | Maps `ApprovalStatus` to display label. |
+| `getUrgencyColor()` | `utils/approvals.ts` | Maps `UrgencyLevel` to `SemanticColor \| "text-secondary"`. |
 
 ### Animation Hooks
 
@@ -260,6 +266,9 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"cancelled"` |
 | `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
 | `ProviderHealthStatus` | `api/types` | `"up"`, `"degraded"`, `"down"` |
+| `ApprovalStatus` | `api/types` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
+| `ApprovalRiskLevel` | `api/types` | `"low"`, `"medium"`, `"high"`, `"critical"` |
+| `UrgencyLevel` | `api/types` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
 
 ### When to Create a New Shared Component
 

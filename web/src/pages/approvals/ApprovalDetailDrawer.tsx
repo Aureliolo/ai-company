@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Calendar, Check, Loader2, Shield, Tag, User, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -62,6 +62,50 @@ export function ApprovalDetailDrawer({
 
   const isPending = approval?.status === 'pending'
   const riskColor = approval ? getRiskLevelColor(approval.risk_level) : 'accent'
+  const panelRef = useRef<HTMLElement>(null)
+
+  // Close on Escape (skip when ConfirmDialog is open)
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (document.querySelector('[role="alertdialog"], [role="dialog"][aria-modal="true"]')) return
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, onClose])
+
+  // Focus trap -- keep Tab cycling within the panel
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    if (!panel) return
+    const focusable = panel.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusable.length > 0) focusable[0]!.focus()
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const nodes = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      if (nodes.length === 0) return
+      const first = nodes[0]!
+      const last = nodes[nodes.length - 1]!
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleTab)
+    return () => document.removeEventListener('keydown', handleTab)
+  }, [open])
 
   const handleApprove = useCallback(async () => {
     if (!approval) return
@@ -111,12 +155,14 @@ export function ApprovalDetailDrawer({
 
       {/* Panel */}
       <motion.aside
+        ref={panelRef}
         className="fixed top-0 right-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-border bg-base shadow-lg"
         variants={PANEL_VARIANTS}
         initial="initial"
         animate="animate"
         exit="exit"
         role="dialog"
+        aria-modal="true"
         aria-label={`Approval detail: ${approval.title}`}
       >
         {/* Header */}
