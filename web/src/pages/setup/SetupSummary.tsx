@@ -1,0 +1,114 @@
+import { SectionCard } from '@/components/ui/section-card'
+import { MetricCard } from '@/components/ui/metric-card'
+import { StatPill } from '@/components/ui/stat-pill'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { Avatar } from '@/components/ui/avatar'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
+import type { CostEstimate } from '@/utils/cost-estimator'
+import { formatCurrency } from '@/utils/format'
+import { Building2, Users, Server } from 'lucide-react'
+
+export interface SetupSummaryProps {
+  companyResponse: SetupCompanyResponse
+  agents: readonly SetupAgentSummary[]
+  providers: Readonly<Record<string, ProviderConfig>>
+  costEstimate: CostEstimate | null
+  currency: string
+  budgetCap: number | null
+}
+
+export function SetupSummary({
+  companyResponse,
+  agents,
+  providers,
+  costEstimate,
+  currency,
+  budgetCap,
+}: SetupSummaryProps) {
+  return (
+    <div className="space-y-6">
+      {/* Company details */}
+      <SectionCard title="Company Details" icon={Building2}>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Name:</span>
+            <span className="text-sm font-medium text-foreground">{companyResponse.company_name}</span>
+          </div>
+          {companyResponse.template_applied && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Template:</span>
+              <StatPill label="" value={companyResponse.template_applied} />
+            </div>
+          )}
+          {companyResponse.description && (
+            <p className="text-sm text-muted-foreground">{companyResponse.description}</p>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Currency:</span>
+            <span className="text-sm font-medium text-foreground">{currency}</span>
+          </div>
+          {budgetCap !== null && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Budget Cap:</span>
+              <span className="text-sm font-medium text-foreground">{formatCurrency(budgetCap, currency)}/mo</span>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Metrics row */}
+      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
+        <StaggerItem>
+          <MetricCard label="Departments" value={companyResponse.department_count} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="Agents" value={agents.length} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard
+            label="Est. Monthly Cost"
+            value={costEstimate ? formatCurrency(costEstimate.monthlyTotal, currency) : '--'}
+          />
+        </StaggerItem>
+      </StaggerGroup>
+
+      {/* Agent roster */}
+      <SectionCard title="Agent Roster" icon={Users}>
+        <div className="space-y-2">
+          {agents.map((agent, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-md border border-border p-2">
+              <Avatar name={agent.name} size="sm" />
+              <div className="flex-1">
+                <span className="text-sm font-medium text-foreground">{agent.name}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{agent.role}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatPill label="Dept" value={agent.department} />
+                <StatPill label="Tier" value={agent.tier} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* Providers */}
+      <SectionCard title="Connected Providers" icon={Server}>
+        <div className="space-y-2">
+          {Object.entries(providers).map(([name, config]) => (
+            <div key={name} className="flex items-center justify-between rounded-md border border-border p-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">{name}</span>
+                <span className="text-xs text-muted-foreground">{config.models.length} models</span>
+              </div>
+              <StatusBadge status={config.has_api_key ? 'idle' : 'error'} label />
+            </div>
+          ))}
+          {Object.keys(providers).length === 0 && (
+            <p className="text-sm text-muted-foreground">No providers configured yet.</p>
+          )}
+        </div>
+      </SectionCard>
+    </div>
+  )
+}

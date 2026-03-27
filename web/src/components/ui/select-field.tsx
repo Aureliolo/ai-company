@@ -1,0 +1,79 @@
+import { useId } from 'react'
+import { cn } from '@/lib/utils'
+
+export interface SelectOption {
+  readonly value: string
+  readonly label: string
+  readonly disabled?: boolean
+}
+
+export interface SelectFieldProps {
+  label: string
+  options: readonly SelectOption[]
+  value: string
+  onChange: (value: string) => void
+  error?: string | null
+  hint?: string
+  disabled?: boolean
+  required?: boolean
+  className?: string
+  placeholder?: string
+}
+
+export function SelectField({
+  label,
+  options,
+  value,
+  onChange,
+  error,
+  hint,
+  disabled,
+  required,
+  className,
+  placeholder,
+}: SelectFieldProps) {
+  const id = useId()
+  const errorId = `${id}-error`
+  const hintId = `${id}-hint`
+  const hasError = !!error
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}
+        {required && <span className="ml-0.5 text-danger">*</span>}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        aria-invalid={hasError}
+        aria-errormessage={hasError ? errorId : undefined}
+        aria-describedby={hint ? hintId : undefined}
+        className={cn(
+          'w-full rounded-md border bg-surface px-3 py-2 text-sm text-foreground',
+          'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',
+          'disabled:opacity-60 disabled:cursor-not-allowed',
+          hasError ? 'border-danger' : 'border-border',
+          className,
+        )}
+      >
+        {placeholder && (
+          <option value="" disabled>{placeholder}</option>
+        )}
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      {hint && !hasError && (
+        <p id={hintId} className="text-xs text-muted-foreground">{hint}</p>
+      )}
+      {hasError && (
+        <p id={errorId} role="alert" className="text-xs text-danger">{error}</p>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,44 @@
+/**
+ * Supported currencies for the setup wizard.
+ *
+ * Mirrors the backend's `CURRENCY_SYMBOLS` table in
+ * `src/synthorg/budget/currency.py`. If the backend adds an endpoint
+ * for available currencies, this should be replaced with an API call.
+ */
+
+import type { SelectOption } from '@/components/ui/select-field'
+
+/** ISO 4217 currency codes with display labels, ordered by usage frequency. */
+export const CURRENCY_OPTIONS: readonly SelectOption[] = [
+  { value: 'EUR', label: 'EUR - Euro' },
+  { value: 'USD', label: 'USD - US Dollar' },
+  { value: 'GBP', label: 'GBP - British Pound' },
+  { value: 'JPY', label: 'JPY - Japanese Yen' },
+  { value: 'CHF', label: 'CHF - Swiss Franc' },
+  { value: 'CAD', label: 'CAD - Canadian Dollar' },
+  { value: 'AUD', label: 'AUD - Australian Dollar' },
+  { value: 'CNY', label: 'CNY - Chinese Yuan' },
+  { value: 'INR', label: 'INR - Indian Rupee' },
+  { value: 'KRW', label: 'KRW - South Korean Won' },
+  { value: 'BRL', label: 'BRL - Brazilian Real' },
+  { value: 'MXN', label: 'MXN - Mexican Peso' },
+  { value: 'SGD', label: 'SGD - Singapore Dollar' },
+  { value: 'HKD', label: 'HKD - Hong Kong Dollar' },
+  { value: 'NZD', label: 'NZD - New Zealand Dollar' },
+  { value: 'SEK', label: 'SEK - Swedish Krona' },
+  { value: 'NOK', label: 'NOK - Norwegian Krone' },
+  { value: 'DKK', label: 'DKK - Danish Krone' },
+  { value: 'PLN', label: 'PLN - Polish Zloty' },
+  { value: 'CZK', label: 'CZK - Czech Koruna' },
+  { value: 'HUF', label: 'HUF - Hungarian Forint' },
+  { value: 'TRY', label: 'TRY - Turkish Lira' },
+  { value: 'ZAR', label: 'ZAR - South African Rand' },
+  { value: 'THB', label: 'THB - Thai Baht' },
+  { value: 'TWD', label: 'TWD - Taiwan Dollar' },
+  { value: 'ILS', label: 'ILS - Israeli Shekel' },
+  { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
+  { value: 'VND', label: 'VND - Vietnamese Dong' },
+]
+
+/** Default currency code (matches backend DEFAULT_CURRENCY). */
+export const DEFAULT_CURRENCY = 'EUR'

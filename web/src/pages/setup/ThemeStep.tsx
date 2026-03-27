@@ -1,0 +1,140 @@
+import { useEffect } from 'react'
+import { useSetupWizardStore } from '@/stores/setup-wizard'
+import type { ThemeSettings } from '@/stores/setup-wizard'
+import { cn } from '@/lib/utils'
+import { ThemePreview } from './ThemePreview'
+
+interface OptionGroupProps<K extends keyof ThemeSettings> {
+  label: string
+  settingKey: K
+  options: readonly { value: ThemeSettings[K]; label: string; description: string }[]
+  current: ThemeSettings[K]
+  onChange: (key: K, value: ThemeSettings[K]) => void
+}
+
+function OptionGroup<K extends keyof ThemeSettings>({
+  label,
+  settingKey,
+  options,
+  current,
+  onChange,
+}: OptionGroupProps<K>) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-semibold text-foreground">{label}</legend>
+      <div className="space-y-1">
+        {options.map((opt) => (
+          <label
+            key={String(opt.value)}
+            className={cn(
+              'flex cursor-pointer items-start gap-3 rounded-md border p-2.5 transition-colors',
+              current === opt.value
+                ? 'border-accent bg-accent/5'
+                : 'border-border hover:bg-card-hover',
+            )}
+          >
+            <input
+              type="radio"
+              name={settingKey}
+              value={String(opt.value)}
+              checked={current === opt.value}
+              onChange={() => onChange(settingKey, opt.value)}
+              className="mt-0.5 accent-accent"
+            />
+            <div>
+              <span className="text-sm font-medium text-foreground">{opt.label}</span>
+              <p className="text-xs text-muted-foreground">{opt.description}</p>
+            </div>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+const PALETTE_OPTIONS = [
+  { value: 'dark' as const, label: 'Dark', description: 'Dark theme with warm soft blue accent' },
+  { value: 'light' as const, label: 'Light', description: 'Light theme for bright environments' },
+]
+
+const DENSITY_OPTIONS = [
+  { value: 'dense' as const, label: 'Dense', description: '12px padding, tight gaps. For power users.' },
+  { value: 'balanced' as const, label: 'Balanced', description: '16px padding. Recommended for most users.' },
+  { value: 'sparse' as const, label: 'Sparse', description: '20px padding, relaxed layout.' },
+]
+
+const ANIMATION_OPTIONS = [
+  { value: 'minimal' as const, label: 'Minimal', description: 'Quick fades only, subtle transitions.' },
+  { value: 'status-driven' as const, label: 'Status-driven', description: 'Only changed elements animate. Smart and efficient.' },
+  { value: 'spring' as const, label: 'Spring', description: 'Playful spring physics, bouncy feedback.' },
+  { value: 'instant' as const, label: 'Instant', description: 'No animations at all. Maximum performance.' },
+]
+
+const SIDEBAR_OPTIONS = [
+  { value: 'rail' as const, label: 'Rail', description: 'Always visible with icons and labels (220px).' },
+  { value: 'collapsible' as const, label: 'Collapsible', description: 'Expands and collapses, remembers your preference.' },
+  { value: 'hidden' as const, label: 'Hidden', description: 'Hamburger toggle only, full-width content.' },
+  { value: 'compact' as const, label: 'Compact', description: 'Icons prominent, text secondary (56px).' },
+]
+
+export function ThemeStep() {
+  const themeSettings = useSetupWizardStore((s) => s.themeSettings)
+  const setThemeSetting = useSetupWizardStore((s) => s.setThemeSetting)
+  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
+
+  // Theme step is always valid
+  useEffect(() => {
+    markStepComplete('theme')
+  }, [markStepComplete])
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold text-foreground">Personalize Your Experience</h2>
+        <p className="text-sm text-muted-foreground">
+          Choose how your dashboard looks and feels.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-[45%_1fr] gap-6 max-[1023px]:grid-cols-1">
+        {/* Options (left) */}
+        <div className="space-y-6">
+          <OptionGroup
+            label="Color Palette"
+            settingKey="palette"
+            options={PALETTE_OPTIONS}
+            current={themeSettings.palette}
+            onChange={setThemeSetting}
+          />
+          <OptionGroup
+            label="Density"
+            settingKey="density"
+            options={DENSITY_OPTIONS}
+            current={themeSettings.density}
+            onChange={setThemeSetting}
+          />
+          <OptionGroup
+            label="Animation"
+            settingKey="animation"
+            options={ANIMATION_OPTIONS}
+            current={themeSettings.animation}
+            onChange={setThemeSetting}
+          />
+          <OptionGroup
+            label="Sidebar"
+            settingKey="sidebar"
+            options={SIDEBAR_OPTIONS}
+            current={themeSettings.sidebar}
+            onChange={setThemeSetting}
+          />
+        </div>
+
+        {/* Live preview (right) */}
+        <div className="sticky top-8">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Live Preview</h3>
+          <ThemePreview settings={themeSettings} />
+        </div>
+      </div>
+    </div>
+  )
+}

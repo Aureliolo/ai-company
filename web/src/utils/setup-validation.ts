@@ -1,0 +1,135 @@
+/** Per-step validation rules for the setup wizard. */
+
+import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
+
+export interface StepValidationResult {
+  readonly valid: boolean
+  readonly errors: readonly string[]
+}
+
+const VALID: StepValidationResult = { valid: true, errors: [] }
+
+function invalid(...errors: string[]): StepValidationResult {
+  return { valid: false, errors }
+}
+
+// ── Step 0: Account ──────────────────────────────────────────
+
+interface AccountStepInput {
+  readonly accountCreated: boolean
+  readonly needsAdmin: boolean
+}
+
+export function validateAccountStep(input: AccountStepInput): StepValidationResult {
+  if (!input.needsAdmin) return VALID
+  if (input.accountCreated) return VALID
+  return invalid('Admin account must be created')
+}
+
+// ── Step 1: Template ─────────────────────────────────────────
+
+interface TemplateStepInput {
+  readonly selectedTemplate: string | null
+}
+
+export function validateTemplateStep(input: TemplateStepInput): StepValidationResult {
+  if (!input.selectedTemplate) {
+    return invalid('Please select a template')
+  }
+  return VALID
+}
+
+// ── Step 2: Company ──────────────────────────────────────────
+
+interface CompanyStepInput {
+  readonly companyName: string
+  readonly companyDescription: string
+  readonly companyResponse: SetupCompanyResponse | null
+}
+
+const MAX_COMPANY_NAME_LENGTH = 200
+const MAX_DESCRIPTION_LENGTH = 1000
+
+export function validateCompanyStep(input: CompanyStepInput): StepValidationResult {
+  const errors: string[] = []
+  const trimmedName = input.companyName.trim()
+
+  if (!trimmedName) {
+    errors.push('Company name is required')
+  } else if (trimmedName.length > MAX_COMPANY_NAME_LENGTH) {
+    errors.push(`Company name must be ${MAX_COMPANY_NAME_LENGTH} characters or less`)
+  }
+
+  if (input.companyDescription.length > MAX_DESCRIPTION_LENGTH) {
+    errors.push(`Description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
+  }
+
+  if (!input.companyResponse) {
+    errors.push('Apply the template to continue')
+  }
+
+  return errors.length > 0 ? { valid: false, errors } : VALID
+}
+
+// ── Step 3: Agents ───────────────────────────────────────────
+
+interface AgentsStepInput {
+  readonly agents: readonly SetupAgentSummary[]
+}
+
+export function validateAgentsStep(input: AgentsStepInput): StepValidationResult {
+  const errors: string[] = []
+
+  if (input.agents.length === 0) {
+    errors.push('At least one agent is required')
+    return { valid: false, errors }
+  }
+
+  for (let i = 0; i < input.agents.length; i++) {
+    const agent = input.agents[i]!
+    if (!agent.model_provider || !agent.model_id) {
+      errors.push(`Agent "${agent.name}" is missing a model assignment`)
+    }
+  }
+
+  return errors.length > 0 ? { valid: false, errors } : VALID
+}
+
+// ── Step 4: Providers ────────────────────────────────────────
+
+interface ProvidersStepInput {
+  readonly agents: readonly SetupAgentSummary[]
+  readonly providers: Readonly<Record<string, ProviderConfig>>
+}
+
+export function validateProvidersStep(input: ProvidersStepInput): StepValidationResult {
+  const errors: string[] = []
+  const providerNames = Object.keys(input.providers)
+
+  if (providerNames.length === 0) {
+    errors.push('At least one provider is required')
+    return { valid: false, errors }
+  }
+
+  const providerSet = new Set(providerNames)
+  const missingProviders = new Set<string>()
+
+  for (const agent of input.agents) {
+    if (agent.model_provider && !providerSet.has(agent.model_provider)) {
+      missingProviders.add(agent.model_provider)
+    }
+  }
+
+  for (const name of missingProviders) {
+    errors.push(`Provider "${name}" is referenced by agents but not configured`)
+  }
+
+  return errors.length > 0 ? { valid: false, errors } : VALID
+}
+
+// ── Step 5: Theme ────────────────────────────────────────────
+
+export function validateThemeStep(): StepValidationResult {
+  // Theme settings always have defaults, so this step is always valid.
+  return VALID
+}
