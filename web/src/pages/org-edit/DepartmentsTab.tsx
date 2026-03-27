@@ -67,11 +67,11 @@ function SortableDepartmentCard({
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
         onClick={onClick}
-        aria-label={`Edit department ${dept.display_name}`}
+        aria-label={`Edit department ${dept.display_name ?? dept.name}`}
       >
-        <SectionCard title={dept.display_name} icon={Building2}>
+        <SectionCard title={dept.display_name ?? dept.name} icon={Building2}>
           <DeptHealthBar
-            name={dept.display_name}
+            name={dept.display_name ?? dept.name}
             health={health?.health_percent ?? 0}
             agentCount={agentCount}
             taskCount={health?.task_count ?? 0}

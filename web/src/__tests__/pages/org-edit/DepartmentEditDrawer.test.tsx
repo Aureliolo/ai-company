@@ -12,7 +12,7 @@ describe('DepartmentEditDrawer', () => {
   const mockOnClose = vi.fn()
 
   function renderDrawer(props?: { department?: typeof dept | null; health?: typeof health | null }) {
-    const resolvedHealth = props && 'health' in props ? props.health : health
+    const resolvedHealth = props && 'health' in props ? (props.health ?? null) : health
     return render(
       <DepartmentEditDrawer
         open={true}
@@ -71,6 +71,25 @@ describe('DepartmentEditDrawer', () => {
       expect(mockOnUpdate).toHaveBeenCalledWith('engineering', expect.objectContaining({
         budget_percent: 0,
       }))
+    })
+  })
+
+  it('displays save error when onUpdate rejects', async () => {
+    const failingOnUpdate = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    render(
+      <DepartmentEditDrawer
+        open={true}
+        onClose={mockOnClose}
+        department={dept}
+        health={health}
+        onUpdate={failingOnUpdate}
+        onDelete={mockOnDelete}
+        saving={false}
+      />,
+    )
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => {
+      expect(screen.getByText('Permission denied')).toBeInTheDocument()
     })
   })
 })

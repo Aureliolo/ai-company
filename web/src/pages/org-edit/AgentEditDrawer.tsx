@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getErrorMessage } from '@/utils/errors'
-import { toRuntimeStatus } from '@/lib/utils'
+import { toRuntimeStatus } from '@/utils/agents'
 
 export interface AgentEditDrawerProps {
   open: boolean
@@ -33,44 +33,48 @@ export function AgentEditDrawer({
   onDelete,
   saving,
 }: AgentEditDrawerProps) {
-  const [name, setName] = useState('')
-  const [role, setRole] = useState('')
-  const [department, setDepartment] = useState('')
-  const [level, setLevel] = useState<SeniorityLevel>('mid')
-  const [status, setStatus] = useState<AgentConfig['status']>('active')
+  const [form, setForm] = useState({
+    name: '',
+    role: '',
+    department: '',
+    level: 'mid' as SeniorityLevel,
+    status: 'active' as AgentConfig['status'],
+  })
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (agent) {
-      setName(agent.name)
-      setRole(agent.role)
-      setDepartment(agent.department)
-      setLevel(agent.level)
-      setStatus(agent.status)
+      setForm({
+        name: agent.name,
+        role: agent.role,
+        department: agent.department,
+        level: agent.level,
+        status: agent.status,
+      })
       setSubmitError(null)
     }
   }, [agent])
 
-  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name }))
+  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name }))
 
   const handleSave = useCallback(async () => {
     if (!agent) return
     setSubmitError(null)
     try {
       await onUpdate(agent.name, {
-        name: name.trim() || undefined,
-        role: role.trim() || undefined,
-        department: department as UpdateAgentOrgRequest['department'],
-        level,
-        status,
+        name: form.name.trim() || undefined,
+        role: form.role.trim() || undefined,
+        department: form.department as UpdateAgentOrgRequest['department'],
+        level: form.level,
+        status: form.status,
       })
       onClose()
     } catch (err) {
       setSubmitError(getErrorMessage(err))
     }
-  }, [agent, name, role, department, level, status, onUpdate, onClose])
+  }, [agent, form, onUpdate, onClose])
 
   const handleDelete = useCallback(async () => {
     if (!agent) return
@@ -98,35 +102,35 @@ export function AgentEditDrawer({
 
             <InputField
               label="Name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             />
 
             <InputField
               label="Role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
+              value={form.role}
+              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
             />
 
             <SelectField
               label="Department"
               options={deptOptions}
-              value={department}
-              onChange={setDepartment}
+              value={form.department}
+              onChange={(v) => setForm((prev) => ({ ...prev, department: v }))}
             />
 
             <SelectField
               label="Level"
               options={LEVEL_OPTIONS}
-              value={level}
-              onChange={(v) => setLevel(v as SeniorityLevel)}
+              value={form.level}
+              onChange={(v) => setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
             />
 
             <SelectField
               label="Status"
               options={STATUS_OPTIONS}
-              value={status}
-              onChange={(v) => setStatus(v as AgentConfig['status'])}
+              value={form.status}
+              onChange={(v) => setForm((prev) => ({ ...prev, status: v as AgentConfig['status'] }))}
             />
 
             {/* Read-only info */}

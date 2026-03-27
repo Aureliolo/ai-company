@@ -23,6 +23,9 @@ const mockHealth: DepartmentHealth = {
 const meta = {
   title: 'OrgEdit/DepartmentEditDrawer',
   component: DepartmentEditDrawer,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     open: true,
     onClose: () => {},

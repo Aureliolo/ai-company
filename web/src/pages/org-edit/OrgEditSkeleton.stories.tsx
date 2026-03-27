@@ -4,6 +4,9 @@ import { OrgEditSkeleton } from './OrgEditSkeleton'
 const meta = {
   title: 'OrgEdit/OrgEditSkeleton',
   component: OrgEditSkeleton,
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof OrgEditSkeleton>
 
 export default meta

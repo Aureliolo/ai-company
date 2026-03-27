@@ -38,7 +38,7 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
     setSubmitError(null)
   }
 
-  function validate(): boolean {
+  const handleSubmit = useCallback(async () => {
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.name.trim()) {
       next.name = 'Name is required'
@@ -51,11 +51,8 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
       next.budget_percent = 'Must be between 0 and 100'
     }
     setErrors(next)
-    return Object.keys(next).length === 0
-  }
+    if (Object.keys(next).length > 0) return
 
-  const handleSubmit = useCallback(async () => {
-    if (!validate()) return
     setSubmitting(true)
     setSubmitError(null)
     try {
@@ -71,7 +68,6 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
     } finally {
       setSubmitting(false)
     }
-  // eslint-disable-next-line @eslint-react/exhaustive-deps -- validate reads form
   }, [form, existingNames, onCreate, onOpenChange])
 
   return (

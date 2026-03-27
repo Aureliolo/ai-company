@@ -116,6 +116,23 @@ describe('useOrgEditData', () => {
     expect(result.current.wsConnected).toBe(true)
   })
 
+  it('returns wsSetupError from WebSocket hook', async () => {
+    const { useWebSocket } = await import('@/hooks/useWebSocket')
+    vi.mocked(useWebSocket).mockReturnValue({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: 'Auth token expired',
+    })
+    const { result } = renderHook(() => useOrgEditData())
+    expect(result.current.wsSetupError).toBe('Auth token expired')
+    // Restore default mock
+    vi.mocked(useWebSocket).mockReturnValue({
+      connected: true,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+  })
+
   it('exposes all mutation functions', () => {
     const { result } = renderHook(() => useOrgEditData())
     expect(result.current.updateCompany).toBeTypeOf('function')

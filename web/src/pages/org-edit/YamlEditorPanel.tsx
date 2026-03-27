@@ -15,12 +15,13 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
-    if (config) {
+    if (config && !dirty) {
       const serialized = serializeToYaml(config)
       setYamlText(serialized)
       setDirty(false)
       setParseError(null)
     }
+  // eslint-disable-next-line @eslint-react/exhaustive-deps -- intentionally exclude dirty to avoid infinite loop
   }, [config])
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {

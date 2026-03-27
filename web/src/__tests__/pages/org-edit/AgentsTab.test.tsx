@@ -1,13 +1,28 @@
 import { render, screen } from '@testing-library/react'
 import { AgentsTab, type AgentsTabProps } from '@/pages/org-edit/AgentsTab'
-import { makeCompanyConfig } from '../../helpers/factories'
+import type { CompanyConfig } from '@/api/types'
+import { makeAgent, makeDepartment } from '../../helpers/factories'
 
 const noopAsync = vi.fn().mockResolvedValue(undefined)
 const noopRollback = vi.fn().mockReturnValue(() => {})
 
+/** Config with known agents for deterministic assertions. */
+const knownConfig: CompanyConfig = {
+  company_name: 'Test Corp',
+  agents: [
+    makeAgent('alice', { department: 'engineering', role: 'Lead Developer', level: 'lead' }),
+    makeAgent('bob', { department: 'engineering', role: 'Developer' }),
+    makeAgent('carol', { department: 'product', role: 'Product Manager', level: 'senior' }),
+  ],
+  departments: [
+    makeDepartment('engineering'),
+    makeDepartment('product'),
+  ],
+}
+
 function renderTab(overrides?: Partial<AgentsTabProps>) {
   const props: AgentsTabProps = {
-    config: makeCompanyConfig(),
+    config: knownConfig,
     saving: false,
     onCreateAgent: noopAsync,
     onUpdateAgent: noopAsync,
@@ -23,7 +38,7 @@ describe('AgentsTab', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('renders empty state when config has no agents', () => {
-    renderTab({ config: { ...makeCompanyConfig(), agents: [] } })
+    renderTab({ config: { ...knownConfig, agents: [] } })
     expect(screen.getByText('No agents')).toBeInTheDocument()
   })
 

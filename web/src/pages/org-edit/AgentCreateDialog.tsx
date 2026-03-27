@@ -44,17 +44,14 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
     setSubmitError(null)
   }
 
-  function validate(): boolean {
+  const handleSubmit = useCallback(async () => {
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.name.trim()) next.name = 'Name is required'
     if (!form.role.trim()) next.role = 'Role is required'
     if (!form.department) next.department = 'Department is required'
     setErrors(next)
-    return Object.keys(next).length === 0
-  }
+    if (Object.keys(next).length > 0) return
 
-  const handleSubmit = useCallback(async () => {
-    if (!validate()) return
     setSubmitting(true)
     setSubmitError(null)
     try {
@@ -71,10 +68,9 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
     } finally {
       setSubmitting(false)
     }
-  // eslint-disable-next-line @eslint-react/exhaustive-deps -- validate reads form
   }, [form, onCreate, onOpenChange])
 
-  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name }))
+  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name }))
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

@@ -19,7 +19,7 @@ import type {
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types'
-import { toRuntimeStatus } from '@/lib/utils'
+import { toRuntimeStatus } from '@/utils/agents'
 import { AgentCard } from '@/components/ui/agent-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'

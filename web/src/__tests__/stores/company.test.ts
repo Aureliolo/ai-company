@@ -64,6 +64,7 @@ function resetStore() {
     departmentHealths: [],
     loading: false,
     error: null,
+    healthError: null,
     saving: false,
     saveError: null,
   })
@@ -81,6 +82,7 @@ describe('useCompanyStore', () => {
     expect(state.departmentHealths).toEqual([])
     expect(state.loading).toBe(false)
     expect(state.error).toBeNull()
+    expect(state.healthError).toBeNull()
     expect(state.saving).toBe(false)
     expect(state.saveError).toBeNull()
   })
@@ -114,6 +116,24 @@ describe('useCompanyStore', () => {
   it('fetchDepartmentHealths does nothing without config', async () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
     expect(mockGetDepartmentHealth).not.toHaveBeenCalled()
+  })
+
+  it('fetchDepartmentHealths sets healthError when all fetches fail', async () => {
+    useCompanyStore.setState({ config: mockConfig })
+    mockGetDepartmentHealth.mockRejectedValue(new Error('Service down'))
+
+    await useCompanyStore.getState().fetchDepartmentHealths()
+    const state = useCompanyStore.getState()
+    expect(state.departmentHealths).toEqual([])
+    expect(state.healthError).toBe('Failed to fetch department health data')
+  })
+
+  it('fetchDepartmentHealths clears healthError on success', async () => {
+    useCompanyStore.setState({ config: mockConfig, healthError: 'previous error' })
+    mockGetDepartmentHealth.mockResolvedValue(mockDeptHealth)
+
+    await useCompanyStore.getState().fetchDepartmentHealths()
+    expect(useCompanyStore.getState().healthError).toBeNull()
   })
 
   it('fetchDepartmentHealths filters out failed health fetches', async () => {
@@ -263,6 +283,17 @@ describe('useCompanyStore', () => {
       await useCompanyStore.getState().reorderDepartments(['product', 'engineering'])
       expect(useCompanyStore.getState().config!.departments[0]!.name).toBe('product')
     })
+
+    it('sets saveError on failure', async () => {
+      mockReorderDepartments.mockRejectedValue(new Error('Reorder denied'))
+      useCompanyStore.setState({ config: mockConfig })
+
+      await expect(
+        useCompanyStore.getState().reorderDepartments(['product', 'engineering']),
+      ).rejects.toThrow('Reorder denied')
+      expect(useCompanyStore.getState().saveError).toBe('Reorder denied')
+      expect(useCompanyStore.getState().saving).toBe(false)
+    })
   })
 
   describe('createAgent', () => {
@@ -307,11 +338,22 @@ describe('useCompanyStore', () => {
 
   describe('reorderAgents', () => {
     it('calls API and clears saving flag', async () => {
-      mockReorderAgents.mockResolvedValue(undefined as never)
+      mockReorderAgents.mockResolvedValue(mockConfig.departments[0]!)
       useCompanyStore.setState({ config: mockConfig })
 
       await useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1'])
       expect(mockReorderAgents).toHaveBeenCalledWith('engineering', { agent_ids: ['a-2', 'a-1'] })
+      expect(useCompanyStore.getState().saving).toBe(false)
+    })
+
+    it('sets saveError on failure', async () => {
+      mockReorderAgents.mockRejectedValue(new Error('Reorder failed'))
+      useCompanyStore.setState({ config: mockConfig })
+
+      await expect(
+        useCompanyStore.getState().reorderAgents('engineering', ['a-2', 'a-1']),
+      ).rejects.toThrow('Reorder failed')
+      expect(useCompanyStore.getState().saveError).toBe('Reorder failed')
       expect(useCompanyStore.getState().saving).toBe(false)
     })
   })

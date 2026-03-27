@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import fc from 'fast-check'
 import { parseYaml, serializeToYaml, validateCompanyYaml } from '@/utils/yaml'
 import { makeCompanyConfig } from '../helpers/factories'
+import type { CompanyConfig } from '@/api/types'
 
 describe('serializeToYaml', () => {
   it('serializes a CompanyConfig to valid YAML', () => {
@@ -69,5 +71,37 @@ describe('validateCompanyYaml', () => {
 
   it('accepts config without agents/departments keys', () => {
     expect(validateCompanyYaml({ company_name: 'Minimal' })).toBeNull()
+  })
+})
+
+describe('serializeToYaml / parseYaml property-based round-trip', () => {
+  const arbAgent = fc.record({
+    name: fc.string({ minLength: 1, maxLength: 20 }),
+    role: fc.string({ minLength: 1, maxLength: 30 }),
+    department: fc.string({ minLength: 1, maxLength: 20 }),
+  })
+
+  const arbDepartment = fc.record({
+    name: fc.string({ minLength: 1, maxLength: 20 }),
+    display_name: fc.string({ minLength: 1, maxLength: 30 }),
+  })
+
+  const arbCompanyConfig = fc.record({
+    company_name: fc.string({ minLength: 1, maxLength: 50 }),
+    agents: fc.array(arbAgent, { minLength: 0, maxLength: 5 }),
+    departments: fc.array(arbDepartment, { minLength: 0, maxLength: 5 }),
+  })
+
+  it('round-trips company_name and array lengths', () => {
+    fc.assert(
+      fc.property(arbCompanyConfig, (config) => {
+        const yaml = serializeToYaml(config as unknown as CompanyConfig)
+        const parsed = parseYaml(yaml)
+        expect(parsed.company_name).toBe(config.company_name)
+        expect(parsed.agents).toHaveLength(config.agents.length)
+        expect(parsed.departments).toHaveLength(config.departments.length)
+      }),
+      { numRuns: 50 },
+    )
   })
 })

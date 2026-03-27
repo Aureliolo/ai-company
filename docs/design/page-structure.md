@@ -30,10 +30,10 @@ Org overview: department health indicators (green/amber/red), recent activity wi
 
 Living org visualization with real-time agent status. Default mode is read-only: interactive graph (XyFlow) showing CEO, departments, teams, agents with status dots and health overlays. Click agent nodes to open Agent Detail panel.
 
-"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, description, autonomy, shutdown timeout), Agents (card grid with add/edit/delete), Departments (card grid with nested teams/reporting/policies). This is the former Company page merged into the Org Chart -- same data domain, one destination.
+"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with nested teams/reporting/policies). This is the former Company page merged into the Org Chart -- same data domain, one destination.
 
-**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`
-**WS channels**: `agents` (status changes, hired/fired), `system`
+**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`. Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `PATCH /agents/{name}`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents` (stub -- backend not yet implemented).
+**WS channels**: `agents` (status changes, hired/fired), `system` (read-only mode only; edit mode subscribes to `agents` only)
 
 #### Task Board (`/tasks`)
 
@@ -206,7 +206,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
 | `/setup/:step` | Setup Wizard step | `account` (conditional), `template`, `company`, `agents`, `providers`, `theme`, `complete` |
 | `/org` | Org Chart | Read-only visualization |
-| `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD |
+| `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
 | `/tasks` | Task Board | Kanban default |
 | `/tasks?view=list` | Task Board (list) | List view toggle |
 | `/tasks?status=:status` | Task Board (filtered) | Filter by task status |

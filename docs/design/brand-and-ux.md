@@ -241,6 +241,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getPriorityLabel()` | `utils/tasks.ts` | Maps `Priority` to display label. |
 | `getTaskTypeLabel()` | `utils/tasks.ts` | Maps `TaskType` to display label. |
 | `getProviderHealthColor()` | `utils/providers.ts` | Maps `ProviderHealthStatus` to `SemanticColor`. |
+| `toRuntimeStatus()` | `utils/agents.ts` | Maps API-layer `AgentStatus` (HR lifecycle) to `AgentRuntimeStatus` for UI components. |
 
 ### Animation Hooks
 

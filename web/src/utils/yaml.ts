@@ -17,7 +17,7 @@ export function serializeToYaml(config: CompanyConfig): string {
  * Throws if the input is not valid YAML or not an object at the top level.
  */
 export function parseYaml(yamlStr: string): Record<string, unknown> {
-  const result = YAML.load(yamlStr)
+  const result = YAML.load(yamlStr, { schema: YAML.CORE_SCHEMA })
   if (result === null || result === undefined || typeof result !== 'object' || Array.isArray(result)) {
     throw new Error('YAML must be a mapping (object) at the top level')
   }
@@ -26,6 +26,10 @@ export function parseYaml(yamlStr: string): Record<string, unknown> {
 
 /**
  * Validate that a parsed YAML object has the expected CompanyConfig shape.
+ *
+ * Only checks top-level types (company_name, agents array, departments array).
+ * Nested element validation (AgentConfig/Department structures) is deferred
+ * to server-side API validation.
  *
  * Returns an error message string, or null if valid.
  */

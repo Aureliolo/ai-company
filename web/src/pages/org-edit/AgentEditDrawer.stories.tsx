@@ -32,6 +32,9 @@ const mockDepartments: Department[] = [
 const meta = {
   title: 'OrgEdit/AgentEditDrawer',
   component: AgentEditDrawer,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     open: true,
     onClose: () => {},

@@ -4,6 +4,9 @@ import { AgentCreateDialog } from './AgentCreateDialog'
 const meta = {
   title: 'OrgEdit/AgentCreateDialog',
   component: AgentCreateDialog,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     open: true,
     onOpenChange: () => {},
@@ -11,7 +14,7 @@ const meta = {
       { name: 'engineering', display_name: 'Engineering', teams: [] },
       { name: 'product', display_name: 'Product', teams: [] },
     ],
-    onCreate: async () => { throw new Error('Not implemented') },
+    onCreate: async () => ({}) as never,
   },
 } satisfies Meta<typeof AgentCreateDialog>
 

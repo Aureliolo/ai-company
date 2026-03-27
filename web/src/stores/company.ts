@@ -31,6 +31,7 @@ interface CompanyState {
   departmentHealths: readonly DepartmentHealth[]
   loading: boolean
   error: string | null
+  healthError: string | null
   saving: boolean
   saveError: string | null
 
@@ -57,6 +58,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   departmentHealths: [],
   loading: false,
   error: null,
+  healthError: null,
   saving: false,
   saveError: null,
 
@@ -82,12 +84,12 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         (h): h is DepartmentHealth => h !== null,
       )
       if (departmentHealths.length === 0 && config.departments.length > 0) {
-        set({ departmentHealths, error: 'Failed to fetch department health data' })
+        set({ departmentHealths, healthError: 'Failed to fetch department health data' })
       } else {
-        set({ departmentHealths, error: null })
+        set({ departmentHealths, healthError: null })
       }
     } catch (err) {
-      set({ error: getErrorMessage(err) })
+      set({ healthError: getErrorMessage(err) })
     }
   },
 
@@ -96,8 +98,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       const store = useCompanyStore.getState()
       store.fetchCompanyData()
         .then(() => store.fetchDepartmentHealths())
-        .catch(() => {
-          // Errors are set in store state by the respective fetch methods
+        .catch((err: unknown) => {
+          // Errors are set in store state by the respective fetch methods;
+          // log for observability in case both swallow the error.
+          console.error('[CompanyStore] WS refresh failed:', err)
         })
     }
   },
@@ -243,7 +247,18 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   reorderAgents: async (deptName, orderedIds) => {
     set({ saving: true, saveError: null })
     try {
-      await apiReorderAgents(deptName, { agent_ids: orderedIds })
+      const updatedDept = await apiReorderAgents(deptName, { agent_ids: orderedIds })
+      const prev = get().config
+      if (prev) {
+        set({
+          config: {
+            ...prev,
+            departments: prev.departments.map((d) =>
+              d.name === deptName ? updatedDept : d,
+            ),
+          },
+        })
+      }
       set({ saving: false })
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
@@ -268,17 +283,23 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     const prev = get().config
     if (!prev) return () => {}
     const idSet = new Set(orderedIds)
-    const deptAgents = prev.agents.filter(
-      (a) => a.department === deptName && idSet.has(a.id),
+    const agentMap = new Map(
+      prev.agents
+        .filter((a) => a.department === deptName && idSet.has(a.id))
+        .map((a) => [a.id, a]),
     )
-    const agentMap = new Map(deptAgents.map((a) => [a.id, a]))
-    const reordered = orderedIds
+    // Preserve original array positions: replace in-place instead of appending
+    let reorderIdx = 0
+    const reorderedList = orderedIds
       .map((id) => agentMap.get(id))
       .filter((a): a is AgentConfig => a !== undefined)
-    const otherAgents = prev.agents.filter(
-      (a) => a.department !== deptName || !idSet.has(a.id),
-    )
-    set({ config: { ...prev, agents: [...otherAgents, ...reordered] } })
+    const agents = prev.agents.map((a) => {
+      if (a.department === deptName && idSet.has(a.id)) {
+        return reorderedList[reorderIdx++] ?? a
+      }
+      return a
+    })
+    set({ config: { ...prev, agents } })
     return () => set({ config: prev })
   },
 }))

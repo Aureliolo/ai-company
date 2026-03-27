@@ -60,4 +60,37 @@ describe('AgentEditDrawer', () => {
     expect(screen.getByText(/test-provider/)).toBeInTheDocument()
     expect(screen.getByText(/test-medium-001/)).toBeInTheDocument()
   })
+
+  it('displays save error when onUpdate rejects', async () => {
+    const failingOnUpdate = vi.fn().mockRejectedValue(new Error('Update failed'))
+    render(
+      <AgentEditDrawer
+        open={true}
+        onClose={mockOnClose}
+        agent={agent}
+        departments={departments}
+        onUpdate={failingOnUpdate}
+        onDelete={mockOnDelete}
+        saving={false}
+      />,
+    )
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => {
+      expect(screen.getByText('Update failed')).toBeInTheDocument()
+    })
+  })
+
+  it('calls onDelete with agent name after confirming delete', async () => {
+    renderDrawer()
+    fireEvent.click(screen.getByText('Delete'))
+    // Confirmation dialog opens
+    expect(screen.getByText('Delete alice?')).toBeInTheDocument()
+    // Click the destructive confirm button inside the dialog
+    const confirmButtons = screen.getAllByText('Delete')
+    // The last "Delete" button is the confirm button in the dialog
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]!)
+    await waitFor(() => {
+      expect(mockOnDelete).toHaveBeenCalledWith('alice')
+    })
+  })
 })

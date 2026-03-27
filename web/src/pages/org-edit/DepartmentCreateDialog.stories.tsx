@@ -4,11 +4,14 @@ import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 const meta = {
   title: 'OrgEdit/DepartmentCreateDialog',
   component: DepartmentCreateDialog,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     open: true,
     onOpenChange: () => {},
     existingNames: ['engineering', 'product'],
-    onCreate: async () => { throw new Error('Not implemented') },
+    onCreate: async () => ({}) as never,
   },
 } satisfies Meta<typeof DepartmentCreateDialog>
 

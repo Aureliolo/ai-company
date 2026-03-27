@@ -35,7 +35,7 @@ export function DepartmentEditDrawer({
 
   useEffect(() => {
     if (department) {
-      setDisplayName(department.display_name)
+      setDisplayName(department.display_name ?? department.name)
       setBudgetPercent('0')
       setSubmitError(null)
     }

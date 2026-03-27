@@ -13,6 +13,9 @@ const mockConfig: CompanyConfig = {
 const meta = {
   title: 'OrgEdit/GeneralTab',
   component: GeneralTab,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   args: {
     config: mockConfig,
     onUpdate: async () => {},

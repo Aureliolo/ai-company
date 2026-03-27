@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import type { UpdateCompanyRequest } from '@/api/types'
 import { useOrgEditData } from '@/hooks/useOrgEditData'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
@@ -49,7 +50,9 @@ export default function OrgEditPage() {
     optimisticReorderAgents,
   } = useOrgEditData()
 
-  const activeTab = (searchParams.get('tab') as TabValue) || 'general'
+  const VALID_TABS: ReadonlySet<string> = new Set<string>(['general', 'agents', 'departments'])
+  const rawTab = searchParams.get('tab') ?? 'general'
+  const activeTab: TabValue = VALID_TABS.has(rawTab) ? (rawTab as TabValue) : 'general'
 
   const handleTabChange = useCallback(
     (value: string) => {
@@ -70,7 +73,14 @@ export default function OrgEditPage() {
     async (parsed: Record<string, unknown>) => {
       try {
         await updateCompany({
-          company_name: parsed.company_name as string | undefined,
+          company_name: typeof parsed.company_name === 'string' ? parsed.company_name : undefined,
+          autonomy_level: typeof parsed.autonomy_level === 'string'
+            ? (parsed.autonomy_level as UpdateCompanyRequest['autonomy_level'])
+            : undefined,
+          budget_monthly: typeof parsed.budget_monthly === 'number' ? parsed.budget_monthly : undefined,
+          communication_pattern: typeof parsed.communication_pattern === 'string'
+            ? parsed.communication_pattern
+            : undefined,
         })
         useToastStore.getState().add({ variant: 'success', title: 'Configuration saved' })
       } catch {
