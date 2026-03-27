@@ -19,7 +19,7 @@ import type {
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import { toRuntimeStatus } from '@/lib/utils'
 import { AgentCard } from '@/components/ui/agent-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -36,17 +36,6 @@ export interface AgentsTabProps {
   onDeleteAgent: (name: string) => Promise<void>
   onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
-}
-
-/** Map config AgentStatus to the runtime status the AgentCard expects. */
-function toRuntimeStatus(status: AgentConfig['status']): AgentRuntimeStatus {
-  switch (status) {
-    case 'active': return 'active'
-    case 'onboarding': return 'idle'
-    case 'on_leave': return 'offline'
-    case 'terminated': return 'offline'
-    default: return 'idle'
-  }
 }
 
 function SortableAgentItem({

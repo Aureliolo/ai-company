@@ -30,6 +30,20 @@ export function getStatusColor(status: AgentRuntimeStatus): SemanticColor | "tex
 }
 
 /**
+ * Map an API-layer AgentStatus (HR lifecycle) to the runtime status
+ * used by UI components like AgentCard.
+ */
+export function toRuntimeStatus(status: string): AgentRuntimeStatus {
+  switch (status) {
+    case 'active': return 'active'
+    case 'onboarding': return 'idle'
+    case 'on_leave': return 'offline'
+    case 'terminated': return 'offline'
+    default: return 'idle'
+  }
+}
+
+/**
  * Map a 0-100 percentage to a semantic color token name.
  *
  * Thresholds: >=75 success, >=50 accent, >=25 warning, <25 danger.

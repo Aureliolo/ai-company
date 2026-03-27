@@ -57,7 +57,7 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
       <textarea
         value={yamlText}
         onChange={handleChange}
-        className="w-full min-h-[400px] rounded-lg border border-border bg-surface p-4 font-mono text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent resize-y"
+        className="w-full min-h-96 rounded-lg border border-border bg-surface p-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-accent resize-y"
         spellCheck={false}
         aria-label="YAML editor"
       />

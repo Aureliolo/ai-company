@@ -3,6 +3,8 @@ import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
 import { getErrorMessage } from '@/utils/errors'
 import type { AgentConfig, CreateAgentOrgRequest, Department, SeniorityLevel } from '@/api/types'
 import { SENIORITY_LEVEL_VALUES } from '@/api/types'
@@ -28,7 +30,7 @@ const INITIAL_FORM: FormState = {
   level: 'mid',
 }
 
-const INPUT_CLASSES = 'w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1'
+const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
 
 export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }: AgentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
@@ -72,6 +74,8 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
   // eslint-disable-next-line @eslint-react/exhaustive-deps -- validate reads form
   }, [form, onCreate, onOpenChange])
 
+  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name }))
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -97,51 +101,41 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
           </div>
 
           <div className="space-y-4">
-            <FormField label="Name" error={errors.name} required>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => updateField('name', e.target.value)}
-                className={INPUT_CLASSES}
-                placeholder="Agent name"
-                autoFocus
-              />
-            </FormField>
+            <InputField
+              label="Name"
+              value={form.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              error={errors.name}
+              required
+              autoFocus
+              placeholder="Agent name"
+            />
 
-            <FormField label="Role" error={errors.role} required>
-              <input
-                type="text"
-                value={form.role}
-                onChange={(e) => updateField('role', e.target.value)}
-                className={INPUT_CLASSES}
-                placeholder="e.g. Backend Developer"
-              />
-            </FormField>
+            <InputField
+              label="Role"
+              value={form.role}
+              onChange={(e) => updateField('role', e.target.value)}
+              error={errors.role}
+              required
+              placeholder="e.g. Backend Developer"
+            />
 
-            <FormField label="Department" error={errors.department} required>
-              <select
-                value={form.department}
-                onChange={(e) => updateField('department', e.target.value)}
-                className={INPUT_CLASSES}
-              >
-                <option value="">Select department...</option>
-                {departments.map((d) => (
-                  <option key={d.name} value={d.name}>{d.display_name}</option>
-                ))}
-              </select>
-            </FormField>
+            <SelectField
+              label="Department"
+              options={deptOptions}
+              value={form.department}
+              onChange={(value) => updateField('department', value)}
+              error={errors.department}
+              required
+              placeholder="Select department..."
+            />
 
-            <FormField label="Level">
-              <select
-                value={form.level}
-                onChange={(e) => updateField('level', e.target.value as SeniorityLevel)}
-                className={INPUT_CLASSES}
-              >
-                {SENIORITY_LEVEL_VALUES.map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-              </select>
-            </FormField>
+            <SelectField
+              label="Level"
+              options={LEVEL_OPTIONS}
+              value={form.level}
+              onChange={(value) => updateField('level', value as SeniorityLevel)}
+            />
 
             {submitError && (
               <p className="text-xs text-danger">{submitError}</p>
@@ -160,17 +154,5 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  )
-}
-
-function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-        {label}{required && <span className="text-danger"> *</span>}
-      </label>
-      {children}
-      {error && <p className="mt-0.5 text-[10px] text-danger">{error}</p>}
-    </div>
   )
 }

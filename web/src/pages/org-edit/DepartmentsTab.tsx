@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -106,7 +106,10 @@ export function DepartmentsTab({
     useSensor(KeyboardSensor),
   )
 
-  const healthMap = new Map(departmentHealths.map((h) => [h.name, h]))
+  const healthMap = useMemo(
+    () => new Map(departmentHealths.map((h) => [h.name, h])),
+    [departmentHealths],
+  )
 
   const getAgentCount = useCallback(
     (deptName: string): number => {

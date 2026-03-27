@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { getErrorMessage } from '@/utils/errors'
-import type { AgentRuntimeStatus } from '@/lib/utils'
+import { toRuntimeStatus } from '@/lib/utils'
 
 export interface AgentEditDrawerProps {
   open: boolean
@@ -19,16 +19,6 @@ export interface AgentEditDrawerProps {
   onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
   onDelete: (name: string) => Promise<void>
   saving: boolean
-}
-
-function toRuntimeStatus(status: AgentConfig['status']): AgentRuntimeStatus {
-  switch (status) {
-    case 'active': return 'active'
-    case 'onboarding': return 'idle'
-    case 'on_leave': return 'offline'
-    case 'terminated': return 'offline'
-    default: return 'idle'
-  }
 }
 
 const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
@@ -141,7 +131,7 @@ export function AgentEditDrawer({
 
             {/* Read-only info */}
             <div className="border-t border-border pt-4 space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Model</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
               <p className="text-xs text-text-secondary font-mono">{agent.model.provider} / {agent.model.model_id}</p>
             </div>
 

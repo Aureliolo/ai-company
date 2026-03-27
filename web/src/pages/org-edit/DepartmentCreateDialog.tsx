@@ -3,6 +3,7 @@ import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { InputField } from '@/components/ui/input-field'
 import { getErrorMessage } from '@/utils/errors'
 import type { CreateDepartmentRequest, Department } from '@/api/types'
 
@@ -24,8 +25,6 @@ const INITIAL_FORM: FormState = {
   display_name: '',
   budget_percent: '0',
 }
-
-const INPUT_CLASSES = 'w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1'
 
 export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCreate }: DepartmentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
@@ -100,38 +99,33 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
           </div>
 
           <div className="space-y-4">
-            <FormField label="Name" error={errors.name} required>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => updateField('name', e.target.value)}
-                className={INPUT_CLASSES}
-                placeholder="e.g. engineering"
-                autoFocus
-              />
-            </FormField>
+            <InputField
+              label="Name"
+              value={form.name}
+              onChange={(e) => updateField('name', e.target.value)}
+              error={errors.name}
+              required
+              autoFocus
+              placeholder="e.g. engineering"
+            />
 
-            <FormField label="Display Name" error={errors.display_name} required>
-              <input
-                type="text"
-                value={form.display_name}
-                onChange={(e) => updateField('display_name', e.target.value)}
-                className={INPUT_CLASSES}
-                placeholder="e.g. Engineering"
-              />
-            </FormField>
+            <InputField
+              label="Display Name"
+              value={form.display_name}
+              onChange={(e) => updateField('display_name', e.target.value)}
+              error={errors.display_name}
+              required
+              placeholder="e.g. Engineering"
+            />
 
-            <FormField label="Budget %" error={errors.budget_percent}>
-              <input
-                type="number"
-                value={form.budget_percent}
-                onChange={(e) => updateField('budget_percent', e.target.value)}
-                className={INPUT_CLASSES}
-                min="0"
-                max="100"
-                step="1"
-              />
-            </FormField>
+            <InputField
+              label="Budget %"
+              type="number"
+              value={form.budget_percent}
+              onChange={(e) => updateField('budget_percent', e.target.value)}
+              error={errors.budget_percent}
+              hint="Percentage of company budget (0-100)"
+            />
 
             {submitError && (
               <p className="text-xs text-danger">{submitError}</p>
@@ -150,17 +144,5 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
-  )
-}
-
-function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-        {label}{required && <span className="text-danger"> *</span>}
-      </label>
-      {children}
-      {error && <p className="mt-0.5 text-[10px] text-danger">{error}</p>}
-    </div>
   )
 }

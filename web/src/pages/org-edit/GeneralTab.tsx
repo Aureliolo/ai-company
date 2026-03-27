@@ -29,7 +29,7 @@ interface FormState {
 }
 
 function formatBudget(value: number): string {
-  return `$${value.toLocaleString()}`
+  return `${value.toLocaleString()} EUR`
 }
 
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {

@@ -45,11 +45,17 @@ describe('GeneralTab', () => {
     expect(screen.getByText('Save Settings')).toBeInTheDocument()
   })
 
-  it('calls onUpdate when save is clicked', async () => {
+  it('calls onUpdate with correct payload when save is clicked', async () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
     fireEvent.click(screen.getByText('Save Settings'))
     expect(mockOnUpdate).toHaveBeenCalledTimes(1)
+    expect(mockOnUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      company_name: 'Test Corp',
+      autonomy_level: 'semi',
+      budget_monthly: 100,
+      communication_pattern: 'hybrid',
+    }))
   })
 
   it('disables save button when saving', () => {

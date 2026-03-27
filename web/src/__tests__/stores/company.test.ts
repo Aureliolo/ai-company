@@ -358,7 +358,7 @@ describe('useCompanyStore', () => {
       const restored = useCompanyStore.getState().config!.agents.filter(
         (a) => a.department === 'engineering',
       )
-      expect(restored.map((a) => a.id)).toEqual(agentIds.reverse())
+      expect(restored.map((a) => a.id)).toEqual(agentIds.toReversed())
     })
   })
 })

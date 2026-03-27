@@ -45,9 +45,10 @@ export function DepartmentEditDrawer({
     if (!department) return
     setSubmitError(null)
     try {
+      const pct = Number(budgetPercent)
       await onUpdate(department.name, {
         display_name: displayName.trim() || undefined,
-        budget_percent: Number(budgetPercent) || undefined,
+        budget_percent: Number.isFinite(pct) ? pct : undefined,
       })
       onClose()
     } catch (err) {
@@ -99,7 +100,7 @@ export function DepartmentEditDrawer({
 
             {/* Teams summary */}
             <div className="border-t border-border pt-4 space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Teams</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Teams</p>
               {department.teams.length === 0 ? (
                 <p className="text-xs text-text-secondary">No teams configured</p>
               ) : (
