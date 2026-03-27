@@ -1,5 +1,15 @@
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
-import type { AgentConfig, ApiResponse, AutonomyLevelRequest, AutonomyLevelResponse, PaginatedResponse, PaginationParams } from '../types'
+import type {
+  AgentActivityEvent,
+  AgentConfig,
+  AgentPerformanceSummary,
+  ApiResponse,
+  AutonomyLevelRequest,
+  AutonomyLevelResponse,
+  CareerEvent,
+  PaginatedResponse,
+  PaginationParams,
+} from '../types'
 
 export async function listAgents(params?: PaginationParams): Promise<PaginatedResult<AgentConfig>> {
   const response = await apiClient.get<PaginatedResponse<AgentConfig>>('/agents', { params })
@@ -21,5 +31,30 @@ export async function setAutonomy(
   data: AutonomyLevelRequest,
 ): Promise<AutonomyLevelResponse> {
   const response = await apiClient.post<ApiResponse<AutonomyLevelResponse>>(`/agents/${encodeURIComponent(agentId)}/autonomy`, data)
+  return unwrap(response)
+}
+
+export async function getAgentPerformance(name: string): Promise<AgentPerformanceSummary> {
+  const response = await apiClient.get<ApiResponse<AgentPerformanceSummary>>(
+    `/agents/${encodeURIComponent(name)}/performance`,
+  )
+  return unwrap(response)
+}
+
+export async function getAgentActivity(
+  name: string,
+  params?: PaginationParams,
+): Promise<PaginatedResult<AgentActivityEvent>> {
+  const response = await apiClient.get<PaginatedResponse<AgentActivityEvent>>(
+    `/agents/${encodeURIComponent(name)}/activity`,
+    { params },
+  )
+  return unwrapPaginated<AgentActivityEvent>(response)
+}
+
+export async function getAgentHistory(name: string): Promise<readonly CareerEvent[]> {
+  const response = await apiClient.get<ApiResponse<readonly CareerEvent[]>>(
+    `/agents/${encodeURIComponent(name)}/history`,
+  )
   return unwrap(response)
 }

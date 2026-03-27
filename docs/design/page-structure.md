@@ -64,17 +64,22 @@ Lower-frequency destinations in a collapsible "Workspace" section.
 
 #### Agents (`/agents`)
 
-Agent profiles as card grid or table. Each card shows name, role, department, status dot, current task. Click opens the Agent Detail panel (slide-in overlay, not a separate page -- but URL-addressable at `/agents/{name}` for deep linking).
+Agent profiles as card grid. Each card shows name, role, department, status dot, hire date. Filtering by department, level, status. Search by name/role. Sort by name, department, level, status, hire date. Click navigates to the Agent Detail page at `/agents/{agentName}`.
 
-**Agent Detail panel tabs**:
+**Agent Detail page** (`/agents/{agentName}`) -- single scrollable page with these sections:
 
-- **Overview**: Identity, personality traits, backstory, role description
-- **Performance**: Collaboration score, calibration data, task completion rates, career arc narrative
-- **Access**: Autonomy level (view/edit), tool permissions, authority boundaries
-- **Activity**: Assigned tasks, recent actions, spending breakdown
+- **Identity header**: Large avatar, name, role, department badge, level badge, status with pulse, autonomy level badge, hire date
+- **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
+- **Performance metrics**: 2x2 grid of MetricCards (tasks completed, avg completion time, success rate, cost per task) with sparklines
+- **Tool badges**: Horizontal flex-wrap of permitted tools
+- **Career timeline**: Vertical timeline with colored dots (hired=green, promoted=blue, demoted=yellow, fired=red)
+- **Task history**: Gantt-style horizontal bars sorted by time, type-colored, pulse on in-progress tasks, duration labels
+- **Activity log**: Paginated chronological event list with type icons, descriptions, timestamps
 
-**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{id}/autonomy`, `PUT /agents/{id}/autonomy`, `GET /agents/{id}/collaboration/score`, `GET /agents/{id}/collaboration/override`, `GET /agents/{id}/collaboration/calibration`, `GET /budget/agents/{id}`
-**WS channels**: `agents`
+**Deferred to future iteration**: Collaboration score/calibration endpoints, autonomy editing, spending breakdown, and tabbed layout (Access tab).
+
+**API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`
+**WS channels**: `agents`, `tasks` (detail page)
 
 #### Messages (`/messages`)
 
@@ -141,10 +146,10 @@ Global search overlay: navigate to any page, search agents by name, search tasks
 **Trigger**: Bell icon in sidebar bottom + unread badge
 Slide-in drawer aggregating system notifications: budget alerts, approval arrivals, agent status changes, system errors. Sources from WS `system`, `approvals`, and `budget` channels.
 
-#### Agent Detail Panel
+#### Agent Detail Page
 
 **Trigger**: Click agent in Agents list, Org Chart node, or any agent name link
-Slide-in panel with tabbed content (Overview, Performance, Access, Activity). Not a separate route -- overlays the current page. URL updates to `/agents/{name}` for deep linking and back-button support.
+Navigates to a dedicated full page at `/agents/{agentName}`. Single scrollable page with sections: Identity header, Prose insights, Performance metrics, Tool badges, Career timeline, Task history, Activity log. See the Agents section above for the full layout description.
 
 ---
 
@@ -212,7 +217,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/approvals` | Approvals | Pending queue |
 | `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
 | `/agents` | Agents | Profile list |
-| `/agents/:agentName` | Agent detail | Slide-in panel, URL-addressable |
+| `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
 | `/meetings` | Meetings | Meeting history |
@@ -245,7 +250,8 @@ Single WebSocket connection per session, established after login. Client subscri
 | **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
 | **Budget** | `budget` | Cost records added, budget alerts |
 | **Approvals** | `approvals` | Approval submitted/approved/rejected/expired |
-| **Agents** | `agents` | Agent status changes |
+| **Agents** (list) | `agents` | Agent status changes |
+| **Agents** (detail) | `agents`, `tasks` | Agent status and task changes for selected agent |
 | **Messages** | `messages` | New messages sent |
 | **Meetings** | `meetings` | Meeting started/completed/failed |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
@@ -319,8 +325,8 @@ Every backend controller has a home in the page structure. No orphans.
 | ApprovalsController | Approvals, Dashboard |
 | SettingsController | Settings |
 | BackupController | Settings (backup namespace) |
-| AutonomyController | Agent Detail panel (Access tab) |
-| CollaborationController | Agent Detail panel (Performance tab) |
+| AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
+| CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CoordinationController | Task Board (task detail action) |
 | ProjectController | Excluded (stub) |
 | ArtifactController | Excluded (stub, pending #612) |
@@ -337,10 +343,10 @@ How this page structure supports the 10 design principles from #762:
 | 2 | Real-time means visible | WS subscription map ensures every data-bearing page has live updates. Sidebar badges update in real time |
 | 3 | Navigation recedes, content shines | Collapsible sidebar (220px to 56px). No persistent drawers competing with content |
 | 4 | Status arrives, doesn't flash | WS events update Zustand stores; animation profile is "status-driven" (only changed elements animate) |
-| 5 | Progressive disclosure | Dashboard summary to page detail. Agent list to slide-in panel. Org chart node to agent detail |
+| 5 | Progressive disclosure | Dashboard summary to page detail. Agent list to agent detail page. Org chart node to agent detail |
 | 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board and Approvals |
 | 7 | Typography carries information | Geist Mono for metrics/values/agent names. Geist Sans for labels/descriptions |
-| 8 | Prose alongside metrics | Agent detail: biography narrative next to performance numbers. Budget: cost context explanations |
+| 8 | Prose alongside metrics | Agent detail: prose insights alongside performance metrics. Budget: cost context explanations |
 | 9 | Every pixel earns its place | No placeholder pages (Artifacts, Projects excluded). No "Coming Soon" stubs |
 | 10 | One component, one look | Consistent card/panel/badge patterns across all pages via shadcn/ui primitives |
 
