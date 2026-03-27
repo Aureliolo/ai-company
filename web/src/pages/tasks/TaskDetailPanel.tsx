@@ -73,8 +73,12 @@ export function TaskDetailPanel({
   }, [task.id, task.version, onTransition])
 
   const handleCancel = useCallback(async () => {
+    if (!cancelReason.trim()) {
+      useToastStore.getState().add({ variant: 'error', title: 'Please provide a cancellation reason' })
+      return
+    }
     try {
-      await onCancel(task.id, { reason: cancelReason })
+      await onCancel(task.id, { reason: cancelReason.trim() })
       setCancelOpen(false)
       setCancelReason('')
     } catch {

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { InlineEdit } from '@/components/ui/inline-edit'
@@ -216,7 +217,7 @@ export default function TaskDetailPage() {
               <ul className="mt-1.5 space-y-1">
                 {task.acceptance_criteria.map((criterion) => (
                   <li key={criterion.description} className="flex items-start gap-2 text-sm text-text-secondary">
-                    <span className={`mt-0.5 size-4 shrink-0 rounded border ${criterion.met ? 'border-success bg-success/20' : 'border-border'}`} />
+                    <span className={cn('mt-0.5 size-4 shrink-0 rounded border', criterion.met ? 'border-success bg-success/20' : 'border-border')} />
                     {criterion.description}
                   </li>
                 ))}

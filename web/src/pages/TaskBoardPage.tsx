@@ -67,9 +67,14 @@ export default function TaskBoardPage() {
 
   // Sync selectedTaskId from URL with store (handles direct navigation / shared links)
   const prevSelectedRef = useRef<string | null>(null)
+  const skipNextFetchRef = useRef(false)
   useEffect(() => {
     if (selectedTaskId && selectedTaskId !== prevSelectedRef.current) {
-      fetchTask(selectedTaskId)
+      if (skipNextFetchRef.current) {
+        skipNextFetchRef.current = false
+      } else {
+        fetchTask(selectedTaskId)
+      }
     }
     prevSelectedRef.current = selectedTaskId
   }, [selectedTaskId, fetchTask])
@@ -142,6 +147,7 @@ export default function TaskBoardPage() {
 
   // Task selection
   const handleSelectTask = useCallback((taskId: string) => {
+    skipNextFetchRef.current = true
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('selected', taskId)
@@ -321,22 +327,10 @@ export default function TaskBoardPage() {
           <TaskDetailPanel
             task={selectedTask}
             onClose={handleClosePanel}
-            onUpdate={async (id, data) => {
-              try { await updateTask(id, data) }
-              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Update failed', description: getErrorMessage(err) }); throw err }
-            }}
-            onTransition={async (id, data) => {
-              try { await transitionTask(id, data) }
-              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Transition failed', description: getErrorMessage(err) }); throw err }
-            }}
-            onCancel={async (id, data) => {
-              try { await cancelTask(id, data) }
-              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Cancel failed', description: getErrorMessage(err) }); throw err }
-            }}
-            onDelete={async (id) => {
-              try { await deleteTask(id); handleClosePanel() }
-              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Delete failed', description: getErrorMessage(err) }); throw err }
-            }}
+            onUpdate={async (id, data) => { await updateTask(id, data) }}
+            onTransition={async (id, data) => { await transitionTask(id, data) }}
+            onCancel={async (id, data) => { await cancelTask(id, data) }}
+            onDelete={async (id) => { await deleteTask(id) }}
           />
         )}
       </AnimatePresence>

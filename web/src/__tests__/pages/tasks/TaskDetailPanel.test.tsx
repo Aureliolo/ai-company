@@ -153,8 +153,9 @@ describe('TaskDetailPanel', () => {
     // Fill in reason
     const reasonInput = screen.getByLabelText('Cancellation reason')
     await user.type(reasonInput, 'No longer needed')
-    // Confirm
-    await user.click(screen.getByRole('button', { name: 'Cancel Task' }))
+    // Confirm -- scope to the dialog to avoid ambiguity with footer button
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Task' }))
     expect(onCancel).toHaveBeenCalledWith('task-1', { reason: 'No longer needed' })
   })
 })
