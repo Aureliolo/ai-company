@@ -155,6 +155,48 @@ describe('ApprovalDetailDrawer', () => {
     expect(toasts.some((t) => t.title === 'Please provide a rejection reason')).toBe(true)
   })
 
+  it('renders conditional fields for decided approvals', () => {
+    renderDrawer({
+      status: 'approved',
+      expires_at: '2026-04-01T00:00:00Z',
+      seconds_remaining: 7200,
+      decided_by: 'admin-user',
+      decided_at: '2026-03-27T15:00:00Z',
+      decision_reason: 'All checks passed',
+      task_id: 'task-42',
+      metadata: { region: 'eu-west', nested: { deep: true } as unknown as string },
+    })
+    expect(screen.getByText('Decided By')).toBeInTheDocument()
+    expect(screen.getByText('admin-user')).toBeInTheDocument()
+    expect(screen.getByText('Decided At')).toBeInTheDocument()
+    expect(screen.getByText('Expires')).toBeInTheDocument()
+    expect(screen.getByText('All checks passed')).toBeInTheDocument()
+    expect(screen.getByText('task-42')).toBeInTheDocument()
+    expect(screen.getByText('eu-west')).toBeInTheDocument()
+    expect(screen.getByText('{"deep":true}')).toBeInTheDocument()
+  })
+
+  it('shows error toast when approve fails', async () => {
+    const user = userEvent.setup()
+    defaultHandlers.onApprove.mockRejectedValueOnce(new Error('Permission denied'))
+    renderDrawer()
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    await user.click(screen.getByRole('button', { name: /approve/i }))
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.title === 'Failed to approve')).toBe(true)
+  })
+
+  it('shows error toast when reject fails', async () => {
+    const user = userEvent.setup()
+    defaultHandlers.onReject.mockRejectedValueOnce(new Error('Server error'))
+    renderDrawer()
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+    await user.type(screen.getByLabelText('Rejection reason'), 'Not needed')
+    await user.click(screen.getByRole('button', { name: /reject/i }))
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.title === 'Failed to reject')).toBe(true)
+  })
+
   it('successful approve submits with comment', async () => {
     const user = userEvent.setup()
     renderDrawer()
