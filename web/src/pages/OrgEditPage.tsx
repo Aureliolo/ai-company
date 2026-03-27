@@ -1,5 +1,188 @@
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
+import { useCallback, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import { Tabs } from 'radix-ui'
+import { AlertTriangle, ArrowLeft, Building2, Settings, Users, WifiOff } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { ToggleField } from '@/components/ui/toggle-field'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { useOrgEditData } from '@/hooks/useOrgEditData'
+import { useToastStore } from '@/stores/toast'
+import { ROUTES } from '@/router/routes'
+import { OrgEditSkeleton } from './org-edit/OrgEditSkeleton'
+import { GeneralTab } from './org-edit/GeneralTab'
+import { AgentsTab } from './org-edit/AgentsTab'
+import { DepartmentsTab } from './org-edit/DepartmentsTab'
+import { YamlEditorPanel } from './org-edit/YamlEditorPanel'
+
+type TabValue = 'general' | 'agents' | 'departments'
+
+const TRIGGER_CLASSES = cn(
+  'px-4 py-2 text-sm font-medium text-text-secondary transition-colors',
+  'data-[state=active]:text-foreground data-[state=active]:border-b-2 data-[state=active]:border-accent',
+  'hover:text-foreground',
+)
 
 export default function OrgEditPage() {
-  return <PlaceholderPage title="Edit Organization" />
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [yamlMode, setYamlMode] = useState(false)
+
+  const {
+    config,
+    departmentHealths,
+    loading,
+    error,
+    saving,
+    saveError,
+    wsConnected,
+    wsSetupError,
+    updateCompany,
+    createDepartment,
+    updateDepartment,
+    deleteDepartment,
+    reorderDepartments,
+    createAgent,
+    updateAgent,
+    deleteAgent,
+    reorderAgents,
+    optimisticReorderDepartments,
+    optimisticReorderAgents,
+  } = useOrgEditData()
+
+  const activeTab = (searchParams.get('tab') as TabValue) || 'general'
+
+  const handleTabChange = useCallback(
+    (value: string) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (value === 'general') {
+          next.delete('tab')
+        } else {
+          next.set('tab', value)
+        }
+        return next
+      })
+    },
+    [setSearchParams],
+  )
+
+  const handleYamlSave = useCallback(
+    async (parsed: Record<string, unknown>) => {
+      try {
+        await updateCompany({
+          company_name: parsed.company_name as string | undefined,
+        })
+        useToastStore.getState().add({ variant: 'success', title: 'Configuration saved' })
+      } catch {
+        useToastStore.getState().add({ variant: 'error', title: 'Failed to save configuration' })
+      }
+    },
+    [updateCompany],
+  )
+
+  if (loading && !config) {
+    return <OrgEditSkeleton />
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link to={ROUTES.ORG}>
+            <Button variant="ghost" size="icon" aria-label="Back to Org Chart">
+              <ArrowLeft className="size-4" />
+            </Button>
+          </Link>
+          <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
+        </div>
+        <ToggleField
+          label="YAML"
+          checked={yamlMode}
+          onChange={setYamlMode}
+        />
+      </div>
+
+      {/* Error banner */}
+      {(error || saveError) && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+          <AlertTriangle className="size-4 shrink-0" />
+          {saveError || error}
+        </div>
+      )}
+
+      {/* WS disconnect warning */}
+      {!wsConnected && !loading && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+          <WifiOff className="size-4 shrink-0" />
+          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
+        </div>
+      )}
+
+      {/* Content: YAML or tabbed GUI */}
+      {yamlMode ? (
+        <YamlEditorPanel config={config} onSave={handleYamlSave} saving={saving} />
+      ) : (
+        <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
+          <Tabs.List className="flex border-b border-border" aria-label="Organization sections">
+            <Tabs.Trigger value="general" className={TRIGGER_CLASSES}>
+              <span className="flex items-center gap-1.5">
+                <Settings className="size-3.5" />
+                General
+              </span>
+            </Tabs.Trigger>
+            <Tabs.Trigger value="agents" className={TRIGGER_CLASSES}>
+              <span className="flex items-center gap-1.5">
+                <Users className="size-3.5" />
+                Agents
+              </span>
+            </Tabs.Trigger>
+            <Tabs.Trigger value="departments" className={TRIGGER_CLASSES}>
+              <span className="flex items-center gap-1.5">
+                <Building2 className="size-3.5" />
+                Departments
+              </span>
+            </Tabs.Trigger>
+          </Tabs.List>
+
+          <div className="pt-6">
+            <Tabs.Content value="general">
+              <ErrorBoundary level="section">
+                <GeneralTab config={config} onUpdate={updateCompany} saving={saving} />
+              </ErrorBoundary>
+            </Tabs.Content>
+
+            <Tabs.Content value="agents">
+              <ErrorBoundary level="section">
+                <AgentsTab
+                  config={config}
+                  saving={saving}
+                  onCreateAgent={createAgent}
+                  onUpdateAgent={updateAgent}
+                  onDeleteAgent={deleteAgent}
+                  onReorderAgents={reorderAgents}
+                  optimisticReorderAgents={optimisticReorderAgents}
+                />
+              </ErrorBoundary>
+            </Tabs.Content>
+
+            <Tabs.Content value="departments">
+              <ErrorBoundary level="section">
+                <DepartmentsTab
+                  config={config}
+                  departmentHealths={departmentHealths}
+                  saving={saving}
+                  onCreateDepartment={createDepartment}
+                  onUpdateDepartment={updateDepartment}
+                  onDeleteDepartment={deleteDepartment}
+                  onReorderDepartments={reorderDepartments}
+                  optimisticReorderDepartments={optimisticReorderDepartments}
+                />
+              </ErrorBoundary>
+            </Tabs.Content>
+          </div>
+        </Tabs.Root>
+      )}
+    </div>
+  )
 }

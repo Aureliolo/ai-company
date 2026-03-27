@@ -602,6 +602,58 @@ export interface CompanyConfig {
   readonly departments: readonly Department[]
 }
 
+// ── Company Mutation Requests ────────────────────────────────
+
+export interface UpdateCompanyRequest {
+  company_name?: string
+  autonomy_level?: AutonomyLevel
+  budget_monthly?: number
+  communication_pattern?: string
+}
+
+export interface CreateDepartmentRequest {
+  name: string
+  display_name: string
+  head?: string | null
+  budget_percent?: number
+  autonomy_level?: AutonomyLevel | null
+}
+
+export interface UpdateDepartmentRequest {
+  display_name?: string
+  head?: string | null
+  budget_percent?: number
+  autonomy_level?: AutonomyLevel | null
+  teams?: readonly TeamConfig[]
+}
+
+export interface ReorderDepartmentsRequest {
+  readonly department_names: readonly string[]
+}
+
+export interface CreateAgentOrgRequest {
+  name: string
+  role: string
+  department: DepartmentName
+  level: SeniorityLevel
+  personality_preset?: string
+  model_provider?: string
+  model_id?: string
+}
+
+export interface UpdateAgentOrgRequest {
+  name?: string
+  role?: string
+  department?: DepartmentName
+  level?: SeniorityLevel
+  status?: AgentStatus
+  autonomy_level?: AutonomyLevel | null
+}
+
+export interface ReorderAgentsRequest {
+  readonly agent_ids: readonly string[]
+}
+
 // ── Providers ────────────────────────────────────────────────
 
 export type AuthType = 'api_key' | 'oauth' | 'custom_header' | 'subscription' | 'none'

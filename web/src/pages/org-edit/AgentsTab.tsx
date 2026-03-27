@@ -1,0 +1,259 @@
+import { useCallback, useMemo, useState } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Plus, Users } from 'lucide-react'
+import type {
+  AgentConfig,
+  CompanyConfig,
+  CreateAgentOrgRequest,
+  UpdateAgentOrgRequest,
+} from '@/api/types'
+import type { AgentRuntimeStatus } from '@/lib/utils'
+import { AgentCard } from '@/components/ui/agent-card'
+import { SectionCard } from '@/components/ui/section-card'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Button } from '@/components/ui/button'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { AgentCreateDialog } from './AgentCreateDialog'
+import { AgentEditDrawer } from './AgentEditDrawer'
+
+export interface AgentsTabProps {
+  config: CompanyConfig | null
+  saving: boolean
+  onCreateAgent: (data: CreateAgentOrgRequest) => Promise<AgentConfig>
+  onUpdateAgent: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
+  onDeleteAgent: (name: string) => Promise<void>
+  onReorderAgents: (deptName: string, orderedIds: string[]) => Promise<void>
+  optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
+}
+
+/** Map config AgentStatus to the runtime status the AgentCard expects. */
+function toRuntimeStatus(status: AgentConfig['status']): AgentRuntimeStatus {
+  switch (status) {
+    case 'active': return 'active'
+    case 'onboarding': return 'idle'
+    case 'on_leave': return 'offline'
+    case 'terminated': return 'offline'
+    default: return 'idle'
+  }
+}
+
+function SortableAgentItem({
+  agent,
+  onClick,
+}: {
+  agent: AgentConfig
+  onClick: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: agent.id,
+    data: { agent },
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <button
+        type="button"
+        className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
+        onClick={onClick}
+        aria-label={`Edit agent ${agent.name}`}
+      >
+        <AgentCard
+          name={agent.name}
+          role={agent.role}
+          department={agent.department}
+          status={toRuntimeStatus(agent.status)}
+        />
+      </button>
+    </div>
+  )
+}
+
+export function AgentsTab({
+  config,
+  saving,
+  onCreateAgent,
+  onUpdateAgent,
+  onDeleteAgent,
+  onReorderAgents,
+  optimisticReorderAgents,
+}: AgentsTabProps) {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [editAgent, setEditAgent] = useState<AgentConfig | null>(null)
+  const [activeAgent, setActiveAgent] = useState<AgentConfig | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
+
+  // Group agents by department
+  const agentsByDept = useMemo(() => {
+    if (!config) return new Map<string, AgentConfig[]>()
+    const map = new Map<string, AgentConfig[]>()
+    for (const dept of config.departments) {
+      map.set(dept.name, [])
+    }
+    for (const agent of config.agents) {
+      const list = map.get(agent.department) ?? []
+      list.push(agent)
+      map.set(agent.department, list)
+    }
+    return map
+  }, [config])
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveAgent(event.active.data.current?.agent ?? null)
+  }, [])
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setActiveAgent(null)
+      const { active, over } = event
+      if (!over || active.id === over.id || !config) return
+
+      const draggedAgent = active.data.current?.agent as AgentConfig | undefined
+      if (!draggedAgent) return
+
+      const deptAgents = agentsByDept.get(draggedAgent.department)
+      if (!deptAgents) return
+
+      const oldIndex = deptAgents.findIndex((a) => a.id === active.id)
+      const newIndex = deptAgents.findIndex((a) => a.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return
+
+      const reordered = arrayMove(deptAgents, oldIndex, newIndex)
+      const orderedIds = reordered.map((a) => a.id)
+
+      const rollback = optimisticReorderAgents(draggedAgent.department, orderedIds)
+      try {
+        await onReorderAgents(draggedAgent.department, orderedIds)
+      } catch {
+        rollback()
+      }
+    },
+    [config, agentsByDept, optimisticReorderAgents, onReorderAgents],
+  )
+
+  if (!config || config.agents.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-1.5 size-3.5" />
+            Add Agent
+          </Button>
+        </div>
+        <EmptyState
+          icon={Users}
+          title="No agents"
+          description="Create your first agent to get started."
+          action={{ label: 'Add Agent', onClick: () => setCreateOpen(true) }}
+        />
+        <AgentCreateDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          departments={config?.departments ?? []}
+          onCreate={onCreateAgent}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-1.5 size-3.5" />
+          Add Agent
+        </Button>
+      </div>
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {Array.from(agentsByDept.entries()).map(([deptName, agents]) => {
+          const dept = config.departments.find((d) => d.name === deptName)
+          return (
+            <SectionCard
+              key={deptName}
+              title={dept?.display_name ?? deptName}
+              icon={Users}
+              action={
+                <span className="text-xs text-text-secondary">
+                  {agents.length} agent{agents.length !== 1 ? 's' : ''}
+                </span>
+              }
+            >
+              {agents.length === 0 ? (
+                <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
+              ) : (
+                <SortableContext items={agents.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                  <StaggerGroup className="grid gap-3">
+                    {agents.map((agent) => (
+                      <StaggerItem key={agent.id}>
+                        <SortableAgentItem
+                          agent={agent}
+                          onClick={() => setEditAgent(agent)}
+                        />
+                      </StaggerItem>
+                    ))}
+                  </StaggerGroup>
+                </SortableContext>
+              )}
+            </SectionCard>
+          )
+        })}
+
+        <DragOverlay>
+          {activeAgent && (
+            <AgentCard
+              name={activeAgent.name}
+              role={activeAgent.role}
+              department={activeAgent.department}
+              status={toRuntimeStatus(activeAgent.status)}
+              className="shadow-lg"
+            />
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      <AgentCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        departments={config.departments}
+        onCreate={onCreateAgent}
+      />
+
+      <AgentEditDrawer
+        open={editAgent !== null}
+        onClose={() => setEditAgent(null)}
+        agent={editAgent}
+        departments={config.departments}
+        onUpdate={onUpdateAgent}
+        onDelete={onDeleteAgent}
+        saving={saving}
+      />
+    </div>
+  )
+}
