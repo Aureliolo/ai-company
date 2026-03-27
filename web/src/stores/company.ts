@@ -40,7 +40,11 @@ export const useCompanyStore = create<CompanyState>()((set) => ({
       const departmentHealths = healthResults.filter(
         (h): h is DepartmentHealth => h !== null,
       )
-      set({ departmentHealths, error: null })
+      if (departmentHealths.length === 0 && config.departments.length > 0) {
+        set({ departmentHealths, error: 'Failed to fetch department health data' })
+      } else {
+        set({ departmentHealths, error: null })
+      }
     } catch (err) {
       set({ error: getErrorMessage(err) })
     }

@@ -96,9 +96,9 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     parent_task_id: null,
     delegation_chain: [],
     task_structure: null,
-    coordination_topology: 'direct',
+    coordination_topology: 'centralized',
     created_at: '2026-01-01T00:00:00Z',
-    updated_at: null,
+    updated_at: undefined,
     ...overrides,
   }
 }
