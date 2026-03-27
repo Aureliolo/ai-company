@@ -7,7 +7,7 @@
  */
 
 /** ISO 4217 currency codes with display labels, ordered by usage frequency. */
-export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
+export const CURRENCY_OPTIONS = [
   { value: 'EUR', label: 'EUR - Euro' },
   { value: 'USD', label: 'USD - US Dollar' },
   { value: 'GBP', label: 'GBP - British Pound' },
@@ -36,7 +36,7 @@ export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'ILS', label: 'ILS - Israeli Shekel' },
   { value: 'IDR', label: 'IDR - Indonesian Rupiah' },
   { value: 'VND', label: 'VND - Vietnamese Dong' },
-]
+] as const satisfies readonly { value: string; label: string }[]
 
 /** Derived union type of supported ISO 4217 currency codes. */
 export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['value']

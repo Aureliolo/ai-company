@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SectionCard } from '@/components/ui/section-card'
@@ -52,6 +52,7 @@ export function ProvidersStep() {
 
   const providersCount = Object.keys(providers).length
   const probeResultsCount = Object.keys(probeResults).length
+  const probeAttempted = useRef(false)
 
   // Fetch providers on mount
   useEffect(() => {
@@ -67,9 +68,10 @@ export function ProvidersStep() {
     }
   }, [presets.length, presetsLoading, presetsError, fetchPresets])
 
-  // Auto-probe local presets
+  // Auto-probe local presets (once per mount)
   useEffect(() => {
-    if (presets.length > 0 && probeResultsCount === 0 && !probing) {
+    if (presets.length > 0 && probeResultsCount === 0 && !probing && !probeAttempted.current) {
+      probeAttempted.current = true
       probeAllPresets()
     }
   }, [presets.length, probeResultsCount, probing, probeAllPresets])
