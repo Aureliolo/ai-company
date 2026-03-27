@@ -9,10 +9,12 @@ import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.errors import (
+    SemanticAnalysisError,
     WorkspaceCleanupError,
     WorkspaceError,
     WorkspaceLimitError,
@@ -34,6 +36,8 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_MERGE_CONFLICT,
     WORKSPACE_MERGE_FAILED,
     WORKSPACE_MERGE_START,
+    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+    WORKSPACE_SEMANTIC_CONFLICT,
     WORKSPACE_SETUP_COMPLETE,
     WORKSPACE_SETUP_FAILED,
     WORKSPACE_SETUP_START,
@@ -42,9 +46,28 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_TEARDOWN_START,
 )
 
+if TYPE_CHECKING:
+    from synthorg.engine.workspace.semantic_analyzer import SemanticAnalyzer
+
 logger = get_logger(__name__)
 
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+_SAFE_FILE_PATH_RE = re.compile(r"^[A-Za-z0-9_./ @\-]+$")
+
+
+def _validate_file_path(file_path: str) -> bool:
+    """Return True if *file_path* is safe for use as a git path arg.
+
+    Rejects empty strings, flag-like arguments, directory traversal,
+    absolute paths, and characters outside a conservative allowlist.
+    """
+    if not file_path or file_path.startswith("-"):
+        return False
+    if ".." in file_path.split("/"):
+        return False
+    if file_path.startswith("/"):
+        return False
+    return bool(_SAFE_FILE_PATH_RE.match(file_path))
 
 
 def _validate_git_ref(
@@ -108,6 +131,7 @@ class PlannerWorktreeStrategy:
         "_config",
         "_lock",
         "_repo_root",
+        "_semantic_analyzer",
     )
 
     def __init__(
@@ -115,11 +139,13 @@ class PlannerWorktreeStrategy:
         *,
         config: PlannerWorktreesConfig,
         repo_root: Path,
+        semantic_analyzer: SemanticAnalyzer | None = None,
     ) -> None:
         self._config = config
         self._repo_root = repo_root
         self._active_workspaces: dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
+        self._semantic_analyzer = semantic_analyzer
 
     async def _run_git(
         self,
@@ -290,6 +316,10 @@ class PlannerWorktreeStrategy:
         returned as a ``MergeResult`` with ``success=False`` rather
         than raised as exceptions.
 
+        Semantic analysis runs *after* the lock is released because
+        it only performs read-only git operations against explicit
+        SHA references.
+
         Args:
             workspace: The workspace to merge.
 
@@ -299,6 +329,38 @@ class PlannerWorktreeStrategy:
         Raises:
             WorkspaceMergeError: When checkout of base branch fails
                 or when ``merge --abort`` fails after a conflict.
+        """
+        # Phase 1: merge under lock
+        result, pre_merge_sha = await self._merge_under_lock(
+            workspace=workspace,
+        )
+
+        # Phase 2: semantic analysis outside lock (read-only SHA ops)
+        if not result.success or not result.merged_commit_sha:
+            return result
+
+        semantic_conflicts = await self._run_semantic_analysis(
+            workspace=workspace,
+            pre_merge_sha=pre_merge_sha,
+            merge_sha=result.merged_commit_sha,
+        )
+        if semantic_conflicts:
+            return result.model_copy(
+                update={"semantic_conflicts": semantic_conflicts},
+            )
+        return result
+
+    async def _merge_under_lock(
+        self,
+        *,
+        workspace: Workspace,
+    ) -> tuple[MergeResult, str]:
+        """Execute the merge operation under the serialization lock.
+
+        Returns:
+            Tuple of (MergeResult, pre_merge_sha). The pre_merge_sha
+            is the main-branch tip before the merge, needed by
+            semantic analysis to find the branch point.
         """
         async with self._lock:
             _validate_git_ref(
@@ -335,6 +397,14 @@ class PlannerWorktreeStrategy:
                 msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
                 raise WorkspaceMergeError(msg)
 
+            # Capture pre-merge SHA for semantic analysis
+            pre_rc, pre_sha_out, _ = await self._run_git(
+                "rev-parse",
+                "HEAD",
+                log_event=WORKSPACE_MERGE_FAILED,
+            )
+            pre_merge_sha = pre_sha_out.strip() if pre_rc == 0 else ""
+
             rc, _, stderr = await self._run_git(
                 "merge",
                 "--no-ff",
@@ -344,71 +414,113 @@ class PlannerWorktreeStrategy:
             elapsed = time.monotonic() - start
 
             if rc == 0:
-                rc_sha, sha_out, sha_err = await self._run_git(
-                    "rev-parse",
-                    "HEAD",
-                    log_event=WORKSPACE_MERGE_FAILED,
-                )
-                if rc_sha != 0:
-                    logger.error(
-                        WORKSPACE_MERGE_FAILED,
-                        workspace_id=workspace.workspace_id,
-                        error=f"Failed to get merge commit SHA: {sha_err}",
-                    )
-                    msg = (
-                        f"Merge succeeded but could not retrieve "
-                        f"commit SHA for workspace "
-                        f"'{workspace.workspace_id}': {sha_err}"
-                    )
-                    raise WorkspaceMergeError(msg)
-                sha_out = sha_out.strip()
-                logger.info(
-                    WORKSPACE_MERGE_COMPLETE,
-                    workspace_id=workspace.workspace_id,
-                    commit_sha=sha_out,
-                )
-                return MergeResult(
-                    workspace_id=workspace.workspace_id,
-                    branch_name=workspace.branch_name,
-                    success=True,
-                    merged_commit_sha=sha_out,
-                    duration_seconds=elapsed,
+                return await self._finalize_successful_merge(
+                    workspace=workspace,
+                    elapsed=elapsed,
+                    pre_merge_sha=pre_merge_sha,
                 )
 
-            # Conflict detected -- collect conflicting files
-            logger.warning(
-                WORKSPACE_MERGE_CONFLICT,
+            # Conflict detected -- collect and abort
+            return await self._handle_merge_conflict(
+                workspace=workspace,
+                stderr=stderr,
+                start=start,
+            ), pre_merge_sha
+
+    async def _finalize_successful_merge(
+        self,
+        *,
+        workspace: Workspace,
+        elapsed: float,
+        pre_merge_sha: str,
+    ) -> tuple[MergeResult, str]:
+        """Finalize a successful merge by capturing the commit SHA.
+
+        Returns:
+            Tuple of (MergeResult, pre_merge_sha).
+        """
+        rc_sha, sha_out, sha_err = await self._run_git(
+            "rev-parse",
+            "HEAD",
+            log_event=WORKSPACE_MERGE_FAILED,
+        )
+        if rc_sha != 0:
+            logger.error(
+                WORKSPACE_MERGE_FAILED,
                 workspace_id=workspace.workspace_id,
-                error=stderr,
+                error=f"Failed to get merge commit SHA: {sha_err}",
             )
-            conflicts = await self._collect_conflicts()
-
-            # Abort the failed merge
-            abort_rc, _, abort_stderr = await self._run_git(
-                "merge",
-                "--abort",
-                log_event=WORKSPACE_MERGE_FAILED,
+            msg = (
+                f"Merge succeeded but could not retrieve "
+                f"commit SHA for workspace "
+                f"'{workspace.workspace_id}': {sha_err}"
             )
-            if abort_rc != 0:
-                logger.error(
-                    WORKSPACE_MERGE_ABORT_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    error=abort_stderr,
-                )
-                msg = (
-                    f"Failed to abort merge for workspace "
-                    f"'{workspace.workspace_id}': {abort_stderr}. "
-                    f"Repository may be in an inconsistent state."
-                )
-                raise WorkspaceMergeError(msg)
+            raise WorkspaceMergeError(msg)
+        sha_out = sha_out.strip()
 
-            return MergeResult(
+        logger.info(
+            WORKSPACE_MERGE_COMPLETE,
+            workspace_id=workspace.workspace_id,
+            commit_sha=sha_out,
+        )
+        result = MergeResult(
+            workspace_id=workspace.workspace_id,
+            branch_name=workspace.branch_name,
+            success=True,
+            merged_commit_sha=sha_out,
+            duration_seconds=elapsed,
+        )
+        return result, pre_merge_sha
+
+    async def _handle_merge_conflict(
+        self,
+        *,
+        workspace: Workspace,
+        stderr: str,
+        start: float,
+    ) -> MergeResult:
+        """Handle a merge conflict: collect files and abort.
+
+        Returns:
+            MergeResult with ``success=False``.
+
+        Raises:
+            WorkspaceMergeError: When ``merge --abort`` fails.
+        """
+        logger.warning(
+            WORKSPACE_MERGE_CONFLICT,
+            workspace_id=workspace.workspace_id,
+            error=stderr,
+        )
+        conflicts = await self._collect_conflicts()
+
+        # Abort the failed merge
+        abort_rc, _, abort_stderr = await self._run_git(
+            "merge",
+            "--abort",
+            log_event=WORKSPACE_MERGE_FAILED,
+        )
+        if abort_rc != 0:
+            logger.error(
+                WORKSPACE_MERGE_ABORT_FAILED,
                 workspace_id=workspace.workspace_id,
-                branch_name=workspace.branch_name,
-                success=False,
-                conflicts=conflicts,
-                duration_seconds=time.monotonic() - start,
+                error=abort_stderr,
             )
+            msg = (
+                f"Failed to abort merge for workspace "
+                f"'{workspace.workspace_id}': {abort_stderr}. "
+                f"Repository may be in an inconsistent "
+                f"state."
+            )
+            raise WorkspaceMergeError(msg)
+
+        return MergeResult(
+            workspace_id=workspace.workspace_id,
+            branch_name=workspace.branch_name,
+            success=False,
+            conflicts=conflicts,
+            duration_seconds=time.monotonic() - start,
+        )
 
     async def teardown_workspace(
         self,
@@ -546,8 +658,8 @@ class PlannerWorktreeStrategy:
         if not stdout:
             return ()
 
-        # Git diff --diff-filter=U only detects textual conflicts;
-        # semantic conflict detection is not yet implemented
+        # Git diff --diff-filter=U detects textual conflicts only;
+        # semantic conflict detection runs in _run_semantic_analysis
         conflicts: list[MergeConflict] = []
         for line in stdout.splitlines():
             file_path = line.strip()
@@ -559,3 +671,218 @@ class PlannerWorktreeStrategy:
                     ),
                 )
         return tuple(conflicts)
+
+    async def _get_merge_base(
+        self,
+        sha_a: str,
+        ref_b: str,
+    ) -> str:
+        """Find the merge base (common ancestor) of two refs.
+
+        Args:
+            sha_a: First ref (typically HEAD / main tip).
+            ref_b: Second ref (typically workspace branch name).
+
+        Returns:
+            Merge base SHA, or empty string on failure.
+        """
+        rc, stdout, stderr = await self._run_git(
+            "merge-base",
+            sha_a,
+            ref_b,
+            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+        )
+        if rc != 0:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                operation="merge-base",
+                sha_a=sha_a,
+                ref_b=ref_b,
+                error=stderr,
+            )
+            return ""
+        return stdout.strip()
+
+    async def _get_changed_files(
+        self,
+        base_sha: str,
+        merge_sha: str,
+    ) -> tuple[str, ...]:
+        """Get files changed between two commits.
+
+        Args:
+            base_sha: Commit SHA to diff from.
+            merge_sha: Commit SHA to diff to.
+
+        Returns:
+            Tuple of changed file paths (safe paths only).
+        """
+        rc, stdout, stderr = await self._run_git(
+            "diff",
+            "--name-only",
+            f"{base_sha}..{merge_sha}",
+            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+        )
+        if rc != 0:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                operation="diff",
+                base_sha=base_sha,
+                merge_sha=merge_sha,
+                error=stderr,
+            )
+            return ()
+        if not stdout:
+            return ()
+        # Filter to safe file paths only
+        return tuple(
+            line.strip()
+            for line in stdout.splitlines()
+            if line.strip() and _validate_file_path(line.strip())
+        )
+
+    async def _get_base_sources(
+        self,
+        base_sha: str,
+        files: tuple[str, ...],
+    ) -> dict[str, str]:
+        """Read file contents at a specific commit using parallel git show.
+
+        Args:
+            base_sha: Commit SHA to read from.
+            files: File paths to read.
+
+        Returns:
+            Mapping of file path to content at the given commit.
+        """
+        sources: dict[str, str] = {}
+
+        async def _fetch(fp: str) -> None:
+            if not _validate_file_path(fp):
+                logger.warning(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    operation="show",
+                    file=fp,
+                    error="unsafe file path",
+                )
+                return
+            rc, stdout, stderr = await self._run_git(
+                "show",
+                f"{base_sha}:{fp}",
+                log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            )
+            if rc == 0:
+                sources[fp] = stdout
+            else:
+                logger.debug(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    operation="show",
+                    base_sha=base_sha,
+                    file=fp,
+                    error=stderr,
+                )
+
+        async with asyncio.TaskGroup() as tg:
+            for file_path in files:
+                tg.create_task(_fetch(file_path))
+        return sources
+
+    async def _run_semantic_analysis(
+        self,
+        *,
+        workspace: Workspace,
+        pre_merge_sha: str,
+        merge_sha: str,
+    ) -> tuple[MergeConflict, ...]:
+        """Run semantic analysis on a successful merge if configured.
+
+        Uses the merge-base (where the workspace branched from main)
+        as the reference point. This captures all files that differ
+        between the branch point and the merge result, including
+        changes from the workspace, from main, and from merge
+        resolution.
+
+        Args:
+            workspace: The merged workspace.
+            pre_merge_sha: Main tip before the merge.
+            merge_sha: Commit SHA after the merge.
+
+        Returns:
+            Tuple of semantic conflicts, empty if analyzer
+            not configured or on analysis failure.
+        """
+        if self._semantic_analyzer is None or not pre_merge_sha:
+            return ()
+        if not self._config.semantic_analysis.enabled:
+            return ()
+        result = await self._do_semantic_analysis(
+            workspace=workspace,
+            pre_merge_sha=pre_merge_sha,
+            merge_sha=merge_sha,
+        )
+        if result:
+            logger.warning(
+                WORKSPACE_SEMANTIC_CONFLICT,
+                workspace_id=workspace.workspace_id,
+                count=len(result),
+            )
+        return result
+
+    async def _do_semantic_analysis(
+        self,
+        *,
+        workspace: Workspace,
+        pre_merge_sha: str,
+        merge_sha: str,
+    ) -> tuple[MergeConflict, ...]:
+        """Execute semantic analysis, returning () on failure."""
+        if self._semantic_analyzer is None:
+            msg = "_do_semantic_analysis called without a configured analyzer"
+            raise SemanticAnalysisError(msg)
+        try:
+            branch_point = await self._get_merge_base(
+                pre_merge_sha,
+                workspace.branch_name,
+            )
+            if not branch_point:
+                branch_point = pre_merge_sha
+
+            changed_files = await self._get_changed_files(
+                branch_point,
+                merge_sha,
+            )
+            if not changed_files:
+                return ()
+
+            # Pre-filter to configured extensions and max_files
+            # to avoid unnecessary git show calls
+            config = self._config.semantic_analysis
+            filtered = tuple(
+                f
+                for f in changed_files
+                if any(f.endswith(ext) for ext in config.file_extensions)
+            )[: config.max_files]
+            if not filtered:
+                return ()
+
+            base_sources = await self._get_base_sources(
+                branch_point,
+                filtered,
+            )
+
+            return await self._semantic_analyzer.analyze(
+                workspace=workspace,
+                changed_files=filtered,
+                repo_root=str(self._repo_root),
+                base_sources=base_sources,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace.workspace_id,
+                error=(f"Semantic analysis failed: {type(exc).__name__}: {exc}"),
+                exc_info=True,
+            )
+            return ()

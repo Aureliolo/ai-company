@@ -5,7 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import ConflictEscalation, ConflictType  # noqa: TC001
+from synthorg.core.enums import ConflictEscalation, ConflictType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -89,6 +89,18 @@ class MergeConflict(BaseModel):
         default="",
         description="Workspace branch content",
     )
+    description: str = Field(
+        default="",
+        description="Human-readable description of the conflict",
+    )
+
+    @model_validator(mode="after")
+    def _validate_semantic_description(self) -> Self:
+        """Semantic conflicts must have a non-empty description."""
+        if self.conflict_type == ConflictType.SEMANTIC and not self.description:
+            msg = "Semantic conflicts must have a non-empty description"
+            raise ValueError(msg)
+        return self
 
 
 class MergeResult(BaseModel):
@@ -98,10 +110,11 @@ class MergeResult(BaseModel):
         workspace_id: Workspace that was merged.
         branch_name: Branch that was merged.
         success: Whether the merge completed without conflicts.
-        conflicts: Any conflicts encountered during merge.
+        conflicts: Any textual conflicts encountered during merge.
         escalation: Escalation strategy applied, if any.
         merged_commit_sha: SHA of the merge commit, if successful.
         duration_seconds: Time taken for the merge operation.
+        semantic_conflicts: Semantic conflicts detected after merge.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -125,6 +138,10 @@ class MergeResult(BaseModel):
         ge=0.0,
         description="Merge duration in seconds",
     )
+    semantic_conflicts: tuple[MergeConflict, ...] = Field(
+        default=(),
+        description="Semantic conflicts detected after successful merge",
+    )
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
@@ -137,6 +154,9 @@ class MergeResult(BaseModel):
             raise ValueError(msg)
         if not self.success and self.merged_commit_sha is not None:
             msg = "Failed merge cannot have a commit SHA"
+            raise ValueError(msg)
+        if not self.success and self.semantic_conflicts:
+            msg = "Failed merge cannot have semantic conflicts"
             raise ValueError(msg)
         return self
 
@@ -179,3 +199,11 @@ class WorkspaceGroupResult(BaseModel):
     def total_conflicts(self) -> int:
         """Sum of conflicts from all merge results."""
         return sum(len(r.conflicts) for r in self.merge_results)
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Total semantic conflicts across all merges",
+    )
+    @property
+    def total_semantic_conflicts(self) -> int:
+        """Sum of semantic conflicts from all merge results."""
+        return sum(len(r.semantic_conflicts) for r in self.merge_results)

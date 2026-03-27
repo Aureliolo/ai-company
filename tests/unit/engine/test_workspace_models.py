@@ -393,3 +393,86 @@ class TestWorkspaceGroupResult:
                 group_id="grp-1",
                 duration_seconds=-1.0,
             )
+
+    @pytest.mark.unit
+    def test_total_semantic_conflicts(self) -> None:
+        """total_semantic_conflicts sums across merge results."""
+        sc = MergeConflict(
+            file_path="a.py",
+            conflict_type=ConflictType.SEMANTIC,
+            description="issue",
+        )
+        mr = MergeResult(
+            workspace_id="ws-1",
+            branch_name="b",
+            success=True,
+            merged_commit_sha="abc",
+            duration_seconds=0.1,
+            semantic_conflicts=(sc,),
+        )
+        group = WorkspaceGroupResult(
+            group_id="g",
+            merge_results=(mr,),
+            duration_seconds=0.1,
+        )
+        assert group.total_semantic_conflicts == 1
+
+
+class TestMergeResultSemanticConflicts:
+    """Tests for semantic_conflicts field and validator."""
+
+    pytestmark = pytest.mark.unit
+
+    def test_failed_merge_with_semantic_conflicts_rejected(self) -> None:
+        """Failed merge cannot have semantic conflicts."""
+        sc = MergeConflict(
+            file_path="a.py",
+            conflict_type=ConflictType.SEMANTIC,
+            description="issue",
+        )
+        with pytest.raises(ValidationError, match="semantic conflicts"):
+            MergeResult(
+                workspace_id="ws-1",
+                branch_name="b",
+                success=False,
+                duration_seconds=0.1,
+                semantic_conflicts=(sc,),
+            )
+
+    def test_successful_merge_with_semantic_conflicts_accepted(self) -> None:
+        """Successful merge can have semantic conflicts."""
+        sc = MergeConflict(
+            file_path="a.py",
+            conflict_type=ConflictType.SEMANTIC,
+            description="issue",
+        )
+        mr = MergeResult(
+            workspace_id="ws-1",
+            branch_name="b",
+            success=True,
+            merged_commit_sha="abc",
+            duration_seconds=0.1,
+            semantic_conflicts=(sc,),
+        )
+        assert len(mr.semantic_conflicts) == 1
+
+    def test_semantic_conflict_requires_description(self) -> None:
+        """Semantic MergeConflict with empty description is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="non-empty description",
+        ):
+            MergeConflict(
+                file_path="a.py",
+                conflict_type=ConflictType.SEMANTIC,
+                description="",
+            )
+
+    def test_textual_conflict_allows_empty_description(self) -> None:
+        """Textual MergeConflict with empty description is allowed."""
+        mc = MergeConflict(
+            file_path="a.py",
+            conflict_type=ConflictType.TEXTUAL,
+            description="",
+        )
+        assert mc.description == ""

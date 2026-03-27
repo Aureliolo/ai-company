@@ -921,11 +921,64 @@ Semantic conflicts: review agent evaluates merged result
         max_concurrent_worktrees: 8
         merge_order: "completion"        # completion (first done merges first), priority, manual
         conflict_escalation: "human"     # human, review_agent
+        cleanup_on_merge: true
+        semantic_analysis:
+          enabled: false
+          file_extensions: [".py"]
+          max_files: 50
+          max_file_bytes: 524288
+          llm_model: null
+          llm_temperature: 0.1
+          llm_max_tokens: 4096
+          llm_max_retries: 2
     ```
 
 - True filesystem isolation -- agents cannot overwrite each other's work
 - Maximum parallelism during execution; conflicts deferred to merge time
 - Leverages mature git infrastructure for merge, diff, and history
+
+### Semantic Conflict Detection
+
+Git merges catch textual conflicts (overlapping edits to the same lines), but
+many real-world integration bugs are *semantic* - the merge succeeds textually
+yet the combined code is broken. The semantic conflict detection subsystem
+analyzes merged results to catch these issues before they reach main.
+
+**SemanticAnalyzer protocol and composite pattern.** The `SemanticAnalyzer`
+protocol defines a single `analyze(workspace, changed_files, repo_root, base_sources)` method.
+The default `CompositeSemanticAnalyzer` delegates to an ordered list of
+analyzers and merges their results, allowing AST-based checks and optional
+LLM-based analysis to compose transparently.
+
+**AST-based checks.** Four pure-function checks run against the merged source
+without external dependencies:
+
+1. **Removed references** - detects calls or imports referencing names that no
+   longer exist in the merged code (e.g., Agent A renames a function, Agent B
+   calls the old name).
+2. **Signature mismatches** - detects functions whose signatures changed between
+   base and merged versions in ways that break existing call sites.
+3. **Duplicate definitions** - detects multiple top-level definitions of the
+   same name in a single file (e.g., two agents independently add a `process()`
+   function that git merges into disjoint hunks).
+4. **Import conflicts** - detects conflicting imports of the same name from
+   different modules.
+
+**Optional LLM-based analysis.** When `llm_model` is configured in
+`SemanticAnalysisConfig`, a provider-backed analyzer sends the diff to an LLM
+for deeper reasoning about subtle semantic issues that AST checks cannot catch.
+
+**SemanticAnalysisConfig.** A frozen Pydantic model controlling the analysis
+pipeline: `enabled` toggle, `file_extensions` filter, `max_files` and
+`max_file_bytes` limits to bound analysis cost, and LLM-specific settings
+(`llm_model`, `llm_temperature`, `llm_max_tokens`, `llm_max_retries`).
+
+**Flow through MergeResult and MergeOrchestrator.** After a textually
+successful merge, the `MergeOrchestrator` invokes the configured
+`SemanticAnalyzer`. Any detected issues are attached to the `MergeResult` as
+`semantic_conflicts` (tuple of `MergeConflict` with `conflict_type=SEMANTIC`).
+The calling code can then decide whether to accept, revert, or escalate based
+on the severity and count of semantic conflicts.
 
 ### Future Strategies
 

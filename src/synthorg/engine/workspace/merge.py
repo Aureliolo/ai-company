@@ -135,7 +135,18 @@ class MergeOrchestrator:
                 # REVIEW_AGENT escalation: record conflict and continue merging
                 continue
 
+            # Handle semantic conflicts on successful merge
+            if result.semantic_conflicts:
+                result = result.model_copy(
+                    update={"escalation": self._conflict_escalation},
+                )
             results.append(result)
+
+            if (
+                result.semantic_conflicts
+                and self._conflict_escalation == ConflictEscalation.HUMAN
+            ):
+                break
 
             if self._cleanup_on_merge:
                 try:
