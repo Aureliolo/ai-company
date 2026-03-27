@@ -1,13 +1,13 @@
 import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
-import type { Task } from '@/api/types'
+import type { Task, TaskType } from '@/api/types'
 
 interface TaskHistoryBarProps {
   task: Task
   maxDurationMs: number
 }
 
-const TYPE_COLORS: Record<string, string> = {
+const TYPE_COLORS: Record<TaskType, string> = {
   development: 'bg-accent',
   design: 'bg-success',
   research: 'bg-warning',
@@ -46,7 +46,7 @@ function formatDuration(task: Task): string {
 
 export function TaskHistoryBar({ task, maxDurationMs }: TaskHistoryBarProps) {
   const isActive = task.status === 'in_progress'
-  const barColor = TYPE_COLORS[task.type] ?? 'bg-accent'
+  const barColor = TYPE_COLORS[task.type]
   const width = getBarWidth(task, maxDurationMs)
 
   return (

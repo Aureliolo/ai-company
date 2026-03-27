@@ -17,12 +17,13 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
     .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
 
   // Compute max duration for relative bar widths
+  // Mirrors effectiveEndMs logic: fall back to created_at if updated_at is unparseable or earlier
   const maxDurationMs = sorted.reduce((max, task) => {
+    const createdMs = new Date(task.created_at!).getTime()
     const endRaw = task.updated_at ?? task.created_at!
     const endMs = new Date(endRaw).getTime()
-    // Fall back to created_at if updated_at is unparseable
-    const end = Number.isNaN(endMs) ? new Date(task.created_at!).getTime() : endMs
-    const duration = end - new Date(task.created_at!).getTime()
+    const end = (Number.isNaN(endMs) || endMs < createdMs) ? createdMs : endMs
+    const duration = end - createdMs
     return Math.max(max, duration)
   }, 1)
 

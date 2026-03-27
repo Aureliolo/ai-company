@@ -288,7 +288,7 @@ describe('fetchMoreActivity', () => {
   it('caps activity at MAX_ACTIVITIES (100)', async () => {
     const existingEvents = Array.from({ length: 99 }, (_, i) => ({
       event_type: 'task_completed',
-      timestamp: `2026-03-26T${String(i).padStart(2, '0')}:00:00Z`,
+      timestamp: `2026-03-26T${String(i % 24).padStart(2, '0')}:${String(Math.floor(i / 24)).padStart(2, '0')}:00Z`,
       description: `Event ${i}`,
       related_ids: {},
     }))
@@ -296,7 +296,7 @@ describe('fetchMoreActivity', () => {
 
     const newEvents = Array.from({ length: 5 }, (_, i) => ({
       event_type: 'hired',
-      timestamp: `2026-03-25T${String(i).padStart(2, '0')}:00:00Z`,
+      timestamp: `2026-03-25T${String(i % 24).padStart(2, '0')}:00:00Z`,
       description: `New event ${i}`,
       related_ids: {},
     }))
@@ -359,10 +359,11 @@ describe('clearDetail', () => {
     useAgentsStore.setState({
       selectedAgent: makeAgent(),
       performance: makePerformance(),
-      agentTasks: [],
-      activity: [],
+      agentTasks: [{ id: 't1', title: 'Task', type: 'development', status: 'completed', priority: 'medium', project: 'p', created_by: 'x', assigned_to: 'y', created_at: '2026-01-01T00:00:00Z', updated_at: null }] as any,
+      activity: [{ event_type: 'hired', timestamp: '2026-01-01T00:00:00Z', description: 'Hired', related_ids: {} }],
       activityTotal: 10,
-      careerHistory: [],
+      activityLoading: true,
+      careerHistory: [{ event_type: 'hired' as const, timestamp: '2026-01-01T00:00:00Z', description: 'Hired', initiated_by: 'system', metadata: {} }],
       detailLoading: true,
       detailError: 'some error',
     })
@@ -372,7 +373,11 @@ describe('clearDetail', () => {
     const state = useAgentsStore.getState()
     expect(state.selectedAgent).toBeNull()
     expect(state.performance).toBeNull()
+    expect(state.agentTasks).toHaveLength(0)
+    expect(state.activity).toHaveLength(0)
     expect(state.activityTotal).toBe(0)
+    expect(state.activityLoading).toBe(false)
+    expect(state.careerHistory).toHaveLength(0)
     expect(state.detailLoading).toBe(false)
     expect(state.detailError).toBeNull()
   })
