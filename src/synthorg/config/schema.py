@@ -3,7 +3,7 @@
 from collections import Counter
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.config import ApiConfig
 from synthorg.backup.config import BackupConfig
@@ -88,8 +88,17 @@ class ProviderConfig(BaseModel):
 
     Attributes:
         driver: Driver backend name (e.g. ``"litellm"``).
+        litellm_provider: LiteLLM routing identifier (e.g. ``"anthropic"``,
+            ``"openai"``).  When set, the driver uses this instead of the
+            provider name as the model prefix for LiteLLM routing.  Falls
+            back to the provider name when ``None``.
         auth_type: Authentication type for this provider.
         api_key: API key (typically injected by secret management).
+        subscription_token: OAuth bearer token for subscription-based auth
+            (e.g. Claude Pro/Max).  Encrypted at rest.
+        tos_accepted_at: Timestamp when the user accepted the subscription
+            Terms of Service warning.  Required when ``auth_type`` is
+            ``SUBSCRIPTION``.
         base_url: Base URL for the provider API.
         oauth_token_url: OAuth token endpoint URL.
         oauth_client_id: OAuth client identifier.
@@ -111,6 +120,14 @@ class ProviderConfig(BaseModel):
         default="litellm",
         description="Driver backend name",
     )
+    litellm_provider: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "LiteLLM provider identifier for routing "
+            "(e.g. 'anthropic', 'openai').  Falls back to "
+            "the provider name when None."
+        ),
+    )
     family: NotBlankStr | None = Field(
         default=None,
         description=(
@@ -127,6 +144,15 @@ class ProviderConfig(BaseModel):
         default=None,
         repr=False,
         description="API key",
+    )
+    subscription_token: str | None = Field(
+        default=None,
+        repr=False,
+        description="OAuth bearer token for subscription-based auth",
+    )
+    tos_accepted_at: AwareDatetime | None = Field(
+        default=None,
+        description="When subscription ToS was accepted",
     )
     base_url: NotBlankStr | None = Field(
         default=None,
@@ -179,39 +205,39 @@ class ProviderConfig(BaseModel):
         description="Degradation strategy when quota exhausted",
     )
 
+    # Required fields per auth type (field_name -> attribute_name).
+    _AUTH_REQUIRED_FIELDS: ClassVar[dict[AuthType, tuple[str, ...]]] = {
+        AuthType.OAUTH: (
+            "oauth_token_url",
+            "oauth_client_id",
+            "oauth_client_secret",
+        ),
+        AuthType.CUSTOM_HEADER: (
+            "custom_header_name",
+            "custom_header_value",
+        ),
+        AuthType.SUBSCRIPTION: (
+            "subscription_token",
+            "tos_accepted_at",
+        ),
+    }
+
     @model_validator(mode="after")
     def _validate_auth_fields(self) -> Self:
         """Validate auth fields based on auth_type."""
-        if self.auth_type == AuthType.OAUTH:
-            missing: list[str] = []
-            if self.oauth_token_url is None:
-                missing.append("oauth_token_url")
-            if self.oauth_client_id is None:
-                missing.append("oauth_client_id")
-            if self.oauth_client_secret is None:
-                missing.append("oauth_client_secret")
-            if missing:
-                msg = f"OAuth auth_type requires: {', '.join(missing)}"
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    model="ProviderConfig",
-                    error=msg,
-                )
-                raise ValueError(msg)
-        elif self.auth_type == AuthType.CUSTOM_HEADER:
-            missing = []
-            if self.custom_header_name is None:
-                missing.append("custom_header_name")
-            if self.custom_header_value is None:
-                missing.append("custom_header_value")
-            if missing:
-                msg = f"Custom header auth_type requires: {', '.join(missing)}"
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    model="ProviderConfig",
-                    error=msg,
-                )
-                raise ValueError(msg)
+        required = self._AUTH_REQUIRED_FIELDS.get(self.auth_type)
+        if required is None:
+            return self
+        missing = [f for f in required if getattr(self, f) is None]
+        if missing:
+            label = self.auth_type.value.replace("_", " ").title()
+            msg = f"{label} auth_type requires: {', '.join(missing)}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=msg,
+            )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

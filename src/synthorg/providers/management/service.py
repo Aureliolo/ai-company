@@ -393,11 +393,15 @@ class ProviderManagementService:
             models,
         )
 
+        auth_type = request.auth_type or preset.auth_type
         create_request = CreateProviderRequest(
             name=request.name,
             driver=preset.driver,
-            auth_type=preset.auth_type,
+            litellm_provider=preset.litellm_provider,
+            auth_type=auth_type,
             api_key=request.api_key,
+            subscription_token=request.subscription_token,
+            tos_accepted=request.tos_accepted,
             base_url=base_url,
             models=models,
         )

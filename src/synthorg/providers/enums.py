@@ -9,6 +9,7 @@ class AuthType(StrEnum):
     API_KEY = "api_key"
     OAUTH = "oauth"
     CUSTOM_HEADER = "custom_header"
+    SUBSCRIPTION = "subscription"
     NONE = "none"
 
 

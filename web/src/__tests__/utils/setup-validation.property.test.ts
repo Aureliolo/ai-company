@@ -29,12 +29,15 @@ const makeCompanyResponse = (): SetupCompanyResponse => ({
 
 const makeProvider = (): ProviderConfig => ({
   driver: 'test-provider',
+  litellm_provider: null,
   auth_type: 'api_key',
   base_url: null,
   models: [],
   has_api_key: true,
   has_oauth_credentials: false,
   has_custom_header: false,
+  has_subscription_token: false,
+  tos_accepted_at: null,
   oauth_token_url: null,
   oauth_client_id: null,
   oauth_scope: null,

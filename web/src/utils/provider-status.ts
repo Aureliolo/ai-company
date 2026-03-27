@@ -13,6 +13,8 @@ export function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {
       return config.has_oauth_credentials ? 'idle' : 'error'
     case 'custom_header':
       return config.has_custom_header ? 'idle' : 'error'
+    case 'subscription':
+      return config.has_subscription_token ? 'idle' : 'error'
     default: {
       const _exhaustive: never = authType
       return _exhaustive

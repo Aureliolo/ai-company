@@ -604,7 +604,17 @@ export interface CompanyConfig {
 
 // ── Providers ────────────────────────────────────────────────
 
-export type AuthType = 'api_key' | 'oauth' | 'custom_header' | 'none'
+export type AuthType = 'api_key' | 'oauth' | 'custom_header' | 'subscription' | 'none'
+
+export type ProviderHealthStatus = 'up' | 'degraded' | 'down'
+
+export interface ProviderHealthSummary {
+  last_check_timestamp: string | null
+  avg_response_time_ms: number | null
+  error_rate_percent_24h: number
+  calls_last_24h: number
+  health_status: ProviderHealthStatus
+}
 
 export interface ProviderModelConfig {
   id: string
@@ -620,12 +630,15 @@ export interface ProviderModelConfig {
  */
 export interface ProviderConfig {
   driver: string
+  litellm_provider: string | null
   auth_type: AuthType
   base_url: string | null
   readonly models: readonly ProviderModelConfig[]
   has_api_key: boolean
   has_oauth_credentials: boolean
   has_custom_header: boolean
+  has_subscription_token: boolean
+  tos_accepted_at: string | null
   oauth_token_url: string | null
   oauth_client_id: string | null
   oauth_scope: string | null
@@ -635,8 +648,11 @@ export interface ProviderConfig {
 export interface CreateProviderRequest {
   name: string
   driver?: string
+  litellm_provider?: string
   auth_type?: AuthType
   api_key?: string
+  subscription_token?: string
+  tos_accepted?: boolean
   base_url?: string
   oauth_token_url?: string
   oauth_client_id?: string
@@ -649,9 +665,13 @@ export interface CreateProviderRequest {
 
 export interface UpdateProviderRequest {
   driver?: string
+  litellm_provider?: string
   auth_type?: AuthType
   api_key?: string
   clear_api_key?: boolean
+  subscription_token?: string
+  clear_subscription_token?: boolean
+  tos_accepted?: boolean
   base_url?: string | null
   oauth_token_url?: string | null
   oauth_client_id?: string | null
@@ -678,7 +698,9 @@ export interface ProviderPreset {
   display_name: string
   description: string
   driver: string
+  litellm_provider: string
   auth_type: AuthType
+  readonly supported_auth_types: readonly AuthType[]
   default_base_url: string | null
   readonly candidate_urls: readonly string[]
   readonly default_models: readonly ProviderModelConfig[]
@@ -693,7 +715,10 @@ export interface ProbePresetResponse {
 export interface CreateFromPresetRequest {
   preset_name: string
   name: string
+  auth_type?: AuthType
   api_key?: string
+  subscription_token?: string
+  tos_accepted?: boolean
   base_url?: string
   models?: readonly ProviderModelConfig[]
 }

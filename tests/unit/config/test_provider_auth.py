@@ -1,10 +1,14 @@
 """Tests for ProviderConfig auth type validation."""
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 
 from synthorg.config.schema import ProviderConfig
 from synthorg.providers.enums import AuthType
+
+_TOS_ACCEPTED = datetime(2026, 3, 27, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.mark.unit
@@ -13,8 +17,9 @@ class TestAuthTypeEnum:
         assert AuthType.API_KEY.value == "api_key"
         assert AuthType.OAUTH.value == "oauth"
         assert AuthType.CUSTOM_HEADER.value == "custom_header"
+        assert AuthType.SUBSCRIPTION.value == "subscription"
         assert AuthType.NONE.value == "none"
-        assert len(AuthType) == 4
+        assert len(AuthType) == 5
 
 
 @pytest.mark.unit
@@ -112,6 +117,51 @@ class TestProviderConfigAuth:
             oauth_scope="read write",
         )
         assert config.oauth_scope == "read write"
+
+    def test_subscription_valid(self) -> None:
+        config = ProviderConfig(
+            driver="litellm",
+            auth_type=AuthType.SUBSCRIPTION,
+            subscription_token="sk-ant-oat01-test-token",
+            tos_accepted_at=_TOS_ACCEPTED,
+        )
+        assert config.auth_type == AuthType.SUBSCRIPTION
+        assert config.subscription_token == "sk-ant-oat01-test-token"
+        assert config.tos_accepted_at is not None
+
+    def test_subscription_missing_token_raises(self) -> None:
+        with pytest.raises(ValidationError, match="subscription_token"):
+            ProviderConfig(
+                driver="litellm",
+                auth_type=AuthType.SUBSCRIPTION,
+                tos_accepted_at=_TOS_ACCEPTED,
+            )
+
+    def test_subscription_missing_tos_raises(self) -> None:
+        with pytest.raises(ValidationError, match="tos_accepted_at"):
+            ProviderConfig(
+                driver="litellm",
+                auth_type=AuthType.SUBSCRIPTION,
+                subscription_token="sk-ant-oat01-test-token",
+            )
+
+    def test_subscription_missing_both_raises(self) -> None:
+        with pytest.raises(ValidationError, match="subscription_token"):
+            ProviderConfig(
+                driver="litellm",
+                auth_type=AuthType.SUBSCRIPTION,
+            )
+
+    def test_litellm_provider_field(self) -> None:
+        config = ProviderConfig(
+            driver="litellm",
+            litellm_provider="anthropic",
+        )
+        assert config.litellm_provider == "anthropic"
+
+    def test_litellm_provider_defaults_to_none(self) -> None:
+        config = ProviderConfig(driver="litellm")
+        assert config.litellm_provider is None
 
     def test_api_key_auth_stores_key(self) -> None:
         """API key auth stores the provided key on the config."""

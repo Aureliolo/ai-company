@@ -1,5 +1,6 @@
 """Private helpers for ProviderManagementService."""
 
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Final
 from urllib.parse import urlparse
@@ -24,10 +25,14 @@ def build_provider_config(
     Returns:
         Frozen ProviderConfig.
     """
+    tos_accepted_at = datetime.now(UTC) if request.tos_accepted else None
     return ProviderConfig(
         driver=request.driver,
+        litellm_provider=request.litellm_provider,
         auth_type=request.auth_type,
         api_key=request.api_key,
+        subscription_token=request.subscription_token,
+        tos_accepted_at=tos_accepted_at,
         base_url=request.base_url,
         oauth_token_url=request.oauth_token_url,
         oauth_client_id=request.oauth_client_id,
@@ -41,6 +46,7 @@ def build_provider_config(
 
 _UPDATE_FIELDS: tuple[str, ...] = (
     "driver",
+    "litellm_provider",
     "base_url",
     "oauth_token_url",
     "oauth_client_id",
@@ -50,6 +56,21 @@ _UPDATE_FIELDS: tuple[str, ...] = (
     "custom_header_value",
     "models",
 )
+
+
+# Credential fields to clear when switching away from an auth type.
+_AUTH_OWNED_FIELDS: dict[AuthType, tuple[str, ...]] = {
+    AuthType.API_KEY: ("api_key",),
+    AuthType.OAUTH: (
+        "api_key",
+        "oauth_client_secret",
+        "oauth_token_url",
+        "oauth_client_id",
+        "oauth_scope",
+    ),
+    AuthType.CUSTOM_HEADER: ("custom_header_name", "custom_header_value"),
+    AuthType.SUBSCRIPTION: ("subscription_token", "tos_accepted_at"),
+}
 
 
 def apply_update(
@@ -74,22 +95,30 @@ def apply_update(
         if value is not None:
             updates[field] = value
 
-    # auth_type change: unconditionally clear incompatible credentials
+    # auth_type change: clear all fields NOT owned by the new auth type
     if request.auth_type is not None:
         updates["auth_type"] = request.auth_type
-        if request.auth_type not in (AuthType.API_KEY, AuthType.OAUTH):
-            updates["api_key"] = None
-        if request.auth_type != AuthType.OAUTH:
-            updates["oauth_client_secret"] = None
-            updates["oauth_token_url"] = None
-            updates["oauth_client_id"] = None
-            updates["oauth_scope"] = None
-        if request.auth_type != AuthType.CUSTOM_HEADER:
-            updates["custom_header_name"] = None
-            updates["custom_header_value"] = None
+        keep = set(_AUTH_OWNED_FIELDS.get(request.auth_type, ()))
+        for fields in _AUTH_OWNED_FIELDS.values():
+            for f in fields:
+                if f not in keep:
+                    updates[f] = None
 
-    # api_key: only set/clear when the resulting auth type supports it
     final_auth_type = updates.get("auth_type", existing.auth_type)
+    _apply_credential_updates(updates, request, final_auth_type)
+
+    # Use model_validate (not model_copy) to run validators on the merged result
+    merged = {**existing.model_dump(mode="python"), **updates}
+    return ProviderConfig.model_validate(merged)
+
+
+def _apply_credential_updates(
+    updates: dict[str, Any],
+    request: UpdateProviderRequest,
+    final_auth_type: AuthType,
+) -> None:
+    """Apply set/clear logic for api_key and subscription_token."""
+    # api_key: only set/clear when the resulting auth type supports it
     if final_auth_type in (AuthType.API_KEY, AuthType.OAUTH):
         if request.api_key is not None:
             updates["api_key"] = request.api_key
@@ -98,9 +127,17 @@ def apply_update(
     else:
         updates["api_key"] = None
 
-    # Use model_validate (not model_copy) to run validators on the merged result
-    merged = {**existing.model_dump(mode="python"), **updates}
-    return ProviderConfig.model_validate(merged)
+    # subscription_token: only set/clear when auth type is SUBSCRIPTION
+    if final_auth_type == AuthType.SUBSCRIPTION:
+        if request.subscription_token is not None:
+            updates["subscription_token"] = request.subscription_token
+        elif request.clear_subscription_token:
+            updates["subscription_token"] = None
+        if request.tos_accepted:
+            updates["tos_accepted_at"] = datetime.now(UTC)
+    else:
+        updates["subscription_token"] = None
+        updates["tos_accepted_at"] = None
 
 
 def serialize_providers(
@@ -149,6 +186,8 @@ def build_discovery_headers(
         and config.custom_header_value
     ):
         return {config.custom_header_name: config.custom_header_value}
+    if config.auth_type == AuthType.SUBSCRIPTION and config.subscription_token:
+        return {"Authorization": f"Bearer {config.subscription_token}"}
     if config.auth_type == AuthType.OAUTH:
         logger.debug(
             PROVIDER_DISCOVERY_FAILED,

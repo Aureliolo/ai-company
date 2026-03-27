@@ -550,8 +550,11 @@ class CreateProviderRequest(BaseModel):
 
     name: NotBlankStr = Field(max_length=64)
     driver: NotBlankStr = "litellm"
+    litellm_provider: NotBlankStr | None = None
     auth_type: AuthType = AuthType.API_KEY
     api_key: NotBlankStr | None = None
+    subscription_token: str | None = None
+    tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
@@ -574,9 +577,13 @@ class UpdateProviderRequest(BaseModel):
 
     Attributes:
         driver: New driver name.
+        litellm_provider: New LiteLLM routing identifier.
         auth_type: New authentication type.
         api_key: New API key.
         clear_api_key: Explicitly clear the API key.
+        subscription_token: New subscription OAuth token.
+        clear_subscription_token: Explicitly clear the subscription token.
+        tos_accepted: Whether ToS was accepted for subscription auth.
         base_url: New base URL.
         oauth_token_url: New OAuth token URL.
         oauth_client_id: New OAuth client ID.
@@ -590,9 +597,13 @@ class UpdateProviderRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     driver: NotBlankStr | None = None
+    litellm_provider: NotBlankStr | None = None
     auth_type: AuthType | None = None
     api_key: NotBlankStr | None = None
     clear_api_key: bool = False
+    subscription_token: str | None = None
+    clear_subscription_token: bool = False
+    tos_accepted: bool | None = None
     base_url: NotBlankStr | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
@@ -607,6 +618,11 @@ class UpdateProviderRequest(BaseModel):
         """Reject simultaneous api_key and clear_api_key."""
         if self.api_key is not None and self.clear_api_key:
             msg = "api_key and clear_api_key are mutually exclusive"
+            raise ValueError(msg)
+        if self.subscription_token is not None and self.clear_subscription_token:
+            msg = (
+                "subscription_token and clear_subscription_token are mutually exclusive"
+            )
             raise ValueError(msg)
         return self
 
@@ -659,12 +675,15 @@ class ProviderResponse(BaseModel):
 
     Attributes:
         driver: Driver backend name.
+        litellm_provider: LiteLLM routing identifier.
         auth_type: Authentication type.
         base_url: Provider API base URL.
         models: Model configurations.
         has_api_key: Whether an API key is configured.
         has_oauth_credentials: Whether OAuth credentials are configured.
         has_custom_header: Whether a custom header is configured.
+        has_subscription_token: Whether a subscription token is configured.
+        tos_accepted_at: When subscription ToS was accepted.
         oauth_token_url: OAuth token endpoint URL (non-secret).
         oauth_client_id: OAuth client identifier (non-secret).
         oauth_scope: OAuth scope string (non-secret).
@@ -674,12 +693,15 @@ class ProviderResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     driver: NotBlankStr
+    litellm_provider: NotBlankStr | None = None
     auth_type: AuthType
     base_url: NotBlankStr | None
     models: tuple[ProviderModelConfig, ...]
     has_api_key: bool
     has_oauth_credentials: bool
     has_custom_header: bool
+    has_subscription_token: bool = False
+    tos_accepted_at: str | None = None
     oauth_token_url: NotBlankStr | None = None
     oauth_client_id: NotBlankStr | None = None
     oauth_scope: NotBlankStr | None = None
@@ -692,7 +714,10 @@ class CreateFromPresetRequest(BaseModel):
     Attributes:
         preset_name: Preset identifier to use.
         name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
+        auth_type: Override auth type (for presets supporting multiple).
         api_key: Override API key for presets that need one.
+        subscription_token: Subscription OAuth token.
+        tos_accepted: Whether subscription ToS was accepted.
         base_url: Override default base URL.
         models: Override default models.
     """
@@ -701,7 +726,10 @@ class CreateFromPresetRequest(BaseModel):
 
     preset_name: NotBlankStr
     name: NotBlankStr = Field(max_length=64)
+    auth_type: AuthType | None = None
     api_key: NotBlankStr | None = None
+    subscription_token: str | None = None
+    tos_accepted: bool = False
     base_url: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None
 
@@ -764,8 +792,14 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     Returns:
         Safe response DTO with secrets stripped.
     """
+    tos_str = (
+        config.tos_accepted_at.isoformat()
+        if config.tos_accepted_at is not None
+        else None
+    )
     return ProviderResponse(
         driver=config.driver,
+        litellm_provider=config.litellm_provider,
         auth_type=config.auth_type,
         base_url=config.base_url,
         models=config.models,
@@ -779,6 +813,8 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
             config.custom_header_name is not None
             and config.custom_header_value is not None
         ),
+        has_subscription_token=config.subscription_token is not None,
+        tos_accepted_at=tos_str,
         oauth_token_url=config.oauth_token_url,
         oauth_client_id=config.oauth_client_id,
         oauth_scope=config.oauth_scope,

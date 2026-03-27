@@ -371,6 +371,7 @@ class TestSelfConnectionGuard:
             display_name="Test Local",
             description="Fake preset for self-connection guard tests",
             driver="litellm",
+            litellm_provider="test-local",
             auth_type=AuthType.NONE,
             candidate_urls=(base_url,),
         )
@@ -411,6 +412,7 @@ class TestSelfConnectionGuard:
             display_name="Test Local",
             description="Fake preset with self-URL as default_base_url",
             driver="litellm",
+            litellm_provider="test-local",
             auth_type=AuthType.NONE,
             default_base_url=self_url,
         )
@@ -448,6 +450,7 @@ class TestSelfConnectionGuard:
             display_name="Test Local",
             description="Fake preset for log assertion",
             driver="litellm",
+            litellm_provider="test-local",
             auth_type=AuthType.NONE,
             candidate_urls=(self_url,),
         )

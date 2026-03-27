@@ -1,0 +1,134 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { UseProviderDetailDataReturn } from '@/hooks/useProviderDetailData'
+import type { ProviderWithName } from '@/utils/providers'
+
+let hookReturn: UseProviderDetailDataReturn
+
+const getDetailData = vi.fn(() => hookReturn)
+vi.mock('@/hooks/useProviderDetailData', () => {
+  const hookName = 'useProviderDetailData'
+  return { [hookName]: () => getDetailData() }
+})
+
+const { default: ProviderDetailPage } = await import('@/pages/ProviderDetailPage')
+
+function makeProvider(name: string): ProviderWithName {
+  return {
+    name,
+    driver: 'litellm',
+    litellm_provider: 'anthropic',
+    auth_type: 'api_key',
+    base_url: null,
+    models: [
+      { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null },
+    ],
+    has_api_key: true,
+    has_oauth_credentials: false,
+    has_custom_header: false,
+    has_subscription_token: false,
+    tos_accepted_at: null,
+    oauth_token_url: null,
+    oauth_client_id: null,
+    oauth_scope: null,
+    custom_header_name: null,
+  }
+}
+
+const defaultReturn: UseProviderDetailDataReturn = {
+  provider: null,
+  models: [],
+  health: null,
+  loading: false,
+  error: null,
+  testConnectionResult: null,
+  testingConnection: false,
+}
+
+function renderDetail(name = 'anthropic') {
+  return render(
+    <MemoryRouter initialEntries={[`/providers/${name}`]}>
+      <Routes>
+        <Route path="/providers/:providerName" element={<ProviderDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('ProviderDetailPage', () => {
+  beforeEach(() => {
+    hookReturn = { ...defaultReturn }
+    vi.clearAllMocks()
+  })
+
+  it('renders loading skeleton when loading', () => {
+    hookReturn = { ...defaultReturn, loading: true }
+    renderDetail()
+    expect(screen.getByLabelText('Loading provider details')).toBeInTheDocument()
+  })
+
+  it('renders error message when error without provider', () => {
+    hookReturn = { ...defaultReturn, error: 'Provider not found' }
+    renderDetail()
+    expect(screen.getByText('Provider not found')).toBeInTheDocument()
+  })
+
+  it('renders provider name when data loaded', () => {
+    const provider = makeProvider('anthropic')
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [...provider.models],
+    }
+    renderDetail()
+    expect(screen.getByRole('heading', { name: 'anthropic' })).toBeInTheDocument()
+  })
+
+  it('renders model list when models present', () => {
+    const provider = makeProvider('anthropic')
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [...provider.models],
+    }
+    renderDetail()
+    expect(screen.getByText('test-model')).toBeInTheDocument()
+  })
+
+  it('renders health metrics when health available', () => {
+    const provider = makeProvider('anthropic')
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [],
+      health: {
+        last_check_timestamp: '2026-03-27T12:00:00Z',
+        avg_response_time_ms: 250,
+        error_rate_percent_24h: 1.5,
+        calls_last_24h: 500,
+        health_status: 'up',
+      },
+    }
+    renderDetail()
+    expect(screen.getByText('500')).toBeInTheDocument()
+    expect(screen.getByText('250ms')).toBeInTheDocument()
+  })
+
+  it('renders test connection result when present', () => {
+    const provider = makeProvider('anthropic')
+    hookReturn = {
+      ...defaultReturn,
+      provider,
+      models: [],
+      testConnectionResult: {
+        success: true,
+        latency_ms: 123,
+        error: null,
+        model_tested: 'test-model',
+      },
+    }
+    renderDetail()
+    expect(screen.getByText(/Connected/)).toBeInTheDocument()
+  })
+})

@@ -1,0 +1,83 @@
+import { useCallback, useEffect } from 'react'
+import { useProvidersStore } from '@/stores/providers'
+import { usePolling } from '@/hooks/usePolling'
+import type {
+  ProviderHealthSummary,
+  ProviderModelConfig,
+  TestConnectionResponse,
+} from '@/api/types'
+import type { ProviderWithName } from '@/utils/providers'
+
+const DETAIL_POLL_INTERVAL = 30_000
+
+export interface UseProviderDetailDataReturn {
+  provider: ProviderWithName | null
+  models: readonly ProviderModelConfig[]
+  health: ProviderHealthSummary | null
+  loading: boolean
+  error: string | null
+  testConnectionResult: TestConnectionResponse | null
+  testingConnection: boolean
+}
+
+export function useProviderDetailData(
+  providerName: string,
+): UseProviderDetailDataReturn {
+  const provider = useProvidersStore((s) => s.selectedProvider)
+  const models = useProvidersStore((s) => s.selectedProviderModels)
+  const health = useProvidersStore((s) => s.selectedProviderHealth)
+  const loading = useProvidersStore((s) => s.detailLoading)
+  const error = useProvidersStore((s) => s.detailError)
+  const testConnectionResult = useProvidersStore(
+    (s) => s.testConnectionResult,
+  )
+  const testingConnection = useProvidersStore((s) => s.testingConnection)
+
+  // Initial fetch + cleanup
+  useEffect(() => {
+    if (!providerName) {
+      useProvidersStore.getState().clearDetail()
+      return
+    }
+    useProvidersStore.getState().fetchProviderDetail(providerName)
+    return () => {
+      useProvidersStore.getState().clearDetail()
+    }
+  }, [providerName])
+
+  // Polling
+  const pollFn = useCallback(async () => {
+    if (!providerName) return
+    await useProvidersStore.getState().fetchProviderDetail(providerName)
+  }, [providerName])
+  const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
+
+  useEffect(() => {
+    if (!providerName) return
+    polling.start()
+    return () => polling.stop()
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+  }, [providerName])
+
+  if (!providerName) {
+    return {
+      provider: null,
+      models: [],
+      health: null,
+      loading: false,
+      error: null,
+      testConnectionResult: null,
+      testingConnection: false,
+    }
+  }
+
+  return {
+    provider,
+    models,
+    health,
+    loading,
+    error,
+    testConnectionResult,
+    testingConnection,
+  }
+}
