@@ -148,8 +148,20 @@ type PerformanceCardData = Omit<MetricCardProps, 'className'>
 export function computePerformanceCards(
   perf: AgentPerformanceSummary,
 ): PerformanceCardData[] {
-  const taskSparkline = perf.windows.length >= 2
+  const hasSparkline = perf.windows.length >= 2
+
+  // Build sparkline arrays from window metrics (nullable fields filtered to numbers)
+  const taskSparkline = hasSparkline
     ? perf.windows.map((w) => w.tasks_completed)
+    : undefined
+  const timeSparkline = hasSparkline
+    ? perf.windows.map((w) => w.avg_completion_time_seconds ?? 0)
+    : undefined
+  const successSparkline = hasSparkline
+    ? perf.windows.map((w) => w.success_rate != null ? w.success_rate * 100 : 0)
+    : undefined
+  const costSparkline = hasSparkline
+    ? perf.windows.map((w) => w.avg_cost_per_task ?? 0)
     : undefined
 
   return [
@@ -162,6 +174,7 @@ export function computePerformanceCards(
     {
       label: 'AVG COMPLETION TIME',
       value: formatCompletionTime(perf.avg_completion_time_seconds),
+      sparklineData: timeSparkline,
     },
     {
       label: 'SUCCESS RATE',
@@ -169,10 +182,12 @@ export function computePerformanceCards(
       subText: perf.tasks_completed_30d > 0
         ? `across ${perf.tasks_completed_30d} tasks (30d)`
         : undefined,
+      sparklineData: successSparkline,
     },
     {
       label: 'COST PER TASK',
       value: formatCostPerTask(perf.cost_per_task_usd),
+      sparklineData: costSparkline,
     },
   ]
 }
