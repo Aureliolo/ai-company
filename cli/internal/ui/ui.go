@@ -59,6 +59,10 @@ type Options struct {
 	Hints   string // hint mode: "always", "auto", "never"
 }
 
+// sessionTipsSeen deduplicates HintTip messages within a CLI invocation.
+// Package-level so all UI instances (stdout, stderr) share the same store.
+var sessionTipsSeen sync.Map
+
 // UI provides styled CLI output bound to a specific writer.
 // Binding to a writer (rather than defaulting to os.Stdout) enables
 // testability and correct stderr/stdout separation in Cobra commands.
@@ -77,7 +81,6 @@ type UI struct {
 	muted     lipgloss.Style
 	label     lipgloss.Style
 	bold      lipgloss.Style
-	tipsSeen  sync.Map // deduplicates HintTip messages within a session
 }
 
 // NewUI creates a UI bound to the given writer with default options.
@@ -236,7 +239,7 @@ func (u *UI) HintTip(msg string) {
 		return
 	}
 	if u.hints == "auto" {
-		if _, loaded := u.tipsSeen.LoadOrStore(msg, struct{}{}); loaded {
+		if _, loaded := sessionTipsSeen.LoadOrStore(msg, struct{}{}); loaded {
 			return // already shown this session
 		}
 	}

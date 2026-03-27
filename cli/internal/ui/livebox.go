@@ -114,8 +114,11 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 	lb.lines[index].status = stripControlStrict(status)
 	lb.lines[index].finished = true
 
-	if !lb.ui.isTTY || lb.ui.plain || lb.ui.quiet {
-		// Non-TTY, plain, or quiet: print a status line immediately.
+	if lb.ui.quiet {
+		// Quiet/JSON mode: suppress human output. Errors will propagate
+		// through return values to the caller.
+	} else if !lb.ui.isTTY || lb.ui.plain {
+		// Non-TTY or plain: print a status line immediately.
 		errorIcon := IconError
 		if lb.ui.plain {
 			errorIcon = PlainIconError

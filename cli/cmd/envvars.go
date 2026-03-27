@@ -28,7 +28,7 @@ const (
 // "false", "0", "no", and empty string -- are treated as false.
 // There is no way to explicitly negate a flag via env var; absence = off.
 func envBool(name string) bool {
-	v := os.Getenv(name)
+	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
 		return false
 	}

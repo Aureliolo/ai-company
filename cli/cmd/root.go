@@ -62,14 +62,6 @@ func init() {
 // setupGlobalOpts resolves the effective configuration from flags, env vars,
 // and config file, then stores GlobalOpts in the command context.
 func setupGlobalOpts(cmd *cobra.Command) error {
-	// Validate mutual exclusivity.
-	if flagQuiet && flagVerbose > 0 {
-		return fmt.Errorf("--quiet and --verbose are mutually exclusive")
-	}
-	if flagPlain && flagJSON {
-		return fmt.Errorf("--plain and --json are mutually exclusive")
-	}
-
 	// Resolve env var overrides for flags that were NOT explicitly passed.
 	// Use flag variables directly (already populated by Cobra) rather than
 	// cmd.Flags().Changed() which only sees local flags on subcommands,
@@ -92,6 +84,15 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 	skipVerify := flagSkipVerify
 	if !flagSkipVerify && (envBool(EnvNoVerify) || envBool(EnvSkipVerify)) {
 		skipVerify = true
+	}
+
+	// Validate mutual exclusivity on RESOLVED values (after env var override)
+	// so that conflicts like SYNTHORG_QUIET=1 + --verbose are caught.
+	if quiet && flagVerbose > 0 {
+		return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+	}
+	if flagPlain && flagJSON {
+		return fmt.Errorf("--plain and --json are mutually exclusive")
 	}
 
 	opts := &GlobalOpts{

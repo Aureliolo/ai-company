@@ -400,7 +400,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	if !confirm {
 		errOut.Error("Restore requires the --confirm flag as a safety gate")
 		errOut.HintNextStep(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
-		return errors.New("--confirm flag is required")
+		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
 	state, err := config.Load(opts.DataDir)
