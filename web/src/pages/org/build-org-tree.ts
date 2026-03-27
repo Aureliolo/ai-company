@@ -73,10 +73,6 @@ export function buildOrgTree(
   // Filter out terminated agents
   const agents = config.agents.filter((a) => a.status !== 'terminated')
 
-  if (agents.length === 0) {
-    return { nodes: [], edges: [] }
-  }
-
   const healthMap = new Map(departmentHealths.map((h) => [h.name, h]))
   const nodes: Node[] = []
   const edges: Edge[] = []

@@ -1,5 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import fc from 'fast-check'
 import { NodeContextMenu } from '@/pages/org/NodeContextMenu'
 
 describe('NodeContextMenu', () => {
@@ -56,6 +57,13 @@ describe('NodeContextMenu', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  it('closes on outside click', () => {
+    const onClose = vi.fn()
+    render(<NodeContextMenu {...baseProps} onClose={onClose} />)
+    fireEvent.mouseDown(document.body)
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('has role="menu"', () => {
     render(<NodeContextMenu {...baseProps} />)
     expect(screen.getByRole('menu')).toBeInTheDocument()
@@ -65,5 +73,35 @@ describe('NodeContextMenu', () => {
     render(<NodeContextMenu {...baseProps} />)
     const items = screen.getAllByRole('menuitem')
     expect(items).toHaveLength(4)
+  })
+
+  it.each(['agent', 'ceo', 'department'] as const)(
+    'renders menu with role="menu" for %s node type',
+    (nodeType) => {
+      render(<NodeContextMenu {...baseProps} nodeType={nodeType} />)
+      expect(screen.getByRole('menu')).toBeInTheDocument()
+      const items = screen.getAllByRole('menuitem')
+      expect(items.length).toBeGreaterThan(0)
+    },
+  )
+
+  it('properties: all supported node types render valid menu structures', () => {
+    const nodeTypeArb = fc.constantFrom('agent' as const, 'ceo' as const, 'department' as const)
+    fc.assert(
+      fc.property(nodeTypeArb, (nodeType) => {
+        const { unmount } = render(
+          <NodeContextMenu {...baseProps} nodeType={nodeType} />,
+        )
+        const menu = screen.getByRole('menu')
+        expect(menu).toBeInTheDocument()
+        const items = screen.getAllByRole('menuitem')
+        expect(items.length).toBeGreaterThan(0)
+        // All items should have type="button"
+        for (const item of items) {
+          expect(item).toHaveAttribute('type', 'button')
+        }
+        unmount()
+      }),
+    )
   })
 })

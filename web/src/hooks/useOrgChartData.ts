@@ -31,7 +31,9 @@ export function useOrgChartData(): UseOrgChartDataReturn {
   useEffect(() => {
     const companyStore = useCompanyStore.getState()
     companyStore.fetchCompanyData().then(() => {
-      companyStore.fetchDepartmentHealths()
+      if (useCompanyStore.getState().config) {
+        companyStore.fetchDepartmentHealths()
+      }
     })
   }, [])
 
