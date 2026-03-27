@@ -74,10 +74,10 @@ func init() {
 }
 
 func runConfigShow(cmd *cobra.Command, _ []string) error {
-	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	safeDir, err := config.SecurePath(dir)
+	safeDir, err := config.SecurePath(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("invalid data directory: %w", err)
 	}
@@ -86,7 +86,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(statePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			out.Warn("Not initialized -- no config found at " + statePath)
-			out.Hint("Run 'synthorg init' to set up")
+			out.HintNextStep("Run 'synthorg init' to set up")
 			return nil
 		}
 		return fmt.Errorf("checking config file: %w", err)
@@ -131,9 +131,8 @@ func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, co
 
 func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
-	dir := resolveDataDir()
 
-	safeDir, err := config.SecurePath(dir)
+	safeDir, err := config.SecurePath(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("invalid data directory: %w", err)
 	}
@@ -173,10 +172,10 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
 	key, value := args[0], args[1]
-	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

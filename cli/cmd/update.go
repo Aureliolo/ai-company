@@ -46,8 +46,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// Load state once and thread through both steps to avoid
 	// double config.Load and TOCTOU gaps between them.
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
+	state, err := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -81,7 +80,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(),
 		"Warning: new images may not work correctly with your current compose configuration.")
-	ok, err := confirmUpdateWithDefault(
+	ok, err := confirmUpdateWithDefault(cmd.Context(),
 		"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
 		false,
 	)
@@ -105,10 +104,10 @@ func isDevChannelMismatch(channel, ver string) bool {
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
 // re-exec the updated binary.
-func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.CheckResult) error {
-	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
+func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult) error {
+	out.Step(fmt.Sprintf("New version available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
 
-	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
 	if err != nil {
 		return err
 	}
@@ -116,7 +115,7 @@ func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.C
 		return nil
 	}
 
-	_, _ = fmt.Fprintln(out, "Downloading...")
+	out.Step("Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
 		return fmt.Errorf("downloading update: %w", err)
@@ -125,9 +124,9 @@ func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.C
 	if err := selfupdate.Replace(binary); err != nil {
 		return fmt.Errorf("replacing binary: %w", err)
 	}
-	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
-	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
-		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v"))
+	out.Success(fmt.Sprintf("CLI updated to %s", result.LatestVersion))
+	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
+		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v")))
 
 	return errReexec
 }
@@ -150,33 +149,34 @@ func updateCLI(cmd *cobra.Command) error {
 	}
 
 	ctx := cmd.Context()
-	out := cmd.OutOrStdout()
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Warn on dev builds.
 	if version.Version == "dev" {
-		_, _ = fmt.Fprintln(out, "Warning: running a dev build -- update check will always report an update available.")
+		out.Warn("Running a dev build -- update check will always report an update available.")
 	}
 
-	channel := resolveUpdateChannel()
+	channel := resolveUpdateChannel(ctx)
 	if channel == "dev" {
-		_, _ = fmt.Fprintln(out, "Checking for updates (dev channel)...")
+		out.Step("Checking for updates (dev channel)...")
 	} else {
-		_, _ = fmt.Fprintln(out, "Checking for updates...")
+		out.Step("Checking for updates...")
 	}
 
 	if isDevChannelMismatch(channel, version.Version) {
-		_, _ = fmt.Fprintln(out,
-			"Note: running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
+		out.Warn("Running a dev build but update channel is \"stable\". Dev releases will not appear. Run 'synthorg config set channel dev' to receive dev updates.")
 	}
 
 	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
+		errUI.Warn(fmt.Sprintf("Could not check for updates: %v", err))
 		return nil
 	}
 
 	if !result.UpdateAvail {
-		_, _ = fmt.Fprintf(out, "CLI is up to date (%s)\n", result.CurrentVersion)
+		out.Success(fmt.Sprintf("CLI is up to date (%s)", result.CurrentVersion))
 		return nil
 	}
 
@@ -185,34 +185,14 @@ func updateCLI(cmd *cobra.Command) error {
 
 // resolveUpdateChannel reads the update channel from config, defaulting to
 // "stable" if the config cannot be loaded or the channel is empty.
-func resolveUpdateChannel() string {
-	dir := resolveDataDir()
-	if state, err := config.Load(dir); err == nil && state.Channel != "" {
+func resolveUpdateChannel(ctx context.Context) string {
+	if state, err := config.Load(GetGlobalOpts(ctx).DataDir); err == nil && state.Channel != "" {
 		return state.Channel
 	}
 	return "stable"
 }
 
-// ChildExitError carries the exit code from a re-exec'd child process.
-// The program entrypoint inspects this via ChildExitCode to call os.Exit
-// with the child's code instead of printing a generic error message.
-type ChildExitError struct {
-	Code int
-}
-
-func (e *ChildExitError) Error() string {
-	return fmt.Sprintf("re-launched CLI exited with code %d", e.Code)
-}
-
-// ChildExitCode extracts the exit code from err if it is a ChildExitError.
-// Returns (code, true) if found, (0, false) otherwise.
-func ChildExitCode(err error) (int, bool) {
-	var ce *ChildExitError
-	if errors.As(err, &ce) {
-		return ce.Code, true
-	}
-	return 0, false
-}
+// ChildExitError and ChildExitCode are defined in exitcodes.go.
 
 // reexecUpdate spawns the new binary with the same arguments so the rest
 // of the update (compose refresh, image pull) uses the new embedded template.
@@ -242,12 +222,30 @@ func reexecUpdate(cmd *cobra.Command) error {
 	// Reconstruct args from known flags instead of forwarding os.Args
 	// to avoid silently propagating unexpected flags.
 	reArgs := []string{"update", "--skip-cli-update"}
-	if dataDir != "" {
-		reArgs = append(reArgs, "--data-dir", dataDir)
+	if flagDataDir != "" {
+		reArgs = append(reArgs, "--data-dir", flagDataDir)
 	}
-	if skipVerify {
+	if flagSkipVerify {
 		reArgs = append(reArgs, "--skip-verify")
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --skip-verify is being carried forward to the re-launched CLI.")
+	}
+	if flagQuiet {
+		reArgs = append(reArgs, "--quiet")
+	}
+	for range flagVerbose {
+		reArgs = append(reArgs, "-v")
+	}
+	if flagNoColor {
+		reArgs = append(reArgs, "--no-color")
+	}
+	if flagPlain {
+		reArgs = append(reArgs, "--plain")
+	}
+	if flagJSON {
+		reArgs = append(reArgs, "--json")
+	}
+	if flagYes {
+		reArgs = append(reArgs, "--yes")
 	}
 
 	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
@@ -309,7 +307,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
-	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
 	if err != nil {
 		return err
 	}
@@ -362,15 +360,16 @@ func postPullActions(cmd *cobra.Command, info docker.Info, safeDir string, oldSt
 }
 
 // confirmUpdate prompts the user to confirm an update action.
-// Returns (true, nil) if non-interactive (auto-accept) or user confirms.
+// Returns (true, nil) if --yes/non-interactive (auto-accept) or user confirms.
 // Default is yes.
-func confirmUpdate(title string) (bool, error) {
-	return confirmUpdateWithDefault(title, true)
+func confirmUpdate(ctx context.Context, title string) (bool, error) {
+	return confirmUpdateWithDefault(ctx, title, true)
 }
 
 // confirmUpdateWithDefault prompts the user with a configurable default.
-func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
-	if !isInteractive() {
+// Respects --yes flag and SYNTHORG_YES env var via GlobalOpts.ShouldPrompt.
+func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool) (bool, error) {
+	if !GetGlobalOpts(ctx).ShouldPrompt() {
 		return defaultVal, nil
 	}
 	proceed := defaultVal
@@ -389,7 +388,8 @@ func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
 // existing compose instead of regenerating from the template.
 // Returns the persisted state with updated ImageTag and VerifiedDigests.
 func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) (config.State, error) {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
@@ -410,7 +410,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		}
 	}
 
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Verify + write compose atomically: compose.yml is only updated after
 	// verification succeeds (or when --skip-verify explicitly skips it).
@@ -444,7 +444,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	updatedState := state
 	updatedState.ImageTag = tag
 
-	if skipVerify {
+	if GetGlobalOpts(ctx).SkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		if err := writeOrPatchCompose(updatedState, nil, safeDir, preserveCompose); err != nil {
 			return nil, err
@@ -463,7 +463,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	if err != nil {
 		sp.Error("Image verification failed")
 		if isTransportError(err) {
-			errOut.Hint("Use --skip-verify for air-gapped environments")
+			errOut.HintError("Use --skip-verify for air-gapped environments")
 		}
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}
@@ -499,7 +499,12 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	if !isInteractive() {
+	opts := GetGlobalOpts(ctx)
+	if !opts.ShouldPrompt() {
+		if opts.Yes {
+			// --yes: auto-restart (default is yes)
+			return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
+		}
 		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
 	}
@@ -511,13 +516,12 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	if !restart {
 		return false, nil
 	}
-
-	return performRestart(ctx, out, info, safeDir, state)
+	return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 }
 
 // performRestart stops, restarts, and health-checks containers.
-func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State) (bool, error) {
-	uiOut := ui.NewUI(out)
+func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State, uiOpts ui.Options) (bool, error) {
+	uiOut := ui.NewUIWithOptions(out, uiOpts)
 
 	sp := uiOut.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {

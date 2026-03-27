@@ -25,7 +25,8 @@ func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, bool
 		return false, false, nil
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Warn("Installation appears incomplete:")
 	for _, issue := range issues {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
@@ -86,7 +87,11 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 // promptHealthRecover asks the user whether to recover or run init.
 // Returns (true, nil) if the user chose to abort.
 func promptHealthRecover(cmd *cobra.Command) (bool, error) {
-	if !isInteractive() {
+	opts := GetGlobalOpts(cmd.Context())
+	if !opts.ShouldPrompt() {
+		if opts.Yes {
+			return false, nil // --yes: auto-recover (default is yes)
+		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
 			"\nNon-interactive mode: run 'synthorg init' to restore a clean installation.")
 		return true, nil

@@ -25,7 +25,8 @@ func init() {
 }
 
 func runCompletionInstall(cmd *cobra.Command, _ []string) error {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	shell := completion.DetectShell()
 	if shell == completion.Unknown {
@@ -45,6 +46,6 @@ func runCompletionInstall(cmd *cobra.Command, _ []string) error {
 	}
 
 	out.Success(fmt.Sprintf("Completions installed to %s", res.ProfilePath))
-	out.Hint("Restart your shell to activate completions")
+	out.HintNextStep("Restart your shell to activate completions")
 	return nil
 }

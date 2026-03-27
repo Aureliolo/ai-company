@@ -69,6 +69,45 @@ go -C cli tool golangci-lint run                                       # lint
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
 ```
 
+#### Global Flags
+
+All commands accept these persistent flags (precedence: flag > env var > config > default):
+
+| Flag | Short | Env Var | Description |
+|------|-------|---------|-------------|
+| `--data-dir` | | `SYNTHORG_DATA_DIR` | Data directory (default: platform-appropriate) |
+| `--skip-verify` | | `SYNTHORG_NO_VERIFY` / `SYNTHORG_SKIP_VERIFY` | Skip image signature verification |
+| `--quiet` | `-q` | `SYNTHORG_QUIET` | Errors only, no spinners/hints/boxes |
+| `--verbose` | `-v` | | Increase verbosity (`-v`=verbose, `-vv`=trace) |
+| `--no-color` | | `NO_COLOR`, `CLICOLOR=0`, `TERM=dumb` | Disable ANSI color output |
+| `--plain` | | | ASCII-only output (no Unicode, no spinners) |
+| `--json` | | | Machine-readable JSON output |
+| `--yes` | `-y` | `SYNTHORG_YES` | Auto-accept all prompts (non-interactive) |
+
+Additional env vars (no corresponding flag -- used for config overrides):
+
+| Env Var | Description |
+|---------|-------------|
+| `SYNTHORG_LOG_LEVEL` | Override backend log level |
+| `SYNTHORG_BACKEND_PORT` | Override backend API port |
+| `SYNTHORG_WEB_PORT` | Override web dashboard port |
+| `SYNTHORG_CHANNEL` | Override release channel (stable/dev) |
+| `SYNTHORG_IMAGE_TAG` | Override container image tag |
+| `SYNTHORG_AUTO_UPDATE_CLI` | Auto-accept CLI self-updates |
+| `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
+| `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
+
+#### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Runtime error |
+| 2 | Usage error (bad arguments) |
+| 3 | Unhealthy (backend/containers) |
+| 4 | Unreachable (Docker not available) |
+| 10 | Updates available (`--check`) |
+
 ## Documentation
 
 - **Docs**: `docs/` (Markdown, built with Zensical, config: `mkdocs.yml`)
@@ -134,7 +173,7 @@ web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
-  cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.)
+  cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.), global options, exit codes, env var constants
   internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify
 
 site/             # Astro landing page (synthorg.io)

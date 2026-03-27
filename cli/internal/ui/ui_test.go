@@ -424,3 +424,304 @@ func TestInlineKVOddArgs(t *testing.T) {
 		t.Error("InlineKV should drop unpaired trailing key")
 	}
 }
+
+// --- Output mode tests ---
+
+func TestQuietModeSuppresses(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Quiet: true})
+
+	u.Logo("v1.0.0")
+	u.Step("working")
+	u.Blank()
+	u.Section("Header")
+	u.KeyValue("key", "val")
+	u.Divider()
+	u.InlineKV("a", "b")
+	u.HintNextStep("do this")
+	u.HintTip(t.Name() + " try that")
+	u.HintGuidance("guidance")
+	u.HintError("error hint")
+	u.Link("label", "http://example.com")
+	u.Box("Title", []string{"line"})
+	u.Table([]string{"H"}, [][]string{{"r"}})
+
+	if buf.Len() != 0 {
+		t.Errorf("quiet mode should suppress all non-essential output, got: %q", buf.String())
+	}
+
+	// Success and Warn are suppressed in quiet mode (errors only).
+	u.Success("ok")
+	if buf.Len() != 0 {
+		t.Errorf("quiet mode should suppress Success, got: %q", buf.String())
+	}
+
+	u.Warn("caution")
+	if buf.Len() != 0 {
+		t.Errorf("quiet mode should suppress Warn, got: %q", buf.String())
+	}
+
+	// Error and Plain should still print.
+	u.Error("fail")
+	if !strings.Contains(buf.String(), "fail") {
+		t.Error("quiet mode should still print Error")
+	}
+	buf.Reset()
+
+	u.Plain("raw")
+	if !strings.Contains(buf.String(), "raw") {
+		t.Error("quiet mode should still print Plain")
+	}
+}
+
+func TestPlainModeASCIIIcons(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+
+	u.Success("done")
+	u.Error("oops")
+	u.Warn("hmm")
+	u.Step("loading")
+
+	out := buf.String()
+	if !strings.Contains(out, PlainIconSuccess) {
+		t.Errorf("plain mode should use %q for success, got: %s", PlainIconSuccess, out)
+	}
+	if !strings.Contains(out, PlainIconError) {
+		t.Errorf("plain mode should use %q for error, got: %s", PlainIconError, out)
+	}
+	if !strings.Contains(out, PlainIconWarning) {
+		t.Errorf("plain mode should use %q for warning, got: %s", PlainIconWarning, out)
+	}
+	if !strings.Contains(out, PlainIconInProgress) {
+		t.Errorf("plain mode should use %q for step, got: %s", PlainIconInProgress, out)
+	}
+
+	// Should NOT contain Unicode icons.
+	for _, icon := range []string{IconSuccess, IconError, IconInProgress, IconWarning} {
+		if strings.Contains(out, icon) {
+			t.Errorf("plain mode should not contain Unicode icon %q", icon)
+		}
+	}
+}
+
+func TestPlainModeBox(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+	u.Box("Title", []string{"content"})
+	out := buf.String()
+
+	// Should use ASCII box chars.
+	if !strings.Contains(out, "+") {
+		t.Error("plain box should use + for corners")
+	}
+	if !strings.Contains(out, "|") {
+		t.Error("plain box should use | for vertical borders")
+	}
+	// Should NOT contain Unicode box-drawing.
+	for _, ch := range []string{"\u250c", "\u2510", "\u2514", "\u2518", "\u2502"} {
+		if strings.Contains(out, ch) {
+			t.Errorf("plain box should not contain Unicode box char %q", ch)
+		}
+	}
+}
+
+func TestPlainModeDivider(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+	u.Divider()
+	out := buf.String()
+
+	if !strings.Contains(out, "----") {
+		t.Error("plain divider should use dashes")
+	}
+	if strings.Contains(out, "\u2500") {
+		t.Error("plain divider should not contain Unicode horizontal line")
+	}
+}
+
+func TestPlainModeTable(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+	u.Table([]string{"NAME", "VALUE"}, [][]string{{"foo", "bar"}})
+	out := buf.String()
+
+	if !strings.Contains(out, "NAME") || !strings.Contains(out, "foo") {
+		t.Error("plain table should contain data")
+	}
+	if strings.Contains(out, "\u2500") {
+		t.Error("plain table should not contain Unicode separator")
+	}
+}
+
+func TestPlainModeLogo(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+	u.Logo("v1.0.0")
+	out := buf.String()
+
+	if !strings.Contains(out, "SynthOrg") {
+		t.Error("plain logo should contain 'SynthOrg'")
+	}
+	if !strings.Contains(out, "v1.0.0") {
+		t.Error("plain logo should contain version")
+	}
+	// Should NOT contain Unicode box-drawing from the fancy logo.
+	if strings.Contains(out, "\u2554") {
+		t.Error("plain logo should not contain Unicode logo art")
+	}
+}
+
+func TestPlainModeIconAccessors(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+
+	if u.SuccessIcon() != PlainIconSuccess {
+		t.Errorf("plain SuccessIcon = %q, want %q", u.SuccessIcon(), PlainIconSuccess)
+	}
+	if u.ErrorIcon() != PlainIconError {
+		t.Errorf("plain ErrorIcon = %q, want %q", u.ErrorIcon(), PlainIconError)
+	}
+	if u.WarnIcon() != PlainIconWarning {
+		t.Errorf("plain WarnIcon = %q, want %q", u.WarnIcon(), PlainIconWarning)
+	}
+}
+
+func TestHintCategories(t *testing.T) {
+	t.Parallel()
+
+	t.Run("auto mode", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		u := NewUIWithOptions(&buf, Options{Hints: "auto"})
+
+		u.HintError("error hint")
+		if !strings.Contains(buf.String(), "error hint") {
+			t.Error("auto mode should show HintError")
+		}
+		buf.Reset()
+
+		u.HintNextStep("next step")
+		if !strings.Contains(buf.String(), "next step") {
+			t.Error("auto mode should show HintNextStep")
+		}
+		buf.Reset()
+
+		tip1 := t.Name() + " try this"
+		u.HintTip(tip1)
+		if !strings.Contains(buf.String(), tip1) {
+			t.Error("auto mode should show HintTip first time")
+		}
+		buf.Reset()
+
+		u.HintTip(tip1) // same message again
+		if buf.Len() != 0 {
+			t.Error("auto mode should suppress duplicate HintTip")
+		}
+
+		tip2 := t.Name() + " different tip"
+		u.HintTip(tip2) // different message
+		if !strings.Contains(buf.String(), tip2) {
+			t.Error("auto mode should show new HintTip")
+		}
+		buf.Reset()
+
+		u.HintGuidance("guidance")
+		if buf.Len() != 0 {
+			t.Error("auto mode should suppress HintGuidance")
+		}
+	})
+
+	t.Run("always mode", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		u := NewUIWithOptions(&buf, Options{Hints: "always"})
+
+		u.HintGuidance("guidance")
+		if !strings.Contains(buf.String(), "guidance") {
+			t.Error("always mode should show HintGuidance")
+		}
+	})
+
+	t.Run("never mode", func(t *testing.T) {
+		t.Parallel()
+		var buf bytes.Buffer
+		u := NewUIWithOptions(&buf, Options{Hints: "never"})
+
+		u.HintError("error")
+		u.HintNextStep("next")
+		neverTip := t.Name() + " tip-never"
+		neverGuide := t.Name() + " guide-never"
+		u.HintTip(neverTip)
+		u.HintGuidance(neverGuide)
+		// HintError and HintNextStep always show unless quiet.
+		// HintTip and HintGuidance are suppressed in never mode.
+		out := buf.String()
+		if !strings.Contains(out, "error") {
+			t.Error("never mode should still show HintError")
+		}
+		if !strings.Contains(out, "next") {
+			t.Error("never mode should still show HintNextStep")
+		}
+		if strings.Contains(out, neverTip) {
+			t.Error("never mode should suppress HintTip")
+		}
+		if strings.Contains(out, neverGuide) {
+			t.Error("never mode should suppress HintGuidance")
+		}
+	})
+}
+
+func TestSpinnerQuietMode(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Quiet: true})
+	s := u.StartSpinner("loading")
+	if buf.Len() != 0 {
+		t.Error("quiet spinner should produce no output on start")
+	}
+	s.Success("done")
+	if buf.Len() != 0 {
+		t.Errorf("quiet spinner Success should be suppressed (errors only), got: %q", buf.String())
+	}
+}
+
+func TestSpinnerPlainMode(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUIWithOptions(&buf, Options{Plain: true})
+	s := u.StartSpinner("loading")
+	out := buf.String()
+	if !strings.Contains(out, "loading") {
+		t.Error("plain spinner should print step message")
+	}
+	if !strings.Contains(out, PlainIconInProgress) {
+		t.Errorf("plain spinner should use %q icon", PlainIconInProgress)
+	}
+	s.Success("done")
+}
+
+func TestJSONOutput(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+
+	data := map[string]string{"version": "1.0.0", "commit": "abc123"}
+	if err := u.JSONOutput(data); err != nil {
+		t.Fatalf("JSONOutput error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"version": "1.0.0"`) {
+		t.Errorf("JSONOutput missing expected field, got: %s", out)
+	}
+	if !strings.Contains(out, `"commit": "abc123"`) {
+		t.Errorf("JSONOutput missing expected field, got: %s", out)
+	}
+}

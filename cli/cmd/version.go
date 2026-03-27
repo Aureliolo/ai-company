@@ -10,7 +10,8 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print CLI version and build info",
 	Run: func(cmd *cobra.Command, args []string) {
-		out := ui.NewUI(cmd.OutOrStdout())
+		opts := GetGlobalOpts(cmd.Context())
+		out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 		out.Logo(version.Version)
 		out.KeyValue("Commit", version.Commit)
 		out.KeyValue("Built", version.Date)

@@ -34,7 +34,8 @@ const hintThresholdBytes = 5e9
 // fail the update command. Called only when state.AutoCleanup is true.
 func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State, previousIDs map[string]bool) {
 	ctx := cmd.Context()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := cmd.ErrOrStderr()
 
 	// Build the keep set: current IDs (just pulled) + previous IDs.
@@ -104,7 +105,8 @@ func mergeKeepIDs(current, previous map[string]bool) map[string]bool {
 // update, but only when the total old image size exceeds hintThresholdBytes.
 // Replaces the former interactive cleanup prompt.
 func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	old, err := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
 	if err != nil || len(old) == 0 {
 		return
@@ -119,7 +121,7 @@ func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
 	}
 
 	out.Blank()
-	out.Hint(fmt.Sprintf("%d old image(s) using %s. Run 'synthorg cleanup' to free space.",
+	out.HintTip(fmt.Sprintf("%d old image(s) using %s. Run 'synthorg cleanup' to free space.",
 		len(old), formatBytes(totalB)))
 }
 

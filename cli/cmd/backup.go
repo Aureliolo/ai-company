@@ -298,15 +298,14 @@ func printBackupTable(out *ui.UI, backups []backupInfo) {
 
 func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	out := ui.NewUI(cmd.OutOrStdout())
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	out.Step("Creating backup...")
 
 	// 60s: backup can take time for large datasets; aligned with wipe backup timeout.
@@ -340,15 +339,14 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 
 func runBackupList(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	out := ui.NewUI(cmd.OutOrStdout())
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
 	if err != nil {
@@ -375,7 +373,7 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 
 	if len(backups) == 0 {
 		errOut.Warn("No backups found")
-		errOut.Hint("Run 'synthorg backup' to create one")
+		errOut.HintNextStep("Run 'synthorg backup' to create one")
 		return nil
 	}
 
@@ -391,7 +389,8 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid backup ID %q: must be a 12-character hex string", backupID)
 	}
 
-	errOut := ui.NewUI(cmd.ErrOrStderr())
+	opts := GetGlobalOpts(cmd.Context())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	// Check --confirm flag.
 	confirm, err := cmd.Flags().GetBool("confirm")
@@ -400,12 +399,11 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 	if !confirm {
 		errOut.Error("Restore requires the --confirm flag as a safety gate")
-		errOut.Hint(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
-		return errors.New("--confirm flag is required")
+		errOut.HintNextStep(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
+		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -416,7 +414,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.Step("Restoring from backup " + backupID + "...")
 
 	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
@@ -474,7 +472,7 @@ func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID str
 			displayMsg = msg
 		}
 		errOut.Error(sanitizeAPIMessage(displayMsg))
-		errOut.Hint("Run 'synthorg backup list' to see available backups")
+		errOut.HintNextStep("Run 'synthorg backup list' to see available backups")
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
 	safe := sanitizeAPIMessage(msg)
@@ -492,28 +490,28 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			out.Hint("Run 'synthorg start' to bring the stack back up")
+			out.HintNextStep("Run 'synthorg start' to bring the stack back up")
 			return nil
 		}
 		errOut.Warn(fmt.Sprintf("Could not inspect compose file: %v", err))
-		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
+		errOut.HintNextStep("Run 'synthorg stop' then 'synthorg start' manually")
 		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		errOut.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
-		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
+		errOut.HintNextStep("Run 'synthorg stop' then 'synthorg start' manually")
 		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
 	out.Step("Stopping containers for restart...")
 	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
 		errOut.Warn(fmt.Sprintf("Could not stop containers: %v", err))
-		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
+		errOut.HintNextStep("Run 'synthorg stop' then 'synthorg start' manually")
 		return fmt.Errorf("restore succeeded but post-restore restart failed: %w", err)
 	}
 
-	out.Hint("Run 'synthorg start' to bring the stack back up")
+	out.HintNextStep("Run 'synthorg start' to bring the stack back up")
 	return nil
 }

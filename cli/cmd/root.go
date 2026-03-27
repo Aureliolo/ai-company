@@ -8,15 +8,21 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
+// Flag variables for persistent flags.
 var (
-	dataDir    string
-	skipVerify bool
+	flagDataDir    string
+	flagSkipVerify bool
+	flagQuiet      bool
+	flagVerbose    int
+	flagNoColor    bool
+	flagPlain      bool
+	flagJSON       bool
+	flagYes        bool
 )
 
 var rootCmd = &cobra.Command{
@@ -28,28 +34,104 @@ Run 'synthorg init' to set up a new installation, then 'synthorg start'
 to launch the backend and web dashboard containers.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	// IMPORTANT: Cobra does NOT chain PersistentPreRunE. If any subcommand
+	// defines its own PersistentPreRunE or PreRunE, this hook is silently
+	// skipped and GlobalOpts will fall back to zero-value defaults. Always
+	// call setupGlobalOpts explicitly in any subcommand pre-run hook.
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		return setupGlobalOpts(cmd)
+	},
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory (default: platform-appropriate)")
-	rootCmd.PersistentFlags().BoolVar(&skipVerify, "skip-verify", false,
+	pf := rootCmd.PersistentFlags()
+	pf.StringVar(&flagDataDir, "data-dir", "", "data directory (default: platform-appropriate)")
+	pf.BoolVar(&flagSkipVerify, "skip-verify", false,
 		"skip container image signature and provenance verification (NOT RECOMMENDED)")
+	pf.BoolVarP(&flagQuiet, "quiet", "q", false, "suppress non-essential output (errors only)")
+	pf.CountVarP(&flagVerbose, "verbose", "v", "increase verbosity (-v=verbose, -vv=trace)")
+	pf.BoolVar(&flagNoColor, "no-color", false, "disable ANSI color output")
+	pf.BoolVar(&flagPlain, "plain", false, "ASCII-only output (no Unicode, no spinners, no box drawing)")
+	pf.BoolVar(&flagJSON, "json", false, "output machine-readable JSON")
+	pf.BoolVarP(&flagYes, "yes", "y", false, "assume yes for all prompts (non-interactive mode)")
 
-	// Allow SYNTHORG_SKIP_VERIFY env var as fallback for CI/air-gapped environments.
-	if v := os.Getenv("SYNTHORG_SKIP_VERIFY"); v != "" {
-		switch strings.ToLower(v) {
-		case "1", "true", "yes":
-			skipVerify = true
-		}
-	}
+	// Note: SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars are resolved
+	// inside setupGlobalOpts alongside all other env var overrides.
 }
 
-// resolveDataDir returns the effective data directory, using the flag value or
-// the platform default. Symlinks are resolved to prevent traversal issues.
+// setupGlobalOpts resolves the effective configuration from flags, env vars,
+// and config file, then stores GlobalOpts in the command context.
+func setupGlobalOpts(cmd *cobra.Command) error {
+	// Resolve env var overrides for flags that were NOT explicitly passed.
+	// Use flag variables directly (already populated by Cobra) rather than
+	// cmd.Flags().Changed() which only sees local flags on subcommands,
+	// not persistent flags inherited from the root command.
+	noColor := flagNoColor
+	if !flagNoColor && noColorFromEnv() {
+		noColor = true
+	}
+
+	quiet := flagQuiet
+	if !flagQuiet && envBool(EnvQuiet) {
+		quiet = true
+	}
+
+	yes := flagYes
+	if !flagYes && envBool(EnvYes) {
+		yes = true
+	}
+
+	skipVerify := flagSkipVerify
+	if !flagSkipVerify && (envBool(EnvNoVerify) || envBool(EnvSkipVerify)) {
+		skipVerify = true
+	}
+
+	// Validate mutual exclusivity on RESOLVED values (after env var override)
+	// so that conflicts like SYNTHORG_QUIET=1 + --verbose are caught.
+	if quiet && flagVerbose > 0 {
+		return fmt.Errorf("--quiet and --verbose are mutually exclusive")
+	}
+	if flagPlain && flagJSON {
+		return fmt.Errorf("--plain and --json are mutually exclusive")
+	}
+
+	opts := &GlobalOpts{
+		DataDir:    resolveDataDir(),
+		SkipVerify: skipVerify,
+		Quiet:      quiet,
+		Verbose:    flagVerbose,
+		NoColor:    noColor,
+		Plain:      flagPlain,
+		JSON:       flagJSON,
+		Yes:        yes,
+		Hints:      "auto", // default; will be overridden by config in PR 2
+	}
+
+	// Defensive: validHintsMode check will become reachable when PR 2 adds
+	// the --hints flag and config file override. Currently Hints is hardcoded
+	// to "auto" above, so this cannot fail.
+	if !validHintsMode(opts.Hints) {
+		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
+	}
+
+	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
+	return nil
+}
+
+// resolveDataDir returns the effective data directory, using the flag value,
+// env var, or the platform default. The result is normalized to an absolute
+// path and symlinks are resolved to prevent traversal.
 func resolveDataDir() string {
-	dir := dataDir
+	dir := flagDataDir
+	if dir == "" {
+		dir = os.Getenv(EnvDataDir)
+	}
 	if dir == "" {
 		dir = config.DataDir()
+	}
+	// Normalize to absolute path before any filesystem use.
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
 	}
 	// Resolve symlinks to prevent traversal.
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
@@ -65,6 +147,9 @@ func safeStateDir(state config.State) (string, error) {
 }
 
 // isInteractive returns true if stdin is a terminal (not piped or in CI).
+// Prefer GlobalOpts.ShouldPrompt() which additionally respects --yes.
+// This function is retained for destructive commands (wipe, uninstall) where
+// the --yes flag and TTY check must be evaluated separately.
 func isInteractive() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {
@@ -100,7 +185,13 @@ func isTransportError(err error) bool {
 // Execute runs the root command.
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
-		_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+		// Don't print ChildExitError to stderr -- its internal message
+		// ("re-launched CLI exited with code N") is not user-facing.
+		// main.go handles the exit code propagation.
+		var ce *ChildExitError
+		if !errors.As(err, &ce) {
+			_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+		}
 		return err
 	}
 	return nil

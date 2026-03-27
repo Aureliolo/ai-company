@@ -24,9 +24,9 @@ func init() {
 
 func runStop(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -39,8 +39,7 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
 	}
-
-	out := ui.NewUI(cmd.OutOrStdout())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {

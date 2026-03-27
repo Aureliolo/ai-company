@@ -29,14 +29,13 @@ func init() {
 
 func runCleanup(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(cmd.Context())
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	out := ui.NewUI(cmd.OutOrStdout())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
@@ -62,7 +61,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	// Hint about auto-cleanup when images were removed and flag is not enabled.
 	if removedAny && !state.AutoCleanup {
 		out.Blank()
-		out.Hint("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
+		out.HintTip("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
 	}
 	return nil
 }
@@ -87,19 +86,23 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 // confirmAndCleanup prompts the user and removes approved images.
 // Returns (true, nil) when at least one image was removed.
 func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
-	if !isInteractive() {
-		out.Hint("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
+	opts := GetGlobalOpts(ctx)
+	if !opts.ShouldPrompt() && !opts.Yes {
+		out.HintNextStep("Non-interactive mode: run interactively or use --yes to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
 
-	var remove bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
-			Value(&remove),
-	))
-	if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
-		return false, err
+	// --yes auto-confirms; otherwise prompt interactively.
+	remove := opts.Yes
+	if !remove {
+		form := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
+				Value(&remove),
+		))
+		if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
+			return false, err
+		}
 	}
 	if !remove {
 		return false, nil
@@ -134,7 +137,7 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
 	if skipped := len(old) - removed; skipped > 0 {
-		out.Hint(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
+		out.HintError(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
 	}
 
 	return removed > 0, nil

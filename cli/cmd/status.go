@@ -26,24 +26,19 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().Bool("json", false, "Output raw JSON")
 	rootCmd.AddCommand(statusCmd)
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
-	jsonOut, err := cmd.Flags().GetBool("json")
-	if err != nil {
-		return fmt.Errorf("reading --json flag: %w", err)
-	}
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	out := ui.NewUI(cmd.OutOrStdout())
+	jsonOut := opts.JSON
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	printVersionInfo(out, state)
 
 	safeDir, err := safeStateDir(state)

@@ -26,10 +26,10 @@ func init() {
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
-	out := ui.NewUI(cmd.OutOrStdout())
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -71,8 +71,8 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	renderDoctorSummary(out, report)
 
 	_, _ = fmt.Fprintln(out.Writer())
-	out.Hint("Run 'synthorg doctor report' to file a bug report")
-	out.Hint("Run 'synthorg logs' to view container logs")
+	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
+	out.HintNextStep("Run 'synthorg logs' to view container logs")
 
 	return nil
 }

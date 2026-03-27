@@ -28,15 +28,19 @@ type Spinner struct {
 
 // StartSpinner begins an animated spinner with the given message.
 // Returns a handle to stop the spinner and print a final status line.
-// On non-TTY writers, prints a static step line immediately.
+// On non-TTY writers or in plain/quiet mode, prints a static step line immediately.
 func (u *UI) StartSpinner(msg string) *Spinner {
 	s := &Spinner{
 		ui:   u,
 		msg:  stripControl(msg),
 		done: make(chan struct{}),
 	}
-	if !u.isTTY {
-		// Non-interactive: print a plain step line using sanitized msg.
+	// Quiet mode: no output at all (final Success/Error/Warn still prints).
+	if u.quiet {
+		return s
+	}
+	// Plain mode or non-TTY: print a static step line, no animation.
+	if u.plain || !u.isTTY {
 		u.Step(s.msg)
 		return s
 	}
@@ -69,7 +73,7 @@ func (s *Spinner) run() {
 
 // clearLine erases the current terminal line.
 func (s *Spinner) clearLine() {
-	if s.ui.isTTY {
+	if s.ui.isTTY && !s.ui.plain && !s.ui.quiet {
 		_, _ = fmt.Fprint(s.ui.w, "\r\033[K")
 	}
 }
