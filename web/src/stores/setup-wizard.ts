@@ -251,7 +251,8 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   canNavigateTo(step) {
     const { stepOrder, stepsCompleted } = get()
     const targetIdx = stepOrder.indexOf(step)
-    if (targetIdx <= 0) return true
+    if (targetIdx === -1) return false
+    if (targetIdx === 0) return true
     for (let i = 0; i < targetIdx; i++) {
       if (!stepsCompleted[stepOrder[i]!]) return false
     }

@@ -43,7 +43,7 @@ function ProbeResultItem({ preset, result, probing, onAddPreset }: ProbeResultIt
 
 export interface ProviderProbeResultsProps {
   presets: readonly ProviderPreset[]
-  probeResults: Readonly<Record<string, ProbePresetResponse>>
+  probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
   probing: boolean
   onAddPreset: (presetName: string) => void
 }

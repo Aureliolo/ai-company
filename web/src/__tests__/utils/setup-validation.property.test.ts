@@ -45,7 +45,7 @@ describe('setup-validation property tests', () => {
   it('company name with 1-200 non-whitespace chars + response is always valid', () => {
     fc.assert(
       fc.property(
-        fc.stringMatching(/^[A-Za-z0-9](?:[A-Za-z0-9 ]{0,198}[A-Za-z0-9])?$/).filter(
+        fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,199}$/).filter(
           (s) => s.trim().length > 0 && s.length <= 200,
         ),
         (name) => {

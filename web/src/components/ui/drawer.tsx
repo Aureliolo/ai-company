@@ -55,10 +55,12 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
       if (focusable.length === 0) return
       const first = focusable[0]!
       const last = focusable[focusable.length - 1]!
-      if (e.shiftKey && document.activeElement === first) {
+      const active = document.activeElement
+      const outsideOrPanel = active === panel || !panel.contains(active)
+      if (e.shiftKey && (active === first || outsideOrPanel)) {
         e.preventDefault()
         last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
+      } else if (!e.shiftKey && (active === last || outsideOrPanel)) {
         e.preventDefault()
         first.focus()
       }
