@@ -76,7 +76,7 @@ function SortableDepartmentCard({
             name={dept.display_name ?? dept.name}
             health={health?.health_percent}
             agentCount={agentCount}
-            taskCount={health?.task_count ?? 0}
+            taskCount={health?.task_count}
           />
           {dept.teams.length > 0 && (
             <p className="mt-2 text-xs text-text-secondary">
@@ -209,7 +209,7 @@ export function DepartmentsTab({
 
         <DragOverlay>
           {activeDept && (
-            <div className="rounded-lg border border-accent bg-card p-card shadow-lg">
+            <div className="rounded-lg border border-accent bg-card p-card" style={{ boxShadow: 'var(--so-shadow-card-hover)' }}>
               <p className="text-sm font-semibold text-foreground">{activeDept.display_name ?? activeDept.name}</p>
             </div>
           )}

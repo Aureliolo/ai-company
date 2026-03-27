@@ -124,10 +124,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       const dept = await apiCreateDepartment(data)
       const prev = get().config
-      if (prev) {
-        set({ config: { ...prev, departments: [...prev.departments, dept] } })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, departments: [...prev.departments, dept] } } : {}),
+      })
       return dept
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
@@ -140,15 +140,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       const dept = await apiUpdateDepartment(name, data)
       const prev = get().config
-      if (prev) {
-        set({
-          config: {
-            ...prev,
-            departments: prev.departments.map((d) => (d.name === name ? dept : d)),
-          },
-        })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, departments: prev.departments.map((d) => (d.name === name ? dept : d)) } } : {}),
+      })
       return dept
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
@@ -161,15 +156,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       await apiDeleteDepartment(name)
       const prev = get().config
-      if (prev) {
-        set({
-          config: {
-            ...prev,
-            departments: prev.departments.filter((d) => d.name !== name),
-          },
-        })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, departments: prev.departments.filter((d) => d.name !== name) } } : {}),
+      })
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
       throw err
@@ -192,10 +182,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       const agent = await apiCreateAgent(data)
       const prev = get().config
-      if (prev) {
-        set({ config: { ...prev, agents: [...prev.agents, agent] } })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, agents: [...prev.agents, agent] } } : {}),
+      })
       return agent
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
@@ -208,15 +198,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       const agent = await apiUpdateAgent(name, data)
       const prev = get().config
-      if (prev) {
-        set({
-          config: {
-            ...prev,
-            agents: prev.agents.map((a) => (a.name === name ? agent : a)),
-          },
-        })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, agents: prev.agents.map((a) => (a.name === name ? agent : a)) } } : {}),
+      })
       return agent
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
@@ -229,15 +214,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
     try {
       await apiDeleteAgent(name)
       const prev = get().config
-      if (prev) {
-        set({
-          config: {
-            ...prev,
-            agents: prev.agents.filter((a) => a.name !== name),
-          },
-        })
-      }
-      set({ saving: false })
+      set({
+        saving: false,
+        ...(prev ? { config: { ...prev, agents: prev.agents.filter((a) => a.name !== name) } } : {}),
+      })
     } catch (err) {
       set({ saving: false, saveError: getErrorMessage(err) })
       throw err

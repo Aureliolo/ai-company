@@ -11,7 +11,7 @@ interface DeptHealthBarProps {
   name: string
   health?: number | null
   agentCount: number
-  taskCount: number
+  taskCount?: number | null
   className?: string
 }
 
@@ -38,10 +38,9 @@ export function DeptHealthBar({
 
       {/* Health bar */}
       <div
-        role="meter"
-        aria-valuenow={clamped ?? 0}
-        aria-valuemin={0}
-        aria-valuemax={100}
+        {...(clamped != null
+          ? { role: 'meter', 'aria-valuenow': clamped, 'aria-valuemin': 0, 'aria-valuemax': 100 }
+          : {})}
         aria-label={`${name} health: ${clamped != null ? `${clamped}%` : 'unavailable'}`}
         className="h-1.5 w-full overflow-hidden rounded-full bg-border"
       >
@@ -62,7 +61,7 @@ export function DeptHealthBar({
       {/* Stats row */}
       <div className="flex gap-3 text-xs text-muted-foreground">
         <span>{agentCount} {agentCount === 1 ? 'agent' : 'agents'}</span>
-        <span>{taskCount} {taskCount === 1 ? 'task' : 'tasks'}</span>
+        <span>{taskCount != null ? `${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}` : 'N/A tasks'}</span>
       </div>
     </div>
   )
