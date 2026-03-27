@@ -24,7 +24,7 @@ export function StatusBar() {
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
-  const pendingApprovals = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
+  const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
 
   const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
 
@@ -108,10 +108,10 @@ export function StatusBar() {
         </span>
       </StatusItem>
 
-      {pendingApprovals != null && pendingApprovals > 0 && (
+      {inReviewCount != null && inReviewCount > 0 && (
         <StatusItem>
           <Dot color="bg-danger" />
-          <span>{pendingApprovals} pending</span>
+          <span>{inReviewCount} in review</span>
         </StatusItem>
       )}
 

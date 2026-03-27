@@ -125,7 +125,9 @@ export function wsEventToActivityItem(event: WsEvent): ActivityItem {
       : describeEvent(event.event_type)
 
   return {
-    id: `${event.timestamp}-${event.event_type}-${agentName}-${++wsActivityCounter}`,
+    id: (typeof payload.id === 'string' && payload.id)
+      || taskId
+      || `${event.timestamp}-${event.event_type}-${agentName}-${++wsActivityCounter}`,
     timestamp: event.timestamp,
     agent_name: agentName,
     action_type: event.event_type,

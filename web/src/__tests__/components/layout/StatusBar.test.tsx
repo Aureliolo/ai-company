@@ -108,7 +108,7 @@ describe('StatusBar', () => {
     expect(screen.getByText('10%')).toBeInTheDocument()
   })
 
-  it('shows pending approvals count when non-zero', () => {
+  it('shows in-review count when non-zero', () => {
     useAnalyticsStore.setState({
       overview: makeOverview({
         total_tasks: 10,
@@ -125,7 +125,7 @@ describe('StatusBar', () => {
       }),
     })
     render(<StatusBar />)
-    expect(screen.getByText('3 pending')).toBeInTheDocument()
+    expect(screen.getByText('3 in review')).toBeInTheDocument()
   })
 
   it('shows formatted currency for cost display (EUR default)', () => {
