@@ -1,5 +1,5 @@
 import { useAgentsStore } from '@/stores/agents'
-import type { AgentConfig, AgentPerformanceSummary } from '@/api/types'
+import type { AgentConfig, AgentPerformanceSummary, Task } from '@/api/types'
 
 vi.mock('@/api/endpoints/agents', () => ({
   listAgents: vi.fn(),
@@ -71,6 +71,35 @@ function makePerformance(): AgentPerformanceSummary {
     trend_direction: 'stable',
     windows: [],
     trends: [],
+  }
+}
+
+function makeTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: 'task-001',
+    title: 'Test Task',
+    description: 'A test task',
+    type: 'development',
+    status: 'completed',
+    priority: 'medium',
+    project: 'test-project',
+    created_by: 'system',
+    assigned_to: 'Alice Smith',
+    reviewers: [],
+    dependencies: [],
+    artifacts_expected: [],
+    acceptance_criteria: [],
+    estimated_complexity: 'medium',
+    budget_limit: 1.0,
+    deadline: null,
+    max_retries: 3,
+    parent_task_id: null,
+    delegation_chain: [],
+    task_structure: null,
+    coordination_topology: 'direct',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: null,
+    ...overrides,
   }
 }
 
@@ -359,7 +388,7 @@ describe('clearDetail', () => {
     useAgentsStore.setState({
       selectedAgent: makeAgent(),
       performance: makePerformance(),
-      agentTasks: [{ id: 't1', title: 'Task', type: 'development', status: 'completed', priority: 'medium', project: 'p', created_by: 'x', assigned_to: 'y', created_at: '2026-01-01T00:00:00Z', updated_at: null }] as any,
+      agentTasks: [makeTask()],
       activity: [{ event_type: 'hired', timestamp: '2026-01-01T00:00:00Z', description: 'Hired', related_ids: {} }],
       activityTotal: 10,
       activityLoading: true,
