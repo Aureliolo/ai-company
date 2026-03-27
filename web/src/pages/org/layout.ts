@@ -94,7 +94,7 @@ export function applyDagreLayout(
       const col = emptyGroupIndex % 3
       const row = Math.floor(emptyGroupIndex / 3)
       emptyGroupIndex++
-      return { ...group, position: { x: xOffset + col * 240, y: row * 140 }, style: { width: 200, height: 100 } }
+      return { ...group, position: { x: xOffset + col * 240, y: row * 140 }, style: { ...group.style, width: 200, height: 100 } }
     }
 
     const padding = DEFAULT_GROUP_PADDING
