@@ -51,7 +51,11 @@ const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
   : null
 
 function getInitialToken(): string | null {
-  if (IS_DEV_AUTH_BYPASS) return 'dev-bypass-token'
+  if (IS_DEV_AUTH_BYPASS) {
+    // UI-only bypass: API calls will receive 401 and trigger logout
+    console.warn('[dev] Auth bypass active -- UI-only, no real backend session')
+    return 'dev-bypass-token'
+  }
   const storedToken = localStorage.getItem('auth_token')
   const expiresAt = Number(localStorage.getItem('auth_token_expires_at') ?? 0)
   if (storedToken && Date.now() < expiresAt) {
