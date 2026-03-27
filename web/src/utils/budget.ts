@@ -14,32 +14,44 @@ import type {
 
 // ── Types ──────────────────────────────────────────────────
 
-export type AggregationPeriod = 'hourly' | 'daily' | 'weekly'
-export type BreakdownDimension = 'agent' | 'department' | 'provider'
+export const AGGREGATION_PERIOD_VALUES = ['hourly', 'daily', 'weekly'] as const
+export type AggregationPeriod = typeof AGGREGATION_PERIOD_VALUES[number]
+
+export const BREAKDOWN_DIMENSION_VALUES = ['agent', 'department', 'provider'] as const
+export type BreakdownDimension = typeof BREAKDOWN_DIMENSION_VALUES[number]
+
+/** Severity ordering: normal < amber < red < critical. */
 export type ThresholdZone = 'normal' | 'amber' | 'red' | 'critical'
 
 export interface AgentSpendingRow {
-  agentId: string
-  agentName: string
-  totalCost: number
-  budgetPercent: number
-  taskCount: number
-  costPerTask: number
+  readonly agentId: string
+  readonly agentName: string
+  readonly totalCost: number
+  readonly budgetPercent: number
+  readonly taskCount: number
+  readonly costPerTask: number
 }
 
 export interface BreakdownSlice {
-  key: string
-  label: string
-  cost: number
-  percent: number
-  color: string
+  readonly key: string
+  readonly label: string
+  readonly cost: number
+  readonly percent: number
+  /** CSS custom property from DONUT_COLORS palette. */
+  readonly color: string
+}
+
+export interface CategoryBucket {
+  readonly cost: number
+  readonly percent: number
+  readonly count: number
 }
 
 export interface CategoryRatio {
-  productive: { cost: number; percent: number; count: number }
-  coordination: { cost: number; percent: number; count: number }
-  system: { cost: number; percent: number; count: number }
-  uncategorized: { cost: number; percent: number; count: number }
+  readonly productive: CategoryBucket
+  readonly coordination: CategoryBucket
+  readonly system: CategoryBucket
+  readonly uncategorized: CategoryBucket
 }
 
 /** MetricCard data shape matching the MetricCard component props. */

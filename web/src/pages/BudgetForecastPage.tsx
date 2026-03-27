@@ -24,6 +24,15 @@ export default function BudgetForecastPage() {
 
   const currency = overview?.currency ?? budgetConfig?.currency
 
+  const cumulativeValues = useMemo(() => {
+    if (!forecast) return []
+    let running = 0
+    return forecast.daily_projections.map((p) => {
+      running += p.projected_spend_usd
+      return running
+    })
+  }, [forecast])
+
   const metricCards = useMemo((): BudgetMetricCardData[] => {
     if (!forecast) return []
     return [
@@ -59,7 +68,7 @@ export default function BudgetForecastPage() {
           <SkeletonMetric />
         </div>
         <SkeletonCard header lines={3} />
-        <SkeletonTable rows={7} cols={4} />
+        <SkeletonTable rows={7} columns={4} />
       </div>
     )
   }
@@ -107,9 +116,7 @@ export default function BudgetForecastPage() {
             </div>
             <div className="divide-y divide-border">
               {forecast.daily_projections.map((point, idx) => {
-                const cumulative = forecast.daily_projections
-                  .slice(0, idx + 1)
-                  .reduce((sum, p) => sum + p.projected_spend_usd, 0)
+                const cumulative = cumulativeValues[idx] ?? 0
                 const budgetPct = budgetConfig?.total_monthly
                   ? (cumulative / budgetConfig.total_monthly) * 100
                   : 0

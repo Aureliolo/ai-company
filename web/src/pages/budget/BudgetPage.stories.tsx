@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from 'storybook/internal/types'
+import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import { useBudgetStore } from '@/stores/budget'
 import type {
