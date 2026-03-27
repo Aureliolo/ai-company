@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
@@ -7,6 +8,12 @@ import { StatPill } from '@/components/ui/stat-pill'
 import type { ThemeSettings } from '@/stores/setup-wizard'
 import { BarChart3 } from 'lucide-react'
 
+const DENSITY_CLASS: Record<string, string> = {
+  dense: 'density-dense',
+  balanced: 'density-medium',
+  sparse: 'density-sparse',
+}
+
 export interface ThemePreviewProps {
   settings: ThemeSettings
 }
@@ -14,7 +21,7 @@ export interface ThemePreviewProps {
 export function ThemePreview({ settings }: ThemePreviewProps) {
   return (
     <div
-      className="space-y-4 rounded-lg border border-border bg-background p-4"
+      className={cn('space-y-4 rounded-lg border border-border bg-background p-4', DENSITY_CLASS[settings.density])}
       data-palette={settings.palette}
       data-density={settings.density}
       data-animation={settings.animation}

@@ -62,9 +62,10 @@ export function WizardShell() {
 
   const handleStepClick = useCallback(
     (step: WizardStep) => {
+      if (!canNavigateTo(step)) return
       navigate(`/setup/${step}`)
     },
-    [navigate],
+    [canNavigateTo, navigate],
   )
 
   const handleBack = useCallback(() => {

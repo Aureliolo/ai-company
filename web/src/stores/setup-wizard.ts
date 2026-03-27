@@ -443,7 +443,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         providers: { ...s.providers, [name]: provider },
       }))
     } catch (err) {
-      console.error('setup-wizard: createProviderFromPreset failed:', err)
+      console.error('setup-wizard: createProviderFromPreset failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       throw err
     }

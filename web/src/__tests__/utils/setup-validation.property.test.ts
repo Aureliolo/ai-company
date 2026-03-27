@@ -63,7 +63,7 @@ describe('setup-validation property tests', () => {
   it('empty or whitespace-only company names are always invalid', () => {
     fc.assert(
       fc.property(
-        fc.stringMatching(/^ {0,50}$/),
+        fc.stringMatching(/^\s{0,50}$/),
         (name) => {
           const result = validateCompanyStep({
             companyName: name,

@@ -223,8 +223,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
 | `Drawer` | `drawer.tsx` | `open`, `onClose`, `title`, `children`, `className?` | Right-side slide-in panel with overlay, spring animation, focus trap, and Escape-to-close. |
 | `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?`, `placeholder?`, `required?`, `disabled?`, `type?`, `value`, `onChange` | Labeled text input with inline error/hint display and optional textarea mode. Extends native input/textarea props. |
-| `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?` | Labeled select dropdown with error/hint display and placeholder support. |
-| `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?` | Labeled range slider with custom value formatter and aria-live value display. |
+| `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?`, `required?`, `disabled?`, `className?` | Labeled select dropdown with error/hint display and placeholder support. |
+| `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?`, `disabled?`, `className?` | Labeled range slider with custom value formatter and aria-live value display. |
 | `ToggleField` | `toggle-field.tsx` | `label`, `checked`, `onChange`, `description?`, `disabled?` | Labeled toggle switch (role="switch") with optional description text. |
 
 ### Utility Functions

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types'
 import type { CurrencyCode } from '@/utils/currencies'
-import { getCategoryLabel } from '@/utils/template-categories'
+import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 import { TemplateCostBadge } from './TemplateCostBadge'
 
 export interface TemplateCompareDrawerProps {
@@ -42,29 +42,9 @@ function estimateAgentCount(template: TemplateInfoResponse): number {
   return AGENT_COUNT_DEFAULT
 }
 
-/** Derive category label from template tags. */
+/** Derive category display label from template tags. */
 function deriveCategory(template: TemplateInfoResponse): string {
-  // Find the first tag that maps to a known category
-  const categoryTags: Record<string, string> = {
-    startup: 'startup',
-    solo: 'startup',
-    'small-team': 'startup',
-    mvp: 'startup',
-    'dev-shop': 'dev-shop',
-    'data-team': 'dev-shop',
-    product: 'product',
-    agile: 'product',
-    enterprise: 'enterprise',
-    'full-company': 'enterprise',
-    consultancy: 'consultancy',
-    agency: 'consultancy',
-    research: 'research',
-  }
-  for (const tag of template.tags) {
-    const key = categoryTags[tag]
-    if (key) return getCategoryLabel(key)
-  }
-  return 'Other'
+  return getCategoryLabel(deriveCategoryFromTags(template.tags))
 }
 
 const COMPARISON_ROWS: readonly ComparisonRow[] = [

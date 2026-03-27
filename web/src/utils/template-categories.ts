@@ -48,15 +48,20 @@ export const CATEGORY_ORDER: readonly string[] = [
 ]
 
 /**
- * Get the canonical category key for a template based on its tags.
+ * Derive the canonical category key from a list of tags.
  * Returns the first matching category, or 'other' if no match.
  */
-function getTemplateCategory(template: TemplateInfoResponse): string {
-  for (const tag of template.tags) {
+export function deriveCategoryFromTags(tags: readonly string[]): string {
+  for (const tag of tags) {
     const category = TAG_TO_CATEGORY[tag]
     if (category) return category
   }
   return 'other'
+}
+
+/** Get the canonical category key for a template based on its tags. */
+function getTemplateCategory(template: TemplateInfoResponse): string {
+  return deriveCategoryFromTags(template.tags)
 }
 
 /**
