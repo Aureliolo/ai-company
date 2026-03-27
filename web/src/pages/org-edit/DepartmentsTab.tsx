@@ -68,7 +68,6 @@ function SortableDepartmentCard({
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
         onClick={onClick}
-        onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit department ${dept.display_name ?? dept.name}`}
       >

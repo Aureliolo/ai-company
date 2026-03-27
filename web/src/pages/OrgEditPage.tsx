@@ -96,16 +96,31 @@ export default function OrgEditPage() {
     return <OrgEditSkeleton />
   }
 
+  if (!loading && !config) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button asChild variant="ghost" size="icon" aria-label="Back to Org Chart">
+            <Link to={ROUTES.ORG}><ArrowLeft className="size-4" /></Link>
+          </Button>
+          <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+          <AlertTriangle className="size-4 shrink-0" />
+          {error ?? 'Failed to load organization data.'}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to={ROUTES.ORG}>
-            <Button variant="ghost" size="icon" aria-label="Back to Org Chart">
-              <ArrowLeft className="size-4" />
-            </Button>
-          </Link>
+          <Button asChild variant="ghost" size="icon" aria-label="Back to Org Chart">
+            <Link to={ROUTES.ORG}><ArrowLeft className="size-4" /></Link>
+          </Button>
           <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
         </div>
         <ToggleField

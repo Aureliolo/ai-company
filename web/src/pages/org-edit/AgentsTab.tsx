@@ -63,7 +63,6 @@ function SortableAgentItem({
         type="button"
         className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
         onClick={onClick}
-        onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         aria-label={`Edit agent ${agent.name}`}
       >
@@ -75,6 +74,45 @@ function SortableAgentItem({
         />
       </button>
     </div>
+  )
+}
+
+function DepartmentAgentsSection({
+  displayName,
+  agents,
+  onEditAgent,
+}: {
+  displayName: string
+  agents: AgentConfig[]
+  onEditAgent: (agent: AgentConfig) => void
+}) {
+  return (
+    <SectionCard
+      title={displayName}
+      icon={Users}
+      action={
+        <span className="text-xs text-text-secondary">
+          {agents.length} agent{agents.length !== 1 ? 's' : ''}
+        </span>
+      }
+    >
+      {agents.length === 0 ? (
+        <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
+      ) : (
+        <SortableContext items={agents.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+          <StaggerGroup className="grid gap-3">
+            {agents.map((agent) => (
+              <StaggerItem key={agent.id}>
+                <SortableAgentItem
+                  agent={agent}
+                  onClick={() => onEditAgent(agent)}
+                />
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </SortableContext>
+      )}
+    </SectionCard>
   )
 }
 
@@ -187,33 +225,12 @@ export function AgentsTab({
         {Array.from(agentsByDept.entries()).map(([deptName, agents]) => {
           const dept = config.departments.find((d) => d.name === deptName)
           return (
-            <SectionCard
+            <DepartmentAgentsSection
               key={deptName}
-              title={dept?.display_name ?? deptName}
-              icon={Users}
-              action={
-                <span className="text-xs text-text-secondary">
-                  {agents.length} agent{agents.length !== 1 ? 's' : ''}
-                </span>
-              }
-            >
-              {agents.length === 0 ? (
-                <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
-              ) : (
-                <SortableContext items={agents.map((a) => a.id)} strategy={verticalListSortingStrategy}>
-                  <StaggerGroup className="grid gap-3">
-                    {agents.map((agent) => (
-                      <StaggerItem key={agent.id}>
-                        <SortableAgentItem
-                          agent={agent}
-                          onClick={() => setEditAgent(agent)}
-                        />
-                      </StaggerItem>
-                    ))}
-                  </StaggerGroup>
-                </SortableContext>
-              )}
-            </SectionCard>
+              displayName={dept?.display_name ?? deptName}
+              agents={agents}
+              onEditAgent={setEditAgent}
+            />
           )
         })}
 

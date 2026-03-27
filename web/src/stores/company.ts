@@ -271,18 +271,31 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   optimisticReorderDepartments: (orderedNames) => {
     const prev = get().config
     if (!prev) return () => {}
+    const prevOrder = prev.departments.map((d) => d.name)
     const deptMap = new Map(prev.departments.map((d) => [d.name, d]))
     const reordered = orderedNames
       .map((n) => deptMap.get(n as Department['name']))
       .filter((d): d is Department => d !== undefined)
     set({ config: { ...prev, departments: reordered } })
-    return () => set({ config: prev })
+    // Targeted rollback: restore only department ordering, not entire config
+    return () => {
+      const current = get().config
+      if (!current) return
+      const currentMap = new Map(current.departments.map((d) => [d.name, d]))
+      const restored = prevOrder
+        .map((n) => currentMap.get(n as Department['name']))
+        .filter((d): d is Department => d !== undefined)
+      set({ config: { ...current, departments: restored } })
+    }
   },
 
   optimisticReorderAgents: (deptName, orderedIds) => {
     const prev = get().config
     if (!prev) return () => {}
     const idSet = new Set(orderedIds)
+    const prevDeptAgentIds = prev.agents
+      .filter((a) => a.department === deptName && idSet.has(a.id))
+      .map((a) => a.id)
     const agentMap = new Map(
       prev.agents
         .filter((a) => a.department === deptName && idSet.has(a.id))
@@ -300,6 +313,26 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       return a
     })
     set({ config: { ...prev, agents } })
-    return () => set({ config: prev })
+    // Targeted rollback: restore only this department's agent ordering
+    return () => {
+      const current = get().config
+      if (!current) return
+      const currentAgentMap = new Map(
+        current.agents
+          .filter((a) => a.department === deptName)
+          .map((a) => [a.id, a]),
+      )
+      let restoreIdx = 0
+      const restoredOrder = prevDeptAgentIds
+        .map((id) => currentAgentMap.get(id))
+        .filter((a): a is AgentConfig => a !== undefined)
+      const restoredAgents = current.agents.map((a) => {
+        if (a.department === deptName && idSet.has(a.id)) {
+          return restoredOrder[restoreIdx++] ?? a
+        }
+        return a
+      })
+      set({ config: { ...current, agents: restoredAgents } })
+    }
   },
 }))
