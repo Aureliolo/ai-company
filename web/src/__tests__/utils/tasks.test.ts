@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
+import type { Priority, Task, TaskStatus } from '@/api/types'
 import {
   KANBAN_COLUMNS,
   STATUS_TO_COLUMN,
@@ -13,34 +13,12 @@ import {
   getTaskStatusLabel,
   groupTasksByColumn,
 } from '@/utils/tasks'
+import { makeTask as makeTaskFactory } from '../helpers/factories'
 
 // ── Helpers ─────────────────────────────────────────────────
 
 function makeTask(overrides: Partial<Task> = {}): Task {
-  return {
-    id: 'task-1',
-    title: 'Test task',
-    description: 'A test task description',
-    type: 'development' as TaskType,
-    status: 'assigned' as TaskStatus,
-    priority: 'medium' as Priority,
-    project: 'test-project',
-    created_by: 'agent-cto',
-    assigned_to: 'agent-eng',
-    reviewers: [],
-    dependencies: [],
-    artifacts_expected: [],
-    acceptance_criteria: [],
-    estimated_complexity: 'medium',
-    budget_limit: 10,
-    deadline: null,
-    max_retries: 3,
-    parent_task_id: null,
-    delegation_chain: [],
-    task_structure: null,
-    coordination_topology: 'auto',
-    ...overrides,
-  }
+  return makeTaskFactory('task-1', { title: 'Test task', description: 'A test task description', ...overrides })
 }
 
 const ALL_STATUSES: TaskStatus[] = [

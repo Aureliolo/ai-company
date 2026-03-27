@@ -12,6 +12,7 @@ import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
+import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
 import type { Priority, TaskStatus } from '@/api/types'
 import { useState, useCallback } from 'react'
@@ -35,7 +36,7 @@ export default function TaskDetailPage() {
     }
   }, [taskId])
 
-  const task = selectedTask
+  const task = selectedTask?.id === taskId ? selectedTask : undefined
 
   const handleTransition = useCallback(async (targetStatus: TaskStatus) => {
     if (!task) return
@@ -111,7 +112,12 @@ export default function TaskDetailPage() {
               <InlineEdit
                 value={task.title}
                 onSave={async (value) => {
-                  await useTasksStore.getState().updateTask(task.id, { title: value, expected_version: task.version })
+                  try {
+                    await useTasksStore.getState().updateTask(task.id, { title: value, expected_version: task.version })
+                  } catch (err) {
+                    useToastStore.getState().add({ variant: 'error', title: 'Failed to save title', description: getErrorMessage(err) })
+                    throw err
+                  }
                 }}
                 validate={(v) => v.trim().length === 0 ? 'Title is required' : null}
                 className="text-xl font-semibold"
@@ -125,7 +131,12 @@ export default function TaskDetailPage() {
             <InlineEdit
               value={task.description}
               onSave={async (value) => {
-                await useTasksStore.getState().updateTask(task.id, { description: value, expected_version: task.version })
+                try {
+                  await useTasksStore.getState().updateTask(task.id, { description: value, expected_version: task.version })
+                } catch (err) {
+                  useToastStore.getState().add({ variant: 'error', title: 'Failed to save description', description: getErrorMessage(err) })
+                  throw err
+                }
               }}
               className="mt-1 text-sm text-text-secondary"
             />
@@ -138,7 +149,11 @@ export default function TaskDetailPage() {
               <select
                 value={task.priority}
                 onChange={async (e) => {
-                  await useTasksStore.getState().updateTask(task.id, { priority: e.target.value as Priority, expected_version: task.version })
+                  try {
+                    await useTasksStore.getState().updateTask(task.id, { priority: e.target.value as Priority, expected_version: task.version })
+                  } catch (err) {
+                    useToastStore.getState().add({ variant: 'error', title: 'Failed to update priority', description: getErrorMessage(err) })
+                  }
                 }}
                 className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
               >
@@ -170,7 +185,7 @@ export default function TaskDetailPage() {
             <div><span className="block text-[10px] text-text-muted">Created</span><span className="font-mono text-xs text-foreground">{formatDate(task.created_at)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Updated</span><span className="font-mono text-xs text-foreground">{formatDate(task.updated_at)}</span></div>
             {task.cost_usd != null && (
-              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost_usd)}</span></div>
+              <div><span className="block text-[10px] text-text-muted">Cost</span><span className="font-mono text-xs text-foreground">{formatCurrency(task.cost_usd, 'USD')}</span></div>
             )}
           </div>
 

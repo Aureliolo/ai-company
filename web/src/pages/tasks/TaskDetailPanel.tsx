@@ -11,6 +11,8 @@ import { Avatar } from '@/components/ui/avatar'
 import { springDefault, overlayBackdrop } from '@/lib/motion'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
+import { useToastStore } from '@/stores/toast'
+import { getErrorMessage } from '@/utils/errors'
 import type { Task, Priority, UpdateTaskRequest, TransitionTaskRequest, CancelTaskRequest, TaskStatus } from '@/api/types'
 
 export interface TaskDetailPanelProps {
@@ -60,6 +62,8 @@ export function TaskDetailPanel({
     setTransitioning(targetStatus)
     try {
       await onTransition(task.id, { target_status: targetStatus, expected_version: task.version })
+    } catch {
+      useToastStore.getState().add({ variant: 'error', title: 'Transition failed' })
     } finally {
       setTransitioning(null)
     }
@@ -71,7 +75,7 @@ export function TaskDetailPanel({
       setCancelOpen(false)
       setCancelReason('')
     } catch {
-      // Error handling is the caller's responsibility via the onCancel prop
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to cancel task' })
     }
   }, [task.id, cancelReason, onCancel])
 
@@ -81,7 +85,7 @@ export function TaskDetailPanel({
       setDeleteOpen(false)
       onClose()
     } catch {
-      // Error handling is the caller's responsibility via the onDelete prop
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to delete task' })
     }
   }, [task.id, onDelete, onClose])
 
@@ -130,7 +134,14 @@ export function TaskDetailPanel({
               {/* Title */}
               <InlineEdit
                 value={task.title}
-                onSave={async (value) => { await onUpdate(task.id, { title: value, expected_version: task.version }) }}
+                onSave={async (value) => {
+                  try {
+                    await onUpdate(task.id, { title: value, expected_version: task.version })
+                  } catch (err) {
+                    useToastStore.getState().add({ variant: 'error', title: 'Failed to save title', description: getErrorMessage(err) })
+                    throw err
+                  }
+                }}
                 validate={(v) => v.trim().length === 0 ? 'Title is required' : null}
                 className="text-lg font-semibold"
               />
@@ -140,7 +151,14 @@ export function TaskDetailPanel({
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Description</label>
                 <InlineEdit
                   value={task.description}
-                  onSave={async (value) => { await onUpdate(task.id, { description: value, expected_version: task.version }) }}
+                  onSave={async (value) => {
+                    try {
+                      await onUpdate(task.id, { description: value, expected_version: task.version })
+                    } catch (err) {
+                      useToastStore.getState().add({ variant: 'error', title: 'Failed to save description', description: getErrorMessage(err) })
+                      throw err
+                    }
+                  }}
                   className="mt-1 text-sm text-text-secondary"
                 />
               </div>
@@ -153,7 +171,11 @@ export function TaskDetailPanel({
                   <select
                     value={task.priority}
                     onChange={async (e) => {
-                      await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
+                      try {
+                        await onUpdate(task.id, { priority: e.target.value as Priority, expected_version: task.version })
+                      } catch (err) {
+                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update priority', description: getErrorMessage(err) })
+                      }
                     }}
                     className="h-7 rounded border border-border bg-surface px-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
                     aria-label="Change priority"
@@ -166,18 +188,26 @@ export function TaskDetailPanel({
               </div>
 
               {/* Assignee */}
-              <div className="flex items-center gap-2">
-                <User className="size-4 text-text-muted" />
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Assignee</span>
-                <div className="ml-2 flex items-center gap-1.5">
-                  {task.assigned_to ? (
-                    <>
-                      <Avatar name={task.assigned_to} size="sm" />
-                      <span className="text-sm text-foreground">{task.assigned_to}</span>
-                    </>
-                  ) : (
-                    <span className="text-sm text-text-muted">Unassigned</span>
-                  )}
+              <div>
+                <div className="flex items-center gap-2">
+                  <User className="size-4 text-text-muted" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Assignee</span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  {task.assigned_to && <Avatar name={task.assigned_to} size="sm" />}
+                  <InlineEdit
+                    value={task.assigned_to ?? ''}
+                    onSave={async (value) => {
+                      try {
+                        await onUpdate(task.id, { assigned_to: value.trim() || undefined, expected_version: task.version })
+                      } catch (err) {
+                        useToastStore.getState().add({ variant: 'error', title: 'Failed to update assignee', description: getErrorMessage(err) })
+                        throw err
+                      }
+                    }}
+                    className="text-sm"
+                    placeholder="Unassigned"
+                  />
                 </div>
               </div>
 
@@ -191,7 +221,7 @@ export function TaskDetailPanel({
                   <MetaField icon={Calendar} label="Deadline" value={formatDate(task.deadline)} />
                 )}
                 {task.cost_usd != null && (
-                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost_usd)} />
+                  <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost_usd, 'USD')} />
                 )}
               </div>
 
@@ -271,13 +301,21 @@ export function TaskDetailPanel({
       {/* Cancel dialog */}
       <ConfirmDialog
         open={cancelOpen}
-        onOpenChange={setCancelOpen}
+        onOpenChange={(open) => { setCancelOpen(open); if (!open) setCancelReason('') }}
         title="Cancel Task"
-        description="Please provide a reason for cancellation."
+        description="Are you sure? Please provide a reason for cancellation."
         confirmLabel="Cancel Task"
         variant="destructive"
         onConfirm={handleCancel}
-      />
+      >
+        <textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="Reason for cancellation..."
+          className="mt-2 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none resize-y focus:ring-2 focus:ring-accent min-h-[60px]"
+          aria-label="Cancellation reason"
+        />
+      </ConfirmDialog>
 
       {/* Delete dialog */}
       <ConfirmDialog

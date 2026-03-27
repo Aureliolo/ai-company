@@ -102,8 +102,22 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
     const { payload } = event
     if (payload.task && typeof payload.task === 'object' && !Array.isArray(payload.task)) {
       const candidate = payload.task as Record<string, unknown>
-      if (typeof candidate.id === 'string' && typeof candidate.status === 'string') {
+      if (
+        typeof candidate.id === 'string' &&
+        typeof candidate.status === 'string' &&
+        typeof candidate.title === 'string' &&
+        typeof candidate.priority === 'string' &&
+        typeof candidate.type === 'string' &&
+        Array.isArray(candidate.dependencies) &&
+        Array.isArray(candidate.acceptance_criteria)
+      ) {
         get().upsertTask(candidate as unknown as Task)
+      } else {
+        console.error('[tasks/ws] Received malformed task payload, skipping upsert', {
+          id: candidate.id,
+          hasTitle: typeof candidate.title === 'string',
+          hasStatus: typeof candidate.status === 'string',
+        })
       }
     }
   },

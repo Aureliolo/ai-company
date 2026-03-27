@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   DndContext,
@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { AnimatePresence } from 'framer-motion'
+import { getErrorMessage } from '@/utils/errors'
 import { AlertTriangle, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
@@ -31,6 +32,7 @@ import { TaskFilterBar } from './tasks/TaskFilterBar'
 import { TaskListView } from './tasks/TaskListView'
 import { TaskDetailPanel } from './tasks/TaskDetailPanel'
 import { TaskCreateDialog } from './tasks/TaskCreateDialog'
+import { TaskDependencyGraph } from './tasks/TaskDependencyGraph'
 import type { Priority, Task, TaskStatus, TaskType } from '@/api/types'
 
 export default function TaskBoardPage() {
@@ -53,6 +55,7 @@ export default function TaskBoardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [createOpen, setCreateOpen] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
+  const [showDeps, setShowDeps] = useState(false)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
 
   const { execute: executeOptimistic } = useOptimisticUpdate()
@@ -61,12 +64,23 @@ export default function TaskBoardPage() {
   const viewMode = searchParams.get('view') === 'list' ? 'list' : 'board'
   const selectedTaskId = searchParams.get('selected')
 
+  // Sync selectedTaskId from URL with store (handles direct navigation / shared links)
+  const prevSelectedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (selectedTaskId && selectedTaskId !== prevSelectedRef.current) {
+      fetchTask(selectedTaskId)
+    }
+    prevSelectedRef.current = selectedTaskId
+  }, [selectedTaskId, fetchTask])
+
   const filters: TaskBoardFilters = useMemo(() => ({
     status: (searchParams.get('status') as TaskStatus) || undefined,
     priority: (searchParams.get('priority') as Priority) || undefined,
     assignee: searchParams.get('assignee') || undefined,
     taskType: (searchParams.get('type') as TaskType) || undefined,
     search: searchParams.get('search') || undefined,
+    dateFrom: searchParams.get('dateFrom') || undefined,
+    dateTo: searchParams.get('dateTo') || undefined,
   }), [searchParams])
 
   // Client-side filtering
@@ -97,12 +111,16 @@ export default function TaskBoardPage() {
       next.delete('assignee')
       next.delete('type')
       next.delete('search')
+      next.delete('dateFrom')
+      next.delete('dateTo')
       // Set new filter params
       if (newFilters.status) next.set('status', newFilters.status)
       if (newFilters.priority) next.set('priority', newFilters.priority)
       if (newFilters.assignee) next.set('assignee', newFilters.assignee)
       if (newFilters.taskType) next.set('type', newFilters.taskType)
       if (newFilters.search) next.set('search', newFilters.search)
+      if (newFilters.dateFrom) next.set('dateFrom', newFilters.dateFrom)
+      if (newFilters.dateTo) next.set('dateTo', newFilters.dateTo)
       if (view) next.set('view', view)
       if (selected) next.set('selected', selected)
       return next
@@ -150,7 +168,7 @@ export default function TaskBoardPage() {
     if (task) setActiveTask(task)
   }, [])
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveTask(null)
     const { active, over } = event
     if (!over) return
@@ -175,10 +193,13 @@ export default function TaskBoardPage() {
       return
     }
 
-    executeOptimistic(
+    const result = await executeOptimistic(
       () => optimisticTransition(taskId, targetStatus),
       () => transitionTask(taskId, { target_status: targetStatus, expected_version: sourceTask.version }),
     )
+    if (result === null) {
+      useToastStore.getState().add({ variant: 'error', title: 'Transition failed', description: 'The task could not be moved. It has been reverted.' })
+    }
   }, [tasks, optimisticTransition, transitionTask, executeOptimistic])
 
   // Create task
@@ -200,15 +221,26 @@ export default function TaskBoardPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Task Board</h1>
-        <label className="flex items-center gap-1.5 text-xs text-text-muted">
-          <input
-            type="checkbox"
-            checked={showTerminal}
-            onChange={(e) => setShowTerminal(e.target.checked)}
-            className="rounded border-border"
-          />
-          Show terminal
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-1.5 text-xs text-text-muted">
+            <input
+              type="checkbox"
+              checked={showDeps}
+              onChange={(e) => setShowDeps(e.target.checked)}
+              className="rounded border-border"
+            />
+            Dependencies
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-text-muted">
+            <input
+              type="checkbox"
+              checked={showTerminal}
+              onChange={(e) => setShowTerminal(e.target.checked)}
+              className="rounded border-border"
+            />
+            Show terminal
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -234,6 +266,12 @@ export default function TaskBoardPage() {
         assignees={assignees}
         taskCount={filteredTasks.length}
       />
+
+      {showDeps && (
+        <ErrorBoundary level="section">
+          <TaskDependencyGraph tasks={filteredTasks} onSelectTask={handleSelectTask} />
+        </ErrorBoundary>
+      )}
 
       <ErrorBoundary level="section">
         {viewMode === 'board' ? (
@@ -275,10 +313,22 @@ export default function TaskBoardPage() {
           <TaskDetailPanel
             task={selectedTask}
             onClose={handleClosePanel}
-            onUpdate={async (id, data) => { await updateTask(id, data) }}
-            onTransition={async (id, data) => { await transitionTask(id, data) }}
-            onCancel={async (id, data) => { await cancelTask(id, data) }}
-            onDelete={async (id) => { await deleteTask(id); handleClosePanel() }}
+            onUpdate={async (id, data) => {
+              try { await updateTask(id, data) }
+              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Update failed', description: getErrorMessage(err) }); throw err }
+            }}
+            onTransition={async (id, data) => {
+              try { await transitionTask(id, data) }
+              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Transition failed', description: getErrorMessage(err) }); throw err }
+            }}
+            onCancel={async (id, data) => {
+              try { await cancelTask(id, data) }
+              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Cancel failed', description: getErrorMessage(err) }); throw err }
+            }}
+            onDelete={async (id) => {
+              try { await deleteTask(id); handleClosePanel() }
+              catch (err) { useToastStore.getState().add({ variant: 'error', title: 'Delete failed', description: getErrorMessage(err) }); throw err }
+            }}
           />
         )}
       </AnimatePresence>

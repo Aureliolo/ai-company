@@ -1,37 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
 import { TaskColumn } from '@/pages/tasks/TaskColumn'
-import { KANBAN_COLUMNS } from '@/utils/tasks'
+import { KANBAN_COLUMNS, type KanbanColumn } from '@/utils/tasks'
+import { makeTask } from '../../helpers/factories'
 import type { Task } from '@/api/types'
 
-function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
-  return {
-    id,
-    title,
-    description: 'Description',
-    type: 'development',
-    status: 'in_progress',
-    priority: 'medium',
-    project: 'test-project',
-    created_by: 'agent-cto',
-    assigned_to: 'agent-eng',
-    reviewers: [],
-    dependencies: [],
-    artifacts_expected: [],
-    acceptance_criteria: [],
-    estimated_complexity: 'medium',
-    budget_limit: 10,
-    deadline: null,
-    max_retries: 3,
-    parent_task_id: null,
-    delegation_chain: [],
-    task_structure: null,
-    coordination_topology: 'auto',
-    ...overrides,
-  }
-}
-
-const inProgressColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')!
+const inProgressColumn: KanbanColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')!
+if (!inProgressColumn) throw new Error('Missing in_progress column in KANBAN_COLUMNS')
 
 function renderColumn(tasks: Task[] = [], onSelectTask = vi.fn()) {
   return render(

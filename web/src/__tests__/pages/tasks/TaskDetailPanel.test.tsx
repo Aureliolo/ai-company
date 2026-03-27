@@ -131,4 +131,29 @@ describe('TaskDetailPanel', () => {
     await user.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('calls onDelete after confirm dialog confirmation', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn().mockResolvedValue(undefined)
+    const onClose = vi.fn()
+    render(<TaskDetailPanel task={mockTask} onClose={onClose} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={onDelete} />)
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    // Confirm dialog should appear
+    const confirmButton = screen.getByRole('button', { name: 'Delete' })
+    await user.click(confirmButton)
+    expect(onDelete).toHaveBeenCalledWith('task-1')
+  })
+
+  it('calls onCancel after confirm dialog confirmation', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn().mockResolvedValue(undefined)
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={onCancel} onDelete={noop} />)
+    await user.click(screen.getByRole('button', { name: 'Cancel Task' }))
+    // Fill in reason
+    const reasonInput = screen.getByLabelText('Cancellation reason')
+    await user.type(reasonInput, 'No longer needed')
+    // Confirm
+    await user.click(screen.getByRole('button', { name: 'Cancel Task' }))
+    expect(onCancel).toHaveBeenCalledWith('task-1', { reason: 'No longer needed' })
+  })
 })

@@ -141,6 +141,8 @@ export interface TaskBoardFilters {
   assignee?: string
   taskType?: TaskType
   search?: string
+  dateFrom?: string
+  dateTo?: string
 }
 
 export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): Task[] {
@@ -169,6 +171,16 @@ export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): 
         t.title.toLowerCase().includes(query) ||
         t.description.toLowerCase().includes(query),
     )
+  }
+
+  if (filters.dateFrom) {
+    const from = filters.dateFrom
+    result = result.filter((t) => t.deadline && t.deadline >= from)
+  }
+
+  if (filters.dateTo) {
+    const to = filters.dateTo + 'T23:59:59.999Z'
+    result = result.filter((t) => t.deadline && t.deadline <= to)
   }
 
   return result

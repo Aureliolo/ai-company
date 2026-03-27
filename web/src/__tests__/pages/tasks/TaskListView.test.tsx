@@ -1,34 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskListView } from '@/pages/tasks/TaskListView'
-import type { Task } from '@/api/types'
-
-function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
-  return {
-    id,
-    title,
-    description: 'Description',
-    type: 'development',
-    status: 'assigned',
-    priority: 'medium',
-    project: 'test-project',
-    created_by: 'agent-cto',
-    assigned_to: 'agent-eng',
-    reviewers: [],
-    dependencies: [],
-    artifacts_expected: [],
-    acceptance_criteria: [],
-    estimated_complexity: 'medium',
-    budget_limit: 10,
-    deadline: null,
-    max_retries: 3,
-    parent_task_id: null,
-    delegation_chain: [],
-    task_structure: null,
-    coordination_topology: 'auto',
-    ...overrides,
-  }
-}
+import { makeTask } from '../../helpers/factories'
 
 describe('TaskListView', () => {
   const tasks = [

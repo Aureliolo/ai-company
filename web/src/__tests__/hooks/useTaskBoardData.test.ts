@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { useTaskBoardData } from '@/hooks/useTaskBoardData'
 import { useTasksStore } from '@/stores/tasks'
 
@@ -43,11 +43,9 @@ describe('useTaskBoardData', () => {
 
   it('returns store state after initial fetch', async () => {
     const { result } = renderHook(() => useTaskBoardData())
-    // Wait for initial fetch effect to complete
-    await act(async () => {})
+    await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.tasks).toEqual([])
     expect(result.current.total).toBe(0)
-    expect(result.current.loading).toBe(false)
     expect(result.current.error).toBeNull()
   })
 
@@ -71,8 +69,7 @@ describe('useTaskBoardData', () => {
   it('triggers initial fetch on mount', async () => {
     const fetchTasks = vi.spyOn(useTasksStore.getState(), 'fetchTasks')
     renderHook(() => useTaskBoardData())
-    // fetchTasks is called inside useEffect; we need to wait for it
-    await act(async () => {})
-    expect(fetchTasks).toHaveBeenCalled()
+    await waitFor(() => expect(fetchTasks).toHaveBeenCalled())
+    expect(fetchTasks).toHaveBeenCalledWith({ limit: 200 })
   })
 })

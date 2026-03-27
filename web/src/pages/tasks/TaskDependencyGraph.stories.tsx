@@ -1,14 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { DndContext } from '@dnd-kit/core'
-import { TaskColumn } from './TaskColumn'
-import { KANBAN_COLUMNS } from '@/utils/tasks'
+import { TaskDependencyGraph } from './TaskDependencyGraph'
 import type { Task } from '@/api/types'
 
 function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Task {
   return {
     id,
     title,
-    description: 'Task description',
+    description: 'Description',
     type: 'development',
     status: 'in_progress',
     priority: 'medium',
@@ -35,25 +33,32 @@ function makeTask(id: string, title: string, overrides: Partial<Task> = {}): Tas
 }
 
 const meta = {
-  title: 'Tasks/TaskColumn',
-  component: TaskColumn,
+  title: 'Tasks/TaskDependencyGraph',
+  component: TaskDependencyGraph,
   tags: ['autodocs'],
-  decorators: [(Story) => <DndContext><div className="w-72"><Story /></div></DndContext>],
-} satisfies Meta<typeof TaskColumn>
+  parameters: { layout: 'padded' },
+} satisfies Meta<typeof TaskDependencyGraph>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-const inProgressColumn = KANBAN_COLUMNS.find((c) => c.id === 'in_progress')
-if (!inProgressColumn) throw new Error('Missing in_progress column in KANBAN_COLUMNS')
-
-export const WithTasks: Story = {
+export const WithDependencies: Story = {
   args: {
-    column: inProgressColumn,
     tasks: [
-      makeTask('t1', 'Build API endpoints'),
-      makeTask('t2', 'Design UI components', { priority: 'high' }),
-      makeTask('t3', 'Write unit tests', { priority: 'low', assigned_to: 'agent-qa' }),
+      makeTask('t1', 'Design system', { status: 'completed' }),
+      makeTask('t2', 'API endpoints', { status: 'in_progress', dependencies: ['t1'] }),
+      makeTask('t3', 'Frontend UI', { status: 'assigned', dependencies: ['t1', 't2'] }),
+      makeTask('t4', 'Integration tests', { status: 'created', dependencies: ['t2', 't3'] }),
+    ],
+    onSelectTask: () => {},
+  },
+}
+
+export const NoDependencies: Story = {
+  args: {
+    tasks: [
+      makeTask('t1', 'Standalone task'),
+      makeTask('t2', 'Another task'),
     ],
     onSelectTask: () => {},
   },
@@ -61,7 +66,6 @@ export const WithTasks: Story = {
 
 export const Empty: Story = {
   args: {
-    column: inProgressColumn,
     tasks: [],
     onSelectTask: () => {},
   },

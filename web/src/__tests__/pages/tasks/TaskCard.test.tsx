@@ -2,32 +2,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskCard } from '@/pages/tasks/TaskCard'
 import type { Task } from '@/api/types'
+import { makeTask as makeTaskFactory } from '../../helpers/factories'
 
 function makeTask(overrides: Partial<Task> = {}): Task {
-  return {
-    id: 'task-1',
+  return makeTaskFactory('task-1', {
     title: 'Test task',
     description: 'A test task description',
-    type: 'development',
-    status: 'assigned',
-    priority: 'medium',
-    project: 'test-project',
-    created_by: 'agent-cto',
-    assigned_to: 'agent-eng',
-    reviewers: [],
-    dependencies: [],
-    artifacts_expected: [],
-    acceptance_criteria: [],
-    estimated_complexity: 'medium',
-    budget_limit: 10,
-    deadline: null,
-    max_retries: 3,
-    parent_task_id: null,
-    delegation_chain: [],
-    task_structure: null,
-    coordination_topology: 'auto',
     ...overrides,
-  }
+  })
 }
 
 describe('TaskCard', () => {

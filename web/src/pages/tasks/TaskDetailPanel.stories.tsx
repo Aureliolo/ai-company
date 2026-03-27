@@ -23,15 +23,15 @@ const mockTask: Task = {
   estimated_complexity: 'complex',
   budget_limit: 10,
   cost_usd: 3.45,
-  deadline: new Date(Date.now() + 86400000 * 5).toISOString(),
+  deadline: '2026-04-01T00:00:00.000Z',
   max_retries: 3,
   parent_task_id: null,
   delegation_chain: [],
   task_structure: 'sequential',
   coordination_topology: 'auto',
   version: 3,
-  created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: '2026-03-25T10:00:00.000Z',
+  updated_at: '2026-03-27T14:30:00.000Z',
 }
 
 const noop = async () => {}

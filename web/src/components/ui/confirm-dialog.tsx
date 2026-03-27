@@ -18,6 +18,8 @@ export interface ConfirmDialogProps {
   /** Whether the confirm action is in progress. */
   loading?: boolean
   className?: string
+  /** Optional content rendered between description and action buttons. */
+  children?: React.ReactNode
 }
 
 export function ConfirmDialog({
@@ -31,6 +33,7 @@ export function ConfirmDialog({
   onConfirm,
   loading = false,
   className,
+  children,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
@@ -56,6 +59,7 @@ export function ConfirmDialog({
               {description}
             </AlertDialog.Description>
           )}
+          {children}
           <div className="mt-6 flex justify-end gap-3">
             <AlertDialog.Cancel asChild>
               <Button variant="outline" disabled={loading}>

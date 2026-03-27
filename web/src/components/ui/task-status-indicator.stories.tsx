@@ -42,6 +42,7 @@ export const AllStatuses: StatusStory = {
 }
 
 // ── PriorityBadge ───────────────────────────────────────────
+// PriorityBadges uses a custom render that ignores args -- it showcases all 4 priority levels.
 
 export const PriorityBadges: StatusStory = {
   args: { status: 'created' },

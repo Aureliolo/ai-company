@@ -205,7 +205,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/tasks` | Task Board | Kanban default |
 | `/tasks?view=list` | Task Board (list) | List view toggle |
 | `/tasks?status=:status` | Task Board (filtered) | Filter by task status |
-| `/tasks/:taskId` | Task detail | Panel overlay on board |
+| `/tasks/:taskId` | Task detail | Full-page detail view (direct navigation / deep linking) |
+| `/tasks?selected=:taskId` | Task detail (panel) | Panel overlay on board view |
 | `/budget` | Budget | P&L dashboard |
 | `/budget/forecast` | Budget forecast | Projection charts |
 | `/approvals` | Approvals | Pending queue |

@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { useTasksStore } from '@/stores/tasks'
 import type { Task } from '@/api/types'
@@ -89,46 +89,39 @@ describe('TaskDetailPage', () => {
   it('renders error message when fetch fails', async () => {
     mockGetTask.mockRejectedValue(new Error('Task not found'))
     await renderDetailPage()
-    await act(async () => {})
-    expect(screen.getByText('Task not found')).toBeInTheDocument()
+    expect(await screen.findByText('Task not found')).toBeInTheDocument()
   })
 
   it('renders task details when task is loaded', async () => {
     await renderDetailPage()
-    // Wait for fetchTask useEffect to complete
-    await act(async () => {})
-    expect(screen.getByText('Test task')).toBeInTheDocument()
+    expect(await screen.findByText('Test task')).toBeInTheDocument()
     expect(screen.getByText('Test description')).toBeInTheDocument()
   })
 
   it('renders Back to Board button', async () => {
     await renderDetailPage()
-    await act(async () => {})
-    expect(screen.getByText('Back to Board')).toBeInTheDocument()
+    expect(await screen.findByText('Back to Board')).toBeInTheDocument()
   })
 
   it('renders transition buttons for in_progress task', async () => {
     await renderDetailPage()
-    await act(async () => {})
-    expect(screen.getByRole('button', { name: 'In Review' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'In Review' })).toBeInTheDocument()
   })
 
   it('renders Delete button', async () => {
     await renderDetailPage()
-    await act(async () => {})
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
   it('renders Cancel Task button for non-terminal tasks', async () => {
     await renderDetailPage()
-    await act(async () => {})
-    expect(screen.getByRole('button', { name: 'Cancel Task' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Cancel Task' })).toBeInTheDocument()
   })
 
   it('does not render Cancel Task button for completed tasks', async () => {
     mockGetTask.mockResolvedValue({ ...mockTask, status: 'completed' })
     await renderDetailPage()
-    await act(async () => {})
+    await waitFor(() => expect(screen.getByText('Test task')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Cancel Task' })).not.toBeInTheDocument()
   })
 })

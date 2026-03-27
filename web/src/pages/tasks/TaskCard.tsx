@@ -18,85 +18,85 @@ export interface TaskCardProps {
 }
 
 export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref, ...props }: TaskCardProps) {
-    const { triggerFlash, flashStyle } = useFlash()
-    const prevUpdatedRef = useRef(task.updated_at)
+  const { triggerFlash, flashStyle } = useFlash()
+  const prevUpdatedRef = useRef(task.updated_at)
 
-    useEffect(() => {
-      if (task.updated_at && task.updated_at !== prevUpdatedRef.current) {
-        triggerFlash()
-      }
-      prevUpdatedRef.current = task.updated_at
-    }, [task.updated_at, triggerFlash])
+  useEffect(() => {
+    if (task.updated_at && task.updated_at !== prevUpdatedRef.current) {
+      triggerFlash()
+    }
+    prevUpdatedRef.current = task.updated_at
+  }, [task.updated_at, triggerFlash])
 
-    return (
-      <div
-        ref={ref}
-        role="button"
-        tabIndex={0}
-        aria-label={`Task: ${task.title}`}
-        onClick={() => onSelect(task.id)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSelect(task.id)
-          }
-        }}
-        style={flashStyle}
-        className={cn(
-          'cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors',
-          'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-          isDragging && 'scale-[1.02] opacity-50 shadow-lg',
-          isOverlay && 'scale-[1.02] shadow-lg border-accent/50',
-          className,
+  return (
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-label={`Task: ${task.title}`}
+      onClick={() => onSelect(task.id)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(task.id)
+        }
+      }}
+      style={flashStyle}
+      className={cn(
+        'cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors',
+        'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
+        isDragging && 'scale-[1.02] opacity-50 shadow-lg',
+        isOverlay && 'scale-[1.02] shadow-lg border-accent/50',
+        className,
+      )}
+      {...props}
+    >
+      {/* Header: title + status */}
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="line-clamp-2 text-[13px] font-semibold text-foreground">
+          {task.title}
+        </h3>
+        <TaskStatusIndicator status={task.status} className="mt-0.5" />
+      </div>
+
+      {/* Description preview */}
+      {task.description && (
+        <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
+          {task.description}
+        </p>
+      )}
+
+      {/* Footer: priority, assignee, metadata */}
+      <div className="mt-2 flex items-center gap-2">
+        <PriorityBadge priority={task.priority} />
+
+        {task.assigned_to && (
+          <Avatar name={task.assigned_to} size="sm" />
         )}
-        {...props}
-      >
-        {/* Header: title + status */}
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="line-clamp-2 text-[13px] font-semibold text-foreground">
-            {task.title}
-          </h3>
-          <TaskStatusIndicator status={task.status} className="mt-0.5" />
-        </div>
 
-        {/* Description preview */}
-        {task.description && (
-          <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
-            {task.description}
-          </p>
-        )}
-
-        {/* Footer: priority, assignee, metadata */}
-        <div className="mt-2 flex items-center gap-2">
-          <PriorityBadge priority={task.priority} />
-
-          {task.assigned_to && (
-            <Avatar name={task.assigned_to} size="sm" />
+        <div className="ml-auto flex items-center gap-2 text-text-muted">
+          {task.dependencies.length > 0 && (
+            <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`${task.dependencies.length} dependencies`}>
+              <GitBranch className="size-3" aria-hidden="true" />
+              {task.dependencies.length}
+            </span>
           )}
 
-          <div className="ml-auto flex items-center gap-2 text-text-muted">
-            {task.dependencies.length > 0 && (
-              <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`${task.dependencies.length} dependencies`}>
-                <GitBranch className="size-3" aria-hidden="true" />
-                {task.dependencies.length}
-              </span>
-            )}
+          {task.cost_usd != null && task.cost_usd > 0 && (
+            <span className="text-[10px] font-mono">
+              {formatCurrency(task.cost_usd, 'USD')}
+            </span>
+          )}
 
-            {task.cost_usd != null && task.cost_usd > 0 && (
-              <span className="text-[10px] font-mono">
-                {formatCurrency(task.cost_usd)}
-              </span>
-            )}
-
-            {task.deadline && (
-              <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`Deadline: ${task.deadline}`}>
-                <Clock className="size-3" aria-hidden="true" />
-                {formatRelativeTime(task.deadline)}
-              </span>
-            )}
-          </div>
+          {task.deadline && (
+            <span className="flex items-center gap-0.5 text-[10px] font-mono" title={`Deadline: ${task.deadline}`}>
+              <Clock className="size-3" aria-hidden="true" />
+              {formatRelativeTime(task.deadline)}
+            </span>
+          )}
         </div>
       </div>
-    )
+    </div>
+  )
 }

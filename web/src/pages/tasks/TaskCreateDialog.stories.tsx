@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { action } from 'storybook/actions'
 import { TaskCreateDialog } from './TaskCreateDialog'
 
 const meta = {
@@ -15,7 +16,7 @@ export const Open: Story = {
   args: {
     open: true,
     onOpenChange: () => {},
-    onCreate: async (data) => { console.log('Create:', data) },
+    onCreate: async (data) => { action('onCreate')(data) },
   },
 }
 

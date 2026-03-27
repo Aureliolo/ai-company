@@ -3,6 +3,7 @@ import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { getErrorMessage } from '@/utils/errors'
 import type { CreateTaskRequest, Priority, TaskType, Complexity } from '@/api/types'
 
 export interface TaskCreateDialogProps {
@@ -46,6 +47,35 @@ interface FormState {
   budget_limit: string
 }
 
+interface TaskTemplate {
+  label: string
+  description: string
+  defaults: Partial<FormState>
+}
+
+const TASK_TEMPLATES: TaskTemplate[] = [
+  {
+    label: 'Development',
+    description: 'Code implementation task',
+    defaults: { type: 'development', estimated_complexity: 'medium', priority: 'medium' },
+  },
+  {
+    label: 'Bug Fix',
+    description: 'Fix a reported issue',
+    defaults: { type: 'development', estimated_complexity: 'simple', priority: 'high' },
+  },
+  {
+    label: 'Research',
+    description: 'Investigate or evaluate an approach',
+    defaults: { type: 'research', estimated_complexity: 'medium', priority: 'medium' },
+  },
+  {
+    label: 'Code Review',
+    description: 'Review submitted work',
+    defaults: { type: 'review', estimated_complexity: 'simple', priority: 'medium' },
+  },
+]
+
 const INITIAL_FORM: FormState = {
   title: '',
   description: '',
@@ -76,6 +106,10 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
     if (!form.description.trim()) next.description = 'Description is required'
     if (!form.project.trim()) next.project = 'Project is required'
     if (!form.created_by.trim()) next.created_by = 'Creator is required'
+    if (form.budget_limit !== '') {
+      const n = Number(form.budget_limit)
+      if (!Number.isFinite(n) || n < 0) next.budget_limit = 'Budget must be a non-negative number'
+    }
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -94,13 +128,13 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         created_by: form.created_by.trim(),
         assigned_to: form.assigned_to.trim() || undefined,
         estimated_complexity: form.estimated_complexity,
-        budget_limit: form.budget_limit ? Number(form.budget_limit) : undefined,
+        budget_limit: form.budget_limit ? (Number.isFinite(Number(form.budget_limit)) && Number(form.budget_limit) >= 0 ? Number(form.budget_limit) : undefined) : undefined,
       }
       await onCreate(data)
       setForm(INITIAL_FORM)
       onOpenChange(false)
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to create task')
+      setSubmitError(getErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -133,6 +167,26 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
           </div>
 
           <div className="space-y-4">
+            {/* Template suggestions */}
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                Start from template
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {TASK_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.label}
+                    type="button"
+                    onClick={() => setForm((prev) => ({ ...prev, ...tpl.defaults }))}
+                    className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent hover:text-foreground"
+                    title={tpl.description}
+                  >
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <FormField label="Title" error={errors.title} required>
               <input
                 type="text"

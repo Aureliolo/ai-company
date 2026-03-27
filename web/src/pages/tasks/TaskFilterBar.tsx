@@ -1,6 +1,6 @@
 import { LayoutGrid, List, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getTaskStatusLabel, getPriorityLabel } from '@/utils/tasks'
+import { getTaskStatusLabel, getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { TaskBoardFilters } from '@/utils/tasks'
 import type { Priority, TaskStatus, TaskType } from '@/api/types'
 
@@ -12,15 +12,6 @@ const STATUSES: TaskStatus[] = [
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
 const TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin']
-
-const TASK_TYPE_LABELS: Record<TaskType, string> = {
-  development: 'Development',
-  design: 'Design',
-  research: 'Research',
-  review: 'Review',
-  meeting: 'Meeting',
-  admin: 'Admin',
-}
 
 export interface TaskFilterBarProps {
   filters: TaskBoardFilters
@@ -41,7 +32,7 @@ export function TaskFilterBar({
   assignees,
   taskCount,
 }: TaskFilterBarProps) {
-  const hasActiveFilters = !!(filters.status || filters.priority || filters.assignee || filters.taskType || filters.search)
+  const hasActiveFilters = !!(filters.status || filters.priority || filters.assignee || filters.taskType || filters.search || filters.dateFrom || filters.dateTo)
 
   function updateFilter<K extends keyof TaskBoardFilters>(key: K, value: TaskBoardFilters[K]) {
     onFiltersChange({ ...filters, [key]: value || undefined })
@@ -102,9 +93,27 @@ export function TaskFilterBar({
         >
           <option value="">All types</option>
           {TASK_TYPES.map((t) => (
-            <option key={t} value={t}>{TASK_TYPE_LABELS[t]}</option>
+            <option key={t} value={t}>{getTaskTypeLabel(t)}</option>
           ))}
         </select>
+
+        {/* Date range */}
+        <input
+          type="date"
+          value={filters.dateFrom ?? ''}
+          onChange={(e) => updateFilter('dateFrom', e.target.value || undefined)}
+          className="h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+          aria-label="Deadline from"
+          title="Deadline from"
+        />
+        <input
+          type="date"
+          value={filters.dateTo ?? ''}
+          onChange={(e) => updateFilter('dateTo', e.target.value || undefined)}
+          className="h-8 rounded-md border border-border bg-surface px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+          aria-label="Deadline to"
+          title="Deadline to"
+        />
 
         {/* Search */}
         <input
@@ -164,7 +173,13 @@ export function TaskFilterBar({
             <FilterPill label={`Assignee: ${filters.assignee}`} onRemove={() => updateFilter('assignee', undefined)} />
           )}
           {filters.taskType && (
-            <FilterPill label={`Type: ${TASK_TYPE_LABELS[filters.taskType]}`} onRemove={() => updateFilter('taskType', undefined)} />
+            <FilterPill label={`Type: ${getTaskTypeLabel(filters.taskType)}`} onRemove={() => updateFilter('taskType', undefined)} />
+          )}
+          {filters.dateFrom && (
+            <FilterPill label={`From: ${filters.dateFrom}`} onRemove={() => updateFilter('dateFrom', undefined)} />
+          )}
+          {filters.dateTo && (
+            <FilterPill label={`To: ${filters.dateTo}`} onRemove={() => updateFilter('dateTo', undefined)} />
           )}
           {filters.search && (
             <FilterPill label={`Search: "${filters.search}"`} onRemove={() => updateFilter('search', undefined)} />

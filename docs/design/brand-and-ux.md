@@ -205,6 +205,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `StatPill` | `stat-pill.tsx` | `label`, `value` | Compact inline label + value pair for metadata rows. |
 | `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |
 | `Button` | `button.tsx` | shadcn standard | Standard button component (shadcn/ui). |
+| `TaskStatusIndicator` | `task-status-indicator.tsx` | `status: TaskStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Task status dot with optional label and pulse animation. |
+| `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority colored pill badge. |
 
 ### Interaction Components
 
@@ -227,6 +229,11 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `cn()` | `lib/utils.ts` | Tailwind class merging (clsx + twMerge). Use in every component. |
 | `getStatusColor()` | `lib/utils.ts` | Maps `AgentRuntimeStatus` to `SemanticColor \| "text-secondary"` token name (`offline` maps to `"text-secondary"`). |
 | `getHealthColor()` | `lib/utils.ts` | Maps 0-100 percentage to `SemanticColor` (>=75 success, >=50 accent, >=25 warning, <25 danger). |
+| `getTaskStatusColor()` | `utils/tasks.ts` | Maps `TaskStatus` to `SemanticColor`. |
+| `getTaskStatusLabel()` | `utils/tasks.ts` | Maps `TaskStatus` to display label. |
+| `getPriorityColor()` | `utils/tasks.ts` | Maps `Priority` to `SemanticColor`. |
+| `getPriorityLabel()` | `utils/tasks.ts` | Maps `Priority` to display label. |
+| `getTaskTypeLabel()` | `utils/tasks.ts` | Maps `TaskType` to display label. |
 
 ### Animation Hooks
 
@@ -242,6 +249,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 |------|------|--------|
 | `AgentRuntimeStatus` | `lib/utils.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
 | `SemanticColor` | `lib/utils.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
+| `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"cancelled"` |
+| `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
 
 ### When to Create a New Shared Component
 
