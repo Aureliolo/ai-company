@@ -11,10 +11,16 @@ import type {
   DepartmentName,
   SeniorityLevel,
   Task,
+  WsEvent,
 } from '@/api/types'
+import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'
 
 const MAX_ACTIVITIES = 100
+
+const VALID_RUNTIME_STATUSES: ReadonlySet<string> = new Set([
+  'active', 'idle', 'error', 'offline',
+])
 
 interface AgentsState {
   // List page
@@ -42,6 +48,9 @@ interface AgentsState {
   detailLoading: boolean
   detailError: string | null
 
+  // Runtime statuses (org chart real-time)
+  runtimeStatuses: Record<string, AgentRuntimeStatus>
+
   // Actions
   fetchAgents: () => Promise<void>
   fetchAgentDetail: (name: string) => Promise<void>
@@ -53,6 +62,8 @@ interface AgentsState {
   setSortBy: (key: AgentSortKey) => void
   setSortDirection: (dir: 'asc' | 'desc') => void
   clearDetail: () => void
+  updateRuntimeStatus: (agentId: string, status: AgentRuntimeStatus) => void
+  updateFromWsEvent: (event: WsEvent) => void
 }
 
 // Track the latest requested agent name to prevent stale responses from overwriting
@@ -83,6 +94,9 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   careerHistory: [],
   detailLoading: false,
   detailError: null,
+
+  // Runtime statuses
+  runtimeStatuses: {},
 
   fetchAgents: async () => {
     set({ listLoading: true, listError: null })
@@ -197,5 +211,26 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       detailLoading: false,
       detailError: null,
     })
+  },
+
+  updateRuntimeStatus: (agentId, status) => {
+    set((state) => ({
+      runtimeStatuses: { ...state.runtimeStatuses, [agentId]: status },
+    }))
+  },
+
+  updateFromWsEvent: (event) => {
+    if (event.event_type !== 'agent.status_changed') return
+    const payload = event.payload as Record<string, unknown>
+    const agentId = payload.agent_id
+    const status = payload.status
+    if (typeof agentId !== 'string' || typeof status !== 'string') return
+    if (!VALID_RUNTIME_STATUSES.has(status)) return
+    set((state) => ({
+      runtimeStatuses: {
+        ...state.runtimeStatuses,
+        [agentId]: status as AgentRuntimeStatus,
+      },
+    }))
   },
 }))

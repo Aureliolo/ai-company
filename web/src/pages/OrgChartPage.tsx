@@ -1,5 +1,245 @@
-import { PlaceholderPage } from '@/components/layout/PlaceholderPage'
+import { useCallback, useMemo, useState } from 'react'
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Background,
+  useReactFlow,
+  type Node,
+} from '@xyflow/react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import { AlertTriangle, GitBranch } from 'lucide-react'
+import { Link } from 'react-router'
+import { useOrgChartData } from '@/hooks/useOrgChartData'
+import { useRegisterCommands } from '@/hooks/useCommandPalette'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useToastStore } from '@/stores/toast'
+import { AgentNode } from './org/AgentNode'
+import { CeoNode } from './org/CeoNode'
+import { DepartmentGroupNode } from './org/DepartmentGroupNode'
+import { HierarchyEdge } from './org/HierarchyEdge'
+import { OrgChartToolbar, type ViewMode } from './org/OrgChartToolbar'
+import { OrgChartSkeleton } from './org/OrgChartSkeleton'
+import { NodeContextMenu } from './org/NodeContextMenu'
+import { ROUTES } from '@/router/routes'
+
+// Memoized outside component to prevent re-renders
+const nodeTypes = { agent: AgentNode, ceo: CeoNode, department: DepartmentGroupNode }
+const edgeTypes = { hierarchy: HierarchyEdge }
+
+const VIEWPORT_KEY = 'synthorg:orgchart:viewport'
+
+function saveViewport(viewport: { x: number; y: number; zoom: number }) {
+  try {
+    localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
+  } catch {
+    // localStorage may be full or unavailable
+  }
+}
+
+function loadViewport(): { x: number; y: number; zoom: number } | undefined {
+  try {
+    const stored = localStorage.getItem(VIEWPORT_KEY)
+    if (stored) return JSON.parse(stored) as { x: number; y: number; zoom: number }
+  } catch {
+    // Invalid stored value
+  }
+  return undefined
+}
+
+interface ContextMenuState {
+  nodeId: string
+  nodeType: 'agent' | 'ceo' | 'department'
+  position: { x: number; y: number }
+}
+
+function OrgChartInner() {
+  const { nodes, edges, loading, error, wsConnected, wsSetupError } = useOrgChartData()
+  const [viewMode, setViewMode] = useState<ViewMode>('hierarchy')
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; label: string } | null>(null)
+  const { fitView, zoomIn, zoomOut } = useReactFlow()
+  const addToast = useToastStore((s) => s.add)
+
+  const defaultViewport = useMemo(() => loadViewport(), [])
+
+  // Register page-local commands
+  useRegisterCommands([
+    {
+      id: 'org-fit-view',
+      label: 'Fit to View',
+      description: 'Reset zoom to fit all nodes',
+      icon: GitBranch,
+      action: () => fitView({ padding: 0.2 }),
+      group: 'Org Chart',
+      scope: 'local',
+    },
+  ])
+
+  const handleNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, node: Node) => {
+      event.preventDefault()
+      const nodeType = (node.type === 'department' ? 'department' : node.type === 'ceo' ? 'ceo' : 'agent') as ContextMenuState['nodeType']
+      setContextMenu({
+        nodeId: node.id,
+        nodeType,
+        position: { x: event.clientX, y: event.clientY },
+      })
+    },
+    [],
+  )
+
+  const handleViewDetails = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId)
+      if (node && (node.type === 'agent' || node.type === 'ceo')) {
+        const name = (node.data as { name: string }).name
+        window.location.href = `/agents/${encodeURIComponent(name)}`
+      }
+    },
+    [nodes],
+  )
+
+  const handleDelete = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId)
+      const label = node ? String((node.data as { name?: string; displayName?: string }).name ?? (node.data as { displayName?: string }).displayName ?? nodeId) : nodeId
+      setDeleteConfirm({ nodeId, label })
+    },
+    [nodes],
+  )
+
+  const confirmDelete = useCallback(() => {
+    addToast({
+      variant: 'info',
+      title: 'Delete -- not yet available',
+      description: 'Backend API for this operation is pending',
+    })
+    setDeleteConfirm(null)
+  }, [addToast])
+
+  const handleMoveEnd = useCallback(
+    (_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
+      saveViewport(viewport)
+    },
+    [],
+  )
+
+  const handlePaneClick = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+
+  if (loading && nodes.length === 0) {
+    return <OrgChartSkeleton />
+  }
+
+  if (!loading && nodes.length === 0 && !error) {
+    return (
+      <EmptyState
+        icon={GitBranch}
+        title="No organization configured"
+        description="Set up your company and agents to see the org chart"
+        action={{
+          label: 'Edit Organization',
+          onClick: () => { window.location.href = ROUTES.ORG_EDIT },
+        }}
+      />
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Error banners */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          {error}
+        </div>
+      )}
+      {!wsConnected && wsSetupError && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+          Real-time updates unavailable: {wsSetupError}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between pb-3">
+        <OrgChartToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onFitView={() => fitView({ padding: 0.2 })}
+          onZoomIn={() => zoomIn()}
+          onZoomOut={() => zoomOut()}
+        />
+      </div>
+
+      {/* Canvas */}
+      <div className="relative flex-1 rounded-lg border border-border">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          defaultViewport={defaultViewport}
+          fitView={!defaultViewport}
+          fitViewOptions={{ padding: 0.2 }}
+          onMoveEnd={handleMoveEnd}
+          onNodeContextMenu={handleNodeContextMenu}
+          onPaneClick={handlePaneClick}
+          nodesConnectable={false}
+          minZoom={0.1}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background color="var(--color-border)" gap={24} size={1} />
+        </ReactFlow>
+
+        {contextMenu && (
+          <NodeContextMenu
+            nodeId={contextMenu.nodeId}
+            nodeType={contextMenu.nodeType}
+            position={contextMenu.position}
+            onClose={() => setContextMenu(null)}
+            onViewDetails={handleViewDetails}
+            onDelete={handleDelete}
+          />
+        )}
+      </div>
+
+      {/* Delete confirmation dialog */}
+      <ConfirmDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => { if (!open) setDeleteConfirm(null) }}
+        title={`Delete "${deleteConfirm?.label}"?`}
+        description="This action cannot be undone."
+        variant="destructive"
+        confirmLabel="Delete"
+        onConfirm={confirmDelete}
+      />
+    </div>
+  )
+}
 
 export default function OrgChartPage() {
-  return <PlaceholderPage title="Org Chart" />
+  return (
+    <div className="flex h-full flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-foreground">Org Chart</h1>
+        <Link to={ROUTES.ORG_EDIT}>
+          <Button variant="outline" size="sm">
+            Edit Organization
+          </Button>
+        </Link>
+      </div>
+
+      <ErrorBoundary level="section">
+        <ReactFlowProvider>
+          <OrgChartInner />
+        </ReactFlowProvider>
+      </ErrorBoundary>
+    </div>
+  )
 }
