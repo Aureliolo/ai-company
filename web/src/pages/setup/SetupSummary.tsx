@@ -5,18 +5,25 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { Avatar } from '@/components/ui/avatar'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import type { SetupAgentSummary, SetupCompanyResponse, ProviderConfig } from '@/api/types'
-import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { CostEstimate } from '@/utils/cost-estimator'
 import { formatCurrency } from '@/utils/format'
+import { getProviderStatus } from '@/utils/provider-status'
 import { Building2, Users, Server } from 'lucide-react'
 
-/** Derive provider status from auth type and credential indicators. */
-function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {
-  if (config.auth_type === 'none') return 'idle'
-  if (config.auth_type === 'api_key') return config.has_api_key ? 'idle' : 'error'
-  if (config.auth_type === 'oauth') return config.has_oauth_credentials ? 'idle' : 'error'
-  if (config.auth_type === 'custom_header') return config.has_custom_header ? 'idle' : 'error'
-  return config.has_api_key ? 'idle' : 'error'
+function SetupAgentRow({ agent }: { agent: SetupAgentSummary }) {
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-border p-2">
+      <Avatar name={agent.name} size="sm" />
+      <div className="flex-1">
+        <span className="text-sm font-medium text-foreground">{agent.name}</span>
+        <span className="ml-2 text-xs text-muted-foreground">{agent.role}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <StatPill label="Dept" value={agent.department} />
+        <StatPill label="Tier" value={agent.tier} />
+      </div>
+    </div>
+  )
 }
 
 export interface SetupSummaryProps {
@@ -88,18 +95,8 @@ export function SetupSummary({
       {/* Agent roster */}
       <SectionCard title="Agent Roster" icon={Users}>
         <div className="space-y-2">
-          {agents.map((agent) => (
-            <div key={`${agent.name}-${agent.role}`} className="flex items-center gap-3 rounded-md border border-border p-2">
-              <Avatar name={agent.name} size="sm" />
-              <div className="flex-1">
-                <span className="text-sm font-medium text-foreground">{agent.name}</span>
-                <span className="ml-2 text-xs text-muted-foreground">{agent.role}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatPill label="Dept" value={agent.department} />
-                <StatPill label="Tier" value={agent.tier} />
-              </div>
-            </div>
+          {agents.map((agent, index) => (
+            <SetupAgentRow key={`agent-${index}`} agent={agent} />
           ))}
         </div>
       </SectionCard>

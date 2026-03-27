@@ -38,5 +38,8 @@ export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'VND', label: 'VND - Vietnamese Dong' },
 ]
 
+/** Derived union type of supported ISO 4217 currency codes. */
+export type CurrencyCode = (typeof CURRENCY_OPTIONS)[number]['value']
+
 /** Default currency code (matches backend DEFAULT_CURRENCY). */
-export const DEFAULT_CURRENCY = 'EUR'
+export const DEFAULT_CURRENCY: CurrencyCode = 'EUR'

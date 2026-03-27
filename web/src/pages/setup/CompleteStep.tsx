@@ -38,10 +38,10 @@ export function CompleteStep() {
   }, [agents, providers])
 
   const handleComplete = useCallback(async () => {
-    await wizardCompleteSetup()
-    const error = useSetupWizardStore.getState().completionError
-    if (error) {
-      // Keep dialog open so user can see the error and retry
+    try {
+      await wizardCompleteSetup()
+    } catch {
+      // Error is already stored in completionError by the store action
       return
     }
     useSetupStore.setState({ setupComplete: true })

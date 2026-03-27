@@ -1,23 +1,15 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
-import type { AgentRuntimeStatus } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateProvidersStep } from '@/utils/setup-validation'
+import { getProviderStatus } from '@/utils/provider-status'
 import type { ProviderConfig } from '@/api/types'
 import { ProviderProbeResults } from './ProviderProbeResults'
 import { ProviderAddForm } from './ProviderAddForm'
 import { Server } from 'lucide-react'
-
-/** Derive provider status from auth type and credential indicators. */
-function getProviderStatus(config: ProviderConfig): AgentRuntimeStatus {
-  if (config.auth_type === 'none') return 'idle'
-  if (config.auth_type === 'api_key') return config.has_api_key ? 'idle' : 'error'
-  if (config.auth_type === 'oauth') return config.has_oauth_credentials ? 'idle' : 'error'
-  if (config.auth_type === 'custom_header') return config.has_custom_header ? 'idle' : 'error'
-  return config.has_api_key ? 'idle' : 'error'
-}
 
 interface ProviderRowProps {
   name: string
@@ -135,12 +127,6 @@ export function ProvidersStep() {
         </div>
       )}
 
-      {presetsError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-          {presetsError}
-        </div>
-      )}
-
       {/* Missing provider warnings */}
       {missingProviders.length > 0 && (
         <div className="rounded-md border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
@@ -148,20 +134,34 @@ export function ProvidersStep() {
         </div>
       )}
 
-      {/* Auto-detect results */}
-      <ProviderProbeResults
-        presets={presets}
-        probeResults={probeResults}
-        probing={probing}
-        onAddPreset={handleAddPreset}
-      />
+      {/* Auto-detect results + Manual cloud provider add */}
+      {presetsLoading ? (
+        <Skeleton className="h-32 rounded-lg" />
+      ) : presetsError && presets.length === 0 ? (
+        <div className="space-y-2">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            Failed to load provider presets: {presetsError}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void fetchPresets()}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <>
+          <ProviderProbeResults
+            presets={presets}
+            probeResults={probeResults}
+            probing={probing}
+            onAddPreset={handleAddPreset}
+          />
 
-      {/* Manual cloud provider add */}
-      <ProviderAddForm
-        presets={presets}
-        onAdd={handleAddCloud}
-        onTest={testProviderConnection}
-      />
+          <ProviderAddForm
+            presets={presets}
+            onAdd={handleAddCloud}
+            onTest={testProviderConnection}
+          />
+        </>
+      )}
 
       {/* Configured providers */}
       {providerEntries.length > 0 && (

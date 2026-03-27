@@ -40,6 +40,22 @@ function AgentRow({ agent, currency }: { agent: AgentRowData; currency: string }
   )
 }
 
+function DepartmentGroupSection({ group, currency }: { group: DepartmentGroup; currency: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs font-medium text-foreground">
+        <span>{group.department}</span>
+        <span className="text-muted-foreground">{formatCurrency(group.subtotal, currency)}</span>
+      </div>
+      <ul className="space-y-0.5 pl-3">
+        {group.agents.map((agent) => (
+          <AgentRow key={agent.agentIndex} agent={agent} currency={currency} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function CostEstimatePanel({
   estimate,
   currency,
@@ -114,17 +130,7 @@ export function CostEstimatePanel({
           {breakdownOpen && (
             <div className="mt-2 space-y-3">
               {departmentGroups.map((group) => (
-                <div key={group.department} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-medium text-foreground">
-                    <span>{group.department}</span>
-                    <span className="text-muted-foreground">{formatCurrency(group.subtotal, currency)}</span>
-                  </div>
-                  <ul className="space-y-0.5 pl-3">
-                    {group.agents.map((agent) => (
-                      <AgentRow key={agent.agentIndex} agent={agent} currency={currency} />
-                    ))}
-                  </ul>
-                </div>
+                <DepartmentGroupSection key={group.department} group={group} currency={currency} />
               ))}
             </div>
           )}
