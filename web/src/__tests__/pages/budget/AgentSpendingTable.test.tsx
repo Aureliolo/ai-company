@@ -105,7 +105,7 @@ describe('AgentSpendingTable', () => {
     expect(agentNames).toEqual(['Agent C', 'Agent B', 'Agent A'])
   })
 
-  it('resets to ascending when clicking a different column', async () => {
+  it('defaults to ascending for text column (Agent)', async () => {
     const user = userEvent.setup()
     render(<AgentSpendingTable rows={makeRows(3)} />)
 
@@ -120,6 +120,20 @@ describe('AgentSpendingTable', () => {
     const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
     const agentNames = agentCells.map((el) => el.textContent)
     expect(agentNames).toEqual(['Agent A', 'Agent B', 'Agent C'])
+  })
+
+  it('defaults to descending for numeric column (Tasks)', async () => {
+    const user = userEvent.setup()
+    render(<AgentSpendingTable rows={makeRows(3)} />)
+
+    // Switch from totalCost (default) to Agent (text, asc) then to Tasks (numeric, desc)
+    const agentBtn = screen.getByText('Agent').closest('button')!
+    await user.click(agentBtn)
+    expect(agentBtn).toHaveAttribute('aria-sort', 'ascending')
+
+    const tasksBtn = screen.getByText('Tasks').closest('button')!
+    await user.click(tasksBtn)
+    expect(tasksBtn).toHaveAttribute('aria-sort', 'descending')
   })
 
   it('uses EUR currency by default', () => {

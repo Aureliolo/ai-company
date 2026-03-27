@@ -49,7 +49,7 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
       setSortDir((d) => d === 'asc' ? 'desc' : 'asc')
     } else {
       setSortKey(key)
-      setSortDir('asc')
+      setSortDir(key === 'agentName' ? 'asc' : 'desc')
     }
   }, [sortKey])
 
