@@ -1,0 +1,118 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { TaskDetailPanel } from '@/pages/tasks/TaskDetailPanel'
+import type { Task } from '@/api/types'
+
+const mockTask: Task = {
+  id: 'task-1',
+  title: 'Test task',
+  description: 'Test description',
+  type: 'development',
+  status: 'in_progress',
+  priority: 'high',
+  project: 'test-project',
+  created_by: 'agent-cto',
+  assigned_to: 'agent-eng',
+  reviewers: [],
+  dependencies: ['dep-1'],
+  artifacts_expected: [],
+  acceptance_criteria: [
+    { description: 'Criterion 1', met: true },
+    { description: 'Criterion 2', met: false },
+  ],
+  estimated_complexity: 'complex',
+  budget_limit: 10,
+  cost_usd: 3.45,
+  deadline: null,
+  max_retries: 3,
+  parent_task_id: null,
+  delegation_chain: [],
+  task_structure: null,
+  coordination_topology: 'auto',
+  version: 2,
+  created_at: '2026-03-20T10:00:00Z',
+  updated_at: '2026-03-25T14:00:00Z',
+}
+
+const noop = async () => {}
+
+describe('TaskDetailPanel', () => {
+  it('renders task title', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('Test task')).toBeInTheDocument()
+  })
+
+  it('renders task description', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('Test description')).toBeInTheDocument()
+  })
+
+  it('renders status indicator with label', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('In Progress')).toBeInTheDocument()
+  })
+
+  it('renders priority badge and selector', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    // Priority appears in both badge and select dropdown
+    expect(screen.getByLabelText('Change priority')).toHaveValue('high')
+  })
+
+  it('renders assignee', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('agent-eng')).toBeInTheDocument()
+  })
+
+  it('renders dependencies', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('dep-1')).toBeInTheDocument()
+  })
+
+  it('renders acceptance criteria', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByText('Criterion 1')).toBeInTheDocument()
+    expect(screen.getByText('Criterion 2')).toBeInTheDocument()
+  })
+
+  it('renders available transition buttons', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    // in_progress can transition to in_review, failed, cancelled, interrupted
+    expect(screen.getByRole('button', { name: 'In Review' })).toBeInTheDocument()
+  })
+
+  it('does not render transition buttons for completed tasks', () => {
+    const completed = { ...mockTask, status: 'completed' as const }
+    render(<TaskDetailPanel task={completed} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.queryByText('Transitions')).not.toBeInTheDocument()
+  })
+
+  it('calls onClose when close button is clicked', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<TaskDetailPanel task={mockTask} onClose={onClose} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    await user.click(screen.getByLabelText('Close panel'))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('renders loading state', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} loading />)
+    // Should not render task details when loading
+    expect(screen.queryByText('Test description')).not.toBeInTheDocument()
+  })
+
+  it('renders Delete button', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+  })
+
+  it('renders Cancel Task button for non-terminal tasks', () => {
+    render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.getByRole('button', { name: 'Cancel Task' })).toBeInTheDocument()
+  })
+
+  it('does not render Cancel Task button for cancelled tasks', () => {
+    const cancelled = { ...mockTask, status: 'cancelled' as const }
+    render(<TaskDetailPanel task={cancelled} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={noop} onDelete={noop} />)
+    expect(screen.queryByRole('button', { name: 'Cancel Task' })).not.toBeInTheDocument()
+  })
+})

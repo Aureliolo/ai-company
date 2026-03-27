@@ -1,0 +1,81 @@
+import type { Meta, StoryObj } from '@storybook/react'
+import { TaskDetailPanel } from './TaskDetailPanel'
+import type { Task } from '@/api/types'
+
+const mockTask: Task = {
+  id: 'task-1',
+  title: 'Implement authentication flow',
+  description: 'Build login, signup, and password reset with JWT tokens and refresh token rotation.',
+  type: 'development',
+  status: 'in_progress',
+  priority: 'high',
+  project: 'test-project',
+  created_by: 'agent-cto',
+  assigned_to: 'agent-eng-lead',
+  reviewers: ['agent-qa'],
+  dependencies: ['task-0', 'task-2'],
+  artifacts_expected: [{ name: 'auth-module', type: 'code' }],
+  acceptance_criteria: [
+    { description: 'Login works with valid credentials', met: true },
+    { description: 'Password reset sends email', met: false },
+    { description: 'JWT refresh rotation implemented', met: false },
+  ],
+  estimated_complexity: 'complex',
+  budget_limit: 10,
+  cost_usd: 3.45,
+  deadline: new Date(Date.now() + 86400000 * 5).toISOString(),
+  max_retries: 3,
+  parent_task_id: null,
+  delegation_chain: [],
+  task_structure: 'sequential',
+  coordination_topology: 'auto',
+  version: 3,
+  created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+  updated_at: new Date().toISOString(),
+}
+
+const noop = async () => {}
+
+const meta = {
+  title: 'Tasks/TaskDetailPanel',
+  component: TaskDetailPanel,
+  tags: ['autodocs'],
+  parameters: { layout: 'fullscreen' },
+} satisfies Meta<typeof TaskDetailPanel>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Default: Story = {
+  args: {
+    task: mockTask,
+    onClose: () => {},
+    onUpdate: noop,
+    onTransition: noop,
+    onCancel: noop,
+    onDelete: noop,
+  },
+}
+
+export const Loading: Story = {
+  args: {
+    task: mockTask,
+    onClose: () => {},
+    onUpdate: noop,
+    onTransition: noop,
+    onCancel: noop,
+    onDelete: noop,
+    loading: true,
+  },
+}
+
+export const CompletedTask: Story = {
+  args: {
+    task: { ...mockTask, status: 'completed' },
+    onClose: () => {},
+    onUpdate: noop,
+    onTransition: noop,
+    onCancel: noop,
+    onDelete: noop,
+  },
+}
