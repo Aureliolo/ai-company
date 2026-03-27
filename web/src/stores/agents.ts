@@ -37,6 +37,7 @@ interface AgentsState {
   agentTasks: readonly Task[]
   activity: readonly AgentActivityEvent[]
   activityTotal: number
+  activityLoading: boolean
   careerHistory: readonly CareerEvent[]
   detailLoading: boolean
   detailError: string | null
@@ -78,6 +79,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   agentTasks: [],
   activity: [],
   activityTotal: 0,
+  activityLoading: false,
   careerHistory: [],
   detailLoading: false,
   detailError: null,
@@ -145,24 +147,31 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   },
 
   fetchMoreActivity: async (name: string, offset: number) => {
-    const { activity, selectedAgent } = get()
-    // Short-circuit if at client cap or agent changed
+    const { activity, selectedAgent, activityLoading } = get()
+    // Short-circuit if already fetching, at client cap, or agent changed
+    if (activityLoading) return
     if (activity.length >= MAX_ACTIVITIES) return
     if (selectedAgent && selectedAgent.name !== name) return
 
+    set({ activityLoading: true })
     try {
       const result = await getAgentActivity(name, { offset, limit: 20 })
       // Ignore response if agent changed while fetching
-      if (get().selectedAgent?.name !== name) return
+      if (get().selectedAgent?.name !== name) {
+        set({ activityLoading: false })
+        return
+      }
       set((state) => {
         const merged = [...state.activity, ...result.data].slice(0, MAX_ACTIVITIES)
         return {
           activity: merged,
           activityTotal: Math.min(result.total, MAX_ACTIVITIES),
+          activityLoading: false,
         }
       })
     } catch (err) {
       // Pagination failure -- existing data preserved, log for debugging
+      set({ activityLoading: false })
       console.warn('Failed to load more activity:', getErrorMessage(err))
     }
   },
@@ -181,6 +190,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       agentTasks: [],
       activity: [],
       activityTotal: 0,
+      activityLoading: false,
       careerHistory: [],
       detailLoading: false,
       detailError: null,

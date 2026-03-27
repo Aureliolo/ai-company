@@ -18,8 +18,11 @@ export function TaskHistory({ tasks, className }: TaskHistoryProps) {
 
   // Compute max duration for relative bar widths
   const maxDurationMs = sorted.reduce((max, task) => {
-    const end = task.updated_at ?? task.created_at!
-    const duration = new Date(end).getTime() - new Date(task.created_at!).getTime()
+    const endRaw = task.updated_at ?? task.created_at!
+    const endMs = new Date(endRaw).getTime()
+    // Fall back to created_at if updated_at is unparseable
+    const end = Number.isNaN(endMs) ? new Date(task.created_at!).getTime() : endMs
+    const duration = end - new Date(task.created_at!).getTime()
     return Math.max(max, duration)
   }, 1)
 

@@ -269,8 +269,9 @@ describe('formatCostPerTask properties', () => {
     fc.assert(
       fc.property(fc.float({ min: 0, max: 10000, noNaN: true }), (cost) => {
         const result = formatCostPerTask(cost)
-        // formatCurrency defaults to EUR -- result should contain the euro sign
-        expect(result).toMatch(/€/)
+        // Should contain digits and a currency symbol (currency may vary)
+        expect(result).toMatch(/\d/)
+        expect(result).toMatch(/[^\d\s.,]/)
       }),
     )
   })

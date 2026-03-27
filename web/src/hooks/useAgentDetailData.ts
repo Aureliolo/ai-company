@@ -15,6 +15,23 @@ import type { MetricCardProps } from '@/components/ui/metric-card'
 
 const DETAIL_POLL_INTERVAL = 30_000
 const DETAIL_CHANNELS = ['agents', 'tasks'] as const satisfies readonly WsChannel[]
+const EMPTY_BINDINGS: ChannelBinding[] = []
+
+const EMPTY_RETURN: UseAgentDetailDataReturn = {
+  agent: null,
+  performance: null,
+  performanceCards: [],
+  insights: [],
+  agentTasks: [],
+  activity: [],
+  activityTotal: 0,
+  careerHistory: [],
+  loading: false,
+  error: null,
+  wsConnected: false,
+  wsSetupError: null,
+  fetchMoreActivity: () => {},
+}
 
 export interface UseAgentDetailDataReturn {
   agent: AgentConfig | null
@@ -42,21 +59,27 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
   const loading = useAgentsStore((s) => s.detailLoading)
   const error = useAgentsStore((s) => s.detailError)
 
-  // Initial fetch
+  // Initial fetch -- skip when agentName is empty (missing route param)
   useEffect(() => {
+    if (!agentName) {
+      useAgentsStore.getState().clearDetail()
+      return
+    }
     useAgentsStore.getState().fetchAgentDetail(agentName)
     return () => {
       useAgentsStore.getState().clearDetail()
     }
   }, [agentName])
 
-  // Polling for refreshes
+  // Polling for refreshes -- only when agentName is truthy
   const pollFn = useCallback(async () => {
+    if (!agentName) return
     await useAgentsStore.getState().fetchAgentDetail(agentName)
   }, [agentName])
   const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
 
   useEffect(() => {
+    if (!agentName) return
     polling.start()
     return () => polling.stop()
     // polling is a new object each render but start/stop are stable --
@@ -64,15 +87,17 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [agentName])
 
-  // WebSocket
+  // WebSocket -- only bind when agentName is truthy
   const bindings: ChannelBinding[] = useMemo(
     () =>
-      DETAIL_CHANNELS.map((channel) => ({
-        channel,
-        handler: () => {
-          useAgentsStore.getState().fetchAgentDetail(agentName)
-        },
-      })),
+      agentName
+        ? DETAIL_CHANNELS.map((channel) => ({
+            channel,
+            handler: () => {
+              useAgentsStore.getState().fetchAgentDetail(agentName)
+            },
+          }))
+        : EMPTY_BINDINGS,
     [agentName],
   )
 
@@ -89,10 +114,13 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     [agent, performance],
   )
 
-  // Load more activity
+  // Load more activity -- store-level activityLoading prevents duplicates
   const fetchMoreActivity = useCallback(() => {
+    if (!agentName) return
     useAgentsStore.getState().fetchMoreActivity(agentName, activity.length)
   }, [agentName, activity.length])
+
+  if (!agentName) return EMPTY_RETURN
 
   return {
     agent,

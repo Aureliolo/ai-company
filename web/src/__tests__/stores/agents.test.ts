@@ -93,6 +93,7 @@ beforeEach(() => {
     agentTasks: [],
     activity: [],
     activityTotal: 0,
+    activityLoading: false,
     careerHistory: [],
     detailLoading: false,
     detailError: null,
