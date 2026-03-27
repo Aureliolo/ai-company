@@ -74,7 +74,7 @@ function SortableDepartmentCard({
         <SectionCard title={dept.display_name ?? dept.name} icon={Building2}>
           <DeptHealthBar
             name={dept.display_name ?? dept.name}
-            health={health?.health_percent ?? 0}
+            health={health?.health_percent}
             agentCount={agentCount}
             taskCount={health?.task_count ?? 0}
           />
@@ -190,6 +190,7 @@ export function DepartmentsTab({
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveDept(null)}
       >
         <SortableContext items={config.departments.map((d) => d.name)} strategy={rectSortingStrategy}>
           <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">

@@ -221,6 +221,7 @@ export function AgentsTab({
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveAgent(null)}
       >
         {Array.from(agentsByDept.entries()).map(([deptName, agents]) => {
           const dept = config.departments.find((d) => d.name === deptName)

@@ -282,10 +282,13 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       const current = get().config
       if (!current) return
       const currentMap = new Map(current.departments.map((d) => [d.name, d]))
+      const prevSet = new Set(prevOrder)
+      // Restore previous ordering, then append any departments added concurrently
       const restored = prevOrder
         .map((n) => currentMap.get(n as Department['name']))
         .filter((d): d is Department => d !== undefined)
-      set({ config: { ...current, departments: restored } })
+      const added = current.departments.filter((d) => !prevSet.has(d.name))
+      set({ config: { ...current, departments: [...restored, ...added] } })
     }
   },
 
