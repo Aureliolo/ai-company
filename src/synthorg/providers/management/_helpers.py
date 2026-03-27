@@ -25,13 +25,16 @@ def build_provider_config(
     Returns:
         Frozen ProviderConfig.
     """
-    tos_accepted_at = datetime.now(UTC) if request.tos_accepted else None
+    is_subscription = request.auth_type == AuthType.SUBSCRIPTION
+    tos_accepted_at = (
+        datetime.now(UTC) if is_subscription and request.tos_accepted else None
+    )
     return ProviderConfig(
         driver=request.driver,
         litellm_provider=request.litellm_provider,
         auth_type=request.auth_type,
         api_key=request.api_key,
-        subscription_token=request.subscription_token,
+        subscription_token=request.subscription_token if is_subscription else None,
         tos_accepted_at=tos_accepted_at,
         base_url=request.base_url,
         oauth_token_url=request.oauth_token_url,
@@ -58,20 +61,25 @@ _UPDATE_FIELDS: tuple[str, ...] = (
 )
 
 
-# Credential fields to clear when switching away from an auth type.
-_AUTH_OWNED_FIELDS: dict[AuthType, tuple[str, ...]] = {
-    AuthType.API_KEY: ("api_key",),
-    AuthType.OAUTH: (
-        "api_key",
-        "oauth_client_secret",
-        "oauth_token_url",
-        "oauth_client_id",
-        "oauth_scope",
-    ),
-    AuthType.CUSTOM_HEADER: ("custom_header_name", "custom_header_value"),
-    AuthType.SUBSCRIPTION: ("subscription_token", "tos_accepted_at"),
-    AuthType.NONE: (),
-}
+# Fields owned by each auth type.  When switching auth types, fields
+# not owned by the new type are cleared.
+_AUTH_OWNED_FIELDS: Final[MappingProxyType[AuthType, tuple[str, ...]]] = (
+    MappingProxyType(
+        {
+            AuthType.API_KEY: ("api_key",),
+            AuthType.OAUTH: (
+                "api_key",
+                "oauth_client_secret",
+                "oauth_token_url",
+                "oauth_client_id",
+                "oauth_scope",
+            ),
+            AuthType.CUSTOM_HEADER: ("custom_header_name", "custom_header_value"),
+            AuthType.SUBSCRIPTION: ("subscription_token", "tos_accepted_at"),
+            AuthType.NONE: (),
+        }
+    )
+)
 
 
 def apply_update(
@@ -118,7 +126,7 @@ def _apply_credential_updates(
     request: UpdateProviderRequest,
     final_auth_type: AuthType,
 ) -> None:
-    """Apply set/clear logic for api_key and subscription_token."""
+    """Apply set/clear logic for api_key, subscription_token, and tos_accepted_at."""
     # api_key: only set/clear when the resulting auth type supports it
     if final_auth_type in (AuthType.API_KEY, AuthType.OAUTH):
         if request.api_key is not None:

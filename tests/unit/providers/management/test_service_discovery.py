@@ -20,7 +20,6 @@ pytestmark = pytest.mark.unit
 _BACKEND_PORT = ServerConfig().port
 
 
-@pytest.mark.unit
 class TestDiscoverModelsForProvider:
     """Tests for discover_models_for_provider."""
 
@@ -104,7 +103,6 @@ class TestDiscoverModelsForProvider:
         )
 
 
-@pytest.mark.unit
 class TestCreateFromPresetAutoDiscovery:
     """Tests for auto-discovery in create_from_preset."""
 
@@ -157,7 +155,6 @@ class TestCreateFromPresetAutoDiscovery:
         assert result.models == discovered
 
 
-@pytest.mark.unit
 class TestDiscoverModelsForProviderTrust:
     """Parametrized tests for trust logic in discover_models_for_provider.
 
@@ -244,7 +241,6 @@ class TestDiscoverModelsForProviderTrust:
         assert call_kwargs.kwargs["trust_url"] is expected_trust
 
 
-@pytest.mark.unit
 class TestApplyDiscoveredModelsTOCTOU:
     """Tests for TOCTOU abort paths in _apply_discovered_models."""
 
@@ -318,7 +314,6 @@ class TestApplyDiscoveredModelsTOCTOU:
         )
 
 
-@pytest.mark.unit
 class TestSelfConnectionGuard:
     """Tests for the self-connection guard in trust resolution.
 

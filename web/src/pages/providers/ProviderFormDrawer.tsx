@@ -12,8 +12,6 @@ import type { ProviderWithName } from '@/utils/providers'
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },
   { value: 'subscription', label: 'Subscription (OAuth)' },
-  { value: 'oauth', label: 'OAuth (Client Credentials)' },
-  { value: 'custom_header', label: 'Custom Header' },
   { value: 'none', label: 'None' },
 ]
 
@@ -32,6 +30,7 @@ export function ProviderFormDrawer({
 }: ProviderFormDrawerProps) {
   const presets = useProvidersStore((s) => s.presets)
   const presetsLoading = useProvidersStore((s) => s.presetsLoading)
+  const presetsError = useProvidersStore((s) => s.presetsError)
 
   // Form state
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
@@ -69,8 +68,18 @@ export function ProviderFormDrawer({
     }
   }, [mode, provider])
 
-  // When preset changes, auto-fill form fields
+  // When preset changes, auto-fill form fields (or reset for custom)
   useEffect(() => {
+    if (selectedPreset === '__custom__') {
+      setName('')
+      setAuthType('api_key')
+      setApiKey('')
+      setSubscriptionToken('')
+      setBaseUrl('')
+      setLitellmProvider('')
+      setTosAccepted(false)
+      return
+    }
     if (!preset) return
     setName(preset.name)
     setAuthType(preset.auth_type)
@@ -79,7 +88,7 @@ export function ProviderFormDrawer({
     setTosAccepted(false)
     setSubscriptionToken('')
     setApiKey('')
-  }, [preset])
+  }, [preset, selectedPreset])
 
   // Available auth types based on selected preset
   const availableAuthTypes = preset
@@ -149,7 +158,9 @@ export function ProviderFormDrawer({
           litellm_provider: litellmProvider || undefined,
           auth_type: authType,
           api_key: authType === 'api_key' && apiKey ? apiKey : undefined,
+          clear_api_key: authType !== 'api_key' || !apiKey,
           subscription_token: authType === 'subscription' && subscriptionToken ? subscriptionToken : undefined,
+          clear_subscription_token: authType !== 'subscription' || !subscriptionToken,
           tos_accepted: authType === 'subscription' && tosAccepted,
           base_url: baseUrl || undefined,
         })
@@ -168,6 +179,13 @@ export function ProviderFormDrawer({
         title={mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`}
       >
         <div className="flex flex-col gap-6 p-4">
+          {/* Presets error banner */}
+          {presetsError && (
+            <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
+              Failed to load provider presets: {presetsError}
+            </div>
+          )}
+
           {/* Step 1: Preset picker (create only) */}
           {mode === 'create' && (
             <div>
@@ -227,7 +245,7 @@ export function ProviderFormDrawer({
                       type="password"
                       value={subscriptionToken}
                       onChange={(e) => setSubscriptionToken(e.target.value)}
-                      placeholder="sk-ant-oat01-..."
+                      placeholder="sub-token-..."
                       hint="Run 'claude setup-token' in your terminal to get this token"
                     />
                   )}
@@ -245,7 +263,7 @@ export function ProviderFormDrawer({
               />
 
               {/* Base URL */}
-              {(isCustom || preset?.default_base_url !== null || mode === 'edit') && (
+              {(isCustom || preset != null || mode === 'edit') && (
                 <InputField
                   label="Base URL"
                   value={baseUrl}

@@ -240,6 +240,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getPriorityColor()` | `utils/tasks.ts` | Maps `Priority` to `SemanticColor`. |
 | `getPriorityLabel()` | `utils/tasks.ts` | Maps `Priority` to display label. |
 | `getTaskTypeLabel()` | `utils/tasks.ts` | Maps `TaskType` to display label. |
+| `getProviderHealthColor()` | `utils/providers.ts` | Maps `ProviderHealthStatus` to `SemanticColor`. |
 
 ### Animation Hooks
 
@@ -257,6 +258,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `SemanticColor` | `lib/utils.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
 | `TaskStatus` | `api/types` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"cancelled"` |
 | `Priority` | `api/types` | `"critical"`, `"high"`, `"medium"`, `"low"` |
+| `ProviderHealthStatus` | `api/types` | `"up"`, `"degraded"`, `"down"` |
 
 ### When to Create a New Shared Component
 

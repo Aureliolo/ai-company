@@ -122,11 +122,11 @@ class TestProviderConfigAuth:
         config = ProviderConfig(
             driver="litellm",
             auth_type=AuthType.SUBSCRIPTION,
-            subscription_token="sk-ant-oat01-test-token",
+            subscription_token="test-subscription-token",
             tos_accepted_at=_TOS_ACCEPTED,
         )
         assert config.auth_type == AuthType.SUBSCRIPTION
-        assert config.subscription_token == "sk-ant-oat01-test-token"
+        assert config.subscription_token == "test-subscription-token"
         assert config.tos_accepted_at is not None
 
     def test_subscription_missing_token_raises(self) -> None:
@@ -142,7 +142,7 @@ class TestProviderConfigAuth:
             ProviderConfig(
                 driver="litellm",
                 auth_type=AuthType.SUBSCRIPTION,
-                subscription_token="sk-ant-oat01-test-token",
+                subscription_token="test-subscription-token",
             )
 
     def test_subscription_missing_both_raises(self) -> None:
@@ -155,9 +155,9 @@ class TestProviderConfigAuth:
     def test_litellm_provider_field(self) -> None:
         config = ProviderConfig(
             driver="litellm",
-            litellm_provider="anthropic",
+            litellm_provider="test-provider",
         )
-        assert config.litellm_provider == "anthropic"
+        assert config.litellm_provider == "test-provider"
 
     def test_litellm_provider_defaults_to_none(self) -> None:
         config = ProviderConfig(driver="litellm")

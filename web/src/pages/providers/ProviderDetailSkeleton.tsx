@@ -1,4 +1,6 @@
 import { Skeleton, SkeletonMetric } from '@/components/ui/skeleton'
+import { SectionCard } from '@/components/ui/section-card'
+import { Boxes } from 'lucide-react'
 
 export function ProviderDetailSkeleton() {
   return (
@@ -18,12 +20,11 @@ export function ProviderDetailSkeleton() {
       </div>
 
       {/* Model list skeleton */}
-      <div className="rounded-lg border border-border bg-card p-card">
-        <Skeleton className="h-5 w-24 mb-4" />
+      <SectionCard title="Models" icon={Boxes}>
         {Array.from({ length: 3 }, (_, i) => (
           <Skeleton key={i} className="h-8 w-full mb-2" />
         ))}
-      </div>
+      </SectionCard>
     </div>
   )
 }

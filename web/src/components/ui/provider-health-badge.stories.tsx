@@ -5,6 +5,7 @@ const meta = {
   title: 'UI/ProviderHealthBadge',
   component: ProviderHealthBadge,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
 } satisfies Meta<typeof ProviderHealthBadge>
 
 export default meta

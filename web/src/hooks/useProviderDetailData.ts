@@ -33,19 +33,17 @@ export function useProviderDetailData(
   )
   const testingConnection = useProvidersStore((s) => s.testingConnection)
 
-  // Initial fetch + cleanup
+  // Cleanup on unmount or provider change
   useEffect(() => {
     if (!providerName) {
       useProvidersStore.getState().clearDetail()
-      return
     }
-    useProvidersStore.getState().fetchProviderDetail(providerName)
     return () => {
       useProvidersStore.getState().clearDetail()
     }
   }, [providerName])
 
-  // Polling
+  // Polling (start() fires immediately, so no separate initial fetch needed)
   const pollFn = useCallback(async () => {
     if (!providerName) return
     await useProvidersStore.getState().fetchProviderDetail(providerName)

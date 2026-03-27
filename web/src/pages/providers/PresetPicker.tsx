@@ -2,6 +2,47 @@ import { Server } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ProviderPreset } from '@/api/types'
 
+interface PresetOptionCardProps {
+  name: string
+  displayName: string
+  description: string
+  selected: boolean
+  onClick: () => void
+  ariaLabel: string
+  dashed?: boolean
+  iconMuted?: boolean
+}
+
+function PresetOptionCard({
+  displayName,
+  description,
+  selected,
+  onClick,
+  ariaLabel,
+  dashed = false,
+  iconMuted = false,
+}: PresetOptionCardProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',
+        'hover:bg-card-hover hover:border-bright',
+        selected
+          ? 'border-accent bg-accent/5'
+          : cn('border-border bg-card', dashed && 'border-dashed'),
+      )}
+    >
+      <Server className={cn('size-5', iconMuted ? 'text-text-muted' : 'text-text-secondary')} />
+      <span className="text-sm font-medium text-foreground">{displayName}</span>
+      <span className="text-xs text-text-muted line-clamp-1">{description}</span>
+    </button>
+  )
+}
+
 interface PresetPickerProps {
   presets: readonly ProviderPreset[]
   selected: string | null
@@ -23,48 +64,27 @@ export function PresetPicker({ presets, selected, onSelect, loading }: PresetPic
   return (
     <div className="grid grid-cols-3 gap-3 max-[767px]:grid-cols-2">
       {presets.map((preset) => (
-        <button
+        <PresetOptionCard
           key={preset.name}
-          type="button"
-          aria-pressed={selected === preset.name}
-          aria-label={`Select ${preset.display_name} preset`}
+          name={preset.name}
+          displayName={preset.display_name}
+          description={preset.description}
+          selected={selected === preset.name}
           onClick={() => onSelect(preset.name === selected ? null : preset.name)}
-          className={cn(
-            'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',
-            'hover:bg-card-hover hover:border-bright',
-            selected === preset.name
-              ? 'border-accent bg-accent/5'
-              : 'border-border bg-card',
-          )}
-        >
-          <Server className="size-5 text-text-secondary" />
-          <span className="text-sm font-medium text-foreground">
-            {preset.display_name}
-          </span>
-          <span className="text-xs text-text-muted line-clamp-1">
-            {preset.description}
-          </span>
-        </button>
+          ariaLabel={`Select ${preset.display_name} preset`}
+        />
       ))}
 
-      {/* Custom option */}
-      <button
-        type="button"
-        aria-pressed={selected === '__custom__'}
-        aria-label="Select custom provider"
+      <PresetOptionCard
+        name="__custom__"
+        displayName="Custom"
+        description="Any endpoint"
+        selected={selected === '__custom__'}
         onClick={() => onSelect(selected === '__custom__' ? null : '__custom__')}
-        className={cn(
-          'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',
-          'hover:bg-card-hover hover:border-bright',
-          selected === '__custom__'
-            ? 'border-accent bg-accent/5'
-            : 'border-border border-dashed bg-card',
-        )}
-      >
-        <Server className="size-5 text-text-muted" />
-        <span className="text-sm font-medium text-foreground">Custom</span>
-        <span className="text-xs text-text-muted">Any endpoint</span>
-      </button>
+        ariaLabel="Select custom provider"
+        dashed
+        iconMuted
+      />
     </div>
   )
 }

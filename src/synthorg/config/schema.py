@@ -47,8 +47,8 @@ class ProviderModelConfig(BaseModel):
     Attributes:
         id: Model identifier (e.g. ``"example-medium-001"``).
         alias: Short alias for referencing this model in routing rules.
-        cost_per_1k_input: Cost per 1,000 input tokens in USD (base currency).
-        cost_per_1k_output: Cost per 1,000 output tokens in USD (base currency).
+        cost_per_1k_input: Cost per 1,000 input tokens (base currency).
+        cost_per_1k_output: Cost per 1,000 output tokens (base currency).
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
     """
@@ -88,13 +88,13 @@ class ProviderConfig(BaseModel):
 
     Attributes:
         driver: Driver backend name (e.g. ``"litellm"``).
-        litellm_provider: LiteLLM routing identifier (e.g. ``"anthropic"``,
-            ``"openai"``).  When set, the driver uses this instead of the
-            provider name as the model prefix for LiteLLM routing.  Falls
-            back to the provider name when ``None``.
+        litellm_provider: LiteLLM routing identifier (e.g.
+            ``"example-provider"``).  When set, the driver uses this instead
+            of the provider name as the model prefix for LiteLLM routing.
+            Falls back to the provider name when ``None``.
         auth_type: Authentication type for this provider.
         api_key: API key (typically injected by secret management).
-        subscription_token: OAuth bearer token for subscription-based auth
+        subscription_token: Bearer token for subscription-based auth
             (e.g. provider subscription plans).  Encrypted at rest.
         tos_accepted_at: Timestamp when the user accepted the subscription
             Terms of Service warning.  Required when ``auth_type`` is
@@ -124,7 +124,7 @@ class ProviderConfig(BaseModel):
         default=None,
         description=(
             "LiteLLM provider identifier for routing "
-            "(e.g. 'anthropic', 'openai').  Falls back to "
+            "(e.g. 'example-provider').  Falls back to "
             "the provider name when None."
         ),
     )

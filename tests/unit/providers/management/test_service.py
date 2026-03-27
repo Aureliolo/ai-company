@@ -439,6 +439,90 @@ class TestAuthTypeTransitions:
         assert result.oauth_client_id is None
         assert result.oauth_client_secret is None
 
+    async def test_switch_from_subscription_to_api_key_clears_subscription(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Switching from subscription to api_key clears token and tos."""
+        await service.create_provider(
+            make_create_request(
+                auth_type=AuthType.SUBSCRIPTION,
+                subscription_token="test-subscription-token",
+                tos_accepted=True,
+            ),
+        )
+        update = UpdateProviderRequest(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-new-key",
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.API_KEY
+        assert result.api_key == "sk-new-key"
+        assert result.subscription_token is None
+        assert result.tos_accepted_at is None
+
+    async def test_switch_to_subscription_sets_token(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Switching to subscription sets the subscription_token."""
+        await service.create_provider(
+            make_create_request(
+                auth_type=AuthType.API_KEY,
+                api_key="sk-old",
+            ),
+        )
+        update = UpdateProviderRequest(
+            auth_type=AuthType.SUBSCRIPTION,
+            subscription_token="test-subscription-token",
+            tos_accepted=True,
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.SUBSCRIPTION
+        assert result.subscription_token == "test-subscription-token"
+        assert result.api_key is None
+        assert result.tos_accepted_at is not None
+
+    async def test_subscription_tos_accepted_stamps_timestamp(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Setting tos_accepted=True re-stamps tos_accepted_at."""
+        await service.create_provider(
+            make_create_request(
+                auth_type=AuthType.SUBSCRIPTION,
+                subscription_token="test-subscription-token",
+                tos_accepted=True,
+            ),
+        )
+        # Re-accept ToS to re-stamp
+        update = UpdateProviderRequest(tos_accepted=True)
+        result = await service.update_provider("test-provider", update)
+        assert result.tos_accepted_at is not None
+
+    async def test_clear_subscription_token_raises_validation(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Clearing subscription_token while staying on SUBSCRIPTION fails validation.
+
+        The ProviderConfig validator requires subscription_token when
+        auth_type is SUBSCRIPTION, so clearing it without changing
+        auth type raises a ValidationError.
+        """
+        from pydantic import ValidationError
+
+        await service.create_provider(
+            make_create_request(
+                auth_type=AuthType.SUBSCRIPTION,
+                subscription_token="test-subscription-token",
+                tos_accepted=True,
+            ),
+        )
+        update = UpdateProviderRequest(clear_subscription_token=True)
+        with pytest.raises(ValidationError, match="subscription_token"):
+            await service.update_provider("test-provider", update)
+
 
 @pytest.mark.unit
 class TestValidateAndPersistFailure:

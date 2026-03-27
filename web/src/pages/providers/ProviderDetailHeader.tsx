@@ -23,7 +23,7 @@ export function ProviderDetailHeader({
   onTestConnection,
   testingConnection,
 }: ProviderDetailHeaderProps) {
-  const authLabel = provider.auth_type.replace('_', ' ')
+  const authLabel = provider.auth_type.replaceAll('_', ' ')
 
   return (
     <div className="flex flex-col gap-4">

@@ -7,6 +7,27 @@ import { Server } from 'lucide-react'
 import type { ProviderHealthSummary } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
 
+interface ProviderGridItemProps {
+  provider: ProviderWithName
+  health: ProviderHealthSummary | null
+}
+
+function ProviderGridItem({ provider, health }: ProviderGridItemProps) {
+  return (
+    <StaggerItem>
+      <Link
+        to={ROUTES.PROVIDER_DETAIL.replace(
+          ':providerName',
+          encodeURIComponent(provider.name),
+        )}
+        className="block"
+      >
+        <ProviderCard provider={provider} health={health} />
+      </Link>
+    </StaggerItem>
+  )
+}
+
 interface ProviderGridViewProps {
   providers: readonly ProviderWithName[]
   healthMap: Record<string, ProviderHealthSummary>
@@ -32,20 +53,11 @@ export function ProviderGridView({
   return (
     <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[767px]:grid-cols-1">
       {providers.map((provider) => (
-        <StaggerItem key={provider.name}>
-          <Link
-            to={ROUTES.PROVIDER_DETAIL.replace(
-              ':providerName',
-              encodeURIComponent(provider.name),
-            )}
-            className="block"
-          >
-            <ProviderCard
-              provider={provider}
-              health={healthMap[provider.name] ?? null}
-            />
-          </Link>
-        </StaggerItem>
+        <ProviderGridItem
+          key={provider.name}
+          provider={provider}
+          health={healthMap[provider.name] ?? null}
+        />
       ))}
     </StaggerGroup>
   )

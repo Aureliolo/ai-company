@@ -19,7 +19,7 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
       className={cn(
         'rounded-lg border border-border bg-card p-card',
         'transition-all duration-200',
-        'hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
+        'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}
     >
@@ -39,7 +39,7 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
         <div className="flex items-center gap-2 text-xs text-text-secondary">
           <span className="truncate">{subtitle}</span>
           <span className="text-text-muted">|</span>
-          <span>{provider.auth_type.replace('_', ' ')}</span>
+          <span>{provider.auth_type.replaceAll('_', ' ')}</span>
         </div>
 
         {provider.base_url && (

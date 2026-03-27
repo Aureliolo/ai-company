@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router'
 import { useProviderDetailData } from '@/hooks/useProviderDetailData'
 import { useProvidersStore } from '@/stores/providers'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ROUTES } from '@/router/routes'
 import { ProviderDetailHeader } from './providers/ProviderDetailHeader'
@@ -11,11 +12,12 @@ import { ProviderModelList } from './providers/ProviderModelList'
 import { ProviderDetailSkeleton } from './providers/ProviderDetailSkeleton'
 import { ProviderFormDrawer } from './providers/ProviderFormDrawer'
 import { TestConnectionResult } from './providers/TestConnectionResult'
+import { Server } from 'lucide-react'
 
 export default function ProviderDetailPage() {
   const { providerName } = useParams<{ providerName: string }>()
   const navigate = useNavigate()
-  const decodedName = providerName ? decodeURIComponent(providerName) : ''
+  const decodedName = providerName ?? ''
 
   const {
     provider,
@@ -46,7 +48,16 @@ export default function ProviderDetailPage() {
     )
   }
 
-  if (!provider) return null
+  if (!provider) {
+    return (
+      <EmptyState
+        icon={Server}
+        title="Provider not found"
+        description="The provider you are looking for does not exist or has been removed."
+        action={{ label: 'Back to Providers', onClick: () => navigate(ROUTES.PROVIDERS) }}
+      />
+    )
+  }
 
   return (
     <div className="flex flex-col gap-section-gap">

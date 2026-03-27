@@ -11,6 +11,9 @@ interface TestConnectionResultProps {
 export function TestConnectionResult({ result, className }: TestConnectionResultProps) {
   return (
     <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
       className={cn(
         'flex items-center gap-2 rounded-md px-3 py-2 text-sm',
         result.success
@@ -30,7 +33,7 @@ export function TestConnectionResult({ result, className }: TestConnectionResult
       ) : (
         <>
           <XCircle className="size-4 shrink-0" />
-          <span className="truncate">{result.error ?? 'Connection failed'}</span>
+          <span className="min-w-0 flex-1 break-words">{result.error ?? 'Connection failed'}</span>
         </>
       )}
     </div>

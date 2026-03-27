@@ -91,8 +91,9 @@ export function sortProviders(
       case 'health': {
         const ha = healthMap[a.name]?.health_status
         const hb = healthMap[b.name]?.health_status
-        const oa = ha ? HEALTH_ORDER[ha] : -1
-        const ob = hb ? HEALTH_ORDER[hb] : -1
+        const unknownOrder = Object.keys(HEALTH_ORDER).length
+        const oa = ha ? HEALTH_ORDER[ha] : unknownOrder
+        const ob = hb ? HEALTH_ORDER[hb] : unknownOrder
         return dir * (oa - ob)
       }
     }

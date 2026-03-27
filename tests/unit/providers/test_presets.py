@@ -72,3 +72,21 @@ class TestProviderPresets:
         assert preset is not None
         with pytest.raises(ValidationError, match="frozen"):
             preset.name = "changed"  # type: ignore[misc]
+
+    def test_auth_type_not_in_supported_raises(self) -> None:
+        """Creating a preset with auth_type not in supported_auth_types fails."""
+        from pydantic import ValidationError
+
+        from synthorg.providers.enums import AuthType
+        from synthorg.providers.presets import ProviderPreset
+
+        with pytest.raises(ValidationError, match=r"auth_type.*not in"):
+            ProviderPreset(
+                name="test-bad-preset",
+                display_name="Bad Preset",
+                description="Preset with mismatched auth_type",
+                driver="litellm",
+                litellm_provider="test",
+                auth_type=AuthType.SUBSCRIPTION,
+                supported_auth_types=(AuthType.API_KEY,),
+            )

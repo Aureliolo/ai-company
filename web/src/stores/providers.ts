@@ -57,6 +57,7 @@ interface ProvidersState {
   presetsError: string | null
   testConnectionResult: TestConnectionResponse | null
   testingConnection: boolean
+  discoveringModels: boolean
   mutating: boolean
 
   // ── Actions ──
@@ -104,6 +105,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   presetsError: null,
   testConnectionResult: null,
   testingConnection: false,
+  discoveringModels: false,
   mutating: false,
 
   // ── List actions ──
@@ -329,6 +331,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   },
 
   discoverModels: async (name, presetHint) => {
+    set({ discoveringModels: true })
     try {
       const result = await apiDiscoverModels(name, presetHint)
       useToastStore.getState().add({
@@ -347,6 +350,8 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
         description: getErrorMessage(err),
       })
       return null
+    } finally {
+      set({ discoveringModels: false })
     }
   },
 

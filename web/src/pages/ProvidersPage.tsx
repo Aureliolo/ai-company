@@ -3,18 +3,15 @@ import { Plus, Server } from 'lucide-react'
 import { useProvidersData } from '@/hooks/useProvidersData'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ProviderGridView } from './providers/ProviderGridView'
 import { ProviderFilters } from './providers/ProviderFilters'
 import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
 import { ProviderFormDrawer } from './providers/ProviderFormDrawer'
-import { useProvidersStore } from '@/stores/providers'
 
 
 export default function ProvidersPage() {
   const { filteredProviders, healthMap, loading, error, providers } = useProvidersData()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
 
   const hasData = filteredProviders.length > 0 || providers.length > 0
 
@@ -60,22 +57,6 @@ export default function ProvidersPage() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         mode="create"
-      />
-
-      {/* Delete confirmation */}
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-        title="Delete Provider"
-        description={`Are you sure you want to delete "${deleteTarget}"? This action cannot be undone.`}
-        variant="destructive"
-        confirmLabel="Delete"
-        onConfirm={async () => {
-          if (deleteTarget) {
-            await useProvidersStore.getState().deleteProvider(deleteTarget)
-            setDeleteTarget(null)
-          }
-        }}
       />
     </div>
   )

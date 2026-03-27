@@ -25,12 +25,7 @@ export function useProvidersData(): UseProvidersDataReturn {
   const sortBy = useProvidersStore((s) => s.sortBy)
   const sortDirection = useProvidersStore((s) => s.sortDirection)
 
-  // Initial fetch
-  useEffect(() => {
-    useProvidersStore.getState().fetchProviders()
-  }, [])
-
-  // Polling
+  // Polling (start() fires immediately, so no separate initial fetch needed)
   const pollFn = useCallback(async () => {
     await useProvidersStore.getState().fetchProviders()
   }, [])

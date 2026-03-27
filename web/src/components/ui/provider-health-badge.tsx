@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { ProviderHealthStatus } from '@/api/types'
 import { getProviderHealthColor } from '@/utils/providers'
+import type { SemanticColor } from '@/lib/utils'
 
 const STATUS_LABELS: Record<ProviderHealthStatus, string> = {
   up: 'Up',
@@ -8,19 +9,26 @@ const STATUS_LABELS: Record<ProviderHealthStatus, string> = {
   down: 'Down',
 }
 
-const DOT_COLOR_CLASSES: Record<string, string> = {
+const DOT_COLOR_CLASSES: Record<SemanticColor, string> = {
   success: 'bg-success',
+  accent: 'bg-accent',
   warning: 'bg-warning',
   danger: 'bg-danger',
 }
 
-interface ProviderHealthBadgeProps {
+export interface ProviderHealthBadgeProps {
   status: ProviderHealthStatus
   label?: boolean
   pulse?: boolean
   className?: string
 }
 
+/**
+ * Provider health status indicator (up/degraded/down colored dot + optional label).
+ *
+ * Uses the same visual pattern as StatusBadge but with provider-specific health
+ * status types and color mapping (up=success, degraded=warning, down=danger).
+ */
 export function ProviderHealthBadge({
   status,
   label = false,

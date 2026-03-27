@@ -1,4 +1,6 @@
 import { useProvidersStore } from '@/stores/providers'
+import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
 import type { ProviderHealthStatus } from '@/api/types'
 import type { ProviderSortKey } from '@/utils/providers'
 
@@ -9,7 +11,7 @@ const HEALTH_OPTIONS: { value: string; label: string }[] = [
   { value: 'down', label: 'Down' },
 ]
 
-const SORT_OPTIONS: { value: ProviderSortKey; label: string }[] = [
+const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'health', label: 'Health' },
   { value: 'model_count', label: 'Models' },
@@ -27,47 +29,31 @@ export function ProviderFilters() {
   const setSortBy = useProvidersStore((s) => s.setSortBy)
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <input
-        type="text"
+    <div className="flex flex-wrap items-end gap-3">
+      <InputField
+        label="Search"
         placeholder="Search providers..."
-        aria-label="Search providers"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="h-8 rounded-md border border-border bg-bg-surface px-3 text-sm text-foreground placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent"
       />
 
-      <select
-        aria-label="Filter by health status"
+      <SelectField
+        label="Health"
+        options={HEALTH_OPTIONS}
         value={healthFilter ?? ''}
-        onChange={(e) => {
-          const v = e.target.value
+        onChange={(v) => {
           setHealthFilter(v && VALID_HEALTH.has(v) ? (v as ProviderHealthStatus) : null)
         }}
-        className="h-8 rounded-md border border-border bg-bg-surface px-2 text-sm text-foreground"
-      >
-        {HEALTH_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      />
 
-      <select
-        aria-label="Sort providers"
+      <SelectField
+        label="Sort by"
+        options={SORT_OPTIONS}
         value={sortBy}
-        onChange={(e) => {
-          const v = e.target.value
+        onChange={(v) => {
           if (VALID_SORT.has(v)) setSortBy(v as ProviderSortKey)
         }}
-        className="h-8 rounded-md border border-border bg-bg-surface px-2 text-sm text-foreground"
-      >
-        {SORT_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            Sort: {opt.label}
-          </option>
-        ))}
-      </select>
+      />
     </div>
   )
 }

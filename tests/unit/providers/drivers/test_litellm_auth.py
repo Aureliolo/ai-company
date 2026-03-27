@@ -1,5 +1,6 @@
 """Tests for LiteLLM driver multi-auth support."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -119,3 +120,28 @@ class TestLiteLLMDriverAuth:
         )
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
+
+    def test_build_kwargs_subscription_sets_bearer_header(self) -> None:
+        """Subscription auth sets Authorization Bearer header."""
+        config = _make_config(
+            auth_type=AuthType.SUBSCRIPTION,
+            subscription_token="test-subscription-token",
+            tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        kwargs = _build_kwargs(config)
+        assert kwargs["extra_headers"]["Authorization"] == (
+            "Bearer test-subscription-token"
+        )
+        assert "api_key" not in kwargs
+
+    def test_build_kwargs_subscription_no_token_skips_header(self) -> None:
+        """Subscription auth without a token omits extra_headers."""
+        config = _make_config(
+            auth_type=AuthType.SUBSCRIPTION,
+            subscription_token="test-subscription-token",
+            tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        # Bypass frozen model to simulate a cleared token
+        object.__setattr__(config, "subscription_token", None)
+        kwargs = _build_kwargs(config)
+        assert "extra_headers" not in kwargs

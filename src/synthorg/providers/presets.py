@@ -73,7 +73,7 @@ _ANTHROPIC = ProviderPreset(
     supported_auth_types=(AuthType.API_KEY, AuthType.SUBSCRIPTION),
     default_models=(
         ProviderModelConfig(
-            id="claude-sonnet-4-20250514",
+            id="claude-sonnet-4-6-20250514",
             alias="sonnet",
             cost_per_1k_input=0.003,
             cost_per_1k_output=0.015,

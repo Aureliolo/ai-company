@@ -362,8 +362,10 @@ class ProviderManagementService:
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
-        When the preset has ``auth_type=none`` and a base URL but no
-        models, attempts auto-discovery before creating the provider.
+        The request's ``auth_type`` overrides the preset default when
+        provided.  When the effective auth type is ``AuthType.NONE``
+        and a base URL is available but no models are given, attempts
+        auto-discovery before creating the provider.
 
         Args:
             request: Preset-based creation request.
@@ -387,13 +389,13 @@ class ProviderManagementService:
 
         models = request.models if request.models is not None else preset.default_models
         base_url = request.base_url or preset.default_base_url
+        auth_type = request.auth_type or preset.auth_type
         models = await self._maybe_discover_preset_models(
             preset,
             base_url,
             models,
+            auth_type=auth_type,
         )
-
-        auth_type = request.auth_type or preset.auth_type
         create_request = CreateProviderRequest(
             name=request.name,
             driver=preset.driver,
@@ -412,23 +414,26 @@ class ProviderManagementService:
         preset: ProviderPreset,
         base_url: str | None,
         models: tuple[ProviderModelConfig, ...],
+        *,
+        auth_type: AuthType,
     ) -> tuple[ProviderModelConfig, ...]:
         """Auto-discover models for no-auth presets when none are provided.
 
-        Only attempts discovery when the preset uses ``AuthType.NONE``,
-        a base URL is available, and no models were explicitly provided.
-        Trust is determined by the discovery allowlist -- preset default
-        URLs are seeded on first access, so they are automatically trusted.
+        Only attempts discovery when the effective auth type is
+        ``AuthType.NONE``, a base URL is available, and no models were
+        explicitly provided.  The request's ``auth_type`` override is
+        applied before this check.
 
         Args:
             preset: Resolved preset definition.
             base_url: Provider base URL (may be user-overridden).
             models: Explicitly provided models (may be empty).
+            auth_type: Effective auth type (request override or preset default).
 
         Returns:
             Discovered models if any, otherwise the original models.
         """
-        if models or preset.auth_type != AuthType.NONE or not base_url:
+        if models or auth_type != AuthType.NONE or not base_url:
             return models
         if self._is_self_connection(base_url):
             return models

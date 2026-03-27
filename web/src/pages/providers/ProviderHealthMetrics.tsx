@@ -8,7 +8,7 @@ interface ProviderHealthMetricsProps {
 
 export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
   const lastCheck = health.last_check_timestamp
-    ? new Date(health.last_check_timestamp).toLocaleTimeString()
+    ? new Date(health.last_check_timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : '--'
 
   return (

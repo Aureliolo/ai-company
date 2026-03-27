@@ -529,7 +529,19 @@ def _validate_provider_name(v: str) -> str:
 
 
 class CreateProviderRequest(BaseModel):
-    """Payload for creating a new provider."""
+    """Payload for creating a new provider.
+
+    Attributes:
+        name: Unique provider name (2-64 chars, lowercase alphanumeric + hyphens).
+        driver: Driver backend name (default ``"litellm"``).
+        litellm_provider: LiteLLM routing identifier override.
+        auth_type: Authentication mechanism for this provider.
+        api_key: API key credential (optional, depends on auth_type).
+        subscription_token: Bearer token for subscription-based auth.
+        tos_accepted: Whether the user accepted the subscription ToS warning.
+        base_url: Provider API base URL.
+        models: Pre-configured model definitions.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -583,8 +595,8 @@ class UpdateProviderRequest(BaseModel):
     models: tuple[ProviderModelConfig, ...] | None = None
 
     @model_validator(mode="after")
-    def _validate_api_key_clear_consistency(self) -> Self:
-        """Reject simultaneous api_key and clear_api_key."""
+    def _validate_credential_clear_consistency(self) -> Self:
+        """Reject simultaneous set and clear for credential fields."""
         if self.api_key is not None and self.clear_api_key:
             msg = "api_key and clear_api_key are mutually exclusive"
             raise ValueError(msg)
@@ -641,6 +653,20 @@ class ProviderResponse(BaseModel):
     """Safe provider config for API responses -- secrets stripped.
 
     Non-secret auth fields are included for frontend edit form UX.
+    Boolean ``has_*`` indicators signal credential presence without
+    exposing values.
+
+    Attributes:
+        driver: Driver backend name.
+        litellm_provider: LiteLLM routing identifier override.
+        auth_type: Authentication mechanism.
+        base_url: Provider API base URL.
+        models: Configured model definitions.
+        has_api_key: Whether an API key is set.
+        has_oauth_credentials: Whether OAuth credentials are configured.
+        has_custom_header: Whether a custom auth header is configured.
+        has_subscription_token: Whether a subscription token is set.
+        tos_accepted_at: ISO timestamp of ToS acceptance (or ``None``).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -662,7 +688,16 @@ class ProviderResponse(BaseModel):
 
 
 class CreateFromPresetRequest(BaseModel):
-    """Payload for creating a provider from a preset."""
+    """Payload for creating a provider from a preset.
+
+    Attributes:
+        preset_name: Name of the preset to create from.
+        name: Unique provider name (2-64 chars, lowercase alphanumeric + hyphens).
+        auth_type: Override the preset's default auth type (optional).
+        subscription_token: Bearer token for subscription-based auth.
+        tos_accepted: Whether the user accepted the subscription ToS warning.
+        base_url: Override the preset's default base URL (optional).
+    """
 
     model_config = ConfigDict(frozen=True)
 
