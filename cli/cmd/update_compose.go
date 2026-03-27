@@ -136,7 +136,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 	_, _ = fmt.Fprintln(out, "Compose template has changed:")
 	_, _ = fmt.Fprintln(out, diff)
 
-	ok, err := confirmUpdate("Apply compose configuration changes?")
+	ok, err := confirmUpdate(cmd.Context(), "Apply compose configuration changes?")
 	if err != nil {
 		return false, err
 	}

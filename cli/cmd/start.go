@@ -34,9 +34,9 @@ func init() {
 
 func runStart(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -52,8 +52,6 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		}
 		return fmt.Errorf("checking compose.yml: %w", err)
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
@@ -158,7 +156,7 @@ func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, sta
 // verifyAndPinImages verifies image signatures (unless --skip-verify) and
 // pins the verified digests in the compose file and config.
 func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
-	if flagSkipVerify {
+	if GetGlobalOpts(ctx).SkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		return nil
 	}

@@ -38,9 +38,8 @@ func init() {
 
 func runLogs(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
 
-	state, err := config.Load(dir)
+	state, err := config.Load(GetGlobalOpts(ctx).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

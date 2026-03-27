@@ -36,6 +36,7 @@ func (e *ExitError) Unwrap() error {
 }
 
 // NewExitError creates an ExitError with the given code and error.
+// err may be nil for exit-code-only signals (e.g. ExitUpdateAvail).
 func NewExitError(code int, err error) *ExitError {
 	return &ExitError{Code: code, Err: err}
 }

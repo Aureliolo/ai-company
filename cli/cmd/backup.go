@@ -298,14 +298,12 @@ func printBackupTable(out *ui.UI, backups []backupInfo) {
 
 func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	out.Step("Creating backup...")
@@ -341,14 +339,12 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 
 func runBackupList(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(ctx)
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
@@ -407,8 +403,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return errors.New("--confirm flag is required")
 	}
 
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

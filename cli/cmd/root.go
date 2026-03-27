@@ -34,6 +34,10 @@ Run 'synthorg init' to set up a new installation, then 'synthorg start'
 to launch the backend and web dashboard containers.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	// IMPORTANT: Cobra does NOT chain PersistentPreRunE. If any subcommand
+	// defines its own PersistentPreRunE or PreRunE, this hook is silently
+	// skipped and GlobalOpts will fall back to zero-value defaults. Always
+	// call setupGlobalOpts explicitly in any subcommand pre-run hook.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		return setupGlobalOpts(cmd)
 	},
@@ -102,6 +106,9 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		Hints:      "auto", // default; will be overridden by config in PR 2
 	}
 
+	// Defensive: validHintsMode check will become reachable when PR 2 adds
+	// the --hints flag and config file override. Currently Hints is hardcoded
+	// to "auto" above, so this cannot fail.
 	if !validHintsMode(opts.Hints) {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
@@ -111,7 +118,8 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 }
 
 // resolveDataDir returns the effective data directory, using the flag value,
-// env var, or the platform default. Symlinks are resolved to prevent traversal.
+// env var, or the platform default. The result is normalized to an absolute
+// path and symlinks are resolved to prevent traversal.
 func resolveDataDir() string {
 	dir := flagDataDir
 	if dir == "" {
@@ -119,6 +127,10 @@ func resolveDataDir() string {
 	}
 	if dir == "" {
 		dir = config.DataDir()
+	}
+	// Normalize to absolute path before any filesystem use.
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
 	}
 	// Resolve symlinks to prevent traversal.
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
@@ -134,6 +146,9 @@ func safeStateDir(state config.State) (string, error) {
 }
 
 // isInteractive returns true if stdin is a terminal (not piped or in CI).
+// Prefer GlobalOpts.ShouldPrompt() which additionally respects --yes.
+// This function is retained for destructive commands (wipe, uninstall) where
+// the --yes flag and TTY check must be evaluated separately.
 func isInteractive() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {

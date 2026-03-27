@@ -64,14 +64,14 @@ func init() {
 }
 
 func runWipe(cmd *cobra.Command, _ []string) error {
-	if !isInteractive() {
-		return fmt.Errorf("wipe requires an interactive terminal (destructive operation)")
+	opts := GetGlobalOpts(cmd.Context())
+	if !isInteractive() && !opts.Yes {
+		return fmt.Errorf("wipe requires an interactive terminal or --yes flag (destructive operation)")
 	}
 
 	ctx := cmd.Context()
-	dir := resolveDataDir()
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -87,8 +87,6 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		}
 		return fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 

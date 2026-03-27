@@ -30,17 +30,15 @@ func init() {
 }
 
 func runUninstall(cmd *cobra.Command, _ []string) error {
-	if !isInteractive() {
-		return fmt.Errorf("uninstall requires an interactive terminal (destructive operation)")
-	}
-
 	ctx := cmd.Context()
-	dir := resolveDataDir()
-	opts := GetGlobalOpts(cmd.Context())
+	opts := GetGlobalOpts(ctx)
+	if !isInteractive() && !opts.Yes {
+		return fmt.Errorf("uninstall requires an interactive terminal or --yes flag (destructive operation)")
+	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -321,6 +319,12 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
+
+	// Reject paths containing double-quote characters which would break
+	// the .bat script quoting and allow command injection.
+	if strings.ContainsRune(execPath, '"') || strings.ContainsRune(binDir, '"') || strings.ContainsRune(dataDir, '"') {
+		return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains a double-quote character, cannot generate safe cleanup script"))
+	}
 
 	// Write cleanup script to a temp .bat file next to the binary
 	// (same filesystem, survives after this process exits).

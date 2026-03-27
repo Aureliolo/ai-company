@@ -23,7 +23,10 @@ const (
 	EnvYes           = "SYNTHORG_YES" // suppresses ALL interactive confirmation prompts
 )
 
-// envBool returns true if the named env var is set to a truthy value.
+// envBool returns true if the named env var is set to a truthy value
+// ("1", "true", "yes", case-insensitive). All other values -- including
+// "false", "0", "no", and empty string -- are treated as false.
+// There is no way to explicitly negate a flag via env var; absence = off.
 func envBool(name string) bool {
 	v := os.Getenv(name)
 	if v == "" {

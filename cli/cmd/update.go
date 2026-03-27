@@ -46,8 +46,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// Load state once and thread through both steps to avoid
 	// double config.Load and TOCTOU gaps between them.
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
+	state, err := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -81,7 +80,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(),
 		"Warning: new images may not work correctly with your current compose configuration.")
-	ok, err := confirmUpdateWithDefault(
+	ok, err := confirmUpdateWithDefault(cmd.Context(),
 		"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
 		false,
 	)
@@ -108,7 +107,7 @@ func isDevChannelMismatch(channel, ver string) bool {
 func downloadAndApplyCLI(ctx context.Context, out io.Writer, result selfupdate.CheckResult) error {
 	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
-	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
 	if err != nil {
 		return err
 	}
@@ -185,9 +184,10 @@ func updateCLI(cmd *cobra.Command) error {
 
 // resolveUpdateChannel reads the update channel from config, defaulting to
 // "stable" if the config cannot be loaded or the channel is empty.
+// Uses resolveDataDir directly since this runs before GlobalOpts is available
+// (called from PersistentPreRunE's sibling in the update command setup).
 func resolveUpdateChannel() string {
-	dir := resolveDataDir()
-	if state, err := config.Load(dir); err == nil && state.Channel != "" {
+	if state, err := config.Load(resolveDataDir()); err == nil && state.Channel != "" {
 		return state.Channel
 	}
 	return "stable"
@@ -308,7 +308,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
-	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
 	if err != nil {
 		return err
 	}
@@ -361,15 +361,16 @@ func postPullActions(cmd *cobra.Command, info docker.Info, safeDir string, oldSt
 }
 
 // confirmUpdate prompts the user to confirm an update action.
-// Returns (true, nil) if non-interactive (auto-accept) or user confirms.
+// Returns (true, nil) if --yes/non-interactive (auto-accept) or user confirms.
 // Default is yes.
-func confirmUpdate(title string) (bool, error) {
-	return confirmUpdateWithDefault(title, true)
+func confirmUpdate(ctx context.Context, title string) (bool, error) {
+	return confirmUpdateWithDefault(ctx, title, true)
 }
 
 // confirmUpdateWithDefault prompts the user with a configurable default.
-func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
-	if !isInteractive() {
+// Respects --yes flag and SYNTHORG_YES env var via GlobalOpts.ShouldPrompt.
+func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool) (bool, error) {
+	if !GetGlobalOpts(ctx).ShouldPrompt() {
 		return defaultVal, nil
 	}
 	proceed := defaultVal
@@ -444,7 +445,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	updatedState := state
 	updatedState.ImageTag = tag
 
-	if flagSkipVerify {
+	if GetGlobalOpts(ctx).SkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		if err := writeOrPatchCompose(updatedState, nil, safeDir, preserveCompose); err != nil {
 			return nil, err
@@ -499,7 +500,7 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	if !isInteractive() {
+	if !GetGlobalOpts(ctx).ShouldPrompt() {
 		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
 	}

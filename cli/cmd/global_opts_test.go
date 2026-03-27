@@ -89,7 +89,11 @@ func TestShouldPromptWithYes(t *testing.T) {
 func TestShouldPromptDefault(t *testing.T) {
 	t.Parallel()
 	opts := &GlobalOpts{}
-	// Whether stdin is a terminal depends on how tests are run,
-	// so just verify it doesn't panic and returns a bool.
-	_ = opts.ShouldPrompt()
+	// In CI/test environments, stdin is a pipe (non-TTY), so ShouldPrompt
+	// must return false. If this test ever runs with a real TTY stdin
+	// (e.g. manual `go test`), the result would be true -- both are valid.
+	got := opts.ShouldPrompt()
+	if got {
+		t.Log("ShouldPrompt() returned true -- stdin appears to be a TTY (expected in interactive test runs)")
+	}
 }

@@ -29,14 +29,12 @@ func init() {
 
 func runCleanup(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
-	dir := resolveDataDir()
+	opts := GetGlobalOpts(cmd.Context())
 
-	state, err := config.Load(dir)
+	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
@@ -88,8 +86,8 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 // confirmAndCleanup prompts the user and removes approved images.
 // Returns (true, nil) when at least one image was removed.
 func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
-	if !isInteractive() {
-		out.HintNextStep("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
+	if !GetGlobalOpts(ctx).ShouldPrompt() {
+		out.HintNextStep("Non-interactive mode: run interactively or use --yes to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
 
