@@ -41,11 +41,14 @@ export function applyDagreLayout(
   }
 
   if (leafNodes.length === 0) {
-    // No agent nodes -- place department groups on a grid
+    // No agent nodes -- place department groups on a grid respecting direction
+    const isLR = direction === 'LR'
     return nodes.map((n, i) => {
-      const col = i % 3
-      const row = Math.floor(i / 3)
-      return { ...n, position: { x: col * 240, y: row * 160 }, style: { ...n.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
+      const major = i % 3
+      const minor = Math.floor(i / 3)
+      const x = isLR ? minor * 240 : major * 240
+      const y = isLR ? major * 160 : minor * 160
+      return { ...n, position: { x, y }, style: { ...n.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
     })
   }
 
@@ -98,11 +101,13 @@ export function applyDagreLayout(
   const positionedGroups = groupNodes.map((group) => {
     const children = [...positionedLeafMap.values()].filter((n) => n.parentId === group.id)
     if (children.length === 0) {
-      const xOffset = contentMaxX + DEFAULT_GROUP_PADDING * 2
-      const col = emptyGroupIndex % 3
-      const row = Math.floor(emptyGroupIndex / 3)
+      const isLR = direction === 'LR'
+      const major = emptyGroupIndex % 3
+      const minor = Math.floor(emptyGroupIndex / 3)
       emptyGroupIndex++
-      return { ...group, position: { x: xOffset + col * 240, y: row * 160 }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
+      const xOffset = isLR ? minor * 240 : contentMaxX + DEFAULT_GROUP_PADDING * 2 + major * 240
+      const yOffset = isLR ? contentMaxY + DEFAULT_GROUP_PADDING * 2 + major * 160 : minor * 160
+      return { ...group, position: { x: xOffset, y: yOffset }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
     }
 
     const padding = DEFAULT_GROUP_PADDING
