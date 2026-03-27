@@ -204,7 +204,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
-| `/setup/:step` | Setup Wizard step | `template`, `company`, `agents`, `providers`, `complete` |
+| `/setup/:step` | Setup Wizard step | `account` (conditional), `template`, `company`, `agents`, `providers`, `theme`, `complete` |
 | `/org` | Org Chart | Read-only visualization |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD |
 | `/tasks` | Task Board | Kanban default |

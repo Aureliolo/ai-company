@@ -27,7 +27,17 @@ export function SkipWizardForm() {
     try {
       setCompanyNameStore(trimmed)
       await submitCompany()
+      const companyErr = useSetupWizardStore.getState().companyError
+      if (companyErr) {
+        setError(companyErr)
+        return
+      }
       await wizardCompleteSetup()
+      const completionErr = useSetupWizardStore.getState().completionError
+      if (completionErr) {
+        setError(completionErr)
+        return
+      }
       useSetupStore.setState({ setupComplete: true })
       useToastStore.getState().add({
         variant: 'success',

@@ -107,6 +107,28 @@ describe('estimateMonthlyCost', () => {
     expect(result.monthlyTotal).toBeCloseTo(27, 1)
   })
 
+  it('sets usedFallback to false when all models found', () => {
+    const agents = [
+      { model_provider: 'p', model_id: 'test-model-001', tier: 'medium' },
+    ]
+    const models = [makeModel()]
+    const result = estimateMonthlyCost(agents, models)
+    expect(result.usedFallback).toBe(false)
+  })
+
+  it('sets usedFallback to true when model not found', () => {
+    const agents = [
+      { model_provider: 'p', model_id: 'unknown', tier: 'large' },
+    ]
+    const result = estimateMonthlyCost(agents, [])
+    expect(result.usedFallback).toBe(true)
+  })
+
+  it('usedFallback is false for empty agents', () => {
+    const result = estimateMonthlyCost([], [])
+    expect(result.usedFallback).toBe(false)
+  })
+
   it('includes assumptions in result', () => {
     const result = estimateMonthlyCost([], [])
     expect(result.assumptions).toEqual({

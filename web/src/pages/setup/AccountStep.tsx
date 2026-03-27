@@ -3,21 +3,8 @@ import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
+import { getPasswordStrength } from '@/utils/password-strength'
 import { cn } from '@/lib/utils'
-
-function getPasswordStrength(password: string): { label: string; percent: number; color: string } {
-  if (password.length === 0) return { label: '', percent: 0, color: 'bg-border' }
-  if (password.length < 8) return { label: 'Weak', percent: 20, color: 'bg-danger' }
-  if (password.length < 12) return { label: 'Fair', percent: 40, color: 'bg-warning' }
-  const hasUpper = /[A-Z]/.test(password)
-  const hasLower = /[a-z]/.test(password)
-  const hasDigit = /\d/.test(password)
-  const hasSpecial = /[^A-Za-z0-9]/.test(password)
-  const variety = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
-  if (variety >= 3 && password.length >= 16) return { label: 'Strong', percent: 100, color: 'bg-success' }
-  if (variety >= 3) return { label: 'Good', percent: 75, color: 'bg-accent' }
-  return { label: 'Fair', percent: 50, color: 'bg-warning' }
-}
 
 export function AccountStep() {
   const [username, setUsername] = useState('')

@@ -32,6 +32,8 @@ interface AgentCostBreakdown {
 export interface CostEstimate {
   readonly monthlyTotal: number
   readonly perAgentBreakdown: readonly AgentCostBreakdown[]
+  /** True when one or more agents used tier-based fallback costs instead of actual model pricing. */
+  readonly usedFallback: boolean
   readonly assumptions: {
     readonly dailyTokensPerAgent: number
     readonly inputOutputRatio: number
@@ -65,6 +67,7 @@ export function estimateMonthlyCost(
   }
 
   const breakdown: AgentCostBreakdown[] = []
+  let usedFallback = false
 
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i]!
@@ -77,6 +80,7 @@ export function estimateMonthlyCost(
       inputCostPer1k = model.cost_per_1k_input
       outputCostPer1k = model.cost_per_1k_output
     } else {
+      usedFallback = true
       const fallback = TIER_FALLBACK_COSTS[agent.tier] ?? TIER_FALLBACK_COSTS.medium!
       inputCostPer1k = fallback!.input
       outputCostPer1k = fallback!.output
@@ -100,6 +104,7 @@ export function estimateMonthlyCost(
   return {
     monthlyTotal,
     perAgentBreakdown: breakdown,
+    usedFallback,
     assumptions: {
       dailyTokensPerAgent: dailyTokens,
       inputOutputRatio: inputRatio,

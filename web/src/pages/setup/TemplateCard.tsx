@@ -41,6 +41,7 @@ export function TemplateCard({
           onChange={onToggleCompare}
           disabled={compareDisabled && !compared}
           className="accent-accent"
+          aria-label={`Compare ${template.display_name}`}
         />
         Compare
       </label>

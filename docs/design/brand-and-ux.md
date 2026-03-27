@@ -221,6 +221,11 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `InlineEdit` | `inline-edit.tsx` | `value`, `onSave`, `validate?`, `type?`, `disabled?` | Click-to-edit with Enter/Escape, inline validation, optimistic save via `useFlash`. |
 | `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Framer Motion AnimatePresence with reduced-motion fallback. |
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
+| `Drawer` | `drawer.tsx` | `open`, `onClose`, `title`, `children`, `className?` | Right-side slide-in panel with overlay, spring animation, focus trap, and Escape-to-close. |
+| `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?` | Labeled text input with inline error/hint display and optional textarea mode. |
+| `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `placeholder?` | Labeled select dropdown with error display and placeholder support. |
+| `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?` | Labeled range slider with custom value formatter and aria-live value display. |
+| `ToggleField` | `toggle-field.tsx` | `label`, `checked`, `onChange`, `description?`, `disabled?` | Labeled toggle switch (role="switch") with optional description text. |
 
 ### Utility Functions
 

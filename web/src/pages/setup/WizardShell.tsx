@@ -49,6 +49,9 @@ export function WizardShell() {
         const firstIncomplete = stepOrder.find((s) => !stepsCompleted[s])
         navigate(`/setup/${firstIncomplete ?? stepOrder[0]}`, { replace: true })
       }
+    } else {
+      // Invalid step name in URL -- redirect to first step
+      navigate(`/setup/${stepOrder[0]}`, { replace: true })
     }
   }, [urlStep, stepOrder, canNavigateTo, setStep, stepsCompleted, navigate])
 

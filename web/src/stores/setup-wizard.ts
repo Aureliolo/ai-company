@@ -26,6 +26,7 @@ import {
   testConnection,
   probePreset,
 } from '@/api/endpoints/providers'
+import { getErrorMessage } from '@/utils/errors'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 
 export type WizardStep =
@@ -96,6 +97,8 @@ interface SetupWizardState {
   // Providers
   providers: Record<string, ProviderConfig>
   presets: ProviderPreset[]
+  presetsLoading: boolean
+  presetsError: string | null
   probeResults: Record<string, ProbePresetResponse>
   probing: boolean
   providersLoading: boolean
@@ -202,6 +205,8 @@ function getInitialState() {
 
     providers: {} as Record<string, ProviderConfig>,
     presets: [] as ProviderPreset[],
+    presetsLoading: false,
+    presetsError: null as string | null,
     probeResults: {} as Record<string, ProbePresetResponse>,
     probing: false,
     providersLoading: false,
@@ -219,7 +224,7 @@ function getInitialState() {
 export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   ...getInitialState(),
 
-  // ── Navigation ─────────────────────────────────────────
+  // -- Navigation --
 
   setStep(step) {
     const { stepOrder, currentStep } = get()
@@ -247,7 +252,6 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     const { stepOrder, stepsCompleted } = get()
     const targetIdx = stepOrder.indexOf(step)
     if (targetIdx <= 0) return true
-    // All steps before the target must be complete
     for (let i = 0; i < targetIdx; i++) {
       if (!stepsCompleted[stepOrder[i]!]) return false
     }
@@ -266,15 +270,16 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     set({ accountCreated: created })
   },
 
-  // ── Template ───────────────────────────────────────────
+  // -- Template --
 
   async fetchTemplates() {
     set({ templatesLoading: true, templatesError: null })
     try {
       const templates = await listTemplates()
       set({ templates, templatesLoading: false })
-    } catch {
-      set({ templatesError: 'Failed to load templates', templatesLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: fetchTemplates failed:', err)
+      set({ templatesError: getErrorMessage(err), templatesLoading: false })
     }
   },
 
@@ -303,7 +308,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     }))
   },
 
-  // ── Company ────────────────────────────────────────────
+  // -- Company --
 
   setCompanyName(name) {
     set({ companyName: name })
@@ -339,87 +344,93 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: [...response.agents],
         companyLoading: false,
       })
-    } catch {
-      set({ companyError: 'Failed to create company', companyLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: submitCompany failed:', err)
+      set({ companyError: getErrorMessage(err), companyLoading: false })
     }
   },
 
-  // ── Agents ─────────────────────────────────────────────
+  // -- Agents --
 
   async fetchAgents() {
     set({ agentsLoading: true, agentsError: null })
     try {
       const agents = await getAgents()
       set({ agents: [...agents], agentsLoading: false })
-    } catch {
-      set({ agentsError: 'Failed to load agents', agentsLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: fetchAgents failed:', err)
+      set({ agentsError: getErrorMessage(err), agentsLoading: false })
     }
   },
 
   async updateAgentModel(index, provider, modelId) {
+    set({ agentsError: null })
     try {
       const updated = await apiUpdateAgentModel(index, {
         model_provider: provider,
         model_id: modelId,
       })
-      set((s) => {
-        const agents = [...s.agents]
-        agents[index] = updated
-        return { agents }
-      })
-    } catch {
-      set({ agentsError: 'Failed to update agent model' })
+      set((s) => ({
+        agents: s.agents.map((a, i) => i === index ? updated : a),
+      }))
+    } catch (err) {
+      console.error('setup-wizard: updateAgentModel failed:', err)
+      set({ agentsError: getErrorMessage(err) })
     }
   },
 
   async updateAgentName(index, name) {
+    set({ agentsError: null })
     try {
       const updated = await apiUpdateAgentName(index, { name })
-      set((s) => {
-        const agents = [...s.agents]
-        agents[index] = updated
-        return { agents }
-      })
-    } catch {
-      set({ agentsError: 'Failed to update agent name' })
+      set((s) => ({
+        agents: s.agents.map((a, i) => i === index ? updated : a),
+      }))
+    } catch (err) {
+      console.error('setup-wizard: updateAgentName failed:', err)
+      set({ agentsError: getErrorMessage(err) })
     }
   },
 
   async randomizeAgentName(index) {
+    set({ agentsError: null })
     try {
       const updated = await apiRandomizeAgentName(index)
-      set((s) => {
-        const agents = [...s.agents]
-        agents[index] = updated
-        return { agents }
-      })
-    } catch {
-      set({ agentsError: 'Failed to randomize agent name' })
+      set((s) => ({
+        agents: s.agents.map((a, i) => i === index ? updated : a),
+      }))
+    } catch (err) {
+      console.error('setup-wizard: randomizeAgentName failed:', err)
+      set({ agentsError: getErrorMessage(err) })
     }
   },
 
-  // ── Providers ──────────────────────────────────────────
+  // -- Providers --
 
   async fetchProviders() {
     set({ providersLoading: true, providersError: null })
     try {
       const providers = await listProviders()
       set({ providers, providersLoading: false })
-    } catch {
-      set({ providersError: 'Failed to load providers', providersLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: fetchProviders failed:', err)
+      set({ providersError: getErrorMessage(err), providersLoading: false })
     }
   },
 
   async fetchPresets() {
+    set({ presetsLoading: true, presetsError: null })
     try {
       const presets = await listPresets()
-      set({ presets })
-    } catch {
-      set({ providersError: 'Failed to load presets' })
+      set({ presets, presetsLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: fetchPresets failed:', err)
+      set({ presetsError: getErrorMessage(err), presetsLoading: false })
     }
   },
 
   async createProviderFromPreset(presetName, name, apiKey) {
+    set({ providersError: null })
     try {
       const provider = await createFromPreset({
         preset_name: presetName,
@@ -429,8 +440,9 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       set((s) => ({
         providers: { ...s.providers, [name]: provider },
       }))
-    } catch {
-      set({ providersError: 'Failed to create provider' })
+    } catch (err) {
+      console.error('setup-wizard: createProviderFromPreset failed:', err)
+      set({ providersError: getErrorMessage(err) })
     }
   },
 
@@ -445,14 +457,14 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     for (const preset of presets) {
       try {
         results[preset.name] = await probePreset(preset.name)
-      } catch {
-        // Probe failure is not an error -- just means not detected
+      } catch (err) {
+        console.error(`setup-wizard: probe failed for preset "${preset.name}":`, err)
       }
     }
     set({ probeResults: results, probing: false })
   },
 
-  // ── Theme ──────────────────────────────────────────────
+  // -- Theme --
 
   setThemeSetting(key, value) {
     set((s) => ({
@@ -460,19 +472,20 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     }))
   },
 
-  // ── Completion ─────────────────────────────────────────
+  // -- Completion --
 
   async completeSetup() {
     set({ completing: true, completionError: null })
     try {
       await completeSetup()
       set({ completing: false })
-    } catch {
-      set({ completionError: 'Failed to complete setup', completing: false })
+    } catch (err) {
+      console.error('setup-wizard: completeSetup failed:', err)
+      set({ completionError: getErrorMessage(err), completing: false })
     }
   },
 
-  // ── Reset ──────────────────────────────────────────────
+  // -- Reset --
 
   reset() {
     set(getInitialState())

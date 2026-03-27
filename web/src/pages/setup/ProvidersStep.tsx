@@ -25,22 +25,29 @@ export function ProvidersStep() {
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
-  // Fetch providers and presets on mount
+  const providersCount = Object.keys(providers).length
+  const probeResultsCount = Object.keys(probeResults).length
+
+  // Fetch providers on mount
   useEffect(() => {
-    if (Object.keys(providers).length === 0 && !providersLoading) {
+    if (providersCount === 0 && !providersLoading) {
       fetchProviders()
     }
+  }, [providersCount, providersLoading, fetchProviders])
+
+  // Fetch presets on mount
+  useEffect(() => {
     if (presets.length === 0) {
       fetchPresets()
     }
-  }, [providers, providersLoading, presets.length, fetchProviders, fetchPresets])
+  }, [presets.length, fetchPresets])
 
   // Auto-probe local presets
   useEffect(() => {
-    if (presets.length > 0 && Object.keys(probeResults).length === 0 && !probing) {
+    if (presets.length > 0 && probeResultsCount === 0 && !probing) {
       probeAllPresets()
     }
-  }, [presets.length, probeResults, probing, probeAllPresets])
+  }, [presets.length, probeResultsCount, probing, probeAllPresets])
 
   // Track step completion
   const validation = useMemo(() => validateProvidersStep({ agents, providers }), [agents, providers])

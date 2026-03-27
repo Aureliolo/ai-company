@@ -38,15 +38,18 @@ export function CompleteStep() {
 
   const handleComplete = useCallback(async () => {
     await wizardCompleteSetup()
-    if (!useSetupWizardStore.getState().completionError) {
-      useSetupStore.setState({ setupComplete: true })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
-      })
-      navigate('/')
+    const error = useSetupWizardStore.getState().completionError
+    if (error) {
+      // Keep dialog open so user can see the error and retry
+      return
     }
+    useSetupStore.setState({ setupComplete: true })
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Setup complete! Welcome to ${companyResponse?.company_name ?? 'your organization'}.`,
+    })
     setConfirmOpen(false)
+    navigate('/')
   }, [wizardCompleteSetup, companyResponse, navigate])
 
   if (!companyResponse) {

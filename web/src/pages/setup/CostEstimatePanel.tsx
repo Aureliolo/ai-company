@@ -59,6 +59,9 @@ export function CostEstimatePanel({
 
       <p className="text-compact text-muted-foreground">
         * Actual costs depend on task volume and complexity. This is a rough projection for planning purposes.
+        {estimate.usedFallback && (
+          <> Estimate uses average tier pricing -- actual costs depend on your model configuration.</>
+        )}
       </p>
     </div>
   )

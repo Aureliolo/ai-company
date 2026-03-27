@@ -128,7 +128,7 @@ web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/)
   router/         # React Router config, route constants, auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, company, agents, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
@@ -167,6 +167,11 @@ site/             # Astro landing page (synthorg.io)
 | `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
 | `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Framer Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
+| `Drawer` | `@/components/ui/drawer` | Right-side slide-in panel with overlay, spring animation, focus trap, Escape-to-close |
+| `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode |
+| `SelectField` | `@/components/ui/select-field` | Labeled select dropdown with error/hint and placeholder support |
+| `SliderField` | `@/components/ui/slider-field` | Labeled range slider with custom value formatter and aria-live display |
+| `ToggleField` | `@/components/ui/toggle-field` | Labeled toggle switch (role="switch") with optional description text |
 | `TaskStatusIndicator` | `@/components/ui/task-status-indicator` | Task status dot with optional label and pulse animation (accepts `TaskStatus`) |
 | `PriorityBadge` | `@/components/ui/task-status-indicator` | Task priority colored pill badge (critical/high/medium/low) |
 

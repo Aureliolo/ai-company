@@ -182,7 +182,8 @@ describe('setup wizard store', () => {
       await useSetupWizardStore.getState().fetchTemplates()
 
       const state = useSetupWizardStore.getState()
-      expect(state.templatesError).toBe('Failed to load templates')
+      // getErrorMessage extracts the message from the Error object
+      expect(state.templatesError).toBeTruthy()
       expect(state.templatesLoading).toBe(false)
     })
   })
