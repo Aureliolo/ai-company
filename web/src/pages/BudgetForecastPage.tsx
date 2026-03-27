@@ -22,18 +22,18 @@ function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
 }) {
   const budgetPct = totalMonthly > 0 ? (cumulative / totalMonthly) * 100 : 0
   return (
-    <div className="flex items-center gap-4 px-4 py-2">
-      <span className="flex-1 font-mono text-xs text-foreground">{point.day}</span>
-      <span className="w-28 text-right font-mono text-xs text-text-secondary">
+    <tr>
+      <td className="px-4 py-2 font-mono text-xs text-foreground">{point.day}</td>
+      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(point.projected_spend_usd, currency)}
-      </span>
-      <span className="w-28 text-right font-mono text-xs text-text-secondary">
+      </td>
+      <td className="w-28 px-4 py-2 text-right font-mono text-xs text-text-secondary">
         {formatCurrency(cumulative, currency)}
-      </span>
-      <span className="w-24 text-right font-mono text-xs text-text-muted">
+      </td>
+      <td className="w-24 px-4 py-2 text-right font-mono text-xs text-text-muted">
         {budgetPct.toFixed(1)}%
-      </span>
-    </div>
+      </td>
+    </tr>
   )
 }
 
@@ -148,14 +148,16 @@ export default function BudgetForecastPage() {
 
       <SectionCard title="Daily Projections" icon={Calendar}>
         {forecast && forecast.daily_projections.length > 0 ? (
-          <div className="rounded-lg border border-border">
-            <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
-              <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</span>
-              <span className="w-28 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</span>
-              <span className="w-28 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</span>
-              <span className="w-24 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</span>
-            </div>
-            <div className="divide-y divide-border">
+          <table className="w-full rounded-lg border border-border">
+            <thead>
+              <tr className="border-b border-border bg-surface">
+                <th scope="col" className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">Day</th>
+                <th scope="col" className="w-28 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Projected Spend</th>
+                <th scope="col" className="w-28 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">Cumulative</th>
+                <th scope="col" className="w-24 px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
               {forecast.daily_projections.map((point, idx) => (
                 <ProjectionRow
                   key={point.day}
@@ -165,9 +167,9 @@ export default function BudgetForecastPage() {
                   totalMonthly={budgetConfig?.total_monthly ?? 0}
                 />
               ))}
-            </div>
-          </div>
-        ) : (
+            </tbody>
+          </table>
+        ) : !error && (
           <EmptyState
             icon={Calendar}
             title="No forecast data"

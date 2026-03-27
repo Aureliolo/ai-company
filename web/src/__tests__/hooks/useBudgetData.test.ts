@@ -104,7 +104,7 @@ describe('useBudgetData', () => {
     expect(result.current.setAggregationPeriod).toBe(mockSetAggregationPeriod)
   })
 
-  it('sets up WebSocket with budget and system channels', () => {
+  it('sets up WebSocket with budget channel', () => {
     renderHook(() => useBudgetData())
     const wsCall = vi.mocked(useWebSocket).mock.calls[0]![0]
     const channels = wsCall.bindings.map((b) => b.channel)

@@ -189,6 +189,20 @@ describe('BudgetForecastPage', () => {
     expect(metricCards.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('does not show empty state when error is present and forecast is null', () => {
+    hookReturn = { ...defaultHookReturn, forecast: null, error: 'Failed to load' }
+    renderWithRouter()
+    expect(screen.queryByText('No forecast data')).not.toBeInTheDocument()
+    expect(screen.getByText('Failed to load')).toBeInTheDocument()
+  })
+
+  it('renders projections in a semantic table', () => {
+    renderWithRouter()
+    const table = screen.getByRole('table')
+    expect(table).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4)
+  })
+
   it('does not render metric cards when forecast is null', () => {
     hookReturn = { ...defaultHookReturn, forecast: null }
     renderWithRouter()

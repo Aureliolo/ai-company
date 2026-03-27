@@ -149,8 +149,9 @@ export function computeCostBreakdown(
     totalCost += r.cost_usd
   }
 
-  const slices: BreakdownSlice[] = []
-  let colorIdx = 0
+  // Build slices without colors first, then assign colors after sorting
+  // so the highest-cost slice always gets the first palette color.
+  const unsorted: Omit<BreakdownSlice, 'color'>[] = []
   for (const [key, cost] of groups) {
     let label: string
     switch (dimension) {
@@ -162,17 +163,20 @@ export function computeCostBreakdown(
         label = key
         break
     }
-    slices.push({
+    unsorted.push({
       key,
       label,
       cost,
       percent: totalCost > 0 ? (cost / totalCost) * 100 : 0,
-      color: DONUT_COLORS[colorIdx % DONUT_COLORS.length]!,
     })
-    colorIdx++
   }
 
-  return slices.sort((a, b) => b.cost - a.cost)
+  unsorted.sort((a, b) => b.cost - a.cost)
+
+  return unsorted.map((s, i) => ({
+    ...s,
+    color: DONUT_COLORS[i % DONUT_COLORS.length]!,
+  }))
 }
 
 /**

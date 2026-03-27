@@ -61,6 +61,8 @@ export function CostBreakdownChart({
     ]
   }, [breakdown])
 
+  const chartData = useMemo(() => [...breakdown], [breakdown])
+
   return (
     <SectionCard
       title="Cost Breakdown"
@@ -108,7 +110,7 @@ export function CostBreakdownChart({
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={[...breakdown]}
+                  data={chartData}
                   dataKey="cost"
                   nameKey="label"
                   innerRadius={50}

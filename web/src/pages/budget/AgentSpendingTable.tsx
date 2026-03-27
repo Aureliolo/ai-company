@@ -75,7 +75,7 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
                 type="button"
                 onClick={() => col.sortable && handleSort(col.key)}
                 className={cn(
-                  'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:text-foreground',
+                  'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:text-foreground',
                   col.sortable && 'cursor-pointer hover:text-foreground',
                   col.width,
                   col.key !== 'agentName' && 'justify-end',

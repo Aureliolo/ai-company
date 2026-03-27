@@ -49,3 +49,12 @@ export const Exhausted: Story = {
     daysUntilExhausted: 0,
   },
 }
+
+export const WithCurrency: Story = {
+  args: {
+    usedPercent: 45,
+    budgetRemaining: 550,
+    daysUntilExhausted: 18,
+    currency: 'USD',
+  },
+}

@@ -113,6 +113,16 @@ describe('ThresholdAlerts', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
+  it('displays decimal percentage without rounding across zone boundaries', () => {
+    const overview = { ...mockOverview, budget_used_percent: 89.6 }
+    render(
+      <ThresholdAlerts zone="amber" budgetConfig={mockBudgetConfig} overview={overview} />,
+    )
+    expect(
+      screen.getByText(/Budget usage at 89\.6% -- warning threshold \(75%\) reached/),
+    ).toBeInTheDocument()
+  })
+
   it.each<ThresholdZone>(['amber', 'red', 'critical'])(
     'renders an alert for %s zone',
     (zone) => {

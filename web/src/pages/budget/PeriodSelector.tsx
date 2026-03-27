@@ -1,16 +1,15 @@
 import { cn } from '@/lib/utils'
-import type { AggregationPeriod } from '@/utils/budget'
+import { AGGREGATION_PERIOD_VALUES, type AggregationPeriod } from '@/utils/budget'
 
 export interface PeriodSelectorProps {
   value: AggregationPeriod
   onChange: (period: AggregationPeriod) => void
 }
 
-const PERIODS: { value: AggregationPeriod; label: string }[] = [
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-]
+const PERIODS = AGGREGATION_PERIOD_VALUES.map((v) => ({
+  value: v,
+  label: v.charAt(0).toUpperCase() + v.slice(1),
+}))
 
 export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
   return (

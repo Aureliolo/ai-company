@@ -14,7 +14,9 @@ export function ThresholdAlerts({ zone, budgetConfig, overview }: ThresholdAlert
 
   const isAmber = zone === 'amber'
   const isDanger = zone === 'red' || zone === 'critical'
-  const usedPct = Math.round(overview.budget_used_percent)
+  const usedPct = Number.isInteger(overview.budget_used_percent)
+    ? String(overview.budget_used_percent)
+    : overview.budget_used_percent.toFixed(1)
 
   let message: string
   if (zone === 'amber') {
