@@ -8,6 +8,7 @@
 import { create } from 'zustand'
 import * as authApi from '@/api/endpoints/auth'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
+import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import type { HumanRole, UserInfoResponse } from '@/api/types'
 
 // ── Module-scoped internals (not renderable state) ──────────
@@ -45,14 +46,12 @@ interface AuthState {
 // ── Initial state from localStorage ─────────────────────────
 
 // Dev-only fake user for bypassing auth when no backend is running.
-// Active only when VITE_DEV_AUTH_BYPASS=true AND import.meta.env.DEV.
-const DEV_AUTH_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
-const DEV_USER: UserInfoResponse | null = DEV_AUTH_BYPASS
+const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
   ? { id: 'dev-user', username: 'developer', role: 'ceo', must_change_password: false }
   : null
 
 function getInitialToken(): string | null {
-  if (DEV_AUTH_BYPASS) return 'dev-bypass-token'
+  if (IS_DEV_AUTH_BYPASS) return 'dev-bypass-token'
   const storedToken = localStorage.getItem('auth_token')
   const expiresAt = Number(localStorage.getItem('auth_token_expires_at') ?? 0)
   if (storedToken && Date.now() < expiresAt) {

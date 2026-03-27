@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getSetupStatus } from '@/api/endpoints/setup'
+import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 
 interface SetupState {
   /** Whether initial setup is complete. `null` means not yet fetched. */
@@ -10,11 +11,8 @@ interface SetupState {
   fetchSetupStatus: () => Promise<void>
 }
 
-// Dev-only: skip setup check when auth bypass is active
-const DEV_SETUP_BYPASS = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
-
 export const useSetupStore = create<SetupState>()((set, get) => ({
-  setupComplete: DEV_SETUP_BYPASS ? true : null,
+  setupComplete: IS_DEV_AUTH_BYPASS ? true : null,
   loading: false,
   error: false,
 
