@@ -57,6 +57,7 @@ const meta = {
   title: 'Budget/CostBreakdownChart',
   component: CostBreakdownChart,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-md">
@@ -69,30 +70,24 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+const interactiveArgs = {
+  breakdown: [],
+  dimension: 'agent' as const,
+  onDimensionChange: () => {},
+}
+
 export const ByAgent: Story = {
-  args: {
-    breakdown: AGENT_SLICES,
-    dimension: 'agent',
-    onDimensionChange: () => {},
-  },
+  args: interactiveArgs,
   render: () => <InteractiveBreakdown initialDimension="agent" />,
 }
 
 export const ByDepartment: Story = {
-  args: {
-    breakdown: DEPT_SLICES,
-    dimension: 'department',
-    onDimensionChange: () => {},
-  },
+  args: interactiveArgs,
   render: () => <InteractiveBreakdown initialDimension="department" />,
 }
 
 export const ByProvider: Story = {
-  args: {
-    breakdown: PROVIDER_SLICES,
-    dimension: 'provider',
-    onDimensionChange: () => {},
-  },
+  args: interactiveArgs,
   render: () => <InteractiveBreakdown initialDimension="provider" />,
 }
 

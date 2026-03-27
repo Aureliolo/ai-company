@@ -34,6 +34,7 @@ const meta = {
   title: 'Budget/CategoryBreakdown',
   component: CategoryBreakdown,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-md">

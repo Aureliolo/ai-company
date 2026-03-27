@@ -98,6 +98,11 @@ describe('AgentSpendingTable', () => {
 
     await user.click(totalCostBtn)
     expect(totalCostBtn).toHaveAttribute('aria-sort', 'ascending')
+
+    // Verify DOM order is ascending (cheapest first)
+    const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
+    const agentNames = agentCells.map((el) => el.textContent)
+    expect(agentNames).toEqual(['Agent C', 'Agent B', 'Agent A'])
   })
 
   it('resets to ascending when clicking a different column', async () => {
@@ -110,6 +115,11 @@ describe('AgentSpendingTable', () => {
     // Previous column loses aria-sort
     const totalCostBtn = screen.getByText('Total Cost').closest('button')!
     expect(totalCostBtn).not.toHaveAttribute('aria-sort')
+
+    // Verify DOM order is alphabetical ascending
+    const agentCells = screen.getAllByText(/^Agent [A-Z]$/)
+    const agentNames = agentCells.map((el) => el.textContent)
+    expect(agentNames).toEqual(['Agent A', 'Agent B', 'Agent C'])
   })
 
   it('uses EUR currency by default', () => {

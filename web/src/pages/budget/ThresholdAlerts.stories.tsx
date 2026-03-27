@@ -34,6 +34,7 @@ const meta = {
   title: 'Budget/ThresholdAlerts',
   component: ThresholdAlerts,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-2xl">

@@ -1,4 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { CostBreakdownChart } from '@/pages/budget/CostBreakdownChart'
 import type { BreakdownSlice } from '@/utils/budget'
 
@@ -22,6 +24,10 @@ const MANY_SLICES: BreakdownSlice[] = [
 ]
 
 describe('CostBreakdownChart', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   const defaultProps = {
     breakdown: SAMPLE_BREAKDOWN,
     dimension: 'agent' as const,
@@ -61,7 +67,8 @@ describe('CostBreakdownChart', () => {
     expect(screen.getByRole('radio', { name: 'Agent' })).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('fires onDimensionChange when toggle is clicked', () => {
+  it('fires onDimensionChange when toggle is clicked', async () => {
+    const user = userEvent.setup()
     const onChange = vi.fn()
     render(
       <CostBreakdownChart
@@ -69,11 +76,12 @@ describe('CostBreakdownChart', () => {
         onDimensionChange={onChange}
       />,
     )
-    fireEvent.click(screen.getByRole('radio', { name: 'Provider' }))
+    await user.click(screen.getByRole('radio', { name: 'Provider' }))
     expect(onChange).toHaveBeenCalledWith('provider')
   })
 
-  it('disables Dept button when deptDisabled is true', () => {
+  it('disables Dept button when deptDisabled is true', async () => {
+    const user = userEvent.setup()
     const onChange = vi.fn()
     render(
       <CostBreakdownChart
@@ -84,7 +92,7 @@ describe('CostBreakdownChart', () => {
     )
     const deptBtn = screen.getByRole('radio', { name: 'Dept' })
     expect(deptBtn).toBeDisabled()
-    fireEvent.click(deptBtn)
+    await user.click(deptBtn)
     expect(onChange).not.toHaveBeenCalled()
   })
 

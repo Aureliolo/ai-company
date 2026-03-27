@@ -2,6 +2,7 @@
 
 import { computeSpendTrend } from '@/utils/dashboard'
 import { formatCurrency } from '@/utils/format'
+import type { MetricCardProps } from '@/components/ui/metric-card'
 import type {
   ActivityItem,
   BudgetAlertConfig,
@@ -14,10 +15,10 @@ import type {
 
 // ── Types ──────────────────────────────────────────────────
 
-export const AGGREGATION_PERIOD_VALUES = ['hourly', 'daily', 'weekly'] as const
+export const AGGREGATION_PERIOD_VALUES = ['hourly', 'daily', 'weekly'] as const satisfies readonly string[]
 export type AggregationPeriod = typeof AGGREGATION_PERIOD_VALUES[number]
 
-export const BREAKDOWN_DIMENSION_VALUES = ['agent', 'department', 'provider'] as const
+export const BREAKDOWN_DIMENSION_VALUES = ['agent', 'department', 'provider'] as const satisfies readonly string[]
 export type BreakdownDimension = typeof BREAKDOWN_DIMENSION_VALUES[number]
 
 /** Severity ordering: normal < amber < red < critical. */
@@ -37,7 +38,7 @@ export interface BreakdownSlice {
   readonly label: string
   readonly cost: number
   readonly percent: number
-  /** CSS custom property from DONUT_COLORS palette. */
+  /** CSS custom property value for the slice's chart color. Assigned from the DONUT_COLORS palette cyclically or overridden for aggregated slices. */
   readonly color: string
 }
 
@@ -54,19 +55,12 @@ export interface CategoryRatio {
   readonly uncategorized: CategoryBucket
 }
 
-/** MetricCard data shape matching the MetricCard component props. */
-export interface BudgetMetricCardData {
-  label: string
-  value: string | number
-  change?: { value: number; direction: 'up' | 'down' }
-  sparklineData?: number[]
-  progress?: { current: number; total: number }
-  subText?: string
-}
+/** Subset of MetricCardProps used to drive budget metric cards. Omits className since it's not needed for data-driven card generation. */
+export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
 
 // ── Constants ──────────────────────────────────────────────
 
-/** Color palette for donut chart slices using CSS custom properties. */
+/** Color palette for cost breakdown visualizations, using CSS custom properties. */
 export const DONUT_COLORS: readonly string[] = [
   'var(--so-accent)',
   'var(--so-success)',
@@ -76,7 +70,7 @@ export const DONUT_COLORS: readonly string[] = [
   'var(--so-text-muted)',
 ]
 
-/** Budget-related WsEventType values used for filtering CFO events. */
+/** WsEventType values for budget-related events (record additions and alerts). Used by the CFO Activity Feed section to filter the full activity stream. */
 const CFO_EVENT_TYPES = new Set(['budget.record_added', 'budget.alert'])
 
 // ── Functions ──────────────────────────────────────────────
@@ -185,6 +179,7 @@ export function computeCostBreakdown(
  * Compute cost category breakdown from cost records.
  *
  * Buckets records by `call_category` (null treated as uncategorized).
+ * Records with unrecognized call_category values fall through to the uncategorized bucket.
  * Returns cost, count, and percentage for each of the four categories.
  */
 export function computeCategoryBreakdown(
@@ -251,7 +246,8 @@ export function computeExhaustionDate(
  * Aggregate daily trend data points into ISO-week buckets (Monday-based).
  *
  * Each weekly point uses the Monday timestamp and the sum of daily values
- * in that week.
+ * in that week. Operates on UTC dates -- the Monday boundary is computed
+ * using UTC day-of-week to avoid timezone-dependent bucket shifts.
  */
 export function aggregateWeekly(
   dataPoints: readonly TrendDataPoint[],
@@ -280,18 +276,27 @@ export function aggregateWeekly(
 
 /**
  * Compute days remaining until the next billing cycle reset.
+ *
+ * Clamps `resetDay` to the actual last day of the target month to
+ * handle months with fewer days (e.g. resetDay=31 in February).
  */
 export function daysUntilBudgetReset(resetDay: number): number {
+  if (!Number.isFinite(resetDay) || resetDay < 1 || resetDay > 31) return 0
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth()
   const today = now.getDate()
 
-  if (today < resetDay) {
-    return resetDay - today
+  const currentMonthLastDay = new Date(year, month + 1, 0).getDate()
+  const effectiveResetDay = Math.min(resetDay, currentMonthLastDay)
+
+  if (today < effectiveResetDay) {
+    return effectiveResetDay - today
   }
   // Next reset is in the following month
-  const nextMonth = new Date(year, month + 1, resetDay)
+  const nextMonthLastDay = new Date(year, month + 2, 0).getDate()
+  const clampedResetDay = Math.min(resetDay, nextMonthLastDay)
+  const nextMonth = new Date(year, month + 1, clampedResetDay)
   const diff = nextMonth.getTime() - now.getTime()
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }

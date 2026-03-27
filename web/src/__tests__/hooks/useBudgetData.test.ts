@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import type { OverviewMetrics } from '@/api/types'
 import { useBudgetStore } from '@/stores/budget'
 
 const mockFetchBudgetData = vi.fn()
@@ -40,8 +41,6 @@ function resetStore() {
     overview: null,
     forecast: null,
     costRecords: [],
-    dailySummary: [],
-    periodSummary: null,
     trends: null,
     activities: [],
     agentNameMap: new Map(),
@@ -82,7 +81,18 @@ describe('useBudgetData', () => {
   })
 
   it('returns overview from store', () => {
-    const overview = { total_cost_usd: 42 } as never
+    const overview: OverviewMetrics = {
+      total_tasks: 10,
+      tasks_by_status: {} as Record<string, number>,
+      total_agents: 5,
+      total_cost_usd: 42,
+      budget_remaining_usd: 58,
+      budget_used_percent: 42,
+      cost_7d_trend: [],
+      active_agents_count: 3,
+      idle_agents_count: 2,
+      currency: 'EUR',
+    }
     useBudgetStore.setState({ overview })
     const { result } = renderHook(() => useBudgetData())
     expect(result.current.overview).toBe(overview)
@@ -98,7 +108,7 @@ describe('useBudgetData', () => {
     renderHook(() => useBudgetData())
     const wsCall = vi.mocked(useWebSocket).mock.calls[0]![0]
     const channels = wsCall.bindings.map((b) => b.channel)
-    expect(channels).toEqual(['budget', 'system'])
+    expect(channels).toEqual(['budget'])
   })
 
   it('returns wsConnected from useWebSocket', () => {

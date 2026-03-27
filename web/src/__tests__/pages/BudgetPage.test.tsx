@@ -48,8 +48,6 @@ const defaultHookReturn: UseBudgetDataReturn = {
   budgetConfig: mockBudgetConfig,
   forecast: mockForecast,
   costRecords: [],
-  dailySummary: [],
-  periodSummary: null,
   trends: null,
   activities: [],
   agentNameMap: new Map(),
@@ -58,6 +56,7 @@ const defaultHookReturn: UseBudgetDataReturn = {
   setAggregationPeriod: vi.fn(),
   loading: false,
   error: null,
+  pollingError: null,
   wsConnected: true,
   wsSetupError: null,
 }
@@ -156,6 +155,12 @@ describe('BudgetPage', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     renderBudget()
     expect(screen.getByText(/Real-time updates disconnected/)).toBeInTheDocument()
+  })
+
+  it('shows custom ws error message', () => {
+    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
+    renderBudget()
+    expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
   })
 
   it('renders PeriodSelector', () => {

@@ -5,6 +5,7 @@ import { listActivities } from '@/api/endpoints/activities'
 import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { aggregateWeekly, type AggregationPeriod } from '@/utils/budget'
 import type {
   ActivityItem,
@@ -20,12 +21,13 @@ import type {
 
 const MAX_BUDGET_ACTIVITIES = 30
 
-/** Maps AggregationPeriod to the API `period` parameter for getTrends. */
+/** Maps display aggregation granularity to the trends API time-range parameter.
+ * Finer granularity uses shorter windows to keep data point counts manageable. */
 const PERIOD_TO_API = {
   hourly: '7d',
   daily: '30d',
   weekly: '90d',
-} as const
+} as const satisfies Record<AggregationPeriod, string>
 
 interface BudgetState {
   budgetConfig: BudgetConfig | null
@@ -100,7 +102,21 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const activitiesData =
         activitiesR.status === 'fulfilled' ? activitiesR.value.data : []
 
-      // Batch 2: agent metadata (non-critical)
+      // Log non-critical failures so degradation is debuggable
+      if (forecastR.status === 'rejected') {
+        console.warn('Failed to fetch forecast:', sanitizeForLog(forecastR.reason))
+      }
+      if (recordsR.status === 'rejected') {
+        console.warn('Failed to fetch cost records:', sanitizeForLog(recordsR.reason))
+      }
+      if (trendsR.status === 'rejected') {
+        console.warn('Failed to fetch trends:', sanitizeForLog(trendsR.reason))
+      }
+      if (activitiesR.status === 'rejected') {
+        console.warn('Failed to fetch activities:', sanitizeForLog(activitiesR.reason))
+      }
+
+      // Agent metadata fetch (separate from main data -- failures degrade display names to raw IDs but don't block rendering)
       const agentNameMap = new Map<string, string>()
       const agentDeptMap = new Map<string, string>()
       try {
@@ -110,7 +126,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
           agentDeptMap.set(agent.id, agent.department)
         }
       } catch (err) {
-        console.warn('Failed to fetch agent list for name/dept mapping:', err)
+        console.warn('Failed to fetch agent list for name/dept mapping:', sanitizeForLog(err))
       }
 
       set({
@@ -136,8 +152,8 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     try {
       const overview = await getOverviewMetrics()
       set({ overview })
-    } catch {
-      // Lightweight refresh -- don't surface error for polling failures
+    } catch (err) {
+      console.warn('Failed to refresh overview (polling):', sanitizeForLog(err))
     }
   },
 
@@ -157,13 +173,17 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         set({ trends: result })
       }
     } catch (err) {
-      console.warn('Failed to fetch trends:', err)
+      // Clear stale data from previous period so chart doesn't mislead
+      set({ trends: null })
+      console.warn('Failed to fetch trends:', sanitizeForLog(err))
     }
   },
 
   setAggregationPeriod: (period) => {
     set({ aggregationPeriod: period })
-    get().fetchTrends()
+    get().fetchTrends().catch(() => {
+      // Already handled inside fetchTrends
+    })
   },
 
   pushActivity: (item) => {
@@ -180,7 +200,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         get().fetchOverview()
       }
     } catch (err) {
-      console.error('Failed to process WebSocket event:', err)
+      console.error('Failed to process WS event:', { type: event.event_type, channel: event.channel }, sanitizeForLog(err))
     }
   },
 }))

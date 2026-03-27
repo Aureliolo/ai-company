@@ -20,6 +20,7 @@ const meta = {
   title: 'Budget/AgentSpendingTable',
   component: AgentSpendingTable,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl">

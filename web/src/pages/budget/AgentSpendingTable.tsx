@@ -68,7 +68,6 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
         />
       ) : (
         <div className="rounded-lg border border-border">
-          {/* Table header */}
           <div className="flex items-center gap-4 border-b border-border bg-surface px-4 py-2">
             {COLUMNS.map((col) => (
               <button
@@ -76,7 +75,7 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
                 type="button"
                 onClick={() => col.sortable && handleSort(col.key)}
                 className={cn(
-                  'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
+                  'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:text-foreground',
                   col.sortable && 'cursor-pointer hover:text-foreground',
                   col.width,
                   col.key !== 'agentName' && 'justify-end',
@@ -93,7 +92,6 @@ export function AgentSpendingTable({ rows, currency }: AgentSpendingTableProps) 
             ))}
           </div>
 
-          {/* Table body */}
           <StaggerGroup className="divide-y divide-border">
             {sorted.map((row) => (
               <StaggerItem key={row.agentId}>

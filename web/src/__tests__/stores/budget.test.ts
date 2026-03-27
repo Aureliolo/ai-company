@@ -99,7 +99,42 @@ function setupSuccessfulFetches() {
   vi.mocked(listActivities).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 30 })
   vi.mocked(listAgents).mockResolvedValue({
     data: [
-      { id: 'a1', name: 'Alpha', department: 'Engineering' } as never,
+      {
+        id: 'a1',
+        name: 'Alpha',
+        role: 'Developer',
+        department: 'engineering',
+        level: 'mid',
+        status: 'active',
+        personality: {
+          traits: [],
+          communication_style: 'direct',
+          risk_tolerance: 'medium',
+          creativity: 'medium',
+          description: 'Test agent',
+          openness: 0.5,
+          conscientiousness: 0.5,
+          extraversion: 0.5,
+          agreeableness: 0.5,
+          stress_response: 0.5,
+          decision_making: 'analytical',
+          collaboration: 'team',
+          verbosity: 'balanced',
+          conflict_approach: 'collaborate',
+        },
+        model: {
+          provider: 'test-provider',
+          model_id: 'test-model-001',
+          temperature: 0.7,
+          max_tokens: 4096,
+          fallback_model: null,
+        },
+        skills: { primary: ['coding'], secondary: [] },
+        memory: { type: 'persistent', retention_days: null },
+        tools: { access_level: 'standard', allowed: [], denied: [] },
+        autonomy_level: 'semi',
+        hiring_date: '2026-01-01T00:00:00Z',
+      },
     ],
     total: 1,
     offset: 0,
@@ -116,8 +151,6 @@ beforeEach(() => {
     overview: null,
     forecast: null,
     costRecords: [],
-    dailySummary: [],
-    periodSummary: null,
     trends: null,
     activities: [],
     agentNameMap: new Map(),
@@ -129,6 +162,13 @@ beforeEach(() => {
 })
 
 describe('fetchBudgetData', () => {
+  it('sets loading to true at the start of fetch', () => {
+    setupSuccessfulFetches()
+    // Don't await -- check intermediate state
+    useBudgetStore.getState().fetchBudgetData()
+    expect(useBudgetStore.getState().loading).toBe(true)
+  })
+
   it('populates all state fields on success', async () => {
     setupSuccessfulFetches()
     await useBudgetStore.getState().fetchBudgetData()
@@ -147,7 +187,7 @@ describe('fetchBudgetData', () => {
     await useBudgetStore.getState().fetchBudgetData()
     const state = useBudgetStore.getState()
     expect(state.agentNameMap.get('a1')).toBe('Alpha')
-    expect(state.agentDeptMap.get('a1')).toBe('Engineering')
+    expect(state.agentDeptMap.get('a1')).toBe('engineering')
   })
 
   it('sets error when getOverviewMetrics fails', async () => {
@@ -206,6 +246,13 @@ describe('fetchOverview', () => {
     expect(state.overview).toEqual(mockOverview)
     expect(state.forecast).toEqual(mockForecast)
   })
+
+  it('does not set error state when fetchOverview fails', async () => {
+    vi.mocked(getOverviewMetrics).mockRejectedValue(new Error('network'))
+    await useBudgetStore.getState().fetchOverview()
+    expect(useBudgetStore.getState().error).toBeNull()
+    expect(useBudgetStore.getState().loading).toBe(false)
+  })
 })
 
 describe('fetchTrends', () => {
@@ -221,6 +268,13 @@ describe('fetchTrends', () => {
     vi.mocked(getTrends).mockResolvedValue(mockTrends)
     await useBudgetStore.getState().fetchTrends()
     expect(getTrends).toHaveBeenCalledWith('7d', 'spend')
+  })
+
+  it('clears trends on fetchTrends failure', async () => {
+    useBudgetStore.setState({ trends: mockTrends })
+    vi.mocked(getTrends).mockRejectedValue(new Error('network'))
+    await useBudgetStore.getState().fetchTrends()
+    expect(useBudgetStore.getState().trends).toBeNull()
   })
 
   it('maps weekly period to 90d API call and aggregates', async () => {
@@ -247,6 +301,14 @@ describe('setAggregationPeriod', () => {
     vi.mocked(getTrends).mockResolvedValue(mockTrends)
     useBudgetStore.getState().setAggregationPeriod('hourly')
     expect(useBudgetStore.getState().aggregationPeriod).toBe('hourly')
+  })
+
+  it('calls fetchTrends when period changes', async () => {
+    vi.mocked(getTrends).mockResolvedValue(mockTrends)
+    useBudgetStore.getState().setAggregationPeriod('weekly')
+    await vi.waitFor(() => {
+      expect(getTrends).toHaveBeenCalledWith('90d', 'spend')
+    })
   })
 })
 
@@ -289,5 +351,19 @@ describe('updateFromWsEvent', () => {
     const { activities } = useBudgetStore.getState()
     expect(activities).toHaveLength(1)
     expect(activities[0]!.agent_name).toBe('CFO Bot')
+  })
+
+  it('triggers fetchOverview when event_type is budget.record_added', async () => {
+    vi.mocked(getOverviewMetrics).mockResolvedValue(mockOverview)
+    const event: WsEvent = {
+      event_type: 'budget.record_added',
+      channel: 'budget',
+      timestamp: '2026-03-20T10:00:00Z',
+      payload: { agent_name: 'CFO Bot' },
+    }
+    useBudgetStore.getState().updateFromWsEvent(event)
+    await vi.waitFor(() => {
+      expect(getOverviewMetrics).toHaveBeenCalled()
+    })
   })
 })

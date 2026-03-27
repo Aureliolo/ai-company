@@ -72,10 +72,11 @@ function buildChartData(
   return points
 }
 
-function ChartTooltipContent({ active, payload, label }: {
+function ChartTooltipContent({ active, payload, label, currency }: {
   active?: boolean
   payload?: Array<{ value: number; dataKey: string }>
   label?: string
+  currency?: string
 }) {
   if (!active || !payload?.length) return null
   return (
@@ -84,7 +85,7 @@ function ChartTooltipContent({ active, payload, label }: {
       {payload.map((entry) => (
         <p key={entry.dataKey} className="font-mono text-foreground">
           {entry.dataKey === 'projected' ? 'Forecast: ' : 'Spend: '}
-          {formatCurrency(entry.value)}
+          {formatCurrency(entry.value, currency)}
         </p>
       ))}
     </div>
@@ -114,11 +115,11 @@ export function SpendBurnChart({
           )}
           {forecast && (
             <>
-              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd, forecast.currency)} />
+              <StatPill label="Avg/day" value={formatCurrency(forecast.avg_daily_spend_usd, currency)} />
               {forecast.days_until_exhausted !== null && (
                 <StatPill label="Days left" value={forecast.days_until_exhausted} />
               )}
-              <StatPill label="Confidence" value={`${Math.round(forecast.confidence * 100)}%`} />
+              <StatPill label="Confidence" value={Number.isFinite(forecast.confidence) ? `${Math.round(forecast.confidence * 100)}%` : '--'} />
             </>
           )}
         </div>
@@ -152,7 +153,7 @@ export function SpendBurnChart({
                 tickFormatter={(v: number) => formatCurrency(v, currency)}
                 width={64}
               />
-              <Tooltip content={<ChartTooltipContent />} />
+              <Tooltip content={<ChartTooltipContent currency={currency} />} />
 
               {budgetTotal > 0 && (
                 <ReferenceLine

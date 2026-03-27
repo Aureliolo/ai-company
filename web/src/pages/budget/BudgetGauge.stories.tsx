@@ -5,6 +5,7 @@ const meta = {
   title: 'Budget/BudgetGauge',
   component: BudgetGauge,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-xs">

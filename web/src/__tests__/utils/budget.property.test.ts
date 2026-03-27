@@ -24,7 +24,7 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   model: fc.constant('test-model-001'),
   input_tokens: fc.nat({ max: 10000 }),
   output_tokens: fc.nat({ max: 10000 }),
-  cost_usd: fc.double({ min: 0.01, max: 100, noNaN: true }),
+  cost_usd: fc.double({ min: 0, max: 100, noNaN: true }),
   timestamp: fc.constant('2026-03-20T10:00:00Z'),
   call_category: callCategoryArb,
 })
@@ -98,7 +98,8 @@ describe('computeCategoryBreakdown properties', () => {
             ratio.coordination.percent +
             ratio.system.percent +
             ratio.uncategorized.percent
-          if (records.length === 0) {
+          const totalCost = records.reduce((acc, r) => acc + r.cost_usd, 0)
+          if (records.length === 0 || totalCost === 0) {
             expect(sum).toBe(0)
           } else {
             expect(sum).toBeCloseTo(100, 0)

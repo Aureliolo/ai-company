@@ -56,7 +56,7 @@ describe('ThresholdAlerts', () => {
       <ThresholdAlerts zone="amber" budgetConfig={mockBudgetConfig} overview={mockOverview} />,
     )
     expect(
-      screen.getByText(/Budget usage at 80% -- approaching warning threshold \(75%\)/),
+      screen.getByText(/Budget usage at 80% -- warning threshold \(75%\) reached/),
     ).toBeInTheDocument()
   })
 

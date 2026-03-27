@@ -55,6 +55,7 @@ const meta = {
   title: 'Budget/CfoActivityFeed',
   component: CfoActivityFeed,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <MemoryRouter>

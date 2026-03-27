@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, Calendar } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Calendar, WifiOff } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { SectionCard } from '@/components/ui/section-card'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -12,6 +12,30 @@ import { ROUTES } from '@/router/routes'
 import { formatCurrency } from '@/utils/format'
 import { computeExhaustionDate, type BudgetMetricCardData } from '@/utils/budget'
 import { SpendBurnChart } from './budget/SpendBurnChart'
+import type { ForecastPoint } from '@/api/types'
+
+function ProjectionRow({ point, cumulative, currency, totalMonthly }: {
+  point: ForecastPoint
+  cumulative: number
+  currency?: string
+  totalMonthly: number
+}) {
+  const budgetPct = totalMonthly > 0 ? (cumulative / totalMonthly) * 100 : 0
+  return (
+    <div className="flex items-center gap-4 px-4 py-2">
+      <span className="flex-1 font-mono text-xs text-foreground">{point.day}</span>
+      <span className="w-28 text-right font-mono text-xs text-text-secondary">
+        {formatCurrency(point.projected_spend_usd, currency)}
+      </span>
+      <span className="w-28 text-right font-mono text-xs text-text-secondary">
+        {formatCurrency(cumulative, currency)}
+      </span>
+      <span className="w-24 text-right font-mono text-xs text-text-muted">
+        {budgetPct.toFixed(1)}%
+      </span>
+    </div>
+  )
+}
 
 export default function BudgetForecastPage() {
   const {
@@ -20,6 +44,9 @@ export default function BudgetForecastPage() {
     forecast,
     trends,
     loading,
+    error,
+    wsConnected,
+    wsSetupError,
   } = useBudgetData()
 
   const currency = overview?.currency ?? budgetConfig?.currency
@@ -49,7 +76,7 @@ export default function BudgetForecastPage() {
       },
       {
         label: 'CONFIDENCE',
-        value: `${Math.round(forecast.confidence * 100)}%`,
+        value: Number.isFinite(forecast.confidence) ? `${Math.round(forecast.confidence * 100)}%` : '--',
       },
       {
         label: 'AVG DAILY SPEND',
@@ -86,6 +113,20 @@ export default function BudgetForecastPage() {
         <h1 className="text-lg font-semibold text-foreground">Budget Forecast</h1>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+          <AlertTriangle className="size-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {!wsConnected && !loading && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+          <WifiOff className="size-4 shrink-0" />
+          {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
+        </div>
+      )}
+
       <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
         {metricCards.map((card) => (
           <StaggerItem key={card.label}>
@@ -115,26 +156,15 @@ export default function BudgetForecastPage() {
               <span className="w-24 text-right text-[11px] font-semibold uppercase tracking-wider text-text-muted">% of Budget</span>
             </div>
             <div className="divide-y divide-border">
-              {forecast.daily_projections.map((point, idx) => {
-                const cumulative = cumulativeValues[idx] ?? 0
-                const budgetPct = budgetConfig?.total_monthly
-                  ? (cumulative / budgetConfig.total_monthly) * 100
-                  : 0
-                return (
-                  <div key={point.day} className="flex items-center gap-4 px-4 py-2">
-                    <span className="flex-1 font-mono text-xs text-foreground">{point.day}</span>
-                    <span className="w-28 text-right font-mono text-xs text-text-secondary">
-                      {formatCurrency(point.projected_spend_usd, currency)}
-                    </span>
-                    <span className="w-28 text-right font-mono text-xs text-text-secondary">
-                      {formatCurrency(cumulative, currency)}
-                    </span>
-                    <span className="w-24 text-right font-mono text-xs text-text-muted">
-                      {budgetPct.toFixed(1)}%
-                    </span>
-                  </div>
-                )
-              })}
+              {forecast.daily_projections.map((point, idx) => (
+                <ProjectionRow
+                  key={point.day}
+                  point={point}
+                  cumulative={cumulativeValues[idx] ?? 0}
+                  currency={currency}
+                  totalMonthly={budgetConfig?.total_monthly ?? 0}
+                />
+              ))}
             </div>
           </div>
         ) : (

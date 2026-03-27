@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { cn } from '@/lib/utils'
@@ -22,16 +23,17 @@ const DIMENSION_OPTIONS: { value: BreakdownDimension; label: string }[] = [
 
 const MAX_LEGEND_SLICES = 6
 
-function DonutTooltipContent({ active, payload }: {
+function DonutTooltipContent({ active, payload, currency }: {
   active?: boolean
   payload?: Array<{ payload: BreakdownSlice }>
+  currency?: string
 }) {
   if (!active || !payload?.length) return null
   const slice = payload[0]!.payload
   return (
     <div className="rounded-md border border-border bg-card px-3 py-2 text-xs shadow-md">
       <p className="mb-1 font-sans font-medium text-foreground">{slice.label}</p>
-      <p className="font-mono text-foreground">{formatCurrency(slice.cost)}</p>
+      <p className="font-mono text-foreground">{formatCurrency(slice.cost, currency)}</p>
       <p className="text-muted-foreground">{slice.percent.toFixed(1)}%</p>
     </div>
   )
@@ -44,19 +46,20 @@ export function CostBreakdownChart({
   deptDisabled = false,
   currency,
 }: CostBreakdownChartProps) {
-  // Build legend data: top slices + optional "Other" aggregation
-  const legendSlices = breakdown.length > MAX_LEGEND_SLICES
-    ? [
+  const legendSlices = useMemo(() => {
+    if (breakdown.length <= MAX_LEGEND_SLICES) return breakdown
+    const overflow = breakdown.slice(MAX_LEGEND_SLICES)
+    return [
       ...breakdown.slice(0, MAX_LEGEND_SLICES),
       {
         key: '__other',
         label: 'Other',
-        cost: breakdown.slice(MAX_LEGEND_SLICES).reduce((sum, s) => sum + s.cost, 0),
-        percent: breakdown.slice(MAX_LEGEND_SLICES).reduce((sum, s) => sum + s.percent, 0),
+        cost: overflow.reduce((sum, s) => sum + s.cost, 0),
+        percent: overflow.reduce((sum, s) => sum + s.percent, 0),
         color: 'var(--so-text-muted)',
       },
     ]
-    : breakdown
+  }, [breakdown])
 
   return (
     <SectionCard
@@ -80,7 +83,7 @@ export function CostBreakdownChart({
                 disabled={isDisabled}
                 onClick={() => { if (!isDisabled) onDimensionChange(opt.value) }}
                 className={cn(
-                  'px-3 py-1 text-xs transition-colors',
+                  'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
                   isActive && 'bg-accent/10 text-accent font-medium',
                   !isActive && !isDisabled && 'text-text-muted hover:text-foreground',
                   isDisabled && 'opacity-50 cursor-not-allowed',
@@ -116,7 +119,7 @@ export function CostBreakdownChart({
                     <Cell key={slice.key} fill={slice.color} />
                   ))}
                 </Pie>
-                <Tooltip content={<DonutTooltipContent />} />
+                <Tooltip content={<DonutTooltipContent currency={currency} />} />
               </PieChart>
             </ResponsiveContainer>
           </div>

@@ -85,6 +85,11 @@ function setStoreState(overrides: Record<string, unknown> = {}) {
     aggregationPeriod: 'daily' as const,
     loading: false,
     error: null,
+    // Override store actions with no-ops to prevent live side effects in Storybook
+    fetchBudgetData: async () => {},
+    fetchOverview: async () => {},
+    fetchTrends: async () => {},
+    updateFromWsEvent: () => {},
     ...overrides,
   })
 }
@@ -92,6 +97,7 @@ function setStoreState(overrides: Record<string, unknown> = {}) {
 const meta: Meta<typeof BudgetPage> = {
   title: 'Pages/Budget',
   component: BudgetPage,
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <MemoryRouter>

@@ -36,6 +36,7 @@ const meta = {
   title: 'Budget/SpendBurnChart',
   component: SpendBurnChart,
   tags: ['autodocs'],
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl">

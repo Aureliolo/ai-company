@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import type { ActivityItem, BudgetAlertConfig, CostRecord, TrendDataPoint } from '@/api/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ActivityItem, BudgetAlertConfig, BudgetConfig, CostRecord, ForecastResponse, OverviewMetrics, TrendDataPoint } from '@/api/types'
 import {
   aggregateWeekly,
   computeAgentSpending,
@@ -350,18 +350,28 @@ describe('aggregateWeekly', () => {
 // ── daysUntilBudgetReset ───────────────────────────────────
 
 describe('daysUntilBudgetReset', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 2, 5, 12, 0, 0))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns a positive number', () => {
     const days = daysUntilBudgetReset(1)
     expect(days).toBeGreaterThan(0)
   })
 
   it('returns days remaining when reset is later this month', () => {
-    // If today is the 5th and reset is the 28th, should be 23
-    const now = new Date()
-    const futureDay = Math.min(28, now.getDate() + 10)
-    if (now.getDate() < futureDay) {
-      expect(daysUntilBudgetReset(futureDay)).toBe(futureDay - now.getDate())
-    }
+    expect(daysUntilBudgetReset(28)).toBe(23)
+  })
+
+  it('returns 0 for invalid resetDay', () => {
+    expect(daysUntilBudgetReset(NaN)).toBe(0)
+    expect(daysUntilBudgetReset(0)).toBe(0)
+    expect(daysUntilBudgetReset(32)).toBe(0)
   })
 })
 
@@ -412,24 +422,63 @@ describe('filterCfoEvents', () => {
 // ── computeBudgetMetricCards ───────────────────────────────
 
 describe('computeBudgetMetricCards', () => {
-  it('returns 4 cards', () => {
-    const overview = {
-      total_tasks: 10,
-      tasks_by_status: {} as Record<string, number>,
-      total_agents: 5,
-      total_cost_usd: 42,
-      budget_remaining_usd: 58,
-      budget_used_percent: 42,
-      cost_7d_trend: [] as TrendDataPoint[],
-      active_agents_count: 3,
-      idle_agents_count: 2,
-      currency: 'EUR',
-    }
+  const overview: OverviewMetrics = {
+    total_tasks: 10,
+    tasks_by_status: {} as Record<string, number>,
+    total_agents: 5,
+    total_cost_usd: 42,
+    budget_remaining_usd: 58,
+    budget_used_percent: 42,
+    cost_7d_trend: [] as TrendDataPoint[],
+    active_agents_count: 3,
+    idle_agents_count: 2,
+    currency: 'EUR',
+  }
+
+  it('returns 4 cards with correct labels', () => {
     const cards = computeBudgetMetricCards(overview, null, null)
     expect(cards).toHaveLength(4)
     expect(cards[0]!.label).toBe('SPEND THIS PERIOD')
     expect(cards[1]!.label).toBe('BUDGET REMAINING')
     expect(cards[2]!.label).toBe('AVG DAILY SPEND')
     expect(cards[3]!.label).toBe('DAYS UNTIL EXHAUSTED')
+  })
+
+  it('formats value fields with currency', () => {
+    const cards = computeBudgetMetricCards(overview, null, null)
+    // SPEND THIS PERIOD should be a formatted currency string
+    expect(cards[0]!.value).toContain('42')
+    // BUDGET REMAINING should be a formatted currency string
+    expect(cards[1]!.value).toContain('58')
+  })
+
+  it('includes progress bar when totalMonthly > 0', () => {
+    const budgetConfig: BudgetConfig = {
+      total_monthly: 100,
+      alerts: { warn_at: 75, critical_at: 90, hard_stop_at: 100 },
+      per_task_limit: 5,
+      per_agent_daily_limit: 20,
+      auto_downgrade: { enabled: false, threshold: 85, downgrade_map: [], boundary: 'task_assignment' },
+      reset_day: 1,
+      currency: 'EUR',
+    }
+    const cards = computeBudgetMetricCards(overview, budgetConfig, null)
+    expect(cards[0]!.progress).toBeDefined()
+    expect(cards[0]!.progress!.current).toBe(42)
+    expect(cards[0]!.progress!.total).toBe(100)
+  })
+
+  it('shows "N/A" value when days_until_exhausted is null', () => {
+    const forecast: ForecastResponse = {
+      horizon_days: 14,
+      projected_total_usd: 80,
+      daily_projections: [],
+      days_until_exhausted: null,
+      confidence: 0.8,
+      avg_daily_spend_usd: 3,
+      currency: 'EUR',
+    }
+    const cards = computeBudgetMetricCards(overview, null, forecast)
+    expect(cards[3]!.value).toBe('N/A')
   })
 })
