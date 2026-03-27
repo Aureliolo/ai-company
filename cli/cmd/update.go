@@ -230,6 +230,24 @@ func reexecUpdate(cmd *cobra.Command) error {
 		reArgs = append(reArgs, "--skip-verify")
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --skip-verify is being carried forward to the re-launched CLI.")
 	}
+	if flagQuiet {
+		reArgs = append(reArgs, "--quiet")
+	}
+	for range flagVerbose {
+		reArgs = append(reArgs, "-v")
+	}
+	if flagNoColor {
+		reArgs = append(reArgs, "--no-color")
+	}
+	if flagPlain {
+		reArgs = append(reArgs, "--plain")
+	}
+	if flagJSON {
+		reArgs = append(reArgs, "--json")
+	}
+	if flagYes {
+		reArgs = append(reArgs, "--yes")
+	}
 
 	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
 	c.Stdin = os.Stdin
@@ -494,12 +512,13 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	return performRestart(ctx, out, info, safeDir, state)
+	opts := GetGlobalOpts(cmd.Context())
+	return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 }
 
 // performRestart stops, restarts, and health-checks containers.
-func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State) (bool, error) {
-	uiOut := ui.NewUI(out)
+func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDir string, state config.State, uiOpts ui.Options) (bool, error) {
+	uiOut := ui.NewUIWithOptions(out, uiOpts)
 
 	sp := uiOut.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {

@@ -19,6 +19,8 @@ const (
 	EnvAutoUpdateCLI = "SYNTHORG_AUTO_UPDATE_CLI"
 	EnvAutoPull      = "SYNTHORG_AUTO_PULL"
 	EnvAutoRestart   = "SYNTHORG_AUTO_RESTART"
+	EnvQuiet         = "SYNTHORG_QUIET"
+	EnvYes           = "SYNTHORG_YES" // suppresses ALL interactive confirmation prompts
 )
 
 // envBool returns true if the named env var is set to a truthy value.
@@ -32,11 +34,6 @@ func envBool(name string) bool {
 		return true
 	}
 	return false
-}
-
-// envString returns the value of the named env var, or empty string if unset.
-func envString(name string) string {
-	return os.Getenv(name)
 }
 
 // noColorFromEnv checks the standard environment signals for disabling color:

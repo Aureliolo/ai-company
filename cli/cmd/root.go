@@ -51,10 +51,8 @@ func init() {
 	pf.BoolVar(&flagJSON, "json", false, "output machine-readable JSON")
 	pf.BoolVarP(&flagYes, "yes", "y", false, "assume yes for all prompts (non-interactive mode)")
 
-	// Allow SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars as fallback.
-	if envBool(EnvNoVerify) || envBool(EnvSkipVerify) {
-		flagSkipVerify = true
-	}
+	// Note: SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars are resolved
+	// inside setupGlobalOpts alongside all other env var overrides.
 }
 
 // setupGlobalOpts resolves the effective configuration from flags, env vars,
@@ -68,27 +66,33 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		return fmt.Errorf("--plain and --json are mutually exclusive")
 	}
 
-	// Resolve --no-color from env if flag not explicitly set.
+	// Resolve env var overrides for flags that were NOT explicitly passed.
+	// Use flag variables directly (already populated by Cobra) rather than
+	// cmd.Flags().Changed() which only sees local flags on subcommands,
+	// not persistent flags inherited from the root command.
 	noColor := flagNoColor
-	if !cmd.Flags().Changed("no-color") && noColorFromEnv() {
+	if !flagNoColor && noColorFromEnv() {
 		noColor = true
 	}
 
-	// Resolve --quiet from env if flag not explicitly set.
 	quiet := flagQuiet
-	if !cmd.Flags().Changed("quiet") && envBool("SYNTHORG_QUIET") {
+	if !flagQuiet && envBool(EnvQuiet) {
 		quiet = true
 	}
 
-	// Resolve --yes from env if flag not explicitly set.
 	yes := flagYes
-	if !cmd.Flags().Changed("yes") && envBool("SYNTHORG_YES") {
+	if !flagYes && envBool(EnvYes) {
 		yes = true
+	}
+
+	skipVerify := flagSkipVerify
+	if !flagSkipVerify && (envBool(EnvNoVerify) || envBool(EnvSkipVerify)) {
+		skipVerify = true
 	}
 
 	opts := &GlobalOpts{
 		DataDir:    resolveDataDir(),
-		SkipVerify: flagSkipVerify,
+		SkipVerify: skipVerify,
 		Quiet:      quiet,
 		Verbose:    flagVerbose,
 		NoColor:    noColor,
@@ -96,6 +100,10 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		JSON:       flagJSON,
 		Yes:        yes,
 		Hints:      "auto", // default; will be overridden by config in PR 2
+	}
+
+	if !validHintsMode(opts.Hints) {
+		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
 
 	cmd.SetContext(SetGlobalOpts(cmd.Context(), opts))
@@ -107,7 +115,7 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 func resolveDataDir() string {
 	dir := flagDataDir
 	if dir == "" {
-		dir = envString(EnvDataDir)
+		dir = os.Getenv(EnvDataDir)
 	}
 	if dir == "" {
 		dir = config.DataDir()
@@ -161,7 +169,13 @@ func isTransportError(err error) bool {
 // Execute runs the root command.
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
-		_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+		// Don't print ChildExitError to stderr -- its internal message
+		// ("re-launched CLI exited with code N") is not user-facing.
+		// main.go handles the exit code propagation.
+		var ce *ChildExitError
+		if !errors.As(err, &ce) {
+			_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+		}
 		return err
 	}
 	return nil

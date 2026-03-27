@@ -61,3 +61,8 @@ func GetGlobalOpts(ctx context.Context) *GlobalOpts {
 	}
 	return &GlobalOpts{Hints: "auto"}
 }
+
+// validHintsMode reports whether h is a recognized hints mode.
+func validHintsMode(h string) bool {
+	return h == "always" || h == "auto" || h == "never"
+}

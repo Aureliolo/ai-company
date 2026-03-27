@@ -126,7 +126,7 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return err
 	}
 	if !confirmed {
-		wc.out.HintGuidance("Wipe cancelled.")
+		wc.out.HintNextStep("Wipe cancelled.")
 		return nil
 	}
 
@@ -332,7 +332,7 @@ func (wc *wipeContext) promptStartForBackup() (bool, error) {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.HintGuidance("Wipe cancelled.")
+			wc.out.HintNextStep("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
 		return false, fmt.Errorf("start prompt: %w", err)
@@ -353,7 +353,7 @@ func (wc *wipeContext) promptForBackup() (bool, error) {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.HintGuidance("Wipe cancelled.")
+			wc.out.HintNextStep("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
 		return false, fmt.Errorf("backup prompt: %w", err)
@@ -378,7 +378,7 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 			Value(&savePath),
 	))); err != nil {
 		if isUserAbort(err) {
-			wc.out.HintGuidance("Wipe cancelled.")
+			wc.out.HintNextStep("Wipe cancelled.")
 			return "", errWipeCancelled
 		}
 		return "", fmt.Errorf("save path prompt: %w", err)
@@ -429,13 +429,13 @@ func (wc *wipeContext) checkOverwrite(path string) error {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.HintGuidance("Overwrite declined -- wipe cancelled.")
+			wc.out.HintNextStep("Overwrite declined -- wipe cancelled.")
 			return errWipeCancelled
 		}
 		return fmt.Errorf("overwrite prompt: %w", err)
 	}
 	if !overwrite {
-		wc.out.HintGuidance("Overwrite declined -- wipe cancelled.")
+		wc.out.HintNextStep("Overwrite declined -- wipe cancelled.")
 		return errWipeCancelled
 	}
 	return nil
@@ -576,13 +576,13 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	)))
 	if err != nil {
 		if isUserAbort(err) {
-			wc.out.HintGuidance("Wipe cancelled.")
+			wc.out.HintNextStep("Wipe cancelled.")
 			return errWipeCancelled
 		}
 		return fmt.Errorf("continue prompt: %w", err)
 	}
 	if !proceed {
-		wc.out.HintGuidance("Wipe cancelled.")
+		wc.out.HintNextStep("Wipe cancelled.")
 		return errWipeCancelled
 	}
 	return nil

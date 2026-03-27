@@ -89,7 +89,7 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 // Returns (true, nil) when at least one image was removed.
 func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
 	if !isInteractive() {
-		out.HintGuidance("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
+		out.HintNextStep("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
 
