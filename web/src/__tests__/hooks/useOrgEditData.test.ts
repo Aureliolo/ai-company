@@ -46,6 +46,7 @@ function resetStore() {
     departmentHealths: [],
     loading: false,
     error: null,
+    healthError: null,
     savingCount: 0,
     saveError: null,
     fetchCompanyData: mockFetchCompanyData,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, Settings } from 'lucide-react'
-import type { CompanyConfig, UpdateCompanyRequest } from '@/api/types'
+import type { AutonomyLevel, CompanyConfig, UpdateCompanyRequest } from '@/api/types'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
@@ -21,9 +21,11 @@ const AUTONOMY_OPTIONS = [
   { value: 'locked', label: 'Locked' },
 ] as const
 
+const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_OPTIONS.map((o) => o.value))
+
 interface FormState {
   company_name: string
-  autonomy_level: string
+  autonomy_level: AutonomyLevel
   budget_monthly: number
   communication_pattern: string
 }
@@ -66,7 +68,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
     try {
       await onUpdate({
         company_name: form.company_name.trim() || undefined,
-        autonomy_level: form.autonomy_level as UpdateCompanyRequest['autonomy_level'],
+        autonomy_level: form.autonomy_level,
         budget_monthly: form.budget_monthly,
         communication_pattern: form.communication_pattern.trim() || undefined,
       })
@@ -94,7 +96,9 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           label="Autonomy Level"
           options={AUTONOMY_OPTIONS}
           value={form.autonomy_level}
-          onChange={(value) => updateForm('autonomy_level', value)}
+          onChange={(value) => {
+            if (VALID_AUTONOMY_LEVELS.has(value)) updateForm('autonomy_level', value as AutonomyLevel)
+          }}
         />
 
         <SliderField
