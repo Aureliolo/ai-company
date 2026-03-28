@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { useThemeStore } from '@/stores/theme'
 import { ThemeToggle } from './theme-toggle'
 
 const meta = {
@@ -19,3 +20,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+export const PopoverOpen: Story = {
+  decorators: [
+    (Story) => {
+      useThemeStore.getState().setPopoverOpen(true)
+      return <Story />
+    },
+  ],
+}

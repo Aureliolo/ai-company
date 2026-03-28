@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { useThemeStore } from '@/stores/theme'
@@ -83,5 +84,35 @@ describe('ThemeToggle', () => {
     await user.selectOptions(fontSelect, 'ibm-plex')
 
     expect(useThemeStore.getState().typography).toBe('ibm-plex')
+  })
+
+  it('changes animation via segmented control', async () => {
+    const user = userEvent.setup()
+    render(<ThemeToggle />)
+    await user.click(screen.getByRole('button', { name: 'Theme preferences' }))
+
+    await user.click(screen.getByRole('radio', { name: 'Instant' }))
+    expect(useThemeStore.getState().animation).toBe('instant')
+  })
+
+  it('changes sidebar mode via segmented control', async () => {
+    const user = userEvent.setup()
+    render(<ThemeToggle />)
+    await user.click(screen.getByRole('button', { name: 'Theme preferences' }))
+
+    await user.click(screen.getByRole('radio', { name: 'Rail' }))
+    expect(useThemeStore.getState().sidebarMode).toBe('rail')
+  })
+
+  it('synchronizes random color palette changes', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('warm-ops', 'ice-station', 'stealth', 'signal', 'neon'),
+        (palette) => {
+          useThemeStore.getState().setColorPalette(palette)
+          expect(useThemeStore.getState().colorPalette).toBe(palette)
+        },
+      ),
+    )
   })
 })

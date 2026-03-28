@@ -62,6 +62,11 @@
   --so-space-10: 48px;
   --so-space-12: 64px;
 
+  /* -- Layout widths -- */
+  --so-sidebar-collapsed: 3.5rem;  /* 56px = w-14 */
+  --so-sidebar-compact: 180px;
+  --so-sidebar-expanded: 220px;
+
   /* -- Border radius -- */
   --so-radius-sm: 4px;
   --so-radius-md: 6px;

@@ -143,4 +143,9 @@ describe('StatusBar', () => {
     render(<StatusBar />)
     expect(screen.getByText(formatCurrency(99.5, 'GBP'))).toBeInTheDocument()
   })
+
+  it('renders the theme toggle', () => {
+    render(<StatusBar />)
+    expect(screen.getByRole('button', { name: 'Theme preferences' })).toBeInTheDocument()
+  })
 })

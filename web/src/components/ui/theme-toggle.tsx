@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { Palette } from 'lucide-react'
 import { Popover } from 'radix-ui'
 import { Button } from '@/components/ui/button'
@@ -6,6 +5,11 @@ import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import {
   useThemeStore,
+  COLOR_PALETTES,
+  DENSITIES,
+  TYPOGRAPHIES,
+  ANIMATION_PRESETS,
+  SIDEBAR_MODES,
   type ColorPalette,
   type Density,
   type Typography,
@@ -18,42 +22,48 @@ import { cn } from '@/lib/utils'
 // Option constants
 // ---------------------------------------------------------------------------
 
-const COLOR_OPTIONS = [
-  { value: 'warm-ops', label: 'Warm Ops' },
-  { value: 'ice-station', label: 'Ice Station' },
-  { value: 'stealth', label: 'Stealth' },
-  { value: 'signal', label: 'Signal' },
-  { value: 'neon', label: 'Neon' },
-] as const
+const COLOR_LABELS: Record<ColorPalette, string> = {
+  'warm-ops': 'Warm Ops',
+  'ice-station': 'Ice Station',
+  stealth: 'Stealth',
+  signal: 'Signal',
+  neon: 'Neon',
+}
 
-const DENSITY_OPTIONS = [
-  { value: 'dense', label: 'Dense' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'sparse', label: 'Sparse' },
-] as const
+const DENSITY_LABELS: Record<Density, string> = {
+  dense: 'Dense',
+  balanced: 'Balanced',
+  medium: 'Medium',
+  sparse: 'Sparse',
+}
 
-const TYPOGRAPHY_OPTIONS = [
-  { value: 'geist', label: 'Geist' },
-  { value: 'jetbrains', label: 'JetBrains + Inter' },
-  { value: 'ibm-plex', label: 'IBM Plex' },
-] as const
+const TYPOGRAPHY_LABELS: Record<Typography, string> = {
+  geist: 'Geist',
+  jetbrains: 'JetBrains + Inter',
+  'ibm-plex': 'IBM Plex',
+}
 
-const ANIMATION_OPTIONS = [
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'spring', label: 'Spring' },
-  { value: 'instant', label: 'Instant' },
-  { value: 'status-driven', label: 'Status' },
-  { value: 'aggressive', label: 'Aggro' },
-] as const
+const ANIMATION_LABELS: Record<AnimationPreset, string> = {
+  minimal: 'Minimal',
+  spring: 'Spring',
+  instant: 'Instant',
+  'status-driven': 'Status',
+  aggressive: 'Aggro',
+}
 
-const SIDEBAR_OPTIONS = [
-  { value: 'rail', label: 'Rail' },
-  { value: 'collapsible', label: 'Collapse' },
-  { value: 'hidden', label: 'Hidden' },
-  { value: 'persistent', label: 'Persist' },
-  { value: 'compact', label: 'Compact' },
-] as const
+const SIDEBAR_LABELS: Record<SidebarMode, string> = {
+  rail: 'Rail',
+  collapsible: 'Collapse',
+  hidden: 'Hidden',
+  persistent: 'Persist',
+  compact: 'Compact',
+}
+
+const COLOR_OPTIONS = COLOR_PALETTES.map((v) => ({ value: v, label: COLOR_LABELS[v] }))
+const DENSITY_OPTIONS = DENSITIES.map((v) => ({ value: v, label: DENSITY_LABELS[v] }))
+const TYPOGRAPHY_OPTIONS = TYPOGRAPHIES.map((v) => ({ value: v, label: TYPOGRAPHY_LABELS[v] }))
+const ANIMATION_OPTIONS = ANIMATION_PRESETS.map((v) => ({ value: v, label: ANIMATION_LABELS[v] }))
+const SIDEBAR_OPTIONS = SIDEBAR_MODES.map((v) => ({ value: v, label: SIDEBAR_LABELS[v] }))
 
 // ---------------------------------------------------------------------------
 // Component
@@ -78,11 +88,6 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
   const setAnimation = useThemeStore((s) => s.setAnimation)
   const setSidebarMode = useThemeStore((s) => s.setSidebarMode)
   const reset = useThemeStore((s) => s.reset)
-
-  // Memoize stable option arrays for SegmentedControl (avoid re-renders)
-  const densityOpts = useMemo(() => [...DENSITY_OPTIONS], [])
-  const animationOpts = useMemo(() => [...ANIMATION_OPTIONS], [])
-  const sidebarOpts = useMemo(() => [...SIDEBAR_OPTIONS], [])
 
   return (
     <Popover.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
@@ -119,7 +124,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
             {/* Color palette */}
             <SelectField
               label="Color"
-              options={[...COLOR_OPTIONS]}
+              options={COLOR_OPTIONS}
               value={colorPalette}
               onChange={(v) => setColorPalette(v as ColorPalette)}
             />
@@ -127,18 +132,18 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
             {/* Density */}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-foreground">Density</span>
-              <SegmentedControl
+              <SegmentedControl<Density>
                 label="Density"
-                options={densityOpts}
+                options={DENSITY_OPTIONS}
                 value={density}
-                onChange={(v) => setDensity(v as Density)}
+                onChange={setDensity}
               />
             </div>
 
             {/* Typography */}
             <SelectField
               label="Font"
-              options={[...TYPOGRAPHY_OPTIONS]}
+              options={TYPOGRAPHY_OPTIONS}
               value={typography}
               onChange={(v) => setTypography(v as Typography)}
             />
@@ -153,22 +158,22 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
                   </span>
                 )}
               </span>
-              <SegmentedControl
+              <SegmentedControl<AnimationPreset>
                 label="Animation"
-                options={animationOpts}
+                options={ANIMATION_OPTIONS}
                 value={animation}
-                onChange={(v) => setAnimation(v as AnimationPreset)}
+                onChange={setAnimation}
               />
             </div>
 
             {/* Sidebar mode */}
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-foreground">Sidebar</span>
-              <SegmentedControl
+              <SegmentedControl<SidebarMode>
                 label="Sidebar mode"
-                options={sidebarOpts}
+                options={SIDEBAR_OPTIONS}
                 value={sidebarMode}
-                onChange={(v) => setSidebarMode(v as SidebarMode)}
+                onChange={setSidebarMode}
               />
             </div>
           </div>

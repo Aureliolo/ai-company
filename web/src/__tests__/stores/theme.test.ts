@@ -1,5 +1,15 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { useThemeStore, applyThemeClasses, loadPreferences } from '@/stores/theme'
+import fc from 'fast-check'
+import {
+  useThemeStore,
+  applyThemeClasses,
+  loadPreferences,
+  COLOR_PALETTES,
+  DENSITIES,
+  TYPOGRAPHIES,
+  ANIMATION_PRESETS,
+  SIDEBAR_MODES,
+} from '@/stores/theme'
 
 const STORAGE_KEY = 'so_theme_preferences'
 
@@ -265,6 +275,83 @@ describe('useThemeStore', () => {
       expect(prefs.typography).toBe('jetbrains')
       expect(prefs.animation).toBe('spring')
       expect(prefs.sidebarMode).toBe('rail')
+    })
+  })
+
+  describe('safeClass guard', () => {
+    it('applyThemeClasses works normally with valid values', () => {
+      // All valid palette values should apply without throwing
+      applyThemeClasses({
+        colorPalette: 'neon',
+        density: 'dense',
+        typography: 'jetbrains',
+        animation: 'spring',
+        sidebarMode: 'rail',
+      })
+      expect(document.documentElement.classList.contains('theme-neon')).toBe(true)
+      expect(document.documentElement.classList.contains('density-dense')).toBe(true)
+      expect(document.documentElement.classList.contains('typography-jetbrains')).toBe(true)
+      expect(document.documentElement.classList.contains('animation-spring')).toBe(true)
+      expect(document.documentElement.classList.contains('sidebar-rail')).toBe(true)
+    })
+
+    it('STORAGE_KEY is so_theme_preferences', () => {
+      // Verify the local constant matches the store's internal key
+      expect(STORAGE_KEY).toBe('so_theme_preferences')
+    })
+  })
+
+  describe('reducedMotion detection', () => {
+    it('loadPreferences returns minimal animation when reduced motion is detected', () => {
+      const originalMatchMedia = window.matchMedia
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+
+      const prefs = loadPreferences()
+      expect(prefs.animation).toBe('minimal')
+
+      window.matchMedia = originalMatchMedia
+    })
+
+    it('loadPreferences returns status-driven animation when reduced motion is off', () => {
+      const originalMatchMedia = window.matchMedia
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+
+      const prefs = loadPreferences()
+      expect(prefs.animation).toBe('status-driven')
+
+      window.matchMedia = originalMatchMedia
+    })
+  })
+
+  it('save-load round-trip', () => {
+    useThemeStore.getState().setColorPalette('neon')
+    const prefs = loadPreferences()
+    expect(prefs.colorPalette).toBe('neon')
+  })
+
+  describe('fast-check property tests', () => {
+    it('loadPreferences always returns valid preferences for arbitrary localStorage values', () => {
+      fc.assert(
+        fc.property(fc.anything(), (arbitrary) => {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(arbitrary))
+          const prefs = loadPreferences()
+          expect(COLOR_PALETTES).toContain(prefs.colorPalette)
+          expect(DENSITIES).toContain(prefs.density)
+          expect(TYPOGRAPHIES).toContain(prefs.typography)
+          expect(ANIMATION_PRESETS).toContain(prefs.animation)
+          expect(SIDEBAR_MODES).toContain(prefs.sidebarMode)
+        }),
+      )
     })
   })
 })

@@ -70,6 +70,10 @@ export const Empty: Story = {
   },
 }
 
+// Note: CodeMirrorEditor has no distinct error state. Parse errors are
+// displayed externally by the parent (e.g. CodeEditorPanel) -- the editor
+// itself renders text as-is regardless of validity.
+
 export const Interactive: Story = {
   args: {
     value: SAMPLE_JSON,

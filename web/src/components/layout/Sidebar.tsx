@@ -82,7 +82,7 @@ export function Sidebar() {
     <aside
       className={cn(
         'flex h-full flex-col border-r border-border bg-surface transition-[width] duration-200',
-        sidebarMode === 'compact' ? 'w-[180px]' : collapsed ? 'w-14' : 'w-[220px]',
+        sidebarMode === 'compact' ? 'w-[var(--so-sidebar-compact)]' : collapsed ? 'w-[var(--so-sidebar-collapsed)]' : 'w-[var(--so-sidebar-expanded)]',
       )}
     >
       {/* Header */}

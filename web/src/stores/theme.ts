@@ -36,13 +36,13 @@ export interface ThemeState extends ThemePreferences {
 
 const STORAGE_KEY = 'so_theme_preferences'
 
-const COLOR_PALETTES: readonly ColorPalette[] = ['warm-ops', 'ice-station', 'stealth', 'signal', 'neon']
-const DENSITIES: readonly Density[] = ['dense', 'balanced', 'medium', 'sparse']
-const TYPOGRAPHIES: readonly Typography[] = ['geist', 'jetbrains', 'ibm-plex']
-const ANIMATION_PRESETS: readonly AnimationPreset[] = ['minimal', 'spring', 'instant', 'status-driven', 'aggressive']
-const SIDEBAR_MODES: readonly SidebarMode[] = ['rail', 'collapsible', 'hidden', 'persistent', 'compact']
+export const COLOR_PALETTES = ['warm-ops', 'ice-station', 'stealth', 'signal', 'neon'] as const satisfies readonly ColorPalette[]
+export const DENSITIES = ['dense', 'balanced', 'medium', 'sparse'] as const satisfies readonly Density[]
+export const TYPOGRAPHIES = ['geist', 'jetbrains', 'ibm-plex'] as const satisfies readonly Typography[]
+export const ANIMATION_PRESETS = ['minimal', 'spring', 'instant', 'status-driven', 'aggressive'] as const satisfies readonly AnimationPreset[]
+export const SIDEBAR_MODES = ['rail', 'collapsible', 'hidden', 'persistent', 'compact'] as const satisfies readonly SidebarMode[]
 
-// CSS class prefixes for each axis (applied to <html>)
+// CSS classes for each axis (applied to <html>)
 const THEME_CLASSES = COLOR_PALETTES.map((p) => `theme-${p}`)
 const DENSITY_CLASSES = DENSITIES.filter((d) => d !== 'balanced').map((d) => `density-${d}`)
 const TYPOGRAPHY_CLASSES = TYPOGRAPHIES.filter((t) => t !== 'geist').map((t) => `typography-${t}`)
@@ -80,7 +80,7 @@ function isValid<T extends string>(value: unknown, allowed: readonly T[]): value
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
 }
 
-/** Exported for testing only. */
+/** Exported for testing only -- the store already calls this at creation time. */
 export function loadPreferences(): ThemePreferences {
   const defaults = getDefaultPreferences()
   try {
@@ -96,7 +96,8 @@ export function loadPreferences(): ThemePreferences {
       animation: isValid(obj.animation, ANIMATION_PRESETS) ? obj.animation : defaults.animation,
       sidebarMode: isValid(obj.sidebarMode, SIDEBAR_MODES) ? obj.sidebarMode : defaults.sidebarMode,
     }
-  } catch {
+  } catch (err) {
+    console.warn('[theme] Failed to load preferences, using defaults:', err)
     return defaults
   }
 }
@@ -104,8 +105,8 @@ export function loadPreferences(): ThemePreferences {
 function savePreferences(prefs: ThemePreferences): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    // Ignore -- storage may be unavailable
+  } catch (err) {
+    console.warn('[theme] Failed to save preferences (localStorage may be unavailable):', err)
   }
 }
 
@@ -114,7 +115,7 @@ const CSS_CLASS_SAFE = /^[a-z0-9-]+$/
 
 function safeClass(cls: string): string {
   if (!CSS_CLASS_SAFE.test(cls)) {
-    throw new Error(`Unsafe CSS class name blocked: ${cls}`)
+    throw new Error(`Unsafe CSS class name blocked (length=${cls.length})`)
   }
   return cls
 }
@@ -161,15 +162,22 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   const initial = loadPreferences()
   const reducedMotion = detectReducedMotion()
 
-  // Apply initial theme classes synchronously
-  applyThemeClasses(initial)
+  // Apply initial theme classes synchronously (wrapped for resilience --
+  // a corrupted localStorage value that bypasses isValid would crash the app)
+  try {
+    applyThemeClasses(initial)
+  } catch (err) {
+    console.warn('[theme] Failed to apply initial theme classes:', err)
+  }
 
   // Listen for reduced-motion changes
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
     mql.addEventListener('change', (e) => {
       set({ reducedMotionDetected: e.matches })
-      // If user hasn't explicitly changed animation, follow OS preference
+      // Follow OS reduced-motion preference: always switch to minimal when
+      // OS requests it; revert to default when OS lifts the preference
+      // (unless user already chose minimal).
       const state = get()
       const defaults = getDefaultPreferences()
       if (state.animation === defaults.animation || (e.matches && state.animation !== 'minimal')) {
@@ -227,12 +235,11 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     reset: () => {
       const defaults = getDefaultPreferences()
       set({ ...defaults })
-      savePreferences(defaults)
       applyThemeClasses(defaults)
       try {
         localStorage.removeItem(STORAGE_KEY)
-      } catch {
-        // Ignore
+      } catch (err) {
+        console.warn('[theme] Failed to clear stored preferences:', err)
       }
     },
   }

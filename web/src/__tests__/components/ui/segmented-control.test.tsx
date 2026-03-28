@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { vi, describe, it, expect } from 'vitest'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 
@@ -98,5 +99,95 @@ describe('SegmentedControl', () => {
     alpha.focus()
     await user.keyboard('{ArrowLeft}')
     expect(onChange).toHaveBeenCalledWith('c')
+  })
+
+  it('navigates with ArrowDown key to next option', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <SegmentedControl label="Test" options={[...options]} value="a" onChange={onChange} />,
+    )
+
+    const alpha = screen.getByRole('radio', { name: 'Alpha' })
+    alpha.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(onChange).toHaveBeenCalledWith('b')
+  })
+
+  it('navigates with ArrowUp key and wraps from first to last', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <SegmentedControl label="Test" options={[...options]} value="a" onChange={onChange} />,
+    )
+
+    const alpha = screen.getByRole('radio', { name: 'Alpha' })
+    alpha.focus()
+    await user.keyboard('{ArrowUp}')
+    expect(onChange).toHaveBeenCalledWith('c')
+  })
+
+  it('keyboard navigation skips disabled options', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const optionsWithMiddleDisabled = [
+      { value: 'x', label: 'Xray' },
+      { value: 'y', label: 'Yankee', disabled: true },
+      { value: 'z', label: 'Zulu' },
+    ]
+    render(
+      <SegmentedControl
+        label="Test"
+        options={optionsWithMiddleDisabled}
+        value="x"
+        onChange={onChange}
+      />,
+    )
+
+    const xray = screen.getByRole('radio', { name: 'Xray' })
+    xray.focus()
+    await user.keyboard('{ArrowRight}')
+    // Should skip 'y' (disabled) and land on 'z'
+    expect(onChange).toHaveBeenCalledWith('z')
+  })
+
+  describe('fast-check property tests', () => {
+    it('ArrowRight wraps correctly for any enabled option count', () => {
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 2, max: 10 }),
+          fc.nat(),
+          (count, startSeed) => {
+            const dynamicOptions = Array.from({ length: count }, (_, i) => ({
+              value: `opt-${i}`,
+              label: `Option ${i}`,
+            }))
+            const startIndex = startSeed % count
+            const startValue = `opt-${startIndex}`
+            const expectedNextIndex = (startIndex + 1) % count
+            const expectedValue = `opt-${expectedNextIndex}`
+
+            const onChange = vi.fn()
+            const { unmount } = render(
+              <SegmentedControl
+                label="Test"
+                options={dynamicOptions}
+                value={startValue}
+                onChange={onChange}
+              />,
+            )
+
+            const selected = screen.getByRole('radio', { name: `Option ${startIndex}` })
+            selected.focus()
+            // Simulate ArrowRight via direct keyDown event (synchronous)
+            const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })
+            selected.dispatchEvent(event)
+
+            expect(onChange).toHaveBeenCalledWith(expectedValue)
+            unmount()
+          },
+        ),
+      )
+    })
   })
 })

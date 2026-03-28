@@ -11,14 +11,14 @@ import { useThemeStore } from '@/stores/theme'
 import type { AnimationPreset } from '@/stores/theme'
 
 export interface AnimationPresetConfig {
-  /** Spring transition for modals, panels, card interactions. */
-  spring: Transition
+  /** Primary transition for modals, panels, card interactions (may be spring or tween depending on preset). */
+  readonly spring: Transition
   /** Tween transition for hover states, color changes, opacity. */
-  tween: Transition
+  readonly tween: Transition
   /** Stagger delay between child animations (seconds). */
-  staggerDelay: number
+  readonly staggerDelay: number
   /** Whether to enable layout animations. */
-  enableLayout: boolean
+  readonly enableLayout: boolean
 }
 
 const PRESET_CONFIGS: Record<AnimationPreset, AnimationPresetConfig> = {

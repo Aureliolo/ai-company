@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
@@ -213,5 +214,50 @@ describe('CodeMirrorEditor', () => {
     render(<CodeMirrorEditor {...defaultProps} className="custom-class" />)
     const container = screen.getByRole('textbox')
     expect(container.className).toContain('custom-class')
+  })
+
+  it('does not call onChange during programmatic value sync', () => {
+    const onChange = vi.fn()
+    const { rerender } = render(
+      <CodeMirrorEditor value="a" onChange={onChange} language="json" />,
+    )
+    onChange.mockClear()
+
+    rerender(<CodeMirrorEditor value="b" onChange={onChange} language="json" />)
+
+    // dispatch should have been called to sync the new value
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changes: expect.objectContaining({ insert: 'b' }),
+      }),
+    )
+    // but onChange must NOT fire because isProgrammaticRef blocks it
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  describe('fast-check property tests', () => {
+    it('dispatches changes for arbitrary external values', () => {
+      fc.assert(
+        fc.property(fc.string({ minLength: 1, maxLength: 100 }), (newValue) => {
+          const onChange = vi.fn()
+          const { rerender, unmount } = render(
+            <CodeMirrorEditor value="initial" onChange={onChange} language="json" />,
+          )
+          mockDispatch.mockClear()
+
+          rerender(<CodeMirrorEditor value={newValue} onChange={onChange} language="json" />)
+
+          expect(mockDispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+              changes: expect.objectContaining({
+                from: 0,
+                insert: newValue,
+              }),
+            }),
+          )
+          unmount()
+        }),
+      )
+    })
   })
 })

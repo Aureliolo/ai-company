@@ -2,8 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import YAML from 'js-yaml'
 import type { SettingEntry } from '@/api/types'
 import { Button } from '@/components/ui/button'
-import { CodeMirrorEditor } from '@/components/ui/code-mirror-editor'
-import { cn } from '@/lib/utils'
+import { CodeMirrorEditor, type CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 
 const MAX_EDITOR_BYTES = 65_536
 
@@ -14,7 +14,12 @@ export interface CodeEditorPanelProps {
   onDirtyChange?: (dirty: boolean) => void
 }
 
-type CodeFormat = 'json' | 'yaml'
+type CodeFormat = CodeMirrorEditorProps['language']
+
+const FORMAT_OPTIONS = [
+  { value: 'json' as const, label: 'JSON' },
+  { value: 'yaml' as const, label: 'YAML' },
+]
 
 function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, string>> {
   const obj: Record<string, Record<string, string>> = {}
@@ -88,7 +93,8 @@ function buildChanges(
 }
 
 function parseText(text: string, format: CodeFormat): ParsedSettings {
-  if (text.length > MAX_EDITOR_BYTES) {
+  const byteLength = new TextEncoder().encode(text).length
+  if (byteLength > MAX_EDITOR_BYTES) {
     throw new Error(`Input too large (max ${MAX_EDITOR_BYTES / 1024} KiB)`)
   }
 
@@ -128,7 +134,8 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     onDirtyChange?.(next)
   }, [onDirtyChange])
 
-  // Sync from entries when not dirty
+  // Sync from entries during render (not useEffect) to avoid a flash of stale
+  // content. Only syncs when user hasn't made edits (dirty=false).
   const prevEntriesRef = useRef<typeof entries | undefined>(undefined)
   if (entries !== prevEntriesRef.current) {
     prevEntriesRef.current = entries
@@ -140,13 +147,18 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
 
   const handleFormatChange = useCallback(
     (newFormat: CodeFormat) => {
-      setFormat(newFormat)
       if (!dirty) {
-        setText(serializeEntries(entries, newFormat))
+        setFormat(newFormat)
+        try {
+          setText(serializeEntries(entries, newFormat))
+        } catch (err) {
+          setParseError(err instanceof Error ? err.message : `Failed to serialize as ${newFormat.toUpperCase()}`)
+        }
       } else {
         // Try to convert existing text to new format
         try {
           const parsed = parseText(text, format)
+          setFormat(newFormat)
           if (newFormat === 'json') {
             setText(JSON.stringify(parsed, null, 2))
           } else {
@@ -155,7 +167,6 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
           setParseError(null)
         } catch {
           setParseError(`Cannot convert to ${newFormat.toUpperCase()}: fix syntax errors first`)
-          setFormat(format) // revert format toggle
         }
       }
     },
@@ -196,7 +207,13 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     if (changes.size === 0) { updateDirty(false); return }
 
     const textBeforeSave = text
-    const failedKeys = await onSave(changes)
+    let failedKeys: Set<string>
+    try {
+      failedKeys = await onSave(changes)
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'Save failed unexpectedly')
+      return
+    }
     if (failedKeys.size === 0) {
       if (text === textBeforeSave) updateDirty(false)
     } else {
@@ -205,37 +222,25 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
   }, [text, format, entries, entryLookup, onSave, updateDirty])
 
   const handleReset = useCallback(() => {
-    setText(serializeEntries(entries, format))
+    try {
+      setText(serializeEntries(entries, format))
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'Failed to serialize settings')
+      return
+    }
     updateDirty(false)
     setParseError(null)
   }, [entries, format, updateDirty])
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => handleFormatChange('json')}
-          disabled={saving}
-          className={cn(
-            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-            format === 'json' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
-          )}
-        >
-          JSON
-        </button>
-        <button
-          type="button"
-          onClick={() => handleFormatChange('yaml')}
-          disabled={saving}
-          className={cn(
-            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-            format === 'yaml' ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
-          )}
-        >
-          YAML
-        </button>
-      </div>
+      <SegmentedControl<CodeFormat>
+        label="Editor format"
+        options={FORMAT_OPTIONS}
+        value={format}
+        onChange={handleFormatChange}
+        disabled={saving}
+      />
 
       <CodeMirrorEditor
         value={text}

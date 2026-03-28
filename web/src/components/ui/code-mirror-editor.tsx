@@ -24,7 +24,10 @@ export interface CodeMirrorEditorProps {
 }
 
 // ---------------------------------------------------------------------------
-// Dark theme mapped to --so-* design tokens
+// CodeMirror theme using --so-* design tokens (dark: true tells CM to use
+// light-on-dark base colors; actual colors come from design tokens which
+// may vary by palette). Pixel values here are CodeMirror-internal sizing
+// that has no corresponding design token.
 // ---------------------------------------------------------------------------
 
 const darkTheme = EditorView.theme(
@@ -179,10 +182,13 @@ export function CodeMirrorEditor({
     const currentDoc = view.state.doc.toString()
     if (value !== currentDoc) {
       isProgrammaticRef.current = true
-      view.dispatch({
-        changes: { from: 0, to: currentDoc.length, insert: value },
-      })
-      isProgrammaticRef.current = false
+      try {
+        view.dispatch({
+          changes: { from: 0, to: currentDoc.length, insert: value },
+        })
+      } finally {
+        isProgrammaticRef.current = false
+      }
     }
   }, [value])
 
@@ -198,7 +204,7 @@ export function CodeMirrorEditor({
     })
   }, [language])
 
-  // Reconfigure readOnly when saving state changes
+  // Reconfigure readOnly when the prop changes
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
