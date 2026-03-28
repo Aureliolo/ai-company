@@ -22,7 +22,7 @@ function NamespaceSettingRow({
 }: NamespaceSettingRowProps) {
   const ck = `${entry.definition.namespace}/${entry.definition.key}`
   return (
-    <ErrorBoundary key={ck} level="component">
+    <ErrorBoundary level="component">
       <SettingRow
         entry={entry}
         dirtyValue={dirtyValues.get(ck)}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router'
 import { AlertTriangle, ArrowLeft, Settings, WifiOff } from 'lucide-react'
 import type { SettingNamespace } from '@/api/types'
@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
-import { useToastStore } from '@/stores/toast'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
+import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
@@ -20,7 +20,7 @@ import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
-import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
+import { buildControllerDisabledMap, matchesSetting } from './settings/utils'
 
 export default function SettingsNamespacePage() {
   const { namespace } = useParams<{ namespace: string }>()
@@ -38,8 +38,14 @@ export default function SettingsNamespacePage() {
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(() => new Map())
   const [advancedMode] = useState(() => localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true')
+
+  const {
+    dirtyValues,
+    handleValueChange,
+    handleDiscard,
+    handleSave,
+  } = useSettingsDirtyState(entries, updateSetting)
   const validNamespace = NAMESPACE_ORDER.includes(namespace as SettingNamespace)
   const ns = namespace as SettingNamespace
 
@@ -59,62 +65,6 @@ export default function SettingsNamespacePage() {
     () => buildControllerDisabledMap(entries, dirtyValues),
     [entries, dirtyValues],
   )
-
-  const persistedValues = useMemo(
-    () =>
-      new Map(
-        entries.map((entry) => [
-          `${entry.definition.namespace}/${entry.definition.key}`,
-          entry.value,
-        ]),
-      ),
-    [entries],
-  )
-
-  const handleValueChange = useCallback((compositeKey: string, value: string) => {
-    setDirtyValues((prev) => {
-      const next = new Map(prev)
-      if (persistedValues.get(compositeKey) === value) {
-        next.delete(compositeKey)
-      } else {
-        next.set(compositeKey, value)
-      }
-      return next
-    })
-  }, [persistedValues])
-
-  const handleDiscard = useCallback(() => {
-    setDirtyValues(new Map())
-  }, [])
-
-  const handleSave = useCallback(async () => {
-    try {
-      const pending = new Map(dirtyValues)
-      const failedKeys = await saveSettingsBatch(pending, updateSetting)
-
-      setDirtyValues((prev) => {
-        const next = new Map(prev)
-        for (const [key, value] of pending) {
-          if (!failedKeys.has(key) && next.get(key) === value) {
-            next.delete(key)
-          }
-        }
-        return next
-      })
-
-      if (failedKeys.size === 0) {
-        useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-      } else {
-        useToastStore.getState().add({
-          variant: 'error',
-          title: `${failedKeys.size} setting(s) failed to save`,
-        })
-      }
-    } catch (err) {
-      console.error('[settings] Unexpected error in handleSave:', err)
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
-    }
-  }, [dirtyValues, updateSetting])
 
   if (loading && entries.length === 0) {
     return <SettingsSkeleton />

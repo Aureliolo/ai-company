@@ -33,7 +33,60 @@ function serializeEntries(entries: SettingEntry[], format: CodeFormat): string {
   return YAML.dump(obj, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false })
 }
 
-function parseText(text: string, format: CodeFormat): Record<string, Record<string, unknown>> {
+type ParsedSettings = Record<string, Record<string, unknown>>
+
+/** Find keys present in original but absent in parsed. */
+function detectRemovedKeys(
+  original: Record<string, Record<string, string>>,
+  parsed: ParsedSettings,
+): string[] {
+  const removed: string[] = []
+  for (const [ns, keys] of Object.entries(original)) {
+    const parsedNs = parsed[ns]
+    if (!parsedNs) {
+      removed.push(
+        ...Object.keys(keys).map((k) => `${ns}/${k}`),
+      )
+    } else {
+      for (const key of Object.keys(keys)) {
+        if (!(key in parsedNs)) removed.push(`${ns}/${key}`)
+      }
+    }
+  }
+  return removed
+}
+
+/** Validate and diff parsed settings against original. */
+function buildChanges(
+  parsed: ParsedSettings,
+  original: Record<string, Record<string, string>>,
+  entryLookup: ReadonlyMap<string, SettingEntry>,
+): {
+  changes: Map<string, string>
+  unknownKeys: string[]
+  envKeys: string[]
+} {
+  const changes = new Map<string, string>()
+  const unknownKeys: string[] = []
+  const envKeys: string[] = []
+  for (const [ns, keys] of Object.entries(parsed)) {
+    const origNs = original[ns] ?? {}
+    for (const [key, value] of Object.entries(keys)) {
+      const ck = `${ns}/${key}`
+      const entry = entryLookup.get(ck)
+      if (!entry) { unknownKeys.push(ck); continue }
+      if (entry.source === 'env') { envKeys.push(ck); continue }
+      const strValue = typeof value === 'string'
+        ? value : JSON.stringify(value)
+      if (origNs[key] !== strValue) {
+        changes.set(ck, strValue)
+      }
+    }
+  }
+  return { changes, unknownKeys, envKeys }
+}
+
+function parseText(text: string, format: CodeFormat): ParsedSettings {
   if (text.length > MAX_EDITOR_BYTES) {
     throw new Error(`Input too large (max ${MAX_EDITOR_BYTES / 1024} KiB)`)
   }
@@ -115,8 +168,7 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
   }, [updateDirty])
 
   const handleSave = useCallback(async () => {
-    // Step 1: parse the text
-    let parsed: Record<string, Record<string, unknown>>
+    let parsed: ParsedSettings
     try {
       parsed = parseText(text, format)
     } catch (err) {
@@ -125,75 +177,29 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     }
 
     const original = entriesToObject(entries)
-
-    // Step 2: detect removed keys (present in original but absent in parsed)
-    const removedKeys: string[] = []
-    for (const [ns, keys] of Object.entries(original)) {
-      const parsedNs = parsed[ns]
-      if (!parsedNs) {
-        removedKeys.push(...Object.keys(keys).map((k) => `${ns}/${k}`))
-      } else {
-        for (const key of Object.keys(keys)) {
-          if (!(key in parsedNs)) {
-            removedKeys.push(`${ns}/${key}`)
-          }
-        }
-      }
-    }
-    if (removedKeys.length > 0) {
-      setParseError(
-        `Cannot remove settings via code editor. Use the GUI to reset individual settings. ` +
-        `Removed: ${removedKeys.join(', ')}`,
-      )
+    const removed = detectRemovedKeys(original, parsed)
+    if (removed.length > 0) {
+      setParseError(`Cannot remove settings via code editor. Use GUI to reset. Removed: ${removed.join(', ')}`)
       return
     }
 
-    // Step 3: validate and diff changed values
-    const changes = new Map<string, string>()
-    const unknownKeys: string[] = []
-    const envKeys: string[] = []
-    for (const [ns, keys] of Object.entries(parsed)) {
-      const origNs = original[ns] ?? {}
-      for (const [key, value] of Object.entries(keys)) {
-        const ck = `${ns}/${key}`
-        const entry = entryLookup.get(ck)
-        if (!entry) { unknownKeys.push(ck); continue }
-        if (entry.source === 'env') { envKeys.push(ck); continue }
-        const strValue = typeof value === 'string'
-          ? value : JSON.stringify(value)
-        if (origNs[key] !== strValue) {
-          changes.set(ck, strValue)
-        }
-      }
-    }
+    const { changes, unknownKeys, envKeys } = buildChanges(parsed, original, entryLookup)
     if (unknownKeys.length > 0) {
-      setParseError(
-        `Unknown setting(s): ${unknownKeys.join(', ')}`,
-      )
+      setParseError(`Unknown setting(s): ${unknownKeys.join(', ')}`)
       return
     }
     if (envKeys.length > 0) {
-      setParseError(
-        `Cannot edit env-sourced setting(s): ${envKeys.join(', ')}`,
-      )
+      setParseError(`Cannot edit env-sourced setting(s): ${envKeys.join(', ')}`)
       return
     }
+    if (changes.size === 0) { updateDirty(false); return }
 
-    if (changes.size === 0) {
-      updateDirty(false)
-      return
-    }
-
-    // Step 4: save -- capture text before await to detect mid-save edits
     const textBeforeSave = text
     const failedKeys = await onSave(changes)
     if (failedKeys.size === 0) {
-      // Only clear dirty if user didn't edit during save
       if (text === textBeforeSave) updateDirty(false)
     } else {
-      setParseError(
-        `${failedKeys.size} setting(s) failed to save.`,
-      )
+      setParseError(`${failedKeys.size} setting(s) failed to save.`)
     }
   }, [text, format, entries, entryLookup, onSave, updateDirty])
 

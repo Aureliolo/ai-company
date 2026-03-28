@@ -18,9 +18,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ToggleField } from '@/components/ui/toggle-field'
-import { useToastStore } from '@/stores/toast'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
+import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
@@ -35,6 +35,8 @@ import { NamespaceSection } from './settings/NamespaceSection'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
+
+import { useToastStore } from '@/stores/toast'
 
 type ViewMode = 'gui' | 'code'
 
@@ -67,9 +69,17 @@ export default function SettingsPage() {
     () => localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true',
   )
   const [viewMode, setViewMode] = useState<ViewMode>('gui')
-  const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(() => new Map())
   const [showAdvancedWarning, setShowAdvancedWarning] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
+  const [showCodeDiscardWarning, setShowCodeDiscardWarning] = useState(false)
+
+  const {
+    dirtyValues,
+    setDirtyValues,
+    handleValueChange,
+    handleDiscard,
+    handleSave,
+  } = useSettingsDirtyState(entries, updateSetting)
 
   // Filter entries: exclude hidden, filter by level, filter by search
   const filteredByNamespace = useMemo(() => {
@@ -94,62 +104,6 @@ export default function SettingsPage() {
     () => buildControllerDisabledMap(entries, dirtyValues),
     [entries, dirtyValues],
   )
-
-  const persistedValues = useMemo(
-    () =>
-      new Map(
-        entries.map((entry) => [
-          `${entry.definition.namespace}/${entry.definition.key}`,
-          entry.value,
-        ]),
-      ),
-    [entries],
-  )
-
-  const handleValueChange = useCallback((compositeKey: string, value: string) => {
-    setDirtyValues((prev) => {
-      const next = new Map(prev)
-      if (persistedValues.get(compositeKey) === value) {
-        next.delete(compositeKey)
-      } else {
-        next.set(compositeKey, value)
-      }
-      return next
-    })
-  }, [persistedValues])
-
-  const handleDiscard = useCallback(() => {
-    setDirtyValues(new Map())
-  }, [])
-
-  const handleSave = useCallback(async () => {
-    try {
-      const pending = new Map(dirtyValues)
-      const failedKeys = await saveSettingsBatch(pending, updateSetting)
-
-      setDirtyValues((prev) => {
-        const next = new Map(prev)
-        for (const [key, value] of pending) {
-          if (!failedKeys.has(key) && next.get(key) === value) {
-            next.delete(key)
-          }
-        }
-        return next
-      })
-
-      if (failedKeys.size === 0) {
-        useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-      } else {
-        useToastStore.getState().add({
-          variant: 'error',
-          title: `${failedKeys.size} setting(s) failed to save`,
-        })
-      }
-    } catch (err) {
-      console.error('[settings] Unexpected error in handleSave:', err)
-      useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
-    }
-  }, [dirtyValues, updateSetting])
 
   const handleCodeSave = useCallback(
     async (changes: Map<string, string>): Promise<Set<string>> => {
@@ -180,7 +134,7 @@ export default function SettingsPage() {
         return new Set(changes.keys())
       }
     },
-    [updateSetting],
+    [updateSetting, setDirtyValues],
   )
 
   const pruneAdvancedDrafts = useCallback(() => {
@@ -196,7 +150,7 @@ export default function SettingsPage() {
       }
       return next
     })
-  }, [entries])
+  }, [entries, setDirtyValues])
 
   const handleAdvancedToggle = useCallback((checked: boolean) => {
     if (checked) {
@@ -249,8 +203,8 @@ export default function SettingsPage() {
             checked={viewMode === 'code'}
             onChange={(v) => {
               if (!v && codeDirty) {
-                if (!window.confirm('You have unsaved code editor changes. Discard them?')) return
-                setCodeDirty(false)
+                setShowCodeDiscardWarning(true)
+                return
               }
               setViewMode(v ? 'code' : 'gui')
             }}
@@ -349,6 +303,20 @@ export default function SettingsPage() {
         description="Advanced settings control low-level system behavior. Misconfiguration may affect stability or security. Only change these if you know what you are doing."
         confirmLabel="Enable"
         onConfirm={confirmAdvancedMode}
+      />
+
+      <ConfirmDialog
+        open={showCodeDiscardWarning}
+        onOpenChange={setShowCodeDiscardWarning}
+        title="Discard code editor changes?"
+        description="You have unsaved changes in the code editor. Switching to GUI mode will discard them."
+        confirmLabel="Discard"
+        variant="destructive"
+        onConfirm={() => {
+          setCodeDirty(false)
+          setShowCodeDiscardWarning(false)
+          setViewMode('gui')
+        }}
       />
     </div>
   )

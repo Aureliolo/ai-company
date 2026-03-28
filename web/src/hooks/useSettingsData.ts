@@ -30,21 +30,20 @@ export function useSettingsData(): UseSettingsDataReturn {
   const updateSetting = useSettingsStore((s) => s.updateSetting)
   const resetSetting = useSettingsStore((s) => s.resetSetting)
 
-  // Initial data fetch
-  useEffect(() => {
-    useSettingsStore.getState().fetchSettingsData()
-  }, [])
-
   // Lightweight polling for entries refresh
   const pollFn = useCallback(async () => {
     await useSettingsStore.getState().refreshEntries()
   }, [])
   const polling = usePolling(pollFn, SETTINGS_POLL_INTERVAL)
-
   const { start: pollingStart, stop: pollingStop } = polling
+
+  // Fetch initial data, then start polling (avoids duplicate getAllSettings)
   useEffect(() => {
-    pollingStart()
-    return () => pollingStop()
+    let cancelled = false
+    useSettingsStore.getState().fetchSettingsData().then(() => {
+      if (!cancelled) pollingStart()
+    })
+    return () => { cancelled = true; pollingStop() }
   }, [pollingStart, pollingStop])
 
   // WebSocket bindings for real-time updates
