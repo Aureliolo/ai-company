@@ -96,10 +96,12 @@ describe('ApprovalsPage', () => {
       ],
       selectedIds: new Set(),
     }
-    renderPage()
-    // MetricCard renders label + value; verify counts are displayed
-    expect(screen.getByText('2')).toBeInTheDocument() // 2 critical pending
-    expect(screen.getByText('1')).toBeInTheDocument() // 1 high pending
+    const { container } = renderPage()
+    // MetricCard values render with text-metric class; extract values
+    const metricValues = container.querySelectorAll('[class*="text-metric"]')
+    const values = [...metricValues].map((el) => el.textContent)
+    // Order: Critical=2, High=1, Medium=0, Low=0
+    expect(values).toEqual(['2', '1', '0', '0'])
   })
 
   it('renders approval cards grouped by risk level', () => {
@@ -112,10 +114,12 @@ describe('ApprovalsPage', () => {
       selectedIds: new Set(),
     }
     renderPage()
-    // Verify each card appears under the correct risk group section
-    const criticalSection = screen.getByText('Critical Approvals').closest('section') ?? screen.getByText('Critical Approvals').parentElement!.parentElement!
+    // Scope card assertions to each risk group via its heading
+    const criticalHeading = screen.getByRole('heading', { name: 'Critical Approvals' })
+    const criticalSection = criticalHeading.closest('[class*="rounded"]')!
     expect(within(criticalSection as HTMLElement).getByText('Deploy prod')).toBeInTheDocument()
-    const highSection = screen.getByText('High Approvals').closest('section') ?? screen.getByText('High Approvals').parentElement!.parentElement!
+    const highHeading = screen.getByRole('heading', { name: 'High Approvals' })
+    const highSection = highHeading.closest('[class*="rounded"]')!
     expect(within(highSection as HTMLElement).getByText('Push to main')).toBeInTheDocument()
   })
 
