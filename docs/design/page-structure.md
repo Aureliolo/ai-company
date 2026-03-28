@@ -83,9 +83,20 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 #### Messages (`/messages`)
 
-Channel-filtered message feed for inspecting agent-to-agent communications. Channel list sidebar (from `/messages/channels`), main message feed with real-time updates. Filter by channel via URL query parameter (`/messages?channel={name}`).
+Channel-filtered message feed for inspecting agent-to-agent communications. Two-column layout: channel list sidebar on the left, main message feed on the right. This is an investigative tool -- users examine delegation chains, audit coordination, debug inter-agent communication. Not a chat interface.
 
-This is an investigative tool -- users examine delegation chains, audit coordination, debug inter-agent communication. Not a chat interface.
+**Features**:
+
+- **Channel sidebar**: grouped by type (topic/direct/broadcast), unread badge per channel, active channel highlight
+- **Message feed**: sender avatar + name, message type badge, priority indicator (high/urgent), relative timestamps
+- **Timestamp grouping**: messages grouped by date with "Today"/"Yesterday"/date dividers
+- **Threading**: messages with the same `task_id` grouped visually with expand/collapse
+- **Client-side filtering**: type, priority, and text search with URL-synced filter pills
+- **Detail drawer**: right-side panel showing full message metadata (channel, sender, task/project links, token usage, cost, extra key-value pairs, attachments)
+- **Real-time**: WebSocket-driven new message arrival with auto-scroll-to-bottom (when user is near bottom)
+- **Pagination**: "Load earlier messages" button for fetching older messages
+
+**URL params**: `?channel={name}`, `?type={messageType}`, `?priority={level}`, `?search={query}`, `?message={id}` (detail drawer)
 
 **API endpoints**: `GET /messages`, `GET /messages/channels`
 **WS channels**: `messages`
@@ -224,6 +235,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
+| `/messages?channel=:name&type=:type` | Messages (filtered) | Filtered by message type |
+| `/messages?channel=:name&message=:id` | Messages (detail) | Side drawer for message detail |
 | `/meetings` | Meetings | Meeting history |
 | `/meetings/:meetingId` | Meeting detail | Transcript and outcomes |
 | `/providers` | Providers | Provider list |

@@ -3,7 +3,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
-import { getMessagePriorityColor } from '@/utils/messages'
+import { getMessagePriorityColor, getPriorityDotClass, getPriorityBadgeClasses } from '@/utils/messages'
 import { cn } from '@/lib/utils'
 import type { Message } from '@/api/types'
 
@@ -41,9 +41,9 @@ function MessageDetailContent({ message }: { message: Message }) {
         {priorityColor && (
           <span className={cn(
             'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px]',
-            `border-${priorityColor}/30 bg-${priorityColor}/10 text-${priorityColor}`,
+            getPriorityBadgeClasses(priorityColor),
           )}>
-            <span className={cn('size-1.5 rounded-full', `bg-${priorityColor}`)} />
+            <span className={cn('size-1.5 rounded-full', getPriorityDotClass(priorityColor))} />
             {message.priority.charAt(0).toUpperCase() + message.priority.slice(1)}
           </span>
         )}
@@ -74,7 +74,7 @@ function MessageDetailContent({ message }: { message: Message }) {
             <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, 'USD')} mono />
           )}
           {message.metadata.extra.map(([key, value]) => (
-            <MetadataRow key={key} label={key} value={value} mono />
+            <MetadataRow key={`extra-${key}-${value}`} label={key} value={value} mono />
           ))}
         </dl>
       </div>

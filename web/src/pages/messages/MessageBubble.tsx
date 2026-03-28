@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { useFlash } from '@/hooks/useFlash'
 import { formatRelativeTime } from '@/utils/format'
-import { getMessagePriorityColor } from '@/utils/messages'
+import { getMessagePriorityColor, getPriorityDotClass } from '@/utils/messages'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
 import type { Message } from '@/api/types'
@@ -46,7 +46,7 @@ export function MessageBubble({ message, isNew, onClick }: MessageBubbleProps) {
           <MessageTypeBadge type={message.type} />
           {priorityColor && (
             <span
-              className={cn('size-1.5 rounded-full', `bg-${priorityColor}`)}
+              className={cn('size-1.5 rounded-full', getPriorityDotClass(priorityColor))}
               aria-label={`${message.priority} priority`}
             />
           )}

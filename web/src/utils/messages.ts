@@ -32,6 +32,29 @@ export function getMessagePriorityColor(priority: MessagePriority): SemanticColo
   return PRIORITY_COLOR_MAP[priority] ?? null
 }
 
+// Static class maps for Tailwind (dynamic interpolation gets purged in production)
+const PRIORITY_DOT_CLASSES: Record<SemanticColor, string> = {
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+  success: 'bg-success',
+  accent: 'bg-accent',
+}
+
+export function getPriorityDotClass(color: SemanticColor): string {
+  return PRIORITY_DOT_CLASSES[color]
+}
+
+const PRIORITY_BADGE_CLASSES: Record<SemanticColor, string> = {
+  warning: 'border-warning/30 bg-warning/10 text-warning',
+  danger: 'border-danger/30 bg-danger/10 text-danger',
+  success: 'border-success/30 bg-success/10 text-success',
+  accent: 'border-accent/30 bg-accent/10 text-accent',
+}
+
+export function getPriorityBadgeClasses(color: SemanticColor): string {
+  return PRIORITY_BADGE_CLASSES[color]
+}
+
 // ── Channel type icon names ────────────────────────────────
 
 const CHANNEL_TYPE_ICONS: Record<ChannelType, string> = {

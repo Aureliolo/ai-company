@@ -93,6 +93,16 @@ describe('groupMessagesByDate', () => {
     const groups = groupMessagesByDate([])
     expect(groups.size).toBe(0)
   })
+
+  it('groups messages with invalid timestamps under "unknown"', () => {
+    const msgs = [
+      makeMessage('1', { timestamp: 'not-a-date' }),
+      makeMessage('2', { timestamp: '2026-03-28T10:00:00Z' }),
+    ]
+    const groups = groupMessagesByDate(msgs)
+    expect(groups.get('unknown')).toHaveLength(1)
+    expect(groups.get('2026-03-28')).toHaveLength(1)
+  })
 })
 
 describe('groupMessagesByThread', () => {
@@ -162,5 +172,15 @@ describe('filterMessages', () => {
   it('returns all messages with no filters', () => {
     const result = filterMessages(msgs, {})
     expect(result).toHaveLength(3)
+  })
+
+  it('filters by search in to field', () => {
+    const msgsWithTo = [
+      makeMessage('1', { to: '#engineering', content: 'hello', sender: 'alice' }),
+      makeMessage('2', { to: '#product', content: 'world', sender: 'bob' }),
+    ]
+    const result = filterMessages(msgsWithTo, { search: 'product' })
+    expect(result).toHaveLength(1)
+    expect(result[0]!.id).toBe('2')
   })
 })
