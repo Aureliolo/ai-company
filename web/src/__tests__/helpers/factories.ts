@@ -4,10 +4,12 @@ import type {
   AgentPerformanceSummary,
   ApprovalResponse,
   CareerEvent,
+  Channel,
   CompanyConfig,
   Department,
   DepartmentHealth,
   MeetingResponse,
+  Message,
   Task,
 } from '@/api/types'
 
@@ -174,6 +176,37 @@ export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): M
     token_usage_by_participant: { 'agent-alice': 350, 'agent-bob': 300 },
     contribution_rank: ['agent-alice', 'agent-bob'],
     meeting_duration_seconds: 300,
+    ...overrides,
+  }
+}
+
+export function makeMessage(id: string, overrides?: Partial<Message>): Message {
+  return {
+    id,
+    timestamp: '2026-03-28T09:00:00.000Z',
+    sender: 'agent-eng',
+    to: '#engineering',
+    type: 'task_update',
+    priority: 'normal',
+    channel: '#engineering',
+    content: `Message ${id} content`,
+    attachments: [],
+    metadata: {
+      task_id: null,
+      project_id: null,
+      tokens_used: null,
+      cost_usd: null,
+      extra: [],
+    },
+    ...overrides,
+  }
+}
+
+export function makeChannel(name: string, overrides?: Partial<Channel>): Channel {
+  return {
+    name,
+    type: 'topic',
+    subscribers: ['agent-eng', 'agent-cto'],
     ...overrides,
   }
 }

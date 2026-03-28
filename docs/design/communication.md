@@ -112,7 +112,7 @@ MCP (Model Context Protocol, Agentic AI Foundation / Linux Foundation)
 {
   "id": "msg-uuid",
   "timestamp": "2026-02-27T10:30:00Z",
-  "from": "sarah_chen",
+  "sender": "sarah_chen",
   "to": "engineering",
   "type": "task_update",
   "priority": "normal",
@@ -123,12 +123,15 @@ MCP (Model Context Protocol, Agentic AI Foundation / Linux Foundation)
   ],
   "metadata": {
     "task_id": "task-123",
-    "project_id": "proj-456",
+    "project_id": null,
     "tokens_used": 1200,
-    "cost_usd": 0.018
+    "cost_usd": 0.018,
+    "extra": [["model", "example-medium-001"]]
   }
 }
 ```
+
+All metadata fields are nullable except `extra`, which is always present (defaults to an empty list). The `extra` field contains additional key-value pairs for extensibility.
 
 ---
 
