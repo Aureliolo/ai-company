@@ -81,7 +81,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	if len(old) == 0 {
 		out.Success("No images found -- nothing to clean up")
 		if !state.AutoCleanup {
-			out.HintGuidance("Run 'synthorg config set auto_cleanup true' to clean up automatically after updates.")
+			out.HintTip("Run 'synthorg config set auto_cleanup true' to clean up automatically after updates.")
 		}
 		return nil
 	}
