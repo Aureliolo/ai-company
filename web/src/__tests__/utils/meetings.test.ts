@@ -162,6 +162,14 @@ describe('formatMeetingDuration', () => {
   it('returns "0m" for 0 seconds', () => {
     expect(formatMeetingDuration(0)).toBe('0m')
   })
+
+  it('returns "--" for NaN', () => {
+    expect(formatMeetingDuration(NaN)).toBe('--')
+  })
+
+  it('returns "--" for Infinity', () => {
+    expect(formatMeetingDuration(Infinity)).toBe('--')
+  })
 })
 
 // -- Client-side filtering --------------------------------------------------

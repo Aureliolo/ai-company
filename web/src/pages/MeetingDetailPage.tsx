@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useParams } from 'react-router'
-import { AlertTriangle, WifiOff } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router'
+import { AlertTriangle, Video, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
 import { useMeetingDetailData } from '@/hooks/useMeetingDetailData'
+import { ROUTES } from '@/router/routes'
 import { MeetingDetailHeader } from './meetings/MeetingDetailHeader'
 import { MeetingAgendaSection } from './meetings/MeetingAgendaSection'
 import { MeetingTokenBreakdown } from './meetings/MeetingTokenBreakdown'
@@ -14,6 +16,7 @@ import { MeetingDetailSkeleton } from './meetings/MeetingDetailSkeleton'
 
 export default function MeetingDetailPage() {
   const { meetingId } = useParams<{ meetingId: string }>()
+  const navigate = useNavigate()
   const {
     meeting,
     loading,
@@ -26,6 +29,18 @@ export default function MeetingDetailPage() {
 
   if (wsConnected && !wasConnected) {
     setWasConnected(true)
+  }
+
+  // Missing meetingId
+  if (!meetingId) {
+    return (
+      <EmptyState
+        icon={Video}
+        title="Meeting not found"
+        description="No meeting ID was provided."
+        action={{ label: 'Back to meetings', onClick: () => navigate(ROUTES.MEETINGS) }}
+      />
+    )
   }
 
   // Loading state

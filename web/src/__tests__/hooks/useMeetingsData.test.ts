@@ -38,7 +38,6 @@ function resetStore() {
     error: null,
     detailError: null,
     triggering: false,
-    triggerError: null,
     fetchMeetings: mockFetchMeetings,
     handleWsEvent: mockHandleWsEvent,
     triggerMeeting: mockTriggerMeeting,
@@ -108,11 +107,5 @@ describe('useMeetingsData', () => {
     useMeetingsStore.setState({ triggering: true })
     const { result } = renderHook(() => useMeetingsData())
     expect(result.current.triggering).toBe(true)
-  })
-
-  it('returns triggerError from store', () => {
-    useMeetingsStore.setState({ triggerError: 'Trigger failed' })
-    const { result } = renderHook(() => useMeetingsData())
-    expect(result.current.triggerError).toBe('Trigger failed')
   })
 })

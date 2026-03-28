@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { Clock, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRelativeTime } from '@/utils/format'
+import { formatLabel, formatRelativeTime } from '@/utils/format'
 import {
   formatMeetingDuration,
   getMeetingStatusColor,
@@ -39,7 +39,7 @@ export function MeetingCard({ meeting, className }: MeetingCardProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className="truncate text-sm font-semibold text-foreground">
-            {meeting.meeting_type_name.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            {formatLabel(meeting.meeting_type_name)}
           </span>
           <span className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-micro font-mono text-muted-foreground">
             {getProtocolLabel(meeting.protocol_type)}

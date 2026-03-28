@@ -3,7 +3,7 @@ import { ArrowLeft, Clock, Hash, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatDate } from '@/utils/format'
+import { formatDate, formatLabel } from '@/utils/format'
 import {
   formatMeetingDuration,
   getMeetingStatusColor,
@@ -38,7 +38,7 @@ export function MeetingDetailHeader({ meeting, className }: MeetingDetailHeaderP
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-lg font-semibold text-foreground">
-              {meeting.meeting_type_name.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              {formatLabel(meeting.meeting_type_name)}
             </h1>
             <span className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-micro font-mono text-muted-foreground">
               {getProtocolLabel(meeting.protocol_type)}

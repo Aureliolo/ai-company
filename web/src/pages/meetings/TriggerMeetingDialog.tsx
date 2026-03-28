@@ -16,16 +16,25 @@ export function TriggerMeetingDialog({
   loading,
 }: TriggerMeetingDialogProps) {
   const [eventName, setEventName] = useState('')
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const handleConfirm = async () => {
-    if (!eventName.trim()) return
-    await onConfirm(eventName.trim())
+    const trimmed = eventName.trim()
+    if (!trimmed) {
+      setValidationError('Event name is required.')
+      return
+    }
+    setValidationError(null)
+    await onConfirm(trimmed)
     setEventName('')
   }
 
   const handleOpenChange = (o: boolean) => {
     onOpenChange(o)
-    if (!o) setEventName('')
+    if (!o) {
+      setEventName('')
+      setValidationError(null)
+    }
   }
 
   return (
@@ -42,8 +51,9 @@ export function TriggerMeetingDialog({
         <InputField
           label="Event Name"
           value={eventName}
-          onChange={(e) => setEventName(e.target.value)}
+          onChange={(e) => { setEventName(e.target.value); setValidationError(null) }}
           placeholder="e.g. on_pr, deploy_complete"
+          error={validationError}
           required
         />
       </div>

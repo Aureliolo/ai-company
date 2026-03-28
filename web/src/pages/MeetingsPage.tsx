@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { AlertTriangle, Video, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useMeetingsData } from '@/hooks/useMeetingsData'
 import { useToastStore } from '@/stores/toast'
@@ -104,7 +105,9 @@ export default function MeetingsPage() {
         </div>
       )}
 
-      <MeetingMetricCards meetings={filtered} />
+      <ErrorBoundary level="section">
+        <MeetingMetricCards meetings={filtered} />
+      </ErrorBoundary>
 
       <MeetingFilterBar
         filters={filters}
@@ -112,16 +115,20 @@ export default function MeetingsPage() {
         meetingTypes={meetingTypes}
       />
 
-      <MeetingTimeline meetings={filtered} />
+      <ErrorBoundary level="section">
+        <MeetingTimeline meetings={filtered} />
+      </ErrorBoundary>
 
       {filtered.length > 0 && (
-        <StaggerGroup className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((meeting) => (
-            <StaggerItem key={meeting.meeting_id}>
-              <MeetingCard meeting={meeting} />
-            </StaggerItem>
-          ))}
-        </StaggerGroup>
+        <ErrorBoundary level="section">
+          <StaggerGroup className="grid grid-cols-1 gap-grid-gap md:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((meeting) => (
+              <StaggerItem key={meeting.meeting_id}>
+                <MeetingCard meeting={meeting} />
+              </StaggerItem>
+            ))}
+          </StaggerGroup>
+        </ErrorBoundary>
       )}
 
       {filtered.length === 0 && !hasFilters && (

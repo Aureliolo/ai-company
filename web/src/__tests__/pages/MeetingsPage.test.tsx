@@ -12,7 +12,6 @@ const defaultHookReturn: UseMeetingsDataReturn = {
   loading: false,
   error: null,
   triggering: false,
-  triggerError: null,
   wsConnected: true,
   wsSetupError: null,
   triggerMeeting: vi.fn().mockResolvedValue([]),
@@ -72,14 +71,6 @@ describe('MeetingsPage', () => {
     hookReturn = { ...defaultHookReturn, error: 'Connection lost' }
     renderMeetings()
     expect(screen.getByText('Connection lost')).toBeInTheDocument()
-  })
-
-  it('shows WebSocket disconnect warning when not connected', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false }
-    renderMeetings()
-    // The wasConnected guard means it only shows after being connected first.
-    // On initial render with wsConnected=false, it won't show.
-    // This is expected -- same pattern as ApprovalsPage.
   })
 
   it('shows custom wsSetupError message when provided', () => {

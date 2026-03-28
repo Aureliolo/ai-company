@@ -13,7 +13,6 @@ export interface UseMeetingsDataReturn {
   loading: boolean
   error: string | null
   triggering: boolean
-  triggerError: string | null
   wsConnected: boolean
   wsSetupError: string | null
   triggerMeeting: MeetingsState['triggerMeeting']
@@ -25,7 +24,6 @@ export function useMeetingsData(): UseMeetingsDataReturn {
   const loading = useMeetingsStore((s) => s.loading)
   const error = useMeetingsStore((s) => s.error)
   const triggering = useMeetingsStore((s) => s.triggering)
-  const triggerError = useMeetingsStore((s) => s.triggerError)
   const triggerMeeting = useMeetingsStore((s) => s.triggerMeeting)
 
   // Initial data fetch
@@ -42,7 +40,7 @@ export function useMeetingsData(): UseMeetingsDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling start/stop are stable useCallback refs
   }, [])
 
   // WebSocket bindings for real-time updates
@@ -67,7 +65,6 @@ export function useMeetingsData(): UseMeetingsDataReturn {
     loading,
     error,
     triggering,
-    triggerError,
     wsConnected,
     wsSetupError,
     triggerMeeting,

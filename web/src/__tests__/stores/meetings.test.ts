@@ -25,7 +25,6 @@ function resetStore() {
     error: null,
     detailError: null,
     triggering: false,
-    triggerError: null,
   })
 }
 
@@ -87,6 +86,35 @@ describe('fetchMeetings', () => {
 
     expect(useMeetingsStore.getState().selectedMeeting?.status).toBe('completed')
   })
+
+  it('rejects stale responses when a newer fetch starts', async () => {
+    const api = await importApi()
+    const staleItems = [makeMeeting('stale')]
+    const freshItems = [makeMeeting('fresh')]
+
+    // First call resolves slowly, second call resolves immediately
+    let resolveFirst!: (v: { data: typeof staleItems; total: number; offset: number; limit: number }) => void
+    vi.mocked(api.listMeetings)
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
+      .mockResolvedValueOnce({ data: freshItems, total: 1, offset: 0, limit: 100 })
+
+    // Fire first request (slow)
+    const firstPromise = useMeetingsStore.getState().fetchMeetings()
+    // Fire second request (fast) -- this increments listRequestSeq
+    const secondPromise = useMeetingsStore.getState().fetchMeetings()
+
+    // Second resolves first
+    await secondPromise
+    expect(useMeetingsStore.getState().meetings[0]!.meeting_id).toBe('fresh')
+
+    // Now resolve the first (stale) request
+    resolveFirst({ data: staleItems, total: 1, offset: 0, limit: 100 })
+    await firstPromise
+
+    // Store should still have fresh data, not stale
+    expect(useMeetingsStore.getState().meetings[0]!.meeting_id).toBe('fresh')
+    expect(useMeetingsStore.getState().meetings).toHaveLength(1)
+  })
 })
 
 // -- fetchMeeting -----------------------------------------------------------
@@ -138,15 +166,14 @@ describe('triggerMeeting', () => {
     expect(state.triggering).toBe(false)
   })
 
-  it('sets triggerError on failure', async () => {
+  it('re-throws on failure and resets triggering', async () => {
     const api = await importApi()
     vi.mocked(api.triggerMeeting).mockRejectedValue(new Error('Trigger failed'))
 
-    await expect(useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' })).rejects.toThrow()
+    await expect(useMeetingsStore.getState().triggerMeeting({ event_name: 'bad_event' })).rejects.toThrow('Trigger failed')
 
     const state = useMeetingsStore.getState()
     expect(state.triggering).toBe(false)
-    expect(state.triggerError).toBe('Trigger failed')
   })
 })
 
@@ -168,7 +195,7 @@ describe('handleWsEvent', () => {
     expect(useMeetingsStore.getState().meetings[0]!.meeting_id).toBe('ws-1')
   })
 
-  it('skips malformed payload', () => {
+  it('skips malformed payload missing required fields', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const event: WsEvent = {
       channel: 'meetings',
@@ -180,10 +207,12 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    expect(consoleSpy).toHaveBeenCalledOnce()
     consoleSpy.mockRestore()
   })
 
   it('ignores event without meeting field', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
     const event: WsEvent = {
       channel: 'meetings',
       event_type: 'meeting.completed',
@@ -194,6 +223,38 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    expect(debugSpy).toHaveBeenCalledOnce()
+    debugSpy.mockRestore()
+  })
+
+  it('ignores event where meeting is an array', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting: [makeMeeting('arr')] },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    debugSpy.mockRestore()
+  })
+
+  it('ignores event where meeting is a primitive', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const event: WsEvent = {
+      channel: 'meetings',
+      event_type: 'meeting.completed',
+      payload: { meeting: 'not-an-object' },
+      timestamp: new Date().toISOString(),
+    }
+
+    useMeetingsStore.getState().handleWsEvent(event)
+
+    expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    debugSpy.mockRestore()
   })
 })
 

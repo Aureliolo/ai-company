@@ -23,7 +23,6 @@ export interface MeetingsState {
 
   // Trigger
   triggering: boolean
-  triggerError: string | null
 
   // Actions
   fetchMeetings: (filters?: MeetingFilters) => Promise<void>
@@ -53,7 +52,6 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   error: null,
   detailError: null,
   triggering: false,
-  triggerError: null,
 
   fetchMeetings: async (filters) => {
     const seq = ++listRequestSeq
@@ -68,7 +66,10 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
         : null
       set({ meetings: result.data, total: result.total, loading: false, selectedMeeting: freshSelected })
     } catch (err) {
-      if (seq !== listRequestSeq) return
+      if (seq !== listRequestSeq) {
+        console.warn('[meetings] Discarding error from stale list request:', sanitizeForLog(err))
+        return
+      }
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -81,13 +82,16 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       if (seq !== detailRequestSeq) return // stale response
       set({ selectedMeeting: meeting, loadingDetail: false, detailError: null })
     } catch (err) {
-      if (seq !== detailRequestSeq) return
+      if (seq !== detailRequestSeq) {
+        console.warn('[meetings] Discarding error from stale detail request:', sanitizeForLog(err))
+        return
+      }
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
   },
 
   triggerMeeting: async (data) => {
-    set({ triggering: true, triggerError: null })
+    set({ triggering: true })
     try {
       const meetings = await meetingsApi.triggerMeeting(data)
       set((s) => ({
@@ -97,29 +101,36 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       }))
       return meetings
     } catch (err) {
-      set({ triggering: false, triggerError: getErrorMessage(err) })
+      set({ triggering: false })
       throw err
     }
   },
 
   handleWsEvent: (event) => {
     const { payload } = event
-    if (payload.meeting && typeof payload.meeting === 'object' && !Array.isArray(payload.meeting)) {
-      const candidate = payload.meeting as Record<string, unknown>
-      if (
-        typeof candidate.meeting_id === 'string' &&
-        typeof candidate.status === 'string' &&
-        typeof candidate.meeting_type_name === 'string' &&
-        typeof candidate.protocol_type === 'string'
-      ) {
-        get().upsertMeeting(candidate as unknown as MeetingResponse)
-      } else {
-        console.error('[meetings/ws] Received malformed meeting payload, skipping upsert', {
-          meeting_id: sanitizeForLog(candidate.meeting_id),
-          hasStatus: typeof candidate.status === 'string',
-          hasTypeName: typeof candidate.meeting_type_name === 'string',
-        })
-      }
+    if (!payload.meeting || typeof payload.meeting !== 'object' || Array.isArray(payload.meeting)) {
+      console.debug('[meetings/ws] Event has no meeting payload, skipping:', event.event_type)
+      return
+    }
+    const candidate = payload.meeting as Record<string, unknown>
+    if (
+      typeof candidate.meeting_id === 'string' &&
+      typeof candidate.status === 'string' &&
+      typeof candidate.meeting_type_name === 'string' &&
+      typeof candidate.protocol_type === 'string' &&
+      typeof candidate.token_budget === 'number' &&
+      Array.isArray(candidate.contribution_rank) &&
+      typeof candidate.token_usage_by_participant === 'object' &&
+      candidate.token_usage_by_participant !== null
+    ) {
+      get().upsertMeeting(candidate as unknown as MeetingResponse)
+    } else {
+      console.error('[meetings/ws] Received malformed meeting payload, skipping upsert', {
+        meeting_id: sanitizeForLog(candidate.meeting_id),
+        hasStatus: typeof candidate.status === 'string',
+        hasTypeName: typeof candidate.meeting_type_name === 'string',
+        hasTokenBudget: typeof candidate.token_budget === 'number',
+      })
     }
   },
 
