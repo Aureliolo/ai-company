@@ -68,7 +68,7 @@ export function ProviderFormDrawer({
   const selectedPresetChanged = selectedPreset !== prevSelectedPresetRef.current
 
   // Clear credentials when switching to edit mode
-  if (open && mode === 'edit' && (openChanged || modeChanged)) {
+  if (open && mode === 'edit' && (openChanged || modeChanged || providerChanged)) {
     setSelectedPreset(null)
     setApiKey('')
     setSubscriptionToken('')
