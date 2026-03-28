@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -78,7 +78,10 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
     }
   }, [form, onCreate, onOpenChange])
 
-  const deptOptions = departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name }))
+  const deptOptions = useMemo(
+    () => departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name })),
+    [departments],
+  )
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>

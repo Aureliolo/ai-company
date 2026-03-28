@@ -102,3 +102,7 @@ export const Default: Story = {}
 export const Empty: Story = {
   args: { config: null },
 }
+
+export const Saving: Story = {
+  args: { saving: true },
+}

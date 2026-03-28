@@ -63,6 +63,17 @@ describe('DepartmentEditDrawer', () => {
     expect(screen.getByText('Delete Engineering?')).toBeInTheDocument()
   })
 
+  it('calls onDelete with department name after confirming delete', async () => {
+    renderDrawer()
+    fireEvent.click(screen.getByText('Delete'))
+    // Confirm in the dialog
+    const confirmButtons = screen.getAllByText('Delete')
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]!)
+    await waitFor(() => {
+      expect(mockOnDelete).toHaveBeenCalledWith('engineering')
+    })
+  })
+
   it('sends budget_percent of 0 correctly (not undefined)', async () => {
     renderDrawer()
     // Budget default is '0' -- should send 0, not undefined

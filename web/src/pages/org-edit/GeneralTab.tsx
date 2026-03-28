@@ -28,8 +28,10 @@ interface FormState {
   communication_pattern: string
 }
 
+const budgetFormatter = new Intl.NumberFormat('en-US', { style: 'decimal', maximumFractionDigits: 0 })
+
 function formatBudget(value: number): string {
-  return `${value.toLocaleString()} EUR`
+  return `${budgetFormatter.format(value)} EUR`
 }
 
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {

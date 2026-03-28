@@ -225,6 +225,7 @@ export function DepartmentsTab({
         onOpenChange={setCreateOpen}
         existingNames={config.departments.map((d) => d.name)}
         onCreate={onCreateDepartment}
+        disabled={saving}
       />
 
       <DepartmentEditDrawer

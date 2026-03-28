@@ -5,6 +5,7 @@ import type { Department } from '@/api/types'
 const stubDept: Department = {
   name: 'design',
   display_name: 'Design',
+  budget_percent: 20,
   teams: [],
 }
 

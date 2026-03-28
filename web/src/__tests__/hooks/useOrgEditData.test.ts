@@ -79,6 +79,16 @@ describe('useOrgEditData', () => {
     expect(mockPollingStart).toHaveBeenCalled()
   })
 
+  it('calls fetchDepartmentHealths after config is available', async () => {
+    mockFetchCompanyData.mockImplementation(async () => {
+      useCompanyStore.setState({ config: makeCompanyConfig() })
+    })
+    renderHook(() => useOrgEditData())
+    await waitFor(() => {
+      expect(mockFetchDepartmentHealths).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('stops polling on unmount', async () => {
     const { unmount } = renderHook(() => useOrgEditData())
     await waitFor(() => {
