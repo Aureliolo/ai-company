@@ -60,8 +60,8 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
         try {
           if (!new RegExp(definition.validator_pattern).test(raw)) // eslint-disable-line security/detect-non-literal-regexp -- pattern from trusted backend schema
             return `Must match pattern: ${definition.validator_pattern}`
-        } catch {
-          // Invalid pattern -- skip client-side validation
+        } catch (err) {
+          console.warn(`[settings] Invalid validator_pattern for ${definition.namespace}/${definition.key}:`, err)
         }
       }
       return null

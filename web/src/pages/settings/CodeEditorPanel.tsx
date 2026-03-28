@@ -30,18 +30,22 @@ function serializeEntries(entries: SettingEntry[], format: CodeFormat): string {
 }
 
 function parseText(text: string, format: CodeFormat): Record<string, Record<string, string>> {
-  if (format === 'json') {
-    const parsed: unknown = JSON.parse(text)
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('JSON must be an object at the top level')
+  const raw: unknown = format === 'json'
+    ? JSON.parse(text)
+    : YAML.load(text, { schema: YAML.CORE_SCHEMA })
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`${format.toUpperCase()} must be an object at the top level`)
+  }
+
+  // Validate that each namespace value is also an object
+  for (const [ns, nsValue] of Object.entries(raw as Record<string, unknown>)) {
+    if (!nsValue || typeof nsValue !== 'object' || Array.isArray(nsValue)) {
+      throw new Error(`Namespace "${ns}" must be an object, got ${typeof nsValue}`)
     }
-    return parsed as Record<string, Record<string, string>>
   }
-  const parsed = YAML.load(text, { schema: YAML.CORE_SCHEMA })
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('YAML must be a mapping (object) at the top level')
-  }
-  return parsed as Record<string, Record<string, string>>
+
+  return raw as Record<string, Record<string, string>>
 }
 
 export function CodeEditorPanel({ entries, onSave, saving }: CodeEditorPanelProps) {
@@ -76,7 +80,8 @@ export function CodeEditorPanel({ entries, onSave, saving }: CodeEditorPanelProp
           }
           setParseError(null)
         } catch {
-          // Keep text as-is if conversion fails
+          setParseError(`Cannot convert to ${newFormat.toUpperCase()}: fix syntax errors first`)
+          setFormat(format) // revert format toggle
         }
       }
     },
@@ -90,31 +95,40 @@ export function CodeEditorPanel({ entries, onSave, saving }: CodeEditorPanelProp
   }, [])
 
   const handleSave = useCallback(async () => {
+    // Step 1: parse the text (errors are user-facing parse issues)
+    let parsed: Record<string, Record<string, string>>
     try {
-      const parsed = parseText(text, format)
-      const original = entriesToObject(entries)
+      parsed = parseText(text, format)
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : `Failed to parse ${format.toUpperCase()}`)
+      return
+    }
 
-      // Diff: find changed values
-      const changes = new Map<string, string>()
-      for (const [ns, keys] of Object.entries(parsed)) {
-        const origNs = original[ns] ?? {}
-        for (const [key, value] of Object.entries(keys)) {
-          const strValue = typeof value === 'string' ? value : JSON.stringify(value)
-          if (origNs[key] !== strValue) {
-            changes.set(`${ns}/${key}`, strValue)
-          }
+    const original = entriesToObject(entries)
+
+    // Step 2: diff and find changed values
+    const changes = new Map<string, string>()
+    for (const [ns, keys] of Object.entries(parsed)) {
+      const origNs = original[ns] ?? {}
+      for (const [key, value] of Object.entries(keys)) {
+        const strValue = typeof value === 'string' ? value : JSON.stringify(value)
+        if (origNs[key] !== strValue) {
+          changes.set(`${ns}/${key}`, strValue)
         }
       }
+    }
 
-      if (changes.size === 0) {
-        setDirty(false)
-        return
-      }
+    if (changes.size === 0) {
+      setDirty(false)
+      return
+    }
 
+    // Step 3: save (errors are network/API issues, handled by onSave via toast)
+    try {
       await onSave(changes)
       setDirty(false)
     } catch (err) {
-      setParseError(err instanceof Error ? err.message : `Failed to parse ${format.toUpperCase()}`)
+      setParseError(err instanceof Error ? err.message : 'Failed to save settings')
     }
   }, [text, format, entries, onSave])
 

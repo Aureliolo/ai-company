@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { SettingEntry } from '@/api/types'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
 export interface NamespaceSectionProps {
-  namespace: SettingNamespace
   displayName: string
   icon: React.ReactNode
   entries: SettingEntry[]

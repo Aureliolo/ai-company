@@ -24,7 +24,6 @@ import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
   NAMESPACE_ORDER,
-  SETTING_DEPENDENCIES,
   SETTINGS_ADVANCED_KEY,
   SETTINGS_ADVANCED_WARNED_KEY,
 } from '@/utils/constants'
@@ -34,6 +33,7 @@ import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
+import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
 
 type ViewMode = 'gui' | 'code'
 
@@ -45,33 +45,6 @@ const NAMESPACE_ICONS: Record<string, React.ReactNode> = {
   coordination: <Network className="size-4" />,
   observability: <Eye className="size-4" />,
   backup: <HardDrive className="size-4" />,
-}
-
-function matchesSetting(entry: SettingEntry, query: string): boolean {
-  const q = query.toLowerCase()
-  const def = entry.definition
-  return (
-    def.key.toLowerCase().includes(q) ||
-    def.description.toLowerCase().includes(q) ||
-    def.namespace.toLowerCase().includes(q) ||
-    def.group.toLowerCase().includes(q)
-  )
-}
-
-function isControllerDisabled(
-  controllerKey: string,
-  entries: SettingEntry[],
-  dirtyValues: ReadonlyMap<string, string>,
-): boolean {
-  const dirtyVal = dirtyValues.get(controllerKey)
-  if (dirtyVal !== undefined) {
-    return dirtyVal.toLowerCase() !== 'true' && dirtyVal !== '1'
-  }
-  const entry = entries.find(
-    (e) => `${e.definition.namespace}/${e.definition.key}` === controllerKey,
-  )
-  if (!entry) return false
-  return entry.value.toLowerCase() !== 'true' && entry.value !== '1'
 }
 
 export default function SettingsPage() {
@@ -115,17 +88,10 @@ export default function SettingsPage() {
     return result
   }, [entries, advancedMode, searchQuery])
 
-  // Build controller-disabled map for dependency indicators
-  const controllerDisabledMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    for (const [controller, deps] of Object.entries(SETTING_DEPENDENCIES)) {
-      const disabled = isControllerDisabled(controller, entries, dirtyValues)
-      for (const dep of deps) {
-        map.set(dep, disabled)
-      }
-    }
-    return map
-  }, [entries, dirtyValues])
+  const controllerDisabledMap = useMemo(
+    () => buildControllerDisabledMap(entries, dirtyValues),
+    [entries, dirtyValues],
+  )
 
   const handleValueChange = useCallback((compositeKey: string, value: string) => {
     setDirtyValues((prev) => {
@@ -140,39 +106,35 @@ export default function SettingsPage() {
   }, [])
 
   const handleSave = useCallback(async () => {
-    const promises: Promise<void>[] = []
-    for (const [compositeKey, value] of dirtyValues) {
-      const [ns, key] = compositeKey.split('/') as [SettingNamespace, string]
-      promises.push(updateSetting(ns, key, value).then(() => undefined))
-    }
-    const results = await Promise.allSettled(promises)
-    const failures = results.filter((r) => r.status === 'rejected')
-    if (failures.length === 0) {
+    const failedKeys = await saveSettingsBatch(dirtyValues, updateSetting)
+    if (failedKeys.size === 0) {
       setDirtyValues(new Map())
       useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
     } else {
+      // Clear only succeeded entries from dirty values
+      setDirtyValues((prev) => {
+        const next = new Map<string, string>()
+        for (const [k, v] of prev) {
+          if (failedKeys.has(k)) next.set(k, v)
+        }
+        return next
+      })
       useToastStore.getState().add({
         variant: 'error',
-        title: `${failures.length} setting(s) failed to save`,
+        title: `${failedKeys.size} setting(s) failed to save`,
       })
     }
   }, [dirtyValues, updateSetting])
 
   const handleCodeSave = useCallback(
     async (changes: Map<string, string>) => {
-      const promises: Promise<void>[] = []
-      for (const [compositeKey, value] of changes) {
-        const [ns, key] = compositeKey.split('/') as [SettingNamespace, string]
-        promises.push(updateSetting(ns, key, value).then(() => undefined))
-      }
-      const results = await Promise.allSettled(promises)
-      const failures = results.filter((r) => r.status === 'rejected')
-      if (failures.length === 0) {
+      const failedKeys = await saveSettingsBatch(changes, updateSetting)
+      if (failedKeys.size === 0) {
         useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
       } else {
         useToastStore.getState().add({
           variant: 'error',
-          title: `${failures.length} setting(s) failed to save`,
+          title: `${failedKeys.size} setting(s) failed to save`,
         })
       }
     },
@@ -278,7 +240,6 @@ export default function SettingsPage() {
               <StaggerItem key={ns}>
                 <ErrorBoundary level="section">
                   <NamespaceSection
-                    namespace={ns}
                     displayName={NAMESPACE_DISPLAY_NAMES[ns]}
                     icon={NAMESPACE_ICONS[ns] ?? <Settings className="size-4" />}
                     entries={filteredByNamespace.get(ns)!}

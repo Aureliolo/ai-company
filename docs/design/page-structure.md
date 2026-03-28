@@ -118,13 +118,13 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 #### Settings (`/settings`)
 
-Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Two-column responsive grid, basic/advanced mode, GUI/JSON/YAML edit toggle. Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
+Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Collapsible namespace sections with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
 
 The **backup namespace** includes backup management CRUD: trigger backup, list backups, view details, restore, delete. This consolidates the BackupController under the Settings page.
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 
-**API endpoints**: `GET /settings/schema`, `GET /settings/schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (restart-required notifications)
 
 ### Standalone Pages

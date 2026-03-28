@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router'
 import { AlertTriangle, ArrowLeft, Settings, WifiOff } from 'lucide-react'
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { SettingNamespace } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -12,7 +12,6 @@ import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
   NAMESPACE_ORDER,
-  SETTING_DEPENDENCIES,
   SETTINGS_ADVANCED_KEY,
 } from '@/utils/constants'
 import { ROUTES } from '@/router/routes'
@@ -20,35 +19,7 @@ import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
-
-function matchesSetting(entry: SettingEntry, query: string): boolean {
-  const q = query.toLowerCase()
-  const def = entry.definition
-  return (
-    def.key.toLowerCase().includes(q) ||
-    def.description.toLowerCase().includes(q) ||
-    def.group.toLowerCase().includes(q)
-  )
-}
-
-function isControllerDisabled(
-  controllerKey: string,
-  entries: SettingEntry[],
-  dirtyValues: ReadonlyMap<string, string>,
-): boolean {
-  const dirtyVal = dirtyValues.get(controllerKey)
-  if (dirtyVal !== undefined) {
-    return dirtyVal.toLowerCase() !== 'true' && dirtyVal !== '1'
-  }
-  const entry = entries.find(
-    (e) => `${e.definition.namespace}/${e.definition.key}` === controllerKey,
-  )
-  if (!entry) return false
-  return entry.value.toLowerCase() !== 'true' && entry.value !== '1'
-}
-
-// Reuse NAMESPACE_ICONS from SettingsPage is not possible without extracting
-// to a shared module, so we inline a simple icon for the namespace sub-page.
+import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
 
 export default function SettingsNamespacePage() {
   const { namespace } = useParams<{ namespace: string }>()
@@ -83,16 +54,10 @@ export default function SettingsNamespacePage() {
     })
   }, [entries, ns, validNamespace, advancedMode, searchQuery])
 
-  const controllerDisabledMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    for (const [controller, deps] of Object.entries(SETTING_DEPENDENCIES)) {
-      const disabled = isControllerDisabled(controller, entries, dirtyValues)
-      for (const dep of deps) {
-        map.set(dep, disabled)
-      }
-    }
-    return map
-  }, [entries, dirtyValues])
+  const controllerDisabledMap = useMemo(
+    () => buildControllerDisabledMap(entries, dirtyValues),
+    [entries, dirtyValues],
+  )
 
   const handleValueChange = useCallback((compositeKey: string, value: string) => {
     setDirtyValues((prev) => {
@@ -107,20 +72,21 @@ export default function SettingsNamespacePage() {
   }, [])
 
   const handleSave = useCallback(async () => {
-    const promises: Promise<void>[] = []
-    for (const [compositeKey, value] of dirtyValues) {
-      const [saveNs, key] = compositeKey.split('/') as [SettingNamespace, string]
-      promises.push(updateSetting(saveNs, key, value).then(() => undefined))
-    }
-    const results = await Promise.allSettled(promises)
-    const failures = results.filter((r) => r.status === 'rejected')
-    if (failures.length === 0) {
+    const failedKeys = await saveSettingsBatch(dirtyValues, updateSetting)
+    if (failedKeys.size === 0) {
       setDirtyValues(new Map())
       useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
     } else {
+      setDirtyValues((prev) => {
+        const next = new Map<string, string>()
+        for (const [k, v] of prev) {
+          if (failedKeys.has(k)) next.set(k, v)
+        }
+        return next
+      })
       useToastStore.getState().add({
         variant: 'error',
-        title: `${failures.length} setting(s) failed to save`,
+        title: `${failedKeys.size} setting(s) failed to save`,
       })
     }
   }, [dirtyValues, updateSetting])
@@ -191,7 +157,6 @@ export default function SettingsNamespacePage() {
       ) : (
         <ErrorBoundary level="section">
           <NamespaceSection
-            namespace={ns}
             displayName={displayName}
             icon={<Settings className="size-4" />}
             entries={filteredEntries}

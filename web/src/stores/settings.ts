@@ -59,7 +59,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       }
       set({ currency: currencyEntry.value })
     } catch (error) {
-      console.error('[settings] Failed to fetch currency setting:', error)
+      console.warn('[settings] Failed to fetch currency setting, keeping default:', getErrorMessage(error))
     }
   },
 
@@ -91,12 +91,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
 
   refreshEntries: async () => {
-    try {
-      const entries = await settingsApi.getAllSettings()
-      set({ entries })
-    } catch {
-      // Lightweight refresh -- don't set error for polling failures
-    }
+    // Let errors propagate to usePolling's error tracking
+    const entries = await settingsApi.getAllSettings()
+    set({ entries })
   },
 
   updateSetting: async (ns, key, value) => {
@@ -134,13 +131,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     }))
     try {
       await settingsApi.resetSetting(ns, key)
-      // Refetch entries to get the resolved default
-      const entries = await settingsApi.getAllSettings()
-      set((state) => {
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
-        return { entries, savingKeys: newSaving }
-      })
     } catch (error) {
       set((state) => {
         const newSaving = new Set(state.savingKeys)
@@ -148,6 +138,24 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         return { savingKeys: newSaving, saveError: getErrorMessage(error) }
       })
       throw error
+    }
+    // Reset succeeded -- refetch entries to get the resolved default.
+    // A refetch failure here means the reset applied but the UI is stale.
+    try {
+      const entries = await settingsApi.getAllSettings()
+      set((state) => {
+        const newSaving = new Set(state.savingKeys)
+        newSaving.delete(compositeKey)
+        return { entries, savingKeys: newSaving }
+      })
+    } catch {
+      // Reset applied but refetch failed -- clear saving state, entries will
+      // be refreshed by the next poll cycle.
+      set((state) => {
+        const newSaving = new Set(state.savingKeys)
+        newSaving.delete(compositeKey)
+        return { savingKeys: newSaving }
+      })
     }
   },
 
