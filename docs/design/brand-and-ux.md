@@ -262,6 +262,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `useFlash()` | `hooks/useFlash.ts` | Real-time update flash effect. Returns `{ flashing, flashClassName, triggerFlash, flashStyle }`. Uses `STATUS_FLASH` timing constants. |
 | `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colors. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
 | `useCommandPalette()` | `hooks/useCommandPalette.ts` | Global command palette state. `registerCommands()` adds page-local commands (cleanup on unmount). `open()` / `close()` / `toggle()`. |
+| `useAnimationPreset()` | `hooks/useAnimationPreset.ts` | Returns animation config (`spring`, `tween`, `staggerDelay`, `enableLayout`) based on the user's theme animation preference. Components use this instead of directly referencing `lib/motion.ts` constants. |
 
 ### Types
 

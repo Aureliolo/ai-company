@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { useThemeStore, applyThemeClasses } from '@/stores/theme'
+import { useThemeStore, applyThemeClasses, loadPreferences } from '@/stores/theme'
 
 const STORAGE_KEY = 'so_theme_preferences'
 
@@ -26,29 +26,34 @@ describe('useThemeStore', () => {
   })
 
   describe('setters', () => {
-    it('updates colorPalette', () => {
+    it('updates colorPalette and applies CSS class', () => {
       useThemeStore.getState().setColorPalette('neon')
       expect(useThemeStore.getState().colorPalette).toBe('neon')
+      expect(document.documentElement.classList.contains('theme-neon')).toBe(true)
     })
 
-    it('updates density', () => {
+    it('updates density and applies CSS class', () => {
       useThemeStore.getState().setDensity('sparse')
       expect(useThemeStore.getState().density).toBe('sparse')
+      expect(document.documentElement.classList.contains('density-sparse')).toBe(true)
     })
 
-    it('updates typography', () => {
+    it('updates typography and applies CSS class', () => {
       useThemeStore.getState().setTypography('jetbrains')
       expect(useThemeStore.getState().typography).toBe('jetbrains')
+      expect(document.documentElement.classList.contains('typography-jetbrains')).toBe(true)
     })
 
-    it('updates animation', () => {
+    it('updates animation and applies CSS class', () => {
       useThemeStore.getState().setAnimation('spring')
       expect(useThemeStore.getState().animation).toBe('spring')
+      expect(document.documentElement.classList.contains('animation-spring')).toBe(true)
     })
 
-    it('updates sidebarMode', () => {
+    it('updates sidebarMode and applies CSS class', () => {
       useThemeStore.getState().setSidebarMode('rail')
       expect(useThemeStore.getState().sidebarMode).toBe('rail')
+      expect(document.documentElement.classList.contains('sidebar-rail')).toBe(true)
     })
 
     it('updates popoverOpen', () => {
@@ -129,16 +134,39 @@ describe('useThemeStore', () => {
       expect(document.documentElement.classList.contains('animation-minimal')).toBe(true)
     })
 
+    it('adds sidebar class for non-default mode', () => {
+      applyThemeClasses({
+        colorPalette: 'warm-ops',
+        density: 'balanced',
+        typography: 'geist',
+        animation: 'status-driven',
+        sidebarMode: 'rail',
+      })
+      expect(document.documentElement.classList.contains('sidebar-rail')).toBe(true)
+    })
+
+    it('does not add sidebar class for default collapsible mode', () => {
+      applyThemeClasses({
+        colorPalette: 'warm-ops',
+        density: 'balanced',
+        typography: 'geist',
+        animation: 'status-driven',
+        sidebarMode: 'collapsible',
+      })
+      expect(document.documentElement.classList.contains('sidebar-collapsible')).toBe(false)
+    })
+
     it('removes old classes when theme changes', () => {
       applyThemeClasses({
         colorPalette: 'neon',
         density: 'sparse',
         typography: 'geist',
         animation: 'spring',
-        sidebarMode: 'collapsible',
+        sidebarMode: 'hidden',
       })
       expect(document.documentElement.classList.contains('theme-neon')).toBe(true)
       expect(document.documentElement.classList.contains('density-sparse')).toBe(true)
+      expect(document.documentElement.classList.contains('sidebar-hidden')).toBe(true)
 
       applyThemeClasses({
         colorPalette: 'warm-ops',
@@ -149,6 +177,7 @@ describe('useThemeStore', () => {
       })
       expect(document.documentElement.classList.contains('theme-neon')).toBe(false)
       expect(document.documentElement.classList.contains('density-sparse')).toBe(false)
+      expect(document.documentElement.classList.contains('sidebar-hidden')).toBe(false)
     })
   })
 
@@ -175,24 +204,67 @@ describe('useThemeStore', () => {
     })
   })
 
-  describe('invalid localStorage data', () => {
+  describe('loadPreferences (unit)', () => {
+    it('returns defaults when localStorage is empty', () => {
+      localStorage.clear()
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('warm-ops')
+      expect(prefs.density).toBe('balanced')
+      expect(prefs.typography).toBe('geist')
+      expect(prefs.sidebarMode).toBe('collapsible')
+    })
+
     it('falls back to defaults for invalid JSON', () => {
       localStorage.setItem(STORAGE_KEY, 'not json')
-      // The store was already created, so we test the loadPreferences logic
-      // by re-checking that the store still has valid defaults
-      const state = useThemeStore.getState()
-      expect(state.colorPalette).toBeDefined()
-      expect(state.density).toBeDefined()
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('warm-ops')
+      expect(prefs.density).toBe('balanced')
+    })
+
+    it('falls back to defaults for non-object JSON', () => {
+      localStorage.setItem(STORAGE_KEY, '"just a string"')
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('warm-ops')
     })
 
     it('falls back to defaults for invalid values', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         colorPalette: 'invalid-theme',
         density: 'ultra-dense',
+        typography: 'comic-sans',
       }))
-      // Store was created before this localStorage write, so defaults still apply
-      const state = useThemeStore.getState()
-      expect(state.colorPalette).not.toBe('invalid-theme')
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('warm-ops')
+      expect(prefs.density).toBe('balanced')
+      expect(prefs.typography).toBe('geist')
+    })
+
+    it('preserves valid values and falls back invalid ones', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        colorPalette: 'neon',
+        density: 'not-valid',
+        typography: 'ibm-plex',
+      }))
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('neon')
+      expect(prefs.density).toBe('balanced') // fallback
+      expect(prefs.typography).toBe('ibm-plex')
+    })
+
+    it('reads valid stored preferences', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        colorPalette: 'stealth',
+        density: 'dense',
+        typography: 'jetbrains',
+        animation: 'spring',
+        sidebarMode: 'rail',
+      }))
+      const prefs = loadPreferences()
+      expect(prefs.colorPalette).toBe('stealth')
+      expect(prefs.density).toBe('dense')
+      expect(prefs.typography).toBe('jetbrains')
+      expect(prefs.animation).toBe('spring')
+      expect(prefs.sidebarMode).toBe('rail')
     })
   })
 })

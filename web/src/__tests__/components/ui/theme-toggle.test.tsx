@@ -74,16 +74,14 @@ describe('ThemeToggle', () => {
     expect(state.density).toBe('balanced')
   })
 
-  it('opens programmatically via store', () => {
+  it('changes typography via select', async () => {
+    const user = userEvent.setup()
     render(<ThemeToggle />)
+    await user.click(screen.getByRole('button', { name: 'Theme preferences' }))
 
-    // Initially closed
-    expect(screen.queryByText('Theme Preferences')).not.toBeInTheDocument()
+    const fontSelect = screen.getByLabelText('Font')
+    await user.selectOptions(fontSelect, 'ibm-plex')
 
-    // Open programmatically
-    useThemeStore.getState().setPopoverOpen(true)
-
-    // Re-render picks up store change -- but Radix Popover needs a React update
-    // The component subscribes to popoverOpen so it should re-render
+    expect(useThemeStore.getState().typography).toBe('ibm-plex')
   })
 })

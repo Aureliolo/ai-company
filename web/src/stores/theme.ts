@@ -80,7 +80,8 @@ function isValid<T extends string>(value: unknown, allowed: readonly T[]): value
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
 }
 
-function loadPreferences(): ThemePreferences {
+/** Exported for testing only. */
+export function loadPreferences(): ThemePreferences {
   const defaults = getDefaultPreferences()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -108,6 +109,16 @@ function savePreferences(prefs: ThemePreferences): void {
   }
 }
 
+/** Guard against CSS class name injection -- only lowercase alphanumeric and hyphens. */
+const CSS_CLASS_SAFE = /^[a-z0-9-]+$/
+
+function safeClass(cls: string): string {
+  if (!CSS_CLASS_SAFE.test(cls)) {
+    throw new Error(`Unsafe CSS class name blocked: ${cls}`)
+  }
+  return cls
+}
+
 /** Apply theme classes to document.documentElement. */
 export function applyThemeClasses(prefs: ThemePreferences): void {
   if (typeof document === 'undefined') return
@@ -118,17 +129,17 @@ export function applyThemeClasses(prefs: ThemePreferences): void {
 
   // Add current classes (skip defaults that have no class)
   if (prefs.colorPalette !== 'warm-ops') {
-    el.classList.add(`theme-${prefs.colorPalette}`)
+    el.classList.add(safeClass(`theme-${prefs.colorPalette}`))
   }
   if (prefs.density !== 'balanced') {
-    el.classList.add(`density-${prefs.density}`)
+    el.classList.add(safeClass(`density-${prefs.density}`))
   }
   if (prefs.typography !== 'geist') {
-    el.classList.add(`typography-${prefs.typography}`)
+    el.classList.add(safeClass(`typography-${prefs.typography}`))
   }
-  el.classList.add(`animation-${prefs.animation}`)
+  el.classList.add(safeClass(`animation-${prefs.animation}`))
   if (prefs.sidebarMode !== 'collapsible') {
-    el.classList.add(`sidebar-${prefs.sidebarMode}`)
+    el.classList.add(safeClass(`sidebar-${prefs.sidebarMode}`))
   }
 }
 

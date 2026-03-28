@@ -98,14 +98,6 @@ const highlightStyle = HighlightStyle.define([
 ])
 
 // ---------------------------------------------------------------------------
-// Annotation to distinguish programmatic vs user changes
-// ---------------------------------------------------------------------------
-
-const externalUpdate = EditorView.updateListener.of(() => {
-  // Marker -- presence is checked in the update listener
-})
-
-// ---------------------------------------------------------------------------
 // Language helpers
 // ---------------------------------------------------------------------------
 
@@ -161,7 +153,6 @@ export function CodeMirrorEditor({
         EditorView.lineWrapping,
         darkTheme,
         updateListener,
-        externalUpdate,
       ],
     })
 
