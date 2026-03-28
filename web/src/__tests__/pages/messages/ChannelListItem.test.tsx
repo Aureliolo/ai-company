@@ -43,12 +43,22 @@ describe('ChannelListItem', () => {
   })
 
   it('renders direct icon for direct channel', () => {
-    render(<ChannelListItem {...defaultProps} channel={makeChannel('#dm-alice', { type: 'direct' })} />)
+    const channel = makeChannel('#dm-alice', {
+      type: 'direct',
+    })
+    render(
+      <ChannelListItem {...defaultProps} channel={channel} />,
+    )
     expect(screen.getByText('#dm-alice')).toBeInTheDocument()
   })
 
   it('renders broadcast icon for broadcast channel', () => {
-    render(<ChannelListItem {...defaultProps} channel={makeChannel('#all-hands', { type: 'broadcast' })} />)
+    const channel = makeChannel('#all-hands', {
+      type: 'broadcast',
+    })
+    render(
+      <ChannelListItem {...defaultProps} channel={channel} />,
+    )
     expect(screen.getByText('#all-hands')).toBeInTheDocument()
   })
 

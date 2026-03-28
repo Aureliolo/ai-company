@@ -25,6 +25,9 @@ interface MessagesState {
   // Thread expansion: Set of task_id values
   expandedThreads: Set<string>
 
+  // New-message flash tracking (WS-delivered IDs)
+  newMessageIds: Set<string>
+
   // Actions
   fetchChannels: () => Promise<void>
   fetchMessages: (channel: string, limit?: number) => Promise<void>
@@ -56,6 +59,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
 
   unreadCounts: {},
   expandedThreads: new Set<string>(),
+  newMessageIds: new Set<string>(),
 
   fetchChannels: async () => {
     const seq = ++channelRequestSeq
@@ -76,7 +80,12 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
     try {
       const result = await messagesApi.listMessages({ channel, limit })
       if (seq !== messageRequestSeq) return
-      set({ messages: result.data, total: result.total, loading: false })
+      set({
+        messages: result.data,
+        total: result.total,
+        loading: false,
+        newMessageIds: new Set<string>(),
+      })
     } catch (err) {
       if (seq !== messageRequestSeq) return
       set({ loading: false, error: getErrorMessage(err) })
@@ -86,6 +95,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
   fetchMoreMessages: async (channel) => {
     const { messages: existing, loadingMore } = get()
     if (loadingMore) return
+    const seq = messageRequestSeq
     set({ loadingMore: true })
     try {
       const result = await messagesApi.listMessages({
@@ -93,43 +103,75 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         limit: MESSAGES_FETCH_LIMIT,
         offset: existing.length,
       })
+      if (seq !== messageRequestSeq) {
+        set({ loadingMore: false })
+        return
+      }
       set((s) => ({
         messages: [...s.messages, ...result.data],
         total: result.total,
         loadingMore: false,
       }))
     } catch (err) {
+      if (seq !== messageRequestSeq) {
+        set({ loadingMore: false })
+        return
+      }
       set({ loadingMore: false, error: getErrorMessage(err) })
     }
   },
 
   handleWsEvent: (event, activeChannel) => {
     const { payload } = event
-    if (!payload.message || typeof payload.message !== 'object' || Array.isArray(payload.message)) return
+    if (
+      !payload.message ||
+      typeof payload.message !== 'object' ||
+      Array.isArray(payload.message)
+    ) return
 
-    const candidate = payload.message as Record<string, unknown>
+    const candidate =
+      payload.message as Record<string, unknown>
     if (
       typeof candidate.id !== 'string' ||
       typeof candidate.timestamp !== 'string' ||
       typeof candidate.sender !== 'string' ||
+      typeof candidate.to !== 'string' ||
       typeof candidate.channel !== 'string' ||
-      typeof candidate.content !== 'string'
+      typeof candidate.content !== 'string' ||
+      typeof candidate.type !== 'string' ||
+      typeof candidate.priority !== 'string' ||
+      !Array.isArray(candidate.attachments) ||
+      !candidate.metadata ||
+      typeof candidate.metadata !== 'object' ||
+      Array.isArray(candidate.metadata)
     ) {
-      console.error('[messages/ws] Received malformed message payload, skipping', {
-        id: sanitizeForLog(candidate.id),
-        hasSender: typeof candidate.sender === 'string',
-        hasChannel: typeof candidate.channel === 'string',
-      })
+      console.error(
+        '[messages/ws] Malformed payload, skipping',
+        {
+          id: sanitizeForLog(candidate.id),
+          hasSender: typeof candidate.sender === 'string',
+          hasChannel: typeof candidate.channel === 'string',
+        },
+      )
       return
     }
 
     const message = candidate as unknown as Message
     if (message.channel === activeChannel) {
-      // Prepend to active channel's message list
-      set((s) => ({
-        messages: [message, ...s.messages],
-        total: s.total + 1,
-      }))
+      // Prepend to active channel (with dedup)
+      set((s) => {
+        if (s.messages.some((m) => m.id === message.id)) {
+          return s
+        }
+        return {
+          messages: [message, ...s.messages],
+          total: s.total + 1,
+          newMessageIds: new Set([
+            ...s.newMessageIds,
+            message.id,
+          ]),
+        }
+      })
     } else {
       // Increment unread count for inactive channel
       set((s) => ({

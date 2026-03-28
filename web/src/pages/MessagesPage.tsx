@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'framer-motion'
 import { AlertTriangle, MessageSquare, WifiOff } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useMessagesData } from '@/hooks/useMessagesData'
+import { useMessagesStore } from '@/stores/messages'
 import { filterMessages, type MessagePageFilters } from '@/utils/messages'
 import { ChannelSidebar } from './messages/ChannelSidebar'
 import { MessageFilterBar } from './messages/MessageFilterBar'
@@ -21,7 +22,7 @@ const VALID_PRIORITIES: ReadonlySet<string> = new Set(['low', 'normal', 'high', 
 
 export default function MessagesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [wasConnected, setWasConnected] = useState(false)
+  const wasConnectedRef = useRef(false)
 
   const activeChannel = searchParams.get('channel')
 
@@ -38,15 +39,25 @@ export default function MessagesPage() {
     hasMore,
     expandedThreads,
     toggleThread,
+    newMessageIds,
     fetchMore,
     wsConnected,
     wsSetupError,
   } = useMessagesData(activeChannel)
 
   // Track WS connection to avoid flash on initial load
-  if (wsConnected && !wasConnected) {
-    setWasConnected(true)
-  }
+  if (wsConnected) wasConnectedRef.current = true
+
+  // Auto-clear new-message flash IDs after animation
+  useEffect(() => {
+    if (newMessageIds.size === 0) return
+    const timer = setTimeout(() => {
+      useMessagesStore.setState({
+        newMessageIds: new Set<string>(),
+      })
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [newMessageIds])
 
   // URL-synced filters
   const filters: MessagePageFilters = useMemo(() => {
@@ -133,14 +144,20 @@ export default function MessagesPage() {
         <h1 className="text-lg font-semibold text-foreground">Messages</h1>
 
         {/* Error banners */}
-        {(error || channelsError) && (
+        {error && (
           <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
             <AlertTriangle className="size-4 shrink-0" />
-            {error ?? channelsError}
+            {error}
+          </div>
+        )}
+        {channelsError && channelsError !== error && (
+          <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+            <AlertTriangle className="size-4 shrink-0" />
+            {channelsError}
           </div>
         )}
 
-        {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
+        {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
           <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
             <WifiOff className="size-4 shrink-0" />
             {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
@@ -175,6 +192,7 @@ export default function MessagesPage() {
                 hasMore={hasMore && !hasFilters}
                 loadingMore={loadingMore}
                 onLoadMore={fetchMore}
+                newMessageIds={newMessageIds}
               />
             </ErrorBoundary>
           </>

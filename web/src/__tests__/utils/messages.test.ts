@@ -4,7 +4,8 @@ import {
   getDateGroupLabel,
   getMessageTypeLabel,
   getMessagePriorityColor,
-  getChannelTypeIcon,
+  getPriorityDotClass,
+  getPriorityBadgeClasses,
   getChannelTypeLabel,
   filterMessages,
 } from '@/utils/messages'
@@ -34,11 +35,25 @@ describe('getMessagePriorityColor', () => {
   })
 })
 
-describe('getChannelTypeIcon', () => {
-  it('returns correct icon names', () => {
-    expect(getChannelTypeIcon('topic')).toBe('Hash')
-    expect(getChannelTypeIcon('direct')).toBe('Users')
-    expect(getChannelTypeIcon('broadcast')).toBe('Megaphone')
+describe('getPriorityDotClass', () => {
+  it('returns bg class for each color', () => {
+    expect(getPriorityDotClass('warning')).toBe('bg-warning')
+    expect(getPriorityDotClass('danger')).toBe('bg-danger')
+    expect(getPriorityDotClass('success')).toBe('bg-success')
+    expect(getPriorityDotClass('accent')).toBe('bg-accent')
+  })
+})
+
+describe('getPriorityBadgeClasses', () => {
+  it('returns border+bg+text classes for each color', () => {
+    const warning = getPriorityBadgeClasses('warning')
+    expect(warning).toContain('border-warning')
+    expect(warning).toContain('bg-warning')
+    expect(warning).toContain('text-warning')
+
+    const danger = getPriorityBadgeClasses('danger')
+    expect(danger).toContain('border-danger')
+    expect(danger).toContain('text-danger')
   })
 })
 

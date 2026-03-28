@@ -6,7 +6,7 @@ import { MessageBubble } from './MessageBubble'
 import type { Message } from '@/api/types'
 
 interface MessageThreadProps {
-  messages: Message[]
+  messages: readonly Message[]
   expanded: boolean
   onToggle: () => void
   onSelectMessage: (id: string) => void

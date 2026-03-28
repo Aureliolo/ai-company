@@ -17,6 +17,7 @@ const defaultReturn: UseMessagesDataReturn = {
   hasMore: false,
   expandedThreads: new Set(),
   toggleThread: vi.fn(),
+  newMessageIds: new Set(),
   fetchMore: vi.fn(),
   wsConnected: true,
   wsSetupError: null,
@@ -30,6 +31,10 @@ vi.mock('@/hooks/useMessagesData', () => {
   return { [hookName]: () => getMessagesData() }
 })
 
+vi.mock('@/stores/messages', () => ({
+  useMessagesStore: { setState: vi.fn() },
+}))
+
 function renderPage(route = '/messages') {
   return render(
     <MemoryRouter initialEntries={[route]}>
@@ -39,7 +44,11 @@ function renderPage(route = '/messages') {
 }
 
 beforeEach(() => {
-  hookReturn = { ...defaultReturn, expandedThreads: new Set() }
+  hookReturn = {
+    ...defaultReturn,
+    expandedThreads: new Set(),
+    newMessageIds: new Set(),
+  }
   vi.clearAllMocks()
 })
 
@@ -119,8 +128,59 @@ describe('MessagesPage', () => {
   })
 
   it('does not show WS banner on initial load', () => {
-    hookReturn = { ...defaultReturn, wsConnected: false, wsSetupError: null, channels: [makeChannel('#eng')], expandedThreads: new Set() }
+    hookReturn = {
+      ...defaultReturn,
+      wsConnected: false,
+      wsSetupError: null,
+      channels: [makeChannel('#eng')],
+      expandedThreads: new Set(),
+      newMessageIds: new Set(),
+    }
     renderPage()
     expect(screen.queryByText(/real-time updates disconnected/i)).not.toBeInTheDocument()
+  })
+
+  it('renders filter bar when channel has type filter', () => {
+    hookReturn = {
+      ...defaultReturn,
+      channels: [makeChannel('#eng')],
+      messages: [
+        makeMessage('1', { type: 'delegation' }),
+      ],
+      total: 1,
+      expandedThreads: new Set(),
+      newMessageIds: new Set(),
+    }
+    renderPage('/messages?channel=%23eng&type=delegation')
+    expect(screen.getByText('Messages')).toBeInTheDocument()
+  })
+
+  it('ignores invalid type param', () => {
+    hookReturn = {
+      ...defaultReturn,
+      channels: [makeChannel('#eng')],
+      messages: [makeMessage('1')],
+      total: 1,
+      expandedThreads: new Set(),
+      newMessageIds: new Set(),
+    }
+    // 'bogus' is not a valid MessageType
+    renderPage('/messages?channel=%23eng&type=bogus')
+    // Should still render messages (invalid filter ignored)
+    expect(screen.getByText('Message 1 content')).toBeInTheDocument()
+  })
+
+  it('shows both errors when both exist', () => {
+    hookReturn = {
+      ...defaultReturn,
+      error: 'Messages error',
+      channelsError: 'Channels error',
+      channels: [makeChannel('#eng')],
+      expandedThreads: new Set(),
+      newMessageIds: new Set(),
+    }
+    renderPage()
+    expect(screen.getByText('Messages error')).toBeInTheDocument()
+    expect(screen.getByText('Channels error')).toBeInTheDocument()
   })
 })

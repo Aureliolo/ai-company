@@ -20,7 +20,7 @@ const meta: Meta<typeof MessageList> = {
   component: MessageList,
   parameters: { a11y: { test: 'error' } },
   args: { onSelectMessage: fn(), onLoadMore: fn() },
-  decorators: [(Story) => <div className="h-[500px] max-w-lg"><Story /></div>],
+  decorators: [(Story) => <div className="h-96 max-w-lg"><Story /></div>],
 }
 export default meta
 

@@ -21,7 +21,11 @@ export function MessageDetailDrawer({ message, open, onClose }: MessageDetailDra
   )
 }
 
-function MessageDetailContent({ message }: { message: Message }) {
+interface MessageDetailContentProps {
+  message: Message
+}
+
+function MessageDetailContent({ message }: MessageDetailContentProps) {
   const priorityColor = getMessagePriorityColor(message.priority)
 
   return (
@@ -73,8 +77,14 @@ function MessageDetailContent({ message }: { message: Message }) {
           {message.metadata.cost_usd !== null && (
             <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, 'USD')} mono />
           )}
-          {message.metadata.extra.map(([key, value]) => (
-            <MetadataRow key={`extra-${key}-${value}`} label={key} value={value} mono />
+          {message.metadata.extra.map(([key, value], i) => (
+            <MetadataRow
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- extra pairs lack stable IDs
+              key={`extra-${i}-${key}`}
+              label={key}
+              value={value}
+              mono
+            />
           ))}
         </dl>
       </div>
@@ -90,7 +100,13 @@ function MessageDetailContent({ message }: { message: Message }) {
   )
 }
 
-function MetadataRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+interface MetadataRowProps {
+  label: string
+  value: string
+  mono?: boolean
+}
+
+function MetadataRow({ label, value, mono }: MetadataRowProps) {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>

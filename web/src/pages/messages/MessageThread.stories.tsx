@@ -3,23 +3,29 @@ import { fn } from 'storybook/test'
 import { MessageThread } from './MessageThread'
 import type { Message, MessageMetadata } from '@/api/types'
 
-const meta: MessageMetadata = { task_id: 'task-42', project_id: 'proj-1', tokens_used: 500, cost_usd: 0.01, extra: [] }
+const sampleMetadata: MessageMetadata = {
+  task_id: 'task-42',
+  project_id: 'proj-1',
+  tokens_used: 500,
+  cost_usd: 0.01,
+  extra: [],
+}
 
 const threadMessages: Message[] = [
   {
     id: 'msg-1', timestamp: '2026-03-28T10:00:00Z', sender: 'sarah_chen', to: '#engineering',
     type: 'delegation', priority: 'normal', channel: '#engineering',
-    content: 'Please implement the user auth endpoint.', attachments: [], metadata: meta,
+    content: 'Please implement the user auth endpoint.', attachments: [], metadata: sampleMetadata,
   },
   {
     id: 'msg-2', timestamp: '2026-03-28T10:30:00Z', sender: 'bob_dev', to: '#engineering',
     type: 'task_update', priority: 'normal', channel: '#engineering',
-    content: 'Started working on it. Draft PR incoming.', attachments: [], metadata: meta,
+    content: 'Started working on it. Draft PR incoming.', attachments: [], metadata: sampleMetadata,
   },
   {
     id: 'msg-3', timestamp: '2026-03-28T11:00:00Z', sender: 'bob_dev', to: '#engineering',
     type: 'review_request', priority: 'normal', channel: '#engineering',
-    content: 'PR ready for review.', attachments: [{ type: 'artifact', ref: 'pr-42' }], metadata: meta,
+    content: 'PR ready for review.', attachments: [{ type: 'artifact', ref: 'pr-42' }], metadata: sampleMetadata,
   },
 ]
 

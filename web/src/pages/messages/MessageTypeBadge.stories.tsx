@@ -12,8 +12,16 @@ export default meta
 type Story = StoryObj<typeof MessageTypeBadge>
 
 const ALL_TYPES: MessageType[] = [
-  'task_update', 'question', 'announcement', 'review_request', 'approval',
-  'delegation', 'status_report', 'escalation', 'meeting_contribution', 'hr_notification',
+  'task_update',
+  'question',
+  'announcement',
+  'review_request',
+  'approval',
+  'delegation',
+  'status_report',
+  'escalation',
+  'meeting_contribution',
+  'hr_notification',
 ]
 
 export const AllTypes: Story = {

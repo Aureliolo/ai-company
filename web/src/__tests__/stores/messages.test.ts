@@ -22,6 +22,7 @@ function resetStore() {
     error: null,
     unreadCounts: {},
     expandedThreads: new Set(),
+    newMessageIds: new Set(),
   })
 }
 
@@ -120,6 +121,54 @@ describe('messagesStore', () => {
 
       expect(messagesApi.listMessages).not.toHaveBeenCalled()
     })
+
+    it('sets error on failure', async () => {
+      useMessagesStore.setState({
+        messages: [makeMessage('1')],
+        total: 5,
+      })
+      vi.mocked(messagesApi.listMessages).mockRejectedValue(
+        new Error('Timeout'),
+      )
+
+      await useMessagesStore.getState().fetchMoreMessages('#engineering')
+
+      expect(useMessagesStore.getState().error).toBe('Timeout')
+      expect(useMessagesStore.getState().loadingMore).toBe(false)
+    })
+
+    it('discards stale response after channel switch', async () => {
+      useMessagesStore.setState({
+        messages: [makeMessage('1')],
+        total: 5,
+      })
+      let resolveMore!: (value: unknown) => void
+      const moreCall = new Promise((r) => { resolveMore = r })
+      vi.mocked(messagesApi.listMessages)
+        .mockImplementationOnce(() => moreCall as ReturnType<typeof messagesApi.listMessages>)
+        .mockResolvedValueOnce({
+          data: [makeMessage('fresh')],
+          total: 1,
+          offset: 0,
+          limit: 50,
+        })
+
+      const pMore = useMessagesStore.getState().fetchMoreMessages('#old')
+      // Channel switch triggers fetchMessages which bumps seq
+      await useMessagesStore.getState().fetchMessages('#new')
+      // Resolve stale fetchMoreMessages
+      resolveMore({
+        data: [makeMessage('stale')],
+        total: 5,
+        offset: 1,
+        limit: 50,
+      })
+      await pMore
+
+      const { messages } = useMessagesStore.getState()
+      expect(messages).toHaveLength(1)
+      expect(messages[0]!.id).toBe('fresh')
+    })
   })
 
   describe('handleWsEvent', () => {
@@ -153,11 +202,44 @@ describe('messagesStore', () => {
 
     it('skips malformed payloads', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        useMessagesStore.getState().handleWsEvent(
+          makeWsEvent({ bad: true }),
+          '#engineering',
+        )
+        expect(useMessagesStore.getState().messages).toHaveLength(0)
+      } finally {
+        consoleSpy.mockRestore()
+      }
+    })
 
-      useMessagesStore.getState().handleWsEvent(makeWsEvent({ bad: true }), '#engineering')
+    it('skips array payload.message', () => {
+      const event: WsEvent = {
+        event_type: 'message.sent',
+        channel: 'messages',
+        timestamp: new Date().toISOString(),
+        payload: { message: [makeMessage('1')] },
+      }
+
+      useMessagesStore.getState().handleWsEvent(event, '#engineering')
 
       expect(useMessagesStore.getState().messages).toHaveLength(0)
-      consoleSpy.mockRestore()
+    })
+
+    it('deduplicates messages by id', () => {
+      const msg = makeMessage('dup', { channel: '#eng' })
+      useMessagesStore.setState({
+        messages: [msg],
+        total: 1,
+      })
+
+      useMessagesStore.getState().handleWsEvent(
+        makeWsEvent(msg as unknown as Record<string, unknown>),
+        '#eng',
+      )
+
+      expect(useMessagesStore.getState().messages).toHaveLength(1)
+      expect(useMessagesStore.getState().total).toBe(1)
     })
 
     it('skips when payload has no message', () => {

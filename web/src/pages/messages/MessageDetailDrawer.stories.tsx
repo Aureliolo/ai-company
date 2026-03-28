@@ -51,7 +51,24 @@ export const MinimalMetadata: Story = {
 }
 
 export const WithAttachments: Story = {
-  args: { message: fullMessage, open: true },
+  args: {
+    message: {
+      ...fullMessage,
+      metadata: {
+        task_id: null,
+        project_id: null,
+        tokens_used: null,
+        cost_usd: null,
+        extra: [],
+      },
+      attachments: [
+        { type: 'artifact', ref: 'pr-42' },
+        { type: 'file', ref: 'coverage-report.html' },
+        { type: 'link', ref: 'https://example.com/docs' },
+      ],
+    },
+    open: true,
+  },
 }
 
 export const Closed: Story = {

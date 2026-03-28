@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useMessagesStore } from '@/stores/messages'
 import { useMessagesData } from '@/hooks/useMessagesData'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { makeMessage, makeChannel } from '../helpers/factories'
 
 const mockFetchChannels = vi.fn().mockResolvedValue(undefined)
@@ -44,6 +45,7 @@ function resetStore() {
     error: null,
     unreadCounts: {},
     expandedThreads: new Set(),
+    newMessageIds: new Set(),
     fetchChannels: mockFetchChannels,
     fetchMessages: mockFetchMessages,
     fetchMoreMessages: mockFetchMoreMessages,
@@ -128,11 +130,13 @@ describe('useMessagesData', () => {
     expect(mockPollingStop).toHaveBeenCalledTimes(1)
   })
 
-  it('sets up WebSocket with messages channel', async () => {
-    const { useWebSocket } = await import('@/hooks/useWebSocket')
+  it('sets up WebSocket with messages channel', () => {
     renderHook(() => useMessagesData('#eng'))
-    const callArgs = vi.mocked(useWebSocket).mock.calls[0]![0]
-    const channels = callArgs.bindings.map((b) => b.channel)
+    expect(vi.mocked(useWebSocket)).toHaveBeenCalled()
+    const callArgs =
+      vi.mocked(useWebSocket).mock.calls[0]![0]
+    const channels =
+      callArgs.bindings.map((b) => b.channel)
     expect(channels).toEqual(['messages'])
   })
 

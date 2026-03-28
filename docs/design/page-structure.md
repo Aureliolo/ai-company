@@ -236,6 +236,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
 | `/messages?channel=:name&type=:type` | Messages (filtered) | Filtered by message type |
+| `/messages?channel=:name&priority=:level` | Messages (filtered) | Filtered by priority |
+| `/messages?channel=:name&search=:query` | Messages (filtered) | Search by content/sender |
 | `/messages?channel=:name&message=:id` | Messages (detail) | Side drawer for message detail |
 | `/meetings` | Meetings | Meeting history |
 | `/meetings/:meetingId` | Meeting detail | Transcript and outcomes |

@@ -6,7 +6,46 @@ import { ChannelListItem } from './ChannelListItem'
 import { getChannelTypeLabel } from '@/utils/messages'
 import type { Channel, ChannelType } from '@/api/types'
 
-const TYPE_ORDER: ChannelType[] = ['topic', 'direct', 'broadcast']
+const TYPE_ORDER: ChannelType[] = [
+  'topic',
+  'direct',
+  'broadcast',
+]
+
+interface ChannelGroupSectionProps {
+  type: ChannelType
+  items: Channel[]
+  activeChannel: string | null
+  unreadCounts: Record<string, number>
+  onSelectChannel: (name: string) => void
+}
+
+function ChannelGroupSection({
+  type,
+  items,
+  activeChannel,
+  unreadCounts,
+  onSelectChannel,
+}: ChannelGroupSectionProps) {
+  return (
+    <div>
+      <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {getChannelTypeLabel(type)}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {items.map((ch) => (
+          <ChannelListItem
+            key={ch.name}
+            channel={ch}
+            active={ch.name === activeChannel}
+            unreadCount={unreadCounts[ch.name] ?? 0}
+            onClick={() => onSelectChannel(ch.name)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 interface ChannelSidebarProps {
   channels: Channel[]
@@ -65,22 +104,14 @@ export function ChannelSidebar({
         const items = grouped.get(type)
         if (!items || items.length === 0) return null
         return (
-          <div key={type}>
-            <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {getChannelTypeLabel(type)}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              {items.map((ch) => (
-                <ChannelListItem
-                  key={ch.name}
-                  channel={ch}
-                  active={ch.name === activeChannel}
-                  unreadCount={unreadCounts[ch.name] ?? 0}
-                  onClick={() => onSelectChannel(ch.name)}
-                />
-              ))}
-            </div>
-          </div>
+          <ChannelGroupSection
+            key={type}
+            type={type}
+            items={items}
+            activeChannel={activeChannel}
+            unreadCounts={unreadCounts}
+            onSelectChannel={onSelectChannel}
+          />
         )
       })}
     </nav>

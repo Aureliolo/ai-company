@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMessagesStore } from '@/stores/messages'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
@@ -26,6 +26,9 @@ export interface UseMessagesDataReturn {
   expandedThreads: Set<string>
   toggleThread: (taskId: string) => void
 
+  // New-message flash tracking
+  newMessageIds: Set<string>
+
   // Pagination
   fetchMore: () => void
 
@@ -35,6 +38,13 @@ export interface UseMessagesDataReturn {
 }
 
 export function useMessagesData(activeChannel: string | null): UseMessagesDataReturn {
+  // Ref avoids stale closure in WS handler (useWebSocket
+  // registers bindings once, never re-registers)
+  const activeChannelRef = useRef(activeChannel)
+  useEffect(() => {
+    activeChannelRef.current = activeChannel
+  }, [activeChannel])
+
   const channels = useMessagesStore((s) => s.channels)
   const channelsLoading = useMessagesStore((s) => s.channelsLoading)
   const channelsError = useMessagesStore((s) => s.channelsError)
@@ -48,6 +58,7 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
 
   const expandedThreads = useMessagesStore((s) => s.expandedThreads)
   const toggleThread = useMessagesStore((s) => s.toggleThread)
+  const newMessageIds = useMessagesStore((s) => s.newMessageIds)
 
   // Fetch channels on mount
   useEffect(() => {
@@ -76,16 +87,18 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
     // eslint-disable-next-line @eslint-react/exhaustive-deps -- start/stop are stable useCallback refs
   }, [activeChannel, polling.start, polling.stop])
 
-  // WebSocket bindings
+  // WebSocket bindings (stable -- reads activeChannel via ref)
   const bindings: ChannelBinding[] = useMemo(
     () =>
       MESSAGES_WS_CHANNELS.map((channel) => ({
         channel,
         handler: (event) => {
-          useMessagesStore.getState().handleWsEvent(event, activeChannel)
+          useMessagesStore
+            .getState()
+            .handleWsEvent(event, activeChannelRef.current)
         },
       })),
-    [activeChannel],
+    [],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
@@ -111,6 +124,7 @@ export function useMessagesData(activeChannel: string | null): UseMessagesDataRe
     hasMore,
     expandedThreads,
     toggleThread,
+    newMessageIds,
     fetchMore,
     wsConnected,
     wsSetupError,

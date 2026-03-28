@@ -15,7 +15,12 @@ interface ChannelListItemProps {
   onClick: () => void
 }
 
-export function ChannelListItem({ channel, active, unreadCount, onClick }: ChannelListItemProps) {
+export function ChannelListItem({
+  channel,
+  active,
+  unreadCount,
+  onClick,
+}: ChannelListItemProps) {
   const Icon = CHANNEL_ICONS[channel.type]
 
   return (

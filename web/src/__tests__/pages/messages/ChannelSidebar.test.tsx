@@ -43,7 +43,7 @@ describe('ChannelSidebar', () => {
   it('hides unread badge when count is zero', () => {
     render(<ChannelSidebar {...defaultProps} unreadCounts={{ '#product': 0 }} />)
     // Should not have a badge element for 0
-    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^0$/)).not.toBeInTheDocument()
   })
 
   it('calls onSelectChannel when clicked', async () => {

@@ -55,18 +55,6 @@ export function getPriorityBadgeClasses(color: SemanticColor): string {
   return PRIORITY_BADGE_CLASSES[color]
 }
 
-// ── Channel type icon names ────────────────────────────────
-
-const CHANNEL_TYPE_ICONS: Record<ChannelType, string> = {
-  topic: 'Hash',
-  direct: 'Users',
-  broadcast: 'Megaphone',
-}
-
-export function getChannelTypeIcon(type: ChannelType): string {
-  return CHANNEL_TYPE_ICONS[type]
-}
-
 // ── Channel type labels ────────────────────────────────────
 
 const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
@@ -85,7 +73,11 @@ export function getChannelTypeLabel(type: ChannelType): string {
 function toDateKey(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return 'unknown'
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
 }
 
 /**
@@ -124,14 +116,18 @@ export function getDateGroupLabel(dateKey: string): string {
   if (target.getTime() === today.getTime()) return 'Today'
   if (target.getTime() === yesterday.getTime()) return 'Yesterday'
 
-  return target.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return target.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 // ── Thread grouping ────────────────────────────────────────
 
 export interface ThreadGroup {
-  readonly threads: Map<string, Message[]>
-  readonly standalone: Message[]
+  readonly threads: ReadonlyMap<string, readonly Message[]>
+  readonly standalone: readonly Message[]
 }
 
 /**
