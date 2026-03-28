@@ -77,7 +77,8 @@ describe('computeCostBreakdown properties', () => {
             expect(slice.percent).toBeGreaterThanOrEqual(0)
             sum += slice.percent
           }
-          if (slices.length > 0) {
+          const totalCost = records.reduce((acc, r) => acc + r.cost_usd, 0)
+          if (slices.length > 0 && totalCost > 0) {
             expect(sum).toBeCloseTo(100, 0)
           }
         },

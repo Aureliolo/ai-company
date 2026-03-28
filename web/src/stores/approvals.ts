@@ -174,16 +174,17 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     const updated = { ...oldApproval, status: 'approved' as const, decided_at: new Date().toISOString() }
     const newApprovals = [...approvals]
     newApprovals[idx] = updated
-    set({ approvals: newApprovals, selectedIds: newSelectedIds })
+    const selectedApproval = get().selectedApproval?.id === id ? updated : get().selectedApproval
+    set({ approvals: newApprovals, selectedIds: newSelectedIds, selectedApproval })
     return () => {
       pendingTransitions.delete(id)
-      // Targeted rollback: only restore this specific approval and selection
       set((s) => {
         const currentApprovals = [...s.approvals]
         const currentIdx = currentApprovals.findIndex((a) => a.id === id)
         if (currentIdx !== -1) currentApprovals[currentIdx] = oldApproval
         const restoredIds = hadSelection ? new Set([...s.selectedIds, id]) : s.selectedIds
-        return { approvals: currentApprovals, selectedIds: restoredIds }
+        const restoredSelected = s.selectedApproval?.id === id ? oldApproval : s.selectedApproval
+        return { approvals: currentApprovals, selectedIds: restoredIds, selectedApproval: restoredSelected }
       })
     }
   },
@@ -204,16 +205,17 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     const updated = { ...oldApproval, status: 'rejected' as const, decided_at: new Date().toISOString() }
     const newApprovals = [...approvals]
     newApprovals[idx] = updated
-    set({ approvals: newApprovals, selectedIds: newSelectedIds })
+    const selectedApproval = get().selectedApproval?.id === id ? updated : get().selectedApproval
+    set({ approvals: newApprovals, selectedIds: newSelectedIds, selectedApproval })
     return () => {
       pendingTransitions.delete(id)
-      // Targeted rollback: only restore this specific approval and selection
       set((s) => {
         const currentApprovals = [...s.approvals]
         const currentIdx = currentApprovals.findIndex((a) => a.id === id)
         if (currentIdx !== -1) currentApprovals[currentIdx] = oldApproval
         const restoredIds = hadSelection ? new Set([...s.selectedIds, id]) : s.selectedIds
-        return { approvals: currentApprovals, selectedIds: restoredIds }
+        const restoredSelected = s.selectedApproval?.id === id ? oldApproval : s.selectedApproval
+        return { approvals: currentApprovals, selectedIds: restoredIds, selectedApproval: restoredSelected }
       })
     }
   },
