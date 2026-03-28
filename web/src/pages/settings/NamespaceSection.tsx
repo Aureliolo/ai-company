@@ -51,7 +51,7 @@ export function NamespaceSection({
     <section className="rounded-lg border border-border bg-card">
       <button
         type="button"
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={() => { if (!forceOpen) setCollapsed((v) => !v) }}
         className={cn(
           'flex w-full items-center gap-3 px-4 py-3',
           'text-left transition-colors hover:bg-card-hover',

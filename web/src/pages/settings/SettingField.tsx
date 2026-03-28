@@ -78,6 +78,7 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
   const validate = useCallback(
     (raw: string): string | null => {
       if (definition.type === 'int') {
+        if (raw.trim() === '') return 'Required'
         const n = Number(raw)
         if (!Number.isInteger(n)) return 'Must be an integer'
         if (definition.min_value != null && n < definition.min_value)
@@ -86,6 +87,7 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
           return `Maximum: ${definition.max_value}`
       }
       if (definition.type === 'float') {
+        if (raw.trim() === '') return 'Required'
         const n = Number(raw)
         if (Number.isNaN(n)) return 'Must be a number'
         if (definition.min_value != null && n < definition.min_value)

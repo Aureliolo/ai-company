@@ -6,6 +6,20 @@ import { getErrorMessage } from '@/utils/errors'
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/
 
+/** Extract valid currency from entries, or undefined if not found/invalid. */
+function deriveCurrency(
+  entries: SettingEntry[],
+): string | undefined {
+  const entry = entries.find(
+    (e) => e.definition.namespace === 'budget'
+      && e.definition.key === 'currency',
+  )
+  if (entry?.value && CURRENCY_PATTERN.test(entry.value)) {
+    return entry.value
+  }
+  return undefined
+}
+
 interface SettingsState {
   /** ISO 4217 currency code for display formatting. */
   currency: string
@@ -94,8 +108,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
 
   refreshEntries: async () => {
+    // Skip if saves are in progress to avoid overwriting fresh data
+    if (get().savingKeys.size > 0) return
     // Let errors propagate to usePolling's error tracking
     const entries = await settingsApi.getAllSettings()
+    // Re-check: a save may have started during the fetch
+    if (get().savingKeys.size > 0) return
     set({ entries })
   },
 
@@ -113,7 +131,16 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         )
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
-        return { entries: newEntries, savingKeys: newSaving }
+        const patch: Partial<SettingsState> = {
+          entries: newEntries,
+          savingKeys: newSaving,
+        }
+        // Keep standalone currency field in sync
+        if (ns === 'budget' && key === 'currency') {
+          const c = deriveCurrency(newEntries)
+          if (c) patch.currency = c
+        }
+        return patch
       })
       return updated
     } catch (error) {
@@ -153,8 +180,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
-        const update: Partial<SettingsState> = { savingKeys: newSaving }
-        if (refreshedEntries) update.entries = refreshedEntries
+        const update: Partial<SettingsState> = {
+          savingKeys: newSaving,
+        }
+        if (refreshedEntries) {
+          update.entries = refreshedEntries
+          // Keep standalone currency in sync after reset
+          if (ns === 'budget' && key === 'currency') {
+            const c = deriveCurrency(refreshedEntries)
+            if (c) update.currency = c
+          }
+        }
         return update
       })
     }

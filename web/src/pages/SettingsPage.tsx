@@ -226,7 +226,9 @@ export default function SettingsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         <div className="flex items-center gap-4">
-          <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
+          {viewMode !== 'code' && (
+            <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
+          )}
           <ToggleField
             label="Code"
             checked={viewMode === 'code'}
@@ -267,6 +269,20 @@ export default function SettingsPage() {
           onDisable={() => {
             setAdvancedMode(false)
             localStorage.setItem(SETTINGS_ADVANCED_KEY, 'false')
+            // Clear drafts for advanced-only settings so they
+            // don't remain hidden but count toward the save bar
+            setDirtyValues((prev) => {
+              const next = new Map(prev)
+              for (const ck of prev.keys()) {
+                const entry = entries.find(
+                  (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+                )
+                if (entry?.definition.level === 'advanced') {
+                  next.delete(ck)
+                }
+              }
+              return next
+            })
           }}
         />
       )}
