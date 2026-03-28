@@ -67,6 +67,14 @@ export function ApprovalDetailDrawer({
   const panelRef = useRef<HTMLElement>(null)
   const openerRef = useRef<Element | null>(null)
 
+  // Close confirm dialogs if approval is no longer pending (e.g., decided via WebSocket)
+  useEffect(() => {
+    if (!isPending) {
+      setApproveOpen(false)
+      setRejectOpen(false)
+    }
+  }, [isPending])
+
   // Close on Escape (skip when any confirmation dialog is open)
   useEffect(() => {
     if (!open) return
@@ -118,7 +126,7 @@ export function ApprovalDetailDrawer({
   }, [open])
 
   const handleApprove = useCallback(async () => {
-    if (!approval) return
+    if (!approval || approval.status !== 'pending') return
     setSubmitting(true)
     try {
       await onApprove(approval.id, comment.trim() ? { comment: comment.trim() } : undefined)
@@ -132,7 +140,7 @@ export function ApprovalDetailDrawer({
   }, [approval, comment, onApprove])
 
   const handleReject = useCallback(async () => {
-    if (!approval) return
+    if (!approval || approval.status !== 'pending') return
     if (!reason.trim()) {
       useToastStore.getState().add({ variant: 'error', title: 'Please provide a rejection reason' })
       return

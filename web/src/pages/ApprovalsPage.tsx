@@ -3,8 +3,6 @@ import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'framer-motion'
 import { AlertTriangle, ClipboardCheck, WifiOff } from 'lucide-react'
 import { MetricCard } from '@/components/ui/metric-card'
-import { SectionCard } from '@/components/ui/section-card'
-import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -12,14 +10,12 @@ import { useApprovalsData } from '@/hooks/useApprovalsData'
 import { useToastStore } from '@/stores/toast'
 import {
   filterApprovals,
-  getRiskLevelIcon,
-  getRiskLevelLabel,
   groupByRiskLevel,
   type ApprovalPageFilters,
 } from '@/utils/approvals'
 import { getErrorMessage } from '@/utils/errors'
-import { ApprovalCard } from './approvals/ApprovalCard'
 import { ApprovalFilterBar } from './approvals/ApprovalFilterBar'
+import { ApprovalRiskGroupSection } from './approvals/ApprovalRiskGroupSection'
 import { ApprovalDetailDrawer } from './approvals/ApprovalDetailDrawer'
 import { BatchActionBar } from './approvals/BatchActionBar'
 import { ApprovalsSkeleton } from './approvals/ApprovalsSkeleton'
@@ -98,8 +94,7 @@ export default function ApprovalsPage() {
       next.set('selected', approvalId)
       return next
     })
-    fetchApproval(approvalId)
-  }, [setSearchParams, fetchApproval])
+  }, [setSearchParams])
 
   const handleCloseDrawer = useCallback(() => {
     setSearchParams((prev) => {
@@ -145,7 +140,11 @@ export default function ApprovalsPage() {
       if (result.failed === 0) {
         useToastStore.getState().add({ variant: 'success', title: `Approved ${result.succeeded} items` })
       } else {
-        useToastStore.getState().add({ variant: 'warning', title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: `Approved ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
+          description: result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+        })
       }
     } catch (err) {
       useToastStore.getState().add({ variant: 'error', title: 'Batch approve failed', description: getErrorMessage(err) })
@@ -168,7 +167,11 @@ export default function ApprovalsPage() {
       if (result.failed === 0) {
         useToastStore.getState().add({ variant: 'success', title: `Rejected ${result.succeeded} items` })
       } else {
-        useToastStore.getState().add({ variant: 'warning', title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.` })
+        useToastStore.getState().add({
+          variant: 'warning',
+          title: `Rejected ${result.succeeded} of ${ids.length}. ${result.failed} failed.`,
+          description: result.failedReasons.length > 0 ? result.failedReasons.join('; ') : undefined,
+        })
       }
     } catch (err) {
       useToastStore.getState().add({ variant: 'error', title: 'Batch reject failed', description: getErrorMessage(err) })
@@ -263,55 +266,20 @@ export default function ApprovalsPage() {
         />
       )}
 
-      {[...grouped.entries()].map(([riskLevel, items]) => {
-        const Icon = getRiskLevelIcon(riskLevel)
-        const pendingInGroup = items.filter((a) => a.status === 'pending')
-        const pendingIds = pendingInGroup.map((a) => a.id)
-        const allSelected = pendingIds.length > 0 && pendingIds.every((id) => selectedIds.has(id))
-
-        return (
-          <ErrorBoundary key={riskLevel} level="section">
-            <SectionCard
-              title={`${getRiskLevelLabel(riskLevel)} Approvals`}
-              icon={Icon}
-              action={
-                pendingIds.length > 0 ? (
-                  <label className="flex items-center gap-1.5 text-xs text-secondary cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={() => {
-                        if (allSelected) {
-                          deselectAllInGroup(pendingIds)
-                        } else {
-                          selectAllInGroup(pendingIds)
-                        }
-                      }}
-                      className="size-3.5 accent-accent"
-                    />
-                    Select all
-                  </label>
-                ) : undefined
-              }
-            >
-              <StaggerGroup className="space-y-3">
-                {items.map((approval) => (
-                  <StaggerItem key={approval.id}>
-                    <ApprovalCard
-                      approval={approval}
-                      selected={selectedIds.has(approval.id)}
-                      onSelect={handleSelectApproval}
-                      onApprove={handleApproveOne}
-                      onReject={handleRejectOne}
-                      onToggleSelect={toggleSelection}
-                    />
-                  </StaggerItem>
-                ))}
-              </StaggerGroup>
-            </SectionCard>
-          </ErrorBoundary>
-        )
-      })}
+      {[...grouped.entries()].map(([riskLevel, items]) => (
+        <ApprovalRiskGroupSection
+          key={riskLevel}
+          riskLevel={riskLevel}
+          items={items}
+          selectedIds={selectedIds}
+          onSelectAll={selectAllInGroup}
+          onDeselectAll={deselectAllInGroup}
+          onToggleSelect={toggleSelection}
+          onSelect={handleSelectApproval}
+          onApprove={handleApproveOne}
+          onReject={handleRejectOne}
+        />
+      ))}
 
       {/* Detail drawer */}
       <AnimatePresence>

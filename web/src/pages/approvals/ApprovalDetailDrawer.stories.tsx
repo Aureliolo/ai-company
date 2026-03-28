@@ -76,3 +76,15 @@ export const NoMetadata: Story = {
     approval: { ...base, metadata: {}, task_id: null },
   },
 }
+
+export const Error: Story = {
+  args: {
+    open: true,
+    approval: null,
+    loading: false,
+    error: 'Failed to load approval details',
+    onClose: fn(),
+    onApprove: fn(),
+    onReject: fn(),
+  },
+}

@@ -14,6 +14,7 @@ import {
 } from '@/utils/approvals'
 import type { ApprovalRiskLevel, ApprovalStatus, UrgencyLevel } from '@/api/types'
 import { makeApproval } from '@/__tests__/helpers/factories'
+import { ShieldAlert, AlertTriangle, Shield, ShieldCheck } from 'lucide-react'
 
 // ── Risk level color mapping ──────────────────────────────────
 
@@ -44,13 +45,15 @@ describe('getRiskLevelLabel', () => {
 // ── Risk level icons ──────────────────────────────────────────
 
 describe('getRiskLevelIcon', () => {
-  it('returns a React component (LucideIcon) for each risk level', () => {
-    const levels: ApprovalRiskLevel[] = ['critical', 'high', 'medium', 'low']
-    for (const level of levels) {
-      const icon = getRiskLevelIcon(level)
-      expect(icon).toBeDefined()
-      expect(typeof icon).toBe('object')
-      expect(icon).toHaveProperty('$$typeof')
+  it('returns the expected icon for each risk level', () => {
+    const expected: Record<ApprovalRiskLevel, unknown> = {
+      critical: ShieldAlert,
+      high: AlertTriangle,
+      medium: Shield,
+      low: ShieldCheck,
+    }
+    for (const [level, icon] of Object.entries(expected)) {
+      expect(getRiskLevelIcon(level as ApprovalRiskLevel)).toBe(icon)
     }
   })
 

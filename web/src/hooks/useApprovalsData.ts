@@ -9,6 +9,7 @@ import type {
   WsChannel,
 } from '@/api/types'
 
+const APPROVAL_FETCH_LIMIT = 200
 const APPROVAL_POLL_INTERVAL = 30_000
 const APPROVAL_CHANNELS = ['approvals'] as const satisfies readonly WsChannel[]
 
@@ -60,12 +61,12 @@ export function useApprovalsData(): UseApprovalsDataReturn {
 
   // Initial data fetch
   useEffect(() => {
-    useApprovalsStore.getState().fetchApprovals({ limit: 200 })
+    useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
   }, [])
 
   // Lightweight polling for approval refresh
   const pollFn = useCallback(async () => {
-    await useApprovalsStore.getState().fetchApprovals({ limit: 200 })
+    await useApprovalsStore.getState().fetchApprovals({ limit: APPROVAL_FETCH_LIMIT })
   }, [])
 
   const polling = usePolling(pollFn, APPROVAL_POLL_INTERVAL)

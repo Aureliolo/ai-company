@@ -74,6 +74,28 @@ describe('fetchApprovals', () => {
 
     expect(api.listApprovals).toHaveBeenCalledWith({ status: 'pending', limit: 50 })
   })
+
+  it('preserves optimistic state for items in pendingTransitions', async () => {
+    const api = await importApi()
+    const item = makeApproval('1')
+    useApprovalsStore.setState({ approvals: [item] })
+
+    // Optimistic approve puts id into pendingTransitions
+    useApprovalsStore.getState().optimisticApprove('1')
+    expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
+
+    // Server returns stale pending data
+    vi.mocked(api.listApprovals).mockResolvedValueOnce({
+      data: [makeApproval('1', { status: 'pending' })],
+      total: 1,
+      offset: 0,
+      limit: 200,
+    })
+    await useApprovalsStore.getState().fetchApprovals()
+
+    // Optimistic state should be preserved
+    expect(useApprovalsStore.getState().approvals[0]!.status).toBe('approved')
+  })
 })
 
 // ── fetchApproval ───────────────────────────────────────────
@@ -353,6 +375,14 @@ describe('batch selection', () => {
 // ── batch operations ────────────────────────────────────────
 
 describe('batchApprove', () => {
+  it('rejects when batch size exceeds MAX_BATCH_SIZE', async () => {
+    const ids = Array.from({ length: 51 }, (_, i) => `id-${i}`)
+    const result = await useApprovalsStore.getState().batchApprove(ids)
+    expect(result.succeeded).toBe(0)
+    expect(result.failed).toBe(51)
+    expect(result.failedReasons[0]).toContain('Batch size exceeds maximum of 50')
+  })
+
   it('approves all items and returns success count', async () => {
     const api = await importApi()
     const items = [makeApproval('1'), makeApproval('2')]

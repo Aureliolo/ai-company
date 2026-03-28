@@ -57,6 +57,13 @@ export function _resetPendingTransitions(): void {
   pendingTransitions.clear()
 }
 
+let detailRequestSeq = 0
+
+/** Reset module-level detailRequestSeq -- test-only. */
+export function _resetDetailRequestSeq(): void {
+  detailRequestSeq = 0
+}
+
 export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   approvals: [],
   selectedApproval: null,
@@ -87,11 +94,14 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   },
 
   fetchApproval: async (id) => {
+    const seq = ++detailRequestSeq
     set({ loadingDetail: true, detailError: null, selectedApproval: null })
     try {
       const approval = await approvalsApi.getApproval(id)
+      if (seq !== detailRequestSeq) return // stale response
       set({ selectedApproval: approval, loadingDetail: false, detailError: null })
     } catch (err) {
+      if (seq !== detailRequestSeq) return // stale error
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
     }
   },
@@ -186,9 +196,13 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const newApprovals = idx === -1 ? [approval, ...s.approvals] : [...s.approvals]
       if (idx !== -1) newApprovals[idx] = approval
       const selectedApproval = s.selectedApproval?.id === approval.id ? approval : s.selectedApproval
+      const newSelectedIds = approval.status !== 'pending' && s.selectedIds.has(approval.id)
+        ? new Set([...s.selectedIds].filter((sid) => sid !== approval.id))
+        : s.selectedIds
       return {
         approvals: newApprovals,
         selectedApproval,
+        selectedIds: newSelectedIds,
         ...(idx === -1 ? { total: s.total + 1 } : {}),
       }
     })

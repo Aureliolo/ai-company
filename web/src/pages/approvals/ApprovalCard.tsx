@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Clock, X } from 'lucide-react'
-import { cn, type SemanticColor } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useFlash } from '@/hooks/useFlash'
-import { formatUrgency, getRiskLevelColor, getRiskLevelLabel, getUrgencyColor } from '@/utils/approvals'
+import { DOT_COLOR_CLASSES, URGENCY_BADGE_CLASSES, formatUrgency, getRiskLevelColor, getRiskLevelLabel, getUrgencyColor } from '@/utils/approvals'
 import type { ApprovalResponse } from '@/api/types'
 
 export interface ApprovalCardProps {
@@ -14,22 +14,6 @@ export interface ApprovalCardProps {
   onReject: (id: string) => void
   onToggleSelect: (id: string) => void
   className?: string
-}
-
-const DOT_COLOR_CLASSES: Record<SemanticColor | 'accent-dim', string> = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  accent: 'bg-accent',
-  'accent-dim': 'bg-accent-dim',
-  success: 'bg-success',
-}
-
-const URGENCY_BADGE_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
-  danger: 'border-danger/30 bg-danger/10 text-danger',
-  warning: 'border-warning/30 bg-warning/10 text-warning',
-  accent: 'border-accent/30 bg-accent/10 text-accent',
-  success: 'border-success/30 bg-success/10 text-success',
-  'text-secondary': 'border-border bg-surface text-secondary',
 }
 
 export function ApprovalCard({
