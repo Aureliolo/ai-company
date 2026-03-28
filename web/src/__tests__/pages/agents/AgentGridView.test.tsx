@@ -24,7 +24,7 @@ describe('AgentGridView', () => {
   it('links to correct agent detail URL with encoded name', () => {
     const agents = [makeAgent('alice doe')]
     renderWithRouter(<AgentGridView agents={agents} />)
-    const link = screen.getByText('alice doe').closest('a')
+    const link = screen.getByRole('link', { name: /alice doe/i })
     expect(link).toHaveAttribute('href', '/agents/alice%20doe')
   })
 })

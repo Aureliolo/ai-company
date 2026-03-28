@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { useAgentsStore } from '@/stores/agents'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
-import { makeAgent, makeActivityEvent } from '../helpers/factories'
+import { makeAgent, makeActivityEvent, makePerformanceSummary } from '../helpers/factories'
 
 const mockFetchAgentDetail = vi.fn().mockResolvedValue(undefined)
 const mockClearDetail = vi.fn()
@@ -126,5 +126,23 @@ describe('useAgentDetailData', () => {
   it('returns wsConnected from useWebSocket', () => {
     const { result } = renderHook(() => useAgentDetailData('alice'))
     expect(result.current.wsConnected).toBe(true)
+  })
+
+  it('computes performanceCards from store performance', () => {
+    useAgentsStore.setState({
+      selectedAgent: makeAgent('alice'),
+      performance: makePerformanceSummary('alice'),
+    })
+    const { result } = renderHook(() => useAgentDetailData('alice'))
+    expect(result.current.performanceCards.length).toBeGreaterThan(0)
+  })
+
+  it('computes insights from agent and performance', () => {
+    useAgentsStore.setState({
+      selectedAgent: makeAgent('alice'),
+      performance: makePerformanceSummary('alice'),
+    })
+    const { result } = renderHook(() => useAgentDetailData('alice'))
+    expect(result.current.insights).toBeInstanceOf(Array)
   })
 })

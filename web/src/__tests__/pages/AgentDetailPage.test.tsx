@@ -105,6 +105,12 @@ describe('AgentDetailPage', () => {
     expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
   })
 
+  it('shows custom wsSetupError message when provided', () => {
+    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
+    renderDetail()
+    expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
+  })
+
   it('renders agent identity header section', () => {
     renderDetail()
     expect(screen.getByTestId('identity-header')).toBeInTheDocument()
