@@ -89,6 +89,9 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return runUpdateDryRun(cmd, state)
 	}
 
+	opts := GetGlobalOpts(cmd.Context())
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
 	// CLI update (unless --images-only).
 	if !updateImagesOnly {
 		if err := updateCLI(cmd, state.AutoUpdateCLI); errors.Is(err, errReexec) {
@@ -100,9 +103,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// --cli-only: stop after CLI update.
 	if updateCLIOnly {
-		cliOpts := GetGlobalOpts(cmd.Context())
-		cliOut := ui.NewUIWithOptions(cmd.OutOrStdout(), cliOpts.UIOptions())
-		cliOut.HintGuidance("Run 'synthorg update --images-only' to also update container images.")
+		out.HintGuidance("Run 'synthorg update --images-only' to also update container images.")
 		return nil
 	}
 
@@ -110,9 +111,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if updateImagesOnly {
-		imgOpts := GetGlobalOpts(cmd.Context())
-		imgOut := ui.NewUIWithOptions(cmd.OutOrStdout(), imgOpts.UIOptions())
-		imgOut.HintGuidance("Run 'synthorg update --cli-only' to also update the CLI binary.")
+		out.HintGuidance("Run 'synthorg update --cli-only' to also update the CLI binary.")
 	}
 	return nil
 }
@@ -413,7 +412,9 @@ func targetImageTag(ver string) string {
 // existing compose instead of regenerating from the template.
 func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompose bool, forceRefresh bool) error {
 	ctx := cmd.Context()
+	opts := GetGlobalOpts(ctx)
 	out := cmd.OutOrStdout()
+	uiOut := ui.NewUIWithOptions(out, opts.UIOptions())
 
 	tag := targetImageTag(version.Version)
 
@@ -454,9 +455,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return err
 	}
 	if manualPull {
-		pullOpts := GetGlobalOpts(ctx)
-		pullOut := ui.NewUIWithOptions(cmd.OutOrStdout(), pullOpts.UIOptions())
-		pullOut.HintTip("Run 'synthorg config set auto_pull true' to auto-accept image pulls.")
+		uiOut.HintTip("Run 'synthorg config set auto_pull true' to auto-accept image pulls.")
 	}
 	return nil
 }

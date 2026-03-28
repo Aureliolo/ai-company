@@ -297,7 +297,12 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		msg += " (compose regenerated)"
 	}
 	out.Success(msg)
+	hintAfterConfigSet(out, key, value)
+	return nil
+}
 
+// hintAfterConfigSet emits contextual guidance after a config set operation.
+func hintAfterConfigSet(out *ui.UI, key, value string) {
 	if composeAffectingKeys[key] {
 		out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the new value.")
 	}
@@ -330,8 +335,6 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 			out.HintGuidance("Timestamps shown in ISO 8601 format.")
 		}
 	}
-
-	return nil
 }
 
 // applyConfigValue validates and applies a single key=value to state.

@@ -77,16 +77,21 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	// Emit hints before composeRun in follow mode (-f), since it blocks
+	// until Ctrl+C and the post-run code would be unreachable.
+	if logFollow {
+		out.HintGuidance("Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering.")
+	}
+
 	composeArgs := buildLogsArgs(strings.TrimSpace(logTail), args)
 	if err := composeRun(ctx, cmd, info, safeDir, composeArgs...); err != nil {
 		return err
 	}
 
-	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	if !logFollow {
-		out.HintTip("Use -f to follow log output in real time.")
-	}
+	out.HintTip("Use -f to follow log output in real time.")
 	out.HintGuidance("Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering.")
 	return nil
 }

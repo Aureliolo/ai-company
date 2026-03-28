@@ -169,13 +169,13 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 	if wipeKeepImages {
 		sp.Success("Containers stopped and volumes removed (images preserved)")
-		wc.out.HintGuidance("Container images preserved. Run 'synthorg cleanup --all' to remove them later.")
+		wc.out.HintNextStep("Container images preserved. Run 'synthorg cleanup --all' to remove them later.")
 	} else {
 		sp.Success("Containers stopped, volumes and images removed")
 	}
 
 	if wipeNoBackup {
-		wc.out.HintGuidance("Backup skipped. Data cannot be recovered after wipe.")
+		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
 	}
 
 	startAfter, err := wc.promptStartAfterWipe()
