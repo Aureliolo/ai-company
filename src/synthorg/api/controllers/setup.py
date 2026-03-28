@@ -87,7 +87,6 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.enums import AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
@@ -216,7 +215,7 @@ class SetupController(Controller):
                 ),
                 agent_count=t.agent_count,
                 department_count=t.department_count,
-                autonomy_level=AutonomyLevel(t.autonomy_level),
+                autonomy_level=t.autonomy_level,
                 workflow=t.workflow,
             )
             for t in templates

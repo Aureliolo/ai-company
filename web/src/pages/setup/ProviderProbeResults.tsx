@@ -78,8 +78,10 @@ export function ProviderProbeResults({
     setAddingPreset(presetName)
     try {
       await onAddPreset(presetName, detectedUrl)
-    } catch {
-      // Error already set in store (providersError) and rendered by ProvidersStep
+    } catch (err) {
+      // Expected: store sets providersError before re-throwing.
+      // Log unexpected errors for debugging.
+      console.error('ProviderProbeResults: add preset failed:', err)
     } finally {
       setAddingPreset(null)
     }

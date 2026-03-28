@@ -50,6 +50,7 @@ export function ProviderFormDrawer({
   const presets = overrides ? overrides.presets : storePresets
   const presetsLoading = overrides ? overrides.presetsLoading : storePresetsLoading
   const presetsError = overrides ? overrides.presetsError : storePresetsError
+  const fetchPresetsFn = overrides?.onFetchPresets ?? useProvidersStore.getState().fetchPresets
 
   // Form state
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
@@ -72,13 +73,9 @@ export function ProviderFormDrawer({
   // Fetch presets when drawer opens in create mode
   useEffect(() => {
     if (open && mode === 'create') {
-      if (overrides) {
-        overrides.onFetchPresets()
-      } else {
-        useProvidersStore.getState().fetchPresets()
-      }
+      fetchPresetsFn()
     }
-  }, [open, mode, overrides])
+  }, [open, mode, fetchPresetsFn])
 
   // Render-phase state sync: capture previous values before comparisons
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
@@ -206,9 +203,9 @@ export function ProviderFormDrawer({
           litellm_provider: litellmProvider || undefined,
           auth_type: authType,
           api_key: authType === 'api_key' && apiKey ? apiKey : undefined,
-          clear_api_key: authType !== 'api_key' || !apiKey,
+          clear_api_key: authType !== 'api_key',
           subscription_token: authType === 'subscription' && subscriptionToken ? subscriptionToken : undefined,
-          clear_subscription_token: authType !== 'subscription' || !subscriptionToken,
+          clear_subscription_token: authType !== 'subscription',
           tos_accepted: authType === 'subscription' && tosAccepted,
           base_url: baseUrl || undefined,
         }
@@ -216,6 +213,8 @@ export function ProviderFormDrawer({
         const result = await updateFn(provider.name, data)
         if (result) handleClose()
       }
+    } catch (err) {
+      console.error('ProviderFormDrawer: submit failed:', err)
     } finally {
       setSubmitting(false)
     }

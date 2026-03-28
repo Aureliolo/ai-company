@@ -167,9 +167,9 @@ class SetupAgentSummary(BaseModel):
         name: Agent display name.
         role: Agent role.
         department: Assigned department.
-        level: Seniority level string.
-        model_provider: LLM provider name (empty if unassigned).
-        model_id: Model identifier (empty if unassigned).
+        level: Seniority level (``None`` if not specified).
+        model_provider: LLM provider name (``None`` if unassigned).
+        model_id: Model identifier (``None`` if unassigned).
         tier: Original tier requirement from the template.
         personality_preset: Personality preset name, if any.
     """

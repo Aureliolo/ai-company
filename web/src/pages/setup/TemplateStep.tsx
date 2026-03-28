@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
@@ -179,8 +181,11 @@ export function TemplateStep() {
       }
       if (!matchesSize(t, sizeFilter)) return false
       if (query) {
-        const haystack = `${t.display_name} ${t.description} ${t.tags.join(' ')}`.toLowerCase()
-        if (!haystack.includes(query)) return false
+        const keywords = query.split(' ').filter(Boolean)
+        if (keywords.length > 0) {
+          const haystack = `${t.display_name} ${t.description} ${t.tags.join(' ')}`.toLowerCase()
+          if (!keywords.every((kw) => haystack.includes(kw))) return false
+        }
       }
       return true
     })
@@ -278,57 +283,44 @@ export function TemplateStep() {
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
+      <div className="flex flex-wrap items-end gap-3">
+        {/* Search -- custom wrapper for leading icon + clear button (InputField does not support icons) */}
         <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <InputField
+            label="Search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
             placeholder="Search templates..."
-            aria-label="Search templates"
-            className="h-8 w-full rounded-md border border-border bg-surface pl-8 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
+            className="pl-8 pr-8"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-2 bottom-2.5 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
             >
-              <X className="size-3.5" />
+              <X className="size-3.5" aria-hidden="true" />
             </button>
           )}
         </div>
 
         {/* Category filter */}
-        <select
+        <SelectField
+          label="Category"
+          options={availableCategories}
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
-          aria-label="Filter by category"
-        >
-          {availableCategories.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={setCategoryFilter}
+        />
 
         {/* Size filter */}
-        <select
+        <SelectField
+          label="Size"
+          options={[...SIZE_OPTIONS]}
           value={sizeFilter}
-          onChange={(e) => setSizeFilter(e.target.value as SizeFilter)}
-          className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
-          aria-label="Filter by size"
-        >
-          {SIZE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => setSizeFilter(v as SizeFilter)}
+        />
 
         {/* Clear filters */}
         {hasActiveFilters && (
@@ -339,7 +331,7 @@ export function TemplateStep() {
               setCategoryFilter('all')
               setSizeFilter('all')
             }}
-            className="text-xs text-accent hover:underline"
+            className="self-end pb-1 text-xs text-accent hover:underline"
           >
             Clear filters
           </button>

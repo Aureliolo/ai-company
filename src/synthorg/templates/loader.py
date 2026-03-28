@@ -21,7 +21,7 @@ import yaml
 from pydantic import ValidationError
 
 from synthorg.config.errors import ConfigLocation
-from synthorg.core.enums import SkillPattern  # noqa: TC001
+from synthorg.core.enums import AutonomyLevel, SkillPattern
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
@@ -78,8 +78,7 @@ class TemplateInfo:
             extracted from the template's ``variables`` section.
         agent_count: Number of agents defined in the template.
         department_count: Number of departments defined in the template.
-        autonomy_level: Autonomy level (e.g. ``"full"``, ``"semi"``,
-            ``"supervised"``).
+        autonomy_level: Autonomy level governing approval routing.
         workflow: Workflow type (e.g. ``"agile_kanban"``, ``"kanban"``).
     """
 
@@ -92,7 +91,7 @@ class TemplateInfo:
     variables: tuple[TemplateVariable, ...] = ()
     agent_count: int = 0
     department_count: int = 0
-    autonomy_level: str = "semi"
+    autonomy_level: AutonomyLevel = AutonomyLevel.SEMI
     workflow: str = "agile_kanban"
 
 
@@ -109,6 +108,34 @@ class LoadedTemplate:
     template: CompanyTemplate
     raw_yaml: str
     source_name: str
+
+
+def _template_info_from_loaded(
+    name: str,
+    loaded: LoadedTemplate,
+    source: Literal["builtin", "user"],
+) -> TemplateInfo:
+    """Build a :class:`TemplateInfo` from a loaded template."""
+    meta = loaded.template.metadata
+    tmpl = loaded.template
+    raw_level = str(tmpl.autonomy.get("level", "semi"))
+    try:
+        autonomy = AutonomyLevel(raw_level)
+    except ValueError:
+        autonomy = AutonomyLevel.SEMI
+    return TemplateInfo(
+        name=name,
+        display_name=meta.name,
+        description=meta.description,
+        source=source,
+        tags=meta.tags,
+        skill_patterns=meta.skill_patterns,
+        variables=tmpl.variables,
+        agent_count=len(tmpl.agents),
+        department_count=len(tmpl.departments),
+        autonomy_level=autonomy,
+        workflow=tmpl.workflow,
+    )
 
 
 def list_templates() -> tuple[TemplateInfo, ...]:
@@ -129,20 +156,10 @@ def list_templates() -> tuple[TemplateInfo, ...]:
         if name not in seen:
             try:
                 loaded = _load_builtin(name)
-                meta = loaded.template.metadata
-                tmpl = loaded.template
-                seen[name] = TemplateInfo(
-                    name=name,
-                    display_name=meta.name,
-                    description=meta.description,
-                    source="builtin",
-                    tags=meta.tags,
-                    skill_patterns=meta.skill_patterns,
-                    variables=tmpl.variables,
-                    agent_count=len(tmpl.agents),
-                    department_count=len(tmpl.departments),
-                    autonomy_level=tmpl.autonomy.get("level", "semi"),
-                    workflow=tmpl.workflow,
+                seen[name] = _template_info_from_loaded(
+                    name,
+                    loaded,
+                    "builtin",
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.exception(
@@ -162,20 +179,10 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
         name = path.stem
         try:
             loaded = _load_from_file(path)
-            meta = loaded.template.metadata
-            tmpl = loaded.template
-            seen[name] = TemplateInfo(
-                name=name,
-                display_name=meta.name,
-                description=meta.description,
-                source="user",
-                tags=meta.tags,
-                skill_patterns=meta.skill_patterns,
-                variables=tmpl.variables,
-                agent_count=len(tmpl.agents),
-                department_count=len(tmpl.departments),
-                autonomy_level=tmpl.autonomy.get("level", "semi"),
-                workflow=tmpl.workflow,
+            seen[name] = _template_info_from_loaded(
+                name,
+                loaded,
+                "user",
             )
         except (TemplateRenderError, TemplateValidationError, OSError) as exc:
             logger.warning(

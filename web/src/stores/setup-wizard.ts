@@ -639,6 +639,15 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
           set((s) => ({
             providers: { ...s.providers, [data.name]: refreshed },
           }))
+          if (refreshed.models.length === 0) {
+            set({
+              providersError:
+                `Provider '${data.name}' created but no ` +
+                'models were discovered. Ensure the ' +
+                'provider is running with models ' +
+                'available, then refresh.',
+            })
+          }
           return refreshed
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
@@ -688,15 +697,27 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   async probeAllPresets() {
     const { presets } = get()
     set({ probing: true })
-    const results = await runProbeAll(presets, 'probe')
-    set({ probeResults: results, probing: false })
+    try {
+      const results = await runProbeAll(presets, 'probe')
+      set({ probeResults: results })
+    } catch (err) {
+      console.error('setup-wizard: probeAllPresets failed:', getErrorMessage(err))
+    } finally {
+      set({ probing: false })
+    }
   },
 
   async reprobePresets() {
     set({ probeResults: {}, probing: true })
-    const { presets } = get()
-    const results = await runProbeAll(presets, 'reprobe')
-    set({ probeResults: results, probing: false })
+    try {
+      const { presets } = get()
+      const results = await runProbeAll(presets, 'reprobe')
+      set({ probeResults: results })
+    } catch (err) {
+      console.error('setup-wizard: reprobePresets failed:', getErrorMessage(err))
+    } finally {
+      set({ probing: false })
+    }
   },
 
   // -- Theme --

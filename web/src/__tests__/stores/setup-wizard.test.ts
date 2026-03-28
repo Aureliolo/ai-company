@@ -382,6 +382,43 @@ describe('setup wizard store', () => {
       expect(useSetupWizardStore.getState().providersError).toBeNull()
     })
 
+    it('createProviderFromPresetFull triggers discovery for zero-model providers', async () => {
+      const { createFromPreset, discoverModels, getProvider } = await import('@/api/endpoints/providers')
+      const emptyProvider = {
+        driver: 'litellm',
+        litellm_provider: 'test-local',
+        auth_type: 'none' as const,
+        has_api_key: false,
+        has_oauth_credentials: false,
+        has_custom_header: false,
+        has_subscription_token: false,
+        tos_accepted_at: null,
+        oauth_token_url: null,
+        oauth_client_id: null,
+        oauth_scope: null,
+        custom_header_name: null,
+        base_url: 'http://localhost:11434',
+        models: [],
+      }
+      const refreshedProvider = {
+        ...emptyProvider,
+        models: [{ id: 'test-model-001', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 128000, estimated_latency_ms: null }],
+      }
+      vi.mocked(createFromPreset).mockResolvedValue(emptyProvider)
+      vi.mocked(discoverModels).mockResolvedValue({ discovered_models: [], provider_name: 'local-provider' })
+      vi.mocked(getProvider).mockResolvedValue(refreshedProvider)
+
+      const result = await useSetupWizardStore.getState().createProviderFromPresetFull({
+        preset_name: 'test-local',
+        name: 'local-provider',
+      })
+
+      expect(discoverModels).toHaveBeenCalledWith('local-provider', 'test-local')
+      expect(getProvider).toHaveBeenCalledWith('local-provider')
+      expect(result).toBe(refreshedProvider)
+      expect(useSetupWizardStore.getState().providers['local-provider']).toBe(refreshedProvider)
+    })
+
     it('createProviderFromPresetFull returns null and sets error on failure', async () => {
       const { createFromPreset } = await import('@/api/endpoints/providers')
       vi.mocked(createFromPreset).mockRejectedValue(new Error('Auth failed'))

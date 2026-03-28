@@ -7,6 +7,7 @@ models because they omit server-generated fields).
 
 import re
 from typing import Self
+from urllib.parse import urlparse
 
 from pydantic import (
     BaseModel,
@@ -528,6 +529,20 @@ def _validate_provider_name(v: str) -> str:
     return v
 
 
+def _validate_base_url(v: str | None) -> str | None:
+    """Validate that a base URL uses http or https scheme."""
+    if v is None:
+        return v
+    parsed = urlparse(v)
+    if parsed.scheme not in ("http", "https"):
+        msg = f"base_url must use http or https scheme, got {parsed.scheme!r}"
+        raise ValueError(msg)
+    if not parsed.netloc:
+        msg = "base_url must include a host"
+        raise ValueError(msg)
+    return v
+
+
 class CreateProviderRequest(BaseModel):
     """Payload for creating a new provider.
 
@@ -566,6 +581,11 @@ class CreateProviderRequest(BaseModel):
     def _validate_name(cls, v: str) -> str:
         return _validate_provider_name(v)
 
+    @field_validator("base_url")
+    @classmethod
+    def _validate_base_url(cls, v: str | None) -> str | None:
+        return _validate_base_url(v)
+
 
 class UpdateProviderRequest(BaseModel):
     """Payload for updating a provider (partial update).
@@ -593,6 +613,11 @@ class UpdateProviderRequest(BaseModel):
     custom_header_name: NotBlankStr | None = None
     custom_header_value: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _validate_base_url(cls, v: str | None) -> str | None:
+        return _validate_base_url(v)
 
     @model_validator(mode="after")
     def _validate_credential_clear_consistency(self) -> Self:
@@ -714,6 +739,11 @@ class CreateFromPresetRequest(BaseModel):
     @classmethod
     def _validate_name(cls, v: str) -> str:
         return _validate_provider_name(v)
+
+    @field_validator("base_url")
+    @classmethod
+    def _validate_base_url(cls, v: str | None) -> str | None:
+        return _validate_base_url(v)
 
 
 class DiscoverModelsResponse(BaseModel):

@@ -340,8 +340,9 @@ the rest later in Settings). Guided mode steps: Mode, Template (searchable grid 
 category/size filters, recommended/others grouping, and structural metadata cards showing
 agent count, departments, autonomy level, and workflow), Company (name, description,
 currency, and model tier profile), Providers (configure LLM providers with auto-detection
-for local instances and full provider form supporting API key, subscription, and custom
-providers), Agents (customize names, roles, personality presets, and model assignments),
+for local instances (with probe-detected base URLs) and full provider form supporting
+API key, subscription, custom configurations, and manually entered base URLs),
+Agents (customize names, roles, personality presets, and model assignments),
 Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
 Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and
 Complete -- skipping template, agents, and theme. Providers are configured before agents so

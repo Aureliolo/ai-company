@@ -88,8 +88,10 @@ export function ProvidersStep() {
   const handleAddPreset = useCallback(
     async (presetName: string, detectedUrl?: string) => {
       await createProviderFromPreset(presetName, presetName, undefined, detectedUrl)
-      // Refresh provider list to get updated model counts
-      await fetchProviders()
+      // Only refresh if no error was set (e.g. discovery failure)
+      if (!useSetupWizardStore.getState().providersError) {
+        await fetchProviders()
+      }
     },
     [createProviderFromPreset, fetchProviders],
   )
@@ -107,12 +109,16 @@ export function ProvidersStep() {
     onFetchPresets: fetchPresets,
     onCreateFromPreset: async (data) => {
       const result = await createProviderFromPresetFull(data)
-      if (result) await fetchProviders()
+      if (result && !useSetupWizardStore.getState().providersError) {
+        await fetchProviders()
+      }
       return result
     },
     onCreateProvider: async (data) => {
       const result = await createProviderCustom(data)
-      if (result) await fetchProviders()
+      if (result && !useSetupWizardStore.getState().providersError) {
+        await fetchProviders()
+      }
       return result
     },
   }), [presets, presetsLoading, presetsError, fetchPresets, createProviderFromPresetFull, createProviderCustom, fetchProviders])
