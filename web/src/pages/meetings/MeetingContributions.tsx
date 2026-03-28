@@ -37,7 +37,7 @@ export function MeetingContributions({ contributions, className }: MeetingContri
     <SectionCard title="Contributions" icon={MessageSquare} className={className}>
       <div className="space-y-6">
         {groups.map((group) => (
-          <div key={`${group.phase}-${group.items[0]?.turn_number}`}>
+          <div key={`${group.phase}-${group.items[0]?.turn_number ?? 0}-${group.items.length}`}>
             <div className="mb-3 flex items-center gap-2">
               <div className="h-px flex-1 bg-border" />
               <span className="shrink-0 text-micro font-medium uppercase tracking-wide text-muted-foreground">

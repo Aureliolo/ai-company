@@ -13,7 +13,7 @@ export function MeetingDecisions({ decisions, className }: MeetingDecisionsProps
     <SectionCard title="Decisions" icon={CheckCircle} className={className}>
       <ol className="space-y-2">
         {decisions.map((decision, idx) => (
-          <li key={`decision-${decision.slice(0, 40)}`} className="flex items-start gap-2">
+          <li key={`decision-${decision.slice(0, 40)}-${decision.length}`} className="flex items-start gap-2">
             <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/10 font-mono text-micro font-medium text-success">
               {idx + 1}
             </span>

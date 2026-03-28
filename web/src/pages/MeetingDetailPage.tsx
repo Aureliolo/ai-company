@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { AlertTriangle, Video, WifiOff } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Video, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SectionCard } from '@/components/ui/section-card'
+import { Button } from '@/components/ui/button'
 import { useMeetingDetailData } from '@/hooks/useMeetingDetailData'
+import { useMeetingsStore } from '@/stores/meetings'
 import { ROUTES } from '@/router/routes'
 import { MeetingDetailHeader } from './meetings/MeetingDetailHeader'
 import { MeetingAgendaSection } from './meetings/MeetingAgendaSection'
@@ -25,11 +27,8 @@ export default function MeetingDetailPage() {
     wsSetupError,
   } = useMeetingDetailData(meetingId ?? '')
 
-  const [wasConnected, setWasConnected] = useState(false)
-
-  if (wsConnected && !wasConnected) {
-    setWasConnected(true)
-  }
+  const wasConnectedRef = useRef(false)
+  if (wsConnected) wasConnectedRef.current = true
 
   // Missing meetingId
   if (!meetingId) {
@@ -52,27 +51,34 @@ export default function MeetingDetailPage() {
   if (error && !meeting) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
+        <Button
+          variant="outline"
+          onClick={() => useMeetingsStore.getState().fetchMeeting(meetingId)}
+        >
+          <RefreshCw className="mr-2 size-4" />
+          Retry
+        </Button>
       </div>
     )
   }
 
-  if (!meeting) return null
+  if (!meeting) return <MeetingDetailSkeleton />
 
   return (
     <div className="space-y-6">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+      {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>
@@ -98,7 +104,7 @@ export default function MeetingDetailPage() {
             </ErrorBoundary>
           )}
 
-          <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
+          <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-2">
             <ErrorBoundary level="section">
               <MeetingDecisions decisions={meeting.minutes.decisions} />
             </ErrorBoundary>

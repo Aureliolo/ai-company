@@ -27,7 +27,7 @@ export function MeetingDetailSkeleton() {
       <SkeletonCard header lines={6} />
 
       {/* Decisions + Action Items */}
-      <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
+      <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-2">
         <SkeletonCard header lines={3} />
         <SkeletonCard header lines={3} />
       </div>

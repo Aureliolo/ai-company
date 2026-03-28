@@ -82,11 +82,11 @@ export function formatUptime(seconds: number): string {
 }
 
 /**
- * Capitalize and format a snake_case string for display.
+ * Capitalize and format a snake_case or kebab-case string for display.
  */
 export function formatLabel(value: string): string {
   return value
-    .split('_')
+    .split(/[_-]/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 }

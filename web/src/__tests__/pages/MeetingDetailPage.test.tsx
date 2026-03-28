@@ -34,6 +34,7 @@ function renderDetail() {
 
 describe('MeetingDetailPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     hookReturn = { ...defaultHookReturn }
   })
 

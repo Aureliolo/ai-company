@@ -6,7 +6,7 @@ export interface TokenSegment {
   color?: string
 }
 
-interface TokenUsageBarProps {
+export interface TokenUsageBarProps {
   segments: readonly TokenSegment[]
   total: number
   className?: string
@@ -23,6 +23,7 @@ const SEGMENT_COLORS = [
 export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps) {
   const usedTokens = segments.reduce((sum, s) => sum + s.value, 0)
   const usedPercent = total > 0 ? Math.min(100, (usedTokens / total) * 100) : 0
+  const visible = usedTokens > 0 ? segments.filter((s) => s.value > 0) : []
 
   return (
     <div
@@ -35,27 +36,22 @@ export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps
     >
       <div className="h-2 w-full overflow-hidden rounded-full bg-border">
         <div className="flex h-full" style={{ width: `${usedPercent}%` }}>
-          {segments.map((segment, i) => {
-            const segPercent = total > 0 ? (segment.value / total) * 100 : 0
-            if (segPercent <= 0) return null
-            const colorClass = segment.color ?? SEGMENT_COLORS[i % SEGMENT_COLORS.length]
-            return (
-              <div
-                key={segment.label}
-                className={cn(
-                  'h-full transition-all duration-[900ms]',
-                  colorClass,
-                  i === 0 && 'rounded-l-full',
-                  i === segments.length - 1 && 'rounded-r-full',
-                )}
-                style={{
-                  width: `${(segment.value / usedTokens) * 100}%`,
-                  transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-                }}
-                title={`${segment.label}: ${segment.value.toLocaleString()} tokens`}
-              />
-            )
-          })}
+          {visible.map((segment, i) => (
+            <div
+              key={segment.label}
+              className={cn(
+                'h-full transition-all duration-[900ms]',
+                segment.color ?? SEGMENT_COLORS[i % SEGMENT_COLORS.length],
+                i === 0 && 'rounded-l-full',
+                i === visible.length - 1 && 'rounded-r-full',
+              )}
+              style={{
+                width: `${(segment.value / usedTokens) * 100}%`,
+                transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+              }}
+              title={`${segment.label}: ${segment.value.toLocaleString()} tokens`}
+            />
+          ))}
         </div>
       </div>
     </div>

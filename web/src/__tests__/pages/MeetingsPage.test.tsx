@@ -38,7 +38,8 @@ function renderMeetings() {
 
 describe('MeetingsPage', () => {
   beforeEach(() => {
-    hookReturn = { ...defaultHookReturn }
+    vi.clearAllMocks()
+    hookReturn = { ...defaultHookReturn, triggerMeeting: vi.fn().mockResolvedValue([]) }
   })
 
   it('renders page heading', () => {

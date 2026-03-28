@@ -143,6 +143,28 @@ describe('fetchMeeting', () => {
     expect(state.loadingDetail).toBe(false)
     expect(state.detailError).toBe('Not found')
   })
+
+  it('rejects stale detail responses when a newer fetch starts', async () => {
+    const api = await importApi()
+    const staleMeeting = makeMeeting('stale')
+    const freshMeeting = makeMeeting('fresh')
+
+    let resolveFirst!: (v: typeof staleMeeting) => void
+    vi.mocked(api.getMeeting)
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
+      .mockResolvedValueOnce(freshMeeting)
+
+    const firstPromise = useMeetingsStore.getState().fetchMeeting('stale')
+    const secondPromise = useMeetingsStore.getState().fetchMeeting('fresh')
+
+    await secondPromise
+    expect(useMeetingsStore.getState().selectedMeeting?.meeting_id).toBe('fresh')
+
+    resolveFirst(staleMeeting)
+    await firstPromise
+
+    expect(useMeetingsStore.getState().selectedMeeting?.meeting_id).toBe('fresh')
+  })
 })
 
 // -- triggerMeeting ---------------------------------------------------------

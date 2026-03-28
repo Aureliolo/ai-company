@@ -1,7 +1,7 @@
 import { SelectField } from '@/components/ui/select-field'
 import { formatLabel } from '@/utils/format'
 import { getMeetingStatusLabel, type MeetingPageFilters } from '@/utils/meetings'
-import type { MeetingStatus } from '@/api/types'
+import { MEETING_STATUS_VALUES } from '@/api/types'
 
 interface MeetingFilterBarProps {
   filters: MeetingPageFilters
@@ -10,13 +10,9 @@ interface MeetingFilterBarProps {
   className?: string
 }
 
-const ALL_STATUSES: MeetingStatus[] = [
-  'scheduled', 'in_progress', 'completed', 'failed', 'cancelled', 'budget_exhausted',
-]
-
 const STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
-  ...ALL_STATUSES.map((s) => ({ value: s, label: getMeetingStatusLabel(s) })),
+  ...MEETING_STATUS_VALUES.map((s) => ({ value: s, label: getMeetingStatusLabel(s) })),
 ]
 
 export function MeetingFilterBar({

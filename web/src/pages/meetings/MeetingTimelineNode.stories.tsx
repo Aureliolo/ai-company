@@ -32,3 +32,7 @@ export const Failed: Story = {
 export const Cancelled: Story = {
   args: { meeting: makeMeeting('5', { status: 'cancelled' }) },
 }
+
+export const BudgetExhausted: Story = {
+  args: { meeting: makeMeeting('6', { status: 'budget_exhausted' }) },
+}

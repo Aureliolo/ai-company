@@ -17,7 +17,7 @@ export function MeetingActionItems({ actionItems, className }: MeetingActionItem
     <SectionCard title="Action Items" icon={ClipboardList} className={className}>
       <ul className="space-y-3">
         {actionItems.map((item) => (
-          <li key={`${item.assignee_id}-${item.description.slice(0, 30)}`} className="flex items-start gap-3">
+          <li key={`${item.assignee_id ?? 'unassigned'}-${item.description.slice(0, 40)}-${item.priority}`} className="flex items-start gap-3">
             {item.assignee_id ? (
               <Avatar name={item.assignee_id} size="sm" />
             ) : (

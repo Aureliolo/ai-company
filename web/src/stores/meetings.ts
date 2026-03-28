@@ -76,7 +76,12 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
 
   fetchMeeting: async (meetingId) => {
     const seq = ++detailRequestSeq
-    set({ loadingDetail: true, detailError: null, selectedMeeting: null })
+    const current = get().selectedMeeting
+    set({
+      loadingDetail: true,
+      detailError: null,
+      selectedMeeting: current?.meeting_id === meetingId ? current : null,
+    })
     try {
       const meeting = await meetingsApi.getMeeting(meetingId)
       if (seq !== detailRequestSeq) return // stale response
@@ -101,6 +106,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       }))
       return meetings
     } catch (err) {
+      console.error('[meetings] triggerMeeting failed:', sanitizeForLog(err))
       set({ triggering: false })
       throw err
     }
@@ -137,8 +143,9 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   upsertMeeting: (meeting) => {
     set((s) => {
       const idx = s.meetings.findIndex((m) => m.meeting_id === meeting.meeting_id)
-      const newMeetings = idx === -1 ? [meeting, ...s.meetings] : [...s.meetings]
-      if (idx !== -1) newMeetings[idx] = meeting
+      const newMeetings = idx === -1
+        ? [meeting, ...s.meetings]
+        : s.meetings.map((m, i) => (i === idx ? meeting : m))
       const selectedMeeting = s.selectedMeeting?.meeting_id === meeting.meeting_id
         ? meeting
         : s.selectedMeeting

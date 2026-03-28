@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { AlertTriangle, Video, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { useMeetingsData } from '@/hooks/useMeetingsData'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { filterMeetings, type MeetingPageFilters } from '@/utils/meetings'
-import type { MeetingStatus } from '@/api/types'
+import { MEETING_STATUS_VALUES, type MeetingStatus } from '@/api/types'
 import { MeetingMetricCards } from './meetings/MeetingMetricCards'
 import { MeetingFilterBar } from './meetings/MeetingFilterBar'
 import { MeetingTimeline } from './meetings/MeetingTimeline'
@@ -17,9 +17,7 @@ import { MeetingCard } from './meetings/MeetingCard'
 import { TriggerMeetingDialog } from './meetings/TriggerMeetingDialog'
 import { MeetingsSkeleton } from './meetings/MeetingsSkeleton'
 
-const VALID_STATUSES: ReadonlySet<string> = new Set([
-  'scheduled', 'in_progress', 'completed', 'failed', 'cancelled', 'budget_exhausted',
-])
+const VALID_STATUSES: ReadonlySet<string> = new Set(MEETING_STATUS_VALUES)
 
 export default function MeetingsPage() {
   const {
@@ -34,11 +32,8 @@ export default function MeetingsPage() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const [triggerOpen, setTriggerOpen] = useState(false)
-  const [wasConnected, setWasConnected] = useState(false)
-
-  if (wsConnected && !wasConnected) {
-    setWasConnected(true)
-  }
+  const wasConnectedRef = useRef(false)
+  if (wsConnected) wasConnectedRef.current = true
 
   // URL-synced filters
   const filters: MeetingPageFilters = useMemo(() => {
@@ -67,6 +62,7 @@ export default function MeetingsPage() {
       useToastStore.getState().add({ variant: 'success', title: 'Meeting triggered' })
     } catch (err) {
       useToastStore.getState().add({ variant: 'error', title: 'Failed to trigger meeting', description: getErrorMessage(err) })
+      throw err // Let ConfirmDialog keep dialog open on failure
     }
   }, [triggerMeeting])
 
@@ -92,13 +88,13 @@ export default function MeetingsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
+      {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
@@ -131,7 +127,7 @@ export default function MeetingsPage() {
         </ErrorBoundary>
       )}
 
-      {filtered.length === 0 && !hasFilters && (
+      {filtered.length === 0 && !hasFilters && !error && (
         <EmptyState
           icon={Video}
           title="No meetings yet"
@@ -140,7 +136,7 @@ export default function MeetingsPage() {
         />
       )}
 
-      {filtered.length === 0 && hasFilters && (
+      {filtered.length === 0 && hasFilters && !error && (
         <EmptyState
           icon={Video}
           title="No matching meetings"

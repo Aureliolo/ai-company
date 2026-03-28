@@ -59,7 +59,9 @@ describe('useMeetingDetailData', () => {
   it('sets up WebSocket with meetings channel', async () => {
     const { useWebSocket } = await import('@/hooks/useWebSocket')
     renderHook(() => useMeetingDetailData('meeting-1'))
-    const callArgs = vi.mocked(useWebSocket).mock.calls[0]![0]
+    const calls = vi.mocked(useWebSocket).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    const callArgs = calls[0]![0]
     const channels = callArgs.bindings.map((b) => b.channel)
     expect(channels).toEqual(['meetings'])
   })
