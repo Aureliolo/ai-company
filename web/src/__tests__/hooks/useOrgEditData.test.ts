@@ -80,7 +80,7 @@ describe('useOrgEditData', () => {
   })
 
   it('calls fetchDepartmentHealths after config is available', async () => {
-    mockFetchCompanyData.mockImplementation(async () => {
+    mockFetchCompanyData.mockImplementationOnce(async () => {
       useCompanyStore.setState({ config: makeCompanyConfig() })
     })
     renderHook(() => useOrgEditData())

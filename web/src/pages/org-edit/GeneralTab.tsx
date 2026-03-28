@@ -41,10 +41,11 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
     budget_monthly: 100,
     communication_pattern: 'hybrid',
   })
+  const [dirty, setDirty] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (config) {
+    if (config && !dirty) {
       setForm({
         company_name: config.company_name,
         autonomy_level: config.autonomy_level ?? 'semi',
@@ -52,7 +53,13 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         communication_pattern: config.communication_pattern ?? 'hybrid',
       })
     }
+  // eslint-disable-next-line @eslint-react/exhaustive-deps -- intentionally exclude dirty to avoid sync loop
   }, [config])
+
+  const updateForm = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    setDirty(true)
+  }, [])
 
   const handleSave = useCallback(async () => {
     setSubmitError(null)
@@ -63,6 +70,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         budget_monthly: form.budget_monthly,
         communication_pattern: form.communication_pattern.trim() || undefined,
       })
+      setDirty(false)
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save')
     }
@@ -78,7 +86,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         <InputField
           label="Company Name"
           value={form.company_name}
-          onChange={(e) => setForm((prev) => ({ ...prev, company_name: e.target.value }))}
+          onChange={(e) => updateForm('company_name', e.target.value)}
           required
         />
 
@@ -86,13 +94,13 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           label="Autonomy Level"
           options={AUTONOMY_OPTIONS}
           value={form.autonomy_level}
-          onChange={(value) => setForm((prev) => ({ ...prev, autonomy_level: value }))}
+          onChange={(value) => updateForm('autonomy_level', value)}
         />
 
         <SliderField
           label="Monthly Budget"
           value={form.budget_monthly}
-          onChange={(value) => setForm((prev) => ({ ...prev, budget_monthly: value }))}
+          onChange={(value) => updateForm('budget_monthly', value)}
           min={0}
           max={10000}
           step={50}
@@ -102,7 +110,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         <InputField
           label="Communication Pattern"
           value={form.communication_pattern}
-          onChange={(e) => setForm((prev) => ({ ...prev, communication_pattern: e.target.value }))}
+          onChange={(e) => updateForm('communication_pattern', e.target.value)}
           hint="e.g. hybrid, broadcast, hierarchical"
         />
 
