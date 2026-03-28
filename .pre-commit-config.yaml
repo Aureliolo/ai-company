@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test]
+  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -102,3 +102,11 @@ repos:
         files: ^cli/.*\.go$
         pass_filenames: false
         stages: [pre-push]
+
+      - id: eslint-web
+        name: ESLint (web dashboard)
+        entry: bash -c '(cd web && npx eslint src/ --max-warnings 0)'
+        language: system
+        files: ^web/src/.*\.(ts|tsx)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]

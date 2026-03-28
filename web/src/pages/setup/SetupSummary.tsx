@@ -95,8 +95,8 @@ export function SetupSummary({
       {/* Agent roster */}
       <SectionCard title="Agent Roster" icon={Users}>
         <div className="space-y-2">
-          {agents.map((agent, index) => (
-            <SetupAgentRow key={`agent-${index}`} agent={agent} />
+          {agents.map((agent) => (
+            <SetupAgentRow key={agent.name} agent={agent} />
           ))}
         </div>
       </SectionCard>

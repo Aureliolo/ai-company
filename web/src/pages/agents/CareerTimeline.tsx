@@ -22,7 +22,7 @@ export function CareerTimeline({ events, className }: CareerTimelineProps) {
       ) : (
         <StaggerGroup>
           {events.map((event, i) => (
-            <StaggerItem key={`${event.event_type}-${event.timestamp}-${i}`}>
+            <StaggerItem key={`${event.event_type}-${event.timestamp}`}>
               <CareerTimelineEvent
                 event={event}
                 isLast={i === events.length - 1}

@@ -37,8 +37,8 @@ export function ActivityLog({ events, total, onLoadMore, className }: ActivityLo
         />
       ) : (
         <StaggerGroup className="divide-y divide-border">
-          {events.map((event, index) => (
-            <StaggerItem key={`${event.event_type}-${event.timestamp}-${index}`}>
+          {events.map((event) => (
+            <StaggerItem key={`${event.event_type}-${event.timestamp}`}>
               <ActivityLogItem event={event} />
             </StaggerItem>
           ))}

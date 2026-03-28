@@ -28,8 +28,8 @@ export function ToolBadges({ tools, className }: ToolBadgesProps) {
   return (
     <SectionCard title="Tools" icon={Wrench} className={className}>
       <div className="flex flex-wrap gap-2">
-        {tools.map((tool, index) => (
-          <ToolBadge key={`${tool}-${index}`} tool={tool} />
+        {tools.map((tool) => (
+          <ToolBadge key={tool} tool={tool} />
         ))}
       </div>
     </SectionCard>

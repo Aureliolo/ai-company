@@ -67,22 +67,26 @@ export function ApprovalDetailDrawer({
   const panelRef = useRef<HTMLElement>(null)
   const openerRef = useRef<Element | null>(null)
 
-  // Reset dialog/input state when the displayed approval changes or leaves pending
-  useEffect(() => {
+  // Reset dialog/input state when the displayed approval changes
+  const prevApprovalIdRef = useRef(approval?.id)
+  if (approval?.id !== prevApprovalIdRef.current) {
+    prevApprovalIdRef.current = approval?.id
     setApproveOpen(false)
     setRejectOpen(false)
     setComment('')
     setReason('')
     setSubmitting(false)
-  }, [approval?.id])
+  }
 
   // Close confirm dialogs if approval is no longer pending (e.g., decided via WebSocket)
-  useEffect(() => {
+  const prevIsPendingRef = useRef(isPending)
+  if (isPending !== prevIsPendingRef.current) {
     if (!isPending) {
       setApproveOpen(false)
       setRejectOpen(false)
     }
-  }, [isPending])
+    prevIsPendingRef.current = isPending
+  }
 
   // Close on Escape (skip when any confirmation dialog is open)
   useEffect(() => {
@@ -141,7 +145,7 @@ export function ApprovalDetailDrawer({
     }
     document.addEventListener('keydown', handleTab)
     return () => document.removeEventListener('keydown', handleTab)
-  }, [open, loading, approval]) // eslint-disable-line @eslint-react/exhaustive-deps -- re-evaluate focus when content loads
+  }, [open, loading, approval])
 
   const handleApprove = useCallback(async () => {
     if (!approval || approval.status !== 'pending') return

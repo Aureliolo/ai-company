@@ -63,7 +63,7 @@ export function useBudgetData(): UseBudgetDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-  }, [polling.start, polling.stop])
+  }, [polling])
 
   // WebSocket bindings
   const bindings: ChannelBinding[] = useMemo(

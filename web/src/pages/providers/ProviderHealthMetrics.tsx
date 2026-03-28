@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
 import { formatLatency, formatErrorRate } from '@/utils/providers'
 import type { ProviderHealthSummary } from '@/api/types'
@@ -7,9 +8,12 @@ interface ProviderHealthMetricsProps {
 }
 
 export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
-  const lastCheck = health.last_check_timestamp
-    ? new Date(health.last_check_timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-    : '--'
+  const lastCheck = useMemo(
+    () => health.last_check_timestamp
+      ? new Date(health.last_check_timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+      : '--',
+    [health.last_check_timestamp],
+  )
 
   return (
     <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
