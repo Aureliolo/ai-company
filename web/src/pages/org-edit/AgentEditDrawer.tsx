@@ -1,0 +1,191 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Loader2, Trash2 } from 'lucide-react'
+import type { AgentConfig, Department, SeniorityLevel, UpdateAgentOrgRequest } from '@/api/types'
+import { SENIORITY_LEVEL_VALUES, AGENT_STATUS_VALUES } from '@/api/types'
+import { Drawer } from '@/components/ui/drawer'
+import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Button } from '@/components/ui/button'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { getErrorMessage } from '@/utils/errors'
+import { toRuntimeStatus } from '@/utils/agents'
+
+export interface AgentEditDrawerProps {
+  open: boolean
+  onClose: () => void
+  agent: AgentConfig | null
+  departments: readonly Department[]
+  onUpdate: (name: string, data: UpdateAgentOrgRequest) => Promise<AgentConfig>
+  onDelete: (name: string) => Promise<void>
+  saving: boolean
+}
+
+const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
+const STATUS_OPTIONS = AGENT_STATUS_VALUES.map((s) => ({ value: s, label: s.replace('_', ' ') }))
+
+export function AgentEditDrawer({
+  open,
+  onClose,
+  agent,
+  departments,
+  onUpdate,
+  onDelete,
+  saving,
+}: AgentEditDrawerProps) {
+  const [form, setForm] = useState({
+    name: '',
+    role: '',
+    department: '',
+    level: 'mid' as SeniorityLevel,
+    status: 'active' as AgentConfig['status'],
+  })
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (agent) {
+      setForm({
+        name: agent.name,
+        role: agent.role,
+        department: agent.department,
+        level: agent.level,
+        status: agent.status,
+      })
+      setSubmitError(null)
+    }
+  }, [agent])
+
+  const deptOptions = useMemo(
+    () => departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name })),
+    [departments],
+  )
+  const hiredDate = useMemo(
+    () => agent ? new Date(agent.hiring_date).toLocaleDateString() : '',
+    [agent],
+  )
+
+  const handleSave = useCallback(async () => {
+    if (!agent) return
+    const trimmedName = form.name.trim()
+    if (!trimmedName) {
+      setSubmitError('Name is required')
+      return
+    }
+    setSubmitError(null)
+    try {
+      await onUpdate(agent.name, {
+        name: trimmedName,
+        role: form.role.trim() || undefined,
+        department: form.department as UpdateAgentOrgRequest['department'],
+        level: form.level,
+        status: form.status,
+      })
+      onClose()
+    } catch (err) {
+      setSubmitError(getErrorMessage(err))
+    }
+  }, [agent, form, onUpdate, onClose])
+
+  const handleDelete = useCallback(async () => {
+    if (!agent) return
+    setDeleting(true)
+    try {
+      await onDelete(agent.name)
+      setDeleteOpen(false)
+      onClose()
+    } catch (err) {
+      setSubmitError(getErrorMessage(err))
+    } finally {
+      setDeleting(false)
+    }
+  }, [agent, onDelete, onClose])
+
+  return (
+    <>
+      <Drawer open={open} onClose={onClose} title={agent ? `Edit: ${agent.name}` : 'Edit Agent'}>
+        {agent && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-2">
+              <StatusBadge status={toRuntimeStatus(agent.status)} label />
+              <span className="text-xs text-text-secondary">Hired: {hiredDate}</span>
+            </div>
+
+            <InputField
+              label="Name"
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+            />
+
+            <InputField
+              label="Role"
+              value={form.role}
+              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
+            />
+
+            <SelectField
+              label="Department"
+              options={deptOptions}
+              value={form.department}
+              onChange={(v) => setForm((prev) => ({ ...prev, department: v }))}
+            />
+
+            <SelectField
+              label="Level"
+              options={LEVEL_OPTIONS}
+              value={form.level}
+              onChange={(v) => setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
+            />
+
+            <SelectField
+              label="Status"
+              options={STATUS_OPTIONS}
+              value={form.status}
+              onChange={(v) => setForm((prev) => ({ ...prev, status: v as AgentConfig['status'] }))}
+            />
+
+            {/* Read-only info */}
+            <div className="border-t border-border pt-4 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
+              <p className="text-xs text-text-secondary font-mono">{agent.model.provider} / {agent.model.model_id}</p>
+            </div>
+
+            {submitError && (
+              <p className="text-xs text-danger">{submitError}</p>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteOpen(true)}
+                className="text-danger hover:text-danger"
+              >
+                <Trash2 className="mr-1.5 size-3.5" />
+                Delete
+              </Button>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Drawer>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete ${agent?.name ?? 'agent'}?`}
+        description="This action cannot be undone. The agent will be permanently removed."
+        variant="destructive"
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
+    </>
+  )
+}

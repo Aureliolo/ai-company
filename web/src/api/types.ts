@@ -574,6 +574,13 @@ export interface ActivityItem {
 
 // ── Department Health ───────────────────────────────────────
 
+/**
+ * Frontend DepartmentHealth shape.
+ *
+ * NOTE: This type does not match the backend DepartmentHealth model
+ * (which uses department_name, active_agent_count, utilization_percent, etc.).
+ * A full type alignment is tracked separately.
+ */
 export interface DepartmentHealth {
   name: DepartmentName
   display_name: string
@@ -587,19 +594,79 @@ export interface DepartmentHealth {
 
 export interface Department {
   name: DepartmentName
-  display_name: string
+  display_name?: string
+  head?: string | null
+  head_id?: string | null
+  budget_percent?: number
   readonly teams: readonly TeamConfig[]
+  autonomy_level?: AutonomyLevel | null
 }
 
 export interface TeamConfig {
   name: string
+  lead?: string
   readonly members: readonly string[]
 }
 
 export interface CompanyConfig {
   company_name: string
+  autonomy_level?: AutonomyLevel
+  budget_monthly?: number
+  communication_pattern?: string
   readonly agents: readonly AgentConfig[]
   readonly departments: readonly Department[]
+}
+
+// ── Company Mutation Requests ────────────────────────────────
+
+export interface UpdateCompanyRequest {
+  company_name?: string
+  autonomy_level?: AutonomyLevel
+  budget_monthly?: number
+  communication_pattern?: string
+}
+
+export interface CreateDepartmentRequest {
+  name: string
+  display_name: string
+  head?: string | null
+  budget_percent?: number
+  autonomy_level?: AutonomyLevel | null
+}
+
+export interface UpdateDepartmentRequest {
+  display_name?: string
+  head?: string | null
+  budget_percent?: number
+  autonomy_level?: AutonomyLevel | null
+  teams?: readonly TeamConfig[]
+}
+
+export interface ReorderDepartmentsRequest {
+  readonly department_names: readonly string[]
+}
+
+export interface CreateAgentOrgRequest {
+  name: string
+  role: string
+  department: DepartmentName
+  level: SeniorityLevel
+  personality_preset?: string
+  model_provider?: string
+  model_id?: string
+}
+
+export interface UpdateAgentOrgRequest {
+  name?: string
+  role?: string
+  department?: DepartmentName
+  level?: SeniorityLevel
+  status?: AgentStatus
+  autonomy_level?: AutonomyLevel | null
+}
+
+export interface ReorderAgentsRequest {
+  readonly agent_ids: readonly string[]
 }
 
 // ── Providers ────────────────────────────────────────────────

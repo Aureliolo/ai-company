@@ -1,0 +1,82 @@
+import { useCallback, useEffect, useState } from 'react'
+import type { CompanyConfig } from '@/api/types'
+import { Button } from '@/components/ui/button'
+import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
+
+export interface YamlEditorPanelProps {
+  config: CompanyConfig | null
+  onSave: (parsed: Record<string, unknown>) => Promise<void>
+  saving: boolean
+}
+
+export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps) {
+  const [yamlText, setYamlText] = useState('')
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    if (config && !dirty) {
+      const serialized = serializeToYaml(config)
+      setYamlText(serialized)
+      setDirty(false)
+      setParseError(null)
+    }
+  // eslint-disable-next-line @eslint-react/exhaustive-deps -- intentionally exclude dirty to avoid infinite loop
+  }, [config])
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setYamlText(e.target.value)
+    setDirty(true)
+    setParseError(null)
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    try {
+      const parsed = parseYaml(yamlText)
+      const validationError = validateCompanyYaml(parsed)
+      if (validationError) {
+        setParseError(validationError)
+        return
+      }
+      await onSave(parsed)
+      setDirty(false)
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'Failed to parse YAML')
+    }
+  }, [yamlText, onSave])
+
+  const handleReset = useCallback(() => {
+    if (config) {
+      setYamlText(serializeToYaml(config))
+      setDirty(false)
+      setParseError(null)
+    }
+  }, [config])
+
+  return (
+    <div className="space-y-3">
+      <textarea
+        value={yamlText}
+        onChange={handleChange}
+        className="w-full min-h-96 rounded-lg border border-border bg-surface p-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-accent resize-y"
+        spellCheck={false}
+        aria-label="YAML editor"
+      />
+      <p className="text-xs text-text-muted">
+        Save applies company-level settings only. Use the GUI tabs to manage agents and departments.
+      </p>
+      {parseError && (
+        <p className="text-xs text-danger" role="alert">{parseError}</p>
+      )}
+      <div className="flex items-center gap-3">
+        <Button onClick={handleSave} disabled={!dirty || saving}>
+          {saving ? 'Saving...' : 'Save YAML'}
+        </Button>
+        <Button variant="outline" onClick={handleReset} disabled={!dirty || saving}>
+          Reset
+        </Button>
+        {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
+      </div>
+    </div>
+  )
+}

@@ -29,6 +29,7 @@ export function getStatusColor(status: AgentRuntimeStatus): SemanticColor | "tex
   return STATUS_COLOR_MAP[status]
 }
 
+
 /**
  * Map a 0-100 percentage to a semantic color token name.
  *

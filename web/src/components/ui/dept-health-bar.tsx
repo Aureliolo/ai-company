@@ -9,9 +9,9 @@ const BAR_COLOR_CLASSES: Record<SemanticColor, string> = {
 
 interface DeptHealthBarProps {
   name: string
-  health: number
+  health?: number | null
   agentCount: number
-  taskCount: number
+  taskCount?: number | null
   className?: string
 }
 
@@ -22,42 +22,46 @@ export function DeptHealthBar({
   taskCount,
   className,
 }: DeptHealthBarProps) {
-  const clamped = Math.max(0, Math.min(health, 100))
-  const color = getHealthColor(clamped)
+  const hasHealth = health != null
+  const clamped = hasHealth ? Math.max(0, Math.min(health, 100)) : null
+  const color = clamped != null ? getHealthColor(clamped) : null
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {/* Header row */}
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-medium text-foreground">{name}</span>
-        <span className="font-mono text-xs font-semibold text-foreground">{clamped}%</span>
+        <span className="font-mono text-xs font-semibold text-foreground">
+          {clamped != null ? `${clamped}%` : 'N/A'}
+        </span>
       </div>
 
       {/* Health bar */}
       <div
-        role="meter"
-        aria-valuenow={clamped}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={`${name} health: ${clamped}%`}
+        {...(clamped != null
+          ? { role: 'meter', 'aria-valuenow': clamped, 'aria-valuemin': 0, 'aria-valuemax': 100 }
+          : {})}
+        aria-label={`${name} health: ${clamped != null ? `${clamped}%` : 'unavailable'}`}
         className="h-1.5 w-full overflow-hidden rounded-full bg-border"
       >
-        <div
-          className={cn(
-            'h-full rounded-full transition-all duration-[900ms]',
-            BAR_COLOR_CLASSES[color],
-          )}
-          style={{
-            width: `${clamped}%`,
-            transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        />
+        {clamped != null && color != null && (
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-[900ms]',
+              BAR_COLOR_CLASSES[color],
+            )}
+            style={{
+              width: `${clamped}%`,
+              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+          />
+        )}
       </div>
 
       {/* Stats row */}
       <div className="flex gap-3 text-xs text-muted-foreground">
         <span>{agentCount} {agentCount === 1 ? 'agent' : 'agents'}</span>
-        <span>{taskCount} {taskCount === 1 ? 'task' : 'tasks'}</span>
+        <span>{taskCount != null ? `${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}` : 'N/A'}</span>
       </div>
     </div>
   )

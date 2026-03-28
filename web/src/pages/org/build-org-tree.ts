@@ -104,7 +104,7 @@ export function buildOrgTree(
       position: { x: 0, y: 0 },
       data: {
         departmentName: dept.name,
-        displayName: dept.display_name,
+        displayName: dept.display_name ?? dept.name,
         healthPercent: health?.health_percent ?? null,
         agentCount: deptMembers.length,
         activeCount,

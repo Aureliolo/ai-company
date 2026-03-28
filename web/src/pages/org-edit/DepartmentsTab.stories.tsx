@@ -1,0 +1,66 @@
+import type { Meta, StoryObj } from '@storybook/react'
+import { DepartmentsTab } from './DepartmentsTab'
+import type { CompanyConfig, DepartmentHealth } from '@/api/types'
+
+const mockConfig: CompanyConfig = {
+  company_name: 'Acme Corp',
+  agents: [
+    {
+      id: 'agent-alice',
+      name: 'alice',
+      role: 'Lead Developer',
+      department: 'engineering',
+      level: 'lead',
+      status: 'active',
+      personality: {
+        traits: ['analytical'], communication_style: 'direct',
+        risk_tolerance: 'medium', creativity: 'medium', description: 'Test',
+        openness: 0.7, conscientiousness: 0.8, extraversion: 0.5,
+        agreeableness: 0.6, stress_response: 0.5, decision_making: 'analytical',
+        collaboration: 'team', verbosity: 'balanced', conflict_approach: 'collaborate',
+      },
+      model: { provider: 'test-provider', model_id: 'test-medium-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
+      skills: { primary: ['coding'], secondary: ['testing'] },
+      memory: { type: 'persistent', retention_days: null },
+      tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
+      autonomy_level: 'semi',
+      hiring_date: '2026-03-01T00:00:00Z',
+    },
+  ],
+  departments: [
+    { name: 'engineering', display_name: 'Engineering', teams: [{ name: 'backend', members: ['alice'] }] },
+    { name: 'product', display_name: 'Product', teams: [] },
+  ],
+}
+
+const mockHealths: DepartmentHealth[] = [
+  { name: 'engineering', display_name: 'Engineering', health_percent: 85, agent_count: 1, task_count: 4, cost_usd: null },
+  { name: 'product', display_name: 'Product', health_percent: 60, agent_count: 0, task_count: 1, cost_usd: null },
+]
+
+const meta = {
+  title: 'OrgEdit/DepartmentsTab',
+  component: DepartmentsTab,
+  parameters: {
+    a11y: { test: 'error' },
+  },
+  args: {
+    config: mockConfig,
+    departmentHealths: mockHealths,
+    saving: false,
+    onCreateDepartment: async () => mockConfig.departments[0]!,
+    onUpdateDepartment: async () => mockConfig.departments[0]!,
+    onDeleteDepartment: async () => {},
+    onReorderDepartments: async () => {},
+    optimisticReorderDepartments: () => () => {},
+  },
+} satisfies Meta<typeof DepartmentsTab>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Default: Story = {}
+
+export const Empty: Story = {
+  args: { config: null },
+}
