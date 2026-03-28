@@ -94,7 +94,9 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	out.HintTip("Use -f to follow log output in real time.")
-	out.HintGuidance(logsFilterHint)
+	if !logFollow {
+		out.HintGuidance(logsFilterHint)
+	}
 	return nil
 }
 

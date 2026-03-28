@@ -128,8 +128,10 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 
 	if doctorFix {
-		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
-		out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
+		fixed := doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+		if fixed {
+			out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
+		}
 	}
 
 	if status != doctorHealthy && !doctorFix {
@@ -197,14 +199,14 @@ func renderDoctorFiltered(out *ui.UI, report diagnostics.Report, state config.St
 // then executes fixes in correct order (compose first, restart once after).
 // Only acts on issues matching the --checks filter. Non-fatal: prints
 // results but does not return errors.
-func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) {
+func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) bool {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Auto-fix")
 
 	status, issues := classifyDoctor(report)
 	if status == doctorHealthy {
 		out.Success("All systems healthy -- nothing to fix")
-		return
+		return false
 	}
 
 	// Phase 1: scan issues and determine needed actions.
@@ -227,7 +229,7 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 
 	if !needComposeFix && !needRestart && len(unfixable) == 0 {
 		out.Success("No fixable issues in selected checks")
-		return
+		return false
 	}
 
 	// Phase 2: execute fixes in correct order (compose before restart).
@@ -257,6 +259,7 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 	for _, issue := range unfixable {
 		out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
 	}
+	return needComposeFix || needRestart
 }
 
 // doctorFixCompose regenerates compose.yml from the embedded template.

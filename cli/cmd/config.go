@@ -304,13 +304,7 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 // hintAfterConfigSet emits contextual guidance after a config set operation.
 func hintAfterConfigSet(out *ui.UI, key, value, dataDir string) {
 	if composeAffectingKeys[key] {
-		// Only hint about restart if compose.yml exists (pre-init users have no stack).
-		safeDir, secErr := config.SecurePath(dataDir)
-		if secErr == nil {
-			if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
-				out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the new value.")
-			}
-		}
+		hintComposeRestart(out, dataDir, "new value")
 	}
 
 	switch key {
@@ -342,6 +336,20 @@ func hintAfterConfigSet(out *ui.UI, key, value, dataDir string) {
 		if value == "iso8601" {
 			out.HintGuidance("Timestamps shown in ISO 8601 format.")
 		}
+	}
+}
+
+// hintComposeRestart emits a restart hint only when compose.yml exists.
+// Pre-init users have no stack, so the hint would be misleading.
+func hintComposeRestart(out *ui.UI, dataDir, what string) {
+	// Use config.SecurePath directly so that CodeQL can trace the
+	// sanitization for go/path-injection.
+	safeDir, err := config.SecurePath(dataDir)
+	if err != nil {
+		return
+	}
+	if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
+		out.HintGuidance(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
 	}
 }
 
@@ -502,12 +510,7 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	}
 	out.Success(fmt.Sprintf("Reset %s to default", key))
 	if composeAffectingKeys[key] {
-		safeDir, secErr := config.SecurePath(state.DataDir)
-		if secErr == nil {
-			if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
-				out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the default value.")
-			}
-		}
+		hintComposeRestart(out, state.DataDir, "default value")
 	}
 	return nil
 }
