@@ -51,6 +51,14 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 1. How many worktrees to create
 2. For each: issues and description (branch names auto-generated)
 
+**Mode 4 -- Description only (no issues):**
+
+```text
+/worktree setup "improve setup wizard UX"
+```
+
+Creates a worktree from the description alone -- branch name auto-generated (`feat/improve-setup-wizard-ux`), no issue fetching, no prompt generation. Useful for exploratory work, ad-hoc improvements, or tasks without a GitHub issue. All other setup steps (pre-flight, settings copy, dependency sync) still apply. Skip steps 5-6 (prompt generation and output) -- just report the worktree path and `cd <path> && claude` command.
+
 ### Directory naming
 
 Directory suffix is auto-derived from the branch name:
@@ -137,13 +145,24 @@ Directory suffix is auto-derived from the branch name:
    for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename "$f")"; done
    ```
 
-   d. **Pre-sync the venv** to prevent uv cache lock contention when multiple Claude Code instances run concurrently. `uv` uses a global cache lock (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `$HOME/.cache/uv/.lock` on Linux, `~/Library/Caches/uv/.lock` on macOS) -- if multiple worktrees run `uv run`/`uv sync` simultaneously, they serialize on this lock and all appear to hang. Pre-syncing sequentially here avoids this:
+   d. **Pre-sync all dependencies** to prevent cache lock contention when multiple Claude Code instances run concurrently. Run these **sequentially** (one per worktree, not in parallel).
 
+   **Python:**
    ```bash
-   cd <dir-path> && uv sync; cd -
+   uv sync --project <dir-path>
    ```
 
-   Run these **sequentially** (one per worktree, not in parallel) to avoid cache lock contention during setup itself.
+   **Node.js (web dashboard):**
+   ```bash
+   npm --prefix <dir-path>/web install --silent
+   ```
+
+   **Go (CLI):**
+   ```bash
+   go -C <dir-path>/cli mod download
+   ```
+
+   **IMPORTANT:** Never use `cd` to change into the worktree directory -- use `--project`, `--prefix`, or `-C` flags instead. `cd` poisons the shell cwd for all subsequent Bash calls.
 
 4. **Verify all worktrees created:**
 
@@ -276,9 +295,23 @@ Remove worktrees and clean up branches after PRs are merged.
    git branch -a
    ```
 
-8. **Report summary:**
+8. **Clean remaining gone branches** that are not associated with worktrees (e.g. branches created outside the worktree workflow). After worktree-specific cleanup is done, check for any additional local branches whose remote tracking branch is gone:
 
-   Report: "Clean. Main up to date, N worktrees removed, N branches deleted."
+   ```bash
+   git branch -vv | grep '\[.*: gone\]'
+   ```
+
+   Delete each one individually (these are non-worktree branches, safe to delete without worktree removal):
+
+   ```bash
+   git branch -D <branch-name>
+   ```
+
+   This subsumes the `/clean_gone` command -- no need to run it separately after `/worktree cleanup`.
+
+9. **Report summary:**
+
+   Report: "Clean. Main up to date, N worktrees removed, N branches deleted, M gone branches pruned."
 
 ---
 
@@ -313,13 +346,23 @@ Show current worktree state and how they compare to main.
 
    Match each worktree branch to any open PR.
 
-4. **Present a summary table** (show both ahead AND behind counts):
+4. **Check dependency staleness** for each worktree. Compare lock files against main to detect if deps need re-syncing after a rebase:
+
+   ```bash
+   git diff main -- uv.lock | head -1
+   git diff main -- web/package-lock.json | head -1
+   git diff main -- cli/go.sum | head -1
+   ```
+
+   If any lock file differs from main and the worktree is behind, flag it as "deps stale" in the status table.
+
+5. **Present a summary table** (show both ahead AND behind counts):
 
    ```
-   Worktree             | Branch                    | vs Main          | PR     | Status
-   wt-delegation        | feat/delegation-loop-prev | +5 ahead         | #142   | clean
-   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --    | 2 modified
-   wt-memory            | feat/memory-layer         | up to date       | #155   | clean
+   Worktree             | Branch                    | vs Main            | PR     | Status     | Deps
+   wt-delegation        | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
+   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
+   wt-memory            | feat/memory-layer         | up to date         | #155   | clean      | ok
    ```
 
 ---
@@ -429,13 +472,23 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
    git -C <path> rebase --abort
    ```
 
-5. **Verify:**
+5. **Re-sync dependencies** for each successfully rebased worktree. Lock files (`uv.lock`, `package-lock.json`, `go.sum`) may have changed after rebase:
+
+   ```bash
+   uv sync --project <path>
+   npm --prefix <path>/web install --silent
+   go -C <path>/cli mod download
+   ```
+
+   Run sequentially per worktree to avoid cache lock contention.
+
+6. **Verify:**
 
    ```bash
    git -C <path> log --oneline -1
    ```
 
-6. Report: "N worktrees rebased to <commit>. M skipped (have local commits or dirty state)."
+7. Report: "N worktrees rebased to <commit> and deps re-synced. M skipped (have local commits or dirty state)."
 
 ---
 
@@ -458,7 +511,10 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
   - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
   - Reject and warn if any value fails validation -- do not execute the command.
-- **uv cache lock contention:** `uv` uses a global cache lock file (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `$HOME/.cache/uv/.lock` on Linux, `~/Library/Caches/uv/.lock` on macOS). When multiple worktrees run `uv run` or `uv sync` concurrently, they serialize on this lock, causing all instances to appear stuck. The `setup` command pre-syncs each worktree's venv sequentially to avoid this. If users report all instances hanging on python/uv commands, first verify no `uv` processes are still running (`ps aux | grep uv` or Task Manager), then remove the stale lock: `rm -f "$LOCALAPPDATA/uv/cache/.lock"` (Windows), `rm -f ~/.cache/uv/.lock` (Linux), or `rm -f ~/Library/Caches/uv/.lock` (macOS).
+- **Package manager cache lock contention:** When multiple worktrees run package manager commands concurrently, they can serialize on global cache locks, causing all instances to appear stuck. The `setup` and `rebase` commands pre-sync dependencies sequentially to avoid this. If instances hang:
+  - **uv**: lock at `$LOCALAPPDATA/uv/cache/.lock` (Windows), `$HOME/.cache/uv/.lock` (Linux), `~/Library/Caches/uv/.lock` (macOS). Check: `tasklist | findstr uv` (Windows) or `ps aux | grep uv`. Remove stale lock if no processes running.
+  - **npm**: lock at `$LOCALAPPDATA/npm-cache/_locks/` (Windows), `$HOME/.npm/_locks/` (Linux/macOS). Check: `tasklist | findstr npm` or `ps aux | grep npm`.
+  - **Go**: module cache at `$GOPATH/pkg/mod/cache/lock` (or `$HOME/go/pkg/mod/cache/lock`). Rarely contends but possible under heavy parallel downloads.
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
 
   ```text
