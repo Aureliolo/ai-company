@@ -10,11 +10,8 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -104,15 +101,8 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
-	// --dry-run: show what would happen and exit.
 	if wipeDryRun {
-		out.Section("Dry run: wipe preview")
-		out.KeyValue("Data directory", safeDir)
-		out.KeyValue("Compose file", composePath)
-		out.KeyValue("Backup", boolToYesNo(!wipeNoBackup))
-		out.KeyValue("Keep images", boolToYesNo(wipeKeepImages))
-		out.HintNextStep("Remove --dry-run to execute the wipe")
-		return nil
+		return wipeDryRunPreview(out, safeDir, composePath)
 	}
 
 	info, err := docker.Detect(ctx)
@@ -143,12 +133,15 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	return wc.confirmAndWipe()
 }
 
-// boolToYesNo converts a bool to "yes"/"no" for display.
-func boolToYesNo(b bool) string {
-	if b {
-		return "yes"
-	}
-	return "no"
+// wipeDryRunPreview shows what a wipe would do without executing.
+func wipeDryRunPreview(out *ui.UI, safeDir, composePath string) error {
+	out.Section("Dry run: wipe preview")
+	out.KeyValue("Data directory", safeDir)
+	out.KeyValue("Compose file", composePath)
+	out.KeyValue("Backup", boolToYesNo(!wipeNoBackup))
+	out.KeyValue("Keep images", boolToYesNo(wipeKeepImages))
+	out.HintNextStep("Remove --dry-run to execute the wipe")
+	return nil
 }
 
 // confirmAndWipe asks for final confirmation, stops containers, removes
@@ -697,41 +690,6 @@ func isEmptyPS(output string) (bool, error) {
 	}
 	// NDJSON: any non-empty line means at least one container.
 	return false, nil
-}
-
-// openBrowser opens a URL in the default browser. Only localhost HTTP(S)
-// URLs are permitted to prevent arbitrary command execution.
-func openBrowser(ctx context.Context, rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("refusing to open URL with scheme %q -- only http and https are allowed", parsed.Scheme)
-	}
-	host := parsed.Hostname()
-	if host != "localhost" && host != "127.0.0.1" {
-		return fmt.Errorf("refusing to open URL with host %q -- only localhost and 127.0.0.1 are allowed", host)
-	}
-
-	// Use the re-serialized URL, not the raw input string, to ensure
-	// only the normalized, validated URL is passed to the OS launcher.
-	normalizedURL := parsed.String()
-
-	var c *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		c = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", normalizedURL)
-	case "darwin":
-		c = exec.CommandContext(ctx, "open", normalizedURL)
-	default:
-		c = exec.CommandContext(ctx, "xdg-open", normalizedURL)
-	}
-	if err := c.Start(); err != nil {
-		return fmt.Errorf("starting browser: %w", err)
-	}
-	go func() { _ = c.Wait() }() // reap child, prevent zombie
-	return nil
 }
 
 // createTarGz writes a gzip-compressed tar archive of srcDir's contents to w.

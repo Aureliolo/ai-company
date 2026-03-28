@@ -356,16 +356,12 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
-	timeout := 60 * time.Second
-	if backupCreateTimeout != "" {
-		parsed, err := time.ParseDuration(backupCreateTimeout)
-		if err != nil {
-			return fmt.Errorf("invalid --timeout %q: %w", backupCreateTimeout, err)
-		}
-		if parsed <= 0 {
-			return fmt.Errorf("invalid --timeout %q: must be > 0", backupCreateTimeout)
-		}
-		timeout = parsed
+	timeout, err := time.ParseDuration(backupCreateTimeout)
+	if err != nil {
+		return fmt.Errorf("invalid --timeout %q: %w", backupCreateTimeout, err)
+	}
+	if timeout <= 0 {
+		return fmt.Errorf("invalid --timeout %q: must be > 0", backupCreateTimeout)
 	}
 
 	state, err := config.Load(opts.DataDir)
@@ -402,24 +398,29 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	out.Success("Backup created successfully")
 	printManifest(out, manifest)
 
-	// --output: copy backup from container to local path.
 	if backupCreateOutput != "" {
-		safeDir, err := safeStateDir(state)
-		if err != nil {
-			return err
-		}
-		info, err := docker.Detect(ctx)
-		if err != nil {
-			return fmt.Errorf("docker not available for file copy: %w", err)
-		}
-		sp := out.StartSpinner("Copying backup to local path...")
-		if err := copyBackupFromContainer(ctx, info, safeDir, manifest.BackupID, backupCreateOutput); err != nil {
-			sp.Error("Failed to copy backup")
-			return fmt.Errorf("copying backup: %w", err)
-		}
-		sp.Success(fmt.Sprintf("Backup saved to %s", backupCreateOutput))
+		return copyBackupToLocal(ctx, out, state, manifest.BackupID, backupCreateOutput)
 	}
 
+	return nil
+}
+
+// copyBackupToLocal copies a backup archive from the backend container to a local path.
+func copyBackupToLocal(ctx context.Context, out *ui.UI, state config.State, backupID, localPath string) error {
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+	info, err := docker.Detect(ctx)
+	if err != nil {
+		return fmt.Errorf("docker not available for file copy: %w", err)
+	}
+	sp := out.StartSpinner("Copying backup to local path...")
+	if err := copyBackupFromContainer(ctx, info, safeDir, backupID, localPath); err != nil {
+		sp.Error("Failed to copy backup")
+		return fmt.Errorf("copying backup: %w", err)
+	}
+	sp.Success(fmt.Sprintf("Backup saved to %s", localPath))
 	return nil
 }
 
@@ -520,16 +521,12 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
-	timeout := 30 * time.Second
-	if backupRestoreTimeout != "" {
-		parsed, parseErr := time.ParseDuration(backupRestoreTimeout)
-		if parseErr != nil {
-			return fmt.Errorf("invalid --timeout %q: %w", backupRestoreTimeout, parseErr)
-		}
-		if parsed <= 0 {
-			return fmt.Errorf("invalid --timeout %q: must be > 0", backupRestoreTimeout)
-		}
-		timeout = parsed
+	timeout, parseErr := time.ParseDuration(backupRestoreTimeout)
+	if parseErr != nil {
+		return fmt.Errorf("invalid --timeout %q: %w", backupRestoreTimeout, parseErr)
+	}
+	if timeout <= 0 {
+		return fmt.Errorf("invalid --timeout %q: must be > 0", backupRestoreTimeout)
 	}
 
 	state, err := config.Load(opts.DataDir)

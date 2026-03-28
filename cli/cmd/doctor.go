@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,14 +62,20 @@ func validateDoctorFlags() error {
 			continue
 		}
 		if !validDoctorChecks[name] {
-			names := make([]string, 0, len(validDoctorChecks))
-			for k := range validDoctorChecks {
-				names = append(names, k)
-			}
-			return fmt.Errorf("unknown check %q: valid checks are %s", name, strings.Join(names, ", "))
+			return fmt.Errorf("unknown check %q: valid checks are %s", name, validDoctorCheckNames())
 		}
 	}
 	return nil
+}
+
+// validDoctorCheckNames returns a sorted, comma-separated list of valid check names.
+func validDoctorCheckNames() string {
+	names := make([]string, 0, len(validDoctorChecks))
+	for k := range validDoctorChecks {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
 }
 
 // doctorCheckEnabled returns true if the named check should be rendered.
@@ -119,6 +126,30 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 
 	// Render styled output to terminal (filtered by --checks).
+	renderDoctorFiltered(out, report, state)
+
+	_, _ = fmt.Fprintln(out.Writer())
+	out.Section("Links")
+	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
+	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
+
+	_, _ = fmt.Fprintln(out.Writer())
+	renderDoctorSummary(out, report)
+
+	// --fix: attempt auto-fix for detected issues.
+	if doctorFix {
+		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+	}
+
+	_, _ = fmt.Fprintln(out.Writer())
+	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
+	out.HintNextStep("Run 'synthorg logs' to view container logs")
+
+	return nil
+}
+
+// renderDoctorFiltered renders diagnostic sections gated by --checks filter.
+func renderDoctorFiltered(out *ui.UI, report diagnostics.Report, state config.State) {
 	if doctorCheckEnabled("environment") {
 		renderDoctorEnvironment(out, report)
 	}
@@ -143,25 +174,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if doctorCheckEnabled("errors") {
 		renderDoctorErrors(out, report)
 	}
-
-	_, _ = fmt.Fprintln(out.Writer())
-	out.Section("Links")
-	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
-	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
-
-	_, _ = fmt.Fprintln(out.Writer())
-	renderDoctorSummary(out, report)
-
-	// --fix: attempt auto-fix for detected issues.
-	if doctorFix {
-		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
-	}
-
-	_, _ = fmt.Fprintln(out.Writer())
-	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
-	out.HintNextStep("Run 'synthorg logs' to view container logs")
-
-	return nil
 }
 
 // doctorAutoFix attempts to fix detected issues. Non-fatal: prints results

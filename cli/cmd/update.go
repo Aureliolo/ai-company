@@ -346,7 +346,7 @@ func reexecUpdate(cmd *cobra.Command) error {
 	if updateNoRestart {
 		reArgs = append(reArgs, "--no-restart")
 	}
-	if updateTimeout != "90s" {
+	if cmd.Flags().Changed("timeout") {
 		reArgs = append(reArgs, "--timeout", updateTimeout)
 	}
 	if updateImagesOnly {

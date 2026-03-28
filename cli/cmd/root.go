@@ -250,8 +250,9 @@ func Execute() error {
 
 // printAllHelp recursively prints help for all available commands.
 func printAllHelp(cmd *cobra.Command, depth int) {
+	out := cmd.OutOrStdout()
 	if depth > 0 {
-		_, _ = fmt.Fprintf(os.Stdout, "\n%s\n\n", strings.Repeat("=", 60))
+		_, _ = fmt.Fprintf(out, "\n%s\n\n", strings.Repeat("=", 60))
 	}
 	_ = cmd.Help()
 	for _, sub := range cmd.Commands() {
@@ -279,7 +280,7 @@ func errorHint(err error) string {
 		return "Try --skip-verify for air-gapped environments."
 	case strings.Contains(msg, "requires an interactive terminal"):
 		return "Use --yes for non-interactive mode."
-	case strings.Contains(msg, "Docker not available") || strings.Contains(msg, "docker"):
+	case strings.Contains(msg, "Docker not available") || strings.Contains(msg, "docker: not found") || strings.Contains(msg, "Cannot connect to the Docker daemon"):
 		return "Ensure Docker is installed and running."
 	default:
 		return ""

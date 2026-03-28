@@ -276,7 +276,9 @@ func TestErrorHint(t *testing.T) {
 		{"image verification", "image verification failed", true},
 		{"interactive terminal", "requires an interactive terminal", true},
 		{"docker not available", "Docker not available", true},
+		{"docker not found", "docker: not found", true},
 		{"generic error", "something went wrong", false},
+		{"docker running but error", "docker compose returned exit code 1", false},
 	}
 
 	for _, tt := range tests {
