@@ -435,11 +435,11 @@ def parse_locale_json(raw: str) -> list[str] | None:
     """
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError, TypeError:
         logger.warning(
             SETUP_NAME_LOCALES_CORRUPTED,
-            reason="invalid_json",
-            raw=raw[:200] if raw else None,
+            reason="invalid_json_or_type",
+            raw=raw[:200] if isinstance(raw, str) and raw else None,
         )
         return None
     if not isinstance(parsed, list):

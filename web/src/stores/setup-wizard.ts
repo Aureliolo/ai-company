@@ -32,6 +32,31 @@ import {
   getProvider,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
+
+/** Probe all presets and collect results, logging failures. */
+async function runProbeAll(
+  presets: readonly ProviderPreset[],
+  label: string,
+): Promise<Record<string, ProbePresetResponse>> {
+  const entries = await Promise.allSettled(
+    presets.map(async (preset) => {
+      const result = await probePreset(preset.name)
+      return [preset.name, result] as const
+    }),
+  )
+  const results: Record<string, ProbePresetResponse> = {}
+  for (const entry of entries) {
+    if (entry.status === 'fulfilled') {
+      results[entry.value[0]] = entry.value[1]
+    } else {
+      console.error(
+        `setup-wizard: ${label} failed:`,
+        entry.reason,
+      )
+    }
+  }
+  return results
+}
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 
@@ -590,40 +615,14 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   async probeAllPresets() {
     const { presets } = get()
     set({ probing: true })
-    const entries = await Promise.allSettled(
-      presets.map(async (preset) => {
-        const result = await probePreset(preset.name)
-        return [preset.name, result] as const
-      }),
-    )
-    const results: Record<string, ProbePresetResponse> = {}
-    for (const entry of entries) {
-      if (entry.status === 'fulfilled') {
-        results[entry.value[0]] = entry.value[1]
-      } else {
-        console.error('setup-wizard: probe failed for preset:', entry.reason)
-      }
-    }
+    const results = await runProbeAll(presets, 'probe')
     set({ probeResults: results, probing: false })
   },
 
   async reprobePresets() {
     set({ probeResults: {}, probing: true })
     const { presets } = get()
-    const entries = await Promise.allSettled(
-      presets.map(async (preset) => {
-        const result = await probePreset(preset.name)
-        return [preset.name, result] as const
-      }),
-    )
-    const results: Record<string, ProbePresetResponse> = {}
-    for (const entry of entries) {
-      if (entry.status === 'fulfilled') {
-        results[entry.value[0]] = entry.value[1]
-      } else {
-        console.error('setup-wizard: reprobe failed for preset:', entry.reason)
-      }
-    }
+    const results = await runProbeAll(presets, 'reprobe')
     set({ probeResults: results, probing: false })
   },
 

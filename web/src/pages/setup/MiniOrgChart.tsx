@@ -24,6 +24,10 @@ const SMALL_AVATAR_RADIUS = 14
 const LARGE_NODE_WIDTH = 110
 const SMALL_NODE_WIDTH = 90
 const AGENT_SPACING_GAP = 10
+/** Max chars to display in department label. */
+const DEPT_LABEL_MAX_DISPLAY = 14
+/** Truncation point for department names. */
+const DEPT_LABEL_TRUNCATE_AT = 12
 
 function getInitials(name: string): string {
   return name
@@ -43,13 +47,16 @@ interface AgentNodeProps {
   radius: number
 }
 
+/** Half the department node height -- used to anchor connectors at the node bottom edge. */
+const DEPT_NODE_HALF_HEIGHT = 18
+
 function AgentNode({ agent, agentX, agentY, deptX, deptY, radius }: AgentNodeProps) {
   return (
     <g>
       {/* Line from dept to agent */}
       <line
         x1={deptX}
-        y1={deptY + 18}
+        y1={deptY + DEPT_NODE_HALF_HEIGHT}
         x2={agentX}
         y2={agentY - radius}
         className="stroke-border"
@@ -107,7 +114,9 @@ function DepartmentGroup({ pos, nodeWidth, nodeHeight, avatarRadius, vGap, isSma
         className="fill-muted-foreground"
         fontSize={isSmallTeam ? 11 : 9}
       >
-        {pos.dept.name.length > 14 ? pos.dept.name.slice(0, 12) + '..' : pos.dept.name}
+        {pos.dept.name.length > DEPT_LABEL_MAX_DISPLAY
+          ? pos.dept.name.slice(0, DEPT_LABEL_TRUNCATE_AT) + '..'
+          : pos.dept.name}
       </text>
 
       {/* Agent nodes */}
