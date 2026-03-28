@@ -12,6 +12,7 @@ import {
   WifiOff,
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
+import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -240,14 +241,22 @@ export default function SettingsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div className={cn(
+          'flex items-center gap-2 rounded-lg',
+          'border border-danger/30 bg-danger/5',
+          'px-4 py-2 text-sm text-danger',
+        )}>
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div className={cn(
+          'flex items-center gap-2 rounded-lg',
+          'border border-warning/30 bg-warning/5',
+          'px-4 py-2 text-sm text-warning',
+        )}>
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

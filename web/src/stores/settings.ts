@@ -59,7 +59,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       }
       set({ currency: currencyEntry.value })
     } catch (error) {
-      console.warn('[settings] Failed to fetch currency setting, keeping default:', getErrorMessage(error))
+      console.warn(
+        '[settings] Failed to fetch currency, keeping default:',
+        getErrorMessage(error),
+      )
     }
   },
 

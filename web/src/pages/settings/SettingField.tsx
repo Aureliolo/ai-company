@@ -95,10 +95,16 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
       }
       if (definition.validator_pattern) {
         try {
-          if (!new RegExp(definition.validator_pattern).test(raw)) // eslint-disable-line security/detect-non-literal-regexp -- pattern from trusted backend schema
-            return `Must match pattern: ${definition.validator_pattern}`
+          // eslint-disable-next-line security/detect-non-literal-regexp -- pattern from trusted backend schema
+          const re = new RegExp(definition.validator_pattern)
+          if (!re.test(raw))
+            return `Must match: ${definition.validator_pattern}`
         } catch (err) {
-          console.warn(`[settings] Invalid validator_pattern for ${definition.namespace}/${definition.key}:`, err)
+          console.warn(
+            '[settings] Invalid validator_pattern for',
+            `${definition.namespace}/${definition.key}:`,
+            err,
+          )
         }
       }
       return null

@@ -52,7 +52,10 @@ export function NamespaceSection({
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-card-hover"
+        className={cn(
+          'flex w-full items-center gap-3 px-4 py-3',
+          'text-left transition-colors hover:bg-card-hover',
+        )}
         aria-expanded={isOpen}
         aria-controls={contentId}
       >

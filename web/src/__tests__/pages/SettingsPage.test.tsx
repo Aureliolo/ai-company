@@ -98,6 +98,9 @@ const defaultHookReturn: UseSettingsDataReturn = {
 let hookReturn = { ...defaultHookReturn }
 
 const getSettingsData = vi.fn(() => hookReturn)
+// Dynamic key avoids Vitest's ESM mock hoisting from
+// inlining the hook name, which breaks the spy reference
+// to getSettingsData. See: useSettingsData + getSettingsData.
 vi.mock('@/hooks/useSettingsData', () => {
   const hookName = 'useSettingsData'
   return { [hookName]: () => getSettingsData() }

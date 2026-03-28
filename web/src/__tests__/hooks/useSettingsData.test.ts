@@ -117,7 +117,9 @@ describe('useSettingsData', () => {
     const { useWebSocket } = await import('@/hooks/useWebSocket')
     renderHook(() => useSettingsData())
 
-    const callArgs = vi.mocked(useWebSocket).mock.calls[0]![0]
+    const mock = vi.mocked(useWebSocket)
+    expect(mock).toHaveBeenCalled()
+    const callArgs = mock.mock.calls[0]![0]
     const channels = callArgs.bindings.map((b) => b.channel)
     expect(channels).toEqual(['system'])
   })
