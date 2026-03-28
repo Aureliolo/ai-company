@@ -597,6 +597,7 @@ class SetupController(Controller):
 
     @put(
         "/agents/{agent_index:int}/personality",
+        status_code=HTTP_200_OK,
         guards=[require_ceo],
     )
     async def update_agent_personality(
@@ -805,8 +806,9 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupCompleteResponse]:
         """Mark first-run setup as complete.
 
-        Validates that a company, at least one agent, and at least one
-        provider are configured before allowing completion.
+        Validates that a company and at least one provider are configured
+        before allowing completion.  Agent configuration is optional
+        (Quick Setup mode) -- a warning is logged when no agents exist.
 
         Args:
             state: Application state.
@@ -816,7 +818,7 @@ class SetupController(Controller):
 
         Raises:
             ConflictError: If setup has already been completed.
-            ApiValidationError: If company, agents, or providers are missing.
+            ApiValidationError: If company or providers are missing.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service

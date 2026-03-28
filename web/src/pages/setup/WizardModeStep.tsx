@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import type { WizardMode } from '@/stores/setup-wizard'
 import { cn } from '@/lib/utils'
@@ -48,6 +49,7 @@ function ModeOption({ icon: Icon, title, description, recommended, selected, onC
 }
 
 export function WizardModeStep() {
+  const navigate = useNavigate()
   const wizardMode = useSetupWizardStore((s) => s.wizardMode)
   const setWizardMode = useSetupWizardStore((s) => s.setWizardMode)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
@@ -61,8 +63,14 @@ export function WizardModeStep() {
     (mode: WizardMode) => {
       setWizardMode(mode)
       markStepComplete('mode')
+      // Auto-advance to the next step after mode selection
+      const order = useSetupWizardStore.getState().stepOrder
+      const modeIdx = order.indexOf('mode')
+      if (modeIdx >= 0 && modeIdx < order.length - 1) {
+        navigate(`/setup/${order[modeIdx + 1]}`)
+      }
     },
-    [setWizardMode, markStepComplete],
+    [setWizardMode, markStepComplete, navigate],
   )
 
   return (

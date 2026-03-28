@@ -267,8 +267,9 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
 
   setStep(step) {
     const { stepOrder, currentStep } = get()
-    const currentIdx = stepOrder.indexOf(currentStep)
     const targetIdx = stepOrder.indexOf(step)
+    if (targetIdx === -1) return // Step not in current flow (e.g. 'agents' in quick mode)
+    const currentIdx = stepOrder.indexOf(currentStep)
     set({
       currentStep: step,
       direction: targetIdx >= currentIdx ? 'forward' : 'backward',
@@ -524,9 +525,9 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
           set((s) => ({
             providers: { ...s.providers, [name]: refreshed },
           }))
-        } catch {
+        } catch (discoveryErr) {
           // Discovery is best-effort; provider was still created.
-          console.error('setup-wizard: post-creation model discovery failed for', name)
+          console.error('setup-wizard: post-creation model discovery failed for', name, discoveryErr)
         }
       }
     } catch (err) {
@@ -580,6 +581,8 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     for (const entry of entries) {
       if (entry.status === 'fulfilled') {
         results[entry.value[0]] = entry.value[1]
+      } else {
+        console.error('setup-wizard: reprobe failed for preset:', entry.reason)
       }
     }
     set({ probeResults: results, probing: false })

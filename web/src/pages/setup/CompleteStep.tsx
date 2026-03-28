@@ -26,6 +26,7 @@ export function CompleteStep() {
     try {
       await wizardCompleteSetup()
     } catch {
+      // Error stored in completionError by the store action and rendered below.
       return
     }
     useSetupStore.setState({ setupComplete: true })

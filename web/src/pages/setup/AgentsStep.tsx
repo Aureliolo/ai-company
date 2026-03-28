@@ -16,6 +16,7 @@ export function AgentsStep() {
   const providers = useSetupWizardStore((s) => s.providers)
   const personalityPresets = useSetupWizardStore((s) => s.personalityPresets)
   const personalityPresetsLoading = useSetupWizardStore((s) => s.personalityPresetsLoading)
+  const personalityPresetsError = useSetupWizardStore((s) => s.personalityPresetsError)
   const fetchAgents = useSetupWizardStore((s) => s.fetchAgents)
   const fetchPersonalityPresets = useSetupWizardStore((s) => s.fetchPersonalityPresets)
   const updateAgentName = useSetupWizardStore((s) => s.updateAgentName)
@@ -123,6 +124,12 @@ export function AgentsStep() {
       {agentsError && (
         <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
           {agentsError}
+        </div>
+      )}
+
+      {personalityPresetsError && (
+        <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
+          Failed to load personality presets. Agents can still be configured without them.
         </div>
       )}
 

@@ -47,7 +47,6 @@ export function ProvidersStep() {
   const probeAllPresets = useSetupWizardStore((s) => s.probeAllPresets)
   const reprobePresets = useSetupWizardStore((s) => s.reprobePresets)
   const createProviderFromPreset = useSetupWizardStore((s) => s.createProviderFromPreset)
-  const testProviderConnection = useSetupWizardStore((s) => s.testProviderConnection)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
@@ -128,8 +127,13 @@ export function ProvidersStep() {
       </div>
 
       {providersError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-          {providersError}
+        <div className="space-y-2">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {providersError}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => { fetchedRef.current = false; void fetchProviders() }}>
+            Retry
+          </Button>
         </div>
       )}
 
@@ -167,7 +171,6 @@ export function ProvidersStep() {
             presets={presets}
             providers={providers}
             onAdd={handleAddCloud}
-            onTest={testProviderConnection}
           />
         </>
       )}

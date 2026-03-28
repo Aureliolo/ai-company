@@ -78,6 +78,8 @@ export function ProviderProbeResults({
     setAddingPreset(presetName)
     try {
       await onAddPreset(presetName)
+    } catch {
+      // Error already set in store (providersError) and rendered by ProvidersStep
     } finally {
       setAddingPreset(null)
     }

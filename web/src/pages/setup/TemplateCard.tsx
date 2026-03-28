@@ -58,7 +58,6 @@ export function TemplateCard({
         </div>
         <div className="flex items-center gap-1.5">
           <StatPill label="" value={category} className="text-compact" />
-          <span className="text-xs text-muted-foreground">{template.tags.length} agents</span>
         </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
       </div>

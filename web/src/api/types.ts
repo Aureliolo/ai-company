@@ -1284,8 +1284,8 @@ export interface UpdateAgentPersonalityRequest {
 }
 
 export interface PersonalityPresetInfo {
-  name: string
-  description: string
+  readonly name: string
+  readonly description: string
 }
 
 export interface PersonalityPresetsListResponse {
