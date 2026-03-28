@@ -168,6 +168,12 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	}
 
 	out.KeyValue("Config file", statePath)
+	printConfigFields(out, state)
+	return nil
+}
+
+// printConfigFields renders all config fields as key-value pairs.
+func printConfigFields(out *ui.UI, state config.State) {
 	out.KeyValue("Data directory", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
 	out.KeyValue("Channel", state.DisplayChannel())
@@ -192,8 +198,6 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Auto start after wipe", strconv.FormatBool(state.AutoStartAfterWipe))
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
-
-	return nil
 }
 
 // displayOrDefault returns the value if non-empty, otherwise the fallback label.
@@ -220,6 +224,9 @@ func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, co
 
 func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
+	if !isKnownGettableKey(key) {
+		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(gettableConfigKeys, ", "))
+	}
 
 	safeDir, err := config.SecurePath(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
@@ -231,52 +238,18 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	var value string
-	switch key {
-	case "auto_apply_compose":
-		value = strconv.FormatBool(state.AutoApplyCompose)
-	case "auto_cleanup":
-		value = strconv.FormatBool(state.AutoCleanup)
-	case "auto_pull":
-		value = strconv.FormatBool(state.AutoPull)
-	case "auto_restart":
-		value = strconv.FormatBool(state.AutoRestart)
-	case "auto_start_after_wipe":
-		value = strconv.FormatBool(state.AutoStartAfterWipe)
-	case "auto_update_cli":
-		value = strconv.FormatBool(state.AutoUpdateCLI)
-	case "backend_port":
-		value = strconv.Itoa(state.BackendPort)
-	case "channel":
-		value = state.DisplayChannel()
-	case "color":
-		value = state.Color
-	case "docker_sock":
-		value = state.DockerSock
-	case "hints":
-		value = state.Hints
-	case "image_tag":
-		value = state.ImageTag
-	case "log_level":
-		value = state.LogLevel
-	case "memory_backend":
-		value = state.MemoryBackend
-	case "output":
-		value = state.Output
-	case "persistence_backend":
-		value = state.PersistenceBackend
-	case "sandbox":
-		value = strconv.FormatBool(state.Sandbox)
-	case "timestamps":
-		value = state.Timestamps
-	case "web_port":
-		value = strconv.Itoa(state.WebPort)
-	default:
-		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(gettableConfigKeys, ", "))
-	}
-
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), value)
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), configGetValue(state, key))
 	return nil
+}
+
+// isKnownGettableKey reports whether key is in the gettableConfigKeys list.
+func isKnownGettableKey(key string) bool {
+	for _, k := range gettableConfigKeys {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -314,101 +287,79 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 func applyConfigValue(state *config.State, key, value string) error {
 	switch key {
 	case "auto_apply_compose":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_apply_compose %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoApplyCompose = value == "true"
+		return setBool(value, key, &state.AutoApplyCompose)
 	case "auto_cleanup":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_cleanup %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoCleanup = value == "true"
+		return setBool(value, key, &state.AutoCleanup)
 	case "auto_pull":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_pull %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoPull = value == "true"
+		return setBool(value, key, &state.AutoPull)
 	case "auto_restart":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_restart %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoRestart = value == "true"
+		return setBool(value, key, &state.AutoRestart)
 	case "auto_start_after_wipe":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_start_after_wipe %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoStartAfterWipe = value == "true"
+		return setBool(value, key, &state.AutoStartAfterWipe)
 	case "auto_update_cli":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid auto_update_cli %q: must be one of %s", value, config.BoolNames())
-		}
-		state.AutoUpdateCLI = value == "true"
+		return setBool(value, key, &state.AutoUpdateCLI)
 	case "backend_port":
-		port, err := strconv.Atoi(value)
-		if err != nil || port < 1 || port > 65535 {
-			return fmt.Errorf("invalid backend_port %q: must be 1-65535", value)
-		}
-		if port == state.WebPort {
-			return fmt.Errorf("backend_port %d conflicts with web_port", port)
-		}
-		state.BackendPort = port
+		return setPort(value, "backend_port", state.WebPort, &state.BackendPort)
 	case "channel":
-		if !config.IsValidChannel(value) {
-			return fmt.Errorf("invalid channel %q: must be one of %s", value, config.ChannelNames())
-		}
-		state.Channel = value
+		return setEnum(value, key, config.IsValidChannel, config.ChannelNames, &state.Channel)
 	case "color":
-		if !config.IsValidColorMode(value) {
-			return fmt.Errorf("invalid color %q: must be one of %s", value, config.ColorModeNames())
-		}
-		state.Color = value
+		return setEnum(value, key, config.IsValidColorMode, config.ColorModeNames, &state.Color)
 	case "docker_sock":
 		if err := validateDockerSock(value); err != nil {
 			return fmt.Errorf("invalid docker_sock: %w", err)
 		}
 		state.DockerSock = value
 	case "hints":
-		if !config.IsValidHintsMode(value) {
-			return fmt.Errorf("invalid hints %q: must be one of %s", value, config.HintsModeNames())
-		}
-		state.Hints = value
+		return setEnum(value, key, config.IsValidHintsMode, config.HintsModeNames, &state.Hints)
 	case "image_tag":
 		if !config.IsValidImageTag(value) {
 			return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", value)
 		}
 		state.ImageTag = value
 	case "log_level":
-		if !config.IsValidLogLevel(value) {
-			return fmt.Errorf("invalid log_level %q: must be one of %s", value, config.LogLevelNames())
-		}
-		state.LogLevel = value
+		return setEnum(value, key, config.IsValidLogLevel, config.LogLevelNames, &state.LogLevel)
 	case "output":
-		if !config.IsValidOutputMode(value) {
-			return fmt.Errorf("invalid output %q: must be one of %s", value, config.OutputModeNames())
-		}
-		state.Output = value
+		return setEnum(value, key, config.IsValidOutputMode, config.OutputModeNames, &state.Output)
 	case "sandbox":
-		if !config.IsValidBool(value) {
-			return fmt.Errorf("invalid sandbox %q: must be one of %s", value, config.BoolNames())
-		}
-		state.Sandbox = value == "true"
+		return setBool(value, key, &state.Sandbox)
 	case "timestamps":
-		if !config.IsValidTimestampMode(value) {
-			return fmt.Errorf("invalid timestamps %q: must be one of %s", value, config.TimestampModeNames())
-		}
-		state.Timestamps = value
+		return setEnum(value, key, config.IsValidTimestampMode, config.TimestampModeNames, &state.Timestamps)
 	case "web_port":
-		port, err := strconv.Atoi(value)
-		if err != nil || port < 1 || port > 65535 {
-			return fmt.Errorf("invalid web_port %q: must be 1-65535", value)
-		}
-		if port == state.BackendPort {
-			return fmt.Errorf("web_port %d conflicts with backend_port", port)
-		}
-		state.WebPort = port
+		return setPort(value, "web_port", state.BackendPort, &state.WebPort)
 	default:
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
+	return nil
+}
+
+// setBool validates and sets a boolean config field.
+func setBool(value, key string, target *bool) error {
+	if !config.IsValidBool(value) {
+		return fmt.Errorf("invalid %s %q: must be one of %s", key, value, config.BoolNames())
+	}
+	*target = value == "true"
+	return nil
+}
+
+// setPort validates and sets a port config field, checking for conflicts.
+func setPort(value, key string, conflictPort int, target *int) error {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("invalid %s %q: must be 1-65535", key, value)
+	}
+	if port == conflictPort {
+		return fmt.Errorf("%s %d conflicts with the other port", key, port)
+	}
+	*target = port
+	return nil
+}
+
+// setEnum validates and sets a string config field against a validator.
+func setEnum(value, key string, valid func(string) bool, names func() string, target *string) error {
+	if !valid(value) {
+		return fmt.Errorf("invalid %s %q: must be one of %s", key, value, names())
+	}
+	*target = value
 	return nil
 }
 
@@ -458,6 +409,25 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	if err := resetConfigValue(&state, key); err != nil {
+		return err
+	}
+
+	if composeAffectingKeys[key] {
+		if err := regenerateCompose(state); err != nil {
+			return err
+		}
+	}
+
+	if err := config.Save(state); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+	out.Success(fmt.Sprintf("Reset %s to default", key))
+	return nil
+}
+
+// resetConfigValue resets a single config key to its default value.
+func resetConfigValue(state *config.State, key string) error {
 	defaults := config.DefaultState()
 	switch key {
 	case "auto_apply_compose":
@@ -497,17 +467,6 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
-
-	if composeAffectingKeys[key] {
-		if err := regenerateCompose(state); err != nil {
-			return err
-		}
-	}
-
-	if err := config.Save(state); err != nil {
-		return fmt.Errorf("saving config: %w", err)
-	}
-	out.Success(fmt.Sprintf("Reset %s to default", key))
 	return nil
 }
 
@@ -552,9 +511,9 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 	}
 
 	defaults := config.DefaultState()
-	entries := make([]configEntry, 0, len(supportedConfigKeys))
+	entries := make([]configEntry, 0, len(gettableConfigKeys))
 
-	for _, key := range supportedConfigKeys {
+	for _, key := range gettableConfigKeys {
 		val := configGetValue(state, key)
 		source := resolveSource(key, val, configGetValue(defaults, key))
 		entries = append(entries, configEntry{Key: key, Value: val, Source: source})
@@ -601,8 +560,12 @@ func configGetValue(state config.State, key string) string {
 		return state.ImageTag
 	case "log_level":
 		return state.LogLevel
+	case "memory_backend":
+		return state.MemoryBackend
 	case "output":
 		return state.Output
+	case "persistence_backend":
+		return state.PersistenceBackend
 	case "sandbox":
 		return strconv.FormatBool(state.Sandbox)
 	case "timestamps":
@@ -647,13 +610,14 @@ func runConfigEdit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("config file not found at %s -- run 'synthorg init' first", configPath)
 	}
 
-	editor := resolveEditor()
-	c := exec.CommandContext(cmd.Context(), editor, configPath) //nolint:gosec // editor comes from user's env
+	editorBin, editorArgs := resolveEditor()
+	editorArgs = append(editorArgs, configPath)
+	c := exec.CommandContext(cmd.Context(), editorBin, editorArgs...) //nolint:gosec // editor comes from user's env
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("running editor %q: %w", editor, err)
+		return fmt.Errorf("running editor %q: %w", editorBin, err)
 	}
 
 	// Validate after edit.
@@ -665,15 +629,18 @@ func runConfigEdit(cmd *cobra.Command, _ []string) error {
 }
 
 // resolveEditor picks an editor from environment or platform default.
-func resolveEditor() string {
-	if e := os.Getenv("VISUAL"); e != "" {
-		return e
+// Returns the binary name and any extra arguments (handles "code --wait" etc.).
+func resolveEditor() (string, []string) {
+	raw := os.Getenv("VISUAL")
+	if raw == "" {
+		raw = os.Getenv("EDITOR")
 	}
-	if e := os.Getenv("EDITOR"); e != "" {
-		return e
+	if raw == "" {
+		if runtime.GOOS == "windows" {
+			return "notepad", nil
+		}
+		return "vi", nil
 	}
-	if runtime.GOOS == "windows" {
-		return "notepad"
-	}
-	return "vi"
+	parts := strings.Fields(raw)
+	return parts[0], parts[1:]
 }

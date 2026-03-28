@@ -84,7 +84,9 @@ All commands accept these persistent flags (precedence: flag > env var > config 
 | `--json` | | | Machine-readable JSON output |
 | `--yes` | `-y` | `SYNTHORG_YES` | Auto-accept all prompts (non-interactive) |
 
-Additional env vars (no corresponding flag -- used for config overrides):
+Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces color on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
+
+Additional env vars (no corresponding flag -- settable via env var or `config set`):
 
 | Env Var | Description |
 |---------|-------------|
@@ -107,6 +109,32 @@ Additional env vars (no corresponding flag -- used for config overrides):
 | 3 | Unhealthy (backend/containers) |
 | 4 | Unreachable (Docker not available) |
 | 10 | Updates available (`--check`) |
+
+#### Config Subcommands
+
+`synthorg config <subcommand>`:
+
+| Subcommand | Description |
+|------------|-------------|
+| `show` | Display all current settings (default when no subcommand) |
+| `get <key>` | Get a single config value (19 gettable keys) |
+| `set <key> <value>` | Set a config value (17 settable keys, compose-affecting keys trigger regeneration) |
+| `unset <key>` | Reset a key to its default value |
+| `list` | Show all keys with resolved value and source (env/config/default) |
+| `path` | Print the config file path |
+| `edit` | Open config file in $VISUAL/$EDITOR |
+
+Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`) trigger automatic `compose.yml` regeneration.
+
+#### Per-Command Flags
+
+| Command | Flags |
+|---------|-------|
+| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--image-tag`, `--channel`, `--log-level` (all flags = non-interactive mode) |
+| `start` | `--no-wait`, `--timeout`, `--no-pull`, `--dry-run`, `--no-detach`, `--no-verify` |
+| `stop` | `--timeout`/`-t`, `--volumes` |
+| `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |
+| `logs` | `--follow`/`-f`, `--tail`, `--since`, `--until`, `--timestamps`/`-t`, `--no-log-prefix` |
 
 ## Documentation
 

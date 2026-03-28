@@ -65,12 +65,13 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return NewExitError(ExitUnhealthy, nil)
 	}
 
-	// --watch: continuous polling loop.
+	// Parse --interval early (even without --watch, catch invalid values).
+	interval, parseErr := time.ParseDuration(statusInterval)
+	if parseErr != nil {
+		return fmt.Errorf("invalid --interval %q: %w", statusInterval, parseErr)
+	}
+
 	if statusWatch {
-		interval, parseErr := time.ParseDuration(statusInterval)
-		if parseErr != nil {
-			return fmt.Errorf("invalid --interval %q: %w", statusInterval, parseErr)
-		}
 		return runStatusWatch(cmd, state, opts, interval)
 	}
 
@@ -210,10 +211,9 @@ func parseContainerJSON(psOut string) ([]containerInfo, int) {
 }
 
 // renderContainerTable formats containers as a table.
-// Uses package-level statusWide and statusNoTrunc flags.
-func renderContainerTable(out *ui.UI, containers []containerInfo) {
+func renderContainerTable(out *ui.UI, containers []containerInfo, wide, noTrunc bool) {
 	headers := []string{"SERVICE", "STATE", "HEALTH", "IMAGE", "STATUS"}
-	if statusWide {
+	if wide {
 		headers = append(headers, "PORTS")
 	}
 	rows := make([][]string, 0, len(containers))
@@ -224,14 +224,14 @@ func renderContainerTable(out *ui.UI, containers []containerInfo) {
 			healthLabel = "-"
 		}
 		imageDisplay := imageTag(c.Image)
-		if statusNoTrunc {
+		if noTrunc {
 			imageDisplay = c.Image
 		}
 		row := []string{
 			c.Service, icon + " " + c.State, healthLabel,
 			imageDisplay, c.Status,
 		}
-		if statusWide {
+		if wide {
 			row = append(row, c.Ports)
 		}
 		rows = append(rows, row)
@@ -253,9 +253,14 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 		filter := make(map[string]bool)
 		for _, s := range strings.Split(statusServices, ",") {
 			s = strings.TrimSpace(s)
-			if s != "" {
-				filter[s] = true
+			if s == "" {
+				continue
 			}
+			if !serviceNamePattern.MatchString(s) {
+				out.Warn(fmt.Sprintf("invalid service name %q in --services: must be alphanumeric, hyphens, or underscores", s))
+				continue
+			}
+			filter[s] = true
 		}
 		filtered := containers[:0]
 		for _, c := range containers {
@@ -283,7 +288,7 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 		return
 	}
 	_, _ = fmt.Fprintln(w, "Containers:")
-	renderContainerTable(out, containers)
+	renderContainerTable(out, containers, statusWide, statusNoTrunc)
 	_, _ = fmt.Fprintln(w)
 }
 

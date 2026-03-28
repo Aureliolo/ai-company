@@ -27,6 +27,9 @@ var (
 // compose arguments (only alphanumeric, hyphens, and underscores).
 var serviceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// timeFilterPattern validates --since/--until values (timestamps, durations).
+var timeFilterPattern = regexp.MustCompile(`^[0-9a-zA-Z:.+\-TZ]+$`)
+
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
 	Short: "Show container logs",
@@ -71,6 +74,13 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if tail != "all" {
 		if n, err := strconv.Atoi(tail); err != nil || n <= 0 {
 			return fmt.Errorf("--tail must be a positive integer or 'all', got %q", logTail)
+		}
+	}
+
+	// Validate --since/--until format (allow timestamps, durations, Docker-accepted values).
+	for _, tv := range []struct{ flag, val string }{{"--since", logSince}, {"--until", logUntil}} {
+		if tv.val != "" && !timeFilterPattern.MatchString(tv.val) {
+			return fmt.Errorf("%s value %q contains unexpected characters", tv.flag, tv.val)
 		}
 	}
 

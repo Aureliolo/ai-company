@@ -47,8 +47,9 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 }
 
-// initAllFlagsSet returns true when all init flags are provided,
-// enabling fully non-interactive setup.
+// initAllFlagsSet returns true when all required init flags are provided,
+// enabling fully non-interactive setup. The --image-tag and --channel flags
+// are optional (default to CLI version and "stable" respectively).
 func initAllFlagsSet() bool {
 	return initBackendPort > 0 && initWebPort > 0 && initSandbox != "" &&
 		initLogLevel != ""

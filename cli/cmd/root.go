@@ -114,8 +114,13 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		if state.Hints != "" {
 			opts.Hints = state.Hints
 		}
-		if state.Color == "never" && !flagNoColor {
-			opts.NoColor = true
+		if !flagNoColor {
+			switch state.Color {
+			case "never":
+				opts.NoColor = true
+			case "always":
+				opts.NoColor = false
+			}
 		}
 		if state.Output == "json" && !flagJSON {
 			opts.JSON = true
