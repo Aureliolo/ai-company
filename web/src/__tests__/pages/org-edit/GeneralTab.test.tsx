@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import fc from 'fast-check'
 import { GeneralTab } from '@/pages/org-edit/GeneralTab'
 import { makeCompanyConfig } from '../../helpers/factories'
 
@@ -48,19 +49,52 @@ describe('GeneralTab', () => {
   it('calls onUpdate with correct payload when save is clicked', async () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
+    // Modify a field to make the form dirty so the Save button is enabled.
+    const nameInput = screen.getByLabelText(/company name/i)
+    fireEvent.change(nameInput, { target: { value: 'Updated Corp' } })
     fireEvent.click(screen.getByText('Save Settings'))
     expect(mockOnUpdate).toHaveBeenCalledTimes(1)
     expect(mockOnUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      company_name: 'Test Corp',
+      company_name: 'Updated Corp',
       autonomy_level: 'semi',
       budget_monthly: 100,
       communication_pattern: 'hybrid',
     }))
   })
 
+  it('disables save button when form is pristine', () => {
+    const config = makeCompanyConfig()
+    render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
+    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
+  })
+
+  it('save button disablement follows invariant across states', () => {
+    fc.assert(
+      fc.property(fc.boolean(), fc.string({ minLength: 1 }), (saving, nextName) => {
+        cleanup()
+        const config = makeCompanyConfig()
+        render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={saving} />)
+        if (nextName !== config.company_name) {
+          fireEvent.change(screen.getByLabelText(/company name/i), {
+            target: { value: nextName },
+          })
+        }
+        const button = screen.getByRole('button', { name: /save settings/i })
+        const isPristine = nextName === config.company_name
+        const shouldBeDisabled = isPristine || saving
+        if (shouldBeDisabled) {
+          expect(button).toBeDisabled()
+        } else {
+          expect(button).toBeEnabled()
+        }
+      }),
+      { numRuns: 20 },
+    )
+  })
+
   it('disables save button when saving', () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={true} />)
-    expect(screen.getByText('Save Settings').closest('button')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
   })
 })

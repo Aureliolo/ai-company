@@ -50,10 +50,11 @@ describe('App', () => {
 
   it('redirects unauthenticated users to login', async () => {
     render(<App />)
-    // Login page is lazy-loaded, so wait for it
+    // Login page is lazy-loaded and calls getSetupStatus on mount,
+    // so we need extra time for: Suspense resolve + useEffect + mock.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument()
-    })
+      expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    }, { timeout: 5000 })
   })
 
   it(

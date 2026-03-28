@@ -5,7 +5,7 @@ import { makeCompanyConfig } from '../../helpers/factories'
 describe('YamlEditorPanel', () => {
   const mockOnSave = vi.fn().mockResolvedValue(undefined)
 
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders textarea with YAML content', () => {
     const config = makeCompanyConfig()

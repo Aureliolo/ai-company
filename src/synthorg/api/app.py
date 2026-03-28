@@ -73,6 +73,9 @@ from synthorg.observability.events.api import (
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
 )
+from synthorg.observability.events.setup import (
+    SETUP_AGENT_BOOTSTRAP_FAILED,
+)
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
@@ -202,6 +205,64 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
+async def _maybe_bootstrap_agents(app_state: AppState) -> None:
+    """Bootstrap agents if setup is complete and services are available.
+
+    On first run, setup isn't complete yet so bootstrap is deferred
+    to ``POST /setup/complete``.  On subsequent starts, agents are
+    loaded from persisted config into the runtime registry.
+    """
+    if not (
+        app_state.has_config_resolver
+        and app_state.has_agent_registry
+        and app_state.has_settings_service
+    ):
+        logger.debug(
+            API_APP_STARTUP,
+            note="Agent bootstrap skipped: required services not available",
+        )
+        return
+
+    try:
+        setup_entry = await app_state.settings_service.get_entry(
+            "api",
+            "setup_complete",
+        )
+        is_complete = setup_entry.value == "true"
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Could not read setup_complete setting; skipping agent bootstrap",
+            exc_info=True,
+        )
+        is_complete = False
+
+    if not is_complete:
+        logger.debug(
+            API_APP_STARTUP,
+            note="Agent bootstrap skipped: setup not complete",
+        )
+        return
+
+    try:
+        from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
+
+        await bootstrap_agents(
+            config_resolver=app_state.config_resolver,
+            agent_registry=app_state.agent_registry,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            SETUP_AGENT_BOOTSTRAP_FAILED,
+            error="Agent bootstrap failed at startup (non-fatal)",
+            exc_info=True,
+        )
+
+
 def _build_lifecycle(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -302,6 +363,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                     persistence,
                 )
                 raise
+        await _maybe_bootstrap_agents(app_state)
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
@@ -459,7 +521,7 @@ def create_app(  # noqa: PLR0913
     """
     effective_config = config or RootConfig(company_name="default")
 
-    # Activate the structured logging pipeline (default: 11 sinks) before any
+    # Activate the structured logging pipeline before any
     # other setup so that auto-wiring, persistence, and bus logs all
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.

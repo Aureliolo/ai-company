@@ -24,7 +24,7 @@ function renderTab(overrides?: Partial<DepartmentsTabProps>) {
 }
 
 describe('DepartmentsTab', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders empty state when config has no departments', () => {
     renderTab({ config: { ...makeCompanyConfig(), departments: [] } })

@@ -153,8 +153,8 @@ class TestNullableUnionNormalization:
         assert "anyOf" in result
         assert "oneOf" not in result
 
-    def test_multi_branch_union_not_flattened(self) -> None:
-        """Union with 3+ branches (including null) is not flattened."""
+    def test_multi_primitive_nullable_union_flattened(self) -> None:
+        """Union with 3+ primitive branches (including null) is flattened."""
         schema: dict[str, Any] = {
             "oneOf": [
                 {"type": "string"},
@@ -163,9 +163,23 @@ class TestNullableUnionNormalization:
             ],
         }
         result = _normalize_nullable_unions(schema)
-        # Multiple non-null branches: left unchanged.
-        assert "oneOf" in result
-        assert len(result["oneOf"]) == 3
+        # All non-null branches are primitives: collapsed to type array.
+        assert "oneOf" not in result
+        assert result["type"] == ["string", "integer", "null"]
+
+    def test_multi_branch_mixed_union_not_flattened(self) -> None:
+        """Union with $ref + primitive + null stays as anyOf."""
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"$ref": "#/components/schemas/Foo"},
+                {"type": "string"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        # Mixed branches ($ref + primitive): not flattened to type array.
+        assert "anyOf" in result or "oneOf" in result
+        assert not isinstance(result.get("type"), list)
 
     def test_discriminated_union_preserved(self) -> None:
         """oneOf without null stays oneOf."""

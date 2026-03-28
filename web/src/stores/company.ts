@@ -102,7 +102,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         .catch((err: unknown) => {
           // Errors are set in store state by the respective fetch methods;
           // log for observability in case both swallow the error.
-          console.error('[CompanyStore] WS refresh failed:', err)
+          console.error('[CompanyStore] WS refresh failed:', getErrorMessage(err))
         })
     }
   },

@@ -30,7 +30,10 @@ interface FormState {
   communication_pattern: string
 }
 
-const budgetFormatter = new Intl.NumberFormat('en-US', { style: 'decimal', maximumFractionDigits: 0 })
+const budgetFormatter = new Intl.NumberFormat(undefined, {
+  style: 'decimal',
+  maximumFractionDigits: 0,
+})
 
 function formatBudget(value: number): string {
   return `${budgetFormatter.format(value)} EUR`
@@ -121,10 +124,10 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         />
 
         {submitError && (
-          <p className="text-xs text-danger">{submitError}</p>
+          <p role="alert" className="text-xs text-danger">{submitError}</p>
         )}
 
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={!dirty || saving}>
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Save Settings
         </Button>

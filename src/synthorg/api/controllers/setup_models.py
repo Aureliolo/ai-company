@@ -33,6 +33,26 @@ class SetupStatusResponse(BaseModel):
     min_password_length: int = Field(ge=8)
 
 
+class TemplateVariableResponse(BaseModel):
+    """A template variable exposed to the frontend.
+
+    Attributes:
+        name: Variable name used in Jinja2 placeholders.
+        description: Human-readable description.
+        var_type: Expected value type (one of "str", "int", "float", "bool").
+        default: Default value (None means no default).
+        required: Whether the user must supply a value.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr
+    description: str = ""
+    var_type: Literal["str", "int", "float", "bool"] = "str"
+    default: str | int | float | bool | None = None
+    required: bool = False
+
+
 class TemplateInfoResponse(BaseModel):
     """Summary of an available company template.
 
@@ -44,6 +64,7 @@ class TemplateInfoResponse(BaseModel):
         tags: Free-form categorization tags for template filtering and discovery.
         skill_patterns: Skill design pattern identifiers describing how the
             template's agents interact (e.g. ``"tool_wrapper"``, ``"pipeline"``).
+        variables: Template variables the user can configure.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -60,6 +81,10 @@ class TemplateInfoResponse(BaseModel):
         default=(),
         description="Skill design pattern identifiers",
     )
+    variables: tuple[TemplateVariableResponse, ...] = Field(
+        default=(),
+        description="User-configurable template variables",
+    )
 
 
 class SetupCompanyRequest(BaseModel):
@@ -71,7 +96,7 @@ class SetupCompanyRequest(BaseModel):
         template_name: Optional template to apply (None = blank company).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     company_name: NotBlankStr = Field(max_length=200)
     description: str | None = Field(default=None, max_length=1000)
@@ -143,10 +168,10 @@ class SetupAgentRequest(BaseModel):
         model_provider: Provider name for the agent's model.
         model_id: Model identifier from that provider.
         department: Department to assign the agent to.
-        budget_limit_monthly: Optional monthly budget limit in USD (base currency).
+        budget_limit_monthly: Optional monthly budget limit in base currency.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr = Field(max_length=200)
     role: NotBlankStr = Field(max_length=100)

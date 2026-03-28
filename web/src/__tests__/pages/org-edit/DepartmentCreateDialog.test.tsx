@@ -16,7 +16,7 @@ describe('DepartmentCreateDialog', () => {
     )
   }
 
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders form fields when open', () => {
     renderDialog()

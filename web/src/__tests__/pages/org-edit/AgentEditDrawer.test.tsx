@@ -23,7 +23,7 @@ describe('AgentEditDrawer', () => {
     )
   }
 
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders agent info when open', () => {
     renderDrawer()
