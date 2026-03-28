@@ -8,6 +8,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 const mockDispatch = vi.fn()
 const mockDestroy = vi.fn()
+/** Captured updateListener callback from the component's mount effect. */
+let capturedUpdateListener: ((update: { docChanged: boolean; state: { doc: { toString: () => string } } }) => void) | null = null
 
 vi.mock('@codemirror/view', () => {
   class MockEditorView {
@@ -29,9 +31,16 @@ vi.mock('@codemirror/view', () => {
           get length() { return this.toString().length },
         },
       }
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      const self = this
       this.dispatch = mockDispatch.mockImplementation((tr: { changes?: { insert?: string }; effects?: unknown }) => {
         if (tr.changes && 'insert' in tr.changes) {
-          this._docString = tr.changes.insert as string
+          self._docString = tr.changes.insert as string
+          // Invoke the captured updateListener (mirrors real CodeMirror behavior)
+          capturedUpdateListener?.({
+            docChanged: true,
+            state: { doc: { toString: () => self._docString } },
+          })
         }
       })
       this.destroy = mockDestroy.mockImplementation(() => {
@@ -43,7 +52,12 @@ vi.mock('@codemirror/view', () => {
 
     static _instances: MockEditorView[] = []
     static theme = vi.fn().mockReturnValue([])
-    static updateListener = { of: vi.fn().mockReturnValue([]) }
+    static updateListener = {
+      of: vi.fn().mockImplementation((cb: typeof capturedUpdateListener) => {
+        capturedUpdateListener = cb
+        return []
+      }),
+    }
     static lineWrapping = []
   }
 
@@ -122,6 +136,7 @@ describe('CodeMirrorEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     MockEditorView._instances = []
+    capturedUpdateListener = null
   })
 
   afterEach(() => {
@@ -173,6 +188,7 @@ describe('CodeMirrorEditor', () => {
       expect.objectContaining({
         changes: expect.objectContaining({
           from: 0,
+          to: defaultProps.value.length,
           insert: '{"new": "value"}',
         }),
       }),
@@ -229,7 +245,7 @@ describe('CodeMirrorEditor', () => {
     // dispatch should have been called to sync the new value
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: expect.objectContaining({ insert: 'b' }),
+        changes: expect.objectContaining({ from: 0, to: 'a'.length, insert: 'b' }),
       }),
     )
     // but onChange must NOT fire because isProgrammaticRef blocks it
@@ -255,6 +271,7 @@ describe('CodeMirrorEditor', () => {
                 expect.objectContaining({
                   changes: expect.objectContaining({
                     from: 0,
+                    to: 'initial'.length,
                     insert: newValue,
                   }),
                 }),
