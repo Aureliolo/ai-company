@@ -350,26 +350,33 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   setWizardMode(mode) {
     const { needsAdmin } = get()
     const stepOrder = getStepOrder(needsAdmin, mode)
-    set((s) => ({
-      wizardMode: mode,
-      stepOrder,
-      // Clear template-derived state in quick mode to
-      // prevent stale selectedTemplate from being sent.
-      selectedTemplate: mode === 'quick'
-        ? null : s.selectedTemplate,
-      comparedTemplates: mode === 'quick'
-        ? [] : s.comparedTemplates,
-      templateVariables: mode === 'quick'
-        ? {} : s.templateVariables,
-      stepsCompleted: mode === 'quick'
-        ? {
-            ...s.stepsCompleted,
-            template: false,
-            agents: false,
-            theme: false,
-          }
-        : s.stepsCompleted,
-    }))
+    set((s) => {
+      // Reset currentStep if it's not in the new order.
+      const validStep = stepOrder.includes(s.currentStep)
+        ? s.currentStep
+        : stepOrder[0]
+      return {
+        wizardMode: mode,
+        stepOrder,
+        currentStep: validStep,
+        // Clear template-derived state in quick mode to
+        // prevent stale selectedTemplate from being sent.
+        selectedTemplate: mode === 'quick'
+          ? null : s.selectedTemplate,
+        comparedTemplates: mode === 'quick'
+          ? [] : s.comparedTemplates,
+        templateVariables: mode === 'quick'
+          ? {} : s.templateVariables,
+        stepsCompleted: mode === 'quick'
+          ? {
+              ...s.stepsCompleted,
+              template: false,
+              agents: false,
+              theme: false,
+            }
+          : s.stepsCompleted,
+      }
+    })
   },
 
   // -- Template --
@@ -578,6 +585,15 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
           set((s) => ({
             providers: { ...s.providers, [name]: refreshed },
           }))
+          if (refreshed.models.length === 0) {
+            set({
+              providersError:
+                `Provider '${name}' created but no ` +
+                'models were discovered. Ensure the ' +
+                'provider is running with models ' +
+                'available, then refresh.',
+            })
+          }
         } catch (discoveryErr) {
           // Discovery is best-effort; provider was created but
           // user should know models could not be discovered.

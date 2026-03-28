@@ -33,6 +33,9 @@ const ROOT_RADIUS = 10
 /** Agent initials font sizes. */
 const FONT_SIZE_LARGE = 10
 const FONT_SIZE_SMALL = 8
+/** Department label font sizes (slightly larger than agent text). */
+const DEPT_FONT_SIZE_LARGE = 11
+const DEPT_FONT_SIZE_SMALL = 9
 
 function getInitials(name: string): string {
   return name
@@ -115,7 +118,7 @@ function DepartmentGroup({ pos, nodeWidth, nodeHeight, avatarRadius, vGap, isSma
         y={pos.y + 4}
         textAnchor="middle"
         className="fill-muted-foreground"
-        fontSize={isSmallTeam ? 11 : 9}
+        fontSize={isSmallTeam ? DEPT_FONT_SIZE_LARGE : DEPT_FONT_SIZE_SMALL}
       >
         {pos.dept.name.length > DEPT_LABEL_MAX_DISPLAY
           ? pos.dept.name.slice(0, DEPT_LABEL_TRUNCATE_AT) + '..'
