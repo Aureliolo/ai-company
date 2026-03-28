@@ -5,6 +5,7 @@ import { usePolling } from '@/hooks/usePolling'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 import type { HealthStatus } from '@/api/types'
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
@@ -121,6 +122,10 @@ export function StatusBar() {
         <Dot color={statusCfg.color} />
         <span className="text-muted-foreground">{statusCfg.label}</span>
       </StatusItem>
+
+      <Divider />
+
+      <ThemeToggle />
     </div>
   )
 }

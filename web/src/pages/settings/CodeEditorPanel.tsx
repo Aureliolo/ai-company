@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import YAML from 'js-yaml'
 import type { SettingEntry } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { CodeMirrorEditor } from '@/components/ui/code-mirror-editor'
 import { cn } from '@/lib/utils'
 
 const MAX_EDITOR_BYTES = 65_536
@@ -161,8 +162,8 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     [dirty, entries, format, text],
   )
 
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value)
+  const handleChange = useCallback((value: string) => {
+    setText(value)
     updateDirty(true)
     setParseError(null)
   }, [updateDirty])
@@ -236,13 +237,11 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
         </button>
       </div>
 
-      <textarea
+      <CodeMirrorEditor
         value={text}
         onChange={handleChange}
-        disabled={saving}
-        rows={20}
-        className="w-full min-h-96 rounded-lg border border-border bg-surface p-4 font-mono text-sm text-foreground outline-none focus:ring-2 focus:ring-accent resize-y disabled:opacity-60"
-        spellCheck={false}
+        language={format}
+        readOnly={saving}
         aria-label={`${format.toUpperCase()} editor`}
       />
 
