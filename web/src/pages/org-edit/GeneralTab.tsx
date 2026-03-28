@@ -50,7 +50,9 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
     if (config && !dirty) {
       setForm({
         company_name: config.company_name,
-        autonomy_level: config.autonomy_level ?? 'semi',
+        autonomy_level: (config.autonomy_level && VALID_AUTONOMY_LEVELS.has(config.autonomy_level))
+          ? config.autonomy_level
+          : 'semi',
         budget_monthly: config.budget_monthly ?? 100,
         communication_pattern: config.communication_pattern ?? 'hybrid',
       })
