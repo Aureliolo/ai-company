@@ -161,6 +161,8 @@ async def check_needs_setup(
         )
     except MemoryError, RecursionError:
         raise
+    except SettingNotFoundError:
+        return True
     except Exception:
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -332,16 +334,8 @@ async def check_has_name_locales(
         return False
     if entry.source != SettingSource.DATABASE or not entry.value:
         return False
-    try:
-        parsed = json.loads(entry.value)
-    except json.JSONDecodeError, TypeError:
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="invalid_json_or_type",
-            raw=entry.value[:200] if entry.value else None,
-        )
-        return False
-    return isinstance(parsed, list) and len(parsed) > 0
+    parsed = parse_locale_json(entry.value)
+    return parsed is not None and len(parsed) > 0
 
 
 async def resolve_min_password_length(

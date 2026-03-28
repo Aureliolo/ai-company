@@ -28,6 +28,11 @@ const AGENT_SPACING_GAP = 10
 const DEPT_LABEL_MAX_DISPLAY = 14
 /** Truncation point for department names. */
 const DEPT_LABEL_TRUNCATE_AT = 12
+/** Root company node radius. */
+const ROOT_RADIUS = 10
+/** Agent initials font sizes. */
+const FONT_SIZE_LARGE = 10
+const FONT_SIZE_SMALL = 8
 
 function getInitials(name: string): string {
   return name
@@ -75,7 +80,7 @@ function AgentNode({ agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight
         y={agentY + 3}
         textAnchor="middle"
         className="fill-foreground font-medium"
-        fontSize={radius > 14 ? 10 : 8}
+        fontSize={radius > SMALL_AVATAR_RADIUS ? FONT_SIZE_LARGE : FONT_SIZE_SMALL}
       >
         {getInitials(agent.name)}
       </text>
@@ -206,14 +211,14 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
         aria-label="Organization chart"
       >
         {/* Root node (company) */}
-        <circle cx={rootX} cy={rootY} r={10} className="fill-accent" />
+        <circle cx={rootX} cy={rootY} r={ROOT_RADIUS} className="fill-accent" />
 
         {/* Lines from root to departments */}
         {deptPositions.map((pos) => (
           <line
             key={`root-${pos.dept.name}`}
             x1={rootX}
-            y1={rootY + 10}
+            y1={rootY + ROOT_RADIUS}
             x2={pos.x}
             y2={pos.y - nodeHeight / 2}
             className="stroke-border"

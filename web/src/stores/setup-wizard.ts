@@ -590,7 +590,8 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
             providersError:
               `Provider '${name}' created but model` +
               ` discovery failed: ${msg}. ` +
-              'Try the re-probe button.',
+              'Ensure the provider is running, ' +
+              'then refresh the providers list.',
           })
         }
       }
