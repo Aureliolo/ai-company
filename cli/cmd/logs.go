@@ -11,6 +11,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,8 @@ var (
 	logTimestamps bool
 	logNoPrefix   bool
 )
+
+const logsFilterHint = "Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering."
 
 // serviceNamePattern validates service names to prevent command injection via
 // compose arguments (only alphanumeric, hyphens, and underscores).
@@ -76,8 +79,25 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	// Emit hints before composeRun in follow mode (-f), since it blocks
+	// until Ctrl+C and the post-run code would be unreachable.
+	if logFollow {
+		out.HintGuidance(logsFilterHint)
+	}
+
 	composeArgs := buildLogsArgs(strings.TrimSpace(logTail), args)
-	return composeRun(ctx, cmd, info, safeDir, composeArgs...)
+	if err := composeRun(ctx, cmd, info, safeDir, composeArgs...); err != nil {
+		return err
+	}
+
+	out.HintTip("Use -f to follow log output in real time.")
+	if !logFollow {
+		out.HintGuidance(logsFilterHint)
+	}
+	return nil
 }
 
 // validateLogsInput validates --tail, --since, --until, and service name arguments.

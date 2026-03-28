@@ -169,8 +169,13 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 	if wipeKeepImages {
 		sp.Success("Containers stopped and volumes removed (images preserved)")
+		wc.out.HintNextStep("Container images preserved. Run 'synthorg cleanup --all' to remove them later.")
 	} else {
 		sp.Success("Containers stopped, volumes and images removed")
+	}
+
+	if wipeNoBackup {
+		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
 	}
 
 	startAfter, err := wc.promptStartAfterWipe()
@@ -178,10 +183,12 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return err
 	}
 
+	manualStart := wc.shouldPrompt() && startAfter && !wc.state.AutoStartAfterWipe
 	if startAfter {
 		if err := wc.startContainers(); err != nil {
 			wc.errOut.Warn(fmt.Sprintf("Could not restart containers: %v", err))
 			startAfter = false // fall through to manual-start hint
+			manualStart = false
 		}
 	}
 
@@ -190,6 +197,10 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.Success("Factory reset complete")
 	} else {
 		wc.out.Success("Factory reset complete (containers not restarted)")
+	}
+
+	if manualStart {
+		wc.out.HintTip("Run 'synthorg config set auto_start_after_wipe true' to auto-start after future wipes.")
 	}
 
 	if startAfter {

@@ -297,7 +297,60 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		msg += " (compose regenerated)"
 	}
 	out.Success(msg)
+	hintAfterConfigSet(out, key, value, state.DataDir)
 	return nil
+}
+
+// hintAfterConfigSet emits contextual guidance after a config set operation.
+func hintAfterConfigSet(out *ui.UI, key, value, dataDir string) {
+	if composeAffectingKeys[key] {
+		hintComposeRestart(out, dataDir, "new value")
+	}
+
+	switch key {
+	case "hints":
+		// Use Step() instead of HintGuidance() because the UI was created with the
+		// old hints mode -- HintGuidance would be swallowed when changing from "never".
+		switch value {
+		case "always":
+			out.Step("All hints enabled. You'll see tips, guidance, and next steps.")
+		case "auto":
+			out.Step("Tips shown once per session. Guidance hidden. Error and next-step hints always shown.")
+		case "never":
+			out.Step("Tips and guidance suppressed. Error and next-step hints still shown.")
+		}
+	case "color":
+		switch value {
+		case "always":
+			out.HintGuidance("Color forced on, even in non-TTY output.")
+		case "never":
+			out.HintGuidance("Color disabled. Equivalent to NO_COLOR=1.")
+		case "auto":
+			out.HintGuidance("Color auto-detected from terminal capabilities.")
+		}
+	case "output":
+		if value == "json" {
+			out.HintGuidance("Machine-readable JSON output. Human messages suppressed.")
+		}
+	case "timestamps":
+		if value == "iso8601" {
+			out.HintGuidance("Timestamps shown in ISO 8601 format.")
+		}
+	}
+}
+
+// hintComposeRestart emits a restart hint only when compose.yml exists.
+// Pre-init users have no stack, so the hint would be misleading.
+func hintComposeRestart(out *ui.UI, dataDir, what string) {
+	// Use config.SecurePath directly so that CodeQL can trace the
+	// sanitization for go/path-injection.
+	safeDir, err := config.SecurePath(dataDir)
+	if err != nil {
+		return
+	}
+	if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
+		out.HintGuidance(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
+	}
 }
 
 // applyConfigValue validates and applies a single key=value to state.
@@ -456,6 +509,9 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 	out.Success(fmt.Sprintf("Reset %s to default", key))
+	if composeAffectingKeys[key] {
+		hintComposeRestart(out, state.DataDir, "default value")
+	}
 	return nil
 }
 

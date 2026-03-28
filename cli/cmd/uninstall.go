@@ -77,6 +77,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 			}
 		} else {
 			out.Success("Container images preserved (--keep-images)")
+			out.HintGuidance("Container images still on disk. Run 'docker rmi' to free space later.")
 		}
 	}
 
@@ -87,6 +88,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		}
 	} else {
 		out.Success(fmt.Sprintf("Data directory preserved (--keep-data): %s", safeDir))
+		out.HintGuidance(fmt.Sprintf("Config and data preserved at %s. Reinstall will reuse this data.", safeDir))
 	}
 
 	// Remove shell completion snippets for all supported shells
@@ -108,6 +110,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 	out.Blank()
 	out.Success("SynthOrg uninstalled")
+	out.HintGuidance("Reinstall from GitHub Releases: https://github.com/Aureliolo/synthorg/releases")
 	return nil
 }
 

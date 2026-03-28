@@ -121,10 +121,21 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 
 	renderDoctorFiltered(out, report, state)
-	printDoctorFooter(out, state, report)
+	status := printDoctorFooter(out, state, report)
+
+	if doctorChecks != "" {
+		out.HintGuidance("Run without --checks to see all diagnostic categories.")
+	}
 
 	if doctorFix {
-		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+		fixed := doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+		if fixed {
+			out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
+		}
+	}
+
+	if status != doctorHealthy && !doctorFix {
+		out.HintTip("Run 'synthorg doctor --fix' to auto-fix detected issues.")
 	}
 
 	_, _ = fmt.Fprintln(out.Writer())
@@ -146,13 +157,14 @@ func saveDiagnosticFile(out *ui.UI, safeDir string, report diagnostics.Report) {
 }
 
 // printDoctorFooter renders links and summary below the diagnostic sections.
-func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) {
+// Returns the overall doctor status to avoid redundant classifyDoctor calls.
+func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) doctorStatus {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
 	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 	_, _ = fmt.Fprintln(out.Writer())
-	renderDoctorSummary(out, report)
+	return renderDoctorSummary(out, report)
 }
 
 // renderDoctorFiltered renders diagnostic sections gated by --checks filter.
@@ -187,14 +199,14 @@ func renderDoctorFiltered(out *ui.UI, report diagnostics.Report, state config.St
 // then executes fixes in correct order (compose first, restart once after).
 // Only acts on issues matching the --checks filter. Non-fatal: prints
 // results but does not return errors.
-func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) {
+func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) bool {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Auto-fix")
 
 	status, issues := classifyDoctor(report)
 	if status == doctorHealthy {
 		out.Success("All systems healthy -- nothing to fix")
-		return
+		return false
 	}
 
 	// Phase 1: scan issues and determine needed actions.
@@ -217,7 +229,7 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 
 	if !needComposeFix && !needRestart && len(unfixable) == 0 {
 		out.Success("No fixable issues in selected checks")
-		return
+		return false
 	}
 
 	// Phase 2: execute fixes in correct order (compose before restart).
@@ -247,6 +259,7 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 	for _, issue := range unfixable {
 		out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
 	}
+	return needComposeFix || needRestart
 }
 
 // doctorFixCompose regenerates compose.yml from the embedded template.
@@ -338,7 +351,8 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 }
 
 // renderDoctorSummary prints a final summary box showing overall system status.
-func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
+// Returns the classification to avoid redundant classifyDoctor calls.
+func renderDoctorSummary(out *ui.UI, r diagnostics.Report) doctorStatus {
 	status, issues := classifyDoctor(r)
 
 	switch status {
@@ -367,6 +381,7 @@ func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
 		}
 		out.Box("Status", lines)
 	}
+	return status
 }
 
 func renderDoctorEnvironment(out *ui.UI, r diagnostics.Report) {
