@@ -7,6 +7,7 @@ import type {
   CompanyConfig,
   Department,
   DepartmentHealth,
+  MeetingResponse,
   Task,
 } from '@/api/types'
 
@@ -118,6 +119,61 @@ export function makeDepartmentHealth(name: string, overrides?: Partial<Departmen
     agent_count: 3,
     task_count: 5,
     cost_usd: 12.5,
+    ...overrides,
+  }
+}
+
+export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): MeetingResponse {
+  return {
+    meeting_id: id,
+    meeting_type_name: 'daily_standup',
+    protocol_type: 'round_robin',
+    status: 'completed',
+    minutes: {
+      meeting_id: id,
+      protocol_type: 'round_robin',
+      leader_id: 'agent-alice',
+      participant_ids: ['agent-alice', 'agent-bob'],
+      agenda: {
+        title: 'Daily Standup',
+        context: 'Regular sync',
+        items: [{ title: 'Status updates', description: 'Share progress', presenter_id: null }],
+      },
+      contributions: [
+        {
+          agent_id: 'agent-alice',
+          content: 'Completed the API endpoint work.',
+          phase: 'round_robin_turn',
+          turn_number: 1,
+          input_tokens: 200,
+          output_tokens: 150,
+          timestamp: '2026-03-25T10:01:00Z',
+        },
+        {
+          agent_id: 'agent-bob',
+          content: 'Working on test coverage.',
+          phase: 'round_robin_turn',
+          turn_number: 2,
+          input_tokens: 180,
+          output_tokens: 120,
+          timestamp: '2026-03-25T10:02:00Z',
+        },
+      ],
+      summary: 'Team is on track.',
+      decisions: ['Continue current sprint tasks'],
+      action_items: [{ description: 'Finish test coverage', assignee_id: 'agent-bob', priority: 'medium' }],
+      conflicts_detected: false,
+      total_input_tokens: 380,
+      total_output_tokens: 270,
+      total_tokens: 650,
+      started_at: '2026-03-25T10:00:00Z',
+      ended_at: '2026-03-25T10:05:00Z',
+    },
+    error_message: null,
+    token_budget: 2000,
+    token_usage_by_participant: { 'agent-alice': 350, 'agent-bob': 300 },
+    contribution_rank: ['agent-alice', 'agent-bob'],
+    meeting_duration_seconds: 300,
     ...overrides,
   }
 }
