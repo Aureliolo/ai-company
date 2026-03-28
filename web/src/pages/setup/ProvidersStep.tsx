@@ -128,7 +128,7 @@ export function ProvidersStep() {
 
   const providerEntries = Object.entries(providers)
   // Which providers do agents need?
-  const neededProviders = new Set(agents.map((a) => a.model_provider).filter(Boolean))
+  const neededProviders = new Set(agents.map((a) => a.model_provider).filter((p): p is string => Boolean(p)))
   const missingProviders = [...neededProviders].filter((p) => !providers[p])
 
   return (

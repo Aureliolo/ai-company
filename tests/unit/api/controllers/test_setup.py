@@ -53,6 +53,21 @@ class TestSetupTemplates:
             assert isinstance(template["skill_patterns"], list)
             assert "variables" in template
             assert isinstance(template["variables"], list)
+            assert "agent_count" in template
+            assert isinstance(template["agent_count"], int)
+            assert template["agent_count"] >= 0
+            assert "department_count" in template
+            assert isinstance(template["department_count"], int)
+            assert template["department_count"] >= 0
+            assert "autonomy_level" in template
+            assert template["autonomy_level"] in (
+                "full",
+                "semi",
+                "supervised",
+                "locked",
+            )
+            assert "workflow" in template
+            assert isinstance(template["workflow"], str)
 
     def test_observer_can_read_templates(
         self,

@@ -63,7 +63,7 @@ export function SetupAgentCard({
         <div className="flex flex-wrap gap-1.5">
           <StatPill label="Role" value={agent.role} />
           <StatPill label="Dept" value={agent.department} />
-          <StatPill label="Level" value={agent.level} />
+          {agent.level && <StatPill label="Level" value={agent.level} />}
         </div>
 
         {/* Personality preset picker */}
@@ -77,8 +77,8 @@ export function SetupAgentCard({
 
         {/* Model picker */}
         <AgentModelPicker
-          currentProvider={agent.model_provider}
-          currentModelId={agent.model_id}
+          currentProvider={agent.model_provider ?? ''}
+          currentModelId={agent.model_id ?? ''}
           providers={providers}
           onChange={(provider, modelId) => onModelChange(index, provider, modelId)}
         />

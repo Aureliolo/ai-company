@@ -450,9 +450,9 @@ def agent_dict_to_summary(
         name=name,
         role=role,
         department=department,
-        level=(agent.get("level") or "").strip(),
-        model_provider=(model.get("provider") or "").strip(),
-        model_id=(model.get("model_id") or "").strip(),
+        level=(agent.get("level") or "").strip() or None,  # type: ignore[arg-type]
+        model_provider=(model.get("provider") or "").strip() or None,
+        model_id=(model.get("model_id") or "").strip() or None,
         tier=(agent.get("tier") or "").strip() or "medium",  # type: ignore[arg-type]
         personality_preset=(agent.get("personality_preset") or "").strip() or None,
     )

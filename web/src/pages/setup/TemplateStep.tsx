@@ -287,7 +287,8 @@ export function TemplateStep() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search templates..."
-            className="h-8 w-full rounded-md border border-border bg-card pl-8 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none"
+            aria-label="Search templates"
+            className="h-8 w-full rounded-md border border-border bg-surface pl-8 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
           />
           {searchQuery && (
             <button
@@ -305,7 +306,7 @@ export function TemplateStep() {
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-8 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+          className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
           aria-label="Filter by category"
         >
           {availableCategories.map((opt) => (
@@ -319,7 +320,7 @@ export function TemplateStep() {
         <select
           value={sizeFilter}
           onChange={(e) => setSizeFilter(e.target.value as SizeFilter)}
-          className="h-8 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+          className="h-8 rounded-md border border-border bg-surface px-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent"
           aria-label="Filter by size"
         >
           {SIZE_OPTIONS.map((opt) => (

@@ -1250,9 +1250,9 @@ export interface SetupAgentSummary {
   name: string
   role: string
   department: string
-  level: SeniorityLevel
-  model_provider: string
-  model_id: string
+  level: SeniorityLevel | null
+  model_provider: string | null
+  model_id: string | null
   tier: string
   personality_preset: string | null
 }

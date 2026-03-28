@@ -336,9 +336,11 @@ Scalars (`company_name`, `company_type`)
 The web dashboard includes a setup wizard with a mode selection gate after account creation
 (conditional -- only shown when no admin exists). The user chooses **Guided Setup**
 (recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure
-the rest later in Settings). Guided mode steps: Mode, Template (flat grid with category
-tags), Company (name, description, currency, and model tier profile), Providers (configure
-LLM providers with auto-detection for local instances and manual addition for cloud
+the rest later in Settings). Guided mode steps: Mode, Template (searchable grid with
+category/size filters, recommended/others grouping, and structural metadata cards showing
+agent count, departments, autonomy level, and workflow), Company (name, description,
+currency, and model tier profile), Providers (configure LLM providers with auto-detection
+for local instances and full provider form supporting API key, subscription, and custom
 providers), Agents (customize names, roles, personality presets, and model assignments),
 Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
 Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and

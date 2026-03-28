@@ -9,6 +9,7 @@ const AUTONOMY_LABELS: Record<string, string> = {
   full: 'Full autonomy',
   semi: 'Semi-autonomous',
   supervised: 'Supervised',
+  locked: 'Locked',
 }
 
 const WORKFLOW_LABELS: Record<string, string> = {

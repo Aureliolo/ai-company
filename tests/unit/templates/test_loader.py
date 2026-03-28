@@ -121,6 +121,15 @@ class TestListTemplates:
             if t.name in BUILTIN_TEMPLATES:
                 assert t.source == "builtin"
 
+    def test_structural_metadata_populated(self) -> None:
+        """New structural fields are populated from template data."""
+        templates = list_templates()
+        for t in templates:
+            assert t.agent_count >= 0
+            assert t.department_count >= 0
+            assert t.autonomy_level in ("full", "semi", "supervised", "locked")
+            assert t.workflow  # non-empty string
+
     def test_user_template_overrides_builtin(
         self,
         tmp_path: Path,

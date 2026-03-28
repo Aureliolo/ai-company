@@ -640,8 +640,15 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
             providers: { ...s.providers, [data.name]: refreshed },
           }))
           return refreshed
-        } catch {
-          // Discovery is best-effort
+        } catch (discoveryErr) {
+          const msg = getErrorMessage(discoveryErr)
+          console.error('setup-wizard: model discovery failed for', data.name, msg)
+          set({
+            providersError:
+              `Provider '${data.name}' created but model ` +
+              `discovery failed: ${msg}. ` +
+              'Ensure the provider is running, then refresh.',
+          })
         }
       }
       return provider

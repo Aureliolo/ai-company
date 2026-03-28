@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import SeniorityLevel, SkillPattern
+from synthorg.core.enums import AutonomyLevel, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
@@ -134,11 +134,11 @@ class TemplateInfoResponse(BaseModel):
         ge=0,
         description="Number of departments defined in the template",
     )
-    autonomy_level: str = Field(
-        default="semi",
-        description="Autonomy level (full, semi, supervised)",
+    autonomy_level: AutonomyLevel = Field(
+        default=AutonomyLevel.SEMI,
+        description="Autonomy level (full, semi, supervised, locked)",
     )
-    workflow: str = Field(
+    workflow: NotBlankStr = Field(
         default="agile_kanban",
         description="Workflow type (agile_kanban, kanban, etc.)",
     )
@@ -179,9 +179,9 @@ class SetupAgentSummary(BaseModel):
     name: NotBlankStr
     role: NotBlankStr
     department: NotBlankStr
-    level: str = ""
-    model_provider: str = ""
-    model_id: str = ""
+    level: SeniorityLevel | None = None
+    model_provider: NotBlankStr | None = None
+    model_id: NotBlankStr | None = None
     tier: ModelTier = "medium"
     personality_preset: NotBlankStr | None = None
 
