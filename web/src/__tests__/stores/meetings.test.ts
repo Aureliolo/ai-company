@@ -277,6 +277,7 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
+    expect(debugSpy).toHaveBeenCalledOnce()
     debugSpy.mockRestore()
   })
 })
