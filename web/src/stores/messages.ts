@@ -6,6 +6,45 @@ import type { Channel, Message, WsEvent } from '@/api/types'
 
 const MESSAGES_FETCH_LIMIT = 50
 
+/** Validate a WS payload and return a typed Message, or null if malformed. */
+function parseWsMessage(
+  payload: WsEvent['payload'],
+): Message | null {
+  if (
+    !payload.message ||
+    typeof payload.message !== 'object' ||
+    Array.isArray(payload.message)
+  ) return null
+
+  const c = payload.message as Record<string, unknown>
+  if (
+    typeof c.id !== 'string' ||
+    typeof c.timestamp !== 'string' ||
+    typeof c.sender !== 'string' ||
+    typeof c.to !== 'string' ||
+    typeof c.channel !== 'string' ||
+    typeof c.content !== 'string' ||
+    typeof c.type !== 'string' ||
+    typeof c.priority !== 'string' ||
+    !Array.isArray(c.attachments) ||
+    !c.metadata ||
+    typeof c.metadata !== 'object' ||
+    Array.isArray(c.metadata)
+  ) {
+    console.error(
+      '[messages/ws] Malformed payload, skipping',
+      {
+        id: sanitizeForLog(c.id),
+        hasSender: typeof c.sender === 'string',
+        hasChannel: typeof c.channel === 'string',
+      },
+    )
+    return null
+  }
+
+  return c as unknown as Message
+}
+
 interface MessagesState {
   // Channels
   channels: Channel[]
@@ -125,41 +164,9 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
   },
 
   handleWsEvent: (event, activeChannel) => {
-    const { payload } = event
-    if (
-      !payload.message ||
-      typeof payload.message !== 'object' ||
-      Array.isArray(payload.message)
-    ) return
+    const message = parseWsMessage(event.payload)
+    if (!message) return
 
-    const candidate =
-      payload.message as Record<string, unknown>
-    if (
-      typeof candidate.id !== 'string' ||
-      typeof candidate.timestamp !== 'string' ||
-      typeof candidate.sender !== 'string' ||
-      typeof candidate.to !== 'string' ||
-      typeof candidate.channel !== 'string' ||
-      typeof candidate.content !== 'string' ||
-      typeof candidate.type !== 'string' ||
-      typeof candidate.priority !== 'string' ||
-      !Array.isArray(candidate.attachments) ||
-      !candidate.metadata ||
-      typeof candidate.metadata !== 'object' ||
-      Array.isArray(candidate.metadata)
-    ) {
-      console.error(
-        '[messages/ws] Malformed payload, skipping',
-        {
-          id: sanitizeForLog(candidate.id),
-          hasSender: typeof candidate.sender === 'string',
-          hasChannel: typeof candidate.channel === 'string',
-        },
-      )
-      return
-    }
-
-    const message = candidate as unknown as Message
     if (message.channel === activeChannel) {
       // Prepend to active channel (with dedup)
       set((s) => {
