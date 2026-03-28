@@ -783,8 +783,10 @@ class TestExtractTemplateDepartments:
     """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup import _load_template_safe
         from synthorg.api.controllers.setup_agents import departments_to_json
+        from synthorg.api.controllers.setup_helpers import (
+            load_template_safe as _load_template_safe,
+        )
 
         loaded = _load_template_safe("solo_founder")
         result = departments_to_json(loaded.template.departments)
@@ -794,7 +796,9 @@ class TestExtractTemplateDepartments:
         assert departments[0]["name"] in {"executive", "engineering"}
 
     def test_invalid_template(self) -> None:
-        from synthorg.api.controllers.setup import _load_template_safe
+        from synthorg.api.controllers.setup_helpers import (
+            load_template_safe as _load_template_safe,
+        )
         from synthorg.api.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
@@ -1291,7 +1295,9 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Code default resolves as non-DATABASE source, returns False."""
-        from synthorg.api.controllers.setup import _check_has_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            check_has_name_locales as _check_has_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1306,7 +1312,9 @@ class TestCheckHasNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup import _check_has_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            check_has_name_locales as _check_has_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1327,7 +1335,9 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises a generic exception."""
-        from synthorg.api.controllers.setup import _check_has_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            check_has_name_locales as _check_has_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1347,7 +1357,9 @@ class TestCheckHasNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup import _check_has_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            check_has_name_locales as _check_has_name_locales,
+        )
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
@@ -1373,7 +1385,9 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """When DB key is absent, code default ["__all__"] resolves to all."""
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
         from synthorg.templates.locales import ALL_LATIN_LOCALES
 
         app_state = test_client.app.state.app_state
@@ -1390,7 +1404,9 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
         from synthorg.settings.errors import SettingNotFoundError
 
         app_state = test_client.app.state.app_state
@@ -1410,7 +1426,9 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1430,7 +1448,9 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1450,7 +1470,9 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1470,7 +1492,9 @@ class TestReadNameLocales:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1491,7 +1515,9 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, the __all__ sentinel passes through raw."""
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1515,7 +1541,9 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """With resolve=False, invalid codes are not filtered out."""
-        from synthorg.api.controllers.setup import _read_name_locales
+        from synthorg.api.controllers.setup_helpers import (
+            read_name_locales as _read_name_locales,
+        )
 
         app_state = test_client.app.state.app_state
         settings_svc = app_state.settings_service
@@ -1533,3 +1561,120 @@ class TestReadNameLocales:
             assert result == ["en_US", "invalid_XX"]
         finally:
             repo._store.pop(("company", "name_locales"), None)
+
+
+@pytest.mark.unit
+class TestUpdateAgentPersonality:
+    """PUT /api/v1/setup/agents/{index}/personality -- update personality."""
+
+    def test_update_personality_happy_path(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Updating an agent's personality persists the new preset."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            # Create company with template to get agents.
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Personality Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/personality",
+                json={"personality_preset": "visionary_leader"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["personality_preset"] == "visionary_leader"
+
+            # Verify persistence.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["personality_preset"] == "visionary_leader"
+        finally:
+            app_state._provider_management = original
+
+    def test_update_personality_invalid_preset(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Invalid personality preset name is rejected with 400."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Invalid Preset Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/personality",
+                json={"personality_preset": "nonexistent_preset"},
+            )
+            assert resp.status_code == 400
+        finally:
+            app_state._provider_management = original
+
+    def test_update_personality_out_of_range(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Out-of-range agent index returns 404."""
+        resp = test_client.put(
+            "/api/v1/setup/agents/999/personality",
+            json={"personality_preset": "visionary_leader"},
+        )
+        assert resp.status_code == 404
+
+    def test_update_personality_after_complete(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Updating personality after setup is complete returns 409."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("api", "setup_complete")] = ("true", now)
+        try:
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/personality",
+                json={"personality_preset": "visionary_leader"},
+            )
+            assert resp.status_code == 409
+        finally:
+            repo._store.pop(("api", "setup_complete"), None)
+
+
+@pytest.mark.unit
+class TestListPersonalityPresets:
+    """GET /api/v1/setup/personality-presets -- list personality presets."""
+
+    def test_list_presets_returns_non_empty(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Personality presets endpoint returns a non-empty list."""
+        resp = test_client.get("/api/v1/setup/personality-presets")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        presets = body["data"]["presets"]
+        assert len(presets) >= 1
+
+    def test_list_presets_field_shape(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Each preset has ``name`` and ``description`` fields."""
+        resp = test_client.get("/api/v1/setup/personality-presets")
+        body = resp.json()
+        for preset in body["data"]["presets"]:
+            assert "name" in preset
+            assert "description" in preset
+            assert isinstance(preset["name"], str)
+            assert isinstance(preset["description"], str)
+            assert preset["name"].strip() != ""

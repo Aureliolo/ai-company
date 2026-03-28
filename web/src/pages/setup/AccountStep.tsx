@@ -1,12 +1,13 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
+import { getSetupStatus } from '@/api/endpoints/setup'
 import { cn } from '@/lib/utils'
 
-const MIN_PASSWORD_LENGTH = 12
+const DEFAULT_MIN_PASSWORD_LENGTH = 12
 
 export function AccountStep() {
   const [username, setUsername] = useState('')
@@ -14,10 +15,24 @@ export function AccountStep() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [minPasswordLength, setMinPasswordLength] = useState(DEFAULT_MIN_PASSWORD_LENGTH)
 
   const authSetup = useAuthStore((s) => s.setup)
   const setAccountCreated = useSetupWizardStore((s) => s.setAccountCreated)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
+
+  // Read backend-configured min password length
+  useEffect(() => {
+    getSetupStatus()
+      .then((status) => {
+        setMinPasswordLength(
+          status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH,
+        )
+      })
+      .catch(() => {
+        // Fall back to default on error
+      })
+  }, [])
 
   const strength = getPasswordStrength(password)
 
@@ -27,8 +42,8 @@ export function AccountStep() {
       setError('Username is required')
       return
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+    if (password.length < minPasswordLength) {
+      setError(`Password must be at least ${minPasswordLength} characters`)
       return
     }
     // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation of user's own input
@@ -47,7 +62,7 @@ export function AccountStep() {
     } finally {
       setLoading(false)
     }
-  }, [username, password, confirmPassword, authSetup, setAccountCreated, markStepComplete])
+  }, [username, password, confirmPassword, minPasswordLength, authSetup, setAccountCreated, markStepComplete])
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -75,9 +90,9 @@ export function AccountStep() {
             required
             value={password}
             onChange={(e) => setPassword(e.currentTarget.value)}
-            placeholder={`Min ${MIN_PASSWORD_LENGTH} characters`}
+            placeholder={`Min ${minPasswordLength} characters`}
             disabled={loading}
-            hint={`Min ${MIN_PASSWORD_LENGTH} characters`}
+            hint={`Min ${minPasswordLength} characters`}
           />
           {password.length > 0 && (
             <div className="flex items-center gap-2">

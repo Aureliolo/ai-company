@@ -14,6 +14,10 @@ interface ModeOptionProps {
   onClick: () => void
 }
 
+const SELECTED_SHADOW =
+  'shadow-[0_0_12px_color-mix(' +
+  'in_srgb,var(--so-accent)_15%,transparent)]'
+
 function ModeOption({ icon: Icon, title, description, recommended, selected, onClick }: ModeOptionProps) {
   return (
     <button
@@ -22,7 +26,7 @@ function ModeOption({ icon: Icon, title, description, recommended, selected, onC
       className={cn(
         'flex flex-col items-center gap-4 rounded-lg border p-8 text-center transition-colors',
         selected
-          ? 'border-accent bg-accent/5 shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]'
+          ? `border-accent bg-accent/5 ${SELECTED_SHADOW}`
           : 'border-border bg-card hover:bg-card-hover',
       )}
     >
@@ -54,7 +58,9 @@ export function WizardModeStep() {
   const setWizardMode = useSetupWizardStore((s) => s.setWizardMode)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
 
-  // Mode step is complete once a selection is made (default is 'guided')
+  // Mark mode step complete immediately: the default mode ('guided')
+  // is a valid selection, so Continue is enabled on mount. Switching
+  // mode also calls markStepComplete in handleSelect.
   useEffect(() => {
     markStepComplete('mode')
   }, [markStepComplete])

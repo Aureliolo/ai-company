@@ -91,7 +91,7 @@ export function ProviderAddForm({ presets, providers, onAdd }: ProviderAddFormPr
           <div className="flex gap-2">
             <Button
               size="sm"
-              onClick={handleAdd}
+              onClick={() => void handleAdd()}
               disabled={adding || !providerName.trim() || !selectedPreset || nameConflict}
             >
               {adding ? 'Creating...' : 'Create Provider'}

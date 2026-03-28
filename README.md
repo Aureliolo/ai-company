@@ -107,7 +107,7 @@ synthorg wipe       # factory-reset with interactive backup and restart prompts
 synthorg cleanup    # remove old container images
 ```
 
-Open [http://localhost:3000](http://localhost:3000) after `synthorg start` -- on a fresh install, the **setup wizard** guides you through creating an admin account (if needed), choosing a company template, naming your company, customizing agents, configuring LLM providers, setting theme preferences, and reviewing the organization before launch.
+Open [http://localhost:3000](http://localhost:3000) after `synthorg start` -- on a fresh install, the **setup wizard** starts with an admin account (if needed), then asks you to choose **Guided Setup** (template, company, providers, agents with personality presets, theme, and review) or **Quick Setup** (company name + provider only, configure the rest later in Settings). Providers are configured before agents so model assignment is available during agent customization.
 
 ### Development (from source)
 

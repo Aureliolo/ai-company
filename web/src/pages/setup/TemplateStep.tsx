@@ -31,7 +31,7 @@ export function TemplateStep() {
 
   useEffect(() => {
     if (templates.length === 0 && !templatesLoading && !templatesError) {
-      fetchTemplates()
+      void fetchTemplates()
     }
   }, [templates.length, templatesLoading, templatesError, fetchTemplates])
 
@@ -118,7 +118,7 @@ export function TemplateStep() {
       <EmptyState
         title="Failed to load templates"
         description={templatesError}
-        action={{ label: 'Retry', onClick: fetchTemplates }}
+        action={{ label: 'Retry', onClick: () => void fetchTemplates() }}
       />
     )
   }

@@ -9,6 +9,41 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
 
+def _normalize_and_validate_preset(
+    raw: object,
+    fallback: str = "",
+) -> str:
+    """Normalize *raw* to a valid personality preset key.
+
+    Args:
+        raw: Raw preset value from the request payload.
+        fallback: Default key when *raw* is falsy.
+
+    Returns:
+        Normalized lowercase preset key.
+
+    Raises:
+        ValueError: If the resolved key is not in ``PERSONALITY_PRESETS``.
+    """
+    from synthorg.templates.presets import (  # noqa: PLC0415
+        PERSONALITY_PRESETS,
+    )
+
+    if not raw or not str(raw).strip():
+        if not fallback:
+            msg = "personality_preset is required"
+            raise ValueError(msg)
+        key = fallback
+    else:
+        key = str(raw).strip().lower()
+
+    if key not in PERSONALITY_PRESETS:
+        available = sorted(PERSONALITY_PRESETS)
+        msg = f"Unknown personality preset {raw!r}. Available: {available}"
+        raise ValueError(msg)
+    return key
+
+
 class SetupStatusResponse(BaseModel):
     """First-run setup status.
 
@@ -189,15 +224,11 @@ class SetupAgentRequest(BaseModel):
     @classmethod
     def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Normalize and validate the personality preset before construction."""
-        from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
-
         raw = values.get("personality_preset", "pragmatic_builder")
-        key = str(raw).strip().lower() if raw else "pragmatic_builder"
-        if key not in PERSONALITY_PRESETS:
-            available = sorted(PERSONALITY_PRESETS)
-            msg = f"Unknown personality preset {raw!r}. Available: {available}"
-            raise ValueError(msg)
-        values["personality_preset"] = key
+        values["personality_preset"] = _normalize_and_validate_preset(
+            raw,
+            fallback="pragmatic_builder",
+        )
         return values
 
 
@@ -263,15 +294,8 @@ class UpdateAgentPersonalityRequest(BaseModel):
     @classmethod
     def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Normalize and validate the personality preset."""
-        from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
-
-        raw = values.get("personality_preset", "")
-        key = str(raw).strip().lower() if raw else ""
-        if key not in PERSONALITY_PRESETS:
-            available = sorted(PERSONALITY_PRESETS)
-            msg = f"Unknown personality preset {raw!r}. Available: {available}"
-            raise ValueError(msg)
-        values["personality_preset"] = key
+        raw = values.get("personality_preset")
+        values["personality_preset"] = _normalize_and_validate_preset(raw)
         return values
 
 
@@ -283,7 +307,7 @@ class PersonalityPresetInfoResponse(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr
     description: str = ""
@@ -296,7 +320,7 @@ class PersonalityPresetsListResponse(BaseModel):
         presets: Preset summaries.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     presets: tuple[PersonalityPresetInfoResponse, ...]
 

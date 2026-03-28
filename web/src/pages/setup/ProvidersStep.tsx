@@ -131,7 +131,7 @@ export function ProvidersStep() {
           <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
             {providersError}
           </div>
-          <Button variant="outline" size="sm" onClick={() => { fetchedRef.current = false; void fetchProviders() }}>
+          <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
             Retry
           </Button>
         </div>

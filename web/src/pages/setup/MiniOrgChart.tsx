@@ -17,6 +17,14 @@ const MIN_HEIGHT = 140
 /** Maximum height cap for very large teams. */
 const MAX_HEIGHT = 500
 
+/** Layout constants. */
+const SMALL_TEAM_THRESHOLD = 5
+const LARGE_AVATAR_RADIUS = 16
+const SMALL_AVATAR_RADIUS = 14
+const LARGE_NODE_WIDTH = 110
+const SMALL_NODE_WIDTH = 90
+const AGENT_SPACING_GAP = 10
+
 function getInitials(name: string): string {
   return name
     .split(/\s+/)
@@ -91,9 +99,11 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   if (agents.length === 0) return null
 
   // Scale node sizes based on team size
-  const isSmallTeam = agents.length <= 5
-  const avatarRadius = isSmallTeam ? 16 : 14
-  const nodeWidth = isSmallTeam ? 110 : 90
+  const isSmallTeam = agents.length <= SMALL_TEAM_THRESHOLD
+  const avatarRadius = isSmallTeam
+    ? LARGE_AVATAR_RADIUS : SMALL_AVATAR_RADIUS
+  const nodeWidth = isSmallTeam
+    ? LARGE_NODE_WIDTH : SMALL_NODE_WIDTH
   const nodeHeight = 36
   const hGap = isSmallTeam ? 40 : 28
   const vGap = isSmallTeam ? 60 : 50
@@ -101,7 +111,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   // Layout calculation
   const maxAgentsInDept = Math.max(...departments.map((d) => d.agents.length), 1)
   const deptWidths = departments.map((d) =>
-    Math.max(nodeWidth, d.agents.length * (avatarRadius * 2 + 10)),
+    Math.max(nodeWidth, d.agents.length * (avatarRadius * 2 + AGENT_SPACING_GAP)),
   )
   const totalWidth = deptWidths.reduce((sum, w) => sum + w + hGap, 0) - hGap
   const svgWidth = Math.max(totalWidth + 40, 300)
@@ -172,7 +182,9 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
 
             {/* Agent nodes */}
             {pos.dept.agents.map((agent, agentIdx) => {
-              const agentX = pos.x + (agentIdx - (pos.dept.agents.length - 1) / 2) * (avatarRadius * 2 + 10)
+              const agentSpacing = avatarRadius * 2 + AGENT_SPACING_GAP
+              const centerOffset = agentIdx - (pos.dept.agents.length - 1) / 2
+              const agentX = pos.x + centerOffset * agentSpacing
               const agentY = pos.y + vGap
 
               return (

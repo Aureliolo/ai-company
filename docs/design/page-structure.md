@@ -143,7 +143,7 @@ Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or
 
 #### Setup Wizard (`/setup`)
 
-Multi-step first-run flow. After account creation (conditional), a mode selection gate asks the user to choose **Guided Setup** (recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure rest later in Settings). Guided mode steps: mode selection, template selection, company creation, provider setup, agent configuration, theme customization, and completion. Quick mode steps: mode selection, company creation, provider setup, and completion. Providers are configured before agents so model assignment is available. Each step is URL-addressable (`/setup/{step}`). The mode selection step is hidden from the progress bar. Redirects to `/` if setup is already complete.
+Multi-step first-run flow. After account creation (conditional), a mode selection gate asks the user to choose **Guided Setup** (recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure rest later in Settings). Guided mode steps: account (conditional), mode selection, template selection, company creation, provider setup, agent configuration, theme customization, and completion. Quick mode steps: account (conditional), mode selection, company creation, provider setup, and completion. Providers are configured before agents so model assignment is available. Each step is URL-addressable (`/setup/{step}`). The mode selection step is hidden from the progress bar. Redirects to `/` if setup is already complete.
 
 **API endpoints**: `GET /setup/status`, `GET /setup/templates`, `POST /setup/company`, `POST /setup/agent`, `GET /setup/agents`, `PUT /setup/agents/{agent_index}/name`, `PUT /setup/agents/{agent_index}/model`, `PUT /setup/agents/{agent_index}/personality`, `POST /setup/agents/{agent_index}/randomize-name`, `GET /setup/personality-presets`, `GET /setup/name-locales/available`, `GET /setup/name-locales`, `PUT /setup/name-locales`, `POST /setup/complete`
 
@@ -219,7 +219,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
-| `/setup/:step` | Setup Wizard step | `account` (conditional), `mode`, `template`, `company`, `providers`, `agents`, `theme`, `complete` (guided); `mode`, `company`, `providers`, `complete` (quick) |
+| `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `company`, `providers`, `agents`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `company`, `providers`, `complete` |
 | `/org` | Org Chart | Read-only visualization |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
 | `/tasks` | Task Board | Kanban default |

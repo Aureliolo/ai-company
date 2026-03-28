@@ -81,7 +81,13 @@ export function CompanyStep() {
           value={companyName}
           onChange={(e) => setCompanyName(e.currentTarget.value)}
           placeholder="Your organization name"
-          error={companyName.trim() === '' ? null : companyName.trim().length > 200 ? 'Max 200 characters' : null}
+          error={
+            companyName.trim() === ''
+              ? null
+              : companyName.trim().length > 200
+                ? 'Max 200 characters'
+                : null
+          }
         />
 
         <InputField
@@ -162,8 +168,9 @@ export function CompanyStep() {
         <div className="rounded-lg border border-border bg-card p-4">
           <h3 className="mb-2 text-sm font-semibold text-foreground">Generated Agents</h3>
           <ul className="space-y-1 text-xs text-muted-foreground">
-            {agents.map((agent) => (
-              <li key={agent.name}>
+            {agents.map((agent, index) => (
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
+              <li key={`${agent.name}-${index}`}>
                 {agent.name} ({agent.department}) - {agent.tier} model
               </li>
             ))}

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
-interface StatPillProps {
-  label: string
+export interface StatPillProps {
+  label?: string
   value: string | number
   className?: string
 }

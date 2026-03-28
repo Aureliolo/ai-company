@@ -33,12 +33,21 @@ export function AgentsStep() {
     }
   }, [agents.length, agentsLoading, agentsError, fetchAgents])
 
-  // Fetch personality presets on mount
+  // Fetch personality presets on mount (stop on error to avoid loop)
   useEffect(() => {
-    if (personalityPresets.length === 0 && !personalityPresetsLoading) {
+    if (
+      personalityPresets.length === 0 &&
+      !personalityPresetsLoading &&
+      !personalityPresetsError
+    ) {
       void fetchPersonalityPresets()
     }
-  }, [personalityPresets.length, personalityPresetsLoading, fetchPersonalityPresets])
+  }, [
+    personalityPresets.length,
+    personalityPresetsLoading,
+    personalityPresetsError,
+    fetchPersonalityPresets,
+  ])
 
   // Track step completion
   useEffect(() => {
@@ -128,8 +137,17 @@ export function AgentsStep() {
       )}
 
       {personalityPresetsError && (
-        <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
-          Failed to load personality presets. Agents can still be configured without them.
+        <div className="space-y-2">
+          <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
+            Failed to load personality presets. Agents can still be configured without them.
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchPersonalityPresets()}
+          >
+            Retry Presets
+          </Button>
         </div>
       )}
 

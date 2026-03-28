@@ -57,7 +57,7 @@ export function TemplateCard({
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <StatPill label="" value={category} className="text-compact" />
+          <StatPill value={category} className="text-compact" />
         </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
       </div>
@@ -65,7 +65,7 @@ export function TemplateCard({
       {/* Tags */}
       <div className="flex flex-wrap gap-1">
         {template.tags.map((tag) => (
-          <StatPill key={tag} label="" value={tag} className="text-compact" />
+          <StatPill key={tag} value={tag} className="text-compact" />
         ))}
       </div>
 

@@ -49,7 +49,8 @@ export type WizardMode = 'guided' | 'quick'
 
 /** Guided mode: full step order with providers before agents. */
 const GUIDED_STEP_ORDER: readonly WizardStep[] = [
-  'mode', 'template', 'company', 'providers', 'agents', 'theme', 'complete',
+  'mode', 'template', 'company',
+  'providers', 'agents', 'theme', 'complete',
 ]
 
 /** Quick mode: minimal steps (skip template, agents, theme). */
@@ -59,7 +60,8 @@ const QUICK_STEP_ORDER: readonly WizardStep[] = [
 
 /** Guided mode with account creation first. */
 const GUIDED_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
-  'account', 'mode', 'template', 'company', 'providers', 'agents', 'theme', 'complete',
+  'account', 'mode', 'template', 'company',
+  'providers', 'agents', 'theme', 'complete',
 ]
 
 /** Quick mode with account creation first. */
@@ -67,11 +69,18 @@ const QUICK_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
   'account', 'mode', 'company', 'providers', 'complete',
 ]
 
-function getStepOrder(needsAdmin: boolean, mode: WizardMode): readonly WizardStep[] {
+function getStepOrder(
+  needsAdmin: boolean,
+  mode: WizardMode,
+): readonly WizardStep[] {
   if (needsAdmin) {
-    return mode === 'guided' ? GUIDED_STEP_ORDER_WITH_ACCOUNT : QUICK_STEP_ORDER_WITH_ACCOUNT
+    return mode === 'guided'
+      ? GUIDED_STEP_ORDER_WITH_ACCOUNT
+      : QUICK_STEP_ORDER_WITH_ACCOUNT
   }
-  return mode === 'guided' ? GUIDED_STEP_ORDER : QUICK_STEP_ORDER
+  return mode === 'guided'
+    ? GUIDED_STEP_ORDER
+    : QUICK_STEP_ORDER
 }
 
 export type ThemeSettings = {
@@ -316,7 +325,26 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   setWizardMode(mode) {
     const { needsAdmin } = get()
     const stepOrder = getStepOrder(needsAdmin, mode)
-    set({ wizardMode: mode, stepOrder })
+    set((s) => ({
+      wizardMode: mode,
+      stepOrder,
+      // Clear template-derived state in quick mode to
+      // prevent stale selectedTemplate from being sent.
+      selectedTemplate: mode === 'quick'
+        ? null : s.selectedTemplate,
+      comparedTemplates: mode === 'quick'
+        ? [] : s.comparedTemplates,
+      templateVariables: mode === 'quick'
+        ? {} : s.templateVariables,
+      stepsCompleted: mode === 'quick'
+        ? {
+            ...s.stepsCompleted,
+            template: false,
+            agents: false,
+            theme: false,
+          }
+        : s.stepsCompleted,
+    }))
   },
 
   // -- Template --
@@ -526,8 +554,19 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
             providers: { ...s.providers, [name]: refreshed },
           }))
         } catch (discoveryErr) {
-          // Discovery is best-effort; provider was still created.
-          console.error('setup-wizard: post-creation model discovery failed for', name, discoveryErr)
+          // Discovery is best-effort; provider was created but
+          // user should know models could not be discovered.
+          const msg = getErrorMessage(discoveryErr)
+          console.error(
+            'setup-wizard: model discovery failed for',
+            name, msg,
+          )
+          set({
+            providersError:
+              `Provider '${name}' created but model` +
+              ` discovery failed: ${msg}. ` +
+              'Try the re-probe button.',
+          })
         }
       }
     } catch (err) {

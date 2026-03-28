@@ -52,7 +52,7 @@ export function SetupAgentCard({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={() => onRandomizeName(index)}
+            onClick={() => void onRandomizeName(index)}
             aria-label="Randomize name"
           >
             <Dices className="size-3.5" />
@@ -71,7 +71,7 @@ export function SetupAgentCard({
           label="Personality"
           options={personalityOptions}
           value={agent.personality_preset ?? ''}
-          onChange={(val) => onPersonalityChange(index, val)}
+          onChange={(val) => { void onPersonalityChange(index, val) }}
           placeholder={personalityPresets.length === 0 ? 'Loading presets...' : 'Select personality...'}
         />
 
