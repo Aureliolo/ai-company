@@ -40,7 +40,7 @@ import { useToastStore } from '@/stores/toast'
 
 type ViewMode = 'gui' | 'code'
 
-const NAMESPACE_ICONS: Record<string, React.ReactNode> = {
+const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   api: <Globe className="size-4" />,
   memory: <Brain className="size-4" />,
   budget: <Wallet className="size-4" />,

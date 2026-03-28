@@ -74,7 +74,7 @@ export default function SettingsNamespacePage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button asChild variant="ghost" size="icon">
+          <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
             <Link to={ROUTES.SETTINGS}><ArrowLeft className="size-4" /></Link>
           </Button>
           <h1 className="text-lg font-semibold text-foreground">Settings</h1>
@@ -94,7 +94,7 @@ export default function SettingsNamespacePage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button asChild variant="ghost" size="icon">
+          <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
             <Link to={ROUTES.SETTINGS}><ArrowLeft className="size-4" /></Link>
           </Button>
           <h1 className="text-lg font-semibold text-foreground">{displayName} Settings</h1>

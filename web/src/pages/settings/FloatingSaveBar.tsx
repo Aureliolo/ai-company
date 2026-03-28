@@ -32,7 +32,11 @@ export function FloatingSaveBar({
           </span>
 
           {saveError && (
-            <span className="text-xs text-danger" role="alert" aria-live="assertive">
+            <span
+              className="max-w-[40ch] break-words text-xs text-danger"
+              role="alert"
+              aria-live="assertive"
+            >
               {saveError}
             </span>
           )}

@@ -16,9 +16,11 @@ export function DependencyIndicator({ dependents, className }: DependencyIndicat
     <span
       className={cn('inline-flex items-center text-text-muted', className)}
       title={tooltip}
+      tabIndex={0}
+      role="note"
+      aria-label={tooltip}
     >
       <Link2 className="size-3" aria-hidden />
-      <span className="sr-only">{tooltip}</span>
     </span>
   )
 }

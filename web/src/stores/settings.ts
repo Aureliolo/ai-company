@@ -117,7 +117,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const entries = await settingsApi.getAllSettings()
     // Re-check: a save may have started during the fetch
     if (get().savingKeys.size > 0) return
-    const patch: Partial<SettingsState> = { entries }
+    const patch: Partial<SettingsState> = { entries, error: null }
     const c = deriveCurrency(entries)
     if (c) patch.currency = c
     set(patch)
@@ -191,6 +191,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         }
         if (refreshedEntries) {
           update.entries = refreshedEntries
+          update.error = null
           // Keep standalone currency in sync after reset
           if (ns === 'budget' && key === 'currency') {
             const c = deriveCurrency(refreshedEntries)
