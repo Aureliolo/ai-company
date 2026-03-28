@@ -69,6 +69,7 @@ export default function SettingsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('gui')
   const [dirtyValues, setDirtyValues] = useState<Map<string, string>>(() => new Map())
   const [showAdvancedWarning, setShowAdvancedWarning] = useState(false)
+  const [codeDirty, setCodeDirty] = useState(false)
 
   // Filter entries: exclude hidden, filter by level, filter by search
   const filteredByNamespace = useMemo(() => {
@@ -246,7 +247,13 @@ export default function SettingsPage() {
           <ToggleField
             label="Code"
             checked={viewMode === 'code'}
-            onChange={(v) => setViewMode(v ? 'code' : 'gui')}
+            onChange={(v) => {
+              if (!v && codeDirty) {
+                if (!window.confirm('You have unsaved code editor changes. Discard them?')) return
+                setCodeDirty(false)
+              }
+              setViewMode(v ? 'code' : 'gui')
+            }}
           />
           <ToggleField
             label="Advanced"
@@ -290,7 +297,7 @@ export default function SettingsPage() {
 
       {viewMode === 'code' ? (
         <ErrorBoundary level="section">
-          <CodeEditorPanel entries={codeEntries} onSave={handleCodeSave} saving={saving} />
+          <CodeEditorPanel entries={codeEntries} onSave={handleCodeSave} saving={saving} onDirtyChange={setCodeDirty} />
         </ErrorBoundary>
       ) : (
         <>

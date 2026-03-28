@@ -5,19 +5,21 @@ import type { SettingEntry } from '@/api/types'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
+interface NamespaceSettingRowProps {
+  entry: SettingEntry
+  dirtyValues: ReadonlyMap<string, string>
+  onValueChange: (ck: string, v: string) => void
+  savingKeys: ReadonlySet<string>
+  controllerDisabledMap: ReadonlyMap<string, boolean>
+}
+
 function NamespaceSettingRow({
   entry,
   dirtyValues,
   onValueChange,
   savingKeys,
   controllerDisabledMap,
-}: {
-  entry: SettingEntry
-  dirtyValues: ReadonlyMap<string, string>
-  onValueChange: (ck: string, v: string) => void
-  savingKeys: ReadonlySet<string>
-  controllerDisabledMap: ReadonlyMap<string, boolean>
-}) {
+}: NamespaceSettingRowProps) {
   const ck = `${entry.definition.namespace}/${entry.definition.key}`
   return (
     <ErrorBoundary key={ck} level="component">

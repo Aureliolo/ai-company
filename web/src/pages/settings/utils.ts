@@ -5,8 +5,12 @@ import { SETTING_DEPENDENCIES } from '@/utils/constants'
  * Fuzzy subsequence match: returns true if every character of `needle`
  * appears in `haystack` in order. E.g. "prt" matches "server_port".
  */
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[_-]/g, ' ')
+}
+
 function fuzzyMatch(haystack: string, needle: string): boolean {
-  const h = haystack.toLowerCase()
+  const h = normalize(haystack)
   let j = 0
   for (let i = 0; i < h.length && j < needle.length; i++) {
     if (h[i] === needle[j]) j++
@@ -16,7 +20,7 @@ function fuzzyMatch(haystack: string, needle: string): boolean {
 
 /** Fuzzy match across setting key, description, namespace, and group. */
 export function matchesSetting(entry: SettingEntry, query: string): boolean {
-  const q = query.trim().toLowerCase()
+  const q = normalize(query.trim())
   if (!q) return true
   const def = entry.definition
   return (
