@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import ApprovalsPage from '@/pages/ApprovalsPage'
 import { makeApproval } from '../helpers/factories'
@@ -97,9 +97,9 @@ describe('ApprovalsPage', () => {
       selectedIds: new Set(),
     }
     renderPage()
-    // Risk group section headings confirm groups rendered for populated levels
-    expect(screen.getByText('Critical Approvals')).toBeInTheDocument()
-    expect(screen.getByText('High Approvals')).toBeInTheDocument()
+    // MetricCard renders label + value; verify counts are displayed
+    expect(screen.getByText('2')).toBeInTheDocument() // 2 critical pending
+    expect(screen.getByText('1')).toBeInTheDocument() // 1 high pending
   })
 
   it('renders approval cards grouped by risk level', () => {
@@ -112,10 +112,11 @@ describe('ApprovalsPage', () => {
       selectedIds: new Set(),
     }
     renderPage()
-    expect(screen.getByText('Deploy prod')).toBeInTheDocument()
-    expect(screen.getByText('Push to main')).toBeInTheDocument()
-    expect(screen.getByText('Critical Approvals')).toBeInTheDocument()
-    expect(screen.getByText('High Approvals')).toBeInTheDocument()
+    // Verify each card appears under the correct risk group section
+    const criticalSection = screen.getByText('Critical Approvals').closest('section') ?? screen.getByText('Critical Approvals').parentElement!.parentElement!
+    expect(within(criticalSection as HTMLElement).getByText('Deploy prod')).toBeInTheDocument()
+    const highSection = screen.getByText('High Approvals').closest('section') ?? screen.getByText('High Approvals').parentElement!.parentElement!
+    expect(within(highSection as HTMLElement).getByText('Push to main')).toBeInTheDocument()
   })
 
   it('does not render skeleton when loading with existing data', () => {
