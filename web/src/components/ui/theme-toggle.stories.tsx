@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { useThemeStore } from '@/stores/theme'
 import { ThemeToggle } from './theme-toggle'
@@ -21,11 +22,19 @@ type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
 
+function PopoverOpenDecorator({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    useThemeStore.getState().setPopoverOpen(true)
+  }, [])
+  return <>{children}</>
+}
+
 export const PopoverOpen: Story = {
   decorators: [
-    (Story) => {
-      useThemeStore.getState().setPopoverOpen(true)
-      return <Story />
-    },
+    (Story) => (
+      <PopoverOpenDecorator>
+        <Story />
+      </PopoverOpenDecorator>
+    ),
   ],
 }

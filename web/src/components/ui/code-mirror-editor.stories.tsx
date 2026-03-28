@@ -70,9 +70,11 @@ export const Empty: Story = {
   },
 }
 
-// Note: CodeMirrorEditor has no distinct error state. Parse errors are
-// displayed externally by the parent (e.g. CodeEditorPanel) -- the editor
-// itself renders text as-is regardless of validity.
+// Note: CodeMirrorEditor has no hover, loading, or error states.
+// It is a text editor -- hover styling is handled by CodeMirror's internal
+// focus/cursor management. Loading is not applicable (editor renders
+// synchronously). Parse errors are displayed externally by the parent
+// (e.g. CodeEditorPanel) -- the editor itself renders text as-is.
 
 export const Interactive: Story = {
   args: {

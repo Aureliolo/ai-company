@@ -16,7 +16,19 @@ import {
 import { ROUTES } from '@/router/routes'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
-import { useThemeStore } from '@/stores/theme'
+import {
+  useThemeStore,
+  COLOR_PALETTES,
+  DENSITIES,
+  TYPOGRAPHIES,
+  ANIMATION_PRESETS,
+  SIDEBAR_MODES,
+  type ColorPalette,
+  type Density,
+  type Typography,
+  type AnimationPreset,
+  type SidebarMode,
+} from '@/stores/theme'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { CommandPalette } from '@/components/ui/command-palette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -61,34 +73,49 @@ export default function AppLayout() {
   )
   useRegisterCommands(globalCommands)
 
-  const themeCommands: CommandItem[] = useMemo(
-    () => [
+  const themeCommands: CommandItem[] = useMemo(() => {
+    const PALETTE_META: Record<ColorPalette, { label: string; keywords: string[] }> = {
+      'warm-ops': { label: 'Warm Ops', keywords: ['blue'] },
+      'ice-station': { label: 'Ice Station', keywords: ['green', 'mint'] },
+      stealth: { label: 'Stealth', keywords: ['purple', 'violet'] },
+      signal: { label: 'Signal', keywords: ['orange', 'amber'] },
+      neon: { label: 'Neon', keywords: ['cyan'] },
+    }
+    const DENSITY_META: Record<Density, { label: string; keywords: string[] }> = {
+      dense: { label: 'Dense', keywords: ['compact', 'tight'] },
+      balanced: { label: 'Balanced', keywords: ['default'] },
+      medium: { label: 'Medium', keywords: [] },
+      sparse: { label: 'Sparse', keywords: ['spacious'] },
+    }
+    const TYPOGRAPHY_META: Record<Typography, { label: string }> = {
+      geist: { label: 'Geist' },
+      jetbrains: { label: 'JetBrains + Inter' },
+      'ibm-plex': { label: 'IBM Plex' },
+    }
+    const ANIMATION_META: Record<AnimationPreset, { label: string; keywords: string[] }> = {
+      minimal: { label: 'Minimal', keywords: ['reduced'] },
+      spring: { label: 'Spring', keywords: ['bouncy'] },
+      instant: { label: 'Instant', keywords: ['none'] },
+      'status-driven': { label: 'Status-driven', keywords: [] },
+      aggressive: { label: 'Aggressive', keywords: ['energy'] },
+    }
+    const SIDEBAR_META: Record<SidebarMode, { label: string; keywords: string[] }> = {
+      rail: { label: 'Rail', keywords: ['icons'] },
+      collapsible: { label: 'Collapsible', keywords: ['default'] },
+      hidden: { label: 'Hidden', keywords: ['full'] },
+      persistent: { label: 'Persistent', keywords: ['always'] },
+      compact: { label: 'Compact', keywords: ['narrow'] },
+    }
+
+    return [
       { id: 'theme-open', label: 'Open theme preferences', icon: Palette, action: () => useThemeStore.getState().setPopoverOpen(true), group: 'Theme', keywords: ['theme', 'appearance', 'customize'] },
-      { id: 'theme-warm-ops', label: 'Theme: Warm Ops', action: () => useThemeStore.getState().setColorPalette('warm-ops'), group: 'Theme', keywords: ['color', 'palette', 'blue'] },
-      { id: 'theme-ice-station', label: 'Theme: Ice Station', action: () => useThemeStore.getState().setColorPalette('ice-station'), group: 'Theme', keywords: ['color', 'palette', 'green', 'mint'] },
-      { id: 'theme-stealth', label: 'Theme: Stealth', action: () => useThemeStore.getState().setColorPalette('stealth'), group: 'Theme', keywords: ['color', 'palette', 'purple', 'violet'] },
-      { id: 'theme-signal', label: 'Theme: Signal', action: () => useThemeStore.getState().setColorPalette('signal'), group: 'Theme', keywords: ['color', 'palette', 'orange', 'amber'] },
-      { id: 'theme-neon', label: 'Theme: Neon', action: () => useThemeStore.getState().setColorPalette('neon'), group: 'Theme', keywords: ['color', 'palette', 'cyan'] },
-      { id: 'density-dense', label: 'Set density: Dense', action: () => useThemeStore.getState().setDensity('dense'), group: 'Theme', keywords: ['compact', 'tight', 'density'] },
-      { id: 'density-balanced', label: 'Set density: Balanced', action: () => useThemeStore.getState().setDensity('balanced'), group: 'Theme', keywords: ['default', 'density'] },
-      { id: 'density-medium', label: 'Set density: Medium', action: () => useThemeStore.getState().setDensity('medium'), group: 'Theme', keywords: ['density'] },
-      { id: 'density-sparse', label: 'Set density: Sparse', action: () => useThemeStore.getState().setDensity('sparse'), group: 'Theme', keywords: ['spacious', 'density'] },
-      { id: 'font-geist', label: 'Font: Geist', action: () => useThemeStore.getState().setTypography('geist'), group: 'Theme', keywords: ['typography', 'font'] },
-      { id: 'font-jetbrains', label: 'Font: JetBrains + Inter', action: () => useThemeStore.getState().setTypography('jetbrains'), group: 'Theme', keywords: ['typography', 'font'] },
-      { id: 'font-ibm-plex', label: 'Font: IBM Plex', action: () => useThemeStore.getState().setTypography('ibm-plex'), group: 'Theme', keywords: ['typography', 'font'] },
-      { id: 'animation-minimal', label: 'Motion: Minimal', action: () => useThemeStore.getState().setAnimation('minimal'), group: 'Theme', keywords: ['animation', 'reduced'] },
-      { id: 'animation-spring', label: 'Motion: Spring', action: () => useThemeStore.getState().setAnimation('spring'), group: 'Theme', keywords: ['animation', 'bouncy'] },
-      { id: 'animation-instant', label: 'Motion: Instant', action: () => useThemeStore.getState().setAnimation('instant'), group: 'Theme', keywords: ['animation', 'none'] },
-      { id: 'animation-status', label: 'Motion: Status-driven', action: () => useThemeStore.getState().setAnimation('status-driven'), group: 'Theme', keywords: ['animation'] },
-      { id: 'animation-aggressive', label: 'Motion: Aggressive', action: () => useThemeStore.getState().setAnimation('aggressive'), group: 'Theme', keywords: ['animation', 'energy'] },
-      { id: 'sidebar-rail', label: 'Sidebar: Rail', action: () => useThemeStore.getState().setSidebarMode('rail'), group: 'Theme', keywords: ['sidebar', 'icons'] },
-      { id: 'sidebar-collapsible', label: 'Sidebar: Collapsible', action: () => useThemeStore.getState().setSidebarMode('collapsible'), group: 'Theme', keywords: ['sidebar', 'default'] },
-      { id: 'sidebar-hidden', label: 'Sidebar: Hidden', action: () => useThemeStore.getState().setSidebarMode('hidden'), group: 'Theme', keywords: ['sidebar', 'full'] },
-      { id: 'sidebar-persistent', label: 'Sidebar: Persistent', action: () => useThemeStore.getState().setSidebarMode('persistent'), group: 'Theme', keywords: ['sidebar', 'always'] },
-      { id: 'sidebar-compact', label: 'Sidebar: Compact', action: () => useThemeStore.getState().setSidebarMode('compact'), group: 'Theme', keywords: ['sidebar', 'narrow'] },
-    ],
-    [],
-  )
+      ...COLOR_PALETTES.map((v) => ({ id: `theme-${v}`, label: `Theme: ${PALETTE_META[v].label}`, action: () => useThemeStore.getState().setColorPalette(v), group: 'Theme', keywords: ['color', 'palette', ...PALETTE_META[v].keywords] })),
+      ...DENSITIES.map((v) => ({ id: `density-${v}`, label: `Set density: ${DENSITY_META[v].label}`, action: () => useThemeStore.getState().setDensity(v), group: 'Theme', keywords: ['density', ...DENSITY_META[v].keywords] })),
+      ...TYPOGRAPHIES.map((v) => ({ id: `font-${v}`, label: `Font: ${TYPOGRAPHY_META[v].label}`, action: () => useThemeStore.getState().setTypography(v), group: 'Theme', keywords: ['typography', 'font'] })),
+      ...ANIMATION_PRESETS.map((v) => ({ id: `animation-${v}`, label: `Motion: ${ANIMATION_META[v].label}`, action: () => useThemeStore.getState().setAnimation(v), group: 'Theme', keywords: ['animation', ...ANIMATION_META[v].keywords] })),
+      ...SIDEBAR_MODES.map((v) => ({ id: `sidebar-${v}`, label: `Sidebar: ${SIDEBAR_META[v].label}`, action: () => useThemeStore.getState().setSidebarMode(v), group: 'Theme', keywords: ['sidebar', ...SIDEBAR_META[v].keywords] })),
+    ]
+  }, [])
   useRegisterCommands(themeCommands)
 
   return (

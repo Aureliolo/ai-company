@@ -59,12 +59,15 @@ describe('ThemeToggle', () => {
     expect(useThemeStore.getState().density).toBe('dense')
   })
 
-  it('resets to defaults', async () => {
+  it('resets all 5 axes to defaults', async () => {
     const user = userEvent.setup()
 
-    // Change some settings first
+    // Change all 5 axes
     useThemeStore.getState().setColorPalette('neon')
     useThemeStore.getState().setDensity('sparse')
+    useThemeStore.getState().setTypography('ibm-plex')
+    useThemeStore.getState().setAnimation('aggressive')
+    useThemeStore.getState().setSidebarMode('rail')
 
     render(<ThemeToggle />)
     await user.click(screen.getByRole('button', { name: 'Theme preferences' }))
@@ -73,6 +76,9 @@ describe('ThemeToggle', () => {
     const state = useThemeStore.getState()
     expect(state.colorPalette).toBe('warm-ops')
     expect(state.density).toBe('balanced')
+    expect(state.typography).toBe('geist')
+    expect(['minimal', 'status-driven']).toContain(state.animation)
+    expect(state.sidebarMode).toBe('collapsible')
   })
 
   it('changes typography via select', async () => {
@@ -104,10 +110,13 @@ describe('ThemeToggle', () => {
     expect(useThemeStore.getState().sidebarMode).toBe('rail')
   })
 
-  it('synchronizes random color palette changes', () => {
+  // Property test exercises the store layer that ThemeToggle wires to.
+  // UI-level axis tests above (color, density, typography, animation, sidebar)
+  // already verify the wiring; this confirms the store contract for all values.
+  it('synchronizes random palette changes via store', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom('warm-ops', 'ice-station', 'stealth', 'signal', 'neon'),
+        fc.constantFrom('warm-ops' as const, 'ice-station' as const, 'stealth' as const, 'signal' as const, 'neon' as const),
         (palette) => {
           useThemeStore.getState().setColorPalette(palette)
           expect(useThemeStore.getState().colorPalette).toBe(palette)

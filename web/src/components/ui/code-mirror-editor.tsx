@@ -26,8 +26,7 @@ export interface CodeMirrorEditorProps {
 // ---------------------------------------------------------------------------
 // CodeMirror theme using --so-* design tokens (dark: true tells CM to use
 // light-on-dark base colors; actual colors come from design tokens which
-// may vary by palette). Pixel values here are CodeMirror-internal sizing
-// that has no corresponding design token.
+// may vary by palette).
 // ---------------------------------------------------------------------------
 
 const darkTheme = EditorView.theme(
@@ -36,7 +35,7 @@ const darkTheme = EditorView.theme(
       backgroundColor: 'var(--so-bg-surface)',
       color: 'var(--so-text-primary)',
       fontFamily: 'var(--so-font-mono)',
-      fontSize: '14px',
+      fontSize: 'var(--so-text-body-sm)',
       borderRadius: 'var(--so-radius-lg)',
       border: '1px solid var(--so-border)',
     },
@@ -46,7 +45,7 @@ const darkTheme = EditorView.theme(
     },
     '.cm-content': {
       caretColor: 'var(--so-accent)',
-      padding: '16px 8px',
+      padding: 'var(--so-space-4) var(--so-space-2)',
       fontFamily: 'var(--so-font-mono)',
     },
     '.cm-gutters': {

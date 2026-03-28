@@ -23,6 +23,45 @@ export interface SegmentedControlProps<T extends string = string> {
   className?: string
 }
 
+function SegmentOption<T extends string>({
+  option,
+  selected,
+  groupDisabled,
+  size,
+  onChange,
+}: {
+  option: SegmentedControlOption<T>
+  selected: boolean
+  groupDisabled: boolean
+  size: 'sm' | 'md'
+  onChange: (value: T) => void
+}) {
+  const optionDisabled = groupDisabled || option.disabled
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      data-value={option.value}
+      disabled={optionDisabled}
+      tabIndex={selected ? 0 : -1}
+      onClick={() => {
+        if (!optionDisabled) onChange(option.value)
+      }}
+      className={cn(
+        'rounded-md font-medium transition-colors whitespace-nowrap',
+        size === 'sm' ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5',
+        selected
+          ? 'bg-accent/10 text-accent'
+          : 'text-text-muted hover:text-foreground',
+        optionDisabled && 'opacity-40 cursor-not-allowed',
+      )}
+    >
+      {option.label}
+    </button>
+  )
+}
+
 export function SegmentedControl<T extends string>({
   label,
   options,
@@ -79,34 +118,16 @@ export function SegmentedControl<T extends string>({
           disabled && 'opacity-60 pointer-events-none',
         )}
       >
-        {options.map((option) => {
-          const selected = option.value === value
-          const optionDisabled = disabled || option.disabled
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              data-value={option.value}
-              disabled={optionDisabled}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => {
-                if (!optionDisabled) onChange(option.value)
-              }}
-              className={cn(
-                'rounded-md font-medium transition-colors whitespace-nowrap',
-                size === 'sm' ? 'text-xs px-2 py-1' : 'text-sm px-3 py-1.5',
-                selected
-                  ? 'bg-accent/10 text-accent'
-                  : 'text-text-muted hover:text-foreground',
-                optionDisabled && 'opacity-40 cursor-not-allowed',
-              )}
-            >
-              {option.label}
-            </button>
-          )
-        })}
+        {options.map((option) => (
+          <SegmentOption
+            key={option.value}
+            option={option}
+            selected={option.value === value}
+            groupDisabled={disabled}
+            size={size}
+            onChange={onChange}
+          />
+        ))}
       </div>
     </fieldset>
   )

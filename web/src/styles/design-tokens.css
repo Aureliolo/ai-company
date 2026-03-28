@@ -135,6 +135,7 @@
   --so-border-bright: #2a3d4e;
   --so-shadow-card-hover: 0 4px 24px rgba(110, 231, 183, 0.08);
   --so-shadow-health-glow: 0 0 8px rgba(110, 231, 183, 0.3);
+  --so-overlay-active: rgba(110, 231, 183, 0.06);
   --so-overlay-flash: rgba(110, 231, 183, 0.10);
   --so-overlay-selection: rgba(110, 231, 183, 0.15);
   --so-overlay-selection-focused: rgba(110, 231, 183, 0.25);
@@ -151,6 +152,7 @@
   --so-border-bright: #28283e;
   --so-shadow-card-hover: 0 4px 24px rgba(167, 139, 250, 0.08);
   --so-shadow-health-glow: 0 0 8px rgba(167, 139, 250, 0.3);
+  --so-overlay-active: rgba(167, 139, 250, 0.06);
   --so-overlay-flash: rgba(167, 139, 250, 0.10);
   --so-overlay-selection: rgba(167, 139, 250, 0.15);
   --so-overlay-selection-focused: rgba(167, 139, 250, 0.25);
@@ -167,6 +169,7 @@
   --so-border-bright: #3e3028;
   --so-shadow-card-hover: 0 4px 24px rgba(251, 146, 60, 0.08);
   --so-shadow-health-glow: 0 0 8px rgba(251, 146, 60, 0.3);
+  --so-overlay-active: rgba(251, 146, 60, 0.06);
   --so-overlay-flash: rgba(251, 146, 60, 0.10);
   --so-overlay-selection: rgba(251, 146, 60, 0.15);
   --so-overlay-selection-focused: rgba(251, 146, 60, 0.25);
@@ -186,6 +189,7 @@
   --so-border-bright: #26264a;
   --so-shadow-card-hover: 0 4px 24px rgba(34, 211, 238, 0.12);
   --so-shadow-health-glow: 0 0 8px rgba(34, 211, 238, 0.4);
+  --so-overlay-active: rgba(34, 211, 238, 0.06);
   --so-overlay-flash: rgba(34, 211, 238, 0.10);
   --so-overlay-selection: rgba(34, 211, 238, 0.15);
   --so-overlay-selection-focused: rgba(34, 211, 238, 0.25);

@@ -1,4 +1,5 @@
 import { renderHook } from '@testing-library/react'
+import fc from 'fast-check'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { useThemeStore } from '@/stores/theme'
@@ -21,6 +22,22 @@ describe('useAnimationPreset', () => {
     expect(result.current).toHaveProperty('enableLayout')
     expect(typeof result.current.staggerDelay).toBe('number')
     expect(typeof result.current.enableLayout).toBe('boolean')
+  })
+
+  it('returns a valid config for any random preset (fast-check)', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<AnimationPreset>('minimal', 'spring', 'instant', 'status-driven', 'aggressive'),
+        (preset) => {
+          useThemeStore.getState().setAnimation(preset)
+          const { result } = renderHook(() => useAnimationPreset())
+          expect(result.current).toHaveProperty('spring')
+          expect(result.current).toHaveProperty('tween')
+          expect(typeof result.current.staggerDelay).toBe('number')
+          expect(typeof result.current.enableLayout).toBe('boolean')
+        },
+      ),
+    )
   })
 
   it('returns enableLayout=false for minimal', () => {

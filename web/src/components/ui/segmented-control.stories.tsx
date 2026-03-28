@@ -72,6 +72,12 @@ export const WithDisabledOption: Story = {
   },
 }
 
+// Note: SegmentedControl has no hover, loading, error, or empty states.
+// Hover is CSS-only (handled by Tailwind hover: classes). Loading and error
+// are not part of this component's API -- it is a stateless input control.
+// Empty options would produce an invalid radiogroup; consumers are expected
+// to always pass at least one option.
+
 export const Interactive: Story = {
   args: {
     label: 'Mode',
