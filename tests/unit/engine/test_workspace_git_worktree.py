@@ -1041,7 +1041,6 @@ class TestRunSemanticAnalysis:
             run_git=strategy._run_git,
             config=strategy._config.semantic_analysis,
             analyzer=mock_analyzer,
-            repo_root=str(strategy._repo_root),
             workspace=ws,
             pre_merge_sha="abc123",
             merge_sha="def456",
@@ -1171,9 +1170,7 @@ class TestDoSemanticAnalysis:
         )
         ws = make_workspace()
 
-        # merge-base returns pre_merge_sha itself
         mock_base = AsyncMock(return_value="abc123")
-        # changed files include .py and .txt
         mock_changed = AsyncMock(
             return_value=(
                 "src/main.py",
@@ -1181,7 +1178,7 @@ class TestDoSemanticAnalysis:
                 "src/utils.py",
             ),
         )
-        # base sources returns content for .py files only
+        # get_base_sources is called twice (base + merged)
         mock_sources = AsyncMock(
             return_value={
                 "src/main.py": "code1",
@@ -1209,15 +1206,14 @@ class TestDoSemanticAnalysis:
                 merge_sha="def456",
             )
 
-        # get_base_sources should receive only .py files
-        mock_sources.assert_awaited_once()
-        # First positional arg is run_git, second is base_sha, third is files
-        files_arg = mock_sources.call_args[0][2]
-        assert "README.txt" not in files_arg
-        assert "src/main.py" in files_arg
-        assert "src/utils.py" in files_arg
+        # get_base_sources called twice (base + merged via _fetch_sources)
+        assert mock_sources.await_count == 2
+        for call in mock_sources.call_args_list:
+            files_arg = call[0][2]
+            assert "README.txt" not in files_arg
+            assert "src/main.py" in files_arg
+            assert "src/utils.py" in files_arg
 
-        # analyzer.analyze should also receive only .py files
         mock_analyzer.analyze.assert_awaited_once()
         analyze_kwargs = mock_analyzer.analyze.call_args[1]
         assert "README.txt" not in analyze_kwargs["changed_files"]

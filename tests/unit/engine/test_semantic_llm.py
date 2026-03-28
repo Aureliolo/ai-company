@@ -1,7 +1,7 @@
 """Unit tests for the LLM-based semantic analyzer."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,8 +14,6 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
-
-_READ_FN = "synthorg.engine.workspace.semantic_llm._read_file_contents"
 
 pytestmark = pytest.mark.unit
 
@@ -80,13 +78,12 @@ class TestLlmSemanticAnalyzer:
 
         merged_content = "def new_func():\n    pass\n"
 
-        with patch(_READ_FN, return_value={"utils.py": merged_content}):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("utils.py",),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={"utils.py": "def old_func():\n    pass\n"},
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("utils.py",),
+            base_sources={"utils.py": "def old_func():\n    pass\n"},
+            merged_sources={"utils.py": merged_content},
+        )
 
         assert len(result) == 1
         assert result[0].file_path == "utils.py"
@@ -102,13 +99,12 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        with patch(_READ_FN, return_value={"foo.py": "x = 1\n"}):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("foo.py",),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={},
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("foo.py",),
+            base_sources={},
+            merged_sources={"foo.py": "x = 1\n"},
+        )
 
         assert result == ()
 
@@ -122,8 +118,8 @@ class TestLlmSemanticAnalyzer:
         result = await analyzer.analyze(
             workspace=_make_workspace(),
             changed_files=("readme.md",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={"readme.md": "# Readme\n"},
         )
 
         assert result == ()
@@ -138,13 +134,12 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        with patch(_READ_FN, return_value={"foo.py": "x = 1\n"}):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("foo.py",),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={},
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("foo.py",),
+            base_sources={},
+            merged_sources={"foo.py": "x = 1\n"},
+        )
 
         assert result == ()
 
@@ -171,13 +166,12 @@ class TestLlmSemanticAnalyzer:
             model="test-medium-001",
         )
 
-        with patch(_READ_FN, return_value={"a.py": "x = 1\n"}):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("a.py",),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={},
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("a.py",),
+            base_sources={},
+            merged_sources={"a.py": "x = 1\n"},
+        )
 
         assert len(result) == 1
         assert provider.complete.call_count == 2

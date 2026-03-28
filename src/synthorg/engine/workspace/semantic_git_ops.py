@@ -7,6 +7,7 @@ keep the worktree strategy module under the 800-line budget.
 
 import asyncio
 import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.engine.workspace.semantic_analyzer import filter_files
@@ -167,6 +168,15 @@ async def get_base_sources(
             )
             if rc == 0:
                 sources[fp] = stdout
+            elif "does not exist in" in stderr or "fatal: Path" in stderr:
+                # File does not exist at this commit (new file) -- expected
+                logger.debug(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    operation="show",
+                    base_sha=base_sha,
+                    file=fp,
+                    error=stderr,
+                )
             else:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -187,7 +197,6 @@ async def run_semantic_analysis(  # noqa: PLR0913
     run_git: GitRunner,
     config: SemanticAnalysisConfig,
     analyzer: SemanticAnalyzer | None,
-    repo_root: str,
     workspace: Workspace,
     pre_merge_sha: str,
     merge_sha: str,
@@ -195,14 +204,17 @@ async def run_semantic_analysis(  # noqa: PLR0913
     """Run semantic analysis on a successful merge if configured.
 
     Orchestrates the full pipeline: finds merge base, gets changed
-    files, fetches base sources, and invokes the analyzer. Returns
-    ``()`` when disabled, not configured, or on failure.
+    files, fetches base and merged sources from git objects, and
+    invokes the analyzer. All file content is read via
+    ``git show {sha}:{path}`` -- never from the live checkout --
+    so analysis is safe to run outside the merge lock.
+
+    Returns ``()`` when disabled, not configured, or on failure.
 
     Args:
         run_git: Bound ``_run_git`` method from the strategy.
         config: Semantic analysis configuration.
         analyzer: Configured ``SemanticAnalyzer``, or ``None``.
-        repo_root: Absolute path to the repository root.
         workspace: The merged workspace.
         pre_merge_sha: Main tip before the merge.
         merge_sha: Commit SHA after the merge.
@@ -226,7 +238,6 @@ async def run_semantic_analysis(  # noqa: PLR0913
         run_git=run_git,
         config=config,
         analyzer=analyzer,
-        repo_root=repo_root,
         workspace=workspace,
         pre_merge_sha=pre_merge_sha,
         merge_sha=merge_sha,
@@ -271,7 +282,6 @@ async def _do_analysis(  # noqa: PLR0913
     run_git: GitRunner,
     config: SemanticAnalysisConfig,
     analyzer: SemanticAnalyzer,
-    repo_root: str,
     workspace: Workspace,
     pre_merge_sha: str,
     merge_sha: str,
@@ -283,30 +293,28 @@ async def _do_analysis(  # noqa: PLR0913
             workspace,
             pre_merge_sha,
         )
-        changed_files = await get_changed_files(
+        filtered = await _gather_filtered_files(
             run_git,
+            config,
             branch_point,
             merge_sha,
         )
-        if not changed_files:
-            return ()
-
-        filtered = tuple(filter_files(changed_files, config))
         if not filtered:
             return ()
 
-        base_sources = await get_base_sources(
+        base, merged = await _fetch_sources(
             run_git,
+            config,
             branch_point,
+            merge_sha,
             filtered,
-            concurrency=config.git_concurrency,
         )
 
         return await analyzer.analyze(
             workspace=workspace,
             changed_files=filtered,
-            repo_root=repo_root,
-            base_sources=base_sources,
+            base_sources=MappingProxyType(base),
+            merged_sources=MappingProxyType(merged),
         )
     except asyncio.CancelledError:
         raise
@@ -318,3 +326,57 @@ async def _do_analysis(  # noqa: PLR0913
             exc_info=True,
         )
         return ()
+
+
+async def _gather_filtered_files(
+    run_git: GitRunner,
+    config: SemanticAnalysisConfig,
+    branch_point: str,
+    merge_sha: str,
+) -> tuple[str, ...]:
+    """Get changed files and filter by configured extensions."""
+    changed_files = await get_changed_files(
+        run_git,
+        branch_point,
+        merge_sha,
+    )
+    if not changed_files:
+        return ()
+    return tuple(filter_files(changed_files, config))
+
+
+async def _fetch_sources(
+    run_git: GitRunner,
+    config: SemanticAnalysisConfig,
+    branch_point: str,
+    merge_sha: str,
+    filtered: tuple[str, ...],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Fetch base and merged sources concurrently."""
+    concurrency = config.git_concurrency
+    base: dict[str, str] = {}
+    merged: dict[str, str] = {}
+
+    async def _get_base() -> None:
+        nonlocal base
+        base = await get_base_sources(
+            run_git,
+            branch_point,
+            filtered,
+            concurrency=concurrency,
+        )
+
+    async def _get_merged() -> None:
+        nonlocal merged
+        merged = await get_base_sources(
+            run_git,
+            merge_sha,
+            filtered,
+            concurrency=concurrency,
+        )
+
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(_get_base())
+        tg.create_task(_get_merged())
+
+    return base, merged

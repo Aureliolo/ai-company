@@ -30,7 +30,6 @@ from synthorg.providers.models import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from synthorg.engine.workspace.config import SemanticAnalysisConfig
     from synthorg.engine.workspace.models import MergeConflict, Workspace
@@ -80,17 +79,18 @@ class LlmSemanticAnalyzer:
         *,
         workspace: Workspace,
         changed_files: tuple[str, ...],
-        repo_root: str,
         base_sources: Mapping[str, str],
+        merged_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged files using an LLM for semantic conflicts.
 
         Args:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
-            repo_root: Absolute path to the repository root.
             base_sources: Mapping of file path to source content
                 before the merge.
+            merged_sources: Mapping of file path to source content
+                after the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances from LLM review.
@@ -102,9 +102,9 @@ class LlmSemanticAnalyzer:
             file_count=len(changed_files),
         )
 
-        result = await self._prepare_review_context(
+        result = self._prepare_review_context(
             changed_files,
-            repo_root,
+            merged_sources,
             base_sources,
         )
         if result is None:
@@ -119,31 +119,28 @@ class LlmSemanticAnalyzer:
             max_retries=self._config.llm_max_retries,
         )
 
-    async def _prepare_review_context(
+    def _prepare_review_context(
         self,
         changed_files: tuple[str, ...],
-        repo_root: str,
+        merged_sources: Mapping[str, str],
         base_sources: Mapping[str, str],
     ) -> tuple[list[ChatMessage], ToolDefinition, CompletionConfig] | None:
-        """Filter files, read contents, and build LLM messages.
+        """Filter files, apply size limits, and build LLM messages.
 
         Returns:
             Tuple of (messages, tool_def, comp_config) or ``None``
             when there is nothing to review.
         """
-        from pathlib import Path  # noqa: PLC0415
-
-        py_files = filter_files(changed_files, self._config)
-        if not py_files:
+        py_set = set(filter_files(changed_files, self._config))
+        if not py_set:
             return None
 
-        root = Path(repo_root)
-        merged_contents = await asyncio.to_thread(
-            _read_file_contents,
-            root,
-            py_files,
-            self._config.max_file_bytes,
-        )
+        max_bytes = self._config.max_file_bytes
+        merged_contents = {
+            k: v
+            for k, v in merged_sources.items()
+            if k in py_set and len(v.encode("utf-8")) <= max_bytes
+        }
         if not merged_contents:
             return None
 
@@ -222,14 +219,6 @@ class LlmSemanticAnalyzer:
                 tools=[tool_def],
                 config=comp_config,
             )
-            conflicts = parse_tool_call_response(response)
-        except ValueError as exc:
-            return self._handle_parse_error(
-                workspace=workspace,
-                attempt=attempt,
-                max_retries=max_retries,
-                error=exc,
-            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -242,6 +231,16 @@ class LlmSemanticAnalyzer:
                 exc_info=True,
             )
             return ()
+
+        try:
+            conflicts = parse_tool_call_response(response)
+        except ValueError as exc:
+            return self._handle_parse_error(
+                workspace=workspace,
+                attempt=attempt,
+                max_retries=max_retries,
+                error=exc,
+            )
         else:
             logger.info(
                 WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
@@ -283,53 +282,6 @@ class LlmSemanticAnalyzer:
             error=str(error),
         )
         return ()
-
-
-def _read_file_contents(
-    root: Path,
-    files: list[str],
-    max_file_bytes: int,
-) -> dict[str, str]:
-    """Read file contents, skipping unreadable files with logging.
-
-    Unlike ``_read_sources`` in :mod:`semantic_analyzer`, this logs
-    read errors at WARNING because LLM ingestion failures are
-    operationally more significant, and enforces ``max_file_bytes``
-    to avoid exceeding LLM token limits.
-    """
-    resolved_root = root.resolve()
-    contents: dict[str, str] = {}
-    for file_path in files:
-        try:
-            target = (root / file_path).resolve()
-            if not target.is_relative_to(resolved_root):
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    file=file_path,
-                    reason="path_traversal",
-                )
-                continue
-            stat = target.stat()
-            if stat.st_size > max_file_bytes:
-                logger.debug(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    file=file_path,
-                    reason="file_too_large",
-                    size=stat.st_size,
-                    limit=max_file_bytes,
-                )
-                continue
-            contents[file_path] = target.read_text(
-                encoding="utf-8",
-            )
-        except OSError as exc:
-            logger.warning(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                file=file_path,
-                reason="read_error",
-                error=f"{type(exc).__name__}: {exc}",
-            )
-    return contents
 
 
 def _build_diff_summary(

@@ -4,13 +4,15 @@ Tests filter_files, AstSemanticAnalyzer, and CompositeSemanticAnalyzer
 with mocked file I/O to verify orchestration and result aggregation.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
+
+# Analyzer no longer reads from disk -- merged_sources are passed directly.
 from synthorg.engine.workspace.models import MergeConflict, Workspace
 from synthorg.engine.workspace.semantic_analyzer import (
     AstSemanticAnalyzer,
@@ -18,8 +20,6 @@ from synthorg.engine.workspace.semantic_analyzer import (
     SemanticAnalyzer,
     filter_files,
 )
-
-_READ_FN = "synthorg.engine.workspace.semantic_analyzer._read_sources"
 
 pytestmark = pytest.mark.unit
 
@@ -126,8 +126,8 @@ class TestAstSemanticAnalyzer:
         result = await analyzer.analyze(
             workspace=_make_workspace(),
             changed_files=(),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert result == ()
 
@@ -138,30 +138,27 @@ class TestAstSemanticAnalyzer:
         result = await analyzer.analyze(
             workspace=_make_workspace(),
             changed_files=("readme.md", "config.yaml"),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={"readme.md": "# Hi\n"},
         )
         assert result == ()
 
     async def test_max_files_limit_respected(self) -> None:
         config = SemanticAnalysisConfig(max_files=2)
         analyzer = AstSemanticAnalyzer(config=config)
-        # Even with many files, only max_files are analyzed
         files = tuple(f"file{i}.py" for i in range(10))
+        all_merged = {f"file{i}.py": "x = 1\n" for i in range(10)}
 
-        limited = {f"file{i}.py": "x = 1\n" for i in range(2)}
-        with patch(_READ_FN, return_value=limited):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=files,
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={},
-            )
-        # Should not crash, just analyzes the limited set
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=files,
+            base_sources={},
+            merged_sources=all_merged,
+        )
         assert isinstance(result, tuple)
 
     async def test_detects_semantic_conflict(self) -> None:
-        """End-to-end: function renamed in one file, called by old name in another."""
+        """End-to-end: function renamed in one file, called by old name."""
         analyzer = AstSemanticAnalyzer(config=SemanticAnalysisConfig())
 
         base_sources = {
@@ -175,13 +172,12 @@ class TestAstSemanticAnalyzer:
             ),
         }
 
-        with patch(_READ_FN, return_value=merged_sources):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("utils.py", "orders.py"),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources=base_sources,
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("utils.py", "orders.py"),
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        )
         assert len(result) >= 1
         assert all(c.conflict_type == ConflictType.SEMANTIC for c in result)
 
@@ -196,25 +192,23 @@ class TestAstSemanticAnalyzer:
             "main.py": "from utils import process\n\nprocess(42)\n",
         }
 
-        with patch(_READ_FN, return_value=merged_sources):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("utils.py", "main.py"),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources=base_sources,
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("utils.py", "main.py"),
+            base_sources=base_sources,
+            merged_sources=merged_sources,
+        )
         assert len(result) == 0
 
-    async def test_file_read_error_skipped(self) -> None:
+    async def test_empty_merged_sources_returns_empty(self) -> None:
         analyzer = AstSemanticAnalyzer(config=SemanticAnalysisConfig())
 
-        with patch(_READ_FN, return_value={}):
-            result = await analyzer.analyze(
-                workspace=_make_workspace(),
-                changed_files=("missing.py",),
-                repo_root="/tmp/repo",  # noqa: S108
-                base_sources={},
-            )
+        result = await analyzer.analyze(
+            workspace=_make_workspace(),
+            changed_files=("missing.py",),
+            base_sources={},
+            merged_sources={},
+        )
         assert result == ()
 
 
@@ -231,8 +225,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("foo.py",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert result == ()
 
@@ -252,8 +246,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("a.py", "b.py"),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert len(result) == 2
         descriptions = {c.description for c in result}
@@ -275,8 +269,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("a.py",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert len(result) == 1
 
@@ -295,8 +289,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("ok.py",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert len(result) == 1
 
@@ -339,8 +333,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("b.py",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert len(result) == 1
 
@@ -357,8 +351,8 @@ class TestCompositeSemanticAnalyzer:
         result = await composite.analyze(
             workspace=_make_workspace(),
             changed_files=("x.py",),
-            repo_root="/tmp/repo",  # noqa: S108
             base_sources={},
+            merged_sources={},
         )
         assert result == ()
 
@@ -378,13 +372,13 @@ class TestCompositeSemanticAnalyzer:
             composite.analyze(
                 workspace=_make_workspace(),
                 changed_files=("a.py",),
-                repo_root="/tmp/repo",  # noqa: S108
                 base_sources={},
+                merged_sources={},
             ),
         )
         await asyncio.sleep(0)  # let the task start
         task.cancel()
-        with pytest.raises((asyncio.CancelledError, ExceptionGroup)):
+        with pytest.raises((asyncio.CancelledError, BaseExceptionGroup)):
             await task
 
 

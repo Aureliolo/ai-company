@@ -703,7 +703,6 @@ class PlannerWorktreeStrategy:
             run_git=self._run_git,
             config=self._config.semantic_analysis,
             analyzer=self._semantic_analyzer,
-            repo_root=str(self._repo_root),
             workspace=workspace,
             pre_merge_sha=pre_merge_sha,
             merge_sha=merge_sha,

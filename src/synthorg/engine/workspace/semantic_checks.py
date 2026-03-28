@@ -152,7 +152,7 @@ def _imported_names(tree: ast.Module) -> list[tuple[str, str, str]]:
 
 def _collect_removed_names(
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> dict[str, str]:
     """Find top-level names removed between base and merged.
 
@@ -183,7 +183,7 @@ def _collect_removed_names(
 def check_removed_references(
     *,
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect references to names removed by the merge.
 
@@ -238,7 +238,7 @@ class _SigInfo(NamedTuple):
 
 def _collect_changed_sigs(
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> dict[str, _SigInfo]:
     """Find functions whose signatures changed between base and merged.
 
@@ -384,7 +384,7 @@ def _check_call_compat(
 def check_signature_changes(
     *,
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect function signature changes that may break callers.
 
@@ -426,7 +426,7 @@ def check_signature_changes(
 
 def check_duplicate_definitions(
     *,
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect duplicate top-level function or class definitions.
 
@@ -492,7 +492,7 @@ def _file_path_to_module_stem(file_path: str) -> str:
 
 def _collect_removed_exports(
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> dict[str, set[str]]:
     """Find top-level definitions removed between base and merged, keyed by module stem.
 
@@ -525,7 +525,7 @@ def _collect_removed_exports(
 def check_import_conflicts(
     *,
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Detect imports of names that were removed from their source module.
 
