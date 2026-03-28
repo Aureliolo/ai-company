@@ -67,7 +67,17 @@ def filter_files(
     changed_files: tuple[str, ...],
     config: SemanticAnalysisConfig,
 ) -> list[str]:
-    """Filter changed files by extension and limit to max_files."""
+    """Filter changed files by extension and limit to ``max_files``.
+
+    Args:
+        changed_files: Paths of all files changed by the merge.
+        config: Semantic analysis configuration supplying
+            ``file_extensions`` and ``max_files``.
+
+    Returns:
+        List of file paths whose extensions match, in input order,
+        truncated to ``max_files``.
+    """
     py_files = [
         f
         for f in changed_files
@@ -224,14 +234,29 @@ class AstSemanticAnalyzer:
         return conflicts
 
 
+def _deduplicate_conflicts(
+    conflicts: list[MergeConflict],
+) -> tuple[MergeConflict, ...]:
+    """Remove duplicate conflicts by ``(file_path, description)``."""
+    seen: set[tuple[str, str]] = set()
+    unique: list[MergeConflict] = []
+    for conflict in conflicts:
+        key = (conflict.file_path, conflict.description)
+        if key not in seen:
+            seen.add(key)
+            unique.append(conflict)
+    return tuple(unique)
+
+
 class CompositeSemanticAnalyzer:
     """Chains multiple semantic analyzers and deduplicates results.
 
-    Runs each analyzer in order and collects all conflicts. If an
-    analyzer raises an exception, it is logged and skipped.
+    Runs all analyzers concurrently via ``asyncio.TaskGroup`` and
+    collects their conflicts. If an analyzer raises an exception,
+    it is logged and skipped.
 
     Args:
-        analyzers: Ordered tuple of analyzers to run.
+        analyzers: Tuple of analyzers to run concurrently.
     """
 
     __slots__ = ("_analyzers",)
@@ -251,7 +276,11 @@ class CompositeSemanticAnalyzer:
         repo_root: str,
         base_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
-        """Run all analyzers and return deduplicated results.
+        """Run all analyzers concurrently and return deduplicated results.
+
+        Analyzers run as a structured ``TaskGroup``. Per-analyzer
+        exceptions are caught and logged individually so a failing
+        analyzer never prevents the others from completing.
 
         Args:
             workspace: The workspace that was just merged.
@@ -263,6 +292,8 @@ class CompositeSemanticAnalyzer:
         Returns:
             Deduplicated tuple of semantic conflicts from all analyzers.
         """
+        # Safe without a lock: asyncio tasks yield only at await
+        # points, so list.extend is never interleaved.
         all_conflicts: list[MergeConflict] = []
 
         async def _run(analyzer: SemanticAnalyzer) -> None:
@@ -288,13 +319,4 @@ class CompositeSemanticAnalyzer:
             for analyzer in self._analyzers:
                 tg.create_task(_run(analyzer))
 
-        # Deduplicate by (file_path, description)
-        seen: set[tuple[str, str]] = set()
-        unique: list[MergeConflict] = []
-        for conflict in all_conflicts:
-            key = (conflict.file_path, conflict.description)
-            if key not in seen:
-                seen.add(key)
-                unique.append(conflict)
-
-        return tuple(unique)
+        return _deduplicate_conflicts(all_conflicts)

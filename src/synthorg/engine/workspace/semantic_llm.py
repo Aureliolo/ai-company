@@ -187,53 +187,79 @@ class LlmSemanticAnalyzer:
             Parsed conflicts, or empty tuple on exhaustion/error.
         """
         for attempt in range(1 + max_retries):
-            try:
-                response = await self._provider.complete(
-                    messages,
-                    self._model,
-                    tools=[tool_def],
-                    config=comp_config,
-                )
-                conflicts = parse_tool_call_response(response)
-            except ValueError:
-                if attempt < max_retries:
-                    logger.debug(
-                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                        workspace_id=workspace.workspace_id,
-                        analyzer="llm",
-                        attempt=attempt,
-                        reason="parse_error",
-                    )
-                    continue
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    reason="parse_exhausted",
-                )
-                return ()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    reason="provider_error",
-                    exc_info=True,
-                )
-                return ()
-            else:
-                logger.info(
-                    WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    conflicts=len(conflicts),
-                    attempt=attempt,
-                )
-                return conflicts
-
+            result = await self._attempt_once(
+                workspace=workspace,
+                messages=messages,
+                tool_def=tool_def,
+                comp_config=comp_config,
+                attempt=attempt,
+                max_retries=max_retries,
+            )
+            if result is not None:
+                return result
         return ()  # pragma: no cover
+
+    async def _attempt_once(  # noqa: PLR0913
+        self,
+        *,
+        workspace: Workspace,
+        messages: list[ChatMessage],
+        tool_def: ToolDefinition,
+        comp_config: CompletionConfig,
+        attempt: int,
+        max_retries: int,
+    ) -> tuple[MergeConflict, ...] | None:
+        """Execute a single LLM call attempt.
+
+        Returns:
+            Parsed conflicts on success, empty tuple on terminal
+            failure, or ``None`` to signal a retry.
+        """
+        try:
+            response = await self._provider.complete(
+                messages,
+                self._model,
+                tools=[tool_def],
+                config=comp_config,
+            )
+            conflicts = parse_tool_call_response(response)
+        except ValueError:
+            if attempt < max_retries:
+                logger.debug(
+                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    analyzer="llm",
+                    attempt=attempt,
+                    reason="parse_error",
+                )
+                return None
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                reason="parse_exhausted",
+            )
+            return ()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                reason="provider_error",
+                exc_info=True,
+            )
+            return ()
+        else:
+            logger.info(
+                WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                conflicts=len(conflicts),
+                attempt=attempt,
+            )
+            return conflicts
 
 
 def _read_file_contents(

@@ -298,6 +298,8 @@ class TestCompositeSemanticAnalyzer:
         Analyzer B blocks until analyzer A signals. If run sequentially
         (A then B), this works. But if run as (B then A), B would
         deadlock waiting for A. We put B first to prove true concurrency.
+        The pytest global timeout (30s) acts as the safety net if
+        execution is truly sequential.
         """
         import asyncio
 
@@ -308,8 +310,8 @@ class TestCompositeSemanticAnalyzer:
             return ()
 
         async def _analyze_b(**kwargs: object) -> tuple[MergeConflict, ...]:
-            # If sequential and B runs first, this times out
-            await asyncio.wait_for(gate.wait(), timeout=2.0)
+            # If sequential and B runs first, this deadlocks
+            await gate.wait()
             return (_make_conflict("b.py", "from B"),)
 
         analyzer_a = AsyncMock(spec=SemanticAnalyzer)
@@ -329,6 +331,49 @@ class TestCompositeSemanticAnalyzer:
             base_sources={},
         )
         assert len(result) == 1
+
+    async def test_all_analyzers_fail_returns_empty(self) -> None:
+        failing_a = AsyncMock(spec=SemanticAnalyzer)
+        failing_a.analyze.side_effect = RuntimeError("A failed")
+
+        failing_b = AsyncMock(spec=SemanticAnalyzer)
+        failing_b.analyze.side_effect = ValueError("B failed")
+
+        composite = CompositeSemanticAnalyzer(
+            analyzers=(failing_a, failing_b),
+        )
+        result = await composite.analyze(
+            workspace=_make_workspace(),
+            changed_files=("x.py",),
+            repo_root="/tmp/repo",  # noqa: S108
+            base_sources={},
+        )
+        assert result == ()
+
+    async def test_cancelled_error_propagates(self) -> None:
+        """CancelledError must not be swallowed by the Exception handler."""
+        import asyncio
+
+        async def _blocking(**kwargs: object) -> tuple[MergeConflict, ...]:
+            await asyncio.Event().wait()
+            return ()  # pragma: no cover
+
+        analyzer = AsyncMock(spec=SemanticAnalyzer)
+        analyzer.analyze.side_effect = _blocking
+
+        composite = CompositeSemanticAnalyzer(analyzers=(analyzer,))
+        task = asyncio.get_event_loop().create_task(
+            composite.analyze(
+                workspace=_make_workspace(),
+                changed_files=("a.py",),
+                repo_root="/tmp/repo",  # noqa: S108
+                base_sources={},
+            ),
+        )
+        await asyncio.sleep(0)  # let the task start
+        task.cancel()
+        with pytest.raises((asyncio.CancelledError, ExceptionGroup)):
+            await task
 
 
 # ---------------------------------------------------------------------------

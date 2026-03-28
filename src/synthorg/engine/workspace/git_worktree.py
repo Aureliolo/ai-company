@@ -14,7 +14,6 @@ from uuid import uuid4
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.errors import (
-    SemanticAnalysisError,
     WorkspaceCleanupError,
     WorkspaceError,
     WorkspaceLimitError,
@@ -28,7 +27,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
-from synthorg.engine.workspace.semantic_analyzer import filter_files
+from synthorg.engine.workspace.semantic_git_ops import run_semantic_analysis
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     WORKSPACE_LIMIT_REACHED,
@@ -37,8 +36,6 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_MERGE_CONFLICT,
     WORKSPACE_MERGE_FAILED,
     WORKSPACE_MERGE_START,
-    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-    WORKSPACE_SEMANTIC_CONFLICT,
     WORKSPACE_SETUP_COMPLETE,
     WORKSPACE_SETUP_FAILED,
     WORKSPACE_SETUP_START,
@@ -53,22 +50,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
-_SAFE_FILE_PATH_RE = re.compile(r"^[A-Za-z0-9_./ @\-]+$")
-
-
-def _validate_file_path(file_path: str) -> bool:
-    """Return True if *file_path* is safe for use as a git path arg.
-
-    Rejects empty strings, flag-like arguments, directory traversal,
-    absolute paths, and characters outside a conservative allowlist.
-    """
-    if not file_path or file_path.startswith("-"):
-        return False
-    if ".." in file_path.split("/"):
-        return False
-    if file_path.startswith("/"):
-        return False
-    return bool(_SAFE_FILE_PATH_RE.match(file_path))
 
 
 def _validate_git_ref(
@@ -221,18 +202,7 @@ class PlannerWorktreeStrategy:
         _validate_git_ref(request.base_branch, "base_branch")
 
         async with self._lock:
-            if len(self._active_workspaces) >= self._config.max_concurrent_worktrees:
-                logger.warning(
-                    WORKSPACE_LIMIT_REACHED,
-                    current=len(self._active_workspaces),
-                    limit=self._config.max_concurrent_worktrees,
-                )
-                msg = (
-                    f"Maximum concurrent worktrees "
-                    f"({self._config.max_concurrent_worktrees}) "
-                    f"reached"
-                )
-                raise WorkspaceLimitError(msg)
+            self._check_workspace_limit()
 
             workspace_id = str(uuid4())
             branch_name = f"workspace/{request.task_id}/{workspace_id}"
@@ -245,47 +215,12 @@ class PlannerWorktreeStrategy:
                 agent_id=request.agent_id,
             )
 
-            rc, _, stderr = await self._run_git(
-                "branch",
+            await self._create_worktree_and_branch(
+                workspace_id,
                 branch_name,
                 request.base_branch,
+                worktree_dir,
             )
-            if rc != 0:
-                logger.warning(
-                    WORKSPACE_SETUP_FAILED,
-                    workspace_id=workspace_id,
-                    error=stderr,
-                )
-                msg = f"Failed to create branch '{branch_name}': {stderr}"
-                raise WorkspaceSetupError(msg)
-
-            rc, _, stderr = await self._run_git(
-                "worktree",
-                "add",
-                str(worktree_dir),
-                branch_name,
-            )
-            if rc != 0:
-                # Clean up the branch we just created
-                cleanup_rc, _, cleanup_stderr = await self._run_git(
-                    "branch",
-                    "-D",
-                    branch_name,
-                )
-                if cleanup_rc != 0:
-                    logger.warning(
-                        WORKSPACE_SETUP_FAILED,
-                        workspace_id=workspace_id,
-                        error="Branch cleanup after worktree"
-                        f" failure: {cleanup_stderr}",
-                    )
-                logger.warning(
-                    WORKSPACE_SETUP_FAILED,
-                    workspace_id=workspace_id,
-                    error=stderr,
-                )
-                msg = f"Failed to create worktree at '{worktree_dir}': {stderr}"
-                raise WorkspaceSetupError(msg)
 
             workspace = Workspace(
                 workspace_id=workspace_id,
@@ -304,6 +239,69 @@ class PlannerWorktreeStrategy:
                 branch_name=branch_name,
             )
             return workspace
+
+    def _check_workspace_limit(self) -> None:
+        """Raise if max concurrent worktrees reached."""
+        if len(self._active_workspaces) >= self._config.max_concurrent_worktrees:
+            logger.warning(
+                WORKSPACE_LIMIT_REACHED,
+                current=len(self._active_workspaces),
+                limit=self._config.max_concurrent_worktrees,
+            )
+            msg = (
+                f"Maximum concurrent worktrees "
+                f"({self._config.max_concurrent_worktrees}) "
+                f"reached"
+            )
+            raise WorkspaceLimitError(msg)
+
+    async def _create_worktree_and_branch(
+        self,
+        workspace_id: str,
+        branch_name: str,
+        base_branch: str,
+        worktree_dir: Path,
+    ) -> None:
+        """Create a git branch and worktree, cleaning up on failure."""
+        rc, _, stderr = await self._run_git(
+            "branch",
+            branch_name,
+            base_branch,
+        )
+        if rc != 0:
+            logger.warning(
+                WORKSPACE_SETUP_FAILED,
+                workspace_id=workspace_id,
+                error=stderr,
+            )
+            msg = f"Failed to create branch '{branch_name}': {stderr}"
+            raise WorkspaceSetupError(msg)
+
+        rc, _, stderr = await self._run_git(
+            "worktree",
+            "add",
+            str(worktree_dir),
+            branch_name,
+        )
+        if rc != 0:
+            cleanup_rc, _, cleanup_stderr = await self._run_git(
+                "branch",
+                "-D",
+                branch_name,
+            )
+            if cleanup_rc != 0:
+                logger.warning(
+                    WORKSPACE_SETUP_FAILED,
+                    workspace_id=workspace_id,
+                    error=f"Branch cleanup after worktree failure: {cleanup_stderr}",
+                )
+            logger.warning(
+                WORKSPACE_SETUP_FAILED,
+                workspace_id=workspace_id,
+                error=stderr,
+            )
+            msg = f"Failed to create worktree at '{worktree_dir}': {stderr}"
+            raise WorkspaceSetupError(msg)
 
     async def merge_workspace(
         self,
@@ -377,35 +375,11 @@ class PlannerWorktreeStrategy:
                 event=WORKSPACE_MERGE_FAILED,
             )
 
+            pre_merge_sha = await self._checkout_and_capture_sha(
+                workspace,
+            )
+
             start = time.monotonic()
-            logger.info(
-                WORKSPACE_MERGE_START,
-                workspace_id=workspace.workspace_id,
-                branch_name=workspace.branch_name,
-            )
-
-            rc, _, stderr = await self._run_git(
-                "checkout",
-                workspace.base_branch,
-                log_event=WORKSPACE_MERGE_FAILED,
-            )
-            if rc != 0:
-                logger.warning(
-                    WORKSPACE_MERGE_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    error=stderr,
-                )
-                msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
-                raise WorkspaceMergeError(msg)
-
-            # Capture pre-merge SHA for semantic analysis
-            pre_rc, pre_sha_out, _ = await self._run_git(
-                "rev-parse",
-                "HEAD",
-                log_event=WORKSPACE_MERGE_FAILED,
-            )
-            pre_merge_sha = pre_sha_out.strip() if pre_rc == 0 else ""
-
             rc, _, stderr = await self._run_git(
                 "merge",
                 "--no-ff",
@@ -421,12 +395,43 @@ class PlannerWorktreeStrategy:
                     pre_merge_sha=pre_merge_sha,
                 )
 
-            # Conflict detected -- collect and abort
             return await self._handle_merge_conflict(
                 workspace=workspace,
                 stderr=stderr,
                 start=start,
             ), pre_merge_sha
+
+    async def _checkout_and_capture_sha(
+        self,
+        workspace: Workspace,
+    ) -> str:
+        """Checkout the base branch and capture HEAD SHA."""
+        logger.info(
+            WORKSPACE_MERGE_START,
+            workspace_id=workspace.workspace_id,
+            branch_name=workspace.branch_name,
+        )
+
+        rc, _, stderr = await self._run_git(
+            "checkout",
+            workspace.base_branch,
+            log_event=WORKSPACE_MERGE_FAILED,
+        )
+        if rc != 0:
+            logger.warning(
+                WORKSPACE_MERGE_FAILED,
+                workspace_id=workspace.workspace_id,
+                error=stderr,
+            )
+            msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
+            raise WorkspaceMergeError(msg)
+
+        pre_rc, pre_sha_out, _ = await self._run_git(
+            "rev-parse",
+            "HEAD",
+            log_event=WORKSPACE_MERGE_FAILED,
+        )
+        return pre_sha_out.strip() if pre_rc == 0 else ""
 
     async def _finalize_successful_merge(
         self,
@@ -553,40 +558,7 @@ class PlannerWorktreeStrategy:
                 workspace_id=workspace.workspace_id,
             )
 
-            errors: list[str] = []
-
-            rc, _, stderr = await self._run_git(
-                "worktree",
-                "remove",
-                workspace.worktree_path,
-                "--force",
-                log_event=WORKSPACE_TEARDOWN_FAILED,
-            )
-            if rc != 0:
-                errors.append(
-                    f"worktree remove: {stderr}",
-                )
-                logger.warning(
-                    WORKSPACE_TEARDOWN_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    error=f"worktree remove: {stderr}",
-                )
-
-            rc, _, stderr = await self._run_git(
-                "branch",
-                "-D",
-                workspace.branch_name,
-                log_event=WORKSPACE_TEARDOWN_FAILED,
-            )
-            if rc != 0:
-                errors.append(
-                    f"branch delete: {stderr}",
-                )
-                logger.warning(
-                    WORKSPACE_TEARDOWN_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    error=f"branch delete: {stderr}",
-                )
+            errors = await self._remove_worktree_and_branch(workspace)
 
             # Always unregister to prevent capacity leaks
             self._active_workspaces.pop(workspace.workspace_id, None)
@@ -602,6 +574,44 @@ class PlannerWorktreeStrategy:
                 WORKSPACE_TEARDOWN_COMPLETE,
                 workspace_id=workspace.workspace_id,
             )
+
+    async def _remove_worktree_and_branch(
+        self,
+        workspace: Workspace,
+    ) -> list[str]:
+        """Remove worktree and branch, returning error messages."""
+        errors: list[str] = []
+
+        rc, _, stderr = await self._run_git(
+            "worktree",
+            "remove",
+            workspace.worktree_path,
+            "--force",
+            log_event=WORKSPACE_TEARDOWN_FAILED,
+        )
+        if rc != 0:
+            errors.append(f"worktree remove: {stderr}")
+            logger.warning(
+                WORKSPACE_TEARDOWN_FAILED,
+                workspace_id=workspace.workspace_id,
+                error=f"worktree remove: {stderr}",
+            )
+
+        rc, _, stderr = await self._run_git(
+            "branch",
+            "-D",
+            workspace.branch_name,
+            log_event=WORKSPACE_TEARDOWN_FAILED,
+        )
+        if rc != 0:
+            errors.append(f"branch delete: {stderr}")
+            logger.warning(
+                WORKSPACE_TEARDOWN_FAILED,
+                workspace_id=workspace.workspace_id,
+                error=f"branch delete: {stderr}",
+            )
+
+        return errors
 
     async def list_active_workspaces(self) -> tuple[Workspace, ...]:
         """Return all currently active workspaces.
@@ -673,126 +683,6 @@ class PlannerWorktreeStrategy:
                 )
         return tuple(conflicts)
 
-    async def _get_merge_base(
-        self,
-        sha_a: str,
-        ref_b: str,
-    ) -> str:
-        """Find the merge base (common ancestor) of two refs.
-
-        Args:
-            sha_a: First ref (typically HEAD / main tip).
-            ref_b: Second ref (typically workspace branch name).
-
-        Returns:
-            Merge base SHA, or empty string on failure.
-        """
-        rc, stdout, stderr = await self._run_git(
-            "merge-base",
-            sha_a,
-            ref_b,
-            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-        )
-        if rc != 0:
-            logger.warning(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                operation="merge-base",
-                sha_a=sha_a,
-                ref_b=ref_b,
-                error=stderr,
-            )
-            return ""
-        return stdout.strip()
-
-    async def _get_changed_files(
-        self,
-        base_sha: str,
-        merge_sha: str,
-    ) -> tuple[str, ...]:
-        """Get files changed between two commits.
-
-        Args:
-            base_sha: Commit SHA to diff from.
-            merge_sha: Commit SHA to diff to.
-
-        Returns:
-            Tuple of changed file paths (safe paths only).
-        """
-        rc, stdout, stderr = await self._run_git(
-            "diff",
-            "--name-only",
-            f"{base_sha}..{merge_sha}",
-            log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-        )
-        if rc != 0:
-            logger.warning(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                operation="diff",
-                base_sha=base_sha,
-                merge_sha=merge_sha,
-                error=stderr,
-            )
-            return ()
-        if not stdout:
-            return ()
-        # Filter to safe file paths only
-        return tuple(
-            line.strip()
-            for line in stdout.splitlines()
-            if line.strip() and _validate_file_path(line.strip())
-        )
-
-    async def _get_base_sources(
-        self,
-        base_sha: str,
-        files: tuple[str, ...],
-        *,
-        concurrency: int = 10,
-    ) -> dict[str, str]:
-        """Read file contents at a specific commit using parallel git show.
-
-        Args:
-            base_sha: Commit SHA to read from.
-            files: File paths to read.
-            concurrency: Maximum concurrent git show calls.
-
-        Returns:
-            Mapping of file path to content at the given commit.
-        """
-        sources: dict[str, str] = {}
-        sem = asyncio.Semaphore(concurrency)
-
-        async def _fetch(fp: str) -> None:
-            async with sem:
-                if not _validate_file_path(fp):
-                    logger.warning(
-                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                        operation="show",
-                        file=fp,
-                        error="unsafe file path",
-                    )
-                    return
-                rc, stdout, stderr = await self._run_git(
-                    "show",
-                    f"{base_sha}:{fp}",
-                    log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                )
-                if rc == 0:
-                    sources[fp] = stdout
-                else:
-                    logger.debug(
-                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                        operation="show",
-                        base_sha=base_sha,
-                        file=fp,
-                        error=stderr,
-                    )
-
-        async with asyncio.TaskGroup() as tg:
-            for file_path in files:
-                tg.create_task(_fetch(file_path))
-        return sources
-
     async def _run_semantic_analysis(
         self,
         *,
@@ -800,93 +690,13 @@ class PlannerWorktreeStrategy:
         pre_merge_sha: str,
         merge_sha: str,
     ) -> tuple[MergeConflict, ...]:
-        """Run semantic analysis on a successful merge if configured.
-
-        Uses the merge-base (where the workspace branched from main)
-        as the reference point. This captures all files that differ
-        between the branch point and the merge result, including
-        changes from the workspace, from main, and from merge
-        resolution.
-
-        Args:
-            workspace: The merged workspace.
-            pre_merge_sha: Main tip before the merge.
-            merge_sha: Commit SHA after the merge.
-
-        Returns:
-            Tuple of semantic conflicts, empty if analyzer
-            not configured or on analysis failure.
-        """
-        if self._semantic_analyzer is None or not pre_merge_sha:
-            return ()
-        if not self._config.semantic_analysis.enabled:
-            return ()
-        result = await self._do_semantic_analysis(
+        """Delegate to ``semantic_git_ops.run_semantic_analysis``."""
+        return await run_semantic_analysis(
+            run_git=self._run_git,
+            config=self._config.semantic_analysis,
+            analyzer=self._semantic_analyzer,
+            repo_root=str(self._repo_root),
             workspace=workspace,
             pre_merge_sha=pre_merge_sha,
             merge_sha=merge_sha,
         )
-        if result:
-            logger.warning(
-                WORKSPACE_SEMANTIC_CONFLICT,
-                workspace_id=workspace.workspace_id,
-                count=len(result),
-            )
-        return result
-
-    async def _do_semantic_analysis(
-        self,
-        *,
-        workspace: Workspace,
-        pre_merge_sha: str,
-        merge_sha: str,
-    ) -> tuple[MergeConflict, ...]:
-        """Execute semantic analysis, returning () on failure."""
-        if self._semantic_analyzer is None:
-            msg = "_do_semantic_analysis called without a configured analyzer"
-            raise SemanticAnalysisError(msg)
-        try:
-            branch_point = await self._get_merge_base(
-                pre_merge_sha,
-                workspace.branch_name,
-            )
-            if not branch_point:
-                branch_point = pre_merge_sha
-
-            changed_files = await self._get_changed_files(
-                branch_point,
-                merge_sha,
-            )
-            if not changed_files:
-                return ()
-
-            # Pre-filter to configured extensions and max_files
-            # to avoid unnecessary git show calls
-            filtered = tuple(
-                filter_files(changed_files, self._config.semantic_analysis),
-            )
-            if not filtered:
-                return ()
-
-            base_sources = await self._get_base_sources(
-                branch_point,
-                filtered,
-                concurrency=self._config.semantic_analysis.git_concurrency,
-            )
-
-            return await self._semantic_analyzer.analyze(
-                workspace=workspace,
-                changed_files=filtered,
-                repo_root=str(self._repo_root),
-                base_sources=base_sources,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                workspace_id=workspace.workspace_id,
-                error=(f"Semantic analysis failed: {type(exc).__name__}: {exc}"),
-                exc_info=True,
-            )
-            return ()

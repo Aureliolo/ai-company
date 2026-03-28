@@ -20,6 +20,7 @@ class SemanticAnalysisConfig(BaseModel):
         llm_max_tokens: Maximum tokens for LLM response.
         llm_max_retries: Maximum retry attempts on LLM parse failure.
         max_file_bytes: Maximum bytes per file for semantic analysis.
+        git_concurrency: Maximum concurrent git show calls.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
