@@ -48,10 +48,11 @@ async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
 
 
 @pytest.fixture
-async def fake_message_bus() -> FakeMessageBus:
+async def fake_message_bus() -> AsyncGenerator[FakeMessageBus]:
     bus = FakeMessageBus()
     await bus.start()
-    return bus
+    yield bus
+    await bus.stop()
 
 
 @pytest.fixture
@@ -197,8 +198,11 @@ class TestFirstRunFlow:
 
         # ── 8. Verify agents are registered in the runtime registry ──
         app_state = client.app.state.app_state
-        loop = asyncio.get_event_loop()
-        agent_count = loop.run_until_complete(
-            app_state.agent_registry.agent_count(),
-        )
+        loop = asyncio.new_event_loop()
+        try:
+            agent_count = loop.run_until_complete(
+                app_state.agent_registry.agent_count(),
+            )
+        finally:
+            loop.close()
         assert agent_count >= 1

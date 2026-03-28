@@ -546,10 +546,13 @@ class TestSetupComplete:
             assert resp.status_code == 201
             assert resp.json()["data"]["setup_complete"] is True
             # Agent should now be in the runtime registry.
-            loop = asyncio.get_event_loop()
-            agent_count = loop.run_until_complete(
-                app_state.agent_registry.agent_count(),
-            )
+            loop = asyncio.new_event_loop()
+            try:
+                agent_count = loop.run_until_complete(
+                    app_state.agent_registry.agent_count(),
+                )
+            finally:
+                loop.close()
             assert agent_count >= 1
         finally:
             app_state._provider_registry = original_registry
@@ -696,9 +699,13 @@ class TestSetupComplete:
             assert resp.json()["data"]["setup_complete"] is True
             # Agent bootstrap should still have run despite provider
             # reload failure -- the two operations are independent.
-            agent_count = asyncio.get_event_loop().run_until_complete(
-                app_state.agent_registry.agent_count(),
-            )
+            loop = asyncio.new_event_loop()
+            try:
+                agent_count = loop.run_until_complete(
+                    app_state.agent_registry.agent_count(),
+                )
+            finally:
+                loop.close()
             assert agent_count >= 1
         finally:
             app_state._provider_registry = original_registry

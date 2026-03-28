@@ -30,7 +30,10 @@ interface FormState {
   communication_pattern: string
 }
 
-const budgetFormatter = new Intl.NumberFormat(undefined, { style: 'decimal', maximumFractionDigits: 0 })
+const budgetFormatter = new Intl.NumberFormat(undefined, {
+  style: 'decimal',
+  maximumFractionDigits: 0,
+})
 
 function formatBudget(value: number): string {
   return `${budgetFormatter.format(value)} EUR`

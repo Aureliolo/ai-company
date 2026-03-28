@@ -77,6 +77,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATE_NOT_FOUND,
     SETUP_TEMPLATES_LISTED,
 )
+from synthorg.persistence.errors import QueryError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
@@ -810,7 +811,19 @@ async def _check_needs_admin(persistence: PersistenceBackend) -> bool:
         count = await persistence.users.count_by_role(HumanRole.CEO)
     except MemoryError, RecursionError:
         raise
+    except QueryError as exc:
+        # Database query failure -- fail-open so the status endpoint
+        # surfaces the admin-creation form rather than crashing.
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            context="admin_count",
+            error=str(exc),
+            exc_info=True,
+        )
+        return True
     except Exception as exc:
+        # Unexpected error (connection, schema, programming) --
+        # same fail-open behavior with full traceback.
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             context="admin_count",
