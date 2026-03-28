@@ -240,6 +240,19 @@ def _flatten_nullable(
         return
 
     non_null = [i for i in items if i is not null_entries[0]]
+    if not non_null:
+        return
+
+    # Multi-primitive nullable union (e.g. str | int | float | bool | None):
+    # all non-null branches are primitive types -> collapse to type array.
+    if len(non_null) > 1 and all(
+        isinstance(b, dict) and "type" in b and len(b) == 1 for b in non_null
+    ):
+        types = [b["type"] for b in non_null] + ["null"]
+        del result[keyword]
+        result["type"] = types
+        return
+
     if len(non_null) != 1:
         return
 
