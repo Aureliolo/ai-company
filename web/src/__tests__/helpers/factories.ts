@@ -1,4 +1,14 @@
-import type { AgentConfig, ApprovalResponse, CompanyConfig, Department, DepartmentHealth, Task } from '@/api/types'
+import type {
+  AgentActivityEvent,
+  AgentConfig,
+  AgentPerformanceSummary,
+  ApprovalResponse,
+  CareerEvent,
+  CompanyConfig,
+  Department,
+  DepartmentHealth,
+  Task,
+} from '@/api/types'
 
 export function makeTask(id: string, overrides?: Partial<Task>): Task
 export function makeTask(id: string, title: string, overrides?: Partial<Task>): Task
@@ -130,6 +140,48 @@ export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>):
     expires_at: null,
     seconds_remaining: null,
     urgency_level: 'no_expiry',
+    ...overrides,
+  }
+}
+
+export function makeActivityEvent(overrides?: Partial<AgentActivityEvent>): AgentActivityEvent {
+  return {
+    event_type: 'task_completed',
+    timestamp: '2026-03-25T12:00:00Z',
+    description: 'Completed task task-1',
+    related_ids: {},
+    ...overrides,
+  }
+}
+
+export function makeCareerEvent(overrides?: Partial<CareerEvent>): CareerEvent {
+  return {
+    event_type: 'hired',
+    timestamp: '2026-03-01T00:00:00Z',
+    description: 'Hired as Developer',
+    initiated_by: 'system',
+    metadata: {},
+    ...overrides,
+  }
+}
+
+export function makePerformanceSummary(
+  agentName: string,
+  overrides?: Partial<AgentPerformanceSummary>,
+): AgentPerformanceSummary {
+  return {
+    agent_name: agentName,
+    tasks_completed_total: 10,
+    tasks_completed_7d: 3,
+    tasks_completed_30d: 8,
+    avg_completion_time_seconds: 3600,
+    success_rate_percent: 90,
+    cost_per_task_usd: 0.5,
+    quality_score: 8.5,
+    collaboration_score: 7.0,
+    trend_direction: 'stable',
+    windows: [],
+    trends: [],
     ...overrides,
   }
 }
