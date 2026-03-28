@@ -148,16 +148,19 @@ Directory suffix is auto-derived from the branch name:
    d. **Pre-sync all dependencies** to prevent cache lock contention when multiple Claude Code instances run concurrently. Run these **sequentially** (one per worktree, not in parallel).
 
    **Python:**
+
    ```bash
    uv sync --project <dir-path>
    ```
 
    **Node.js (web dashboard):**
+
    ```bash
    npm --prefix <dir-path>/web install --silent
    ```
 
    **Go (CLI):**
+
    ```bash
    go -C <dir-path>/cli mod download
    ```
@@ -298,7 +301,7 @@ Remove worktrees and clean up branches after PRs are merged.
 8. **Clean remaining gone branches** that are not associated with worktrees (e.g. branches created outside the worktree workflow). After worktree-specific cleanup is done, check for any additional local branches whose remote tracking branch is gone:
 
    ```bash
-   git branch -vv | grep '\[.*: gone\]'
+   git for-each-ref --format='%(refname:short) %(upstream:track,gone)' refs/heads | grep '\[gone\]$'
    ```
 
    Delete each one individually (these are non-worktree branches, safe to delete without worktree removal):
@@ -307,7 +310,7 @@ Remove worktrees and clean up branches after PRs are merged.
    git branch -D <branch-name>
    ```
 
-   This subsumes the `/clean_gone` command -- no need to run it separately after `/worktree cleanup`.
+   This handles gone branches that `/post-merge-cleanup` and `/clean_gone` would otherwise catch -- no need to run them separately after `/worktree cleanup`.
 
 9. **Report summary:**
 
@@ -349,16 +352,16 @@ Show current worktree state and how they compare to main.
 4. **Check dependency staleness** for each worktree. Compare lock files against main to detect if deps need re-syncing after a rebase:
 
    ```bash
-   git diff main -- uv.lock | head -1
-   git diff main -- web/package-lock.json | head -1
-   git diff main -- cli/go.sum | head -1
+   git diff --quiet main -- uv.lock
+   git diff --quiet main -- web/package-lock.json
+   git diff --quiet main -- cli/go.sum
    ```
 
-   If any lock file differs from main and the worktree is behind, flag it as "deps stale" in the status table.
+   Each command exits 0 if no difference, 1 if different. If any lock file differs from main and the worktree is behind, flag it as "deps stale" in the status table.
 
 5. **Present a summary table** (show both ahead AND behind counts):
 
-   ```
+   ```text
    Worktree             | Branch                    | vs Main            | PR     | Status     | Deps
    wt-delegation        | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
    wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
