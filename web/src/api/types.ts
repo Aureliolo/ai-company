@@ -893,6 +893,10 @@ export type MeetingStatus =
   | 'cancelled'
   | 'budget_exhausted'
 
+export const MEETING_STATUS_VALUES = [
+  'scheduled', 'in_progress', 'completed', 'failed', 'cancelled', 'budget_exhausted',
+] as const satisfies readonly MeetingStatus[]
+
 export type MeetingProtocolType =
   | 'round_robin'
   | 'position_papers'
