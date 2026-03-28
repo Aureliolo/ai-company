@@ -40,7 +40,6 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATE_INVALID,
     SETUP_TEMPLATE_NOT_FOUND,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
@@ -140,14 +139,6 @@ async def check_needs_admin(
         count = await persistence.users.count_by_role(HumanRole.CEO)
     except MemoryError, RecursionError:
         raise
-    except QueryError as exc:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            context="admin_count",
-            error=str(exc),
-            exc_info=True,
-        )
-        return True
     except Exception as exc:
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,

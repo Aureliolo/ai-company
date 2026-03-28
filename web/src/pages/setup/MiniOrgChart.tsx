@@ -45,18 +45,16 @@ interface AgentNodeProps {
   deptX: number
   deptY: number
   radius: number
+  deptHalfHeight: number
 }
 
-/** Half the department node height -- used to anchor connectors at the node bottom edge. */
-const DEPT_NODE_HALF_HEIGHT = 18
-
-function AgentNode({ agent, agentX, agentY, deptX, deptY, radius }: AgentNodeProps) {
+function AgentNode({ agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight }: AgentNodeProps) {
   return (
     <g>
       {/* Line from dept to agent */}
       <line
         x1={deptX}
-        y1={deptY + DEPT_NODE_HALF_HEIGHT}
+        y1={deptY + deptHalfHeight}
         x2={agentX}
         y2={agentY - radius}
         className="stroke-border"
@@ -136,6 +134,7 @@ function DepartmentGroup({ pos, nodeWidth, nodeHeight, avatarRadius, vGap, isSma
             deptX={pos.x}
             deptY={pos.y}
             radius={avatarRadius}
+            deptHalfHeight={nodeHeight / 2}
           />
         )
       })}

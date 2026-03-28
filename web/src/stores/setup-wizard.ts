@@ -32,6 +32,8 @@ import {
   getProvider,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import type { CurrencyCode } from '@/utils/currencies'
 
 /** Probe all presets and collect results, logging failures. */
 async function runProbeAll(
@@ -57,8 +59,6 @@ async function runProbeAll(
   }
   return results
 }
-import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import type { CurrencyCode } from '@/utils/currencies'
 
 export type WizardStep =
   | 'account'
