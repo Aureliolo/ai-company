@@ -58,7 +58,7 @@ AGENT_LOCK = asyncio.Lock()
 # Derive from AuthConfig default to prevent silent divergence.
 DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
     "min_password_length"
-].default  # type: ignore[assignment]
+].default
 
 
 async def post_setup_reinit(app_state: AppState) -> None:
