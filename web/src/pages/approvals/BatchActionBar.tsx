@@ -32,7 +32,7 @@ export function BatchActionBar({
       animate="animate"
       exit="exit"
     >
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 shadow-lg">
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2.5 shadow-[var(--so-shadow-card-hover)]">
         <span className="text-sm font-medium text-foreground">
           {selectedCount} selected
         </span>

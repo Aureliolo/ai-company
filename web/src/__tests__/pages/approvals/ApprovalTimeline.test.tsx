@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import fc from 'fast-check'
 import { ApprovalTimeline } from '@/pages/approvals/ApprovalTimeline'
 import { makeApproval } from '../../helpers/factories'
 
@@ -78,5 +79,23 @@ describe('ApprovalTimeline', () => {
     render(<ApprovalTimeline approval={approval} />)
     expect(screen.getByRole('list', { name: 'Approval timeline' })).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('always renders 3 steps for any approval status (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('pending' as const, 'approved' as const, 'rejected' as const, 'expired' as const),
+        (status) => {
+          const approval = makeApproval('prop-test', { status })
+          const { unmount } = render(<ApprovalTimeline approval={approval} />)
+          expect(screen.getAllByRole('listitem')).toHaveLength(3)
+          expect(screen.getByText('Submitted')).toBeInTheDocument()
+          expect(screen.getByText('Under Review')).toBeInTheDocument()
+          expect(screen.getByText('Decided')).toBeInTheDocument()
+          unmount()
+        },
+      ),
+      { numRuns: 10 },
+    )
   })
 })

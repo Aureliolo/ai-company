@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { ApprovalCard } from '@/pages/approvals/ApprovalCard'
 import { makeApproval } from '../../helpers/factories'
 
@@ -103,5 +104,29 @@ describe('ApprovalCard', () => {
   it('marks checkbox as checked when selected', () => {
     renderCard({}, true)
     expect(screen.getByRole('checkbox')).toBeChecked()
+  })
+
+  it('renders without crashing for any status/countdown/urgency (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('pending' as const, 'approved' as const, 'rejected' as const, 'expired' as const),
+        fc.option(fc.integer({ min: 0, max: 86400 }), { nil: null }),
+        fc.constantFrom('critical' as const, 'high' as const, 'normal' as const, 'no_expiry' as const),
+        (status, secondsRemaining, urgencyLevel) => {
+          const { unmount } = renderCard({
+            status,
+            seconds_remaining: secondsRemaining,
+            urgency_level: urgencyLevel,
+          })
+          if (status === 'pending') {
+            expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument()
+          } else {
+            expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+          }
+          unmount()
+        },
+      ),
+      { numRuns: 20 },
+    )
   })
 })

@@ -87,11 +87,11 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
         }
         return serverItem
       })
-      // Prune selectedIds that are no longer in the fetched data
-      const mergedIds = new Set(merged.map((a) => a.id))
+      // Prune selectedIds: only keep IDs that are still pending
+      const pendingIds = new Set(merged.filter((a) => a.status === 'pending').map((a) => a.id))
       const prevSelected = get().selectedIds
-      const prunedSelected = [...prevSelected].some((sid) => !mergedIds.has(sid))
-        ? new Set([...prevSelected].filter((sid) => mergedIds.has(sid)))
+      const prunedSelected = [...prevSelected].some((sid) => !pendingIds.has(sid))
+        ? new Set([...prevSelected].filter((sid) => pendingIds.has(sid)))
         : prevSelected
       set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected })
     } catch (err) {
@@ -152,46 +152,62 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   },
 
   optimisticApprove: (id) => {
-    const prev = get().approvals
-    const idx = prev.findIndex((a) => a.id === id)
+    const approvals = get().approvals
+    const idx = approvals.findIndex((a) => a.id === id)
     if (idx === -1) {
       console.warn('[approvals] optimisticApprove: approval not found in store', id)
       return () => {}
     }
     pendingTransitions.add(id)
     const prevSelectedIds = get().selectedIds
+    const hadSelection = prevSelectedIds.has(id)
     const newSelectedIds = new Set(prevSelectedIds)
     newSelectedIds.delete(id)
-    const oldApproval = prev[idx]!
+    const oldApproval = approvals[idx]!
     const updated = { ...oldApproval, status: 'approved' as const, decided_at: new Date().toISOString() }
-    const newApprovals = [...prev]
+    const newApprovals = [...approvals]
     newApprovals[idx] = updated
     set({ approvals: newApprovals, selectedIds: newSelectedIds })
     return () => {
       pendingTransitions.delete(id)
-      set({ approvals: prev, selectedIds: prevSelectedIds })
+      // Targeted rollback: only restore this specific approval and selection
+      set((s) => {
+        const currentApprovals = [...s.approvals]
+        const currentIdx = currentApprovals.findIndex((a) => a.id === id)
+        if (currentIdx !== -1) currentApprovals[currentIdx] = oldApproval
+        const restoredIds = hadSelection ? new Set([...s.selectedIds, id]) : s.selectedIds
+        return { approvals: currentApprovals, selectedIds: restoredIds }
+      })
     }
   },
 
   optimisticReject: (id) => {
-    const prev = get().approvals
-    const idx = prev.findIndex((a) => a.id === id)
+    const approvals = get().approvals
+    const idx = approvals.findIndex((a) => a.id === id)
     if (idx === -1) {
       console.warn('[approvals] optimisticReject: approval not found in store', id)
       return () => {}
     }
     pendingTransitions.add(id)
     const prevSelectedIds = get().selectedIds
+    const hadSelection = prevSelectedIds.has(id)
     const newSelectedIds = new Set(prevSelectedIds)
     newSelectedIds.delete(id)
-    const oldApproval = prev[idx]!
+    const oldApproval = approvals[idx]!
     const updated = { ...oldApproval, status: 'rejected' as const, decided_at: new Date().toISOString() }
-    const newApprovals = [...prev]
+    const newApprovals = [...approvals]
     newApprovals[idx] = updated
     set({ approvals: newApprovals, selectedIds: newSelectedIds })
     return () => {
       pendingTransitions.delete(id)
-      set({ approvals: prev, selectedIds: prevSelectedIds })
+      // Targeted rollback: only restore this specific approval and selection
+      set((s) => {
+        const currentApprovals = [...s.approvals]
+        const currentIdx = currentApprovals.findIndex((a) => a.id === id)
+        if (currentIdx !== -1) currentApprovals[currentIdx] = oldApproval
+        const restoredIds = hadSelection ? new Set([...s.selectedIds, id]) : s.selectedIds
+        return { approvals: currentApprovals, selectedIds: restoredIds }
+      })
     }
   },
 
@@ -279,7 +295,10 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       }
     }
 
-    get().clearSelection()
+    if (failed === 0) {
+      get().clearSelection()
+    }
+    // (failed IDs are already rolled back and restored to selectedIds by the targeted rollback)
     return { succeeded, failed, failedReasons }
   },
 
@@ -316,7 +335,10 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       }
     }
 
-    get().clearSelection()
+    if (failed === 0) {
+      get().clearSelection()
+    }
+    // (failed IDs are already rolled back and restored to selectedIds by the targeted rollback)
     return { succeeded, failed, failedReasons }
   },
 }))
