@@ -86,7 +86,9 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 	} else if removed > 0 {
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
-	out.HintGuidance("Run 'synthorg cleanup --keep N' to preserve recent previous versions.")
+	if removed > 0 {
+		out.HintGuidance("Run 'synthorg cleanup --keep N' to preserve recent previous versions.")
+	}
 }
 
 // mergeKeepIDs combines current and previous image ID sets into a single

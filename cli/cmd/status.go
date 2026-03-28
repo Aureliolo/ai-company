@@ -296,7 +296,11 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 	_, _ = fmt.Fprintln(w, "Containers:")
 	renderContainerTable(out, containers, statusWide, statusNoTrunc)
 	if !statusWide {
-		out.HintGuidance("Use --wide to show port mappings, or --services to filter by name.")
+		if statusServices == "" {
+			out.HintGuidance("Use --wide to show port mappings, or --services to filter by name.")
+		} else {
+			out.HintGuidance("Use --wide to show port mappings.")
+		}
 	}
 	out.HintTip("Run 'synthorg logs' to view container logs")
 	_, _ = fmt.Fprintln(w)

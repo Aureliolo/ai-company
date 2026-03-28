@@ -121,7 +121,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 
 	renderDoctorFiltered(out, report, state)
-	printDoctorFooter(out, state, report)
+	status := printDoctorFooter(out, state, report)
 
 	if doctorChecks != "" {
 		out.HintGuidance("Run without --checks to see all diagnostic categories.")
@@ -132,7 +132,6 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
 	}
 
-	status, _ := classifyDoctor(report)
 	if status != doctorHealthy && !doctorFix {
 		out.HintTip("Run 'synthorg doctor --fix' to auto-fix detected issues.")
 	}
@@ -156,13 +155,14 @@ func saveDiagnosticFile(out *ui.UI, safeDir string, report diagnostics.Report) {
 }
 
 // printDoctorFooter renders links and summary below the diagnostic sections.
-func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) {
+// Returns the overall doctor status to avoid redundant classifyDoctor calls.
+func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) doctorStatus {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
 	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 	_, _ = fmt.Fprintln(out.Writer())
-	renderDoctorSummary(out, report)
+	return renderDoctorSummary(out, report)
 }
 
 // renderDoctorFiltered renders diagnostic sections gated by --checks filter.
@@ -348,7 +348,8 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 }
 
 // renderDoctorSummary prints a final summary box showing overall system status.
-func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
+// Returns the classification to avoid redundant classifyDoctor calls.
+func renderDoctorSummary(out *ui.UI, r diagnostics.Report) doctorStatus {
 	status, issues := classifyDoctor(r)
 
 	switch status {
@@ -377,6 +378,7 @@ func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
 		}
 		out.Box("Status", lines)
 	}
+	return status
 }
 
 func renderDoctorEnvironment(out *ui.UI, r diagnostics.Report) {

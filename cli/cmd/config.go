@@ -297,25 +297,33 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		msg += " (compose regenerated)"
 	}
 	out.Success(msg)
-	hintAfterConfigSet(out, key, value)
+	hintAfterConfigSet(out, key, value, state.DataDir)
 	return nil
 }
 
 // hintAfterConfigSet emits contextual guidance after a config set operation.
-func hintAfterConfigSet(out *ui.UI, key, value string) {
+func hintAfterConfigSet(out *ui.UI, key, value, dataDir string) {
 	if composeAffectingKeys[key] {
-		out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the new value.")
+		// Only hint about restart if compose.yml exists (pre-init users have no stack).
+		safeDir, secErr := config.SecurePath(dataDir)
+		if secErr == nil {
+			if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
+				out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the new value.")
+			}
+		}
 	}
 
 	switch key {
 	case "hints":
+		// Use Step() instead of HintGuidance() because the UI was created with the
+		// old hints mode -- HintGuidance would be swallowed when changing from "never".
 		switch value {
 		case "always":
-			out.HintGuidance("All hints enabled. You'll see tips, guidance, and next steps.")
+			out.Step("All hints enabled. You'll see tips, guidance, and next steps.")
 		case "auto":
-			out.HintGuidance("Tips shown once per session. Guidance hidden. Error and next-step hints always shown.")
+			out.Step("Tips shown once per session. Guidance hidden. Error and next-step hints always shown.")
 		case "never":
-			out.HintGuidance("Tips and guidance suppressed. Error and next-step hints still shown.")
+			out.Step("Tips and guidance suppressed. Error and next-step hints still shown.")
 		}
 	case "color":
 		switch value {
@@ -493,6 +501,14 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("saving config: %w", err)
 	}
 	out.Success(fmt.Sprintf("Reset %s to default", key))
+	if composeAffectingKeys[key] {
+		safeDir, secErr := config.SecurePath(state.DataDir)
+		if secErr == nil {
+			if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
+				out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the default value.")
+			}
+		}
+	}
 	return nil
 }
 

@@ -103,7 +103,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// --cli-only: stop after CLI update.
 	if updateCLIOnly {
-		out.HintGuidance("Run 'synthorg update --images-only' to also update container images.")
+		out.HintGuidance("Run 'synthorg update --images-only' to update container images separately.")
 		return nil
 	}
 
@@ -111,7 +111,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if updateImagesOnly {
-		out.HintGuidance("Run 'synthorg update --cli-only' to also update the CLI binary.")
+		out.HintGuidance("Run 'synthorg update --cli-only' to update the CLI binary separately.")
 	}
 	return nil
 }
@@ -163,7 +163,7 @@ func runUpdateCheck(cmd *cobra.Command, state config.State) error {
 		return NewExitError(ExitUpdateAvail, nil)
 	}
 	out.Success(fmt.Sprintf("Up to date (%s)", result.CurrentVersion))
-	out.HintGuidance("Use --check for scripted update detection (exit code 10 = update available).")
+	out.HintGuidance("Exit code 0 means up to date; exit code 10 means an update is available.")
 	return nil
 }
 
@@ -630,9 +630,11 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 // Returns (false, nil) when restart was skipped or health check failed.
 // Respects --no-restart flag, auto_restart config key, and --yes flag.
 func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, state config.State) (bool, error) {
+	opts := GetGlobalOpts(cmd.Context())
+	uiOut := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
 	// --no-restart: skip entirely.
 	if updateNoRestart {
-		uiOut := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
 		uiOut.Success("Restart skipped (--no-restart)")
 		uiOut.HintNextStep("Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
@@ -651,10 +653,7 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	opts := GetGlobalOpts(ctx)
-
-	// auto_restart config key: auto-accept restart regardless of TTY.
-	// Precedence: --no-restart (checked above) > --yes > config auto key > prompt > non-interactive default.
+	// Precedence: --no-restart (above) > --yes > config auto key > prompt > non-interactive default.
 	if state.AutoRestart {
 		return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 	}
@@ -676,8 +675,7 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	}
 	restarted, restartErr := performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 	if restarted {
-		restartOut := ui.NewUIWithOptions(out, opts.UIOptions())
-		restartOut.HintTip("Run 'synthorg config set auto_restart true' to auto-restart after updates.")
+		uiOut.HintTip("Run 'synthorg config set auto_restart true' to auto-restart after updates.")
 	}
 	return restarted, restartErr
 }

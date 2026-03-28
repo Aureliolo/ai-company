@@ -103,11 +103,16 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	printInitSuccess(out, safeDir)
+	hintAfterInit(out, state)
+	return nil
+}
+
+// hintAfterInit emits contextual guidance after a successful init.
+func hintAfterInit(out *ui.UI, state config.State) {
 	if state.Channel == "dev" {
 		out.HintTip("Dev channel receives frequent pre-release updates. Run 'synthorg config set channel stable' to switch.")
 	}
 	out.HintGuidance("Customize settings later with 'synthorg config set <key> <value>'. Run 'synthorg config list' to see all options.")
-	return nil
 }
 
 // handleReinit loads the existing config, confirms overwrite (interactive or

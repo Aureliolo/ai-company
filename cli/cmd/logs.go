@@ -24,6 +24,8 @@ var (
 	logNoPrefix   bool
 )
 
+const logsFilterHint = "Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering."
+
 // serviceNamePattern validates service names to prevent command injection via
 // compose arguments (only alphanumeric, hyphens, and underscores).
 var serviceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -83,7 +85,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	// Emit hints before composeRun in follow mode (-f), since it blocks
 	// until Ctrl+C and the post-run code would be unreachable.
 	if logFollow {
-		out.HintGuidance("Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering.")
+		out.HintGuidance(logsFilterHint)
 	}
 
 	composeArgs := buildLogsArgs(strings.TrimSpace(logTail), args)
@@ -92,7 +94,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	out.HintTip("Use -f to follow log output in real time.")
-	out.HintGuidance("Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering.")
+	out.HintGuidance(logsFilterHint)
 	return nil
 }
 

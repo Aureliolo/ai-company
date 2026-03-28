@@ -73,7 +73,7 @@ func runStop(cmd *cobra.Command, _ []string) error {
 
 	out.HintNextStep("Run 'synthorg start' to restart.")
 	if stopVolumes {
-		out.HintNextStep("Volumes removed -- all persistent data (database, memory) has been deleted.")
+		out.Warn("Volumes removed -- all persistent data (database, memory) has been deleted.")
 	} else {
 		out.HintGuidance("Persistent data preserved. Use --volumes to also remove database and memory data.")
 	}

@@ -87,6 +87,19 @@ All commands accept these persistent flags (precedence: flag > env var > config 
 
 Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces color on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
 
+#### Hint Tiers
+
+The CLI uses four hint tiers with different visibility rules per `hints` mode. When adding hints, choose the tier that matches the intent:
+
+| Tier | `always` | `auto` | `never` | `--quiet` | Use for |
+|------|----------|--------|---------|-----------|---------|
+| `HintError` | shown | shown | shown | suppressed | Error recovery (always visible unless quiet) |
+| `HintNextStep` | shown | shown | shown | suppressed | Natural next action, destructive-action feedback |
+| `HintTip` | shown | once/session | suppressed | suppressed | Config automation suggestions (e.g. `auto_pull`) |
+| `HintGuidance` | shown | suppressed | suppressed | suppressed | Flag/feature discovery (e.g. `--watch`, `--keep N`) |
+
+`HintTip` deduplicates within a session (same message shown at most once). `HintGuidance` is invisible in the default `auto` mode -- only users who opt in with `synthorg config set hints always` see it.
+
 Additional env vars (no corresponding flag -- settable via env var or `config set`):
 
 | Env Var | Description |

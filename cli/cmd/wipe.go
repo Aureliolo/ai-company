@@ -183,7 +183,7 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return err
 	}
 
-	manualStart := startAfter && !wc.state.AutoStartAfterWipe
+	manualStart := wc.shouldPrompt() && startAfter && !wc.state.AutoStartAfterWipe
 	if startAfter {
 		if err := wc.startContainers(); err != nil {
 			wc.errOut.Warn(fmt.Sprintf("Could not restart containers: %v", err))
