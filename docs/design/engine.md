@@ -927,6 +927,7 @@ Semantic conflicts: review agent evaluates merged result
           file_extensions: [".py"]
           max_files: 50
           max_file_bytes: 524288
+          git_concurrency: 10
           llm_model: null
           llm_temperature: 0.1
           llm_max_tokens: 4096
@@ -946,9 +947,11 @@ analyzes merged results to catch these issues before they reach main.
 
 **SemanticAnalyzer protocol and composite pattern.** The `SemanticAnalyzer`
 protocol defines a single `analyze(workspace, changed_files, repo_root, base_sources)` method.
-The default `CompositeSemanticAnalyzer` delegates to an ordered list of
-analyzers and merges their results, allowing AST-based checks and optional
-LLM-based analysis to compose transparently.
+The default `CompositeSemanticAnalyzer` dispatches all configured analyzers
+concurrently via `asyncio.TaskGroup` and deduplicates their combined results,
+allowing AST-based checks and optional LLM-based analysis to compose
+transparently. Analyzer failures are logged and skipped without aborting
+the remaining analyzers.
 
 **AST-based checks.** Four pure-function checks run against the merged source
 without external dependencies:
@@ -970,7 +973,8 @@ for deeper reasoning about subtle semantic issues that AST checks cannot catch.
 
 **SemanticAnalysisConfig.** A frozen Pydantic model controlling the analysis
 pipeline: `enabled` toggle, `file_extensions` filter, `max_files` and
-`max_file_bytes` limits to bound analysis cost, and LLM-specific settings
+`max_file_bytes` limits to bound analysis cost, `git_concurrency` to cap
+concurrent `git show` subprocess fan-out, and LLM-specific settings
 (`llm_model`, `llm_temperature`, `llm_max_tokens`, `llm_max_retries`).
 
 **Flow through MergeResult and MergeOrchestrator.** After a textually

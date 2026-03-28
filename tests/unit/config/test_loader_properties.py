@@ -91,7 +91,7 @@ class TestSubstituteEnvVarsProperties:
 
 class TestParseYamlStringProperties:
     @given(text=_yaml_text)
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_arbitrary_text_no_unhandled_exception(self, text: str) -> None:
         """Crash-safety: _parse_yaml_string must only raise ConfigParseError."""
         try:

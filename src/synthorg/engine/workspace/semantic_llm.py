@@ -9,6 +9,7 @@ logic resides in the workspace strategy layer.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
     build_semantic_review_tool,
@@ -29,7 +30,6 @@ from synthorg.providers.models import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
     from synthorg.engine.workspace.config import SemanticAnalysisConfig
     from synthorg.engine.workspace.models import MergeConflict, Workspace
@@ -79,17 +79,18 @@ class LlmSemanticAnalyzer:
         *,
         workspace: Workspace,
         changed_files: tuple[str, ...],
-        repo_root: str,
         base_sources: Mapping[str, str],
+        merged_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged files using an LLM for semantic conflicts.
 
         Args:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
-            repo_root: Absolute path to the repository root.
             base_sources: Mapping of file path to source content
                 before the merge.
+            merged_sources: Mapping of file path to source content
+                after the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances from LLM review.
@@ -101,9 +102,9 @@ class LlmSemanticAnalyzer:
             file_count=len(changed_files),
         )
 
-        result = await self._prepare_review_context(
+        result = self._prepare_review_context(
             changed_files,
-            repo_root,
+            merged_sources,
             base_sources,
         )
         if result is None:
@@ -118,36 +119,28 @@ class LlmSemanticAnalyzer:
             max_retries=self._config.llm_max_retries,
         )
 
-    async def _prepare_review_context(
+    def _prepare_review_context(
         self,
         changed_files: tuple[str, ...],
-        repo_root: str,
+        merged_sources: Mapping[str, str],
         base_sources: Mapping[str, str],
     ) -> tuple[list[ChatMessage], ToolDefinition, CompletionConfig] | None:
-        """Filter files, read contents, and build LLM messages.
+        """Filter files, apply size limits, and build LLM messages.
 
         Returns:
             Tuple of (messages, tool_def, comp_config) or ``None``
             when there is nothing to review.
         """
-        from pathlib import Path  # noqa: PLC0415
-
-        py_files = [
-            f
-            for f in changed_files
-            if any(f.endswith(ext) for ext in self._config.file_extensions)
-        ]
-        py_files = py_files[: self._config.max_files]
-        if not py_files:
+        ordered = filter_files(changed_files, self._config)
+        if not ordered:
             return None
 
-        root = Path(repo_root)
-        merged_contents = await asyncio.to_thread(
-            _read_file_contents,
-            root,
-            py_files,
-            self._config.max_file_bytes,
-        )
+        max_bytes = self._config.max_file_bytes
+        merged_contents: dict[str, str] = {}
+        for name in ordered:
+            content = merged_sources.get(name)
+            if content is not None and len(content.encode("utf-8")) <= max_bytes:
+                merged_contents[name] = content
         if not merged_contents:
             return None
 
@@ -191,100 +184,104 @@ class LlmSemanticAnalyzer:
             Parsed conflicts, or empty tuple on exhaustion/error.
         """
         for attempt in range(1 + max_retries):
-            try:
-                response = await self._provider.complete(
-                    messages,
-                    self._model,
-                    tools=[tool_def],
-                    config=comp_config,
-                )
-                conflicts = parse_tool_call_response(response)
-            except ValueError:
-                if attempt < max_retries:
-                    logger.debug(
-                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                        workspace_id=workspace.workspace_id,
-                        analyzer="llm",
-                        attempt=attempt,
-                        reason="parse_error",
-                    )
-                    continue
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    reason="parse_exhausted",
-                )
-                return ()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    reason="provider_error",
-                    exc_info=True,
-                )
-                return ()
-            else:
-                logger.info(
-                    WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    conflicts=len(conflicts),
-                    attempt=attempt,
-                )
-                return conflicts
-
+            result = await self._attempt_once(
+                workspace=workspace,
+                messages=messages,
+                tool_def=tool_def,
+                comp_config=comp_config,
+                attempt=attempt,
+                max_retries=max_retries,
+            )
+            if result is not None:
+                return result
         return ()  # pragma: no cover
 
+    async def _attempt_once(  # noqa: PLR0913
+        self,
+        *,
+        workspace: Workspace,
+        messages: list[ChatMessage],
+        tool_def: ToolDefinition,
+        comp_config: CompletionConfig,
+        attempt: int,
+        max_retries: int,
+    ) -> tuple[MergeConflict, ...] | None:
+        """Execute a single LLM call attempt.
 
-def _read_file_contents(
-    root: Path,
-    files: list[str],
-    max_file_bytes: int,
-) -> dict[str, str]:
-    """Read file contents, skipping unreadable files with logging.
-
-    Unlike ``_read_sources`` in :mod:`semantic_analyzer`, this logs
-    read errors at WARNING because LLM ingestion failures are
-    operationally more significant, and enforces ``max_file_bytes``
-    to avoid exceeding LLM token limits.
-    """
-    resolved_root = root.resolve()
-    contents: dict[str, str] = {}
-    for file_path in files:
+        Returns:
+            Parsed conflicts on success, empty tuple on terminal
+            failure, or ``None`` to signal a retry.
+        """
         try:
-            target = (root / file_path).resolve()
-            if not target.is_relative_to(resolved_root):
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    file=file_path,
-                    reason="path_traversal",
-                )
-                continue
-            stat = target.stat()
-            if stat.st_size > max_file_bytes:
-                logger.debug(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    file=file_path,
-                    reason="file_too_large",
-                    size=stat.st_size,
-                    limit=max_file_bytes,
-                )
-                continue
-            contents[file_path] = target.read_text(
-                encoding="utf-8",
+            response = await self._provider.complete(
+                messages,
+                self._model,
+                tools=[tool_def],
+                config=comp_config,
             )
-        except OSError as exc:
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                file=file_path,
-                reason="read_error",
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                reason="provider_error",
                 error=f"{type(exc).__name__}: {exc}",
+                exc_info=True,
             )
-    return contents
+            return ()
+
+        try:
+            conflicts = parse_tool_call_response(response)
+        except ValueError as exc:
+            return self._handle_parse_error(
+                workspace=workspace,
+                attempt=attempt,
+                max_retries=max_retries,
+                error=exc,
+            )
+        else:
+            logger.info(
+                WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                conflicts=len(conflicts),
+                attempt=attempt,
+            )
+            return conflicts
+
+    @staticmethod
+    def _handle_parse_error(
+        *,
+        workspace: Workspace,
+        attempt: int,
+        max_retries: int,
+        error: ValueError,
+    ) -> tuple[MergeConflict, ...] | None:
+        """Handle a parse error from ``parse_tool_call_response``.
+
+        Returns:
+            ``None`` to signal a retry, or ``()`` on exhaustion.
+        """
+        if attempt < max_retries:
+            logger.debug(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                attempt=attempt,
+                reason="parse_error",
+                error=str(error),
+            )
+            return None
+        logger.warning(
+            WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            workspace_id=workspace.workspace_id,
+            analyzer="llm",
+            reason="parse_exhausted",
+            error=str(error),
+        )
+        return ()
 
 
 def _build_diff_summary(

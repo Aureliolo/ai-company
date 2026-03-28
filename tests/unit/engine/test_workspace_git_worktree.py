@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from synthorg.engine.errors import (
-    SemanticAnalysisError,
     WorkspaceCleanupError,
     WorkspaceLimitError,
     WorkspaceMergeError,
@@ -17,16 +16,19 @@ from synthorg.engine.workspace.config import (
     PlannerWorktreesConfig,
     SemanticAnalysisConfig,
 )
-from synthorg.engine.workspace.git_worktree import (
-    PlannerWorktreeStrategy,
-    _validate_file_path,
-)
+from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
 from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
 from synthorg.engine.workspace.protocol import (
     WorkspaceIsolationStrategy,
+)
+from synthorg.engine.workspace.semantic_git_ops import (
+    _validate_file_path,
+    get_base_sources,
+    get_changed_files,
+    get_merge_base,
 )
 
 from .conftest import make_workspace
@@ -741,63 +743,50 @@ class TestValidateFilePath:
     """Tests for the _validate_file_path module-level function."""
 
     @pytest.mark.unit
-    def test_empty_string(self) -> None:
-        """Empty string returns False."""
-        assert _validate_file_path("") is False
-
-    @pytest.mark.unit
-    def test_starts_with_dash(self) -> None:
-        """Flag-like path starting with dash returns False."""
-        assert _validate_file_path("-malicious") is False
-
-    @pytest.mark.unit
-    def test_directory_traversal(self) -> None:
-        """Path containing '..' traversal returns False."""
-        assert _validate_file_path("src/../etc/passwd") is False
-
-    @pytest.mark.unit
-    def test_absolute_path(self) -> None:
-        """Absolute path starting with '/' returns False."""
-        assert _validate_file_path("/etc/passwd") is False
-
-    @pytest.mark.unit
-    def test_valid_relative_path(self) -> None:
-        """Valid relative path returns True."""
-        assert _validate_file_path("src/main.py") is True
-
-    @pytest.mark.unit
-    def test_path_with_spaces(self) -> None:
-        """Path with spaces returns True (spaces are allowed)."""
-        assert _validate_file_path("src/my file.py") is True
-
-    @pytest.mark.unit
-    def test_path_with_special_chars(self) -> None:
-        """Path with disallowed special chars returns False."""
-        assert _validate_file_path("src/main;rm -rf.py") is False
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("", False),
+            ("-malicious", False),
+            ("src/../etc/passwd", False),
+            ("/etc/passwd", False),
+            ("C:/Windows/system32", False),
+            ("src/main.py", True),
+            ("src/my file.py", True),
+            ("src/main;rm -rf.py", False),
+        ],
+        ids=[
+            "empty",
+            "dash_prefix",
+            "traversal",
+            "absolute_unix",
+            "absolute_windows",
+            "valid_relative",
+            "spaces",
+            "special_chars",
+        ],
+    )
+    def test_validate_file_path(self, path: str, expected: bool) -> None:
+        """Validate file path safety checks."""
+        assert _validate_file_path(path) is expected
 
 
 # ---------------------------------------------------------------------------
-# _get_merge_base
+# get_merge_base (standalone function)
 # ---------------------------------------------------------------------------
 
 
 class TestGetMergeBase:
-    """Tests for _get_merge_base method."""
+    """Tests for get_merge_base standalone function."""
 
     @pytest.mark.unit
     async def test_success_returns_sha(self) -> None:
         """Returns stripped SHA when git merge-base succeeds."""
-        strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(0, "abc123def\n", ""),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_merge_base("sha_a", "refs/heads/branch")
+        result = await get_merge_base(mock_run_git, "sha_a", "refs/heads/branch")
 
         assert result == "abc123def"
         mock_run_git.assert_awaited_once_with(
@@ -810,112 +799,81 @@ class TestGetMergeBase:
     @pytest.mark.unit
     async def test_failure_returns_empty(self) -> None:
         """Returns empty string and logs warning on failure."""
-        strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(1, "", "not a valid ref"),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_merge_base("bad_sha", "refs/heads/gone")
+        result = await get_merge_base(mock_run_git, "bad_sha", "refs/heads/gone")
 
         assert result == ""
 
 
 # ---------------------------------------------------------------------------
-# _get_changed_files
+# get_changed_files (standalone function)
 # ---------------------------------------------------------------------------
 
 
 class TestGetChangedFiles:
-    """Tests for _get_changed_files method."""
+    """Tests for get_changed_files standalone function."""
 
     @pytest.mark.unit
     async def test_success_returns_file_paths(self) -> None:
         """Returns tuple of file paths from git diff output."""
-        strategy = _make_strategy()
         stdout = "src/main.py\nsrc/utils.py\n"
         mock_run_git = AsyncMock(
             return_value=(0, stdout, ""),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_changed_files("base_sha", "merge_sha")
+        result = await get_changed_files(mock_run_git, "base_sha", "merge_sha")
 
         assert result == ("src/main.py", "src/utils.py")
 
     @pytest.mark.unit
     async def test_failure_returns_empty(self) -> None:
         """Returns empty tuple and logs warning on failure."""
-        strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(1, "", "error: bad revision"),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_changed_files("bad", "sha")
+        result = await get_changed_files(mock_run_git, "bad", "sha")
 
         assert result == ()
 
     @pytest.mark.unit
     async def test_empty_stdout_returns_empty(self) -> None:
         """Returns empty tuple when diff produces no output."""
-        strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(0, "", ""),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_changed_files("sha_a", "sha_b")
+        result = await get_changed_files(mock_run_git, "sha_a", "sha_b")
 
         assert result == ()
 
     @pytest.mark.unit
     async def test_filters_unsafe_paths(self) -> None:
         """Unsafe file paths are excluded from results."""
-        strategy = _make_strategy()
         stdout = "src/good.py\n--malicious\n../escape.py\nsrc/also-good.py\n"
         mock_run_git = AsyncMock(
             return_value=(0, stdout, ""),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
-        ):
-            result = await strategy._get_changed_files("sha_a", "sha_b")
+        result = await get_changed_files(mock_run_git, "sha_a", "sha_b")
 
         assert result == ("src/good.py", "src/also-good.py")
 
 
 # ---------------------------------------------------------------------------
-# _get_base_sources
+# get_base_sources (standalone function)
 # ---------------------------------------------------------------------------
 
 
 class TestGetBaseSources:
-    """Tests for _get_base_sources method."""
+    """Tests for get_base_sources standalone function."""
 
     @pytest.mark.unit
     async def test_success_returns_file_contents(self) -> None:
         """Returns dict mapping file path to content."""
-        strategy = _make_strategy()
 
         async def mock_run_git(
             *args: str,
@@ -930,15 +888,11 @@ class TestGetBaseSources:
                     return (0, "def foo(): ...", "")
             return (1, "", "error")  # pragma: no cover
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            side_effect=mock_run_git,
-        ):
-            result = await strategy._get_base_sources(
-                "abc123",
-                ("src/main.py", "src/utils.py"),
-            )
+        result = await get_base_sources(
+            mock_run_git,
+            "abc123",
+            ("src/main.py", "src/utils.py"),
+        )
 
         assert result == {
             "src/main.py": "print('hello')",
@@ -948,7 +902,6 @@ class TestGetBaseSources:
     @pytest.mark.unit
     async def test_skips_failed_files(self) -> None:
         """Files that fail git show are omitted (logged at debug)."""
-        strategy = _make_strategy()
 
         async def mock_run_git(
             *args: str,
@@ -961,15 +914,11 @@ class TestGetBaseSources:
                 return (1, "", "not found")
             return (1, "", "error")  # pragma: no cover
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            side_effect=mock_run_git,
-        ):
-            result = await strategy._get_base_sources(
-                "abc123",
-                ("src/good.py", "src/deleted.py"),
-            )
+        result = await get_base_sources(
+            mock_run_git,
+            "abc123",
+            ("src/good.py", "src/deleted.py"),
+        )
 
         assert "src/good.py" in result
         assert "src/deleted.py" not in result
@@ -977,20 +926,15 @@ class TestGetBaseSources:
     @pytest.mark.unit
     async def test_skips_unsafe_file_paths(self) -> None:
         """Unsafe file paths are skipped (logged at warning)."""
-        strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(0, "content", ""),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
+        result = await get_base_sources(
             mock_run_git,
-        ):
-            result = await strategy._get_base_sources(
-                "abc123",
-                ("--malicious", "src/good.py"),
-            )
+            "abc123",
+            ("--malicious", "src/good.py"),
+        )
 
         # Only the safe path should be fetched
         assert "--malicious" not in result
@@ -1066,10 +1010,10 @@ class TestRunSemanticAnalysis:
         assert result == ()
 
     @pytest.mark.unit
-    async def test_delegates_to_do_semantic_analysis(
+    async def test_delegates_to_run_semantic_analysis(
         self,
     ) -> None:
-        """Delegates to _do_semantic_analysis when configured."""
+        """Delegates to semantic_git_ops.run_semantic_analysis."""
         mock_analyzer = AsyncMock()
         strategy = _make_strategy(
             config=PlannerWorktreesConfig(
@@ -1081,11 +1025,10 @@ class TestRunSemanticAnalysis:
         )
         ws = make_workspace()
 
-        mock_do = AsyncMock(return_value=())
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_do_semantic_analysis",
-            mock_do,
+        mock_fn = AsyncMock(return_value=())
+        with patch(
+            "synthorg.engine.workspace.git_worktree.run_semantic_analysis",
+            mock_fn,
         ):
             result = await strategy._run_semantic_analysis(
                 workspace=ws,
@@ -1094,7 +1037,10 @@ class TestRunSemanticAnalysis:
             )
 
         assert result == ()
-        mock_do.assert_awaited_once_with(
+        mock_fn.assert_awaited_once_with(
+            run_git=strategy._run_git,
+            config=strategy._config.semantic_analysis,
+            analyzer=mock_analyzer,
             workspace=ws,
             pre_merge_sha="abc123",
             merge_sha="def456",
@@ -1124,11 +1070,10 @@ class TestRunSemanticAnalysis:
         )
         ws = make_workspace()
 
-        mock_do = AsyncMock(return_value=(conflict,))
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_do_semantic_analysis",
-            mock_do,
+        mock_fn = AsyncMock(return_value=(conflict,))
+        with patch(
+            "synthorg.engine.workspace.git_worktree.run_semantic_analysis",
+            mock_fn,
         ):
             result = await strategy._run_semantic_analysis(
                 workspace=ws,
@@ -1141,28 +1086,12 @@ class TestRunSemanticAnalysis:
 
 
 # ---------------------------------------------------------------------------
-# _do_semantic_analysis
+# _do_analysis (via _run_semantic_analysis)
 # ---------------------------------------------------------------------------
 
 
 class TestDoSemanticAnalysis:
-    """Tests for _do_semantic_analysis method."""
-
-    @pytest.mark.unit
-    async def test_raises_when_analyzer_is_none(self) -> None:
-        """Raises SemanticAnalysisError if analyzer is None."""
-        strategy = _make_strategy(semantic_analyzer=None)
-        ws = make_workspace()
-
-        with pytest.raises(
-            SemanticAnalysisError,
-            match="without a configured analyzer",
-        ):
-            await strategy._do_semantic_analysis(
-                workspace=ws,
-                pre_merge_sha="abc123",
-                merge_sha="def456",
-            )
+    """Tests for the semantic analysis pipeline via _run_semantic_analysis."""
 
     @pytest.mark.unit
     async def test_catches_non_cancelled_exception(self) -> None:
@@ -1178,16 +1107,15 @@ class TestDoSemanticAnalysis:
         )
         ws = make_workspace()
 
-        # Make _get_merge_base raise a RuntimeError
+        # Make get_merge_base raise a RuntimeError
         mock_base = AsyncMock(
             side_effect=RuntimeError("git crashed"),
         )
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_get_merge_base",
+        with patch(
+            "synthorg.engine.workspace.semantic_git_ops.get_merge_base",
             mock_base,
         ):
-            result = await strategy._do_semantic_analysis(
+            result = await strategy._run_semantic_analysis(
                 workspace=ws,
                 pre_merge_sha="abc123",
                 merge_sha="def456",
@@ -1213,14 +1141,13 @@ class TestDoSemanticAnalysis:
             side_effect=asyncio.CancelledError,
         )
         with (
-            patch.object(
-                PlannerWorktreeStrategy,
-                "_get_merge_base",
+            patch(
+                "synthorg.engine.workspace.semantic_git_ops.get_merge_base",
                 mock_base,
             ),
             pytest.raises(asyncio.CancelledError),
         ):
-            await strategy._do_semantic_analysis(
+            await strategy._run_semantic_analysis(
                 workspace=ws,
                 pre_merge_sha="abc123",
                 merge_sha="def456",
@@ -1243,9 +1170,7 @@ class TestDoSemanticAnalysis:
         )
         ws = make_workspace()
 
-        # merge-base returns pre_merge_sha itself
         mock_base = AsyncMock(return_value="abc123")
-        # changed files include .py and .txt
         mock_changed = AsyncMock(
             return_value=(
                 "src/main.py",
@@ -1253,7 +1178,7 @@ class TestDoSemanticAnalysis:
                 "src/utils.py",
             ),
         )
-        # base sources returns content for .py files only
+        # get_base_sources is called twice (base + merged)
         mock_sources = AsyncMock(
             return_value={
                 "src/main.py": "code1",
@@ -1262,36 +1187,33 @@ class TestDoSemanticAnalysis:
         )
 
         with (
-            patch.object(
-                PlannerWorktreeStrategy,
-                "_get_merge_base",
+            patch(
+                "synthorg.engine.workspace.semantic_git_ops.get_merge_base",
                 mock_base,
             ),
-            patch.object(
-                PlannerWorktreeStrategy,
-                "_get_changed_files",
+            patch(
+                "synthorg.engine.workspace.semantic_git_ops.get_changed_files",
                 mock_changed,
             ),
-            patch.object(
-                PlannerWorktreeStrategy,
-                "_get_base_sources",
+            patch(
+                "synthorg.engine.workspace.semantic_git_ops.get_base_sources",
                 mock_sources,
             ),
         ):
-            await strategy._do_semantic_analysis(
+            await strategy._run_semantic_analysis(
                 workspace=ws,
                 pre_merge_sha="abc123",
                 merge_sha="def456",
             )
 
-        # _get_base_sources should receive only .py files
-        mock_sources.assert_awaited_once()
-        files_arg = mock_sources.call_args[0][1]
-        assert "README.txt" not in files_arg
-        assert "src/main.py" in files_arg
-        assert "src/utils.py" in files_arg
+        # get_base_sources called twice (base + merged via _fetch_sources)
+        assert mock_sources.await_count == 2
+        for call in mock_sources.call_args_list:
+            files_arg = call[0][2]
+            assert "README.txt" not in files_arg
+            assert "src/main.py" in files_arg
+            assert "src/utils.py" in files_arg
 
-        # analyzer.analyze should also receive only .py files
         mock_analyzer.analyze.assert_awaited_once()
         analyze_kwargs = mock_analyzer.analyze.call_args[1]
         assert "README.txt" not in analyze_kwargs["changed_files"]

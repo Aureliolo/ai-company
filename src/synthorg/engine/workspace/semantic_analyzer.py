@@ -6,7 +6,6 @@ duplicate definitions, and import conflicts.
 """
 
 import asyncio
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.engine.workspace.semantic_checks import (
@@ -45,17 +44,18 @@ class SemanticAnalyzer(Protocol):
         *,
         workspace: Workspace,
         changed_files: tuple[str, ...],
-        repo_root: str,
         base_sources: Mapping[str, str],
+        merged_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged files for semantic conflicts.
 
         Args:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
-            repo_root: Absolute path to the repository root.
             base_sources: Mapping of file path to source content
                 before the merge.
+            merged_sources: Mapping of file path to source content
+                after the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances.
@@ -63,53 +63,32 @@ class SemanticAnalyzer(Protocol):
         ...
 
 
-def _filter_files(
+def filter_files(
     changed_files: tuple[str, ...],
     config: SemanticAnalysisConfig,
 ) -> list[str]:
-    """Filter changed files by extension and limit to max_files."""
-    py_files = [
+    """Filter changed files by extension and limit to ``max_files``.
+
+    Args:
+        changed_files: Paths of all files changed by the merge.
+        config: Semantic analysis configuration supplying
+            ``file_extensions`` and ``max_files``.
+
+    Returns:
+        List of file paths whose extensions match, in input order,
+        truncated to ``max_files``.
+    """
+    matched = [
         f
         for f in changed_files
         if any(f.endswith(ext) for ext in config.file_extensions)
     ]
-    return py_files[: config.max_files]
-
-
-def _read_sources(
-    root: Path,
-    files: list[str],
-    workspace_id: str,
-) -> dict[str, str]:
-    """Read file contents, skipping unreadable files with logging."""
-    resolved_root = root.resolve()
-    sources: dict[str, str] = {}
-    for file_path in files:
-        try:
-            target = (root / file_path).resolve()
-            if not target.is_relative_to(resolved_root):
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace_id,
-                    file=file_path,
-                    reason="path_traversal",
-                )
-                continue
-            sources[file_path] = target.read_text(encoding="utf-8")
-        except OSError as exc:
-            logger.debug(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                workspace_id=workspace_id,
-                file=file_path,
-                reason="read_error",
-                error=f"{type(exc).__name__}: {exc}",
-            )
-    return sources
+    return matched[: config.max_files]
 
 
 def _run_ast_checks(
     base_sources: Mapping[str, str],
-    merged_sources: dict[str, str],
+    merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
     """Run all AST semantic checks and return combined results."""
     all_conflicts: list[MergeConflict] = []
@@ -158,40 +137,37 @@ class AstSemanticAnalyzer:
         *,
         workspace: Workspace,
         changed_files: tuple[str, ...],
-        repo_root: str,
         base_sources: Mapping[str, str],
+        merged_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
         """Analyze merged Python files for semantic conflicts.
 
         Args:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
-            repo_root: Absolute path to the repository root.
             base_sources: Mapping of file path to source content
                 before the merge.
+            merged_sources: Mapping of file path to source content
+                after the merge.
 
         Returns:
             Tuple of semantic MergeConflict instances.
         """
-        py_files = _filter_files(changed_files, self._config)
+        py_set = set(filter_files(changed_files, self._config))
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_START,
             workspace_id=workspace.workspace_id,
-            file_count=len(py_files),
+            file_count=len(py_set),
         )
-        if not py_files:
+        if not py_set:
             return self._log_complete(workspace.workspace_id, 0, 0)
 
-        merged_sources = await asyncio.to_thread(
-            _read_sources,
-            Path(repo_root),
-            py_files,
-            workspace.workspace_id,
-        )
-        if not merged_sources:
+        filtered_base = {k: v for k, v in base_sources.items() if k in py_set}
+        relevant = {k: v for k, v in merged_sources.items() if k in py_set}
+        if not relevant:
             return self._log_complete(workspace.workspace_id, 0, 0)
 
-        result = _run_ast_checks(base_sources, merged_sources)
+        result = _run_ast_checks(filtered_base, relevant)
 
         if result:
             logger.warning(
@@ -201,7 +177,7 @@ class AstSemanticAnalyzer:
             )
         return self._log_complete(
             workspace.workspace_id,
-            len(merged_sources),
+            len(relevant),
             len(result),
             conflicts=result,
         )
@@ -224,14 +200,31 @@ class AstSemanticAnalyzer:
         return conflicts
 
 
+def _deduplicate_conflicts(
+    conflicts: list[MergeConflict],
+) -> tuple[MergeConflict, ...]:
+    """Remove duplicate conflicts by ``(file_path, description)``."""
+    seen: set[tuple[str, str]] = set()
+    unique: list[MergeConflict] = []
+    for conflict in conflicts:
+        key = (conflict.file_path, conflict.description)
+        if key not in seen:
+            seen.add(key)
+            unique.append(conflict)
+    return tuple(unique)
+
+
 class CompositeSemanticAnalyzer:
     """Chains multiple semantic analyzers and deduplicates results.
 
-    Runs each analyzer in order and collects all conflicts. If an
-    analyzer raises an exception, it is logged and skipped.
+    Runs all analyzers concurrently via ``asyncio.TaskGroup`` and
+    collects their conflicts. If an analyzer raises an ``Exception``,
+    it is logged and skipped. Cancellation (``CancelledError``)
+    propagates via the ``TaskGroup`` as a ``BaseExceptionGroup``
+    and is never suppressed.
 
     Args:
-        analyzers: Ordered tuple of analyzers to run.
+        analyzers: Tuple of analyzers to run concurrently.
     """
 
     __slots__ = ("_analyzers",)
@@ -248,33 +241,39 @@ class CompositeSemanticAnalyzer:
         *,
         workspace: Workspace,
         changed_files: tuple[str, ...],
-        repo_root: str,
         base_sources: Mapping[str, str],
+        merged_sources: Mapping[str, str],
     ) -> tuple[MergeConflict, ...]:
-        """Run all analyzers and return deduplicated results.
+        """Run all analyzers concurrently and return deduplicated results.
+
+        Analyzers run as a structured ``TaskGroup``. Per-analyzer
+        exceptions are caught and logged individually so a failing
+        analyzer never prevents the others from completing.
+        Results are collected in analyzer registration order for
+        deterministic deduplication.
 
         Args:
             workspace: The workspace that was just merged.
             changed_files: Paths of files modified by the merge.
-            repo_root: Absolute path to the repository root.
             base_sources: Mapping of file path to source content
                 before the merge.
+            merged_sources: Mapping of file path to source content
+                after the merge.
 
         Returns:
             Deduplicated tuple of semantic conflicts from all analyzers.
         """
-        all_conflicts: list[MergeConflict] = []
-        for analyzer in self._analyzers:
+        n = len(self._analyzers)
+        slots: list[tuple[MergeConflict, ...]] = [()] * n
+
+        async def _run(idx: int, analyzer: SemanticAnalyzer) -> None:
             try:
-                conflicts = await analyzer.analyze(
+                slots[idx] = await analyzer.analyze(
                     workspace=workspace,
                     changed_files=changed_files,
-                    repo_root=repo_root,
                     base_sources=base_sources,
+                    merged_sources=merged_sources,
                 )
-                all_conflicts.extend(conflicts)
-            except asyncio.CancelledError:
-                raise
             except Exception as exc:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -285,13 +284,11 @@ class CompositeSemanticAnalyzer:
                     exc_info=True,
                 )
 
-        # Deduplicate by (file_path, description)
-        seen: set[tuple[str, str]] = set()
-        unique: list[MergeConflict] = []
-        for conflict in all_conflicts:
-            key = (conflict.file_path, conflict.description)
-            if key not in seen:
-                seen.add(key)
-                unique.append(conflict)
+        async with asyncio.TaskGroup() as tg:
+            for i, analyzer in enumerate(self._analyzers):
+                tg.create_task(_run(i, analyzer))
 
-        return tuple(unique)
+        all_conflicts: list[MergeConflict] = []
+        for slot in slots:
+            all_conflicts.extend(slot)
+        return _deduplicate_conflicts(all_conflicts)

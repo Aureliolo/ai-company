@@ -87,10 +87,6 @@ class WorkspaceLimitError(WorkspaceError):
     """Raised when maximum concurrent workspaces reached."""
 
 
-class SemanticAnalysisError(WorkspaceError):
-    """Raised when semantic conflict analysis fails."""
-
-
 class TaskEngineError(EngineError):
     """Base exception for all task engine errors."""
 
