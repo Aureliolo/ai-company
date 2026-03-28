@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 import { saveSettingsBatch } from '@/pages/settings/utils'
@@ -56,7 +56,11 @@ export function useSettingsDirtyState(
     setDirtyValues(new Map())
   }, [])
 
+  const isSavingRef = useRef(false)
+
   const handleSave = useCallback(async () => {
+    if (isSavingRef.current) return
+    isSavingRef.current = true
     try {
       const pending = new Map(dirtyValues)
       const failedKeys = await saveSettingsBatch(
@@ -97,6 +101,8 @@ export function useSettingsDirtyState(
         variant: 'error',
         title: 'Failed to save settings',
       })
+    } finally {
+      isSavingRef.current = false
     }
   }, [dirtyValues, updateSetting])
 

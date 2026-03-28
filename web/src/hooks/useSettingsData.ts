@@ -40,7 +40,7 @@ export function useSettingsData(): UseSettingsDataReturn {
   // Fetch initial data, then start polling (avoids duplicate getAllSettings)
   useEffect(() => {
     let cancelled = false
-    useSettingsStore.getState().fetchSettingsData().then(() => {
+    useSettingsStore.getState().fetchSettingsData().finally(() => {
       if (!cancelled) pollingStart()
     })
     return () => { cancelled = true; pollingStop() }
