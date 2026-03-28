@@ -1,18 +1,19 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/utils/errors'
-import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
+import type { ProviderPreset, ProviderConfig, TestConnectionResponse } from '@/api/types'
 
 export interface ProviderAddFormProps {
   presets: readonly ProviderPreset[]
+  providers: Readonly<Record<string, ProviderConfig>>
   onAdd: (presetName: string, name: string, apiKey?: string) => Promise<void>
   onTest: (name: string) => Promise<TestConnectionResponse>
 }
 
-export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps) {
+export function ProviderAddForm({ presets, providers, onAdd, onTest }: ProviderAddFormProps) {
   const [selectedPreset, setSelectedPreset] = useState('')
   const [providerName, setProviderName] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -21,7 +22,12 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cloudPresets = presets.filter((p) => p.auth_type !== 'none')
+  const cloudPresets = useMemo(
+    () => presets.filter((p) => p.auth_type !== 'none'),
+    [presets],
+  )
+
+  const nameConflict = providerName.trim() !== '' && providerName.trim() in providers
 
   const handleTest = useCallback(async () => {
     if (!providerName.trim()) return
@@ -39,7 +45,7 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
   }, [providerName, onTest])
 
   const handleAdd = useCallback(async () => {
-    if (!selectedPreset || !providerName.trim()) return
+    if (!selectedPreset || !providerName.trim() || nameConflict) return
     setAdding(true)
     setError(null)
     try {
@@ -55,7 +61,7 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
     } finally {
       setAdding(false)
     }
-  }, [selectedPreset, providerName, apiKey, onAdd])
+  }, [selectedPreset, providerName, apiKey, nameConflict, onAdd])
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
@@ -90,6 +96,7 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
             value={providerName}
             onChange={(e) => setProviderName(e.currentTarget.value)}
             placeholder="my-provider"
+            error={nameConflict ? `Provider '${providerName.trim()}' already exists` : null}
           />
 
           <InputField
@@ -106,14 +113,14 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testing || !providerName.trim()}
+              disabled={testing || !providerName.trim() || nameConflict}
             >
               {testing ? 'Testing...' : 'Test Connection'}
             </Button>
             <Button
               size="sm"
               onClick={handleAdd}
-              disabled={adding || !providerName.trim() || !selectedPreset}
+              disabled={adding || !providerName.trim() || !selectedPreset || nameConflict}
             >
               {adding ? 'Creating...' : 'Create Provider'}
             </Button>

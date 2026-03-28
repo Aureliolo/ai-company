@@ -9,6 +9,7 @@ import type {
   SetupCompanyResponse,
   TemplateInfoResponse,
   TestConnectionResponse,
+  PersonalityPresetInfo,
 } from '@/api/types'
 import {
   listTemplates,
@@ -17,6 +18,8 @@ import {
   updateAgentModel as apiUpdateAgentModel,
   updateAgentName as apiUpdateAgentName,
   randomizeAgentName as apiRandomizeAgentName,
+  updateAgentPersonality as apiUpdateAgentPersonality,
+  listPersonalityPresets,
   completeSetup,
 } from '@/api/endpoints/setup'
 import {
@@ -25,6 +28,8 @@ import {
   createFromPreset,
   testConnection,
   probePreset,
+  discoverModels,
+  getProvider,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
@@ -32,20 +37,42 @@ import type { CurrencyCode } from '@/utils/currencies'
 
 export type WizardStep =
   | 'account'
+  | 'mode'
   | 'template'
   | 'company'
-  | 'agents'
   | 'providers'
+  | 'agents'
   | 'theme'
   | 'complete'
 
-const FULL_STEP_ORDER: readonly WizardStep[] = [
-  'account', 'template', 'company', 'agents', 'providers', 'theme', 'complete',
+export type WizardMode = 'guided' | 'quick'
+
+/** Guided mode: full step order with providers before agents. */
+const GUIDED_STEP_ORDER: readonly WizardStep[] = [
+  'mode', 'template', 'company', 'providers', 'agents', 'theme', 'complete',
 ]
 
-const STEP_ORDER_NO_ACCOUNT: readonly WizardStep[] = [
-  'template', 'company', 'agents', 'providers', 'theme', 'complete',
+/** Quick mode: minimal steps (skip template, agents, theme). */
+const QUICK_STEP_ORDER: readonly WizardStep[] = [
+  'mode', 'company', 'providers', 'complete',
 ]
+
+/** Guided mode with account creation first. */
+const GUIDED_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
+  'account', 'mode', 'template', 'company', 'providers', 'agents', 'theme', 'complete',
+]
+
+/** Quick mode with account creation first. */
+const QUICK_STEP_ORDER_WITH_ACCOUNT: readonly WizardStep[] = [
+  'account', 'mode', 'company', 'providers', 'complete',
+]
+
+function getStepOrder(needsAdmin: boolean, mode: WizardMode): readonly WizardStep[] {
+  if (needsAdmin) {
+    return mode === 'guided' ? GUIDED_STEP_ORDER_WITH_ACCOUNT : QUICK_STEP_ORDER_WITH_ACCOUNT
+  }
+  return mode === 'guided' ? GUIDED_STEP_ORDER : QUICK_STEP_ORDER
+}
 
 export type ThemeSettings = {
   palette: 'dark' | 'light'
@@ -71,6 +98,7 @@ interface SetupWizardState {
   direction: 'forward' | 'backward'
   needsAdmin: boolean
   accountCreated: boolean
+  wizardMode: WizardMode
 
   // Template
   templates: TemplateInfoResponse[]
@@ -95,6 +123,11 @@ interface SetupWizardState {
   agentsLoading: boolean
   agentsError: string | null
 
+  // Personality presets
+  personalityPresets: PersonalityPresetInfo[]
+  personalityPresetsLoading: boolean
+  personalityPresetsError: string | null
+
   // Providers
   providers: Record<string, ProviderConfig>
   presets: ProviderPreset[]
@@ -108,9 +141,6 @@ interface SetupWizardState {
   // Theme
   themeSettings: ThemeSettings
 
-  // Cost
-  estimatedMonthlyCost: number | null
-
   // Completion
   completing: boolean
   completionError: string | null
@@ -122,6 +152,7 @@ interface SetupWizardState {
   canNavigateTo: (step: WizardStep) => boolean
   setNeedsAdmin: (needsAdmin: boolean) => void
   setAccountCreated: (created: boolean) => void
+  setWizardMode: (mode: WizardMode) => void
 
   // Template actions
   fetchTemplates: () => Promise<void>
@@ -143,6 +174,8 @@ interface SetupWizardState {
   updateAgentModel: (index: number, provider: string, modelId: string) => Promise<void>
   updateAgentName: (index: number, name: string) => Promise<void>
   randomizeAgentName: (index: number) => Promise<void>
+  updateAgentPersonality: (index: number, preset: string) => Promise<void>
+  fetchPersonalityPresets: () => Promise<void>
 
   // Provider actions
   fetchProviders: () => Promise<void>
@@ -150,6 +183,7 @@ interface SetupWizardState {
   createProviderFromPreset: (presetName: string, name: string, apiKey?: string) => Promise<void>
   testProviderConnection: (name: string) => Promise<TestConnectionResponse>
   probeAllPresets: () => Promise<void>
+  reprobePresets: () => Promise<void>
 
   // Theme actions
   setThemeSetting: <K extends keyof ThemeSettings>(key: K, value: ThemeSettings[K]) => void
@@ -166,10 +200,11 @@ const MAX_COMPARE = 3
 function initialStepsCompleted(): Record<WizardStep, boolean> {
   return {
     account: false,
+    mode: false,
     template: false,
     company: false,
-    agents: false,
     providers: false,
+    agents: false,
     theme: false,
     complete: false,
   }
@@ -177,12 +212,13 @@ function initialStepsCompleted(): Record<WizardStep, boolean> {
 
 function getInitialState() {
   return {
-    currentStep: 'template' as WizardStep,
-    stepOrder: STEP_ORDER_NO_ACCOUNT,
+    currentStep: 'mode' as WizardStep,
+    stepOrder: GUIDED_STEP_ORDER,
     stepsCompleted: initialStepsCompleted(),
     direction: 'forward' as const,
     needsAdmin: false,
     accountCreated: false,
+    wizardMode: 'guided' as WizardMode,
 
     templates: [] as TemplateInfoResponse[],
     templatesLoading: false,
@@ -204,6 +240,10 @@ function getInitialState() {
     agentsLoading: false,
     agentsError: null as string | null,
 
+    personalityPresets: [] as PersonalityPresetInfo[],
+    personalityPresetsLoading: false,
+    personalityPresetsError: null as string | null,
+
     providers: {} as Record<string, ProviderConfig>,
     presets: [] as ProviderPreset[],
     presetsLoading: false,
@@ -214,8 +254,6 @@ function getInitialState() {
     providersError: null as string | null,
 
     themeSettings: { ...DEFAULT_THEME },
-
-    estimatedMonthlyCost: null as number | null,
 
     completing: false,
     completionError: null as string | null,
@@ -261,15 +299,23 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
   },
 
   setNeedsAdmin(needsAdmin) {
+    const { wizardMode } = get()
+    const stepOrder = getStepOrder(needsAdmin, wizardMode)
     set({
       needsAdmin,
-      stepOrder: needsAdmin ? FULL_STEP_ORDER : STEP_ORDER_NO_ACCOUNT,
-      currentStep: needsAdmin ? 'account' : 'template',
+      stepOrder,
+      currentStep: needsAdmin ? 'account' : 'mode',
     })
   },
 
   setAccountCreated(created) {
     set({ accountCreated: created })
+  },
+
+  setWizardMode(mode) {
+    const { needsAdmin } = get()
+    const stepOrder = getStepOrder(needsAdmin, mode)
+    set({ wizardMode: mode, stepOrder })
   },
 
   // -- Template --
@@ -407,6 +453,30 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     }
   },
 
+  async updateAgentPersonality(index, preset) {
+    set({ agentsError: null })
+    try {
+      const updated = await apiUpdateAgentPersonality(index, { personality_preset: preset })
+      set((s) => ({
+        agents: s.agents.map((a, i) => i === index ? updated : a),
+      }))
+    } catch (err) {
+      console.error('setup-wizard: updateAgentPersonality failed:', err)
+      set({ agentsError: getErrorMessage(err) })
+    }
+  },
+
+  async fetchPersonalityPresets() {
+    set({ personalityPresetsLoading: true, personalityPresetsError: null })
+    try {
+      const presets = await listPersonalityPresets()
+      set({ personalityPresets: [...presets], personalityPresetsLoading: false })
+    } catch (err) {
+      console.error('setup-wizard: fetchPersonalityPresets failed:', err)
+      set({ personalityPresetsError: getErrorMessage(err), personalityPresetsLoading: false })
+    }
+  },
+
   // -- Providers --
 
   async fetchProviders() {
@@ -442,6 +512,23 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       set((s) => ({
         providers: { ...s.providers, [name]: provider },
       }))
+
+      // Auto-discover models for local providers (auth_type=none).
+      // The create endpoint may return 0 models if discovery was slow;
+      // a post-creation discover call picks them up.
+      if (provider.models.length === 0) {
+        try {
+          await discoverModels(name, presetName)
+          // Re-fetch the provider to get the updated model list.
+          const refreshed = await getProvider(name)
+          set((s) => ({
+            providers: { ...s.providers, [name]: refreshed },
+          }))
+        } catch {
+          // Discovery is best-effort; provider was still created.
+          console.error('setup-wizard: post-creation model discovery failed for', name)
+        }
+      }
     } catch (err) {
       console.error('setup-wizard: createProviderFromPreset failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
@@ -475,6 +562,24 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         results[entry.value[0]] = entry.value[1]
       } else {
         console.error('setup-wizard: probe failed for preset:', entry.reason)
+      }
+    }
+    set({ probeResults: results, probing: false })
+  },
+
+  async reprobePresets() {
+    set({ probeResults: {}, probing: true })
+    const { presets } = get()
+    const entries = await Promise.allSettled(
+      presets.map(async (preset) => {
+        const result = await probePreset(preset.name)
+        return [preset.name, result] as const
+      }),
+    )
+    const results: Record<string, ProbePresetResponse> = {}
+    for (const entry of entries) {
+      if (entry.status === 'fulfilled') {
+        results[entry.value[0]] = entry.value[1]
       }
     }
     set({ probeResults: results, probing: false })

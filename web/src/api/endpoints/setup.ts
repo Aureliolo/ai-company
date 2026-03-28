@@ -2,6 +2,8 @@ import { apiClient, unwrap } from '../client'
 import type {
   ApiResponse,
   AvailableLocalesResponse,
+  PersonalityPresetInfo,
+  PersonalityPresetsListResponse,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
@@ -14,6 +16,7 @@ import type {
   TemplateInfoResponse,
   UpdateAgentModelRequest,
   UpdateAgentNameRequest,
+  UpdateAgentPersonalityRequest,
 } from '../types'
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {
@@ -79,6 +82,25 @@ export async function randomizeAgentName(
     `/setup/agents/${index}/randomize-name`,
   )
   return unwrap(response)
+}
+
+export async function updateAgentPersonality(
+  index: number,
+  data: UpdateAgentPersonalityRequest,
+): Promise<SetupAgentSummary> {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid agent index: ${index}`)
+  }
+  const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
+    `/setup/agents/${index}/personality`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function listPersonalityPresets(): Promise<readonly PersonalityPresetInfo[]> {
+  const response = await apiClient.get<ApiResponse<PersonalityPresetsListResponse>>('/setup/personality-presets')
+  return unwrap(response).presets
 }
 
 export async function getAvailableLocales(): Promise<AvailableLocalesResponse> {

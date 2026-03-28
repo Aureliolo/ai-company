@@ -13,9 +13,16 @@ export interface TemplateVariablesProps {
   variables: readonly TemplateVariable[]
   values: Readonly<Record<string, string | number | boolean>>
   onChange: (key: string, value: string | number | boolean) => void
+  currency?: string
 }
 
-export function TemplateVariables({ variables, values, onChange }: TemplateVariablesProps) {
+/** Replace "USD" in a variable description with the selected currency code. */
+function localizeCurrencyLabel(description: string, currency: string | undefined): string {
+  if (!currency) return description
+  return description.replace(/\bUSD\b/g, currency)
+}
+
+export function TemplateVariables({ variables, values, onChange, currency }: TemplateVariablesProps) {
   if (variables.length === 0) return null
 
   return (
@@ -28,11 +35,12 @@ export function TemplateVariables({ variables, values, onChange }: TemplateVaria
       </div>
       {variables.map((v) => {
         const currentValue = values[v.name] ?? v.default
+        const label = localizeCurrencyLabel(v.description || v.name, currency)
         if (v.var_type === 'bool') {
           return (
             <ToggleField
               key={v.name}
-              label={v.description || v.name}
+              label={label}
               checked={currentValue === true}
               onChange={(checked) => onChange(v.name, checked)}
             />
@@ -43,7 +51,7 @@ export function TemplateVariables({ variables, values, onChange }: TemplateVaria
           return (
             <SliderField
               key={v.name}
-              label={v.description || v.name}
+              label={label}
               value={numValue}
               min={v.var_type === 'int' ? 1 : 0}
               max={v.var_type === 'int' ? 50 : 1000}

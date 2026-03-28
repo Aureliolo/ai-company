@@ -1,0 +1,96 @@
+import { useCallback, useEffect } from 'react'
+import { useSetupWizardStore } from '@/stores/setup-wizard'
+import type { WizardMode } from '@/stores/setup-wizard'
+import { cn } from '@/lib/utils'
+import { Sparkles, Zap } from 'lucide-react'
+
+interface ModeOptionProps {
+  icon: React.ElementType
+  title: string
+  description: string
+  recommended?: boolean
+  selected: boolean
+  onClick: () => void
+}
+
+function ModeOption({ icon: Icon, title, description, recommended, selected, onClick }: ModeOptionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex flex-col items-center gap-4 rounded-lg border p-8 text-center transition-colors',
+        selected
+          ? 'border-accent bg-accent/5 shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]'
+          : 'border-border bg-card hover:bg-card-hover',
+      )}
+    >
+      <div className={cn(
+        'flex size-14 items-center justify-center rounded-full',
+        selected ? 'bg-accent/15 text-accent' : 'bg-surface text-muted-foreground',
+      )}>
+        <Icon className="size-7" />
+      </div>
+
+      <div className="space-y-1">
+        <div className="flex items-center justify-center gap-2">
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+          {recommended && (
+            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-compact font-medium text-accent">
+              Recommended
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+    </button>
+  )
+}
+
+export function WizardModeStep() {
+  const wizardMode = useSetupWizardStore((s) => s.wizardMode)
+  const setWizardMode = useSetupWizardStore((s) => s.setWizardMode)
+  const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
+
+  // Mode step is complete once a selection is made (default is 'guided')
+  useEffect(() => {
+    markStepComplete('mode')
+  }, [markStepComplete])
+
+  const handleSelect = useCallback(
+    (mode: WizardMode) => {
+      setWizardMode(mode)
+      markStepComplete('mode')
+    },
+    [setWizardMode, markStepComplete],
+  )
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-2 text-center">
+        <h2 className="text-lg font-semibold text-foreground">How would you like to set up?</h2>
+        <p className="text-sm text-muted-foreground">
+          Choose how much control you want over the initial configuration.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6 max-[639px]:grid-cols-1">
+        <ModeOption
+          icon={Sparkles}
+          title="Guided Setup"
+          description="Walk through each step to configure your organization: pick a template, customize agents, add providers, and set your theme."
+          recommended
+          selected={wizardMode === 'guided'}
+          onClick={() => handleSelect('guided')}
+        />
+        <ModeOption
+          icon={Zap}
+          title="Quick Setup"
+          description="Set a company name, add a provider, and get started. You can configure everything else later in Settings."
+          selected={wizardMode === 'quick'}
+          onClick={() => handleSelect('quick')}
+        />
+      </div>
+    </div>
+  )
+}

@@ -7,11 +7,9 @@ import { Button } from '@/components/ui/button'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { validateCompanyStep } from '@/utils/setup-validation'
-import { estimateMonthlyCost } from '@/utils/cost-estimator'
 import { CURRENCY_OPTIONS } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
 import { TemplateVariables } from './TemplateVariables'
-import { CostEstimatePanel } from './CostEstimatePanel'
 
 export function CompanyStep() {
   const templates = useSetupWizardStore((s) => s.templates)
@@ -19,8 +17,6 @@ export function CompanyStep() {
   const companyName = useSetupWizardStore((s) => s.companyName)
   const companyDescription = useSetupWizardStore((s) => s.companyDescription)
   const currency = useSetupWizardStore((s) => s.currency)
-  const budgetCapEnabled = useSetupWizardStore((s) => s.budgetCapEnabled)
-  const budgetCap = useSetupWizardStore((s) => s.budgetCap)
   const companyResponse = useSetupWizardStore((s) => s.companyResponse)
   const companyLoading = useSetupWizardStore((s) => s.companyLoading)
   const companyError = useSetupWizardStore((s) => s.companyError)
@@ -30,8 +26,6 @@ export function CompanyStep() {
   const setCompanyName = useSetupWizardStore((s) => s.setCompanyName)
   const setCompanyDescription = useSetupWizardStore((s) => s.setCompanyDescription)
   const setCurrency = useSetupWizardStore((s) => s.setCurrency)
-  const setBudgetCapEnabled = useSetupWizardStore((s) => s.setBudgetCapEnabled)
-  const setBudgetCap = useSetupWizardStore((s) => s.setBudgetCap)
   const setTemplateVariable = useSetupWizardStore((s) => s.setTemplateVariable)
   const submitCompany = useSetupWizardStore((s) => s.submitCompany)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
@@ -57,19 +51,6 @@ export function CompanyStep() {
       markStepIncomplete('company')
     }
   }, [validation.valid, markStepComplete, markStepIncomplete])
-
-  // Cost estimate from agents
-  const costEstimate = useMemo(() => {
-    if (agents.length === 0) return null
-    return estimateMonthlyCost(
-      agents.map((a) => ({
-        model_provider: a.model_provider,
-        model_id: a.model_id,
-        tier: a.tier,
-      })),
-      [], // No provider models yet
-    )
-  }, [agents])
 
   const handleApplyTemplate = useCallback(async () => {
     await submitCompany()
@@ -130,7 +111,7 @@ export function CompanyStep() {
           ]}
           value={String(templateVariables.model_tier_profile ?? 'balanced')}
           onChange={(v) => setTemplateVariable('model_tier_profile', v)}
-          hint="Influences which model tiers are assigned to agents and affects cost estimates."
+          hint="Influences which model tiers are assigned to agents."
         />
       </div>
 
@@ -139,6 +120,7 @@ export function CompanyStep() {
         variables={selectedTemplateObj?.variables ?? []}
         values={templateVariables}
         onChange={setTemplateVariable}
+        currency={currency}
       />
 
       {/* Apply template button */}
@@ -162,43 +144,30 @@ export function CompanyStep() {
 
       {/* Preview after applying */}
       {companyResponse && (
-        <div className="space-y-4">
-          <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
-            <StaggerItem>
-              <MetricCard label="Departments" value={companyResponse.department_count} />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label="Agents" value={companyResponse.agent_count} />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label="Template" value={companyResponse.template_applied ?? 'None'} />
-            </StaggerItem>
-          </StaggerGroup>
+        <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[639px]:grid-cols-1">
+          <StaggerItem>
+            <MetricCard label="Departments" value={companyResponse.department_count} />
+          </StaggerItem>
+          <StaggerItem>
+            <MetricCard label="Agents" value={companyResponse.agent_count} />
+          </StaggerItem>
+          <StaggerItem>
+            <MetricCard label="Template" value={companyResponse.template_applied ?? 'None'} />
+          </StaggerItem>
+        </StaggerGroup>
+      )}
 
-          {/* Agent preview list */}
-          {agents.length > 0 && (
-            <div className="rounded-lg border border-border bg-card p-4">
-              <h3 className="mb-2 text-sm font-semibold text-foreground">Generated Agents</h3>
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {agents.map((agent) => (
-                  <li key={agent.name}>
-                    {agent.name} ({agent.department}) - {agent.tier} model
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Cost estimate + budget cap */}
-          <CostEstimatePanel
-            estimate={costEstimate}
-            currency={currency}
-            budgetCapEnabled={budgetCapEnabled}
-            budgetCap={budgetCap}
-            agents={agents}
-            onBudgetCapEnabledChange={setBudgetCapEnabled}
-            onBudgetCapChange={setBudgetCap}
-          />
+      {/* Agent preview list */}
+      {companyResponse && agents.length > 0 && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="mb-2 text-sm font-semibold text-foreground">Generated Agents</h3>
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {agents.map((agent) => (
+              <li key={agent.name}>
+                {agent.name} ({agent.department}) - {agent.tier} model
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

@@ -29,6 +29,8 @@ from synthorg.api.controllers.setup_agents import (
 )
 from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
+    PersonalityPresetInfoResponse,
+    PersonalityPresetsListResponse,
     SetupAgentRequest,
     SetupAgentResponse,
     SetupAgentsListResponse,
@@ -43,6 +45,7 @@ from synthorg.api.controllers.setup_models import (
     TemplateVariableResponse,
     UpdateAgentModelRequest,
     UpdateAgentNameRequest,
+    UpdateAgentPersonalityRequest,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
@@ -56,6 +59,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_MODEL_UPDATED,
     SETUP_AGENT_NAME_RANDOMIZED,
     SETUP_AGENT_NAME_UPDATED,
+    SETUP_AGENT_PERSONALITY_UPDATED,
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
     SETUP_ALREADY_COMPLETE,
@@ -69,6 +73,7 @@ from synthorg.observability.events.setup import (
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
+    SETUP_PERSONALITY_PRESETS_LISTED,
     SETUP_PROVIDER_RELOAD_FAILED,
     SETUP_STATUS_CHECKED,
     SETUP_STATUS_SETTINGS_DEFAULT_USED,
@@ -590,6 +595,100 @@ class SetupController(Controller):
             data=agent_dict_to_summary(agents[agent_index]),
         )
 
+    @put(
+        "/agents/{agent_index:int}/personality",
+        guards=[require_ceo],
+    )
+    async def update_agent_personality(
+        self,
+        agent_index: int,
+        data: UpdateAgentPersonalityRequest,
+        state: State,
+    ) -> ApiResponse[SetupAgentSummary]:
+        """Update a single agent's personality preset during setup.
+
+        Args:
+            agent_index: Zero-based index of the agent to update.
+            data: New personality preset assignment.
+            state: Application state.
+
+        Returns:
+            Updated agent summary.
+
+        Raises:
+            ConflictError: If setup has already been completed.
+            NotFoundError: If the agent index is out of range.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = app_state.settings_service
+        await _check_setup_not_complete(settings_svc)
+
+        async with _AGENT_LOCK:
+            agents = await get_existing_agents(settings_svc)
+            _validate_agent_index(agent_index, agents)
+
+            updated_agent = {
+                **agents[agent_index],
+                "personality_preset": data.personality_preset,
+            }
+            agents = [
+                *agents[:agent_index],
+                updated_agent,
+                *agents[agent_index + 1 :],
+            ]
+            await settings_svc.set(
+                "company",
+                "agents",
+                json.dumps(agents),
+            )
+
+        logger.info(
+            SETUP_AGENT_PERSONALITY_UPDATED,
+            agent_index=agent_index,
+            personality_preset=data.personality_preset,
+        )
+
+        return ApiResponse(
+            data=agent_dict_to_summary(agents[agent_index]),
+        )
+
+    @get(
+        "/personality-presets",
+        guards=[require_read_access],
+    )
+    async def list_personality_presets(
+        self,
+        state: State,  # noqa: ARG002
+    ) -> ApiResponse[PersonalityPresetsListResponse]:
+        """List all available personality presets.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            Personality presets data envelope.
+        """
+        from synthorg.templates.presets import (  # noqa: PLC0415
+            PERSONALITY_PRESETS,
+        )
+
+        presets = tuple(
+            PersonalityPresetInfoResponse(
+                name=name,
+                description=str(preset.get("description", "")),
+            )
+            for name, preset in sorted(PERSONALITY_PRESETS.items())
+        )
+
+        logger.debug(
+            SETUP_PERSONALITY_PRESETS_LISTED,
+            count=len(presets),
+        )
+
+        return ApiResponse(
+            data=PersonalityPresetsListResponse(presets=presets),
+        )
+
     @get(
         "/name-locales/available",
         guards=[require_read_access],
@@ -730,12 +829,12 @@ class SetupController(Controller):
             logger.warning(SETUP_NO_COMPANY)
             raise ApiValidationError(msg)
 
-        # Verify at least one agent has been created (strict: propagate errors).
+        # Verify at least one agent exists (warn-only, not required).
+        # Quick Setup mode skips agent configuration -- users add agents
+        # later in Settings.
         has_agents = await _check_has_agents(settings_svc, strict=True)
         if not has_agents:
-            msg = "At least one agent must be created before completing setup"
-            logger.warning(SETUP_NO_AGENTS)
-            raise ApiValidationError(msg)
+            logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
         # Verify at least one provider is configured.
         if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:

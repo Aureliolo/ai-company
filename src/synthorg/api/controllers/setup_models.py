@@ -247,6 +247,60 @@ class UpdateAgentNameRequest(BaseModel):
     name: NotBlankStr = Field(max_length=200)
 
 
+class UpdateAgentPersonalityRequest(BaseModel):
+    """Request to update an agent's personality preset during setup.
+
+    Attributes:
+        personality_preset: Personality preset name (must exist in
+            ``PERSONALITY_PRESETS``).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    personality_preset: NotBlankStr = Field(max_length=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Normalize and validate the personality preset."""
+        from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
+
+        raw = values.get("personality_preset", "")
+        key = str(raw).strip().lower() if raw else ""
+        if key not in PERSONALITY_PRESETS:
+            available = sorted(PERSONALITY_PRESETS)
+            msg = f"Unknown personality preset {raw!r}. Available: {available}"
+            raise ValueError(msg)
+        values["personality_preset"] = key
+        return values
+
+
+class PersonalityPresetInfoResponse(BaseModel):
+    """Summary of a personality preset for the setup wizard.
+
+    Attributes:
+        name: Preset identifier key.
+        description: Human-readable description.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr
+    description: str = ""
+
+
+class PersonalityPresetsListResponse(BaseModel):
+    """List of available personality presets.
+
+    Attributes:
+        presets: Preset summaries.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    presets: tuple[PersonalityPresetInfoResponse, ...]
+
+
 class SetupAgentsListResponse(BaseModel):
     """List of agents currently configured in setup.
 

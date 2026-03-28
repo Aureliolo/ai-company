@@ -451,21 +451,32 @@ class TestSetupComplete:
             if original is not None:
                 repo._store[key] = original
 
-    def test_complete_rejects_without_agents(
+    def test_complete_allows_without_agents(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Completion rejects when company exists but no agents."""
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        """Completion succeeds without agents (Quick Setup mode)."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
+        # Ensure at least one provider is registered.
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
         try:
             resp = test_client.post("/api/v1/setup/complete")
-            assert resp.status_code == 422
-            assert "agent" in resp.json()["error"].lower()
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["success"] is True
+            assert body["data"]["setup_complete"] is True
         finally:
+            app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
 
     def test_complete_rejects_without_providers(
         self,

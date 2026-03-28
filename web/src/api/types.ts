@@ -1279,6 +1279,19 @@ export interface UpdateAgentNameRequest {
   name: string
 }
 
+export interface UpdateAgentPersonalityRequest {
+  personality_preset: string
+}
+
+export interface PersonalityPresetInfo {
+  name: string
+  description: string
+}
+
+export interface PersonalityPresetsListResponse {
+  readonly presets: readonly PersonalityPresetInfo[]
+}
+
 export interface SetupAgentsListResponse {
   readonly agents: readonly SetupAgentSummary[]
   agent_count: number
