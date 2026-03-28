@@ -87,6 +87,28 @@ describe('useAgentsData', () => {
     expect(result.current.wsConnected).toBe(true)
   })
 
+  it('returns wsConnected false when WebSocket disconnected', async () => {
+    const { useWebSocket } = await import('@/hooks/useWebSocket')
+    vi.mocked(useWebSocket).mockReturnValueOnce({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+    const { result } = renderHook(() => useAgentsData())
+    expect(result.current.wsConnected).toBe(false)
+  })
+
+  it('returns wsSetupError from useWebSocket', async () => {
+    const { useWebSocket } = await import('@/hooks/useWebSocket')
+    vi.mocked(useWebSocket).mockReturnValueOnce({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: 'Auth failed',
+    })
+    const { result } = renderHook(() => useAgentsData())
+    expect(result.current.wsSetupError).toBe('Auth failed')
+  })
+
   it('starts polling on mount', async () => {
     renderHook(() => useAgentsData())
     await waitFor(() => {

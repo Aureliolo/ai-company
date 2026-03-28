@@ -70,6 +70,7 @@ describe('useAgentDetailData', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.wsConnected).toBe(false)
     expect(result.current.fetchMoreActivity).toBeTypeOf('function')
+    expect(mockFetchAgentDetail).not.toHaveBeenCalled()
   })
 
   it('returns agent from store', () => {
@@ -134,7 +135,15 @@ describe('useAgentDetailData', () => {
       performance: makePerformanceSummary('alice'),
     })
     const { result } = renderHook(() => useAgentDetailData('alice'))
-    expect(result.current.performanceCards.length).toBeGreaterThan(0)
+    expect(result.current.performanceCards).toHaveLength(4)
+    expect(
+      result.current.performanceCards.map((c) => c.label),
+    ).toEqual([
+      'TASKS COMPLETED',
+      'AVG COMPLETION TIME',
+      'SUCCESS RATE',
+      'COST PER TASK',
+    ])
   })
 
   it('computes insights from agent and performance', () => {
@@ -143,6 +152,27 @@ describe('useAgentDetailData', () => {
       performance: makePerformanceSummary('alice'),
     })
     const { result } = renderHook(() => useAgentDetailData('alice'))
-    expect(result.current.insights).toBeInstanceOf(Array)
+    expect(result.current.insights).toHaveLength(2)
+    expect(result.current.insights[0]).toContain('90.0%')
+    expect(result.current.insights[1]).toContain('8.5')
+  })
+
+  it('returns wsConnected false when WebSocket disconnected', async () => {
+    const { useWebSocket } = await import('@/hooks/useWebSocket')
+    vi.mocked(useWebSocket).mockReturnValueOnce({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+    const { result } = renderHook(
+      () => useAgentDetailData('alice'),
+    )
+    expect(result.current.wsConnected).toBe(false)
+  })
+
+  it('does not call store fetchMoreActivity when agentName empty', () => {
+    const { result } = renderHook(() => useAgentDetailData(''))
+    result.current.fetchMoreActivity()
+    expect(mockFetchMoreActivity).not.toHaveBeenCalled()
   })
 })

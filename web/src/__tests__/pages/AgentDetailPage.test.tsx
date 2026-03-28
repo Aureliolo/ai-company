@@ -7,8 +7,11 @@ import { makeAgent } from '../helpers/factories'
 vi.mock('@/pages/agents/AgentDetailSkeleton', () => ({
   AgentDetailSkeleton: () => <div data-testid="agent-detail-skeleton" />,
 }))
+interface MockAgentProp {
+  agent: { name: string }
+}
 vi.mock('@/pages/agents/AgentIdentityHeader', () => ({
-  AgentIdentityHeader: ({ agent }: { agent: { name: string } }) => (
+  AgentIdentityHeader: ({ agent }: MockAgentProp) => (
     <div data-testid="identity-header">{agent.name}</div>
   ),
 }))
@@ -106,9 +109,25 @@ describe('AgentDetailPage', () => {
   })
 
   it('shows custom wsSetupError message when provided', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
+    hookReturn = {
+      ...defaultHookReturn,
+      wsConnected: false,
+      wsSetupError: 'WebSocket auth failed',
+    }
     renderDetail()
     expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
+  })
+
+  it('hides disconnect warning when loading', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      wsConnected: false,
+      loading: true,
+    }
+    renderDetail()
+    expect(
+      screen.queryByText(/disconnected/i),
+    ).not.toBeInTheDocument()
   })
 
   it('renders agent identity header section', () => {

@@ -55,7 +55,13 @@ describe('AgentsPage', () => {
   })
 
   it('renders loading skeleton when loading with no data', () => {
-    hookReturn = { ...defaultHookReturn, loading: true, totalAgents: 0, agents: [], filteredAgents: [] }
+    hookReturn = {
+      ...defaultHookReturn,
+      loading: true,
+      totalAgents: 0,
+      agents: [],
+      filteredAgents: [],
+    }
     renderPage()
     expect(screen.getByTestId('agents-skeleton')).toBeInTheDocument()
   })
@@ -86,8 +92,24 @@ describe('AgentsPage', () => {
   })
 
   it('shows custom wsSetupError message when provided', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
+    hookReturn = {
+      ...defaultHookReturn,
+      wsConnected: false,
+      wsSetupError: 'WebSocket auth failed',
+    }
     renderPage()
     expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
+  })
+
+  it('hides disconnect warning when loading', () => {
+    hookReturn = {
+      ...defaultHookReturn,
+      wsConnected: false,
+      loading: true,
+    }
+    renderPage()
+    expect(
+      screen.queryByText(/disconnected/i),
+    ).not.toBeInTheDocument()
   })
 })
