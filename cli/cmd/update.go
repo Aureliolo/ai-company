@@ -23,37 +23,94 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	updateDryRun     bool
+	updateNoRestart  bool
+	updateTimeout    string
+	updateCLIOnly    bool
+	updateImagesOnly bool
+	updateCheck      bool
+)
+
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update CLI, refresh compose template, and pull new container images",
-	RunE:  runUpdate,
+	Example: `  synthorg update                # update CLI + images
+  synthorg update --cli-only     # update CLI binary only
+  synthorg update --images-only  # update container images only
+  synthorg update --check        # check for updates (exit code 0 or 10)
+  synthorg update --dry-run      # preview what would change
+  synthorg update --no-restart   # pull images but skip restart`,
+	RunE: runUpdate,
 }
 
 func init() {
 	updateCmd.Flags().Bool("skip-cli-update", false, "skip CLI self-update check (used internally after re-exec)")
 	_ = updateCmd.Flags().MarkHidden("skip-cli-update")
+	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "show what would happen without executing")
+	updateCmd.Flags().BoolVar(&updateNoRestart, "no-restart", false, "pull images but do not restart running containers")
+	updateCmd.Flags().StringVar(&updateTimeout, "timeout", "90s", "health check and verification timeout")
+	updateCmd.Flags().BoolVar(&updateCLIOnly, "cli-only", false, "only update the CLI binary")
+	updateCmd.Flags().BoolVar(&updateImagesOnly, "images-only", false, "only update container images (skip CLI)")
+	updateCmd.Flags().BoolVar(&updateCheck, "check", false, "check for updates and exit (0=current, 10=available)")
+	updateCmd.GroupID = "lifecycle"
 	rootCmd.AddCommand(updateCmd)
 }
 
+func validateUpdateFlags() error {
+	if updateCLIOnly && updateImagesOnly {
+		return fmt.Errorf("--cli-only and --images-only are mutually exclusive")
+	}
+	if updateCheck && updateDryRun {
+		return fmt.Errorf("--check and --dry-run are mutually exclusive")
+	}
+	if _, err := time.ParseDuration(updateTimeout); err != nil {
+		return fmt.Errorf("invalid --timeout %q: %w", updateTimeout, err)
+	}
+	return nil
+}
+
 func runUpdate(cmd *cobra.Command, _ []string) error {
-	if err := updateCLI(cmd); errors.Is(err, errReexec) {
-		// Binary was replaced. Re-exec the new binary so compose refresh
-		// and image pull use the new embedded template and logic.
-		return reexecUpdate(cmd)
-	} else if err != nil {
+	if err := validateUpdateFlags(); err != nil {
 		return err
 	}
 
-	// Load state once and thread through both steps to avoid
-	// double config.Load and TOCTOU gaps between them.
+	// Load config early for auto-behavior flags and --check mode.
+	// Failure is non-fatal (pre-init, first run) -- auto-behavior defaults to false.
+	state, _ := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
+
+	// --check: just check for updates and exit with appropriate code.
+	if updateCheck {
+		return runUpdateCheck(cmd, state)
+	}
+
+	// --dry-run: show what would happen without executing.
+	if updateDryRun {
+		return runUpdateDryRun(cmd, state)
+	}
+
+	// CLI update (unless --images-only).
+	if !updateImagesOnly {
+		if err := updateCLI(cmd, state.AutoUpdateCLI); errors.Is(err, errReexec) {
+			return reexecUpdate(cmd)
+		} else if err != nil {
+			return err
+		}
+	}
+
+	// --cli-only: stop after CLI update.
+	if updateCLIOnly {
+		return nil
+	}
+
+	// Reload state (may have changed during CLI update or been loaded with
+	// defaults above). Thread through both compose refresh and image pull.
 	state, err := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
 	// Detect dirty installation state (e.g. after partial uninstall).
-	// When recovery is chosen, force compose + image refresh even if the
-	// stored version matches the target (artifacts may be missing).
 	abort, recovered, healthErr := checkInstallationHealth(cmd, state)
 	if healthErr != nil {
 		return healthErr
@@ -62,9 +119,6 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Regenerate compose.yml from the current template to pick up any
-	// template changes (new env vars, hardening tweaks, service config).
-	// In recovery mode, also generate a missing compose.yml from the template.
 	applied, err := refreshCompose(cmd, state, recovered)
 	if err != nil {
 		return err
@@ -75,6 +129,46 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	return updateContainerImages(cmd, state, false, recovered)
 }
 
+// runUpdateCheck checks for available updates and exits with code 0 (current)
+// or 10 (update available).
+func runUpdateCheck(cmd *cobra.Command, state config.State) error {
+	ctx := cmd.Context()
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	channel := state.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	result, err := selfupdate.CheckForChannel(ctx, channel)
+	if err != nil {
+		return fmt.Errorf("checking for updates: %w", err)
+	}
+	if result.UpdateAvail {
+		out.Step(fmt.Sprintf("Update available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
+		return NewExitError(ExitUpdateAvail, nil)
+	}
+	out.Success(fmt.Sprintf("Up to date (%s)", result.CurrentVersion))
+	return nil
+}
+
+// runUpdateDryRun shows what an update would do without executing.
+func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
+	ctx := cmd.Context()
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	out.Section("Dry run: update preview")
+	out.KeyValue("Current CLI", version.Version)
+	out.KeyValue("Current images", state.ImageTag)
+	out.KeyValue("Channel", state.Channel)
+	out.KeyValue("CLI update", boolToYesNo(!updateImagesOnly))
+	out.KeyValue("Image update", boolToYesNo(!updateCLIOnly))
+	out.KeyValue("Restart after pull", boolToYesNo(!updateNoRestart))
+	out.HintNextStep("Remove --dry-run to execute the update")
+	return nil
+}
+
 // handleDeclinedCompose warns the user that new images may not work with
 // their current compose configuration and offers to update images anyway.
 func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
@@ -82,7 +176,7 @@ func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered boo
 		"Warning: new images may not work correctly with your current compose configuration.")
 	ok, err := confirmUpdateWithDefault(cmd.Context(),
 		"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
-		false,
+		false, false,
 	)
 	if err != nil {
 		return err
@@ -104,10 +198,10 @@ func isDevChannelMismatch(channel, ver string) bool {
 // downloadAndApplyCLI downloads, verifies, and replaces the current binary
 // with the new version. Returns errReexec on success so the caller can
 // re-exec the updated binary.
-func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult) error {
+func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.CheckResult, autoAccept bool) error {
 	out.Step(fmt.Sprintf("New version available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
 
-	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion), autoAccept)
 	if err != nil {
 		return err
 	}
@@ -138,7 +232,8 @@ var errReexec = errors.New("cli updated, re-exec required")
 
 // updateCLI checks for a new CLI release and optionally applies it.
 // Returns errReexec if the binary was replaced (caller must re-exec).
-func updateCLI(cmd *cobra.Command) error {
+// autoAcceptCLI is true when auto_update_cli config key is set.
+func updateCLI(cmd *cobra.Command, autoAcceptCLI bool) error {
 	// After re-exec the CLI was just replaced -- skip the redundant check.
 	skip, err := cmd.Flags().GetBool("skip-cli-update")
 	if err != nil {
@@ -180,7 +275,7 @@ func updateCLI(cmd *cobra.Command) error {
 		return nil
 	}
 
-	return downloadAndApplyCLI(ctx, out, result)
+	return downloadAndApplyCLI(ctx, out, result, autoAcceptCLI)
 }
 
 // resolveUpdateChannel reads the update channel from config, defaulting to
@@ -247,6 +342,16 @@ func reexecUpdate(cmd *cobra.Command) error {
 	if flagYes {
 		reArgs = append(reArgs, "--yes")
 	}
+	// Forward per-command flags added in PR 3.
+	if updateNoRestart {
+		reArgs = append(reArgs, "--no-restart")
+	}
+	if updateTimeout != "90s" {
+		reArgs = append(reArgs, "--timeout", updateTimeout)
+	}
+	if updateImagesOnly {
+		reArgs = append(reArgs, "--images-only")
+	}
 
 	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
 	c.Stdin = os.Stdin
@@ -307,7 +412,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
-	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
+	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag), state.AutoPull)
 	if err != nil {
 		return err
 	}
@@ -360,17 +465,21 @@ func postPullActions(cmd *cobra.Command, info docker.Info, safeDir string, oldSt
 }
 
 // confirmUpdate prompts the user to confirm an update action.
-// Returns (true, nil) if --yes/non-interactive (auto-accept) or user confirms.
-// Default is yes.
-func confirmUpdate(ctx context.Context, title string) (bool, error) {
-	return confirmUpdateWithDefault(ctx, title, true)
+// Returns (true, nil) if --yes/non-interactive (auto-accept), config auto-accept,
+// or user confirms. Default is yes.
+func confirmUpdate(ctx context.Context, title string, autoAccept bool) (bool, error) {
+	return confirmUpdateWithDefault(ctx, title, true, autoAccept)
 }
 
 // confirmUpdateWithDefault prompts the user with a configurable default.
-// Respects --yes flag and SYNTHORG_YES env var via GlobalOpts.ShouldPrompt.
-func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool) (bool, error) {
+// Respects --yes flag, config auto-accept keys, and SYNTHORG_YES env var.
+// Precedence: --yes > config auto key > interactive prompt > non-interactive default.
+func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool, autoAccept bool) (bool, error) {
 	if !GetGlobalOpts(ctx).ShouldPrompt() {
-		return defaultVal, nil
+		return defaultVal, nil // --yes or non-interactive
+	}
+	if autoAccept {
+		return true, nil // config auto-accept key
 	}
 	proceed := defaultVal
 	form := huh.NewForm(huh.NewGroup(
@@ -485,7 +594,16 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 // restartIfRunning checks if containers are running and offers a restart.
 // Returns (true, nil) when containers were restarted and passed health checks.
 // Returns (false, nil) when restart was skipped or health check failed.
+// Respects --no-restart flag, auto_restart config key, and --yes flag.
 func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, state config.State) (bool, error) {
+	// --no-restart: skip entirely.
+	if updateNoRestart {
+		uiOut := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
+		uiOut.Success("Restart skipped (--no-restart)")
+		uiOut.HintNextStep("Run 'synthorg stop && synthorg start' to apply new images.")
+		return false, nil
+	}
+
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
@@ -502,11 +620,15 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	opts := GetGlobalOpts(ctx)
 	if !opts.ShouldPrompt() {
 		if opts.Yes {
-			// --yes: auto-restart (default is yes)
 			return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 		}
 		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
+	}
+
+	// auto_restart config key: auto-accept restart.
+	if state.AutoRestart {
+		return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 	}
 
 	restart, err := confirmRestart()
@@ -539,7 +661,11 @@ func performRestart(ctx context.Context, out io.Writer, info docker.Info, safeDi
 
 	sp = uiOut.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
+	healthTimeout, _ := time.ParseDuration(updateTimeout)
+	if healthTimeout <= 0 {
+		healthTimeout = 90 * time.Second
+	}
+	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, 2*time.Second, 5*time.Second); err != nil {
 		sp.Warn(fmt.Sprintf("Health check did not pass after restart: %v", err))
 		return false, nil
 	}

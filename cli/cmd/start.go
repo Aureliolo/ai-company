@@ -35,7 +35,11 @@ var (
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Pull images and start the SynthOrg stack",
-	RunE:  runStart,
+	Example: `  synthorg start              # pull, verify, and start
+  synthorg start --no-pull    # start without pulling images
+  synthorg start --dry-run    # preview what would happen
+  synthorg start --no-detach  # run in foreground (stream logs)`,
+	RunE: runStart,
 }
 
 func init() {
@@ -45,6 +49,7 @@ func init() {
 	startCmd.Flags().BoolVar(&startDryRun, "dry-run", false, "show what would happen without executing")
 	startCmd.Flags().BoolVar(&startNoDetach, "no-detach", false, "run in foreground (stream logs, Ctrl+C to stop)")
 	startCmd.Flags().BoolVar(&startNoVerify, "no-verify", false, "skip image signature verification (alias for --skip-verify)")
+	startCmd.GroupID = "core"
 	rootCmd.AddCommand(startCmd)
 }
 

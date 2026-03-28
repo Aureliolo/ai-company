@@ -17,10 +17,12 @@ Supported shells: bash, zsh, fish, powershell.
 
 This is idempotent -- running it again will not duplicate the setup.
 To generate raw completion scripts without installing, use 'synthorg completion [shell]'.`,
-	RunE: runCompletionInstall,
+	Example: `  synthorg completion-install  # detect shell and install completions`,
+	RunE:    runCompletionInstall,
 }
 
 func init() {
+	completionInstallCmd.GroupID = "diagnostics"
 	rootCmd.AddCommand(completionInstallCmd)
 }
 

@@ -58,7 +58,7 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		return true, nil
 	}
 
-	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir)
+	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir, state.AutoApplyCompose)
 }
 
 // recoverMissingCompose generates compose.yml from the template during
@@ -129,14 +129,14 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 // applyComposeDiff shows the diff between existing and fresh compose,
 // asks the user to approve, and writes the fresh compose if approved.
 // Returns true if applied, false if declined.
-func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string) (bool, error) {
+func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string, autoApply bool) (bool, error) {
 	out := cmd.OutOrStdout()
 
 	diff := lineDiff(string(existing), string(fresh))
 	_, _ = fmt.Fprintln(out, "Compose template has changed:")
 	_, _ = fmt.Fprintln(out, diff)
 
-	ok, err := confirmUpdate(cmd.Context(), "Apply compose configuration changes?")
+	ok, err := confirmUpdate(cmd.Context(), "Apply compose configuration changes?", autoApply)
 	if err != nil {
 		return false, err
 	}

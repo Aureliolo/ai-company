@@ -12,6 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	cleanupDryRun bool
+	cleanupAll    bool
+	cleanupKeep   int
+)
+
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup",
 	Short: "Remove old container images to free disk space",
@@ -20,14 +26,33 @@ var cleanupCmd = &cobra.Command{
 After updates, previous image versions remain on disk. This command
 identifies images that don't match the current version and offers to
 remove them individually.`,
+	Example: `  synthorg cleanup              # interactive cleanup of old images
+  synthorg cleanup --dry-run    # list images without removing
+  synthorg cleanup --all --yes  # remove ALL SynthOrg images non-interactively
+  synthorg cleanup --keep 2     # keep 2 most recent previous versions`,
 	RunE: runCleanup,
 }
 
 func init() {
+	cleanupCmd.Flags().BoolVar(&cleanupDryRun, "dry-run", false, "list images without removing")
+	cleanupCmd.Flags().BoolVar(&cleanupAll, "all", false, "include ALL SynthOrg images, not just old ones")
+	cleanupCmd.Flags().IntVar(&cleanupKeep, "keep", 0, "keep N most recent previous versions (0=remove all)")
+	cleanupCmd.GroupID = "lifecycle"
 	rootCmd.AddCommand(cleanupCmd)
 }
 
+func validateCleanupFlags() error {
+	if cleanupKeep < 0 {
+		return fmt.Errorf("invalid --keep %d: must be >= 0", cleanupKeep)
+	}
+	return nil
+}
+
 func runCleanup(cmd *cobra.Command, _ []string) error {
+	if err := validateCleanupFlags(); err != nil {
+		return err
+	}
+
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(cmd.Context())
 
@@ -36,22 +61,43 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
 	}
 
-	old, err := findOldImages(ctx, cmd.ErrOrStderr(), info, state)
+	var old []oldImage
+	if cleanupAll {
+		// --all: include ALL SynthOrg images (same as uninstall).
+		old, err = listNonCurrentImages(ctx, errOut.Writer(), info, nil)
+	} else {
+		old, err = findOldImages(ctx, cmd.ErrOrStderr(), info, state)
+	}
 	if err != nil {
-		return fmt.Errorf("finding old images: %w", err)
+		return fmt.Errorf("finding images: %w", err)
 	}
 	if len(old) == 0 {
-		out.Success("No old images found -- nothing to clean up")
+		out.Success("No images found -- nothing to clean up")
+		return nil
+	}
+
+	// --keep: preserve N most recent (remove from the end of the list,
+	// Docker returns images in most-recent-first order).
+	if cleanupKeep > 0 && len(old) > cleanupKeep {
+		old = old[cleanupKeep:]
+	} else if cleanupKeep > 0 {
+		out.Success(fmt.Sprintf("Only %d image(s) found, keeping all (--keep %d)", len(old), cleanupKeep))
 		return nil
 	}
 
 	displayOldImages(out, old)
+
+	if cleanupDryRun {
+		out.HintNextStep(fmt.Sprintf("Dry run: %d image(s) would be removed", len(old)))
+		return nil
+	}
 
 	removedAny, err := confirmAndCleanup(ctx, cmd, info, out, old)
 	if err != nil {

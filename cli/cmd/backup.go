@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,6 +27,22 @@ import (
 
 // --- Cobra commands ---
 
+var (
+	backupCreateOutput  string
+	backupCreateTimeout string
+)
+
+var (
+	backupListLimit int
+	backupListSort  string
+)
+
+var (
+	backupRestoreDryRun    bool
+	backupRestoreNoRestart bool
+	backupRestoreTimeout   string
+)
+
 var backupCmd = &cobra.Command{
 	Use:   "backup",
 	Short: "Manage backups (default: create a new backup)",
@@ -33,6 +50,9 @@ var backupCmd = &cobra.Command{
 
 Running 'synthorg backup' without a subcommand triggers a manual backup
 (equivalent to 'synthorg backup create').`,
+	Example: `  synthorg backup                    # create a backup
+  synthorg backup list               # list all backups
+  synthorg backup restore abc123 --confirm  # restore a backup`,
 	Args: cobra.NoArgs,
 	RunE: runBackupCreate,
 }
@@ -40,15 +60,21 @@ Running 'synthorg backup' without a subcommand triggers a manual backup
 var backupCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Trigger a manual backup",
-	Args:  cobra.NoArgs,
-	RunE:  runBackupCreate,
+	Example: `  synthorg backup create                          # create backup
+  synthorg backup create --output ~/backup.tar.gz  # save to specific path
+  synthorg backup create --timeout 120s            # custom API timeout`,
+	Args: cobra.NoArgs,
+	RunE: runBackupCreate,
 }
 
 var backupListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available backups",
-	Args:  cobra.NoArgs,
-	RunE:  runBackupList,
+	Example: `  synthorg backup list                # list all backups
+  synthorg backup list --limit 5     # show 5 most recent
+  synthorg backup list --sort size   # sort by size`,
+	Args: cobra.NoArgs,
+	RunE: runBackupList,
 }
 
 var backupRestoreCmd = &cobra.Command{
@@ -61,16 +87,46 @@ created automatically before the restore begins.
 
 If the restore requires a restart, containers are stopped automatically.
 Run 'synthorg start' afterwards to bring the stack back up.`,
+	Example: `  synthorg backup restore abc123def456 --confirm              # restore a backup
+  synthorg backup restore abc123def456 --confirm --dry-run    # preview restore
+  synthorg backup restore abc123def456 --confirm --no-restart # restore without restarting`,
 	Args: cobra.ExactArgs(1),
 	RunE: runBackupRestore,
 }
 
 func init() {
+	// backup create flags
+	backupCreateCmd.Flags().StringVarP(&backupCreateOutput, "output", "o", "", "save backup archive to local path")
+	backupCreateCmd.Flags().StringVar(&backupCreateTimeout, "timeout", "60s", "API request timeout")
+
+	// backup list flags
+	backupListCmd.Flags().IntVarP(&backupListLimit, "limit", "n", 0, "show N most recent backups (0=all)")
+	backupListCmd.Flags().StringVar(&backupListSort, "sort", "newest", "sort order: newest, oldest, size")
+
+	// backup restore flags
 	backupRestoreCmd.Flags().Bool("confirm", false, "Confirm the restore operation (required)")
+	backupRestoreCmd.Flags().BoolVar(&backupRestoreDryRun, "dry-run", false, "preview what would be restored without executing")
+	backupRestoreCmd.Flags().BoolVar(&backupRestoreNoRestart, "no-restart", false, "restore without stopping containers")
+	backupRestoreCmd.Flags().StringVar(&backupRestoreTimeout, "timeout", "30s", "API request timeout")
+
 	backupCmd.AddCommand(backupCreateCmd)
 	backupCmd.AddCommand(backupListCmd)
 	backupCmd.AddCommand(backupRestoreCmd)
+	backupCmd.GroupID = "data"
 	rootCmd.AddCommand(backupCmd)
+}
+
+func validateBackupListFlags() error {
+	if backupListLimit < 0 {
+		return fmt.Errorf("invalid --limit %d: must be >= 0", backupListLimit)
+	}
+	switch backupListSort {
+	case "newest", "oldest", "size":
+		// ok
+	default:
+		return fmt.Errorf("invalid --sort %q: must be newest, oldest, or size", backupListSort)
+	}
+	return nil
 }
 
 // --- API response types ---
@@ -300,6 +356,18 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
+	timeout := 60 * time.Second
+	if backupCreateTimeout != "" {
+		parsed, err := time.ParseDuration(backupCreateTimeout)
+		if err != nil {
+			return fmt.Errorf("invalid --timeout %q: %w", backupCreateTimeout, err)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("invalid --timeout %q: must be > 0", backupCreateTimeout)
+		}
+		timeout = parsed
+	}
+
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -308,8 +376,7 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 	out.Step("Creating backup...")
 
-	// 60s: backup can take time for large datasets; aligned with wipe backup timeout.
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 60*time.Second, state.JWTSecret)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, timeout, state.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("creating backup: %w", err)
 	}
@@ -334,10 +401,33 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 
 	out.Success("Backup created successfully")
 	printManifest(out, manifest)
+
+	// --output: copy backup from container to local path.
+	if backupCreateOutput != "" {
+		safeDir, err := safeStateDir(state)
+		if err != nil {
+			return err
+		}
+		info, err := docker.Detect(ctx)
+		if err != nil {
+			return fmt.Errorf("docker not available for file copy: %w", err)
+		}
+		sp := out.StartSpinner("Copying backup to local path...")
+		if err := copyBackupFromContainer(ctx, info, safeDir, manifest.BackupID, backupCreateOutput); err != nil {
+			sp.Error("Failed to copy backup")
+			return fmt.Errorf("copying backup: %w", err)
+		}
+		sp.Success(fmt.Sprintf("Backup saved to %s", backupCreateOutput))
+	}
+
 	return nil
 }
 
 func runBackupList(cmd *cobra.Command, _ []string) error {
+	if err := validateBackupListFlags(); err != nil {
+		return err
+	}
+
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
@@ -377,8 +467,35 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	// --sort: sort by criterion.
+	sortBackups(backups, backupListSort)
+
+	// --limit: truncate to N most recent.
+	if backupListLimit > 0 && len(backups) > backupListLimit {
+		backups = backups[:backupListLimit]
+	}
+
 	printBackupTable(out, backups)
+	out.HintTip("Run 'synthorg backup restore <id> --confirm' to restore a backup")
 	return nil
+}
+
+// sortBackups sorts a backup list by the specified criterion.
+func sortBackups(backups []backupInfo, criterion string) {
+	switch criterion {
+	case "oldest":
+		sort.Slice(backups, func(i, j int) bool {
+			return backups[i].Timestamp < backups[j].Timestamp
+		})
+	case "size":
+		sort.Slice(backups, func(i, j int) bool {
+			return backups[i].SizeBytes > backups[j].SizeBytes
+		})
+	default: // "newest" -- default order from API, but ensure it.
+		sort.Slice(backups, func(i, j int) bool {
+			return backups[i].Timestamp > backups[j].Timestamp
+		})
+	}
 }
 
 func runBackupRestore(cmd *cobra.Command, args []string) error {
@@ -403,6 +520,18 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
+	timeout := 30 * time.Second
+	if backupRestoreTimeout != "" {
+		parsed, parseErr := time.ParseDuration(backupRestoreTimeout)
+		if parseErr != nil {
+			return fmt.Errorf("invalid --timeout %q: %w", backupRestoreTimeout, parseErr)
+		}
+		if parsed <= 0 {
+			return fmt.Errorf("invalid --timeout %q: must be > 0", backupRestoreTimeout)
+		}
+		timeout = parsed
+	}
+
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -415,6 +544,17 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+
+	// --dry-run: show what would be restored and exit.
+	if backupRestoreDryRun {
+		out.Step("Dry run: would restore from backup " + backupID)
+		out.KeyValue("Backup ID", backupID)
+		out.KeyValue("Data directory", safeDir)
+		out.KeyValue("Restart", boolToYesNo(!backupRestoreNoRestart))
+		out.HintNextStep("Remove --dry-run to execute the restore")
+		return nil
+	}
+
 	out.Step("Restoring from backup " + backupID + "...")
 
 	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
@@ -423,7 +563,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	body, statusCode, err := backupAPIRequest(
-		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, 30*time.Second, state.JWTSecret,
+		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, timeout, state.JWTSecret,
 	)
 	if err != nil {
 		return fmt.Errorf("restoring backup: %w", err)
@@ -485,6 +625,11 @@ func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID str
 // partial completion via non-zero exit code. The restore itself has already
 // succeeded at this point.
 func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, errOut *ui.UI, safeDir string) error {
+	if backupRestoreNoRestart {
+		out.KeyValue("Restart required", "yes (skipped via --no-restart)")
+		out.HintNextStep("Run 'synthorg stop' then 'synthorg start' to apply the restore")
+		return nil
+	}
 	out.KeyValue("Restart required", "yes")
 
 	composePath := filepath.Join(safeDir, "compose.yml")

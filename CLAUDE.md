@@ -135,6 +135,15 @@ Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`
 | `stop` | `--timeout`/`-t`, `--volumes` |
 | `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |
 | `logs` | `--follow`/`-f`, `--tail`, `--since`, `--until`, `--timestamps`/`-t`, `--no-log-prefix` |
+| `update` | `--dry-run`, `--no-restart`, `--timeout`, `--cli-only`, `--images-only`, `--check` |
+| `cleanup` | `--dry-run`, `--all`, `--keep N` |
+| `backup create` | `--output`/`-o`, `--timeout` |
+| `backup list` | `--limit`/`-n`, `--sort` |
+| `backup restore` | `--dry-run`, `--no-restart`, `--timeout` |
+| `wipe` | `--dry-run`, `--no-backup`, `--keep-images` |
+| `doctor` | `--checks`, `--fix` |
+| `version` | `--short` |
+| `uninstall` | `--keep-data`, `--keep-images` |
 
 ## Documentation
 

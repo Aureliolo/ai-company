@@ -35,7 +35,11 @@ var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
 	Short: "Show container logs",
 	Long:  "Passes through to 'docker compose logs'. Optionally specify a service (backend, web).",
-	RunE:  runLogs,
+	Example: `  synthorg logs                # show recent logs (last 100 lines)
+  synthorg logs -f             # follow log output
+  synthorg logs backend        # logs for a specific service
+  synthorg logs --since 1h     # logs from the last hour`,
+	RunE: runLogs,
 }
 
 func init() {
@@ -45,6 +49,7 @@ func init() {
 	logsCmd.Flags().StringVar(&logUntil, "until", "", "show logs until timestamp or relative")
 	logsCmd.Flags().BoolVarP(&logTimestamps, "timestamps", "t", false, "show timestamps")
 	logsCmd.Flags().BoolVar(&logNoPrefix, "no-log-prefix", false, "don't print service prefix in logs")
+	logsCmd.GroupID = "core"
 	rootCmd.AddCommand(logsCmd)
 }
 

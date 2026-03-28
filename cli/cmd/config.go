@@ -34,6 +34,10 @@ var configCmd = &cobra.Command{
 
 Running 'synthorg config' without a subcommand shows the current configuration
 (equivalent to 'synthorg config show').`,
+	Example: `  synthorg config                      # show current configuration
+  synthorg config set auto_pull true   # enable auto image pulls
+  synthorg config get backend_port     # get a specific value
+  synthorg config list                 # show all keys with source`,
 	Args: cobra.NoArgs,
 	RunE: runConfigShow,
 }
@@ -143,6 +147,7 @@ func init() {
 	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configEditCmd)
+	configCmd.GroupID = "data"
 	rootCmd.AddCommand(configCmd)
 }
 

@@ -1,33 +1,99 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
+	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+var (
+	doctorChecks string
+	doctorFix    bool
+)
+
+// validDoctorChecks lists the known check names for --checks validation.
+var validDoctorChecks = map[string]bool{
+	"environment": true,
+	"health":      true,
+	"containers":  true,
+	"images":      true,
+	"compose":     true,
+	"config":      true,
+	"disk":        true,
+	"errors":      true,
+	"all":         true,
+}
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Run diagnostics and generate a bug report",
 	Long:  "Collects system info, container states, health, and logs. Saves a diagnostic file and prints a pre-filled GitHub issue URL.",
-	RunE:  runDoctor,
+	Example: `  synthorg doctor                          # full diagnostics
+  synthorg doctor --checks health,containers  # run specific checks only
+  synthorg doctor --fix                    # auto-fix detected issues`,
+	RunE: runDoctor,
 }
 
 func init() {
+	doctorCmd.Flags().StringVar(&doctorChecks, "checks", "", "comma-separated checks to run (environment,health,containers,images,compose,config,disk,errors,all)")
+	doctorCmd.Flags().BoolVar(&doctorFix, "fix", false, "auto-fix detected issues")
+	doctorCmd.GroupID = "diagnostics"
 	rootCmd.AddCommand(doctorCmd)
 }
 
+func validateDoctorFlags() error {
+	if doctorChecks == "" {
+		return nil
+	}
+	for _, name := range strings.Split(doctorChecks, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if !validDoctorChecks[name] {
+			names := make([]string, 0, len(validDoctorChecks))
+			for k := range validDoctorChecks {
+				names = append(names, k)
+			}
+			return fmt.Errorf("unknown check %q: valid checks are %s", name, strings.Join(names, ", "))
+		}
+	}
+	return nil
+}
+
+// doctorCheckEnabled returns true if the named check should be rendered.
+func doctorCheckEnabled(name string) bool {
+	if doctorChecks == "" {
+		return true // no filter = show all
+	}
+	for _, c := range strings.Split(doctorChecks, ",") {
+		c = strings.TrimSpace(c)
+		if c == "all" || c == name {
+			return true
+		}
+	}
+	return false
+}
+
 func runDoctor(cmd *cobra.Command, _ []string) error {
+	if err := validateDoctorFlags(); err != nil {
+		return err
+	}
+
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
@@ -52,15 +118,31 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 	_, _ = fmt.Fprintln(out.Writer())
 
-	// Render styled output to terminal.
-	renderDoctorEnvironment(out, report)
-	renderDoctorHealth(out, report)
-	renderDoctorContainers(out, report)
-	renderDoctorImages(out, report)
-	renderDoctorInfra(out, report)
-	renderDoctorConfig(out, state)
-	renderDoctorDisk(out, report)
-	renderDoctorErrors(out, report)
+	// Render styled output to terminal (filtered by --checks).
+	if doctorCheckEnabled("environment") {
+		renderDoctorEnvironment(out, report)
+	}
+	if doctorCheckEnabled("health") {
+		renderDoctorHealth(out, report)
+	}
+	if doctorCheckEnabled("containers") {
+		renderDoctorContainers(out, report)
+	}
+	if doctorCheckEnabled("images") {
+		renderDoctorImages(out, report)
+	}
+	if doctorCheckEnabled("compose") {
+		renderDoctorInfra(out, report)
+	}
+	if doctorCheckEnabled("config") {
+		renderDoctorConfig(out, state)
+	}
+	if doctorCheckEnabled("disk") {
+		renderDoctorDisk(out, report)
+	}
+	if doctorCheckEnabled("errors") {
+		renderDoctorErrors(out, report)
+	}
 
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
@@ -70,11 +152,70 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 	renderDoctorSummary(out, report)
 
+	// --fix: attempt auto-fix for detected issues.
+	if doctorFix {
+		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+	}
+
 	_, _ = fmt.Fprintln(out.Writer())
 	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
 	out.HintNextStep("Run 'synthorg logs' to view container logs")
 
 	return nil
+}
+
+// doctorAutoFix attempts to fix detected issues. Non-fatal: prints results
+// but does not return errors (the diagnostic report is already displayed).
+func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) {
+	_, _ = fmt.Fprintln(out.Writer())
+	out.Section("Auto-fix")
+
+	status, issues := classifyDoctor(report)
+	if status == doctorHealthy {
+		out.Success("All systems healthy -- nothing to fix")
+		return
+	}
+
+	info, dockerErr := docker.Detect(ctx)
+
+	for _, issue := range issues {
+		switch {
+		case strings.Contains(issue, "compose.yml") && (strings.Contains(issue, "not found") || strings.Contains(issue, "invalid")):
+			out.Step(fmt.Sprintf("Fixing: %s", issue))
+			if fixErr := doctorFixCompose(state, safeDir); fixErr != nil {
+				errOut.Error(fmt.Sprintf("Could not fix: %v", fixErr))
+			} else {
+				out.Success("Regenerated compose.yml from template")
+			}
+
+		case strings.Contains(issue, "unhealthy") || strings.Contains(issue, "exited"):
+			if dockerErr != nil {
+				errOut.Warn(fmt.Sprintf("Cannot fix %q: Docker not available", issue))
+				continue
+			}
+			out.Step(fmt.Sprintf("Fixing: %s (restarting containers)", issue))
+			if fixErr := composeRunQuiet(ctx, info, safeDir, "restart"); fixErr != nil {
+				errOut.Error(fmt.Sprintf("Restart failed: %v", fixErr))
+			} else {
+				out.Success("Containers restarted")
+			}
+
+		default:
+			out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
+		}
+	}
+}
+
+// doctorFixCompose regenerates compose.yml from the embedded template.
+func doctorFixCompose(state config.State, safeDir string) error {
+	params := compose.ParamsFromState(state)
+	params.DigestPins = state.VerifiedDigests
+	generated, err := compose.Generate(params)
+	if err != nil {
+		return fmt.Errorf("generating compose: %w", err)
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
+	return atomicWriteFile(composePath, generated, safeDir)
 }
 
 // doctorStatus classifies the overall health of the system from a diagnostic report.

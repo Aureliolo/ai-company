@@ -19,13 +19,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	uninstallKeepData   bool
+	uninstallKeepImages bool
+)
+
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
 	Short: "Stop containers, remove data, and uninstall SynthOrg",
-	RunE:  runUninstall,
+	Example: `  synthorg uninstall                # interactive uninstall (prompts for each step)
+  synthorg uninstall --yes          # non-interactive full uninstall
+  synthorg uninstall --keep-data    # uninstall but preserve config and data
+  synthorg uninstall --keep-images  # uninstall but preserve container images`,
+	RunE: runUninstall,
 }
 
 func init() {
+	uninstallCmd.Flags().BoolVar(&uninstallKeepData, "keep-data", false, "preserve data directory")
+	uninstallCmd.Flags().BoolVar(&uninstallKeepImages, "keep-images", false, "preserve container images")
+	uninstallCmd.GroupID = "lifecycle"
 	rootCmd.AddCommand(uninstallCmd)
 }
 
@@ -57,14 +69,22 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		// Offer to remove SynthOrg container images.
-		if err := confirmAndRemoveImages(cmd, info, out, errUI); err != nil {
-			return err
+		if !uninstallKeepImages {
+			if err := confirmAndRemoveImages(cmd, info, out, errUI); err != nil {
+				return err
+			}
+		} else {
+			out.Success("Container images preserved (--keep-images)")
 		}
 	}
 
 	// Remove data directory.
-	if err := confirmAndRemoveData(cmd, safeDir); err != nil {
-		return err
+	if !uninstallKeepData {
+		if err := confirmAndRemoveData(cmd, safeDir); err != nil {
+			return err
+		}
+	} else {
+		out.Success(fmt.Sprintf("Data directory preserved (--keep-data): %s", safeDir))
 	}
 
 	// Remove shell completion snippets for all supported shells

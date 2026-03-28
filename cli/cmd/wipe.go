@@ -42,6 +42,12 @@ type wipeContext struct {
 	errOut  *ui.UI
 }
 
+var (
+	wipeDryRun     bool
+	wipeNoBackup   bool
+	wipeKeepImages bool
+)
+
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
 	Short: "Factory-reset: wipe all data with optional backup and restart",
@@ -56,16 +62,24 @@ with a clean slate. You are prompted at each step:
   6. Whether to start containers after the wipe (default: yes)
 
 Requires an interactive terminal.`,
+	Example: `  synthorg wipe                # interactive factory reset with backup
+  synthorg wipe --yes          # non-interactive wipe with backup
+  synthorg wipe --no-backup    # skip the backup step
+  synthorg wipe --dry-run      # preview what would happen`,
 	RunE: runWipe,
 }
 
 func init() {
+	wipeCmd.Flags().BoolVar(&wipeDryRun, "dry-run", false, "show what would happen without wiping")
+	wipeCmd.Flags().BoolVar(&wipeNoBackup, "no-backup", false, "skip the backup prompt entirely")
+	wipeCmd.Flags().BoolVar(&wipeKeepImages, "keep-images", false, "do not remove container images during wipe")
+	wipeCmd.GroupID = "lifecycle"
 	rootCmd.AddCommand(wipeCmd)
 }
 
 func runWipe(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
-	if !isInteractive() && !opts.Yes {
+	if !wipeDryRun && !isInteractive() && !opts.Yes {
 		return fmt.Errorf("wipe requires an interactive terminal or --yes flag (destructive operation)")
 	}
 
@@ -90,6 +104,17 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
+	// --dry-run: show what would happen and exit.
+	if wipeDryRun {
+		out.Section("Dry run: wipe preview")
+		out.KeyValue("Data directory", safeDir)
+		out.KeyValue("Compose file", composePath)
+		out.KeyValue("Backup", boolToYesNo(!wipeNoBackup))
+		out.KeyValue("Keep images", boolToYesNo(wipeKeepImages))
+		out.HintNextStep("Remove --dry-run to execute the wipe")
+		return nil
+	}
+
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
@@ -105,14 +130,25 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		errOut:  errOut,
 	}
 
-	if err := wc.offerBackup(); err != nil {
-		if errors.Is(err, errWipeCancelled) {
-			return nil
+	// --no-backup: skip the entire backup workflow.
+	if !wipeNoBackup {
+		if err := wc.offerBackup(); err != nil {
+			if errors.Is(err, errWipeCancelled) {
+				return nil
+			}
+			return err
 		}
-		return err
 	}
 
 	return wc.confirmAndWipe()
+}
+
+// boolToYesNo converts a bool to "yes"/"no" for display.
+func boolToYesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // confirmAndWipe asks for final confirmation, stops containers, removes
@@ -134,6 +170,10 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 	sp.Success("Containers stopped and volumes removed")
+
+	if wipeKeepImages {
+		wc.out.Success("Container images preserved (--keep-images)")
+	}
 
 	startAfter, err := wc.promptStartAfterWipe()
 	if err != nil {
@@ -613,9 +653,13 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 
 // promptStartAfterWipe asks whether to start containers after the wipe.
 // Ctrl-C is treated as "No" because the wipe has already completed.
+// Respects auto_start_after_wipe config key.
 func (wc *wipeContext) promptStartAfterWipe() (bool, error) {
 	if !wc.shouldPrompt() {
-		return true, nil // default: yes, start after wipe
+		return true, nil // --yes or non-interactive: default yes
+	}
+	if wc.state.AutoStartAfterWipe {
+		return true, nil // config auto-accept
 	}
 	startAfter := true
 	err := wc.runForm(huh.NewForm(huh.NewGroup(

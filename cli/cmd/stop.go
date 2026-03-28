@@ -22,12 +22,16 @@ var (
 var stopCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Stop the SynthOrg stack",
-	RunE:  runStop,
+	Example: `  synthorg stop                # graceful shutdown
+  synthorg stop --timeout 60s  # custom shutdown timeout
+  synthorg stop --volumes      # stop and remove volumes`,
+	RunE: runStop,
 }
 
 func init() {
 	stopCmd.Flags().StringVarP(&stopTimeout, "timeout", "t", "", "graceful shutdown timeout (e.g. 30s, 1m)")
 	stopCmd.Flags().BoolVar(&stopVolumes, "volumes", false, "also remove named volumes")
+	stopCmd.GroupID = "core"
 	rootCmd.AddCommand(stopCmd)
 }
 

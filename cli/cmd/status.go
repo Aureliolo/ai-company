@@ -31,7 +31,11 @@ var (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show container states, health, and versions",
-	RunE:  runStatus,
+	Example: `  synthorg status              # show current status
+  synthorg status --watch      # continuously poll
+  synthorg status --wide       # show extra columns
+  synthorg status --check      # exit code only (for scripts)`,
+	RunE: runStatus,
 }
 
 func init() {
@@ -41,6 +45,7 @@ func init() {
 	statusCmd.Flags().BoolVar(&statusNoTrunc, "no-trunc", false, "show full image names")
 	statusCmd.Flags().StringVar(&statusServices, "services", "", "filter by service names (comma-separated)")
 	statusCmd.Flags().BoolVar(&statusCheck, "check", false, "exit code only: 0=healthy, 3=unhealthy, 4=unreachable")
+	statusCmd.GroupID = "core"
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -283,6 +288,7 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 	}
 	_, _ = fmt.Fprintln(w, "Containers:")
 	renderContainerTable(out, containers, statusWide, statusNoTrunc)
+	out.HintTip("Run 'synthorg logs' to view container logs")
 	_, _ = fmt.Fprintln(w)
 }
 

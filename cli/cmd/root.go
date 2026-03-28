@@ -8,8 +8,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +25,7 @@ var (
 	flagPlain      bool
 	flagJSON       bool
 	flagYes        bool
+	flagHelpAll    bool
 )
 
 var rootCmd = &cobra.Command{
@@ -39,11 +42,26 @@ to launch the backend and web dashboard containers.`,
 	// skipped and GlobalOpts will fall back to zero-value defaults. Always
 	// call setupGlobalOpts explicitly in any subcommand pre-run hook.
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		if flagHelpAll {
+			printAllHelp(cmd.Root(), 0)
+			os.Exit(0)
+		}
 		return setupGlobalOpts(cmd)
 	},
 }
 
 func init() {
+	// Command groups for organized --help output.
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "core", Title: "Core Commands:"},
+		&cobra.Group{ID: "lifecycle", Title: "Lifecycle Commands:"},
+		&cobra.Group{ID: "data", Title: "Data Commands:"},
+		&cobra.Group{ID: "diagnostics", Title: "Diagnostics:"},
+	)
+
+	// Did-you-mean suggestions for mistyped commands.
+	rootCmd.SuggestionsMinimumDistance = 2
+
 	pf := rootCmd.PersistentFlags()
 	pf.StringVar(&flagDataDir, "data-dir", "", "data directory (default: platform-appropriate)")
 	pf.BoolVar(&flagSkipVerify, "skip-verify", false,
@@ -54,6 +72,7 @@ func init() {
 	pf.BoolVar(&flagPlain, "plain", false, "ASCII-only output (no Unicode, no spinners, no box drawing)")
 	pf.BoolVar(&flagJSON, "json", false, "output machine-readable JSON")
 	pf.BoolVarP(&flagYes, "yes", "y", false, "assume yes for all prompts (non-interactive mode)")
+	pf.BoolVar(&flagHelpAll, "help-all", false, "show help for all commands (recursive)")
 
 	// Note: SYNTHORG_SKIP_VERIFY / SYNTHORG_NO_VERIFY env vars are resolved
 	// inside setupGlobalOpts alongside all other env var overrides.
@@ -219,8 +238,50 @@ func Execute() error {
 		var ce *ChildExitError
 		if !errors.As(err, &ce) {
 			_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+			if hint := errorHint(err); hint != "" {
+				errUI := ui.NewUI(rootCmd.ErrOrStderr())
+				errUI.HintError(hint)
+			}
 		}
 		return err
 	}
 	return nil
+}
+
+// printAllHelp recursively prints help for all available commands.
+func printAllHelp(cmd *cobra.Command, depth int) {
+	if depth > 0 {
+		_, _ = fmt.Fprintf(os.Stdout, "\n%s\n\n", strings.Repeat("=", 60))
+	}
+	_ = cmd.Help()
+	for _, sub := range cmd.Commands() {
+		if !sub.IsAvailableCommand() || sub.IsAdditionalHelpTopicCommand() {
+			continue
+		}
+		printAllHelp(sub, depth+1)
+	}
+}
+
+// errorHint returns a contextual suggestion for common error patterns.
+// Returns "" if no hint is applicable.
+func errorHint(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "connection refused") || strings.Contains(msg, "backend unreachable"):
+		return "Is Docker running? Try 'synthorg doctor' for diagnostics."
+	case strings.Contains(msg, "compose.yml not found"):
+		return "Run 'synthorg init' to set up your installation."
+	case strings.Contains(msg, "loading config"):
+		return "Run 'synthorg init' to create a configuration."
+	case strings.Contains(msg, "permission denied"):
+		return "Check file permissions on the data directory."
+	case strings.Contains(msg, "image verification failed"):
+		return "Try --skip-verify for air-gapped environments."
+	case strings.Contains(msg, "requires an interactive terminal"):
+		return "Use --yes for non-interactive mode."
+	case strings.Contains(msg, "Docker not available") || strings.Contains(msg, "docker"):
+		return "Ensure Docker is installed and running."
+	default:
+		return ""
+	}
 }

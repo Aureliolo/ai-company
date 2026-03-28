@@ -34,6 +34,8 @@ var initCmd = &cobra.Command{
 
 When all required flags are provided, the interactive wizard is skipped
 (useful for CI/automation).`,
+	Example: `  synthorg init                                         # interactive setup wizard
+  synthorg init --backend-port 3001 --web-port 3000 --sandbox true  # non-interactive`,
 	RunE: runInit,
 }
 
@@ -44,6 +46,7 @@ func init() {
 	initCmd.Flags().StringVar(&initImageTag, "image-tag", "", "container image tag")
 	initCmd.Flags().StringVar(&initChannel, "channel", "", "update channel (\"stable\" or \"dev\")")
 	initCmd.Flags().StringVar(&initLogLevel, "log-level", "", "log level (\"debug\", \"info\", \"warn\", \"error\")")
+	initCmd.GroupID = "core"
 	rootCmd.AddCommand(initCmd)
 }
 
