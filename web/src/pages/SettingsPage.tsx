@@ -155,13 +155,11 @@ export default function SettingsPage() {
       try {
         const failedKeys = await saveSettingsBatch(changes, updateSetting)
 
-        // Reconcile GUI dirtyValues with code-mode saves
+        // Clear GUI drafts for keys successfully saved from code mode
         setDirtyValues((prev) => {
           const next = new Map(prev)
-          for (const [key, value] of changes) {
-            if (!failedKeys.has(key) && next.get(key) === value) {
-              next.delete(key)
-            }
+          for (const key of changes.keys()) {
+            if (!failedKeys.has(key)) next.delete(key)
           }
           return next
         })
@@ -184,6 +182,21 @@ export default function SettingsPage() {
     [updateSetting],
   )
 
+  const pruneAdvancedDrafts = useCallback(() => {
+    setDirtyValues((prev) => {
+      const next = new Map(prev)
+      for (const ck of prev.keys()) {
+        const entry = entries.find(
+          (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+        )
+        if (entry?.definition.level === 'advanced') {
+          next.delete(ck)
+        }
+      }
+      return next
+    })
+  }, [entries])
+
   const handleAdvancedToggle = useCallback((checked: boolean) => {
     if (checked) {
       const warned = sessionStorage.getItem(SETTINGS_ADVANCED_WARNED_KEY)
@@ -192,9 +205,10 @@ export default function SettingsPage() {
         return
       }
     }
+    if (!checked) pruneAdvancedDrafts()
     setAdvancedMode(checked)
     localStorage.setItem(SETTINGS_ADVANCED_KEY, String(checked))
-  }, [])
+  }, [pruneAdvancedDrafts])
 
   const confirmAdvancedMode = useCallback(() => {
     sessionStorage.setItem(SETTINGS_ADVANCED_WARNED_KEY, 'true')
@@ -267,22 +281,9 @@ export default function SettingsPage() {
       {advancedMode && (
         <AdvancedModeBanner
           onDisable={() => {
+            pruneAdvancedDrafts()
             setAdvancedMode(false)
             localStorage.setItem(SETTINGS_ADVANCED_KEY, 'false')
-            // Clear drafts for advanced-only settings so they
-            // don't remain hidden but count toward the save bar
-            setDirtyValues((prev) => {
-              const next = new Map(prev)
-              for (const ck of prev.keys()) {
-                const entry = entries.find(
-                  (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
-                )
-                if (entry?.definition.level === 'advanced') {
-                  next.delete(ck)
-                }
-              }
-              return next
-            })
           }}
         />
       )}

@@ -5,6 +5,33 @@ import type { SettingEntry } from '@/api/types'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
+function NamespaceSettingRow({
+  entry,
+  dirtyValues,
+  onValueChange,
+  savingKeys,
+  controllerDisabledMap,
+}: {
+  entry: SettingEntry
+  dirtyValues: ReadonlyMap<string, string>
+  onValueChange: (ck: string, v: string) => void
+  savingKeys: ReadonlySet<string>
+  controllerDisabledMap: ReadonlyMap<string, boolean>
+}) {
+  const ck = `${entry.definition.namespace}/${entry.definition.key}`
+  return (
+    <ErrorBoundary key={ck} level="component">
+      <SettingRow
+        entry={entry}
+        dirtyValue={dirtyValues.get(ck)}
+        onChange={(value) => onValueChange(ck, value)}
+        saving={savingKeys.has(ck)}
+        controllerDisabled={controllerDisabledMap.get(ck)}
+      />
+    </ErrorBoundary>
+  )
+}
+
 export interface NamespaceSectionProps {
   displayName: string
   icon: React.ReactNode
@@ -81,20 +108,16 @@ export function NamespaceSection({
                 </h3>
               )}
               <div className="space-y-1">
-                {groupEntries.map((entry) => {
-                  const compositeKey = `${entry.definition.namespace}/${entry.definition.key}`
-                  return (
-                    <ErrorBoundary key={compositeKey} level="component">
-                      <SettingRow
-                        entry={entry}
-                        dirtyValue={dirtyValues.get(compositeKey)}
-                        onChange={(value) => onValueChange(compositeKey, value)}
-                        saving={savingKeys.has(compositeKey)}
-                        controllerDisabled={controllerDisabledMap.get(compositeKey)}
-                      />
-                    </ErrorBoundary>
-                  )
-                })}
+                {groupEntries.map((entry) => (
+                  <NamespaceSettingRow
+                    key={`${entry.definition.namespace}/${entry.definition.key}`}
+                    entry={entry}
+                    dirtyValues={dirtyValues}
+                    onValueChange={onValueChange}
+                    savingKeys={savingKeys}
+                    controllerDisabledMap={controllerDisabledMap}
+                  />
+                ))}
               </div>
             </div>
           ))}

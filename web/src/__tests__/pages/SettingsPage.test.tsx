@@ -189,6 +189,12 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('Api Prefix')).not.toBeInTheDocument()
   })
 
+  it('shows advanced settings when advanced mode is enabled', () => {
+    localStorage.setItem('settings_show_advanced', 'true')
+    renderSettings()
+    expect(screen.getByText('Api Prefix')).toBeInTheDocument()
+  })
+
   it('shows empty state when no entries match', () => {
     hookReturn = { ...defaultHookReturn, entries: [] }
     renderSettings()

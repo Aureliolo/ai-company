@@ -96,12 +96,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       if (entriesResult.status === 'rejected') {
         errors.push(`Settings: ${getErrorMessage(entriesResult.reason)}`)
       }
-      set({
+      const patch: Partial<SettingsState> = {
         schema,
         entries,
         loading: false,
         error: errors.length > 0 ? errors.join('; ') : null,
-      })
+      }
+      const c = deriveCurrency(entries)
+      if (c) patch.currency = c
+      set(patch)
     } catch (error) {
       set({ loading: false, error: getErrorMessage(error) })
     }
@@ -114,7 +117,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const entries = await settingsApi.getAllSettings()
     // Re-check: a save may have started during the fetch
     if (get().savingKeys.size > 0) return
-    set({ entries })
+    const patch: Partial<SettingsState> = { entries }
+    const c = deriveCurrency(entries)
+    if (c) patch.currency = c
+    set(patch)
   },
 
   updateSetting: async (ns, key, value) => {

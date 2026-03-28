@@ -70,6 +70,10 @@ export async function saveSettingsBatch(
   const keys = [...dirtyValues.keys()]
   const promises = keys.map((compositeKey) => {
     const slashIdx = compositeKey.indexOf('/')
+    if (slashIdx < 1) {
+      console.error(`[settings] Malformed composite key: "${compositeKey}"`)
+      return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
+    }
     const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
     const key = compositeKey.slice(slashIdx + 1)
     return updateSetting(ns, key, dirtyValues.get(compositeKey)!).then(() => undefined)
