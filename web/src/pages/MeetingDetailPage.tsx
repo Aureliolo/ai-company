@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { AlertTriangle, RefreshCw, Video, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -28,7 +28,9 @@ export default function MeetingDetailPage() {
   } = useMeetingDetailData(meetingId ?? '')
 
   const wasConnectedRef = useRef(false)
-  if (wsConnected) wasConnectedRef.current = true
+  useEffect(() => {
+    if (wsConnected) wasConnectedRef.current = true
+  }, [wsConnected])
 
   // Missing meetingId
   if (!meetingId) {

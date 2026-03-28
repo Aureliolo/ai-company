@@ -5,16 +5,17 @@ import type { MeetingResponse } from '@/api/types'
 
 interface MeetingMetricCardsProps {
   meetings: readonly MeetingResponse[]
+  className?: string
 }
 
-export function MeetingMetricCards({ meetings }: MeetingMetricCardsProps) {
+export function MeetingMetricCards({ meetings, className }: MeetingMetricCardsProps) {
   const total = meetings.length
   const inProgress = countByStatus(meetings, 'in_progress')
   const completed = countByStatus(meetings, 'completed')
   const tokens = totalTokensUsed(meetings)
 
   return (
-    <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+    <StaggerGroup className={`grid grid-cols-2 gap-grid-gap lg:grid-cols-4${className ? ` ${className}` : ''}`}>
       <StaggerItem>
         <MetricCard label="TOTAL MEETINGS" value={total} />
       </StaggerItem>

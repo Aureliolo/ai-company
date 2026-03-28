@@ -19,8 +19,11 @@ export const ManyParticipants: Story = {
   args: {
     meeting: makeMeeting('2', {
       token_usage_by_participant: {
-        'agent-alice': 400, 'agent-bob': 350, 'agent-carol': 280,
-        'agent-dave': 150, 'agent-eve': 120,
+        'agent-alice': 400,
+        'agent-bob': 350,
+        'agent-carol': 280,
+        'agent-dave': 150,
+        'agent-eve': 120,
       },
       contribution_rank: ['agent-alice', 'agent-bob', 'agent-carol', 'agent-dave', 'agent-eve'],
       token_budget: 5000,

@@ -24,14 +24,17 @@ export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps
   const usedTokens = segments.reduce((sum, s) => sum + s.value, 0)
   const usedPercent = total > 0 ? Math.min(100, (usedTokens / total) * 100) : 0
   const visible = usedTokens > 0 ? segments.filter((s) => s.value > 0) : []
+  const clampedMax = Math.max(total, 0)
+  const clampedNow = Math.min(Math.max(usedTokens, 0), clampedMax)
 
   return (
     <div
       role="meter"
-      aria-valuenow={usedTokens}
+      aria-valuenow={clampedNow}
       aria-valuemin={0}
-      aria-valuemax={total}
-      aria-label={`Token usage: ${usedTokens.toLocaleString()} of ${total.toLocaleString()}`}
+      aria-valuemax={clampedMax}
+      aria-valuetext={`${usedTokens.toLocaleString()} of ${total.toLocaleString()}`}
+      aria-label="Token usage"
       className={cn('flex flex-col gap-1', className)}
     >
       <div className="h-2 w-full overflow-hidden rounded-full bg-border">

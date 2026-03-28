@@ -7,7 +7,7 @@ export function MeetingsSkeleton() {
       <Skeleton className="h-7 w-32" />
 
       {/* Metric cards */}
-      <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+      <div className="grid grid-cols-2 gap-grid-gap lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, i) => (
           <SkeletonMetric key={i} />
         ))}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { AlertTriangle, Video, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,9 @@ export default function MeetingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [triggerOpen, setTriggerOpen] = useState(false)
   const wasConnectedRef = useRef(false)
-  if (wsConnected) wasConnectedRef.current = true
+  useEffect(() => {
+    if (wsConnected) wasConnectedRef.current = true
+  }, [wsConnected])
 
   // URL-synced filters
   const filters: MeetingPageFilters = useMemo(() => {
@@ -95,7 +97,7 @@ export default function MeetingsPage() {
       )}
 
       {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

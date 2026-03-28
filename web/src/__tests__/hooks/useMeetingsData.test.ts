@@ -84,12 +84,18 @@ describe('useMeetingsData', () => {
     expect(mockPollingStop).toHaveBeenCalledTimes(1)
   })
 
-  it('sets up WebSocket with meetings channel', async () => {
+  it('sets up WebSocket with meetings channel and forwards events', async () => {
     const { useWebSocket } = await import('@/hooks/useWebSocket')
     renderHook(() => useMeetingsData())
     const callArgs = vi.mocked(useWebSocket).mock.calls[0]![0]
     const channels = callArgs.bindings.map((b) => b.channel)
     expect(channels).toEqual(['meetings'])
+
+    // Verify the binding handler forwards events to handleWsEvent
+    const binding = callArgs.bindings[0]!
+    const fakeEvent = { channel: 'meetings' as const, event_type: 'meeting.completed' as const, payload: {}, timestamp: new Date().toISOString() }
+    binding.handler(fakeEvent)
+    expect(mockHandleWsEvent).toHaveBeenCalledWith(fakeEvent)
   })
 
   it('returns wsConnected from WebSocket hook', () => {

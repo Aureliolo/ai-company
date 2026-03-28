@@ -35,8 +35,8 @@ export function MeetingFilterBar({
           onChange={(val) =>
             onFiltersChange({
               ...filters,
-              status: val || undefined,
-            } as MeetingPageFilters)
+              status: (val || undefined) as MeetingPageFilters['status'],
+            })
           }
           options={STATUS_OPTIONS}
           className="w-44"

@@ -64,7 +64,12 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       const freshSelected = currentSelected
         ? result.data.find((m) => m.meeting_id === currentSelected.meeting_id) ?? currentSelected
         : null
-      set({ meetings: result.data, total: result.total, loading: false, selectedMeeting: freshSelected })
+      set({
+        meetings: result.data,
+        total: result.total,
+        loading: false,
+        selectedMeeting: freshSelected,
+      })
     } catch (err) {
       if (seq !== listRequestSeq) {
         console.warn('[meetings] Discarding error from stale list request:', sanitizeForLog(err))

@@ -73,7 +73,7 @@ export function MeetingCard({ meeting, className }: MeetingCardProps) {
       </div>
 
       {/* Token usage mini-bar */}
-      {meeting.token_budget > 0 && (
+      {meeting.token_budget > 0 && meeting.minutes && (
         <div className="h-1 w-full overflow-hidden rounded-full bg-border">
           <div
             className={cn(

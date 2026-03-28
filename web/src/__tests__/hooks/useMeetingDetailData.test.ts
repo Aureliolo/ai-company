@@ -69,6 +69,19 @@ describe('useMeetingDetailData', () => {
   it('returns wsConnected from WebSocket hook', () => {
     const { result } = renderHook(() => useMeetingDetailData('meeting-1'))
     expect(result.current.wsConnected).toBe(true)
+    expect(result.current.wsSetupError).toBeNull()
+  })
+
+  it('returns wsSetupError from WebSocket hook', async () => {
+    const { useWebSocket } = await import('@/hooks/useWebSocket')
+    vi.mocked(useWebSocket).mockReturnValue({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: 'WS auth failed',
+    })
+    const { result } = renderHook(() => useMeetingDetailData('meeting-1'))
+    expect(result.current.wsSetupError).toBe('WS auth failed')
+    expect(result.current.wsConnected).toBe(false)
   })
 
   it('refetches when meetingId changes', async () => {
