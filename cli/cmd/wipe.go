@@ -139,7 +139,7 @@ func wipeDryRunPreview(out *ui.UI, safeDir, composePath string) error {
 	out.KeyValue("Data directory", safeDir)
 	out.KeyValue("Compose file", composePath)
 	out.KeyValue("Backup", boolToYesNo(!wipeNoBackup))
-	out.KeyValue("Keep images", boolToYesNo(wipeKeepImages))
+	out.KeyValue("Remove images", boolToYesNo(!wipeKeepImages))
 	out.HintNextStep("Remove --dry-run to execute the wipe")
 	return nil
 }
@@ -157,15 +157,20 @@ func (wc *wipeContext) confirmAndWipe() error {
 		return nil
 	}
 
+	downArgs := []string{"down", "-v"}
+	if !wipeKeepImages {
+		downArgs = append(downArgs, "--rmi", "all")
+	}
+
 	sp := wc.out.StartSpinner("Stopping containers and removing volumes...")
-	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, "down", "-v"); err != nil {
+	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, downArgs...); err != nil {
 		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
-	sp.Success("Containers stopped and volumes removed")
-
 	if wipeKeepImages {
-		wc.out.Success("Container images preserved (--keep-images)")
+		sp.Success("Containers stopped and volumes removed (images preserved)")
+	} else {
+		sp.Success("Containers stopped, volumes and images removed")
 	}
 
 	startAfter, err := wc.promptStartAfterWipe()

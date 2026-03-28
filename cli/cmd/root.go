@@ -44,7 +44,7 @@ to launch the backend and web dashboard containers.`,
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		if flagHelpAll {
 			printAllHelp(cmd.Root(), 0)
-			os.Exit(0)
+			return NewExitError(ExitSuccess, nil)
 		}
 		return setupGlobalOpts(cmd)
 	},
@@ -236,10 +236,14 @@ func Execute() error {
 		// ("re-launched CLI exited with code N") is not user-facing.
 		// main.go handles the exit code propagation.
 		var ce *ChildExitError
-		if !errors.As(err, &ce) {
+		var ee *ExitError
+		if errors.As(err, &ce) || errors.As(err, &ee) {
+			// ChildExitError / ExitError: don't print user-facing message,
+			// main.go handles exit code propagation.
+		} else {
 			_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
 			if hint := errorHint(err); hint != "" {
-				errUI := ui.NewUI(rootCmd.ErrOrStderr())
+				errUI := ui.NewUIWithOptions(rootCmd.ErrOrStderr(), globalUIOptions())
 				errUI.HintError(hint)
 			}
 		}
@@ -263,6 +267,18 @@ func printAllHelp(cmd *cobra.Command, depth int) {
 	}
 }
 
+// globalUIOptions returns ui.Options derived from flag variables for use
+// in the error path of Execute(), where GlobalOpts may not be in context.
+func globalUIOptions() ui.Options {
+	return ui.Options{
+		Quiet:   flagQuiet || flagJSON,
+		NoColor: flagNoColor || noColorFromEnv(),
+		Plain:   flagPlain,
+		JSON:    flagJSON,
+		Hints:   "auto",
+	}
+}
+
 // errorHint returns a contextual suggestion for common error patterns.
 // Returns "" if no hint is applicable.
 func errorHint(err error) string {
@@ -276,7 +292,7 @@ func errorHint(err error) string {
 		return "Run 'synthorg init' to create a configuration."
 	case strings.Contains(msg, "permission denied"):
 		return "Check file permissions on the data directory."
-	case strings.Contains(msg, "image verification failed"):
+	case strings.Contains(msg, "image verification failed") && isTransportError(err):
 		return "Try --skip-verify for air-gapped environments."
 	case strings.Contains(msg, "requires an interactive terminal"):
 		return "Use --yes for non-interactive mode."

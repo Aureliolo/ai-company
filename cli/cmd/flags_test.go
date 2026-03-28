@@ -273,7 +273,7 @@ func TestErrorHint(t *testing.T) {
 		{"compose not found", "compose.yml not found in /data", true},
 		{"loading config", "loading config: open /data/config.json", true},
 		{"permission denied", "permission denied", true},
-		{"image verification", "image verification failed", true},
+		{"image verification non-transport", "image verification failed", false},
 		{"interactive terminal", "requires an interactive terminal", true},
 		{"docker not available", "Docker not available", true},
 		{"docker not found", "docker: not found", true},

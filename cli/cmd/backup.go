@@ -482,19 +482,29 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 }
 
 // sortBackups sorts a backup list by the specified criterion.
+// Uses SliceStable with BackupID tie-breaker for deterministic output.
 func sortBackups(backups []backupInfo, criterion string) {
 	switch criterion {
 	case "oldest":
-		sort.Slice(backups, func(i, j int) bool {
-			return backups[i].Timestamp < backups[j].Timestamp
+		sort.SliceStable(backups, func(i, j int) bool {
+			if backups[i].Timestamp != backups[j].Timestamp {
+				return backups[i].Timestamp < backups[j].Timestamp
+			}
+			return backups[i].BackupID < backups[j].BackupID
 		})
 	case "size":
-		sort.Slice(backups, func(i, j int) bool {
-			return backups[i].SizeBytes > backups[j].SizeBytes
+		sort.SliceStable(backups, func(i, j int) bool {
+			if backups[i].SizeBytes != backups[j].SizeBytes {
+				return backups[i].SizeBytes > backups[j].SizeBytes
+			}
+			return backups[i].BackupID < backups[j].BackupID
 		})
 	default: // "newest" -- default order from API, but ensure it.
-		sort.Slice(backups, func(i, j int) bool {
-			return backups[i].Timestamp > backups[j].Timestamp
+		sort.SliceStable(backups, func(i, j int) bool {
+			if backups[i].Timestamp != backups[j].Timestamp {
+				return backups[i].Timestamp > backups[j].Timestamp
+			}
+			return backups[i].BackupID < backups[j].BackupID
 		})
 	}
 }

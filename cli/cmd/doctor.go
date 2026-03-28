@@ -68,11 +68,14 @@ func validateDoctorFlags() error {
 	return nil
 }
 
-// validDoctorCheckNames returns a sorted, comma-separated list of valid check names.
+// validDoctorCheckNames returns a sorted, comma-separated list of valid check
+// names for use in error messages. Excludes "all" (a keyword, not a check).
 func validDoctorCheckNames() string {
-	names := make([]string, 0, len(validDoctorChecks))
+	names := make([]string, 0, len(validDoctorChecks)-1)
 	for k := range validDoctorChecks {
-		names = append(names, k)
+		if k != "all" {
+			names = append(names, k)
+		}
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")
@@ -110,11 +113,28 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	out.Step("Collecting diagnostics...")
 	report := diagnostics.Collect(ctx, state)
 
-	// Save full plain-text report to file (for bug report attachment).
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
 	}
+	saveDiagnosticFile(out, safeDir, report)
+	_, _ = fmt.Fprintln(out.Writer())
+
+	renderDoctorFiltered(out, report, state)
+	printDoctorFooter(out, state, report)
+
+	if doctorFix {
+		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+	}
+
+	_, _ = fmt.Fprintln(out.Writer())
+	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
+	out.HintNextStep("Run 'synthorg logs' to view container logs")
+	return nil
+}
+
+// saveDiagnosticFile writes the plain-text report to a timestamped file.
+func saveDiagnosticFile(out *ui.UI, safeDir string, report diagnostics.Report) {
 	filename := fmt.Sprintf("synthorg-diagnostic-%s.txt", time.Now().Format("20060102-150405"))
 	savePath := filepath.Join(safeDir, filename)
 	text := report.FormatText()
@@ -123,29 +143,16 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	} else {
 		out.Success(fmt.Sprintf("Saved to: %s", savePath))
 	}
-	_, _ = fmt.Fprintln(out.Writer())
+}
 
-	// Render styled output to terminal (filtered by --checks).
-	renderDoctorFiltered(out, report, state)
-
+// printDoctorFooter renders links and summary below the diagnostic sections.
+func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report) {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
 	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
-
 	_, _ = fmt.Fprintln(out.Writer())
 	renderDoctorSummary(out, report)
-
-	// --fix: attempt auto-fix for detected issues.
-	if doctorFix {
-		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
-	}
-
-	_, _ = fmt.Fprintln(out.Writer())
-	out.HintNextStep("Run 'synthorg doctor report' to file a bug report")
-	out.HintNextStep("Run 'synthorg logs' to view container logs")
-
-	return nil
 }
 
 // renderDoctorFiltered renders diagnostic sections gated by --checks filter.
@@ -176,8 +183,10 @@ func renderDoctorFiltered(out *ui.UI, report diagnostics.Report, state config.St
 	}
 }
 
-// doctorAutoFix attempts to fix detected issues. Non-fatal: prints results
-// but does not return errors (the diagnostic report is already displayed).
+// doctorAutoFix attempts to fix detected issues. Scans all issues first,
+// then executes fixes in correct order (compose first, restart once after).
+// Only acts on issues matching the --checks filter. Non-fatal: prints
+// results but does not return errors.
 func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, state config.State, report diagnostics.Report, safeDir string) {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Auto-fix")
@@ -188,33 +197,55 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 		return
 	}
 
-	info, dockerErr := docker.Detect(ctx)
-
+	// Phase 1: scan issues and determine needed actions.
+	var needComposeFix, needRestart bool
+	var unfixable []string
 	for _, issue := range issues {
 		switch {
 		case strings.Contains(issue, "compose.yml") && (strings.Contains(issue, "not found") || strings.Contains(issue, "invalid")):
-			out.Step(fmt.Sprintf("Fixing: %s", issue))
-			if fixErr := doctorFixCompose(state, safeDir); fixErr != nil {
-				errOut.Error(fmt.Sprintf("Could not fix: %v", fixErr))
-			} else {
-				out.Success("Regenerated compose.yml from template")
+			if doctorCheckEnabled("compose") {
+				needComposeFix = true
 			}
-
 		case strings.Contains(issue, "unhealthy") || strings.Contains(issue, "exited"):
-			if dockerErr != nil {
-				errOut.Warn(fmt.Sprintf("Cannot fix %q: Docker not available", issue))
-				continue
+			if doctorCheckEnabled("containers") || doctorCheckEnabled("health") {
+				needRestart = true
 			}
-			out.Step(fmt.Sprintf("Fixing: %s (restarting containers)", issue))
+		default:
+			unfixable = append(unfixable, issue)
+		}
+	}
+
+	if !needComposeFix && !needRestart && len(unfixable) == 0 {
+		out.Success("No fixable issues in selected checks")
+		return
+	}
+
+	// Phase 2: execute fixes in correct order (compose before restart).
+	if needComposeFix {
+		out.Step("Regenerating compose.yml from template...")
+		if fixErr := doctorFixCompose(state, safeDir); fixErr != nil {
+			errOut.Error(fmt.Sprintf("Could not regenerate compose: %v", fixErr))
+		} else {
+			out.Success("Regenerated compose.yml from template")
+		}
+	}
+
+	if needRestart {
+		info, dockerErr := docker.Detect(ctx)
+		if dockerErr != nil {
+			errOut.Warn(fmt.Sprintf("Cannot restart containers: Docker not available (%v)", dockerErr))
+		} else {
+			out.Step("Restarting containers...")
 			if fixErr := composeRunQuiet(ctx, info, safeDir, "restart"); fixErr != nil {
 				errOut.Error(fmt.Sprintf("Restart failed: %v", fixErr))
 			} else {
 				out.Success("Containers restarted")
 			}
-
-		default:
-			out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
 		}
+	}
+
+	for _, issue := range unfixable {
+		out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
 	}
 }
 

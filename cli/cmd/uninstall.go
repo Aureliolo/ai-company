@@ -60,17 +60,19 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	autoAccept := opts.Yes
+
 	// Stop containers and optionally remove volumes.
 	info, dockerErr := docker.Detect(ctx)
 	if dockerErr != nil {
 		errUI.Warn(fmt.Sprintf("Docker not available, cannot stop containers: %v", dockerErr))
 	} else {
-		if err := stopAndRemoveVolumes(cmd, info, safeDir, out); err != nil {
+		if err := stopAndRemoveVolumes(cmd, info, safeDir, out, autoAccept, uninstallKeepData); err != nil {
 			return err
 		}
 		// Offer to remove SynthOrg container images.
 		if !uninstallKeepImages {
-			if err := confirmAndRemoveImages(cmd, info, out, errUI); err != nil {
+			if err := confirmAndRemoveImages(cmd, info, out, errUI, autoAccept); err != nil {
 				return err
 			}
 		} else {
@@ -80,7 +82,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 	// Remove data directory.
 	if !uninstallKeepData {
-		if err := confirmAndRemoveData(cmd, safeDir); err != nil {
+		if err := confirmAndRemoveData(cmd, safeDir, autoAccept); err != nil {
 			return err
 		}
 	} else {
@@ -100,7 +102,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	sp.Success("Shell completions removed")
 
 	// Optionally remove CLI binary.
-	if err := confirmAndRemoveBinary(cmd, safeDir); err != nil {
+	if err := confirmAndRemoveBinary(cmd, safeDir, autoAccept); err != nil {
 		return err
 	}
 
@@ -109,20 +111,27 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI) error {
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI, autoAccept bool, keepData bool) error {
 	ctx := cmd.Context()
 
-	var removeVolumes bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
-				Description("This removes the persistent database and memory data.").
-				Value(&removeVolumes),
-		),
-	)
-	if err := form.Run(); err != nil {
-		return err
+	// When --keep-data is set, never remove volumes (they contain app data).
+	removeVolumes := false
+	if !keepData {
+		if autoAccept {
+			removeVolumes = true
+		} else {
+			form := huh.NewForm(
+				huh.NewGroup(
+					huh.NewConfirm().
+						Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
+						Description("This removes the persistent database and memory data.").
+						Value(&removeVolumes),
+				),
+			)
+			if err := form.Run(); err != nil {
+				return err
+			}
+		}
 	}
 
 	downArgs := []string{"down"}
@@ -146,7 +155,7 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 
 // confirmAndRemoveImages offers to remove SynthOrg container images.
 // Lists all images (not just old ones) deduplicated by Docker ID.
-func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui.UI) error {
+func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui.UI, autoAccept bool) error {
 	ctx := cmd.Context()
 
 	// List all SynthOrg images (pass empty currentIDs to include everything).
@@ -165,14 +174,16 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 	out.Box("SynthOrg Images", lines)
 	out.Blank()
 
-	var removeImages bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
-			Value(&removeImages),
-	))
-	if err := form.Run(); err != nil {
-		return err
+	removeImages := autoAccept
+	if !autoAccept {
+		form := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().
+				Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
+				Value(&removeImages),
+		))
+		if err := form.Run(); err != nil {
+			return err
+		}
 	}
 	if !removeImages {
 		return nil
@@ -204,17 +215,19 @@ func removeImagesOneByOne(ctx context.Context, info docker.Info, out *ui.UI, ima
 	}
 }
 
-func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
-	var removeData bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title(fmt.Sprintf("Remove config directory? (%s)", dataDir)).
-				Value(&removeData),
-		),
-	)
-	if err := form.Run(); err != nil {
-		return err
+func confirmAndRemoveData(cmd *cobra.Command, dataDir string, autoAccept bool) error {
+	removeData := autoAccept
+	if !autoAccept {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(fmt.Sprintf("Remove config directory? (%s)", dataDir)).
+					Value(&removeData),
+			),
+		)
+		if err := form.Run(); err != nil {
+			return err
+		}
 	}
 	if !removeData {
 		return nil
@@ -285,18 +298,20 @@ func removeDataDir(cmd *cobra.Command, dir string) error {
 // confirmAndRemoveBinary asks to remove the CLI binary. On Windows, spawns
 // a detached process that waits for the current process to exit, then
 // deletes the binary and cleans up empty parent directories.
-func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string) error {
-	var removeBinary bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Remove CLI binary?").
-				Description("You can reinstall later from GitHub Releases.").
-				Value(&removeBinary),
-		),
-	)
-	if err := form.Run(); err != nil {
-		return err
+func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string, autoAccept bool) error {
+	removeBinary := autoAccept
+	if !autoAccept {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Remove CLI binary?").
+					Description("You can reinstall later from GitHub Releases.").
+					Value(&removeBinary),
+			),
+		)
+		if err := form.Run(); err != nil {
+			return err
+		}
 	}
 
 	if !removeBinary {
@@ -340,10 +355,10 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
 
-	// Reject paths containing double-quote characters which would break
-	// the .bat script quoting and allow command injection.
-	if strings.ContainsRune(execPath, '"') || strings.ContainsRune(binDir, '"') || strings.ContainsRune(dataDir, '"') {
-		return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains a double-quote character, cannot generate safe cleanup script"))
+	// Reject paths containing characters that would break .bat quoting:
+	// double-quote (command injection) and percent (cmd.exe variable expansion).
+	if strings.ContainsAny(execPath, `"%`) || strings.ContainsAny(binDir, `"%`) || strings.ContainsAny(dataDir, `"%`) {
+		return fallbackManualCleanup(cmd, execPath, fmt.Errorf("path contains unsafe characters for batch script (double-quote or percent)"))
 	}
 
 	// Write cleanup script to a temp .bat file next to the binary

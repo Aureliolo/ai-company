@@ -103,14 +103,17 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Reload state (may have changed during CLI update or been loaded with
-	// defaults above). Thread through both compose refresh and image pull.
+	return updateComposeAndImages(cmd)
+}
+
+// updateComposeAndImages reloads config, refreshes the compose template,
+// and pulls new container images. Separated from runUpdate for readability.
+func updateComposeAndImages(cmd *cobra.Command) error {
 	state, err := config.Load(GetGlobalOpts(cmd.Context()).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Detect dirty installation state (e.g. after partial uninstall).
 	abort, recovered, healthErr := checkInstallationHealth(cmd, state)
 	if healthErr != nil {
 		return healthErr
@@ -352,6 +355,9 @@ func reexecUpdate(cmd *cobra.Command) error {
 	if updateImagesOnly {
 		reArgs = append(reArgs, "--images-only")
 	}
+	if updateCLIOnly {
+		reArgs = append(reArgs, "--cli-only")
+	}
 
 	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
 	c.Stdin = os.Stdin
@@ -562,7 +568,11 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	}
 
 	sp := out.StartSpinner("Verifying container image signatures...")
-	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	verifyTimeout, _ := time.ParseDuration(updateTimeout)
+	if verifyTimeout <= 0 {
+		verifyTimeout = 90 * time.Second
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
 	defer cancel()
 	var buf bytes.Buffer
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
@@ -618,17 +628,19 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	}
 
 	opts := GetGlobalOpts(ctx)
+
+	// auto_restart config key: auto-accept restart regardless of TTY.
+	// Precedence: --no-restart (checked above) > --yes > config auto key > prompt > non-interactive default.
+	if state.AutoRestart {
+		return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
+	}
+
 	if !opts.ShouldPrompt() {
 		if opts.Yes {
 			return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 		}
 		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return false, nil
-	}
-
-	// auto_restart config key: auto-accept restart.
-	if state.AutoRestart {
-		return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
 	}
 
 	restart, err := confirmRestart()

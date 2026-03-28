@@ -54,7 +54,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	}
 
 	ctx := cmd.Context()
-	opts := GetGlobalOpts(cmd.Context())
+	opts := GetGlobalOpts(ctx)
 
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
