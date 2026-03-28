@@ -29,8 +29,8 @@ export function AccountStep() {
           status.min_password_length ?? DEFAULT_MIN_PASSWORD_LENGTH,
         )
       })
-      .catch(() => {
-        // Fall back to default on error
+      .catch((err) => {
+        console.error('AccountStep: failed to fetch setup status:', err)
       })
   }, [])
 

@@ -19,7 +19,7 @@ export function ProviderAddForm({ presets, providers, onAdd }: ProviderAddFormPr
   const [error, setError] = useState<string | null>(null)
 
   const cloudPresets = useMemo(
-    () => presets.filter((p) => p.auth_type !== 'none'),
+    () => presets.filter((p) => p.auth_type === 'api_key'),
     [presets],
   )
 

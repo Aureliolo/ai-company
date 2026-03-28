@@ -7,6 +7,7 @@ import { useToastStore } from '@/stores/toast'
 import { TemplateCard } from './TemplateCard'
 import { TemplateCompareDrawer } from './TemplateCompareDrawer'
 import { LayoutGrid } from 'lucide-react'
+import type { TemplateInfoResponse } from '@/api/types'
 
 const MAX_COMPARE = 3
 
@@ -15,6 +16,32 @@ const TAG_SOLO = 'solo'
 const TAG_SMALL_TEAM = 'small-team'
 const TAG_ENTERPRISE = 'enterprise'
 const TAG_FULL_COMPANY = 'full-company'
+
+interface TemplateGridItemProps {
+  template: TemplateInfoResponse
+  selected: boolean
+  compared: boolean
+  recommended: boolean
+  onSelect: () => void
+  onToggleCompare: () => void
+  compareDisabled: boolean
+}
+
+function TemplateGridItem({ template, selected, compared, recommended, onSelect, onToggleCompare, compareDisabled }: TemplateGridItemProps) {
+  return (
+    <StaggerItem>
+      <TemplateCard
+        template={template}
+        selected={selected}
+        compared={compared}
+        recommended={recommended}
+        onSelect={onSelect}
+        onToggleCompare={onToggleCompare}
+        compareDisabled={compareDisabled}
+      />
+    </StaggerItem>
+  )
+}
 
 export function TemplateStep() {
   const templates = useSetupWizardStore((s) => s.templates)
@@ -144,17 +171,16 @@ export function TemplateStep() {
 
       <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
         {templates.map((template) => (
-          <StaggerItem key={template.name}>
-            <TemplateCard
-              template={template}
-              selected={selectedTemplate === template.name}
-              compared={comparedTemplates.includes(template.name)}
-              recommended={recommendedTemplates.has(template.name)}
-              onSelect={() => handleSelect(template.name)}
-              onToggleCompare={() => handleToggleCompare(template.name)}
-              compareDisabled={comparedTemplates.length >= MAX_COMPARE}
-            />
-          </StaggerItem>
+          <TemplateGridItem
+            key={template.name}
+            template={template}
+            selected={selectedTemplate === template.name}
+            compared={comparedTemplates.includes(template.name)}
+            recommended={recommendedTemplates.has(template.name)}
+            onSelect={() => handleSelect(template.name)}
+            onToggleCompare={() => handleToggleCompare(template.name)}
+            compareDisabled={comparedTemplates.length >= MAX_COMPARE}
+          />
         ))}
       </StaggerGroup>
 

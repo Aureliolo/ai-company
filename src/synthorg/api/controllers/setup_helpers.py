@@ -6,7 +6,7 @@ limit.  These are internal utilities -- not public API.
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.controllers.setup_agents import (
@@ -29,6 +29,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
+    SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_ALREADY_COMPLETE,
     SETUP_COMPLETE_CHECK_ERROR,
     SETUP_NAME_LOCALES_CORRUPTED,
@@ -59,6 +60,24 @@ AGENT_LOCK = asyncio.Lock()
 DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
     "min_password_length"
 ].default
+
+
+def validate_agent_index(
+    agent_index: int,
+    agents: list[dict[str, Any]],
+) -> None:
+    """Raise ``NotFoundError`` if *agent_index* is out of range."""
+    if agent_index < 0 or agent_index >= len(agents):
+        if not agents:
+            msg = f"Agent index {agent_index} out of range (no agents configured)"
+        else:
+            msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+        logger.warning(
+            SETUP_AGENT_INDEX_OUT_OF_RANGE,
+            agent_index=agent_index,
+            agent_count=len(agents),
+        )
+        raise NotFoundError(msg)
 
 
 async def post_setup_reinit(app_state: AppState) -> None:

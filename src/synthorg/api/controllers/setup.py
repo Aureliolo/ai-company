@@ -7,7 +7,6 @@ selection, company creation, name locale configuration, agent management
 
 import asyncio
 import json
-from typing import Any
 
 from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -62,12 +61,13 @@ from synthorg.api.controllers.setup_helpers import (
     resolve_template as _resolve_template,
 )
 from synthorg.api.controllers.setup_helpers import (
+    validate_agent_index as _validate_agent_index,
+)
+from synthorg.api.controllers.setup_helpers import (
     validate_locale_selection as _validate_locale_selection,
 )
 from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
-    PersonalityPresetInfoResponse,
-    PersonalityPresetsListResponse,
     SetupAgentRequest,
     SetupAgentResponse,
     SetupAgentsListResponse,
@@ -82,20 +82,17 @@ from synthorg.api.controllers.setup_models import (
     TemplateVariableResponse,
     UpdateAgentModelRequest,
     UpdateAgentNameRequest,
-    UpdateAgentPersonalityRequest,
 )
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, NotFoundError
+from synthorg.api.errors import ApiValidationError
 from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
-    SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_AGENT_MODEL_UPDATED,
     SETUP_AGENT_NAME_RANDOMIZED,
     SETUP_AGENT_NAME_UPDATED,
-    SETUP_AGENT_PERSONALITY_UPDATED,
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
     SETUP_COMPANY_CREATED,
@@ -105,30 +102,11 @@ from synthorg.observability.events.setup import (
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
-    SETUP_PERSONALITY_PRESETS_LISTED,
     SETUP_STATUS_CHECKED,
     SETUP_TEMPLATES_LISTED,
 )
 
 logger = get_logger(__name__)
-
-
-def _validate_agent_index(
-    agent_index: int,
-    agents: list[dict[str, Any]],
-) -> None:
-    """Raise ``NotFoundError`` if *agent_index* is out of range."""
-    if agent_index < 0 or agent_index >= len(agents):
-        if not agents:
-            msg = f"Agent index {agent_index} out of range (no agents configured)"
-        else:
-            msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
-        logger.warning(
-            SETUP_AGENT_INDEX_OUT_OF_RANGE,
-            agent_index=agent_index,
-            agent_count=len(agents),
-        )
-        raise NotFoundError(msg)
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -602,109 +580,6 @@ class SetupController(Controller):
 
         return ApiResponse(
             data=agent_dict_to_summary(agents[agent_index]),
-        )
-
-    @put(
-        "/agents/{agent_index:int}/personality",
-        status_code=HTTP_200_OK,
-        guards=[require_ceo],
-    )
-    async def update_agent_personality(
-        self,
-        agent_index: int,
-        data: UpdateAgentPersonalityRequest,
-        state: State,
-    ) -> ApiResponse[SetupAgentSummary]:
-        """Update a single agent's personality preset during setup.
-
-        Args:
-            agent_index: Zero-based index of the agent to update.
-            data: New personality preset assignment.
-            state: Application state.
-
-        Returns:
-            Updated agent summary.
-
-        Raises:
-            ConflictError: If setup has already been completed.
-            NotFoundError: If the agent index is out of range.
-        """
-        app_state: AppState = state.app_state
-        settings_svc = app_state.settings_service
-        await _check_setup_not_complete(settings_svc)
-
-        async with _AGENT_LOCK:
-            agents = await get_existing_agents(settings_svc)
-            _validate_agent_index(agent_index, agents)
-
-            from synthorg.templates.presets import (  # noqa: PLC0415
-                get_personality_preset,
-            )
-
-            personality_dict = get_personality_preset(
-                data.personality_preset,
-            )
-            updated_agent = {
-                **agents[agent_index],
-                "personality_preset": data.personality_preset,
-                "personality": personality_dict,
-            }
-            agents = [
-                *agents[:agent_index],
-                updated_agent,
-                *agents[agent_index + 1 :],
-            ]
-            await settings_svc.set(
-                "company",
-                "agents",
-                json.dumps(agents),
-            )
-
-        logger.info(
-            SETUP_AGENT_PERSONALITY_UPDATED,
-            agent_index=agent_index,
-            personality_preset=data.personality_preset,
-        )
-
-        return ApiResponse(
-            data=agent_dict_to_summary(agents[agent_index]),
-        )
-
-    @get(
-        "/personality-presets",
-        guards=[require_read_access],
-    )
-    async def list_personality_presets(
-        self,
-        state: State,  # noqa: ARG002
-    ) -> ApiResponse[PersonalityPresetsListResponse]:
-        """List all available personality presets.
-
-        Args:
-            state: Application state.
-
-        Returns:
-            Personality presets data envelope.
-        """
-        from synthorg.templates.presets import (  # noqa: PLC0415
-            PERSONALITY_PRESETS,
-        )
-
-        presets = tuple(
-            PersonalityPresetInfoResponse(
-                name=name,
-                description=str(preset["description"]),
-            )
-            for name, preset in sorted(PERSONALITY_PRESETS.items())
-        )
-
-        logger.debug(
-            SETUP_PERSONALITY_PRESETS_LISTED,
-            count=len(presets),
-        )
-
-        return ApiResponse(
-            data=PersonalityPresetsListResponse(presets=presets),
         )
 
     @get(

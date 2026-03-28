@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
+import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { MetricCard } from '@/components/ui/metric-card'
 import { Button } from '@/components/ui/button'
@@ -165,8 +166,7 @@ export function CompanyStep() {
 
       {/* Agent preview list */}
       {companyResponse && agents.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-4">
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Generated Agents</h3>
+        <SectionCard title="Generated Agents">
           <ul className="space-y-1 text-xs text-muted-foreground">
             {agents.map((agent, index) => (
               // eslint-disable-next-line @eslint-react/no-array-index-key -- names may duplicate
@@ -175,7 +175,7 @@ export function CompanyStep() {
               </li>
             ))}
           </ul>
-        </div>
+        </SectionCard>
       )}
     </div>
   )
