@@ -212,6 +212,18 @@ describe('upsertApproval', () => {
     expect(useApprovalsStore.getState().selectedApproval!.status).toBe('approved')
   })
 
+  it('prunes selectedIds when approval leaves pending', () => {
+    const approval = makeApproval('1', { status: 'pending' })
+    useApprovalsStore.setState({ approvals: [approval], selectedIds: new Set(['1', '2']) })
+
+    const decided = makeApproval('1', { status: 'approved' })
+    useApprovalsStore.getState().upsertApproval(decided)
+
+    const ids = useApprovalsStore.getState().selectedIds
+    expect(ids.has('1')).toBe(false)
+    expect(ids.has('2')).toBe(true)
+  })
+
   it('does not update selectedApproval when not matching', () => {
     const selected = makeApproval('1')
     useApprovalsStore.setState({ approvals: [selected], selectedApproval: selected })

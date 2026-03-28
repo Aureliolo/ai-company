@@ -67,6 +67,15 @@ export function ApprovalDetailDrawer({
   const panelRef = useRef<HTMLElement>(null)
   const openerRef = useRef<Element | null>(null)
 
+  // Reset dialog/input state when the displayed approval changes or leaves pending
+  useEffect(() => {
+    setApproveOpen(false)
+    setRejectOpen(false)
+    setComment('')
+    setReason('')
+    setSubmitting(false)
+  }, [approval?.id])
+
   // Close confirm dialogs if approval is no longer pending (e.g., decided via WebSocket)
   useEffect(() => {
     if (!isPending) {

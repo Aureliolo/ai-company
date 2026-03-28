@@ -104,12 +104,12 @@ export default function ApprovalsPage() {
     })
   }, [setSearchParams])
 
-  // Open drawer if URL has selected param (refetch when ID changes)
+  // Fetch approval detail when URL selected param changes
   useEffect(() => {
-    if (selectedId && selectedApproval?.id !== selectedId) {
+    if (selectedId) {
       fetchApproval(selectedId)
     }
-  }, [fetchApproval, selectedApproval?.id, selectedId])
+  }, [fetchApproval, selectedId])
 
   // Single item approve -- optimistic update with rollback on failure
   const handleApproveOne = useCallback(async (id: string) => {
@@ -128,6 +128,16 @@ export default function ApprovalsPage() {
     // For single reject, open the drawer so user can enter reason
     handleSelectApproval(id)
   }, [handleSelectApproval])
+
+  // Close batch dialogs when selection is emptied (e.g., by WS updates or optimistic transitions)
+  useEffect(() => {
+    if (selectedIds.size === 0) {
+      setBatchApproveOpen(false)
+      setBatchRejectOpen(false)
+      setBatchComment('')
+      setBatchReason('')
+    }
+  }, [selectedIds.size])
 
   // Batch actions
   const handleBatchApprove = useCallback(async () => {

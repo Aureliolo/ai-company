@@ -87,7 +87,13 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
         }
         return serverItem
       })
-      set({ approvals: merged, total: result.total, loading: false })
+      // Prune selectedIds that are no longer in the fetched data
+      const mergedIds = new Set(merged.map((a) => a.id))
+      const prevSelected = get().selectedIds
+      const prunedSelected = [...prevSelected].some((sid) => !mergedIds.has(sid))
+        ? new Set([...prevSelected].filter((sid) => mergedIds.has(sid)))
+        : prevSelected
+      set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected })
     } catch (err) {
       set({ loading: false, error: getErrorMessage(err) })
     }
