@@ -1,12 +1,13 @@
 """Unit tests for the semantic analyzer classes.
 
-Tests AstSemanticAnalyzer and CompositeSemanticAnalyzer with
-mocked file I/O to verify orchestration and result aggregation.
+Tests filter_files, AstSemanticAnalyzer, and CompositeSemanticAnalyzer
+with mocked file I/O to verify orchestration and result aggregation.
 """
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.enums import ConflictType
 from synthorg.engine.workspace.config import SemanticAnalysisConfig
@@ -15,6 +16,7 @@ from synthorg.engine.workspace.semantic_analyzer import (
     AstSemanticAnalyzer,
     CompositeSemanticAnalyzer,
     SemanticAnalyzer,
+    filter_files,
 )
 
 _READ_FN = "synthorg.engine.workspace.semantic_analyzer._read_sources"
@@ -50,6 +52,49 @@ def _make_conflict(
         conflict_type=ConflictType.SEMANTIC,
         description=description,
     )
+
+
+# ---------------------------------------------------------------------------
+# filter_files
+# ---------------------------------------------------------------------------
+
+
+class TestFilterFiles:
+    """Tests for the shared file-filtering utility."""
+
+    def test_empty_input(self) -> None:
+        config = SemanticAnalysisConfig()
+        assert filter_files((), config) == []
+
+    def test_filters_by_extension(self) -> None:
+        config = SemanticAnalysisConfig(file_extensions=(".py",))
+        result = filter_files(
+            ("app.py", "readme.md", "config.yaml", "utils.py"),
+            config,
+        )
+        assert result == ["app.py", "utils.py"]
+
+    def test_multiple_extensions(self) -> None:
+        config = SemanticAnalysisConfig(
+            file_extensions=(".py", ".pyi"),
+        )
+        result = filter_files(
+            ("app.py", "stubs.pyi", "readme.md"),
+            config,
+        )
+        assert result == ["app.py", "stubs.pyi"]
+
+    def test_max_files_limit(self) -> None:
+        config = SemanticAnalysisConfig(max_files=3)
+        files = tuple(f"file{i}.py" for i in range(10))
+        result = filter_files(files, config)
+        assert len(result) == 3
+        assert result == ["file0.py", "file1.py", "file2.py"]
+
+    def test_no_matching_extensions(self) -> None:
+        config = SemanticAnalysisConfig(file_extensions=(".py",))
+        result = filter_files(("readme.md", "config.yaml"), config)
+        assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -246,3 +291,66 @@ class TestCompositeSemanticAnalyzer:
     async def test_protocol_compliance(self) -> None:
         composite = CompositeSemanticAnalyzer(analyzers=())
         assert isinstance(composite, SemanticAnalyzer)
+
+    async def test_runs_analyzers_concurrently(self) -> None:
+        """Verify analyzers execute in parallel, not sequentially.
+
+        Analyzer B blocks until analyzer A signals. If run sequentially
+        (A then B), this works. But if run as (B then A), B would
+        deadlock waiting for A. We put B first to prove true concurrency.
+        """
+        import asyncio
+
+        gate = asyncio.Event()
+
+        async def _analyze_a(**kwargs: object) -> tuple[MergeConflict, ...]:
+            gate.set()
+            return ()
+
+        async def _analyze_b(**kwargs: object) -> tuple[MergeConflict, ...]:
+            # If sequential and B runs first, this times out
+            await asyncio.wait_for(gate.wait(), timeout=2.0)
+            return (_make_conflict("b.py", "from B"),)
+
+        analyzer_a = AsyncMock(spec=SemanticAnalyzer)
+        analyzer_a.analyze.side_effect = _analyze_a
+
+        analyzer_b = AsyncMock(spec=SemanticAnalyzer)
+        analyzer_b.analyze.side_effect = _analyze_b
+
+        # B is first -- sequential execution would deadlock
+        composite = CompositeSemanticAnalyzer(
+            analyzers=(analyzer_b, analyzer_a),
+        )
+        result = await composite.analyze(
+            workspace=_make_workspace(),
+            changed_files=("b.py",),
+            repo_root="/tmp/repo",  # noqa: S108
+            base_sources={},
+        )
+        assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# SemanticAnalysisConfig defaults
+# ---------------------------------------------------------------------------
+
+
+class TestSemanticAnalysisConfig:
+    """Tests for config fields relevant to semantic analysis."""
+
+    def test_git_concurrency_default(self) -> None:
+        config = SemanticAnalysisConfig()
+        assert config.git_concurrency == 10
+
+    def test_git_concurrency_bounds(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="git_concurrency",
+        ):
+            SemanticAnalysisConfig(git_concurrency=0)
+        with pytest.raises(
+            ValidationError,
+            match="git_concurrency",
+        ):
+            SemanticAnalysisConfig(git_concurrency=51)

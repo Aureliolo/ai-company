@@ -63,7 +63,7 @@ class SemanticAnalyzer(Protocol):
         ...
 
 
-def _filter_files(
+def filter_files(
     changed_files: tuple[str, ...],
     config: SemanticAnalysisConfig,
 ) -> list[str]:
@@ -173,7 +173,7 @@ class AstSemanticAnalyzer:
         Returns:
             Tuple of semantic MergeConflict instances.
         """
-        py_files = _filter_files(changed_files, self._config)
+        py_files = filter_files(changed_files, self._config)
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_START,
             workspace_id=workspace.workspace_id,
@@ -264,7 +264,8 @@ class CompositeSemanticAnalyzer:
             Deduplicated tuple of semantic conflicts from all analyzers.
         """
         all_conflicts: list[MergeConflict] = []
-        for analyzer in self._analyzers:
+
+        async def _run(analyzer: SemanticAnalyzer) -> None:
             try:
                 conflicts = await analyzer.analyze(
                     workspace=workspace,
@@ -273,8 +274,6 @@ class CompositeSemanticAnalyzer:
                     base_sources=base_sources,
                 )
                 all_conflicts.extend(conflicts)
-            except asyncio.CancelledError:
-                raise
             except Exception as exc:
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
@@ -284,6 +283,10 @@ class CompositeSemanticAnalyzer:
                     error=f"{type(exc).__name__}: {exc}",
                     exc_info=True,
                 )
+
+        async with asyncio.TaskGroup() as tg:
+            for analyzer in self._analyzers:
+                tg.create_task(_run(analyzer))
 
         # Deduplicate by (file_path, description)
         seen: set[tuple[str, str]] = set()

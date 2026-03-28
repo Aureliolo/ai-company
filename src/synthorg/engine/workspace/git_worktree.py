@@ -28,6 +28,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceRequest,
 )
+from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     WORKSPACE_LIMIT_REACHED,
@@ -745,42 +746,47 @@ class PlannerWorktreeStrategy:
         self,
         base_sha: str,
         files: tuple[str, ...],
+        *,
+        concurrency: int = 10,
     ) -> dict[str, str]:
         """Read file contents at a specific commit using parallel git show.
 
         Args:
             base_sha: Commit SHA to read from.
             files: File paths to read.
+            concurrency: Maximum concurrent git show calls.
 
         Returns:
             Mapping of file path to content at the given commit.
         """
         sources: dict[str, str] = {}
+        sem = asyncio.Semaphore(concurrency)
 
         async def _fetch(fp: str) -> None:
-            if not _validate_file_path(fp):
-                logger.warning(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    operation="show",
-                    file=fp,
-                    error="unsafe file path",
+            async with sem:
+                if not _validate_file_path(fp):
+                    logger.warning(
+                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                        operation="show",
+                        file=fp,
+                        error="unsafe file path",
+                    )
+                    return
+                rc, stdout, stderr = await self._run_git(
+                    "show",
+                    f"{base_sha}:{fp}",
+                    log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 )
-                return
-            rc, stdout, stderr = await self._run_git(
-                "show",
-                f"{base_sha}:{fp}",
-                log_event=WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-            )
-            if rc == 0:
-                sources[fp] = stdout
-            else:
-                logger.debug(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    operation="show",
-                    base_sha=base_sha,
-                    file=fp,
-                    error=stderr,
-                )
+                if rc == 0:
+                    sources[fp] = stdout
+                else:
+                    logger.debug(
+                        WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                        operation="show",
+                        base_sha=base_sha,
+                        file=fp,
+                        error=stderr,
+                    )
 
         async with asyncio.TaskGroup() as tg:
             for file_path in files:
@@ -856,18 +862,16 @@ class PlannerWorktreeStrategy:
 
             # Pre-filter to configured extensions and max_files
             # to avoid unnecessary git show calls
-            config = self._config.semantic_analysis
             filtered = tuple(
-                f
-                for f in changed_files
-                if any(f.endswith(ext) for ext in config.file_extensions)
-            )[: config.max_files]
+                filter_files(changed_files, self._config.semantic_analysis),
+            )
             if not filtered:
                 return ()
 
             base_sources = await self._get_base_sources(
                 branch_point,
                 filtered,
+                concurrency=self._config.semantic_analysis.git_concurrency,
             )
 
             return await self._semantic_analyzer.analyze(

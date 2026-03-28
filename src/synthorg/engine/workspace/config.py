@@ -63,6 +63,12 @@ class SemanticAnalysisConfig(BaseModel):
         gt=0,
         description="Maximum bytes per file for semantic analysis",
     )
+    git_concurrency: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum concurrent git show calls",
+    )
 
     @model_validator(mode="after")
     def _validate_file_extensions(self) -> Self:

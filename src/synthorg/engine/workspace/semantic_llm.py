@@ -9,6 +9,7 @@ logic resides in the workspace strategy layer.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.engine.workspace.semantic_llm_prompt import (
     build_review_message,
     build_semantic_review_tool,
@@ -132,12 +133,7 @@ class LlmSemanticAnalyzer:
         """
         from pathlib import Path  # noqa: PLC0415
 
-        py_files = [
-            f
-            for f in changed_files
-            if any(f.endswith(ext) for ext in self._config.file_extensions)
-        ]
-        py_files = py_files[: self._config.max_files]
+        py_files = filter_files(changed_files, self._config)
         if not py_files:
             return None
 
