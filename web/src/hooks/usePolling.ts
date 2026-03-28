@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -84,5 +84,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
     }
   }, [stop])
 
-  return useMemo(() => ({ active, error, start, stop }), [active, error, start, stop])
+  // start/stop are stable useCallback refs; return a plain object so consumers
+  // depend on the individual refs, not an object whose identity changes on every state update.
+  return { active, error, start, stop }
 }

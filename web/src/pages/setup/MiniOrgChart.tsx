@@ -164,7 +164,8 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
 
               return (
                 <AgentNode
-                  key={agent.name}
+                  // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
+                  key={`${agent.name}-${agentIdx}`}
                   agent={agent}
                   agentX={agentX}
                   agentY={agentY}

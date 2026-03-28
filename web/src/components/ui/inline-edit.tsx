@@ -41,12 +41,8 @@ export function InlineEdit({
   const saveInProgressRef = useRef(false)
 
   // Sync editValue when prop value changes externally while in display mode
-  const prevValueRef = useRef(value)
-  if (value !== prevValueRef.current) {
-    prevValueRef.current = value
-    if (state === 'display') {
-      setEditValue(value)
-    }
+  if (state === 'display' && value !== editValue) {
+    setEditValue(value)
   }
 
   // Focus input when entering edit mode

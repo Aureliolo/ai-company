@@ -57,6 +57,8 @@ export function AgentEditDrawer({
       })
       setSubmitError(null)
     }
+    setDeleteOpen(false)
+    setDeleting(false)
   }
 
   const deptOptions = useMemo(

@@ -60,15 +60,22 @@ export function ProviderFormDrawer({
   // Render-phase state sync: capture previous values before comparisons
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
   const prevModeRef = useRef<typeof mode | undefined>(undefined)
-  const prevPresetRef = useRef<typeof preset | undefined>(undefined)
+  const prevOpenRef = useRef<typeof open | undefined>(undefined)
   const prevSelectedPresetRef = useRef<typeof selectedPreset | undefined>(undefined)
   const modeChanged = mode !== prevModeRef.current
   const providerChanged = provider !== prevProviderRef.current
-  const presetChanged = preset !== prevPresetRef.current
+  const openChanged = open !== prevOpenRef.current
   const selectedPresetChanged = selectedPreset !== prevSelectedPresetRef.current
 
-  // Pre-fill in edit mode
-  if ((modeChanged || providerChanged) && mode === 'edit' && provider) {
+  // Clear credentials when switching to edit mode
+  if (open && mode === 'edit' && (openChanged || modeChanged)) {
+    setSelectedPreset(null)
+    setApiKey('')
+    setSubscriptionToken('')
+  }
+
+  // Pre-fill in edit mode (also fires on reopen with same provider)
+  if (open && mode === 'edit' && provider && (openChanged || modeChanged || providerChanged)) {
     setName(provider.name)
     setAuthType(provider.auth_type)
     setBaseUrl(provider.base_url ?? '')
@@ -76,8 +83,8 @@ export function ProviderFormDrawer({
     setTosAccepted(provider.tos_accepted_at !== null)
   }
 
-  // When preset changes, auto-fill form fields (or reset for custom)
-  if (presetChanged || selectedPresetChanged) {
+  // When user selection changes, auto-fill form fields (or reset for custom)
+  if (selectedPresetChanged) {
     if (selectedPreset === '__custom__') {
       setName('')
       setAuthType('api_key')
@@ -100,7 +107,7 @@ export function ProviderFormDrawer({
   // Update all prev refs after comparisons
   prevModeRef.current = mode
   prevProviderRef.current = provider
-  prevPresetRef.current = preset
+  prevOpenRef.current = open
   prevSelectedPresetRef.current = selectedPreset
 
   // Available auth types based on selected preset
@@ -129,12 +136,9 @@ export function ProviderFormDrawer({
   }, [])
 
   // Reset form when mode switches (e.g., edit -> create without closing)
-  const prevOpenRef = useRef<typeof open | undefined>(undefined)
-  const openChanged = open !== prevOpenRef.current
   if ((modeChanged || openChanged) && mode === 'create' && open) {
     resetForm()
   }
-  prevOpenRef.current = open
 
   const handleClose = useCallback(() => {
     resetForm()

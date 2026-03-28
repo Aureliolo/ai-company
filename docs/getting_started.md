@@ -137,7 +137,7 @@ The React dashboard lives in `web/`. Prerequisites: **Node.js 22+**.
 ```bash
 npm --prefix web install        # install frontend deps
 npm --prefix web run dev         # dev server at http://localhost:5173
-npm --prefix web run lint        # ESLint
+npm --prefix web run lint        # ESLint (zero warnings enforced)
 npm --prefix web run type-check  # TypeScript type checking
 npm --prefix web run test        # Vitest unit tests
 npm --prefix web run build       # production build

@@ -50,7 +50,7 @@ uv run zensical serve                      # local docs preview (http://127.0.0.
 npm --prefix web install                   # install frontend deps
 npm --prefix web run dev                   # dev server (http://localhost:5173)
 npm --prefix web run build                 # production build
-npm --prefix web run lint                  # ESLint
+npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
 npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)

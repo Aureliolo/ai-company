@@ -63,7 +63,8 @@ export function useBudgetData(): UseBudgetDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-  }, [polling])
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- start/stop are stable useCallback refs; polling object identity is not stable
+  }, [polling.start, polling.stop])
 
   // WebSocket bindings
   const bindings: ChannelBinding[] = useMemo(

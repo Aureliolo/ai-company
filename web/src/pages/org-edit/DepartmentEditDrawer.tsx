@@ -41,6 +41,8 @@ export function DepartmentEditDrawer({
       setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
       setSubmitError(null)
     }
+    setDeleteOpen(false)
+    setDeleting(false)
   }
 
   const handleSave = useCallback(async () => {
