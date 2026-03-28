@@ -36,6 +36,10 @@ const FONT_SIZE_SMALL = 8
 /** Department label font sizes (slightly larger than agent text). */
 const DEPT_FONT_SIZE_LARGE = 11
 const DEPT_FONT_SIZE_SMALL = 9
+/** Vertical gap between agent circles. */
+const AGENT_VERTICAL_GAP = 6
+/** Bottom padding below agent rows in the SVG viewport. */
+const SVG_BOTTOM_PADDING = 24
 
 function getInitials(name: string): string {
   return name
@@ -187,7 +191,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   )
   const totalWidth = deptWidths.reduce((sum, w) => sum + w + hGap, 0) - hGap
   const svgWidth = Math.max(totalWidth + 40, 300)
-  const svgHeight = vGap * 2 + nodeHeight + maxAgentsInDept * (avatarRadius * 2 + 6) + 24
+  const svgHeight = vGap * 2 + nodeHeight + maxAgentsInDept * (avatarRadius * 2 + AGENT_VERTICAL_GAP) + SVG_BOTTOM_PADDING
 
   // Dynamic height: scale with team, capped at bounds
   const displayHeight = Math.min(Math.max(svgHeight, MIN_HEIGHT), MAX_HEIGHT)
