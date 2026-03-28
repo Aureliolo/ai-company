@@ -131,16 +131,16 @@ class LlmSemanticAnalyzer:
             Tuple of (messages, tool_def, comp_config) or ``None``
             when there is nothing to review.
         """
-        py_set = set(filter_files(changed_files, self._config))
-        if not py_set:
+        ordered = filter_files(changed_files, self._config)
+        if not ordered:
             return None
 
         max_bytes = self._config.max_file_bytes
-        merged_contents = {
-            k: v
-            for k, v in merged_sources.items()
-            if k in py_set and len(v.encode("utf-8")) <= max_bytes
-        }
+        merged_contents: dict[str, str] = {}
+        for name in ordered:
+            content = merged_sources.get(name)
+            if content is not None and len(content.encode("utf-8")) <= max_bytes:
+                merged_contents[name] = content
         if not merged_contents:
             return None
 

@@ -162,11 +162,12 @@ class AstSemanticAnalyzer:
         if not py_set:
             return self._log_complete(workspace.workspace_id, 0, 0)
 
+        filtered_base = {k: v for k, v in base_sources.items() if k in py_set}
         relevant = {k: v for k, v in merged_sources.items() if k in py_set}
         if not relevant:
             return self._log_complete(workspace.workspace_id, 0, 0)
 
-        result = _run_ast_checks(base_sources, relevant)
+        result = _run_ast_checks(filtered_base, relevant)
 
         if result:
             logger.warning(

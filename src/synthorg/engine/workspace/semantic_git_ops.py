@@ -113,16 +113,15 @@ async def get_changed_files(
         return ()
     safe: list[str] = []
     for line in stdout.splitlines():
-        stripped = line.strip()
-        if not stripped:
+        if not line:
             continue
-        if _validate_file_path(stripped):
-            safe.append(stripped)
+        if _validate_file_path(line):
+            safe.append(line)
         else:
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 operation="diff",
-                file=stripped,
+                file=line,
                 error="skipping file with unsafe path characters",
             )
     return tuple(safe)
@@ -134,6 +133,7 @@ async def get_base_sources(
     files: tuple[str, ...],
     *,
     concurrency: int = 10,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> dict[str, str]:
     """Read file contents at a specific commit via parallel git show.
 
@@ -141,7 +141,10 @@ async def get_base_sources(
         run_git: Bound ``_run_git`` method from the strategy.
         base_sha: Commit SHA to read from.
         files: File paths to read.
-        concurrency: Maximum concurrent git show calls.
+        concurrency: Maximum concurrent git show calls (ignored
+            when *semaphore* is provided).
+        semaphore: Optional shared semaphore for cross-batch
+            concurrency control.
 
     Returns:
         Mapping of file path to content at the given commit.
@@ -149,7 +152,7 @@ async def get_base_sources(
         (logged at warning level).
     """
     sources: dict[str, str] = {}
-    sem = asyncio.Semaphore(concurrency)
+    sem = semaphore or asyncio.Semaphore(concurrency)
 
     async def _fetch(fp: str) -> None:
         async with sem:
@@ -353,7 +356,7 @@ async def _fetch_sources(
     filtered: tuple[str, ...],
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch base and merged sources concurrently."""
-    concurrency = config.git_concurrency
+    sem = asyncio.Semaphore(config.git_concurrency)
     base: dict[str, str] = {}
     merged: dict[str, str] = {}
 
@@ -363,7 +366,7 @@ async def _fetch_sources(
             run_git,
             branch_point,
             filtered,
-            concurrency=concurrency,
+            semaphore=sem,
         )
 
     async def _get_merged() -> None:
@@ -372,7 +375,7 @@ async def _fetch_sources(
             run_git,
             merge_sha,
             filtered,
-            concurrency=concurrency,
+            semaphore=sem,
         )
 
     async with asyncio.TaskGroup() as tg:
