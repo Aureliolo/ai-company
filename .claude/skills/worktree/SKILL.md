@@ -156,7 +156,7 @@ Directory suffix is auto-derived from the branch name:
    **Node.js (web dashboard):**
 
    ```bash
-   npm --prefix <dir-path>/web install --silent
+   npm --prefix <dir-path>/web ci --silent
    ```
 
    **Go (CLI):**
@@ -352,9 +352,9 @@ Show current worktree state and how they compare to main.
 4. **Check dependency staleness** for each worktree. Compare lock files against main to detect if deps need re-syncing after a rebase:
 
    ```bash
-   git diff --quiet main -- uv.lock
-   git diff --quiet main -- web/package-lock.json
-   git diff --quiet main -- cli/go.sum
+   git -C <path> diff --quiet main -- uv.lock
+   git -C <path> diff --quiet main -- web/package-lock.json
+   git -C <path> diff --quiet main -- cli/go.sum
    ```
 
    Each command exits 0 if no difference, 1 if different. If any lock file differs from main and the worktree is behind, flag it as "deps stale" in the status table.
@@ -479,7 +479,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
    ```bash
    uv sync --project <path>
-   npm --prefix <path>/web install --silent
+   npm --prefix <path>/web ci --silent
    go -C <path>/cli mod download
    ```
 
