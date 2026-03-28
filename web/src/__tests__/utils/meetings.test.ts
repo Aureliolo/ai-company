@@ -137,8 +137,10 @@ describe('getParticipantTokenShare', () => {
   })
 
   it('returns 0 when total_tokens is 0', () => {
-    const meeting = makeMeeting('1')
-    meeting.minutes!.total_tokens = 0
+    const base = makeMeeting('1')
+    const meeting = makeMeeting('1', {
+      minutes: { ...base.minutes!, total_tokens: 0 },
+    })
     expect(getParticipantTokenShare(meeting, 'agent-alice')).toBe(0)
   })
 })

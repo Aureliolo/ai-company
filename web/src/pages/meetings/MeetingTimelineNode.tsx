@@ -1,8 +1,7 @@
 import { Link } from 'react-router'
 import { cn } from '@/lib/utils'
-import { formatRelativeTime } from '@/utils/format'
+import { formatLabel, formatRelativeTime } from '@/utils/format'
 import { getMeetingStatusColor, STATUS_DOT_CLASSES } from '@/utils/meetings'
-import { formatLabel } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import type { MeetingResponse } from '@/api/types'
 
