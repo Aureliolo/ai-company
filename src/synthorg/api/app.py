@@ -202,6 +202,49 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
+async def _maybe_bootstrap_agents(app_state: AppState) -> None:
+    """Bootstrap agents if setup is complete and services are available.
+
+    On first run, setup isn't complete yet so bootstrap is deferred
+    to ``POST /setup/complete``.  On subsequent starts, agents are
+    loaded from persisted config into the runtime registry.
+    """
+    if not (
+        app_state.has_config_resolver
+        and app_state.has_agent_registry
+        and app_state.has_settings_service
+    ):
+        return
+
+    try:
+        setup_entry = await app_state.settings_service.get_entry(
+            "api",
+            "setup_complete",
+        )
+        is_complete = setup_entry.value == "true"
+    except Exception:
+        is_complete = False
+
+    if not is_complete:
+        return
+
+    try:
+        from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
+
+        await bootstrap_agents(
+            config_resolver=app_state.config_resolver,
+            agent_registry=app_state.agent_registry,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="Agent bootstrap failed (non-fatal)",
+            exc_info=True,
+        )
+
+
 def _build_lifecycle(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -302,6 +345,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                     persistence,
                 )
                 raise
+        await _maybe_bootstrap_agents(app_state)
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",

@@ -510,6 +510,82 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
+    def test_complete_bootstraps_agents_into_registry(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Setup completion registers agents in the runtime registry."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps(
+            [
+                {
+                    "name": "alice",
+                    "role": "developer",
+                    "department": "engineering",
+                    "model": {
+                        "provider": "test-provider",
+                        "model_id": "test-small-001",
+                    },
+                },
+            ]
+        )
+        repo._store[("company", "agents")] = (agents, now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+            # Agent should now be in the runtime registry.
+            assert len(app_state.agent_registry._agents) >= 1
+        finally:
+            app_state._provider_registry = original_registry
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
+
+    def test_complete_succeeds_even_if_bootstrap_fails(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Setup completion returns 201 even if agent bootstrap raises."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
+        repo._store[("company", "agents")] = (agents, now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+
+        # Make bootstrap_agents raise to simulate failure.
+        failing_bootstrap = AsyncMock(side_effect=RuntimeError("boom"))
+        monkeypatch.setattr(
+            "synthorg.api.bootstrap.bootstrap_agents",
+            failing_bootstrap,
+        )
+
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            # Must succeed despite bootstrap failure (non-fatal).
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+        finally:
+            app_state._provider_registry = original_registry
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
+
 
 @pytest.mark.unit
 class TestSetupDTOs:

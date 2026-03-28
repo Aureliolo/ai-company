@@ -73,6 +73,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATES_LISTED,
 )
 from synthorg.persistence.errors import QueryError
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
@@ -730,10 +731,60 @@ class SetupController(Controller):
 
         logger.info(SETUP_COMPLETED)
 
+        # Re-initialize: reload providers + bootstrap agents into runtime.
+        await _post_setup_reinit(app_state)
+
         return ApiResponse(data=SetupCompleteResponse(setup_complete=True))
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
+
+async def _post_setup_reinit(app_state: AppState) -> None:
+    """Reload providers and bootstrap agents after setup completion.
+
+    Both operations are non-fatal: setup completion must succeed
+    even if re-init partially fails (the user can restart the
+    server to pick up changes).
+
+    Args:
+        app_state: Application state containing services.
+    """
+    if not app_state.has_config_resolver:
+        return
+
+    # 1. Reload provider registry from persisted config.
+    try:
+        provider_configs = await app_state.config_resolver.get_provider_configs()
+        if provider_configs:
+            new_registry = ProviderRegistry.from_config(provider_configs)
+            app_state.swap_provider_registry(new_registry)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            SETUP_COMPLETED,
+            error="Provider reload failed after setup (non-fatal)",
+            exc_info=True,
+        )
+
+    # 2. Bootstrap agents into runtime registry.
+    if app_state.has_agent_registry:
+        try:
+            from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
+
+            await bootstrap_agents(
+                config_resolver=app_state.config_resolver,
+                agent_registry=app_state.agent_registry,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SETUP_COMPLETED,
+                error="Agent bootstrap failed after setup (non-fatal)",
+                exc_info=True,
+            )
 
 
 async def _check_needs_admin(persistence: Any) -> bool:

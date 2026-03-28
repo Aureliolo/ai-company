@@ -96,3 +96,9 @@ SETUP_AGENT_NAME_UPDATED: Final[str] = "setup.agent.name_updated"
 
 # Agent name randomized during setup review
 SETUP_AGENT_NAME_RANDOMIZED: Final[str] = "setup.agent.name_randomized"
+
+# Agents bootstrapped from persisted config into runtime registry
+SETUP_AGENTS_BOOTSTRAPPED: Final[str] = "setup.agents.bootstrapped"
+
+# Agent bootstrap skipped (already registered or invalid config)
+SETUP_AGENT_BOOTSTRAP_SKIPPED: Final[str] = "setup.agent.bootstrap_skipped"
