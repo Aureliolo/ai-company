@@ -35,7 +35,7 @@ function renderTab(overrides?: Partial<AgentsTabProps>) {
 }
 
 describe('AgentsTab', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders global empty state when no agents and no departments', () => {
     renderTab({ config: { ...knownConfig, agents: [], departments: [] } })

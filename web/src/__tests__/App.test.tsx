@@ -52,7 +52,7 @@ describe('App', () => {
     render(<App />)
     // Login page is lazy-loaded, so wait for it
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /login/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
     })
   })
 

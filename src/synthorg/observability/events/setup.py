@@ -102,3 +102,9 @@ SETUP_AGENTS_BOOTSTRAPPED: Final[str] = "setup.agents.bootstrapped"
 
 # Agent bootstrap skipped (already registered or invalid config)
 SETUP_AGENT_BOOTSTRAP_SKIPPED: Final[str] = "setup.agent.bootstrap_skipped"
+
+# Provider registry reload failed after setup completion (non-fatal)
+SETUP_PROVIDER_RELOAD_FAILED: Final[str] = "setup.providers.reload_failed"
+
+# Agent bootstrap failed after setup completion (non-fatal)
+SETUP_AGENT_BOOTSTRAP_FAILED: Final[str] = "setup.agents.bootstrap_failed"

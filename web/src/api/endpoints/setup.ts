@@ -96,7 +96,7 @@ export async function saveNameLocales(data: SetupNameLocalesRequest): Promise<Se
   return unwrap(response)
 }
 
-export async function completeSetup(): Promise<{ setup_complete: boolean }> {
-  const response = await apiClient.post<ApiResponse<{ setup_complete: boolean }>>('/setup/complete')
+export async function completeSetup(): Promise<{ setup_complete: true }> {
+  const response = await apiClient.post<ApiResponse<{ setup_complete: true }>>('/setup/complete')
   return unwrap(response)
 }

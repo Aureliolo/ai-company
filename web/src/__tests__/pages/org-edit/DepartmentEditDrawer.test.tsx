@@ -26,7 +26,7 @@ describe('DepartmentEditDrawer', () => {
     )
   }
 
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('renders department info when open', () => {
     renderDrawer()

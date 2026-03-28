@@ -6,7 +6,7 @@ describe('GeneralTab', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(undefined)
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('renders empty state when config is null', () => {
@@ -48,14 +48,23 @@ describe('GeneralTab', () => {
   it('calls onUpdate with correct payload when save is clicked', async () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
+    // Modify a field to make the form dirty so the Save button is enabled.
+    const nameInput = screen.getByLabelText(/company name/i)
+    fireEvent.change(nameInput, { target: { value: 'Updated Corp' } })
     fireEvent.click(screen.getByText('Save Settings'))
     expect(mockOnUpdate).toHaveBeenCalledTimes(1)
     expect(mockOnUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      company_name: 'Test Corp',
+      company_name: 'Updated Corp',
       autonomy_level: 'semi',
       budget_monthly: 100,
       communication_pattern: 'hybrid',
     }))
+  })
+
+  it('disables save button when form is pristine', () => {
+    const config = makeCompanyConfig()
+    render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
+    expect(screen.getByText('Save Settings').closest('button')).toBeDisabled()
   })
 
   it('disables save button when saving', () => {

@@ -124,7 +124,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           <p className="text-xs text-danger">{submitError}</p>
         )}
 
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={!dirty || saving}>
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Save Settings
         </Button>

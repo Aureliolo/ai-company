@@ -180,7 +180,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, auth/, guards (role-based access control), user management, auto-wiring, lifecycle
+  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
   budget/         # Cost tracking, budget enforcement, quota degradation, CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
@@ -230,7 +230,7 @@ site/             # Astro landing page (synthorg.io)
 | `Sparkline` | `@/components/ui/sparkline` | Inline SVG trend lines with `color?` and `animated?` props (used inside MetricCard or standalone) |
 | `SectionCard` | `@/components/ui/section-card` | Titled card wrapper with icon and action slot |
 | `AgentCard` | `@/components/ui/agent-card` | Agent display: avatar, name, role, status, current task |
-| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department health: animated fill bar + `health` (required) + `agentCount`/`taskCount` (required) |
+| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department health: animated fill bar + `health?` (optional, shows N/A when null) + `agentCount` (required) + `taskCount?` (optional) |
 | `ProgressGauge` | `@/components/ui/progress-gauge` | Circular gauge for budget/utilization (`max?` defaults to 100) |
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |

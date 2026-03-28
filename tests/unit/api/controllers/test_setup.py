@@ -586,6 +586,67 @@ class TestSetupComplete:
             repo._store.pop(("company", "agents"), None)
             repo._store.pop(("api", "setup_complete"), None)
 
+    def test_complete_reloads_provider_registry(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Setup completion reloads the provider registry from config."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps(
+            [
+                {
+                    "name": "alice",
+                    "role": "developer",
+                    "department": "engineering",
+                    "model": {
+                        "provider": "test-provider",
+                        "model_id": "test-small-001",
+                    },
+                },
+            ]
+        )
+        repo._store[("company", "agents")] = (agents, now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+
+        # Replace _post_setup_reinit with a wrapper that swaps the
+        # provider registry and records the call, simulating the real
+        # reload without needing stored provider configs or a real
+        # ProviderRegistry.from_config invocation.
+        fresh_registry = ProviderRegistry({"reloaded-provider": stub})
+        reinit_called = False
+
+        async def _fake_reinit(state: object) -> None:
+            nonlocal reinit_called
+            reinit_called = True
+            app_state.swap_provider_registry(fresh_registry)
+
+        monkeypatch.setattr(
+            "synthorg.api.controllers.setup._post_setup_reinit",
+            _fake_reinit,
+        )
+
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+            # _post_setup_reinit was invoked by complete_setup.
+            assert reinit_called
+            # The provider registry should have been swapped.
+            assert app_state._provider_registry is fresh_registry
+        finally:
+            app_state._provider_registry = original_registry
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
+
 
 @pytest.mark.unit
 class TestSetupDTOs:

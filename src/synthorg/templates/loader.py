@@ -41,7 +41,7 @@ from synthorg.templates.errors import (
     TemplateRenderError,
     TemplateValidationError,
 )
-from synthorg.templates.schema import CompanyTemplate
+from synthorg.templates.schema import CompanyTemplate, TemplateVariable
 
 logger = get_logger(__name__)
 
@@ -82,6 +82,7 @@ class TemplateInfo:
     source: Literal["builtin", "user"]
     tags: tuple[str, ...] = ()
     skill_patterns: tuple[SkillPattern, ...] = ()
+    variables: tuple[TemplateVariable, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,7 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     source="builtin",
                     tags=meta.tags,
                     skill_patterns=meta.skill_patterns,
+                    variables=loaded.template.variables,
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.exception(
@@ -152,6 +154,7 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
                 source="user",
                 tags=meta.tags,
                 skill_patterns=meta.skill_patterns,
+                variables=loaded.template.variables,
             )
         except (TemplateRenderError, TemplateValidationError, OSError) as exc:
             logger.warning(

@@ -1,15 +1,13 @@
 """Agent bootstrap from persisted configuration.
 
-Loads agent configs from the settings-backed :class:`ConfigResolver`
-and registers them as live :class:`AgentIdentity` instances in the
-:class:`AgentRegistryService`.  Designed to be called on app startup
+Loads agent configs from the settings-backed ``ConfigResolver``
+and registers them as ``AgentIdentity`` instances in the
+``AgentRegistryService``.  Designed to be called on app startup
 and again after setup completion.
 """
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-
-from pydantic import ValidationError
 
 from synthorg.core.agent import (
     AgentIdentity,
@@ -34,6 +32,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _build_model_config(config: AgentConfig) -> ModelConfig:
+    """Build a ModelConfig from agent config, logging a warning on fallback."""
+    if config.model:
+        return ModelConfig(**config.model)
+    logger.warning(
+        SETUP_AGENT_BOOTSTRAP_SKIPPED,
+        agent_name=config.name,
+        reason="missing_model_config",
+    )
+    return ModelConfig(provider="unknown", model_id="unknown")
+
+
 def _identity_from_config(config: AgentConfig) -> AgentIdentity:
     """Convert a persisted AgentConfig to a runtime AgentIdentity.
 
@@ -48,12 +58,7 @@ def _identity_from_config(config: AgentConfig) -> AgentIdentity:
         role=config.role,
         department=config.department,
         level=config.level,
-        model=ModelConfig(**config.model)
-        if config.model
-        else ModelConfig(
-            provider="unknown",
-            model_id="unknown",
-        ),
+        model=_build_model_config(config),
         personality=(
             PersonalityConfig(**config.personality)
             if config.personality
@@ -74,9 +79,9 @@ async def bootstrap_agents(
     """Bootstrap agents from persisted config into the runtime registry.
 
     Loads agent configurations via *config_resolver* and registers each
-    as an :class:`AgentIdentity` in *agent_registry*.  Skips agents
-    that are already registered (idempotent) or have invalid configs
-    (resilient).
+    as an ``AgentIdentity`` in *agent_registry*.  Skips agents that are
+    already registered (idempotent) or have invalid/broken configs
+    (resilient -- one bad config does not abort the loop).
 
     Args:
         config_resolver: Resolver for persisted settings.
@@ -96,7 +101,9 @@ async def bootstrap_agents(
     for config in agent_configs:
         try:
             identity = _identity_from_config(config)
-        except ValidationError:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
                 agent_name=config.name,
@@ -114,6 +121,16 @@ async def bootstrap_agents(
                 agent_name=config.name,
                 agent_id=str(identity.id),
                 reason="already_registered",
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SETUP_AGENT_BOOTSTRAP_SKIPPED,
+                agent_name=config.name,
+                agent_id=str(identity.id),
+                reason="registration_failed",
+                exc_info=True,
             )
 
     logger.info(

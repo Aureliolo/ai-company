@@ -1,6 +1,8 @@
 """First-run setup controller.
 
-Status, templates, company, name locales, agents, model update, complete.
+Exposes endpoints for the setup wizard flow: status check, template
+selection, company creation, name locale configuration, agent management
+(create, list, model/name update, randomize), and setup completion.
 """
 
 import asyncio
@@ -38,6 +40,7 @@ from synthorg.api.controllers.setup_models import (
     SetupNameLocalesResponse,
     SetupStatusResponse,
     TemplateInfoResponse,
+    TemplateVariableResponse,
     UpdateAgentModelRequest,
     UpdateAgentNameRequest,
 )
@@ -47,6 +50,7 @@ from synthorg.api.guards import HumanRole, require_ceo, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
+    SETUP_AGENT_BOOTSTRAP_FAILED,
     SETUP_AGENT_CREATED,
     SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_AGENT_MODEL_UPDATED,
@@ -65,6 +69,7 @@ from synthorg.observability.events.setup import (
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
+    SETUP_PROVIDER_RELOAD_FAILED,
     SETUP_STATUS_CHECKED,
     SETUP_STATUS_SETTINGS_DEFAULT_USED,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -72,12 +77,12 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATE_NOT_FOUND,
     SETUP_TEMPLATES_LISTED,
 )
-from synthorg.persistence.errors import QueryError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
+    from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.service import SettingsService
     from synthorg.templates.loader import LoadedTemplate
     from synthorg.templates.schema import CompanyTemplate
@@ -205,6 +210,16 @@ class SetupController(Controller):
                 source=t.source,
                 tags=t.tags,
                 skill_patterns=t.skill_patterns,
+                variables=tuple(
+                    TemplateVariableResponse(
+                        name=v.name,
+                        description=v.description,
+                        var_type=v.var_type,
+                        default=v.default,
+                        required=v.required,
+                    )
+                    for v in t.variables
+                ),
             )
             for t in templates
         )
@@ -763,7 +778,7 @@ async def _post_setup_reinit(app_state: AppState) -> None:
         raise
     except Exception:
         logger.warning(
-            SETUP_COMPLETED,
+            SETUP_PROVIDER_RELOAD_FAILED,
             error="Provider reload failed after setup (non-fatal)",
             exc_info=True,
         )
@@ -781,18 +796,20 @@ async def _post_setup_reinit(app_state: AppState) -> None:
             raise
         except Exception:
             logger.warning(
-                SETUP_COMPLETED,
+                SETUP_AGENT_BOOTSTRAP_FAILED,
                 error="Agent bootstrap failed after setup (non-fatal)",
                 exc_info=True,
             )
 
 
-async def _check_needs_admin(persistence: Any) -> bool:
+async def _check_needs_admin(persistence: PersistenceBackend) -> bool:
     """Return True if no CEO-role user exists (fail-open on error)."""
     count: int | None = None
     try:
         count = await persistence.users.count_by_role(HumanRole.CEO)
-    except QueryError:
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             context="admin_count",
@@ -1141,14 +1158,17 @@ async def _is_setup_complete(settings_svc: SettingsService) -> bool:
         settings_svc: Settings service instance.
 
     Returns:
-        True if setup_complete is "true", False otherwise or on error.
+        True if setup_complete is "true", False when the setting
+        does not exist.
+
+    Raises:
+        Exception: Propagates unexpected errors after logging.
     """
     try:
         entry = await settings_svc.get_entry("api", "setup_complete")
     except MemoryError, RecursionError:
         raise
     except SettingNotFoundError:
-        # Key does not exist yet -- setup has not been completed.
         return False
     except Exception:
         logger.error(

@@ -42,10 +42,10 @@ def config_resolver() -> AsyncMock:
     return resolver
 
 
+@pytest.mark.unit
 class TestBootstrapAgents:
     """Tests for bootstrap_agents()."""
 
-    @pytest.mark.unit
     async def test_registers_agents_from_config(
         self,
         registry: AgentRegistryService,
@@ -66,7 +66,6 @@ class TestBootstrapAgents:
         assert count == 2
         assert await registry.agent_count() == 2
 
-    @pytest.mark.unit
     async def test_returns_zero_on_empty_config(
         self,
         registry: AgentRegistryService,
@@ -82,13 +81,18 @@ class TestBootstrapAgents:
         assert count == 0
         assert await registry.agent_count() == 0
 
-    @pytest.mark.unit
-    async def test_skips_already_registered_agents(
+    async def test_re_call_resilience(
         self,
         registry: AgentRegistryService,
         config_resolver: AsyncMock,
     ) -> None:
-        """Duplicate registration is skipped without error."""
+        """Calling bootstrap twice does not crash.
+
+        Fresh ``AgentConfig`` objects produce new UUIDs on each call,
+        so the second invocation registers additional agents rather
+        than skipping.  This test verifies resilience (no crash on
+        repeated invocation), not true idempotent skip behaviour.
+        """
         from synthorg.api.bootstrap import bootstrap_agents
 
         configs = (
@@ -97,21 +101,13 @@ class TestBootstrapAgents:
         )
         config_resolver.get_agents.return_value = configs
 
-        # First call registers both.
         first_count = await bootstrap_agents(config_resolver, registry)
         assert first_count == 2
 
-        # Second call skips both (different UUIDs, but names differ
-        # -- the registry keys on UUID, so these are NEW identities).
-        # We test true idempotency by re-calling with the same resolver
-        # which returns fresh AgentConfig objects that produce new UUIDs.
-        # The point is that bootstrap doesn't crash.
         second_count = await bootstrap_agents(config_resolver, registry)
-        # Fresh UUIDs -> registers additional agents (not a skip).
         assert second_count == 2
         assert await registry.agent_count() == 4
 
-    @pytest.mark.unit
     async def test_skips_invalid_config_without_aborting(
         self,
         registry: AgentRegistryService,
@@ -135,7 +131,6 @@ class TestBootstrapAgents:
         assert count == 1
         assert await registry.agent_count() == 1
 
-    @pytest.mark.unit
     async def test_sets_hiring_date_to_today(
         self,
         registry: AgentRegistryService,
@@ -152,7 +147,6 @@ class TestBootstrapAgents:
         assert len(agents) == 1
         assert agents[0].hiring_date == datetime.now(UTC).date()
 
-    @pytest.mark.unit
     async def test_preserves_agent_level(
         self,
         registry: AgentRegistryService,
@@ -171,7 +165,6 @@ class TestBootstrapAgents:
         assert len(agents) == 1
         assert agents[0].level == SeniorityLevel.SENIOR
 
-    @pytest.mark.unit
     async def test_preserves_autonomy_level(
         self,
         registry: AgentRegistryService,
@@ -195,3 +188,137 @@ class TestBootstrapAgents:
         agents = await registry.list_active()
         assert len(agents) == 1
         assert agents[0].autonomy_level == AutonomyLevel.SEMI
+
+    async def test_empty_model_uses_unknown_fallback(
+        self,
+        registry: AgentRegistryService,
+        config_resolver: AsyncMock,
+    ) -> None:
+        """Agent with empty model dict gets provider='unknown' fallback."""
+        from synthorg.api.bootstrap import bootstrap_agents
+
+        config = AgentConfig(
+            name="no-model-agent",
+            role="developer",
+            department="engineering",
+            # model defaults to {} which is falsy
+        )
+        config_resolver.get_agents.return_value = (config,)
+
+        count = await bootstrap_agents(config_resolver, registry)
+
+        assert count == 1
+        agents = await registry.list_active()
+        assert len(agents) == 1
+        assert agents[0].model.provider == "unknown"
+        assert agents[0].model.model_id == "unknown"
+
+
+@pytest.mark.unit
+class TestMaybeBootstrapAgents:
+    """Tests for _maybe_bootstrap_agents()."""
+
+    async def test_returns_early_when_services_missing(self) -> None:
+        """Returns immediately when config_resolver is not available."""
+        from synthorg.api.app import _maybe_bootstrap_agents
+
+        app_state = AsyncMock()
+        app_state.has_config_resolver = False
+        app_state.has_agent_registry = True
+        app_state.has_settings_service = True
+
+        await _maybe_bootstrap_agents(app_state)
+
+        # settings_service should not be accessed at all
+        app_state.settings_service.get_entry.assert_not_called()
+
+    async def test_returns_early_when_setup_not_complete(self) -> None:
+        """Returns without bootstrapping when setup_complete != 'true'."""
+        from synthorg.api.app import _maybe_bootstrap_agents
+
+        app_state = AsyncMock()
+        app_state.has_config_resolver = True
+        app_state.has_agent_registry = True
+        app_state.has_settings_service = True
+
+        entry = AsyncMock()
+        entry.value = "false"
+        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+
+        await _maybe_bootstrap_agents(app_state)
+
+        # get_entry was called but bootstrap_agents should not be invoked
+        app_state.settings_service.get_entry.assert_called_once_with(
+            "api",
+            "setup_complete",
+        )
+
+    async def test_calls_bootstrap_when_setup_complete(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Calls bootstrap_agents when setup_complete is 'true'."""
+        from synthorg.api import app as app_module
+
+        app_state = AsyncMock()
+        app_state.has_config_resolver = True
+        app_state.has_agent_registry = True
+        app_state.has_settings_service = True
+
+        entry = AsyncMock()
+        entry.value = "true"
+        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+
+        mock_bootstrap = AsyncMock(return_value=2)
+        monkeypatch.setattr(
+            "synthorg.api.bootstrap.bootstrap_agents",
+            mock_bootstrap,
+        )
+
+        await app_module._maybe_bootstrap_agents(app_state)
+
+        mock_bootstrap.assert_called_once_with(
+            config_resolver=app_state.config_resolver,
+            agent_registry=app_state.agent_registry,
+        )
+
+    async def test_handles_settings_read_error(self) -> None:
+        """Does not crash when settings_service.get_entry raises."""
+        from synthorg.api.app import _maybe_bootstrap_agents
+
+        app_state = AsyncMock()
+        app_state.has_config_resolver = True
+        app_state.has_agent_registry = True
+        app_state.has_settings_service = True
+
+        app_state.settings_service.get_entry = AsyncMock(
+            side_effect=RuntimeError("db connection lost"),
+        )
+
+        # Should not raise
+        await _maybe_bootstrap_agents(app_state)
+
+    async def test_handles_bootstrap_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Does not crash when bootstrap_agents raises."""
+        from synthorg.api import app as app_module
+
+        app_state = AsyncMock()
+        app_state.has_config_resolver = True
+        app_state.has_agent_registry = True
+        app_state.has_settings_service = True
+
+        entry = AsyncMock()
+        entry.value = "true"
+        app_state.settings_service.get_entry = AsyncMock(return_value=entry)
+
+        mock_bootstrap = AsyncMock(side_effect=RuntimeError("boom"))
+        monkeypatch.setattr(
+            "synthorg.api.bootstrap.bootstrap_agents",
+            mock_bootstrap,
+        )
+
+        # Should not raise
+        await app_module._maybe_bootstrap_agents(app_state)

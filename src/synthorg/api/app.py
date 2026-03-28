@@ -222,7 +222,14 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
             "setup_complete",
         )
         is_complete = setup_entry.value == "true"
+    except MemoryError, RecursionError:
+        raise
     except Exception:
+        logger.debug(
+            API_APP_STARTUP,
+            note="Could not read setup_complete setting; skipping agent bootstrap",
+            exc_info=True,
+        )
         is_complete = False
 
     if not is_complete:
@@ -238,9 +245,13 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     except MemoryError, RecursionError:
         raise
     except Exception:
+        from synthorg.observability.events.setup import (  # noqa: PLC0415
+            SETUP_AGENT_BOOTSTRAP_FAILED,
+        )
+
         logger.warning(
-            API_APP_STARTUP,
-            error="Agent bootstrap failed (non-fatal)",
+            SETUP_AGENT_BOOTSTRAP_FAILED,
+            error="Agent bootstrap failed at startup (non-fatal)",
             exc_info=True,
         )
 
@@ -503,7 +514,7 @@ def create_app(  # noqa: PLR0913
     """
     effective_config = config or RootConfig(company_name="default")
 
-    # Activate the structured logging pipeline (default: 11 sinks) before any
+    # Activate the structured logging pipeline before any
     # other setup so that auto-wiring, persistence, and bus logs all
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.
