@@ -53,9 +53,10 @@ export default function LoginPage() {
     }
     if (checkAndClearLockout()) return
 
+    const trimmedUsername = username.trim()
     setSubmitting(true)
     try {
-      await login(username, password)
+      await login(trimmedUsername, password)
       reset()
     } catch (err) {
       const lockoutMsg = recordFailure(err)
@@ -80,9 +81,10 @@ export default function LoginPage() {
       return
     }
 
+    const trimmedUsername = username.trim()
     setSubmitting(true)
     try {
-      await setup(username, password)
+      await setup(trimmedUsername, password)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {

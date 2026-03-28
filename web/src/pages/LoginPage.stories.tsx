@@ -36,6 +36,11 @@ export const DefaultLogin: Story = {}
 /**
  * Gate component that applies the setup API patch before rendering
  * LoginPage, then restores it on unmount.
+ *
+ * Note: this mutates the ESM module namespace, which works in Vite's
+ * dev/HMR environment but is technically non-standard.  A proper MSW
+ * or prop-injection approach would be cleaner but requires additional
+ * infrastructure not yet set up for Storybook.
  */
 function AdminCreationGate() {
   const [ready, setReady] = useState(false)
