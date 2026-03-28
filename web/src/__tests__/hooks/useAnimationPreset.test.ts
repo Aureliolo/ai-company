@@ -27,7 +27,7 @@ describe('useAnimationPreset', () => {
   it('returns a valid config for any random preset (fast-check)', () => {
     fc.assert(
       fc.property(
-        fc.constantFrom<AnimationPreset>('minimal', 'spring', 'instant', 'status-driven', 'aggressive'),
+        fc.constantFrom(...presets),
         (preset) => {
           useThemeStore.getState().setAnimation(preset)
           const { result } = renderHook(() => useAnimationPreset())

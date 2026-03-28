@@ -8,34 +8,36 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 const mockDispatch = vi.fn()
 const mockDestroy = vi.fn()
-let mockDocString = ''
 
 vi.mock('@codemirror/view', () => {
   class MockEditorView {
     state: { doc: { toString: () => string; length: number } }
     dispatch: ReturnType<typeof vi.fn>
     destroy: ReturnType<typeof vi.fn>
+    private _docString: string
 
     constructor({ state, parent }: { state: { doc: { toString: () => string; length: number } }; parent: HTMLElement }) {
-      mockDocString = state.doc.toString()
+      this._docString = state.doc.toString()
 
       const editorEl = document.createElement('div')
       editorEl.className = 'cm-editor'
       parent.appendChild(editorEl)
 
       this.state = {
-        doc: { toString: () => mockDocString, length: mockDocString.length },
+        doc: {
+          toString: () => this._docString,
+          get length() { return this.toString().length },
+        },
       }
       this.dispatch = mockDispatch.mockImplementation((tr: { changes?: { insert?: string }; effects?: unknown }) => {
         if (tr.changes && 'insert' in tr.changes) {
-          mockDocString = tr.changes.insert as string
+          this._docString = tr.changes.insert as string
         }
       })
       this.destroy = mockDestroy.mockImplementation(() => {
         editorEl.remove()
       })
 
-      // Track constructor calls for assertions
       MockEditorView._instances.push(this)
     }
 
@@ -119,7 +121,6 @@ describe('CodeMirrorEditor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockDocString = ''
     MockEditorView._instances = []
   })
 
@@ -245,19 +246,22 @@ describe('CodeMirrorEditor', () => {
             const { rerender, unmount } = render(
               <CodeMirrorEditor value="initial" onChange={onChange} language="json" />,
             )
-            mockDispatch.mockClear()
+            try {
+              mockDispatch.mockClear()
 
-            rerender(<CodeMirrorEditor value={newValue} onChange={onChange} language="json" />)
+              rerender(<CodeMirrorEditor value={newValue} onChange={onChange} language="json" />)
 
-            expect(mockDispatch).toHaveBeenCalledWith(
-              expect.objectContaining({
-                changes: expect.objectContaining({
-                  from: 0,
-                  insert: newValue,
+              expect(mockDispatch).toHaveBeenCalledWith(
+                expect.objectContaining({
+                  changes: expect.objectContaining({
+                    from: 0,
+                    insert: newValue,
+                  }),
                 }),
-              }),
-            )
-            unmount()
+              )
+            } finally {
+              unmount()
+            }
           },
         ),
       )

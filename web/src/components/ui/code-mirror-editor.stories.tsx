@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
+import { cn } from '@/lib/utils'
 import { CodeMirrorEditor } from './code-mirror-editor'
 
 const SAMPLE_JSON = JSON.stringify(
@@ -92,14 +93,20 @@ export const Interactive: Story = {
           <button
             type="button"
             onClick={() => setLang('json')}
-            className={`rounded px-2 py-1 text-xs font-medium ${lang === 'json' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
+            className={cn(
+              'rounded px-2 py-1 text-xs font-medium',
+              lang === 'json' ? 'bg-accent/10 text-accent' : 'text-text-muted',
+            )}
           >
             JSON
           </button>
           <button
             type="button"
             onClick={() => setLang('yaml')}
-            className={`rounded px-2 py-1 text-xs font-medium ${lang === 'yaml' ? 'bg-accent/10 text-accent' : 'text-text-muted'}`}
+            className={cn(
+              'rounded px-2 py-1 text-xs font-medium',
+              lang === 'yaml' ? 'bg-accent/10 text-accent' : 'text-text-muted',
+            )}
           >
             YAML
           </button>
