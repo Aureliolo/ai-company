@@ -53,6 +53,12 @@ export default function ApprovalsPage() {
   const [batchComment, setBatchComment] = useState('')
   const [batchReason, setBatchReason] = useState('')
   const [batchLoading, setBatchLoading] = useState(false)
+  const [wasConnected, setWasConnected] = useState(false)
+
+  // Track whether WS was ever connected to avoid flash on initial load
+  useEffect(() => {
+    if (wsConnected) setWasConnected(true)
+  }, [wsConnected])
 
   // URL-synced filters
   const filters: ApprovalPageFilters = useMemo(() => {
@@ -227,7 +233,7 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {!wsConnected && !loading && (
+      {(wsSetupError || (wasConnected && !wsConnected)) && !loading && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}

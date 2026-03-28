@@ -97,16 +97,31 @@ export function ApprovalDetailDrawer({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, onClose, approveOpen, rejectOpen])
 
-  // Focus trap -- keep Tab cycling within the panel
+  // Save opener reference and restore focus on close
+  useEffect(() => {
+    if (open) openerRef.current = document.activeElement
+    return () => {
+      if (openerRef.current instanceof HTMLElement) openerRef.current.focus()
+      openerRef.current = null
+    }
+  }, [open])
+
+  // Focus trap -- keep Tab cycling within the panel.
+  // Re-runs when loading/approval changes so focus engages after content arrives.
   useEffect(() => {
     if (!open) return
-    openerRef.current = document.activeElement
     const panel = panelRef.current
     if (!panel) return
     const focusable = panel.querySelectorAll<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     )
-    if (focusable.length > 0) focusable[0]!.focus()
+    if (focusable.length > 0) {
+      focusable[0]!.focus()
+    } else {
+      // Fallback: make the panel itself focusable during loading state
+      panel.setAttribute('tabindex', '-1')
+      panel.focus()
+    }
 
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return
@@ -125,14 +140,8 @@ export function ApprovalDetailDrawer({
       }
     }
     document.addEventListener('keydown', handleTab)
-    return () => {
-      document.removeEventListener('keydown', handleTab)
-      if (openerRef.current instanceof HTMLElement) {
-        openerRef.current.focus()
-      }
-      openerRef.current = null
-    }
-  }, [open])
+    return () => document.removeEventListener('keydown', handleTab)
+  }, [open, loading, approval]) // eslint-disable-line @eslint-react/exhaustive-deps -- re-evaluate focus when content loads
 
   const handleApprove = useCallback(async () => {
     if (!approval || approval.status !== 'pending') return

@@ -68,10 +68,10 @@ describe('ApprovalsPage', () => {
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
   })
 
-  it('renders WS disconnected banner', () => {
-    hookReturn = { ...defaultReturn, wsConnected: false, selectedIds: new Set() }
+  it('renders WS disconnected banner when setup error', () => {
+    hookReturn = { ...defaultReturn, wsConnected: false, wsSetupError: 'WebSocket connection failed.', selectedIds: new Set() }
     renderPage()
-    expect(screen.getByText(/real-time updates disconnected/i)).toBeInTheDocument()
+    expect(screen.getByText('WebSocket connection failed.')).toBeInTheDocument()
   })
 
   it('renders empty state when no approvals', () => {
