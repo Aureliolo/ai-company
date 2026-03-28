@@ -100,6 +100,10 @@ class TemplateInfoResponse(BaseModel):
         skill_patterns: Skill design pattern identifiers describing how the
             template's agents interact (e.g. ``"tool_wrapper"``, ``"pipeline"``).
         variables: Template variables the user can configure.
+        agent_count: Number of agents defined in the template.
+        department_count: Number of departments defined in the template.
+        autonomy_level: Autonomy level (e.g. ``"full"``, ``"semi"``).
+        workflow: Workflow type (e.g. ``"agile_kanban"``, ``"kanban"``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -119,6 +123,24 @@ class TemplateInfoResponse(BaseModel):
     variables: tuple[TemplateVariableResponse, ...] = Field(
         default=(),
         description="User-configurable template variables",
+    )
+    agent_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of agents defined in the template",
+    )
+    department_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of departments defined in the template",
+    )
+    autonomy_level: str = Field(
+        default="semi",
+        description="Autonomy level (full, semi, supervised)",
+    )
+    workflow: str = Field(
+        default="agile_kanban",
+        description="Workflow type (agile_kanban, kanban, etc.)",
     )
 
 

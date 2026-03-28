@@ -26,11 +26,13 @@ import {
   listProviders,
   listPresets,
   createFromPreset,
+  createProvider as apiCreateProvider,
   testConnection,
   probePreset,
   discoverModels,
   getProvider,
 } from '@/api/endpoints/providers'
+import type { CreateFromPresetRequest, CreateProviderRequest } from '@/api/types'
 import { getErrorMessage } from '@/utils/errors'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
@@ -214,7 +216,9 @@ interface SetupWizardState {
   // Provider actions
   fetchProviders: () => Promise<void>
   fetchPresets: () => Promise<void>
-  createProviderFromPreset: (presetName: string, name: string, apiKey?: string) => Promise<void>
+  createProviderFromPreset: (presetName: string, name: string, apiKey?: string, baseUrl?: string) => Promise<void>
+  createProviderFromPresetFull: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
+  createProviderCustom: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
   testProviderConnection: (name: string) => Promise<TestConnectionResponse>
   probeAllPresets: () => Promise<void>
   reprobePresets: () => Promise<void>
@@ -562,13 +566,14 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     }
   },
 
-  async createProviderFromPreset(presetName, name, apiKey) {
+  async createProviderFromPreset(presetName, name, apiKey, baseUrl) {
     set({ providersError: null })
     try {
       const provider = await createFromPreset({
         preset_name: presetName,
         name,
         api_key: apiKey,
+        base_url: baseUrl,
       })
       set((s) => ({
         providers: { ...s.providers, [name]: provider },
@@ -615,6 +620,50 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       console.error('setup-wizard: createProviderFromPreset failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       throw err
+    }
+  },
+
+  async createProviderFromPresetFull(data) {
+    set({ providersError: null })
+    try {
+      const provider = await createFromPreset(data)
+      set((s) => ({
+        providers: { ...s.providers, [data.name]: provider },
+      }))
+
+      // Auto-discover models for local providers (auth_type=none)
+      if (provider.models.length === 0) {
+        try {
+          await discoverModels(data.name, data.preset_name)
+          const refreshed = await getProvider(data.name)
+          set((s) => ({
+            providers: { ...s.providers, [data.name]: refreshed },
+          }))
+          return refreshed
+        } catch {
+          // Discovery is best-effort
+        }
+      }
+      return provider
+    } catch (err) {
+      console.error('setup-wizard: createProviderFromPresetFull failed:', getErrorMessage(err))
+      set({ providersError: getErrorMessage(err) })
+      return null
+    }
+  },
+
+  async createProviderCustom(data) {
+    set({ providersError: null })
+    try {
+      const provider = await apiCreateProvider(data)
+      set((s) => ({
+        providers: { ...s.providers, [data.name]: provider },
+      }))
+      return provider
+    } catch (err) {
+      console.error('setup-wizard: createProviderCustom failed:', getErrorMessage(err))
+      set({ providersError: getErrorMessage(err) })
+      return null
     }
   },
 

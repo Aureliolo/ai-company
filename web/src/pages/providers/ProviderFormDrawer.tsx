@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PresetPicker } from './PresetPicker'
 import { useProvidersStore } from '@/stores/providers'
-import type { AuthType, ProviderPreset } from '@/api/types'
+import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
 
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
@@ -15,11 +15,24 @@ const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'none', label: 'None' },
 ]
 
+/** Optional store-override props for using this drawer outside the Settings page. */
+export interface ProviderFormOverrides {
+  presets: readonly ProviderPreset[]
+  presetsLoading: boolean
+  presetsError: string | null
+  onFetchPresets: () => void
+  onCreateFromPreset: (data: CreateFromPresetRequest) => Promise<ProviderConfig | null>
+  onCreateProvider?: (data: CreateProviderRequest) => Promise<ProviderConfig | null>
+  onUpdateProvider?: (name: string, data: UpdateProviderRequest) => Promise<ProviderConfig | null>
+}
+
 interface ProviderFormDrawerProps {
   open: boolean
   onClose: () => void
   mode: 'create' | 'edit'
   provider?: ProviderWithName | null
+  /** When provided, uses these callbacks instead of `useProvidersStore`. */
+  overrides?: ProviderFormOverrides
 }
 
 export function ProviderFormDrawer({
@@ -27,10 +40,16 @@ export function ProviderFormDrawer({
   onClose,
   mode,
   provider,
+  overrides,
 }: ProviderFormDrawerProps) {
-  const presets = useProvidersStore((s) => s.presets)
-  const presetsLoading = useProvidersStore((s) => s.presetsLoading)
-  const presetsError = useProvidersStore((s) => s.presetsError)
+  // Resolve store vs overrides
+  const storePresets = useProvidersStore((s) => s.presets)
+  const storePresetsLoading = useProvidersStore((s) => s.presetsLoading)
+  const storePresetsError = useProvidersStore((s) => s.presetsError)
+
+  const presets = overrides ? overrides.presets : storePresets
+  const presetsLoading = overrides ? overrides.presetsLoading : storePresetsLoading
+  const presetsError = overrides ? overrides.presetsError : storePresetsError
 
   // Form state
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
@@ -53,9 +72,13 @@ export function ProviderFormDrawer({
   // Fetch presets when drawer opens in create mode
   useEffect(() => {
     if (open && mode === 'create') {
-      useProvidersStore.getState().fetchPresets()
+      if (overrides) {
+        overrides.onFetchPresets()
+      } else {
+        useProvidersStore.getState().fetchPresets()
+      }
     }
-  }, [open, mode])
+  }, [open, mode, overrides])
 
   // Render-phase state sync: capture previous values before comparisons
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
@@ -151,7 +174,7 @@ export function ProviderFormDrawer({
     try {
       if (mode === 'create') {
         if (preset && selectedPreset !== '__custom__') {
-          const result = await useProvidersStore.getState().createFromPreset({
+          const data: CreateFromPresetRequest = {
             preset_name: preset.name,
             name: name.trim(),
             auth_type: authType,
@@ -159,10 +182,13 @@ export function ProviderFormDrawer({
             subscription_token: authType === 'subscription' && subscriptionToken ? subscriptionToken : undefined,
             tos_accepted: authType === 'subscription' && tosAccepted,
             base_url: baseUrl || undefined,
-          })
+          }
+          const result = overrides
+            ? await overrides.onCreateFromPreset(data)
+            : await useProvidersStore.getState().createFromPreset(data)
           if (result) handleClose()
         } else {
-          const result = await useProvidersStore.getState().createProvider({
+          const data: CreateProviderRequest = {
             name: name.trim(),
             litellm_provider: litellmProvider || undefined,
             auth_type: authType,
@@ -170,11 +196,13 @@ export function ProviderFormDrawer({
             subscription_token: authType === 'subscription' && subscriptionToken ? subscriptionToken : undefined,
             tos_accepted: authType === 'subscription' && tosAccepted,
             base_url: baseUrl || undefined,
-          })
+          }
+          const createFn = overrides?.onCreateProvider ?? useProvidersStore.getState().createProvider
+          const result = await createFn(data)
           if (result) handleClose()
         }
       } else if (mode === 'edit' && provider) {
-        const result = await useProvidersStore.getState().updateProvider(provider.name, {
+        const data: UpdateProviderRequest = {
           litellm_provider: litellmProvider || undefined,
           auth_type: authType,
           api_key: authType === 'api_key' && apiKey ? apiKey : undefined,
@@ -183,13 +211,15 @@ export function ProviderFormDrawer({
           clear_subscription_token: authType !== 'subscription' || !subscriptionToken,
           tos_accepted: authType === 'subscription' && tosAccepted,
           base_url: baseUrl || undefined,
-        })
+        }
+        const updateFn = overrides?.onUpdateProvider ?? useProvidersStore.getState().updateProvider
+        const result = await updateFn(provider.name, data)
         if (result) handleClose()
       }
     } finally {
       setSubmitting(false)
     }
-  }, [mode, preset, selectedPreset, name, authType, apiKey, subscriptionToken, tosAccepted, baseUrl, litellmProvider, provider, handleClose])
+  }, [mode, preset, selectedPreset, name, authType, apiKey, subscriptionToken, tosAccepted, baseUrl, litellmProvider, provider, handleClose, overrides])
 
   return (
     <>

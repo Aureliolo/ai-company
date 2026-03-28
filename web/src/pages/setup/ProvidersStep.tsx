@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SectionCard } from '@/components/ui/section-card'
@@ -8,8 +8,8 @@ import { validateProvidersStep } from '@/utils/setup-validation'
 import { getProviderStatus } from '@/utils/provider-status'
 import type { ProviderConfig } from '@/api/types'
 import { ProviderProbeResults } from './ProviderProbeResults'
-import { ProviderAddForm } from './ProviderAddForm'
-import { Server } from 'lucide-react'
+import { ProviderFormDrawer, type ProviderFormOverrides } from '@/pages/providers/ProviderFormDrawer'
+import { Server, Plus } from 'lucide-react'
 
 interface ProviderRowProps {
   name: string
@@ -47,8 +47,12 @@ export function ProvidersStep() {
   const probeAllPresets = useSetupWizardStore((s) => s.probeAllPresets)
   const reprobePresets = useSetupWizardStore((s) => s.reprobePresets)
   const createProviderFromPreset = useSetupWizardStore((s) => s.createProviderFromPreset)
+  const createProviderFromPresetFull = useSetupWizardStore((s) => s.createProviderFromPresetFull)
+  const createProviderCustom = useSetupWizardStore((s) => s.createProviderCustom)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
+
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const probeResultsCount = Object.keys(probeResults).length
   const fetchedRef = useRef(false)
@@ -82,8 +86,8 @@ export function ProvidersStep() {
   }, [validation.valid, markStepComplete, markStepIncomplete])
 
   const handleAddPreset = useCallback(
-    async (presetName: string) => {
-      await createProviderFromPreset(presetName, presetName)
+    async (presetName: string, detectedUrl?: string) => {
+      await createProviderFromPreset(presetName, presetName, undefined, detectedUrl)
       // Refresh provider list to get updated model counts
       await fetchProviders()
     },
@@ -95,13 +99,23 @@ export function ProvidersStep() {
     await reprobePresets()
   }, [reprobePresets])
 
-  const handleAddCloud = useCallback(
-    async (presetName: string, name: string, apiKey?: string) => {
-      await createProviderFromPreset(presetName, name, apiKey)
-      await fetchProviders()
+  // Overrides for ProviderFormDrawer to use setup wizard store
+  const drawerOverrides: ProviderFormOverrides = useMemo(() => ({
+    presets,
+    presetsLoading,
+    presetsError,
+    onFetchPresets: fetchPresets,
+    onCreateFromPreset: async (data) => {
+      const result = await createProviderFromPresetFull(data)
+      if (result) await fetchProviders()
+      return result
     },
-    [createProviderFromPreset, fetchProviders],
-  )
+    onCreateProvider: async (data) => {
+      const result = await createProviderCustom(data)
+      if (result) await fetchProviders()
+      return result
+    },
+  }), [presets, presetsLoading, presetsError, fetchPresets, createProviderFromPresetFull, createProviderCustom, fetchProviders])
 
   if (providersLoading && Object.keys(providers).length === 0) {
     return (
@@ -144,7 +158,7 @@ export function ProvidersStep() {
         </div>
       )}
 
-      {/* Auto-detect results + Manual cloud provider add */}
+      {/* Auto-detect results */}
       {presetsLoading ? (
         <Skeleton className="h-32 rounded-lg" />
       ) : presetsError && presets.length === 0 ? (
@@ -157,23 +171,33 @@ export function ProvidersStep() {
           </Button>
         </div>
       ) : (
-        <>
-          <ProviderProbeResults
-            presets={presets}
-            probeResults={probeResults}
-            probing={probing}
-            providers={providers}
-            onAddPreset={handleAddPreset}
-            onReprobe={handleReprobe}
-          />
-
-          <ProviderAddForm
-            presets={presets}
-            providers={providers}
-            onAdd={handleAddCloud}
-          />
-        </>
+        <ProviderProbeResults
+          presets={presets}
+          probeResults={probeResults}
+          probing={probing}
+          providers={providers}
+          onAddPreset={handleAddPreset}
+          onReprobe={handleReprobe}
+        />
       )}
+
+      {/* Add Provider button (opens full form drawer) */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setDrawerOpen(true)}
+        className="gap-1.5"
+      >
+        <Plus className="size-3.5" />
+        Add Provider
+      </Button>
+
+      <ProviderFormDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        mode="create"
+        overrides={drawerOverrides}
+      />
 
       {/* Configured providers */}
       {providerEntries.length > 0 && (

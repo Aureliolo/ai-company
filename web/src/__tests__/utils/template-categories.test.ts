@@ -15,6 +15,10 @@ const makeTemplate = (
   tags: [],
   skill_patterns: [],
   variables: [],
+  agent_count: 5,
+  department_count: 3,
+  autonomy_level: 'semi',
+  workflow: 'agile_kanban',
   ...overrides,
 })
 

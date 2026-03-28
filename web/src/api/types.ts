@@ -1223,6 +1223,10 @@ export interface TemplateInfoResponse {
   tags: readonly string[]
   skill_patterns: readonly SkillPattern[]
   variables: readonly TemplateVariable[]
+  agent_count: number
+  department_count: number
+  autonomy_level: string
+  workflow: string
 }
 
 export interface SetupCompanyRequest {

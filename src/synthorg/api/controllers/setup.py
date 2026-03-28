@@ -213,6 +213,10 @@ class SetupController(Controller):
                     )
                     for v in t.variables
                 ),
+                agent_count=t.agent_count,
+                department_count=t.department_count,
+                autonomy_level=t.autonomy_level,
+                workflow=t.workflow,
             )
             for t in templates
         )
