@@ -56,6 +56,9 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if parseErr != nil {
 		return fmt.Errorf("invalid --timeout %q: %w", startTimeout, parseErr)
 	}
+	if !startNoWait && healthTimeout <= 0 {
+		return fmt.Errorf("invalid --timeout %q: must be > 0", startTimeout)
+	}
 
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
@@ -105,10 +108,10 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
 	out.KeyValue("Sandbox", strconv.FormatBool(state.Sandbox))
-	out.KeyValue("Skip verify", strconv.FormatBool(opts.SkipVerify))
+	out.KeyValue("Skip verify", strconv.FormatBool(opts.SkipVerify || startNoPull))
 	out.KeyValue("Skip pull", strconv.FormatBool(startNoPull))
 	out.KeyValue("Detached", strconv.FormatBool(!startNoDetach))
-	out.KeyValue("Health check", strconv.FormatBool(!startNoWait))
+	out.KeyValue("Health check", strconv.FormatBool(!startNoWait && !startNoDetach))
 	out.Step("Dry run -- no changes made")
 	return nil
 }

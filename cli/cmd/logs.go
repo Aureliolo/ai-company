@@ -28,7 +28,8 @@ var (
 var serviceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // timeFilterPattern validates --since/--until values (timestamps, durations).
-var timeFilterPattern = regexp.MustCompile(`^[0-9a-zA-Z:.+\-TZ]+$`)
+// Must start with an alphanumeric character to prevent flag-shaped values.
+var timeFilterPattern = regexp.MustCompile(`^[0-9a-zA-Z][0-9a-zA-Z:.+\-TZ]*$`)
 
 var logsCmd = &cobra.Command{
 	Use:   "logs [service]",
@@ -48,13 +49,15 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
+	if err := validateLogsInput(logTail, logSince, logUntil, args); err != nil {
+		return err
+	}
 
+	ctx := cmd.Context()
 	state, err := config.Load(GetGlobalOpts(ctx).DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
@@ -63,34 +66,38 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
 	}
-
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Validate --tail value.
-	tail := strings.TrimSpace(logTail)
-	if tail != "all" {
-		if n, err := strconv.Atoi(tail); err != nil || n <= 0 {
-			return fmt.Errorf("--tail must be a positive integer or 'all', got %q", logTail)
+	composeArgs := buildLogsArgs(strings.TrimSpace(logTail), args)
+	return composeRun(ctx, cmd, info, safeDir, composeArgs...)
+}
+
+// validateLogsInput validates --tail, --since, --until, and service name arguments.
+func validateLogsInput(tail, since, until string, services []string) error {
+	t := strings.TrimSpace(tail)
+	if t != "all" {
+		if n, err := strconv.Atoi(t); err != nil || n <= 0 {
+			return fmt.Errorf("--tail must be a positive integer or 'all', got %q", tail)
 		}
 	}
-
-	// Validate --since/--until format (allow timestamps, durations, Docker-accepted values).
-	for _, tv := range []struct{ flag, val string }{{"--since", logSince}, {"--until", logUntil}} {
+	for _, tv := range []struct{ flag, val string }{{"--since", since}, {"--until", until}} {
 		if tv.val != "" && !timeFilterPattern.MatchString(tv.val) {
 			return fmt.Errorf("%s value %q contains unexpected characters", tv.flag, tv.val)
 		}
 	}
-
-	// Validate service name arguments.
-	for _, svc := range args {
+	for _, svc := range services {
 		if !serviceNamePattern.MatchString(svc) {
 			return fmt.Errorf("invalid service name %q: must be alphanumeric, hyphens, or underscores", svc)
 		}
 	}
+	return nil
+}
 
+// buildLogsArgs constructs the docker compose logs arguments.
+func buildLogsArgs(tail string, services []string) []string {
 	composeArgs := []string{"logs", "--tail", tail}
 	if logFollow {
 		composeArgs = append(composeArgs, "-f")
@@ -107,9 +114,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	if logNoPrefix {
 		composeArgs = append(composeArgs, "--no-log-prefix")
 	}
-	// Use -- separator to prevent service names from being parsed as flags.
 	composeArgs = append(composeArgs, "--")
-	composeArgs = append(composeArgs, args...)
-
-	return composeRun(ctx, cmd, info, safeDir, composeArgs...)
+	composeArgs = append(composeArgs, services...)
+	return composeArgs
 }

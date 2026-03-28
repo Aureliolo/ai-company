@@ -2,12 +2,23 @@ package cmd
 
 import (
 	"bytes"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
+
+// resetRootCmd restores rootCmd state to prevent cross-test leakage.
+func resetRootCmd(t testing.TB) {
+	t.Helper()
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		rootCmd.SetArgs(nil)
+	})
+}
 
 func TestConfigSetBackendPort(t *testing.T) {
 	dir := t.TempDir()
@@ -17,6 +28,7 @@ func TestConfigSetBackendPort(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	resetRootCmd(t)
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
 	rootCmd.SetErr(&buf)
@@ -35,6 +47,7 @@ func TestConfigSetBackendPort(t *testing.T) {
 }
 
 func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -54,6 +67,7 @@ func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
 }
 
 func TestConfigSetPortUniqueness(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -81,6 +95,7 @@ func TestConfigSetPortUniqueness(t *testing.T) {
 }
 
 func TestConfigSetWebPort(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -106,6 +121,7 @@ func TestConfigSetWebPort(t *testing.T) {
 }
 
 func TestConfigSetSandbox(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -132,6 +148,7 @@ func TestConfigSetSandbox(t *testing.T) {
 }
 
 func TestConfigSetImageTag(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -157,6 +174,7 @@ func TestConfigSetImageTag(t *testing.T) {
 }
 
 func TestConfigSetColor(t *testing.T) {
+	resetRootCmd(t)
 	for _, value := range []string{"always", "auto", "never"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -186,6 +204,7 @@ func TestConfigSetColor(t *testing.T) {
 }
 
 func TestConfigSetColorRejectsInvalid(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -205,6 +224,7 @@ func TestConfigSetColorRejectsInvalid(t *testing.T) {
 }
 
 func TestConfigSetOutput(t *testing.T) {
+	resetRootCmd(t)
 	for _, value := range []string{"text", "json"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -234,6 +254,7 @@ func TestConfigSetOutput(t *testing.T) {
 }
 
 func TestConfigSetTimestamps(t *testing.T) {
+	resetRootCmd(t)
 	for _, value := range []string{"relative", "iso8601"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -263,6 +284,7 @@ func TestConfigSetTimestamps(t *testing.T) {
 }
 
 func TestConfigSetHints(t *testing.T) {
+	resetRootCmd(t)
 	for _, value := range []string{"always", "auto", "never"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -291,7 +313,37 @@ func TestConfigSetHints(t *testing.T) {
 	}
 }
 
+// execConfigSet runs a config set command and returns the loaded state.
+func execConfigSet(t *testing.T, dir, key, value string) config.State {
+	t.Helper()
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", key, value, "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("config set %s %s: %v", key, value, err)
+	}
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after set: %v", err)
+	}
+	return loaded
+}
+
+// seedConfig creates a temp dir with a default config saved and returns the dir.
+func seedConfig(t *testing.T) (string, config.State) {
+	t.Helper()
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	return dir, state
+}
+
 func TestConfigSetAutoBehaviorKeys(t *testing.T) {
+	resetRootCmd(t)
 	tests := []struct {
 		key   string
 		field func(config.State) bool
@@ -302,44 +354,14 @@ func TestConfigSetAutoBehaviorKeys(t *testing.T) {
 		{"auto_apply_compose", func(s config.State) bool { return s.AutoApplyCompose }},
 		{"auto_start_after_wipe", func(s config.State) bool { return s.AutoStartAfterWipe }},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			dir := t.TempDir()
-			state := config.DefaultState()
-			state.DataDir = dir
-			if err := config.Save(state); err != nil {
-				t.Fatal(err)
-			}
-
-			var buf bytes.Buffer
-			rootCmd.SetOut(&buf)
-			rootCmd.SetErr(&buf)
-			rootCmd.SetArgs([]string{"config", "set", tt.key, "true", "--data-dir", dir})
-			if err := rootCmd.Execute(); err != nil {
-				t.Fatalf("set true: %v", err)
-			}
-
-			loaded, err := config.Load(dir)
-			if err != nil {
-				t.Fatalf("Load after set true: %v", err)
-			}
+			dir, _ := seedConfig(t)
+			loaded := execConfigSet(t, dir, tt.key, "true")
 			if !tt.field(loaded) {
 				t.Errorf("%s should be true", tt.key)
 			}
-
-			buf.Reset()
-			rootCmd.SetOut(&buf)
-			rootCmd.SetErr(&buf)
-			rootCmd.SetArgs([]string{"config", "set", tt.key, "false", "--data-dir", dir})
-			if err := rootCmd.Execute(); err != nil {
-				t.Fatalf("set false: %v", err)
-			}
-
-			loaded, err = config.Load(dir)
-			if err != nil {
-				t.Fatalf("Load after set false: %v", err)
-			}
+			loaded = execConfigSet(t, dir, tt.key, "false")
 			if tt.field(loaded) {
 				t.Errorf("%s should be false", tt.key)
 			}
@@ -348,6 +370,7 @@ func TestConfigSetAutoBehaviorKeys(t *testing.T) {
 }
 
 func TestConfigUnsetChannel(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -374,6 +397,7 @@ func TestConfigUnsetChannel(t *testing.T) {
 }
 
 func TestConfigUnsetBackendPort(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -400,6 +424,7 @@ func TestConfigUnsetBackendPort(t *testing.T) {
 }
 
 func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -417,6 +442,7 @@ func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
 }
 
 func TestConfigListShowsAllKeys(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -441,6 +467,7 @@ func TestConfigListShowsAllKeys(t *testing.T) {
 }
 
 func TestConfigListSourceDefault(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -463,6 +490,7 @@ func TestConfigListSourceDefault(t *testing.T) {
 }
 
 func TestConfigPathPrintsPath(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 
 	var buf bytes.Buffer
@@ -474,13 +502,20 @@ func TestConfigPathPrintsPath(t *testing.T) {
 	}
 
 	got := strings.TrimSpace(buf.String())
-	want := config.StatePath(dir)
+	// resolveDataDir calls filepath.EvalSymlinks, resolving macOS symlinks
+	// like /var -> /private/var. Match this in the expected path.
+	resolved := dir
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		resolved = r
+	}
+	want := config.StatePath(resolved)
 	if got != want {
 		t.Errorf("config path = %q, want %q", got, want)
 	}
 }
 
 func TestConfigGetNewKeys(t *testing.T) {
+	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.DataDir = dir
@@ -515,11 +550,6 @@ func TestConfigGetNewKeys(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			t.Cleanup(func() {
-				rootCmd.SetOut(nil)
-				rootCmd.SetErr(nil)
-				rootCmd.SetArgs(nil)
-			})
 			var buf bytes.Buffer
 			rootCmd.SetOut(&buf)
 			rootCmd.SetErr(&buf)
@@ -545,6 +575,7 @@ func FuzzConfigSetBackendPort(f *testing.F) {
 	f.Add("-1")
 
 	f.Fuzz(func(t *testing.T, value string) {
+		resetRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.DataDir = dir
@@ -578,6 +609,7 @@ func FuzzConfigSetColor(f *testing.F) {
 	f.Add("NEVER")
 
 	f.Fuzz(func(t *testing.T, value string) {
+		resetRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
 		state.DataDir = dir

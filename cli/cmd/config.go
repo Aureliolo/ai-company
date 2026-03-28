@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -63,9 +64,9 @@ Supported keys:
   hints                 Hint display mode
   image_tag             Current container image tag
   log_level             Log verbosity
-  memory_backend        Memory backend
+  memory_backend        Memory backend (read-only)
   output                Output format
-  persistence_backend   Persistence backend
+  persistence_backend   Persistence backend (read-only)
   sandbox               Sandbox enabled
   timestamps            Timestamp display mode
   web_port              Web dashboard port`,
@@ -100,15 +101,17 @@ Supported keys:
 
 Keys that affect Docker compose (backend_port, web_port, sandbox, docker_sock,
 image_tag, log_level) trigger automatic compose.yml regeneration.`,
-	Args: cobra.ExactArgs(2),
-	RunE: runConfigSet,
+	Args:              cobra.ExactArgs(2),
+	RunE:              runConfigSet,
+	ValidArgsFunction: completeConfigSetKeys,
 }
 
 var configUnsetCmd = &cobra.Command{
-	Use:   "unset <key>",
-	Short: "Reset a configuration key to its default value",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runConfigUnset,
+	Use:               "unset <key>",
+	Short:             "Reset a configuration key to its default value",
+	Args:              cobra.ExactArgs(1),
+	RunE:              runConfigUnset,
+	ValidArgsFunction: completeConfigUnsetKeys,
 }
 
 var configListCmd = &cobra.Command{
@@ -222,6 +225,17 @@ func completeConfigGetKeys(_ *cobra.Command, _ []string, _ string) ([]string, co
 	return gettableConfigKeys, cobra.ShellCompDirectiveNoFileComp
 }
 
+func completeConfigSetKeys(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	if len(args) == 0 {
+		return supportedConfigKeys, cobra.ShellCompDirectiveNoFileComp
+	}
+	return nil, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeConfigUnsetKeys(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return supportedConfigKeys, cobra.ShellCompDirectiveNoFileComp
+}
+
 func runConfigGet(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	if !isKnownGettableKey(key) {
@@ -244,12 +258,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 
 // isKnownGettableKey reports whether key is in the gettableConfigKeys list.
 func isKnownGettableKey(key string) bool {
-	for _, k := range gettableConfigKeys {
-		if k == key {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(gettableConfigKeys, key)
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -266,6 +275,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if key == "image_tag" {
+		state.VerifiedDigests = nil // old pins are for the previous tag
+	}
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
 			return err
@@ -347,8 +359,12 @@ func setPort(value, key string, conflictPort int, target *int) error {
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("invalid %s %q: must be 1-65535", key, value)
 	}
+	otherKey := "web_port"
+	if key == "web_port" {
+		otherKey = "backend_port"
+	}
 	if port == conflictPort {
-		return fmt.Errorf("%s %d conflicts with the other port", key, port)
+		return fmt.Errorf("%s %d conflicts with %s (%d)", key, port, otherKey, conflictPort)
 	}
 	*target = port
 	return nil
@@ -379,7 +395,9 @@ var composeAffectingKeys = map[string]bool{
 // regenerateCompose regenerates compose.yml from the current state.
 // Called after config set/unset for compose-affecting keys.
 func regenerateCompose(state config.State) error {
-	safeDir, err := safeStateDir(state)
+	// Use config.SecurePath directly (not safeStateDir) so that CodeQL
+	// can trace the sanitization for go/path-injection.
+	safeDir, err := config.SecurePath(state.DataDir)
 	if err != nil {
 		return err
 	}
@@ -411,6 +429,16 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 
 	if err := resetConfigValue(&state, key); err != nil {
 		return err
+	}
+	// Validate port uniqueness after resetting to default.
+	if key == "backend_port" && state.BackendPort == state.WebPort {
+		return fmt.Errorf("default backend_port %d conflicts with current web_port %d", state.BackendPort, state.WebPort)
+	}
+	if key == "web_port" && state.WebPort == state.BackendPort {
+		return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
+	}
+	if key == "image_tag" {
+		state.VerifiedDigests = nil
 	}
 
 	if composeAffectingKeys[key] {
@@ -515,8 +543,18 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 
 	for _, key := range gettableConfigKeys {
 		val := configGetValue(state, key)
-		source := resolveSource(key, val, configGetValue(defaults, key))
-		entries = append(entries, configEntry{Key: key, Value: val, Source: source})
+		defaultVal := configGetValue(defaults, key)
+		source := resolveSource(key, val, defaultVal)
+		effectiveVal := val
+		switch source {
+		case "env":
+			if envVal := os.Getenv(envVarForKey(key)); envVal != "" {
+				effectiveVal = envVal
+			}
+		case "default":
+			effectiveVal = defaultVal
+		}
+		entries = append(entries, configEntry{Key: key, Value: effectiveVal, Source: source})
 	}
 
 	if opts.JSON {
@@ -592,7 +630,11 @@ func resolveSource(key, currentVal, defaultVal string) string {
 
 func runConfigPath(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), config.StatePath(opts.DataDir))
+	safeDir, err := config.SecurePath(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("invalid data directory: %w", err)
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), config.StatePath(safeDir))
 	return nil
 }
 
@@ -611,6 +653,12 @@ func runConfigEdit(cmd *cobra.Command, _ []string) error {
 	}
 
 	editorBin, editorArgs := resolveEditor()
+	// Resolve to absolute path via LookPath to satisfy CodeQL go/command-injection
+	// and prevent relative-path confusion. Falls back to the raw name if not found
+	// (exec.CommandContext will produce a clear error).
+	if resolved, lookErr := exec.LookPath(editorBin); lookErr == nil {
+		editorBin = resolved
+	}
 	editorArgs = append(editorArgs, configPath)
 	c := exec.CommandContext(cmd.Context(), editorBin, editorArgs...) //nolint:gosec // editor comes from user's env
 	c.Stdin = os.Stdin
@@ -635,12 +683,12 @@ func resolveEditor() (string, []string) {
 	if raw == "" {
 		raw = os.Getenv("EDITOR")
 	}
-	if raw == "" {
+	parts := strings.Fields(raw)
+	if len(parts) == 0 {
 		if runtime.GOOS == "windows" {
 			return "notepad", nil
 		}
 		return "vi", nil
 	}
-	parts := strings.Fields(raw)
 	return parts[0], parts[1:]
 }

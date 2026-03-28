@@ -55,16 +55,9 @@ func runStop(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	downArgs := []string{"down"}
-	if stopTimeout != "" {
-		dur, parseErr := time.ParseDuration(stopTimeout)
-		if parseErr != nil {
-			return fmt.Errorf("invalid --timeout %q: %w", stopTimeout, parseErr)
-		}
-		downArgs = append(downArgs, "--timeout", strconv.Itoa(int(dur.Seconds())))
-	}
-	if stopVolumes {
-		downArgs = append(downArgs, "--volumes")
+	downArgs, err := buildDownArgs()
+	if err != nil {
+		return err
 	}
 
 	sp := out.StartSpinner("Stopping containers...")
@@ -75,4 +68,25 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	sp.Success("SynthOrg stopped")
 
 	return nil
+}
+
+func buildDownArgs() ([]string, error) {
+	args := []string{"down"}
+	if stopTimeout != "" {
+		dur, parseErr := time.ParseDuration(stopTimeout)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid --timeout %q: %w", stopTimeout, parseErr)
+		}
+		if dur < 0 {
+			return nil, fmt.Errorf("invalid --timeout %q: must be non-negative", stopTimeout)
+		}
+		if dur%time.Second != 0 {
+			return nil, fmt.Errorf("invalid --timeout %q: must be a whole number of seconds", stopTimeout)
+		}
+		args = append(args, "--timeout", strconv.Itoa(int(dur.Seconds())))
+	}
+	if stopVolumes {
+		args = append(args, "--volumes")
+	}
+	return args, nil
 }
