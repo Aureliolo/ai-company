@@ -1,0 +1,100 @@
+import { Drawer } from '@/components/ui/drawer'
+import { Avatar } from '@/components/ui/avatar'
+import { formatDate, formatCurrency } from '@/utils/format'
+import { MessageTypeBadge } from './MessageTypeBadge'
+import { AttachmentList } from './AttachmentList'
+import { getMessagePriorityColor } from '@/utils/messages'
+import { cn } from '@/lib/utils'
+import type { Message } from '@/api/types'
+
+interface MessageDetailDrawerProps {
+  message: Message | null
+  open: boolean
+  onClose: () => void
+}
+
+export function MessageDetailDrawer({ message, open, onClose }: MessageDetailDrawerProps) {
+  return (
+    <Drawer open={open} onClose={onClose} title={message?.sender ?? 'Message'}>
+      {message && <MessageDetailContent message={message} />}
+    </Drawer>
+  )
+}
+
+function MessageDetailContent({ message }: { message: Message }) {
+  const priorityColor = getMessagePriorityColor(message.priority)
+
+  return (
+    <div className="space-y-5">
+      {/* Sender header */}
+      <div className="flex items-center gap-3">
+        <Avatar name={message.sender} size="lg" />
+        <div>
+          <div className="font-mono text-sm font-medium text-foreground">{message.sender}</div>
+          <div className="font-mono text-xs text-muted-foreground">to {message.to}</div>
+        </div>
+      </div>
+
+      {/* Badges */}
+      <div className="flex flex-wrap items-center gap-2">
+        <MessageTypeBadge type={message.type} />
+        {priorityColor && (
+          <span className={cn(
+            'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px]',
+            `border-${priorityColor}/30 bg-${priorityColor}/10 text-${priorityColor}`,
+          )}>
+            <span className={cn('size-1.5 rounded-full', `bg-${priorityColor}`)} />
+            {message.priority.charAt(0).toUpperCase() + message.priority.slice(1)}
+          </span>
+        )}
+      </div>
+
+      {/* Content */}
+      <div>
+        <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Content</h3>
+        <p className="whitespace-pre-wrap text-sm text-foreground">{message.content}</p>
+      </div>
+
+      {/* Metadata */}
+      <div>
+        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+          <MetadataRow label="Channel" value={message.channel} mono />
+          <MetadataRow label="Timestamp" value={formatDate(message.timestamp)} mono />
+          {message.metadata.task_id && (
+            <MetadataRow label="Task ID" value={message.metadata.task_id} mono />
+          )}
+          {message.metadata.project_id && (
+            <MetadataRow label="Project ID" value={message.metadata.project_id} mono />
+          )}
+          {message.metadata.tokens_used !== null && (
+            <MetadataRow label="Tokens" value={String(message.metadata.tokens_used)} mono />
+          )}
+          {message.metadata.cost_usd !== null && (
+            <MetadataRow label="Cost" value={formatCurrency(message.metadata.cost_usd, 'USD')} mono />
+          )}
+          {message.metadata.extra.map(([key, value]) => (
+            <MetadataRow key={key} label={key} value={value} mono />
+          ))}
+        </dl>
+      </div>
+
+      {/* Attachments */}
+      {message.attachments.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
+          <AttachmentList attachments={message.attachments} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MetadataRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn('text-foreground', mono && 'font-mono')}>{value}</dd>
+    </>
+  )
+}
