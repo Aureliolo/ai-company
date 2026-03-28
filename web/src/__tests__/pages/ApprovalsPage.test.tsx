@@ -96,11 +96,10 @@ describe('ApprovalsPage', () => {
       ],
       selectedIds: new Set(),
     }
-    const { container } = renderPage()
-    // MetricCard values render with text-metric class; extract values
-    const metricValues = container.querySelectorAll('[class*="text-metric"]')
-    const values = [...metricValues].map((el) => el.textContent)
-    // Order: Critical=2, High=1, Medium=0, Low=0
+    renderPage()
+    // MetricCard values via stable test ID; order: Critical, High, Medium, Low
+    const metricValues = screen.getAllByTestId('metric-value')
+    const values = metricValues.map((el) => el.textContent)
     expect(values).toEqual(['2', '1', '0', '0'])
   })
 

@@ -44,7 +44,7 @@ export function MetricCard({
       </div>
 
       {/* Value */}
-      <div className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground">
+      <div className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground" data-testid="metric-value">
         {value}
       </div>
 
