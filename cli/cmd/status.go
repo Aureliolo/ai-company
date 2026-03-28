@@ -89,7 +89,13 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return runStatusWatch(cmd, state, opts, interval)
 	}
 
-	return runStatusOnce(cmd, state, opts)
+	if err := runStatusOnce(cmd, state, opts); err != nil {
+		return err
+	}
+
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	out.HintGuidance("Use --watch for continuous monitoring, or --check for scripted health checks.")
+	return nil
 }
 
 func runStatusWatch(cmd *cobra.Command, state config.State, opts *GlobalOpts, interval time.Duration) error {
@@ -283,11 +289,15 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 			out.Warn("No containers match requested services")
 		} else {
 			out.Warn("No containers running")
+			out.HintNextStep("Run 'synthorg start' to launch the stack.")
 		}
 		return
 	}
 	_, _ = fmt.Fprintln(w, "Containers:")
 	renderContainerTable(out, containers, statusWide, statusNoTrunc)
+	if !statusWide {
+		out.HintGuidance("Use --wide to show port mappings, or --services to filter by name.")
+	}
 	out.HintTip("Run 'synthorg logs' to view container logs")
 	_, _ = fmt.Fprintln(w)
 }
@@ -395,6 +405,7 @@ func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
 		out.KeyValue("Persistence", persistLabel)
 	} else {
 		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", statusCode))
+		out.HintError("Run 'synthorg doctor' for diagnostics.")
 	}
 }
 

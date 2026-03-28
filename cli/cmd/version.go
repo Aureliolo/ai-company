@@ -25,6 +25,7 @@ var versionCmd = &cobra.Command{
 		out.Logo(version.Version)
 		out.KeyValue("Commit", version.Commit)
 		out.KeyValue("Built", version.Date)
+		out.HintGuidance("Run 'synthorg update --check' to check for newer versions.")
 		return nil
 	},
 }

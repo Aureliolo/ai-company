@@ -297,6 +297,40 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		msg += " (compose regenerated)"
 	}
 	out.Success(msg)
+
+	if composeAffectingKeys[key] {
+		out.HintGuidance("Restart containers with 'synthorg stop && synthorg start' to apply the new value.")
+	}
+
+	switch key {
+	case "hints":
+		switch value {
+		case "always":
+			out.HintGuidance("All hints enabled. You'll see tips, guidance, and next steps.")
+		case "auto":
+			out.HintGuidance("Tips shown once per session. Guidance hidden. Error and next-step hints always shown.")
+		case "never":
+			out.HintGuidance("Tips and guidance suppressed. Error and next-step hints still shown.")
+		}
+	case "color":
+		switch value {
+		case "always":
+			out.HintGuidance("Color forced on, even in non-TTY output.")
+		case "never":
+			out.HintGuidance("Color disabled. Equivalent to NO_COLOR=1.")
+		case "auto":
+			out.HintGuidance("Color auto-detected from terminal capabilities.")
+		}
+	case "output":
+		if value == "json" {
+			out.HintGuidance("Machine-readable JSON output. Human messages suppressed.")
+		}
+	case "timestamps":
+		if value == "iso8601" {
+			out.HintGuidance("Timestamps shown in ISO 8601 format.")
+		}
+	}
+
 	return nil
 }
 

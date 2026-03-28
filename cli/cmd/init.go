@@ -103,6 +103,10 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	printInitSuccess(out, safeDir)
+	if state.Channel == "dev" {
+		out.HintTip("Dev channel receives frequent pre-release updates. Run 'synthorg config set channel stable' to switch.")
+	}
+	out.HintGuidance("Customize settings later with 'synthorg config set <key> <value>'. Run 'synthorg config list' to see all options.")
 	return nil
 }
 

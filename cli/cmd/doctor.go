@@ -123,8 +123,18 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	renderDoctorFiltered(out, report, state)
 	printDoctorFooter(out, state, report)
 
+	if doctorChecks != "" {
+		out.HintGuidance("Run without --checks to see all diagnostic categories.")
+	}
+
 	if doctorFix {
 		doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+		out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
+	}
+
+	status, _ := classifyDoctor(report)
+	if status != doctorHealthy && !doctorFix {
+		out.HintTip("Run 'synthorg doctor --fix' to auto-fix detected issues.")
 	}
 
 	_, _ = fmt.Fprintln(out.Writer())

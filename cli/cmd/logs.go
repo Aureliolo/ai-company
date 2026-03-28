@@ -11,6 +11,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -77,7 +78,17 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	composeArgs := buildLogsArgs(strings.TrimSpace(logTail), args)
-	return composeRun(ctx, cmd, info, safeDir, composeArgs...)
+	if err := composeRun(ctx, cmd, info, safeDir, composeArgs...); err != nil {
+		return err
+	}
+
+	opts := GetGlobalOpts(ctx)
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	if !logFollow {
+		out.HintTip("Use -f to follow log output in real time.")
+	}
+	out.HintGuidance("Filter by service: 'synthorg logs backend'. Use --since 1h for time-based filtering.")
+	return nil
 }
 
 // validateLogsInput validates --tail, --since, --until, and service name arguments.

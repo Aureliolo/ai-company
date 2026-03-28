@@ -100,10 +100,21 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// --cli-only: stop after CLI update.
 	if updateCLIOnly {
+		cliOpts := GetGlobalOpts(cmd.Context())
+		cliOut := ui.NewUIWithOptions(cmd.OutOrStdout(), cliOpts.UIOptions())
+		cliOut.HintGuidance("Run 'synthorg update --images-only' to also update container images.")
 		return nil
 	}
 
-	return updateComposeAndImages(cmd)
+	if err := updateComposeAndImages(cmd); err != nil {
+		return err
+	}
+	if updateImagesOnly {
+		imgOpts := GetGlobalOpts(cmd.Context())
+		imgOut := ui.NewUIWithOptions(cmd.OutOrStdout(), imgOpts.UIOptions())
+		imgOut.HintGuidance("Run 'synthorg update --cli-only' to also update the CLI binary.")
+	}
+	return nil
 }
 
 // updateComposeAndImages reloads config, refreshes the compose template,
@@ -149,9 +160,11 @@ func runUpdateCheck(cmd *cobra.Command, state config.State) error {
 	}
 	if result.UpdateAvail {
 		out.Step(fmt.Sprintf("Update available: %s (current: %s)", result.LatestVersion, result.CurrentVersion))
+		out.HintNextStep("Run 'synthorg update' to apply")
 		return NewExitError(ExitUpdateAvail, nil)
 	}
 	out.Success(fmt.Sprintf("Up to date (%s)", result.CurrentVersion))
+	out.HintGuidance("Use --check for scripted update detection (exit code 10 = update available).")
 	return nil
 }
 
@@ -224,6 +237,9 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 	out.Success(fmt.Sprintf("CLI updated to %s", result.LatestVersion))
 	out.HintNextStep(fmt.Sprintf("Release notes: %s/releases/tag/v%s",
 		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v")))
+	if !autoAccept {
+		out.HintTip("Run 'synthorg config set auto_update_cli true' to auto-accept CLI updates.")
+	}
 
 	return errReexec
 }
@@ -418,6 +434,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
+	manualPull := !state.AutoPull
 	ok, err := confirmUpdate(ctx, fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag), state.AutoPull)
 	if err != nil {
 		return err
@@ -433,7 +450,15 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return err
 	}
 
-	return postPullActions(cmd, info, safeDir, state, updatedState, previousIDs)
+	if err := postPullActions(cmd, info, safeDir, state, updatedState, previousIDs); err != nil {
+		return err
+	}
+	if manualPull {
+		pullOpts := GetGlobalOpts(ctx)
+		pullOut := ui.NewUIWithOptions(cmd.OutOrStdout(), pullOpts.UIOptions())
+		pullOut.HintTip("Run 'synthorg config set auto_pull true' to auto-accept image pulls.")
+	}
+	return nil
 }
 
 // captureImageIDsForCleanup records current image IDs before a pull so
@@ -650,7 +675,12 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	if !restart {
 		return false, nil
 	}
-	return performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
+	restarted, restartErr := performRestart(ctx, out, info, safeDir, state, opts.UIOptions())
+	if restarted {
+		restartOut := ui.NewUIWithOptions(out, opts.UIOptions())
+		restartOut.HintTip("Run 'synthorg config set auto_restart true' to auto-restart after updates.")
+	}
+	return restarted, restartErr
 }
 
 // performRestart stops, restarts, and health-checks containers.

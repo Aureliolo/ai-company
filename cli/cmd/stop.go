@@ -71,6 +71,13 @@ func runStop(cmd *cobra.Command, _ []string) error {
 	}
 	sp.Success("SynthOrg stopped")
 
+	out.HintNextStep("Run 'synthorg start' to restart.")
+	if stopVolumes {
+		out.HintGuidance("Volumes removed -- all persistent data (database, memory) has been deleted.")
+	} else {
+		out.HintGuidance("Persistent data preserved. Use --volumes to also remove database and memory data.")
+	}
+
 	return nil
 }
 

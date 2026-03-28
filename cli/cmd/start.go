@@ -118,6 +118,7 @@ func printStartDryRun(out *ui.UI, state config.State, opts *GlobalOpts) error {
 	out.KeyValue("Detached", strconv.FormatBool(!startNoDetach))
 	out.KeyValue("Health check", strconv.FormatBool(!startNoWait && !startNoDetach))
 	out.Step("Dry run -- no changes made")
+	out.HintNextStep("Remove --dry-run to start the stack")
 	return nil
 }
 
@@ -150,6 +151,7 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 
 	if startNoDetach {
 		out.Step("Starting in foreground mode (Ctrl+C to stop)...")
+		out.HintGuidance("Press Ctrl+C to stop. Logs stream directly to this terminal.")
 		return composeRun(ctx, cmd, info, safeDir, "up")
 	}
 
@@ -175,6 +177,7 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		sp.Success("Backend healthy")
 	} else {
 		out.Step("Health check skipped (--no-wait)")
+		out.HintGuidance("Run 'synthorg status --check' to verify health later.")
 	}
 
 	out.Blank()
@@ -182,6 +185,10 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "API", state.BackendPort),
 		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
 	})
+	out.HintTip("Run 'synthorg status --watch' to monitor container health.")
+	if startNoPull {
+		out.HintGuidance("Images not verified -- run 'synthorg update' to pull and verify latest images.")
+	}
 	return nil
 }
 

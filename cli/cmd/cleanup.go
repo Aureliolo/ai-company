@@ -80,6 +80,9 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	}
 	if len(old) == 0 {
 		out.Success("No images found -- nothing to clean up")
+		if !state.AutoCleanup {
+			out.HintGuidance("Run 'synthorg config set auto_cleanup true' to clean up automatically after updates.")
+		}
 		return nil
 	}
 
@@ -93,6 +96,10 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	}
 
 	displayOldImages(out, old)
+
+	if cleanupAll {
+		out.HintGuidance("--all includes current images. Running containers will prevent removal.")
+	}
 
 	if cleanupDryRun {
 		out.HintNextStep(fmt.Sprintf("Dry run: %d image(s) would be removed", len(old)))
@@ -184,6 +191,9 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 	}
 	if skipped := len(old) - removed; skipped > 0 {
 		out.HintError(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
+	}
+	if removed > 0 {
+		out.HintGuidance("Use --keep N to preserve N recent previous versions.")
 	}
 
 	return removed > 0, nil

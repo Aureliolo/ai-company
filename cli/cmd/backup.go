@@ -398,6 +398,10 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	out.Success("Backup created successfully")
 	printManifest(out, manifest)
 
+	if backupCreateOutput == "" {
+		out.HintTip("Use --output /path/to/file.tar.gz to save the backup locally.")
+	}
+
 	if backupCreateOutput != "" {
 		return copyBackupToLocal(ctx, out, state, manifest.BackupID, backupCreateOutput)
 	}
@@ -478,6 +482,7 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 
 	printBackupTable(out, backups)
 	out.HintTip("Run 'synthorg backup restore <id> --confirm' to restore a backup")
+	out.HintGuidance("Use --limit N to show fewer results, or --sort size to find the largest.")
 	return nil
 }
 
@@ -601,6 +606,7 @@ func renderRestoreSuccess(cmd *cobra.Command, out, errOut *ui.UI, body []byte, s
 	out.Success("Restore completed successfully")
 	out.KeyValue("Safety backup ID", resp.SafetyBackupID)
 	out.KeyValue("Restored components", componentsString(resp.RestoredComponents))
+	out.HintGuidance("A safety backup was created automatically. Run 'synthorg backup list' to see it.")
 
 	if resp.RestartRequired {
 		return handleRestartAfterRestore(cmd.Context(), cmd, out, errOut, safeDir)
