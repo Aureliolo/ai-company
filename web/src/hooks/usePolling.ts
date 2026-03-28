@@ -84,5 +84,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
     }
   }, [stop])
 
+  // start/stop are stable useCallback refs; return a plain object so consumers
+  // depend on the individual refs, not an object whose identity changes on every state update.
   return { active, error, start, stop }
 }

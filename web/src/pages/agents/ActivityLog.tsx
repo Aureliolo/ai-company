@@ -38,6 +38,7 @@ export function ActivityLog({ events, total, onLoadMore, className }: ActivityLo
       ) : (
         <StaggerGroup className="divide-y divide-border">
           {events.map((event, index) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- events lack unique IDs; type+timestamp may collide for same-second events
             <StaggerItem key={`${event.event_type}-${event.timestamp}-${index}`}>
               <ActivityLogItem event={event} />
             </StaggerItem>

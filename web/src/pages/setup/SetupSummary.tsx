@@ -96,7 +96,8 @@ export function SetupSummary({
       <SectionCard title="Agent Roster" icon={Users}>
         <div className="space-y-2">
           {agents.map((agent, index) => (
-            <SetupAgentRow key={`agent-${index}`} agent={agent} />
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
+            <SetupAgentRow key={`${agent.name}-${index}`} agent={agent} />
           ))}
         </div>
       </SectionCard>

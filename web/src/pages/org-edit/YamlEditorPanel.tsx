@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { CompanyConfig } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
@@ -14,15 +14,15 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
   const [parseError, setParseError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
 
-  useEffect(() => {
+  const prevConfigRef = useRef<typeof config | undefined>(undefined)
+  if (config !== prevConfigRef.current) {
+    prevConfigRef.current = config
     if (config && !dirty) {
-      const serialized = serializeToYaml(config)
-      setYamlText(serialized)
+      setYamlText(serializeToYaml(config))
       setDirty(false)
       setParseError(null)
     }
-  // eslint-disable-next-line @eslint-react/exhaustive-deps -- intentionally exclude dirty to avoid infinite loop
-  }, [config])
+  }
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setYamlText(e.target.value)

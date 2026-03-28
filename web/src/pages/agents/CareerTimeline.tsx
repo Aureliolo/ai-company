@@ -22,6 +22,7 @@ export function CareerTimeline({ events, className }: CareerTimelineProps) {
       ) : (
         <StaggerGroup>
           {events.map((event, i) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- events lack unique IDs; type+timestamp may collide
             <StaggerItem key={`${event.event_type}-${event.timestamp}-${i}`}>
               <CareerTimelineEvent
                 event={event}

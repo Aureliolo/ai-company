@@ -52,7 +52,7 @@ export function ProvidersStep() {
 
   const providersCount = Object.keys(providers).length
   const probeResultsCount = Object.keys(probeResults).length
-  const probeAttempted = useRef(false)
+  const probeAttemptedRef = useRef(false)
 
   // Fetch providers on mount
   useEffect(() => {
@@ -70,8 +70,8 @@ export function ProvidersStep() {
 
   // Auto-probe local presets (once per mount)
   useEffect(() => {
-    if (presets.length > 0 && probeResultsCount === 0 && !probing && !probeAttempted.current) {
-      probeAttempted.current = true
+    if (presets.length > 0 && probeResultsCount === 0 && !probing && !probeAttemptedRef.current) {
+      probeAttemptedRef.current = true
       probeAllPresets()
     }
   }, [presets.length, probeResultsCount, probing, probeAllPresets])

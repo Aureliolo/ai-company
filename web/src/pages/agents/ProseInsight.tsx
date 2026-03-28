@@ -19,7 +19,8 @@ export function ProseInsight({ insights, className }: ProseInsightProps) {
       <Lightbulb className="size-4 shrink-0 text-accent mt-0.5" aria-hidden="true" />
       <div className="space-y-1">
         {insights.map((insight, index) => (
-          <p key={index} className="text-sm italic text-secondary-foreground">
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- insight strings may duplicate; index as tiebreaker
+          <p key={`${insight}-${index}`} className="text-sm italic text-secondary-foreground">
             {insight}
           </p>
         ))}

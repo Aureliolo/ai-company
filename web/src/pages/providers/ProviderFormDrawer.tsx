@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -57,19 +57,34 @@ export function ProviderFormDrawer({
     }
   }, [open, mode])
 
-  // Pre-fill in edit mode
-  useEffect(() => {
-    if (mode === 'edit' && provider) {
-      setName(provider.name)
-      setAuthType(provider.auth_type)
-      setBaseUrl(provider.base_url ?? '')
-      setLitellmProvider(provider.litellm_provider ?? '')
-      setTosAccepted(provider.tos_accepted_at !== null)
-    }
-  }, [mode, provider])
+  // Render-phase state sync: capture previous values before comparisons
+  const prevProviderRef = useRef<typeof provider | undefined>(undefined)
+  const prevModeRef = useRef<typeof mode | undefined>(undefined)
+  const prevOpenRef = useRef<typeof open | undefined>(undefined)
+  const prevSelectedPresetRef = useRef<typeof selectedPreset | undefined>(undefined)
+  const modeChanged = mode !== prevModeRef.current
+  const providerChanged = provider !== prevProviderRef.current
+  const openChanged = open !== prevOpenRef.current
+  const selectedPresetChanged = selectedPreset !== prevSelectedPresetRef.current
 
-  // When preset changes, auto-fill form fields (or reset for custom)
-  useEffect(() => {
+  // Clear credentials when switching to edit mode
+  if (open && mode === 'edit' && (openChanged || modeChanged || providerChanged)) {
+    setSelectedPreset(null)
+    setApiKey('')
+    setSubscriptionToken('')
+  }
+
+  // Pre-fill in edit mode (also fires on reopen with same provider)
+  if (open && mode === 'edit' && provider && (openChanged || modeChanged || providerChanged)) {
+    setName(provider.name)
+    setAuthType(provider.auth_type)
+    setBaseUrl(provider.base_url ?? '')
+    setLitellmProvider(provider.litellm_provider ?? '')
+    setTosAccepted(provider.tos_accepted_at !== null)
+  }
+
+  // When user selection changes, auto-fill form fields (or reset for custom)
+  if (selectedPresetChanged) {
     if (selectedPreset === '__custom__') {
       setName('')
       setAuthType('api_key')
@@ -78,17 +93,22 @@ export function ProviderFormDrawer({
       setBaseUrl('')
       setLitellmProvider('')
       setTosAccepted(false)
-      return
+    } else if (preset) {
+      setName(preset.name)
+      setAuthType(preset.auth_type)
+      setBaseUrl(preset.default_base_url ?? '')
+      setLitellmProvider(preset.litellm_provider)
+      setTosAccepted(false)
+      setSubscriptionToken('')
+      setApiKey('')
     }
-    if (!preset) return
-    setName(preset.name)
-    setAuthType(preset.auth_type)
-    setBaseUrl(preset.default_base_url ?? '')
-    setLitellmProvider(preset.litellm_provider)
-    setTosAccepted(false)
-    setSubscriptionToken('')
-    setApiKey('')
-  }, [preset, selectedPreset])
+  }
+
+  // Update all prev refs after comparisons
+  prevModeRef.current = mode
+  prevProviderRef.current = provider
+  prevOpenRef.current = open
+  prevSelectedPresetRef.current = selectedPreset
 
   // Available auth types based on selected preset
   const availableAuthTypes = preset
@@ -116,9 +136,9 @@ export function ProviderFormDrawer({
   }, [])
 
   // Reset form when mode switches (e.g., edit -> create without closing)
-  useEffect(() => {
-    if (mode === 'create' && open) resetForm()
-  }, [mode, open, resetForm])
+  if ((modeChanged || openChanged) && mode === 'create' && open) {
+    resetForm()
+  }
 
   const handleClose = useCallback(() => {
     resetForm()

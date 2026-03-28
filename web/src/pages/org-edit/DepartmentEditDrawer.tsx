@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import type { Department, DepartmentHealth, UpdateDepartmentRequest } from '@/api/types'
 import { Drawer } from '@/components/ui/drawer'
@@ -33,13 +33,17 @@ export function DepartmentEditDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
+  const prevDepartmentRef = useRef<typeof department | undefined>(undefined)
+  if (department !== prevDepartmentRef.current) {
+    prevDepartmentRef.current = department
     if (department) {
       setDisplayName(department.display_name ?? department.name)
       setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
       setSubmitError(null)
     }
-  }, [department])
+    setDeleteOpen(false)
+    setDeleting(false)
+  }
 
   const handleSave = useCallback(async () => {
     if (!department) return

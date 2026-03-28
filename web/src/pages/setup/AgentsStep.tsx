@@ -114,7 +114,8 @@ export function AgentsStep() {
       {/* Agent cards */}
       <StaggerGroup className="space-y-3">
         {agents.map((agent, index) => (
-          <StaggerItem key={`agent-${index}`}>
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- names are user-editable and may duplicate; index as tiebreaker
+          <StaggerItem key={`${agent.name}-${index}`}>
             <SetupAgentCard
               agent={agent}
               index={index}

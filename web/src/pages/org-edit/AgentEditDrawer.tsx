@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import type { AgentConfig, Department, SeniorityLevel, UpdateAgentOrgRequest } from '@/api/types'
 import { SENIORITY_LEVEL_VALUES, AGENT_STATUS_VALUES } from '@/api/types'
@@ -44,7 +44,9 @@ export function AgentEditDrawer({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  useEffect(() => {
+  const prevAgentRef = useRef<typeof agent | undefined>(undefined)
+  if (agent !== prevAgentRef.current) {
+    prevAgentRef.current = agent
     if (agent) {
       setForm({
         name: agent.name,
@@ -55,7 +57,9 @@ export function AgentEditDrawer({
       })
       setSubmitError(null)
     }
-  }, [agent])
+    setDeleteOpen(false)
+    setDeleting(false)
+  }
 
   const deptOptions = useMemo(
     () => departments.map((d) => ({ value: d.name, label: d.display_name ?? d.name })),

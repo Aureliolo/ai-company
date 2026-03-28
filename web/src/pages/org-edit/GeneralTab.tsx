@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Loader2, Settings } from 'lucide-react'
 import type { AutonomyLevel, CompanyConfig, UpdateCompanyRequest } from '@/api/types'
 import { SectionCard } from '@/components/ui/section-card'
@@ -49,7 +49,9 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   const [dirty, setDirty] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const prevConfigRef = useRef<typeof config | undefined>(undefined)
+  if (config !== prevConfigRef.current) {
+    prevConfigRef.current = config
     if (config && !dirty) {
       setForm({
         company_name: config.company_name,
@@ -60,8 +62,7 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
         communication_pattern: config.communication_pattern ?? 'hybrid',
       })
     }
-  // eslint-disable-next-line @eslint-react/exhaustive-deps -- intentionally exclude dirty to avoid sync loop
-  }, [config])
+  }
 
   const updateForm = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))

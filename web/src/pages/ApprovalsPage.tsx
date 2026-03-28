@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { AnimatePresence } from 'framer-motion'
 import { AlertTriangle, ClipboardCheck, WifiOff } from 'lucide-react'
@@ -56,9 +56,9 @@ export default function ApprovalsPage() {
   const [wasConnected, setWasConnected] = useState(false)
 
   // Track whether WS was ever connected to avoid flash on initial load
-  useEffect(() => {
-    if (wsConnected) setWasConnected(true)
-  }, [wsConnected])
+  if (wsConnected && !wasConnected) {
+    setWasConnected(true)
+  }
 
   // URL-synced filters
   const filters: ApprovalPageFilters = useMemo(() => {
@@ -136,14 +136,14 @@ export default function ApprovalsPage() {
   }, [handleSelectApproval])
 
   // Close batch dialogs when selection is emptied (e.g., by WS updates or optimistic transitions)
-  useEffect(() => {
-    if (selectedIds.size === 0) {
-      setBatchApproveOpen(false)
-      setBatchRejectOpen(false)
-      setBatchComment('')
-      setBatchReason('')
-    }
-  }, [selectedIds.size])
+  const prevSelectionSizeRef = useRef(selectedIds.size)
+  if (selectedIds.size === 0 && prevSelectionSizeRef.current > 0) {
+    setBatchApproveOpen(false)
+    setBatchRejectOpen(false)
+    setBatchComment('')
+    setBatchReason('')
+  }
+  prevSelectionSizeRef.current = selectedIds.size
 
   // Batch actions
   const handleBatchApprove = useCallback(async () => {

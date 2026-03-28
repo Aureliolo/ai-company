@@ -29,6 +29,7 @@ export function ToolBadges({ tools, className }: ToolBadgesProps) {
     <SectionCard title="Tools" icon={Wrench} className={className}>
       <div className="flex flex-wrap gap-2">
         {tools.map((tool, index) => (
+          // eslint-disable-next-line @eslint-react/no-array-index-key -- tool names may repeat; index as tiebreaker
           <ToolBadge key={`${tool}-${index}`} tool={tool} />
         ))}
       </div>

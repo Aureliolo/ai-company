@@ -219,7 +219,8 @@ export default function TaskDetailPage() {
               </span>
               <ul className="mt-1.5 space-y-1">
                 {task.acceptance_criteria.map((criterion, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-text-secondary">
+                  // eslint-disable-next-line @eslint-react/no-array-index-key -- criteria lack unique IDs; descriptions may duplicate
+                  <li key={`${criterion.description}-${idx}`} className="flex items-start gap-2 text-sm text-text-secondary">
                     <span className={cn('mt-0.5 size-4 shrink-0 rounded border', criterion.met ? 'border-success bg-success/20' : 'border-border')} />
                     {criterion.description}
                   </li>
