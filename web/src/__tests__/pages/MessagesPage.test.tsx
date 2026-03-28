@@ -26,13 +26,18 @@ const defaultReturn: UseMessagesDataReturn = {
 let hookReturn = { ...defaultReturn }
 const getMessagesData = vi.fn(() => hookReturn)
 
+// Computed key avoids Vitest hoist transform inlining the identifier
 vi.mock('@/hooks/useMessagesData', () => {
   const hookName = 'useMessagesData'
   return { [hookName]: () => getMessagesData() }
 })
 
 vi.mock('@/stores/messages', () => ({
-  useMessagesStore: { setState: vi.fn() },
+  useMessagesStore: {
+    getState: vi.fn(() => ({
+      clearNewMessageIds: vi.fn(),
+    })),
+  },
 }))
 
 function renderPage(route = '/messages') {

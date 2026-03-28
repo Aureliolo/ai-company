@@ -35,6 +35,7 @@ interface MessagesState {
   handleWsEvent: (event: WsEvent, activeChannel: string | null) => void
   toggleThread: (taskId: string) => void
   resetUnread: (channel: string) => void
+  clearNewMessageIds: () => void
 }
 
 let channelRequestSeq = 0
@@ -202,5 +203,9 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
       delete next[channel]
       return { unreadCounts: next }
     })
+  },
+
+  clearNewMessageIds: () => {
+    set({ newMessageIds: new Set<string>() })
   },
 }))

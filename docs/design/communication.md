@@ -131,7 +131,7 @@ MCP (Model Context Protocol, Agentic AI Foundation / Linux Foundation)
 }
 ```
 
-All metadata fields are nullable. The `extra` field contains additional key-value pairs for extensibility.
+All metadata fields are nullable except `extra`, which is always present (defaults to an empty list). The `extra` field contains additional key-value pairs for extensibility.
 
 ---
 

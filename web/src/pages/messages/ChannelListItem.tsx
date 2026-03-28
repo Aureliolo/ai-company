@@ -38,7 +38,10 @@ export function ChannelListItem({
       <Icon className="size-3.5 shrink-0" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{channel.name}</span>
       {unreadCount > 0 && (
-        <span className="shrink-0 rounded-full bg-accent/15 px-1.5 font-mono text-[10px] text-accent">
+        <span
+          aria-label={`${unreadCount} unread`}
+          className="shrink-0 rounded-full bg-accent/15 px-1.5 font-mono text-[10px] text-accent"
+        >
           {unreadCount}
         </span>
       )}

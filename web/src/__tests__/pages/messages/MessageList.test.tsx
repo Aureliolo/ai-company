@@ -30,12 +30,22 @@ describe('MessageList', () => {
 
   it('renders messages with date dividers', () => {
     const msgs = [
-      makeMessage('1', { timestamp: '2026-03-28T10:00:00Z', content: 'First message' }),
-      makeMessage('2', { timestamp: '2026-03-28T14:00:00Z', content: 'Second message' }),
+      makeMessage('1', {
+        timestamp: '2026-03-28T10:00:00Z',
+        content: 'First message',
+      }),
+      makeMessage('2', {
+        timestamp: '2026-03-28T14:00:00Z',
+        content: 'Second message',
+      }),
     ]
     render(<MessageList {...defaultProps} messages={msgs} />)
     expect(screen.getByText('First message')).toBeInTheDocument()
     expect(screen.getByText('Second message')).toBeInTheDocument()
+    // Verify date divider(s) rendered
+    expect(
+      screen.getAllByRole('separator').length,
+    ).toBeGreaterThanOrEqual(1)
   })
 
   it('renders Load earlier messages button when hasMore', () => {

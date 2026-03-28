@@ -52,9 +52,9 @@ export default function MessagesPage() {
   useEffect(() => {
     if (newMessageIds.size === 0) return
     const timer = setTimeout(() => {
-      useMessagesStore.setState({
-        newMessageIds: new Set<string>(),
-      })
+      useMessagesStore
+        .getState()
+        .clearNewMessageIds()
     }, 2000)
     return () => clearTimeout(timer)
   }, [newMessageIds])
