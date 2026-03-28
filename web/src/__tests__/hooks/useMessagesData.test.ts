@@ -157,4 +157,38 @@ describe('useMessagesData', () => {
     const { result } = renderHook(() => useMessagesData('#eng'))
     expect(result.current.unreadCounts['#product']).toBe(3)
   })
+
+  it('returns channelsLoading and channelsError', () => {
+    useMessagesStore.setState({
+      channelsLoading: true,
+      channelsError: 'fail',
+    })
+    const { result } = renderHook(() => useMessagesData(null))
+    expect(result.current.channelsLoading).toBe(true)
+    expect(result.current.channelsError).toBe('fail')
+  })
+
+  it('returns loadingMore from store', () => {
+    useMessagesStore.setState({ loadingMore: true })
+    const { result } = renderHook(() => useMessagesData('#eng'))
+    expect(result.current.loadingMore).toBe(true)
+  })
+
+  it('returns newMessageIds from store', () => {
+    useMessagesStore.setState({
+      newMessageIds: new Set(['msg-1']),
+    })
+    const { result } = renderHook(() => useMessagesData('#eng'))
+    expect(result.current.newMessageIds.has('msg-1')).toBe(
+      true,
+    )
+  })
+
+  it('calls fetchMoreMessages via fetchMore', () => {
+    const { result } = renderHook(() => useMessagesData('#eng'))
+    result.current.fetchMore()
+    expect(mockFetchMoreMessages).toHaveBeenCalledWith(
+      '#eng',
+    )
+  })
 })

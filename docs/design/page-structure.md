@@ -96,7 +96,7 @@ Channel-filtered message feed for inspecting agent-to-agent communications. Two-
 - **Real-time**: WebSocket-driven new message arrival with auto-scroll-to-bottom (when user is near bottom)
 - **Pagination**: "Load earlier messages" button for fetching older messages
 
-**URL params**: `?channel={name}`, `?type={messageType}`, `?priority={level}`, `?search={query}`, `?message={id}` (detail drawer)
+**URL params**: `?channel={name}`, `?type={messageType}`, `?priority={level}`, `?search={query}`, `?message={id}` (detail drawer). All filter params are optional and combinable independently -- `channel` is not required for type/priority/search filters.
 
 **API endpoints**: `GET /messages`, `GET /messages/channels`
 **WS channels**: `messages`

@@ -57,6 +57,22 @@ describe('MessageFilterBar', () => {
     expect(onFiltersChange).toHaveBeenCalledWith({ search: 'h' })
   })
 
+  it('clears search when input is whitespace-only', async () => {
+    const user = userEvent.setup()
+    const onFiltersChange = vi.fn()
+    render(
+      <MessageFilterBar
+        {...defaultProps}
+        onFiltersChange={onFiltersChange}
+      />,
+    )
+    const input = screen.getByLabelText('Search messages')
+    await user.type(input, '   ')
+    expect(onFiltersChange).toHaveBeenLastCalledWith({
+      search: undefined,
+    })
+  })
+
   it('renders filter pills for active filters', () => {
     render(<MessageFilterBar {...defaultProps} filters={{ type: 'delegation', priority: 'high' }} />)
     // Filter pills have remove buttons with accessible labels

@@ -43,7 +43,11 @@ export function MessageFilterBar({
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onFiltersChange({ ...filters, search: e.target.value || undefined })
+      const trimmed = e.target.value.trim()
+      onFiltersChange({
+        ...filters,
+        search: trimmed || undefined,
+      })
     },
     [filters, onFiltersChange],
   )

@@ -77,7 +77,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
 
   fetchMessages: async (channel, limit = MESSAGES_FETCH_LIMIT) => {
     const seq = ++messageRequestSeq
-    set({ loading: true, error: null })
+    set({ loading: true, error: null, loadingMore: false })
     try {
       const result = await messagesApi.listMessages({ channel, limit })
       if (seq !== messageRequestSeq) return
@@ -108,11 +108,19 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         set({ loadingMore: false })
         return
       }
-      set((s) => ({
-        messages: [...s.messages, ...result.data],
-        total: result.total,
-        loadingMore: false,
-      }))
+      set((s) => {
+        const existingIds = new Set(
+          s.messages.map((m) => m.id),
+        )
+        const deduped = result.data.filter(
+          (m) => !existingIds.has(m.id),
+        )
+        return {
+          messages: [...s.messages, ...deduped],
+          total: result.total,
+          loadingMore: false,
+        }
+      })
     } catch (err) {
       if (seq !== messageRequestSeq) {
         set({ loadingMore: false })

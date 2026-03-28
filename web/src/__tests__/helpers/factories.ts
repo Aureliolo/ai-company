@@ -183,7 +183,7 @@ export function makeMeeting(id: string, overrides?: Partial<MeetingResponse>): M
 export function makeMessage(id: string, overrides?: Partial<Message>): Message {
   return {
     id,
-    timestamp: new Date(Date.now() - 3600_000).toISOString(),
+    timestamp: '2026-03-28T09:00:00.000Z',
     sender: 'agent-eng',
     to: '#engineering',
     type: 'task_update',
