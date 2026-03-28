@@ -59,35 +59,59 @@ export default function SettingsNamespacePage() {
     [entries, dirtyValues],
   )
 
+  const persistedValues = useMemo(
+    () =>
+      new Map(
+        entries.map((entry) => [
+          `${entry.definition.namespace}/${entry.definition.key}`,
+          entry.value,
+        ]),
+      ),
+    [entries],
+  )
+
   const handleValueChange = useCallback((compositeKey: string, value: string) => {
     setDirtyValues((prev) => {
       const next = new Map(prev)
-      next.set(compositeKey, value)
+      if (persistedValues.get(compositeKey) === value) {
+        next.delete(compositeKey)
+      } else {
+        next.set(compositeKey, value)
+      }
       return next
     })
-  }, [])
+  }, [persistedValues])
 
   const handleDiscard = useCallback(() => {
     setDirtyValues(new Map())
   }, [])
 
   const handleSave = useCallback(async () => {
-    const failedKeys = await saveSettingsBatch(dirtyValues, updateSetting)
-    if (failedKeys.size === 0) {
-      setDirtyValues(new Map())
-      useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-    } else {
+    try {
+      const pending = new Map(dirtyValues)
+      const failedKeys = await saveSettingsBatch(pending, updateSetting)
+
       setDirtyValues((prev) => {
-        const next = new Map<string, string>()
-        for (const [k, v] of prev) {
-          if (failedKeys.has(k)) next.set(k, v)
+        const next = new Map(prev)
+        for (const [key, value] of pending) {
+          if (!failedKeys.has(key) && next.get(key) === value) {
+            next.delete(key)
+          }
         }
         return next
       })
-      useToastStore.getState().add({
-        variant: 'error',
-        title: `${failedKeys.size} setting(s) failed to save`,
-      })
+
+      if (failedKeys.size === 0) {
+        useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
+      } else {
+        useToastStore.getState().add({
+          variant: 'error',
+          title: `${failedKeys.size} setting(s) failed to save`,
+        })
+      }
+    } catch (err) {
+      console.error('[settings] Unexpected error in handleSave:', err)
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
     }
   }, [dirtyValues, updateSetting])
 
@@ -117,7 +141,6 @@ export default function SettingsNamespacePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="icon">
@@ -128,7 +151,6 @@ export default function SettingsNamespacePage() {
         <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
       </div>
 
-      {/* Banners */}
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
@@ -143,7 +165,6 @@ export default function SettingsNamespacePage() {
         </div>
       )}
 
-      {/* Content */}
       {filteredEntries.length === 0 ? (
         <EmptyState
           icon={Settings}

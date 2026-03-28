@@ -76,7 +76,10 @@ const mockEntries: SettingEntry[] = [
   }),
 ]
 
-const mockUpdateSetting = vi.fn().mockResolvedValue(undefined)
+const mockUpdateSetting = vi.fn().mockResolvedValue({
+  definition: { namespace: 'api', key: 'server_port', type: 'int', default: '3001', description: 'Server bind port', group: 'Server', level: 'basic', sensitive: false, restart_required: false, enum_values: [], validator_pattern: null, min_value: 1, max_value: 65535, yaml_path: 'api.server.port' },
+  value: '3001', source: 'db', updated_at: null,
+})
 const mockResetSetting = vi.fn().mockResolvedValue(undefined)
 
 const defaultHookReturn: UseSettingsDataReturn = {
@@ -187,5 +190,11 @@ describe('SettingsPage', () => {
     hookReturn = { ...defaultHookReturn, entries: [] }
     renderSettings()
     expect(screen.getByText('No settings available')).toBeInTheDocument()
+  })
+
+  it('shows custom wsSetupError message when wsSetupError is set', () => {
+    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'Auth token expired' }
+    renderSettings()
+    expect(screen.getByText('Auth token expired')).toBeInTheDocument()
   })
 })

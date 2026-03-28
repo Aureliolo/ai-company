@@ -27,6 +27,8 @@ export function useSettingsData(): UseSettingsDataReturn {
   const error = useSettingsStore((s) => s.error)
   const savingKeys = useSettingsStore((s) => s.savingKeys)
   const saveError = useSettingsStore((s) => s.saveError)
+  const updateSetting = useSettingsStore((s) => s.updateSetting)
+  const resetSetting = useSettingsStore((s) => s.resetSetting)
 
   // Initial data fetch
   useEffect(() => {
@@ -39,12 +41,11 @@ export function useSettingsData(): UseSettingsDataReturn {
   }, [])
   const polling = usePolling(pollFn, SETTINGS_POLL_INTERVAL)
 
-  // polling.start/stop are stable refs from useCallback inside usePolling
+  const { start: pollingStart, stop: pollingStop } = polling
   useEffect(() => {
-    polling.start()
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
+    pollingStart()
+    return () => pollingStop()
+  }, [pollingStart, pollingStop])
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(
@@ -71,7 +72,7 @@ export function useSettingsData(): UseSettingsDataReturn {
     saveError,
     wsConnected,
     wsSetupError,
-    updateSetting: useSettingsStore.getState().updateSetting,
-    resetSetting: useSettingsStore.getState().resetSetting,
+    updateSetting,
+    resetSetting,
   }
 }

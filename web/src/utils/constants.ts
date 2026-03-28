@@ -115,11 +115,18 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
 }
 
 /** Reverse lookup: dependent setting -> controller setting it depends on. */
-export const SETTING_DEPENDED_BY: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(SETTING_DEPENDENCIES).flatMap(([controller, deps]) =>
-    deps.map((dep) => [dep, controller]),
-  ),
-)
+const _dependedBy: Record<string, string> = {}
+for (const [controller, deps] of Object.entries(SETTING_DEPENDENCIES)) {
+  for (const dep of deps) {
+    if (_dependedBy[dep] && _dependedBy[dep] !== controller) {
+      throw new Error(
+        `Duplicate dependency mapping for "${dep}": "${_dependedBy[dep]}" and "${controller}"`,
+      )
+    }
+    _dependedBy[dep] = controller
+  }
+}
+export const SETTING_DEPENDED_BY: Readonly<Record<string, string>> = _dependedBy
 
 /** Polling interval for settings page (ms). */
 export const SETTINGS_POLL_INTERVAL = 60_000

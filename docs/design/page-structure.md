@@ -120,7 +120,11 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Collapsible namespace sections with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
 
-The **backup namespace** includes backup management CRUD: trigger backup, list backups, view details, restore, delete. This consolidates the BackupController under the Settings page.
+Enabling advanced mode for the first time shows a confirmation dialog warning about misconfiguration risk. The warning is deduplicated per session via `sessionStorage`. Advanced mode preference persists in `localStorage`.
+
+Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES` map in `web/src/utils/constants.ts` (not by backend schema). When a controller setting is disabled, its dependent settings display in a muted state.
+
+The **backup namespace** will include backup management CRUD (trigger, list, restore, delete) in a future iteration, consolidating the BackupController under the Settings page. The current implementation covers backup configuration settings only (schedule, retention, path).
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 

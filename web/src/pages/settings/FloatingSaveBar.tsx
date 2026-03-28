@@ -32,7 +32,9 @@ export function FloatingSaveBar({
           </span>
 
           {saveError && (
-            <span className="text-xs text-danger">{saveError}</span>
+            <span className="text-xs text-danger" role="alert" aria-live="assertive">
+              {saveError}
+            </span>
           )}
 
           <Button variant="ghost" size="sm" onClick={onDiscard} disabled={saving}>

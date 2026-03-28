@@ -4,7 +4,10 @@ import { useSettingsData } from '@/hooks/useSettingsData'
 
 const mockFetchSettingsData = vi.fn().mockResolvedValue(undefined)
 const mockRefreshEntries = vi.fn().mockResolvedValue(undefined)
-const mockUpdateSetting = vi.fn().mockResolvedValue(undefined)
+const mockUpdateSetting = vi.fn().mockResolvedValue({
+  definition: { namespace: 'api', key: 'server_port', type: 'int', default: '3001', description: 'Server bind port', group: 'Server', level: 'basic', sensitive: false, restart_required: true, enum_values: [], validator_pattern: null, min_value: 1, max_value: 65535, yaml_path: 'api.server.port' },
+  value: '3001', source: 'db', updated_at: null,
+})
 const mockResetSetting = vi.fn().mockResolvedValue(undefined)
 const mockUpdateFromWsEvent = vi.fn()
 const { mockPollingStart, mockPollingStop } = vi.hoisted(() => ({
@@ -127,7 +130,13 @@ describe('useSettingsData', () => {
   it('starts polling on mount', async () => {
     renderHook(() => useSettingsData())
     await waitFor(() => {
-      expect(mockPollingStart).toHaveBeenCalled()
+      expect(mockPollingStart).toHaveBeenCalledOnce()
     })
+  })
+
+  it('stops polling on unmount', () => {
+    const { unmount } = renderHook(() => useSettingsData())
+    unmount()
+    expect(mockPollingStop).toHaveBeenCalledOnce()
   })
 })

@@ -45,6 +45,7 @@ export function NamespaceSection({
   const [collapsed, setCollapsed] = useState(false)
   const isOpen = forceOpen || !collapsed
   const groups = groupByGroup(entries)
+  const contentId = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}-content`
 
   return (
     <section className="rounded-lg border border-border bg-card">
@@ -53,6 +54,7 @@ export function NamespaceSection({
         onClick={() => setCollapsed((v) => !v)}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-card-hover"
         aria-expanded={isOpen}
+        aria-controls={contentId}
       >
         <span className="text-text-secondary">{icon}</span>
         <h2 className="text-sm font-semibold text-foreground">{displayName}</h2>
@@ -67,7 +69,7 @@ export function NamespaceSection({
       </button>
 
       {isOpen && (
-        <div className="border-t border-border px-4 py-2">
+        <div id={contentId} className="border-t border-border px-4 py-2">
           {[...groups.entries()].map(([group, groupEntries]) => (
             <div key={group} className="py-2">
               {groups.size > 1 && (

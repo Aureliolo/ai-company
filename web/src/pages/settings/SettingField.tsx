@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { SettingDefinition } from '@/api/types'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
@@ -19,8 +19,8 @@ function parseArrayValue(value: string): string {
     if (Array.isArray(parsed)) {
       return parsed.join('\n')
     }
-  } catch {
-    // Not valid JSON, return as-is
+  } catch (err) {
+    console.warn('[settings] parseArrayValue: not valid JSON, displaying raw value', err)
   }
   return value
 }
@@ -31,6 +31,43 @@ function serializeArrayValue(text: string): string {
     .map((line) => line.trim())
     .filter(Boolean)
   return JSON.stringify(items)
+}
+
+/** Array setting with local draft to avoid serialization on every keystroke. */
+function ArraySettingField({
+  value,
+  onChange,
+  disabled,
+  validationError,
+  setValidationError,
+}: {
+  value: string
+  onChange: (value: string) => void
+  disabled?: boolean
+  validationError: string | null
+  setValidationError: (err: string | null) => void
+}) {
+  const [draft, setDraft] = useState(() => parseArrayValue(value))
+  const prevValueRef = useRef(value)
+  if (value !== prevValueRef.current) {
+    prevValueRef.current = value
+    setDraft(parseArrayValue(value))
+  }
+  return (
+    <InputField
+      label=""
+      multiline
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        setValidationError(null)
+      }}
+      onBlur={() => onChange(serializeArrayValue(draft))}
+      disabled={disabled}
+      hint="One entry per line"
+      error={validationError}
+    />
+  )
 }
 
 export function SettingField({ definition, value, onChange, disabled }: SettingFieldProps) {
@@ -76,7 +113,6 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     return 'text'
   }, [definition.type, definition.sensitive])
 
-  // Boolean toggle
   if (definition.type === 'bool') {
     const checked = value.toLowerCase() === 'true' || value === '1'
     return (
@@ -89,7 +125,6 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     )
   }
 
-  // Enum select
   if (definition.type === 'enum' && definition.enum_values.length > 0) {
     const options: SelectOption[] = definition.enum_values.map((v) => ({
       value: v,
@@ -112,7 +147,8 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     definition.min_value != null &&
     definition.max_value != null
   ) {
-    const numValue = Number(value) || definition.min_value
+    const parsedValue = Number(value)
+    const numValue = Number.isNaN(parsedValue) ? definition.min_value : parsedValue
     const step = definition.type === 'int' ? 1 : 0.1
     return (
       <SliderField
@@ -127,26 +163,18 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     )
   }
 
-  // Array settings -- multiline with one item per line
   if (isArraySetting) {
-    const displayValue = parseArrayValue(value)
     return (
-      <InputField
-        label=""
-        multiline
-        value={displayValue}
-        onChange={(e) => {
-          onChange(serializeArrayValue(e.target.value))
-          setValidationError(null)
-        }}
+      <ArraySettingField
+        value={value}
+        onChange={onChange}
         disabled={disabled}
-        hint="One entry per line"
-        error={validationError}
+        validationError={validationError}
+        setValidationError={setValidationError}
       />
     )
   }
 
-  // JSON -- multiline textarea
   if (definition.type === 'json') {
     return (
       <InputField
@@ -171,7 +199,6 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     )
   }
 
-  // Default: string/numeric input
   return (
     <InputField
       label=""

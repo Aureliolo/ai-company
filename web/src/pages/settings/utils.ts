@@ -1,19 +1,36 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
 
-/** Case-insensitive substring match across setting fields. */
+/**
+ * Fuzzy subsequence match: returns true if every character of `needle`
+ * appears in `haystack` in order. E.g. "prt" matches "server_port".
+ */
+function fuzzyMatch(haystack: string, needle: string): boolean {
+  const h = haystack.toLowerCase()
+  let j = 0
+  for (let i = 0; i < h.length && j < needle.length; i++) {
+    if (h[i] === needle[j]) j++
+  }
+  return j === needle.length
+}
+
+/** Fuzzy match across setting key, description, namespace, and group. */
 export function matchesSetting(entry: SettingEntry, query: string): boolean {
-  const q = query.toLowerCase()
+  const q = query.trim().toLowerCase()
+  if (!q) return true
   const def = entry.definition
   return (
-    def.key.toLowerCase().includes(q) ||
-    def.description.toLowerCase().includes(q) ||
-    def.namespace.toLowerCase().includes(q) ||
-    def.group.toLowerCase().includes(q)
+    fuzzyMatch(def.key, q) ||
+    fuzzyMatch(def.description, q) ||
+    fuzzyMatch(def.namespace, q) ||
+    fuzzyMatch(def.group, q)
   )
 }
 
-/** Check whether a controller setting is currently disabled (false/0). */
+/**
+ * Returns true when the controller setting's effective value is not
+ * "true" or "1". Dirty (unsaved) values take precedence over persisted entries.
+ */
 export function isControllerDisabled(
   controllerKey: string,
   entries: SettingEntry[],
@@ -52,16 +69,19 @@ export async function saveSettingsBatch(
 ): Promise<Set<string>> {
   const keys = [...dirtyValues.keys()]
   const promises = keys.map((compositeKey) => {
-    const [ns, key] = compositeKey.split('/') as [SettingNamespace, string]
+    const slashIdx = compositeKey.indexOf('/')
+    const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
+    const key = compositeKey.slice(slashIdx + 1)
     return updateSetting(ns, key, dirtyValues.get(compositeKey)!).then(() => undefined)
   })
   const results = await Promise.allSettled(promises)
   const failedKeys = new Set<string>()
   for (let i = 0; i < results.length; i++) {
-    const result = results[i]
-    const key = keys[i]
-    if (result && key && result.status === 'rejected') {
-      failedKeys.add(key)
+    const result = results[i]!
+    const compositeKey = keys[i]!
+    if (result.status === 'rejected') {
+      failedKeys.add(compositeKey)
+      console.error(`[settings] Failed to save "${compositeKey}":`, result.reason)
     }
   }
   return failedKeys

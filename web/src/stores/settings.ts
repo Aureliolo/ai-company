@@ -140,29 +140,28 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       throw error
     }
     // Reset succeeded -- refetch entries to get the resolved default.
-    // A refetch failure here means the reset applied but the UI is stale.
+    let refreshedEntries: SettingEntry[] | undefined
     try {
-      const entries = await settingsApi.getAllSettings()
+      refreshedEntries = await settingsApi.getAllSettings()
+    } catch (err) {
+      // Reset applied but refetch failed -- UI is stale until next poll cycle
+      console.warn('[settings] Post-reset refetch failed; data will refresh at next poll', err)
+    } finally {
       set((state) => {
         const newSaving = new Set(state.savingKeys)
         newSaving.delete(compositeKey)
-        return { entries, savingKeys: newSaving }
-      })
-    } catch {
-      // Reset applied but refetch failed -- clear saving state, entries will
-      // be refreshed by the next poll cycle.
-      set((state) => {
-        const newSaving = new Set(state.savingKeys)
-        newSaving.delete(compositeKey)
-        return { savingKeys: newSaving }
+        const update: Partial<SettingsState> = { savingKeys: newSaving }
+        if (refreshedEntries) update.entries = refreshedEntries
+        return update
       })
     }
   },
 
   updateFromWsEvent: (event) => {
-    // On system events (e.g. restart notifications), refetch all settings
     if (event.channel === 'system') {
-      get().refreshEntries()
+      void get().refreshEntries().catch((err) => {
+        console.warn('[settings] WebSocket-triggered refresh failed:', getErrorMessage(err))
+      })
     }
   },
 }))

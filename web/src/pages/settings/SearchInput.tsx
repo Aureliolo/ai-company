@@ -38,6 +38,10 @@ export function SearchInput({ value, onChange, className }: SearchInputProps) {
   )
 
   const handleClear = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
     setLocal('')
     onChange('')
   }, [onChange])

@@ -93,42 +93,48 @@ export default function SettingsPage() {
     [entries, dirtyValues],
   )
 
+  const persistedValues = useMemo(
+    () =>
+      new Map(
+        entries.map((entry) => [
+          `${entry.definition.namespace}/${entry.definition.key}`,
+          entry.value,
+        ]),
+      ),
+    [entries],
+  )
+
   const handleValueChange = useCallback((compositeKey: string, value: string) => {
     setDirtyValues((prev) => {
       const next = new Map(prev)
-      next.set(compositeKey, value)
+      if (persistedValues.get(compositeKey) === value) {
+        next.delete(compositeKey)
+      } else {
+        next.set(compositeKey, value)
+      }
       return next
     })
-  }, [])
+  }, [persistedValues])
 
   const handleDiscard = useCallback(() => {
     setDirtyValues(new Map())
   }, [])
 
   const handleSave = useCallback(async () => {
-    const failedKeys = await saveSettingsBatch(dirtyValues, updateSetting)
-    if (failedKeys.size === 0) {
-      setDirtyValues(new Map())
-      useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
-    } else {
-      // Clear only succeeded entries from dirty values
+    try {
+      const pending = new Map(dirtyValues)
+      const failedKeys = await saveSettingsBatch(pending, updateSetting)
+
       setDirtyValues((prev) => {
-        const next = new Map<string, string>()
-        for (const [k, v] of prev) {
-          if (failedKeys.has(k)) next.set(k, v)
+        const next = new Map(prev)
+        for (const [key, value] of pending) {
+          if (!failedKeys.has(key) && next.get(key) === value) {
+            next.delete(key)
+          }
         }
         return next
       })
-      useToastStore.getState().add({
-        variant: 'error',
-        title: `${failedKeys.size} setting(s) failed to save`,
-      })
-    }
-  }, [dirtyValues, updateSetting])
 
-  const handleCodeSave = useCallback(
-    async (changes: Map<string, string>) => {
-      const failedKeys = await saveSettingsBatch(changes, updateSetting)
       if (failedKeys.size === 0) {
         useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
       } else {
@@ -136,6 +142,42 @@ export default function SettingsPage() {
           variant: 'error',
           title: `${failedKeys.size} setting(s) failed to save`,
         })
+      }
+    } catch (err) {
+      console.error('[settings] Unexpected error in handleSave:', err)
+      useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
+    }
+  }, [dirtyValues, updateSetting])
+
+  const handleCodeSave = useCallback(
+    async (changes: Map<string, string>): Promise<Set<string>> => {
+      try {
+        const failedKeys = await saveSettingsBatch(changes, updateSetting)
+
+        // Reconcile GUI dirtyValues with code-mode saves
+        setDirtyValues((prev) => {
+          const next = new Map(prev)
+          for (const [key, value] of changes) {
+            if (!failedKeys.has(key) && next.get(key) === value) {
+              next.delete(key)
+            }
+          }
+          return next
+        })
+
+        if (failedKeys.size === 0) {
+          useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
+        } else {
+          useToastStore.getState().add({
+            variant: 'error',
+            title: `${failedKeys.size} setting(s) failed to save`,
+          })
+        }
+        return failedKeys
+      } catch (err) {
+        console.error('[settings] Unexpected error in handleCodeSave:', err)
+        useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
+        return new Set(changes.keys())
       }
     },
     [updateSetting],
@@ -164,17 +206,22 @@ export default function SettingsPage() {
     return <SettingsSkeleton />
   }
 
-  // Visible entries for code editor (all non-hidden, respects advanced mode)
-  const codeEntries = entries.filter((e) => {
-    const ck = `${e.definition.namespace}/${e.definition.key}`
-    if (HIDDEN_SETTINGS.has(ck)) return false
-    if (!advancedMode && e.definition.level === 'advanced') return false
-    return NAMESPACE_ORDER.includes(e.definition.namespace)
-  })
+  // Visible entries for code editor, overlaid with GUI drafts so Code mode sees unsaved GUI edits
+  const codeEntries = entries
+    .map((entry) => {
+      const ck = `${entry.definition.namespace}/${entry.definition.key}`
+      const dirtyValue = dirtyValues.get(ck)
+      return dirtyValue !== undefined ? { ...entry, value: dirtyValue } : entry
+    })
+    .filter((e) => {
+      const ck = `${e.definition.namespace}/${e.definition.key}`
+      if (HIDDEN_SETTINGS.has(ck)) return false
+      if (!advancedMode && e.definition.level === 'advanced') return false
+      return NAMESPACE_ORDER.includes(e.definition.namespace)
+    })
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         <div className="flex items-center gap-4">
@@ -192,7 +239,6 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Banners */}
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
@@ -216,7 +262,6 @@ export default function SettingsPage() {
         />
       )}
 
-      {/* Content */}
       {viewMode === 'code' ? (
         <ErrorBoundary level="section">
           <CodeEditorPanel entries={codeEntries} onSave={handleCodeSave} saving={saving} />
@@ -264,7 +309,6 @@ export default function SettingsPage() {
         </>
       )}
 
-      {/* Advanced mode warning dialog */}
       <ConfirmDialog
         open={showAdvancedWarning}
         onOpenChange={setShowAdvancedWarning}
