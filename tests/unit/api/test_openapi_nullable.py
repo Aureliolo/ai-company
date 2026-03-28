@@ -179,6 +179,7 @@ class TestNullableUnionNormalization:
         result = _normalize_nullable_unions(schema)
         # Mixed branches ($ref + primitive): not flattened to type array.
         assert "anyOf" in result or "oneOf" in result
+        assert not isinstance(result.get("type"), list)
 
     def test_discriminated_union_preserved(self) -> None:
         """oneOf without null stays oneOf."""

@@ -74,6 +74,8 @@ class TemplateInfo:
         tags: Free-form categorization tags for filtering and discovery.
         skill_patterns: Skill design pattern identifiers describing how
             the template's agents interact.
+        variables: User-configurable ``TemplateVariable`` instances
+            extracted from the template's ``variables`` section.
     """
 
     name: str

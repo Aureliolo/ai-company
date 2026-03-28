@@ -103,7 +103,8 @@ export default function LoginPage() {
     [mode, handleSetup, handleLogin],
   )
 
-  const disabled = submitting || locked
+  const isLoginMode = mode === 'login'
+  const disabled = submitting || (locked && isLoginMode)
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -179,8 +180,8 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* Lockout warning */}
-              {locked && !error && (
+              {/* Lockout warning (login mode only) */}
+              {locked && isLoginMode && !error && (
                 <div
                   role="alert"
                   className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning"

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import LoginPage from './LoginPage'
@@ -10,8 +10,9 @@ import LoginPage from './LoginPage'
  * is no backend, so the call rejects and the page falls back to the
  * Sign In form (the default behaviour for network errors).
  *
- * The AdminCreation story works around this by rendering a wrapper
- * that patches the module before the component mounts.
+ * The AdminCreation story patches the module export before the
+ * component mounts using a Storybook loader + a gate component
+ * that waits until the patch is applied.
  */
 const meta = {
   title: 'Pages/Login',
@@ -33,17 +34,19 @@ type Story = StoryObj<typeof meta>
 export const DefaultLogin: Story = {}
 
 /**
- * Admin creation form.
- *
- * We patch the setup API module before rendering so the component
- * sees `needs_admin: true` from the status check.
+ * Gate component that applies the setup API patch before rendering
+ * LoginPage, then restores it on unmount.
  */
-export const AdminCreation: Story = {
-  loaders: [
-    async () => {
-      const setupApi = await import('@/api/endpoints/setup')
-      const original = setupApi.getSetupStatus
-      ;(setupApi as Record<string, unknown>).getSetupStatus = () =>
+function AdminCreationGate() {
+  const [ready, setReady] = useState(false)
+  const [restore, setRestore] = useState<(() => void) | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void import('@/api/endpoints/setup').then((mod) => {
+      if (cancelled) return
+      const original = mod.getSetupStatus
+      ;(mod as Record<string, unknown>).getSetupStatus = () =>
         Promise.resolve({
           needs_admin: true,
           needs_setup: true,
@@ -53,21 +56,28 @@ export const AdminCreation: Story = {
           has_agents: false,
           min_password_length: 12,
         })
-      return { restoreSetup: () => { (setupApi as Record<string, unknown>).getSetupStatus = original } }
-    },
-  ],
-  decorators: [
-    (Story, context) => {
-      const restore = (context.loaded as { restoreSetup?: () => void })?.restoreSetup
-      // Restore on unmount via useEffect cleanup instead of setTimeout.
-      useEffect(() => {
-        return () => { if (restore) restore() }
-      }, [restore])
-      return (
-        <MemoryRouter>
-          <Story />
-        </MemoryRouter>
-      )
-    },
-  ],
+      setRestore(() => () => {
+        ;(mod as Record<string, unknown>).getSetupStatus = original
+      })
+      setReady(true)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    return () => { if (restore) restore() }
+  }, [restore])
+
+  if (!ready) return null
+  return <LoginPage />
+}
+
+/**
+ * Admin creation form.
+ *
+ * Uses a gate component that patches getSetupStatus before
+ * LoginPage mounts, ensuring needs_admin: true is seen.
+ */
+export const AdminCreation: Story = {
+  render: () => <AdminCreationGate />,
 }

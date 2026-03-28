@@ -590,6 +590,7 @@ class TestSetupComplete:
             # Must succeed despite bootstrap failure (non-fatal).
             assert resp.status_code == 201
             assert resp.json()["data"]["setup_complete"] is True
+            failing_bootstrap.assert_awaited_once()
         finally:
             app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)
