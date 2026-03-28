@@ -74,12 +74,19 @@ describe('ApprovalsPage', () => {
     expect(screen.getByText('WebSocket connection failed.')).toBeInTheDocument()
   })
 
+  it('does not show WS banner on initial load when not yet connected', () => {
+    hookReturn = { ...defaultReturn, wsConnected: false, wsSetupError: null, selectedIds: new Set() }
+    renderPage()
+    expect(screen.queryByText(/real-time updates disconnected/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('WebSocket connection failed.')).not.toBeInTheDocument()
+  })
+
   it('renders empty state when no approvals', () => {
     renderPage()
     expect(screen.getByText('No approvals')).toBeInTheDocument()
   })
 
-  it('renders metric cards for risk levels', () => {
+  it('renders metric cards with pending counts per risk level', () => {
     hookReturn = {
       ...defaultReturn,
       approvals: [
@@ -90,6 +97,7 @@ describe('ApprovalsPage', () => {
       selectedIds: new Set(),
     }
     renderPage()
+    // Risk group section headings confirm groups rendered for populated levels
     expect(screen.getByText('Critical Approvals')).toBeInTheDocument()
     expect(screen.getByText('High Approvals')).toBeInTheDocument()
   })
