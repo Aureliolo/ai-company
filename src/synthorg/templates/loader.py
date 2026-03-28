@@ -76,6 +76,11 @@ class TemplateInfo:
             the template's agents interact.
         variables: User-configurable ``TemplateVariable`` instances
             extracted from the template's ``variables`` section.
+        agent_count: Number of agents defined in the template.
+        department_count: Number of departments defined in the template.
+        autonomy_level: Autonomy level (e.g. ``"full"``, ``"semi"``,
+            ``"supervised"``).
+        workflow: Workflow type (e.g. ``"agile_kanban"``, ``"kanban"``).
     """
 
     name: str
@@ -85,6 +90,10 @@ class TemplateInfo:
     tags: tuple[str, ...] = ()
     skill_patterns: tuple[SkillPattern, ...] = ()
     variables: tuple[TemplateVariable, ...] = ()
+    agent_count: int = 0
+    department_count: int = 0
+    autonomy_level: str = "semi"
+    workflow: str = "agile_kanban"
 
 
 @dataclass(frozen=True)
@@ -121,6 +130,7 @@ def list_templates() -> tuple[TemplateInfo, ...]:
             try:
                 loaded = _load_builtin(name)
                 meta = loaded.template.metadata
+                tmpl = loaded.template
                 seen[name] = TemplateInfo(
                     name=name,
                     display_name=meta.name,
@@ -128,7 +138,11 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     source="builtin",
                     tags=meta.tags,
                     skill_patterns=meta.skill_patterns,
-                    variables=loaded.template.variables,
+                    variables=tmpl.variables,
+                    agent_count=len(tmpl.agents),
+                    department_count=len(tmpl.departments),
+                    autonomy_level=tmpl.autonomy.get("level", "semi"),
+                    workflow=tmpl.workflow,
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.exception(
@@ -149,6 +163,7 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
         try:
             loaded = _load_from_file(path)
             meta = loaded.template.metadata
+            tmpl = loaded.template
             seen[name] = TemplateInfo(
                 name=name,
                 display_name=meta.name,
@@ -156,7 +171,11 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
                 source="user",
                 tags=meta.tags,
                 skill_patterns=meta.skill_patterns,
-                variables=loaded.template.variables,
+                variables=tmpl.variables,
+                agent_count=len(tmpl.agents),
+                department_count=len(tmpl.departments),
+                autonomy_level=tmpl.autonomy.get("level", "semi"),
+                workflow=tmpl.workflow,
             )
         except (TemplateRenderError, TemplateValidationError, OSError) as exc:
             logger.warning(

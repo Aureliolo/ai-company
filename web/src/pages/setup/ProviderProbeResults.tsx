@@ -9,7 +9,7 @@ interface ProbeResultItemProps {
   probing: boolean
   alreadyAdded: boolean
   adding: boolean
-  onAddPreset: (presetName: string) => void
+  onAddPreset: (presetName: string, detectedUrl?: string) => void
 }
 
 function ProbeResultItem({ preset, result, probing, alreadyAdded, adding, onAddPreset }: ProbeResultItemProps) {
@@ -38,7 +38,7 @@ function ProbeResultItem({ preset, result, probing, alreadyAdded, adding, onAddP
       {detected && !alreadyAdded && (
         <Button
           size="xs"
-          onClick={() => onAddPreset(preset.name)}
+          onClick={() => onAddPreset(preset.name, result?.url ?? undefined)}
           disabled={adding}
         >
           {adding ? 'Adding...' : 'Add'}
@@ -56,7 +56,7 @@ export interface ProviderProbeResultsProps {
   probeResults: Readonly<Partial<Record<string, ProbePresetResponse>>>
   probing: boolean
   providers: Readonly<Record<string, ProviderConfig>>
-  onAddPreset: (presetName: string) => Promise<void>
+  onAddPreset: (presetName: string, detectedUrl?: string) => Promise<void>
   onReprobe: () => Promise<void>
 }
 
@@ -74,10 +74,10 @@ export function ProviderProbeResults({
 
   if (localPresets.length === 0) return null
 
-  const handleAdd = async (presetName: string) => {
+  const handleAdd = async (presetName: string, detectedUrl?: string) => {
     setAddingPreset(presetName)
     try {
-      await onAddPreset(presetName)
+      await onAddPreset(presetName, detectedUrl)
     } catch {
       // Error already set in store (providersError) and rendered by ProvidersStep
     } finally {
@@ -106,17 +106,20 @@ export function ProviderProbeResults({
           <RefreshCw className={probing ? 'size-3.5 animate-spin' : 'size-3.5'} />
         </Button>
       </div>
-      {localPresets.map((preset) => (
-        <ProbeResultItem
-          key={preset.name}
-          preset={preset}
-          result={probeResults[preset.name]}
-          probing={probing}
-          alreadyAdded={preset.name in providers}
-          adding={addingPreset === preset.name}
-          onAddPreset={handleAdd}
-        />
-      ))}
+      {localPresets.map((preset) => {
+        const probeResult = probeResults[preset.name]
+        return (
+          <ProbeResultItem
+            key={preset.name}
+            preset={preset}
+            result={probeResult}
+            probing={probing}
+            alreadyAdded={preset.name in providers}
+            adding={addingPreset === preset.name}
+            onAddPreset={handleAdd}
+          />
+        )
+      })}
     </div>
   )
 }
