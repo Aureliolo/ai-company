@@ -110,5 +110,5 @@ class TestSetupDTOs:
                 name="Alice",
                 role="Developer",
                 department="Engineering",
-                **{field: value},
+                **{field: value},  # type: ignore[arg-type]
             )
