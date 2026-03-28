@@ -105,7 +105,7 @@ repos:
 
       - id: eslint-web
         name: ESLint (web dashboard)
-        entry: bash -c '(cd web && npx eslint src/ --max-warnings 0)'
+        entry: bash -c '(cd web && npm run lint)'
         language: system
         files: ^web/src/.*\.(ts|tsx)$
         pass_filenames: false

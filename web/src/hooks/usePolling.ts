@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -84,5 +84,5 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
     }
   }, [stop])
 
-  return { active, error, start, stop }
+  return useMemo(() => ({ active, error, start, stop }), [active, error, start, stop])
 }
