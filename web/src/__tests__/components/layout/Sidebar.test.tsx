@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { renderWithRouter } from '../../test-utils'
 
@@ -41,6 +42,7 @@ function setup(initialEntries: string[] = ['/']) {
 describe('Sidebar', () => {
   beforeEach(() => {
     resetStore()
+    useThemeStore.getState().setSidebarMode('collapsible')
     localStorage.clear()
     vi.clearAllMocks()
   })
@@ -134,5 +136,56 @@ describe('Sidebar', () => {
     await user.click(screen.getByTitle('Logout'))
 
     expect(logoutSpy).toHaveBeenCalledOnce()
+  })
+
+  describe('sidebarMode', () => {
+    it('returns null when mode is hidden', () => {
+      useThemeStore.getState().setSidebarMode('hidden')
+      setup()
+
+      expect(screen.queryByLabelText('Main navigation')).not.toBeInTheDocument()
+    })
+
+    it('is always collapsed in rail mode (no collapse toggle)', () => {
+      useThemeStore.getState().setSidebarMode('rail')
+      setup()
+
+      // Collapsed state shows brand mark "S" instead of "SynthOrg"
+      expect(screen.getByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+
+      // Collapse toggle should not be present
+      expect(screen.queryByTitle('Collapse sidebar')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()
+    })
+
+    it('is always collapsed in compact mode (no collapse toggle)', () => {
+      useThemeStore.getState().setSidebarMode('compact')
+      setup()
+
+      expect(screen.getByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+
+      expect(screen.queryByTitle('Collapse sidebar')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()
+    })
+
+    it('is always expanded in persistent mode (no collapse toggle)', () => {
+      useThemeStore.getState().setSidebarMode('persistent')
+      setup()
+
+      expect(screen.getByText('SynthOrg')).toBeInTheDocument()
+      expect(screen.queryByText('S')).not.toBeInTheDocument()
+
+      expect(screen.queryByTitle('Collapse sidebar')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Expand sidebar')).not.toBeInTheDocument()
+    })
+
+    it('shows collapse toggle only in collapsible mode', () => {
+      useThemeStore.getState().setSidebarMode('collapsible')
+      setup()
+
+      expect(screen.getByTitle('Collapse sidebar')).toBeInTheDocument()
+    })
   })
 })

@@ -227,6 +227,9 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?`, `required?`, `disabled?`, `className?` | Labeled select dropdown with error/hint display and placeholder support. |
 | `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?`, `disabled?`, `className?` | Labeled range slider with custom value formatter and aria-live value display. |
 | `ToggleField` | `toggle-field.tsx` | `label`, `checked`, `onChange`, `description?`, `disabled?` | Labeled toggle switch (role="switch") with optional description text. |
+| `CodeMirrorEditor` | `code-mirror-editor.tsx` | `value`, `onChange`, `language`, `readOnly?`, `aria-label?`, `className?` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, and `readOnly` support. |
+| `SegmentedControl` | `segmented-control.tsx` | `label`, `options`, `value`, `onChange`, `disabled?`, `size?`, `className?` | Accessible radiogroup with keyboard navigation (arrow keys + wrapping), size variants (`sm`/`md`), generic `<T extends string>` typing. |
+| `ThemeToggle` | `theme-toggle.tsx` | `className?` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
 
 ### Utility Functions
 
@@ -262,6 +265,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `useFlash()` | `hooks/useFlash.ts` | Real-time update flash effect. Returns `{ flashing, flashClassName, triggerFlash, flashStyle }`. Uses `STATUS_FLASH` timing constants. |
 | `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colors. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
 | `useCommandPalette()` | `hooks/useCommandPalette.ts` | Global command palette state. `registerCommands()` adds page-local commands (cleanup on unmount). `open()` / `close()` / `toggle()`. |
+| `useAnimationPreset()` | `hooks/useAnimationPreset.ts` | Returns animation config (`spring`, `tween`, `staggerDelay`, `enableLayout`) based on the user's theme animation preference. Components use this instead of directly referencing `lib/motion.ts` constants. |
 
 ### Types
 

@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import { ROUTES } from '@/router/routes'
 import { SidebarNavItem } from './SidebarNavItem'
 
@@ -48,26 +49,40 @@ function writeCollapsed(value: boolean): void {
 }
 
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [localCollapsed, setLocalCollapsed] = useState(readCollapsed)
+  const sidebarMode = useThemeStore((s) => s.sidebarMode)
   const { user } = useAuth()
   const logout = useAuthStore((s) => s.logout)
   const { open: openCommandPalette } = useCommandPalette()
 
   const shortcutKey = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
 
+  // Sidebar mode determines structure; local toggle only applies in collapsible mode
+  const collapsed =
+    sidebarMode === 'rail' || sidebarMode === 'compact'
+      ? true
+      : sidebarMode === 'persistent'
+        ? false
+        : localCollapsed
+
+  const showCollapseToggle = sidebarMode === 'collapsible'
+
   function toggleCollapse() {
-    setCollapsed((prev) => {
+    setLocalCollapsed((prev) => {
       const next = !prev
       writeCollapsed(next)
       return next
     })
   }
 
+  // Hidden mode: don't render the sidebar at all
+  if (sidebarMode === 'hidden') return null
+
   return (
     <aside
       className={cn(
         'flex h-full flex-col border-r border-border bg-surface transition-[width] duration-200',
-        collapsed ? 'w-14' : 'w-[220px]',
+        sidebarMode === 'compact' ? 'w-[var(--so-sidebar-compact)]' : collapsed ? 'w-[var(--so-sidebar-collapsed)]' : 'w-[var(--so-sidebar-expanded)]',
       )}
     >
       {/* Header */}
@@ -162,22 +177,24 @@ export function Sidebar() {
       {/* Bottom section (non-navigation controls) */}
       <div className="border-t border-border px-2 py-3">
         <div className="flex flex-col gap-1">
-          {/* Collapse toggle */}
-          <button
-            onClick={toggleCollapse}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={SIDEBAR_BUTTON_CLASS}
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
-            ) : (
-              <>
-                <PanelLeftClose className="size-5 shrink-0" aria-hidden="true" />
-                <span>Collapse</span>
-              </>
-            )}
-          </button>
+          {/* Collapse toggle (only in collapsible mode) */}
+          {showCollapseToggle && (
+            <button
+              onClick={toggleCollapse}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className={SIDEBAR_BUTTON_CLASS}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="mx-auto size-5" aria-hidden="true" />
+              ) : (
+                <>
+                  <PanelLeftClose className="size-5 shrink-0" aria-hidden="true" />
+                  <span>Collapse</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Notifications placeholder */}
           <button

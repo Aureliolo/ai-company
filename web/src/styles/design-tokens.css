@@ -62,6 +62,11 @@
   --so-space-10: 48px;
   --so-space-12: 64px;
 
+  /* -- Layout widths -- */
+  --so-sidebar-collapsed: 3.5rem;  /* 56px = w-14 */
+  --so-sidebar-compact: 180px;
+  --so-sidebar-expanded: 220px;
+
   /* -- Border radius -- */
   --so-radius-sm: 4px;
   --so-radius-md: 6px;
@@ -76,6 +81,8 @@
   --so-overlay-hover: rgba(255, 255, 255, 0.04);
   --so-overlay-active: rgba(56, 189, 248, 0.06);
   --so-overlay-flash: rgba(56, 189, 248, 0.10);
+  --so-overlay-selection: rgba(56, 189, 248, 0.15);
+  --so-overlay-selection-focused: rgba(56, 189, 248, 0.25);
 }
 
 /*
@@ -111,6 +118,108 @@
   --so-density-section-gap: var(--so-space-6);
   --so-density-grid-gap: var(--so-space-6);
 }
+
+/* ---------------------------------------------------------------------------
+ * Color palette axis -- override --so-* brand/background/border tokens.
+ * Switch palette by adding .theme-* to <html>. Default (Warm Ops) is :root.
+ * --------------------------------------------------------------------------- */
+
+.theme-ice-station {
+  --so-accent: #6ee7b7;
+  --so-accent-dim: #34d399;
+  --so-bg-base: #0a0f14;
+  --so-bg-surface: #0f1620;
+  --so-bg-card: #131d28;
+  --so-bg-card-hover: #182430;
+  --so-border: #1e2d3e;
+  --so-border-bright: #2a3d4e;
+  --so-shadow-card-hover: 0 4px 24px rgba(110, 231, 183, 0.08);
+  --so-shadow-health-glow: 0 0 8px rgba(110, 231, 183, 0.3);
+  --so-overlay-active: rgba(110, 231, 183, 0.06);
+  --so-overlay-flash: rgba(110, 231, 183, 0.10);
+  --so-overlay-selection: rgba(110, 231, 183, 0.15);
+  --so-overlay-selection-focused: rgba(110, 231, 183, 0.25);
+}
+
+.theme-stealth {
+  --so-accent: #a78bfa;
+  --so-accent-dim: #8b5cf6;
+  --so-bg-base: #09090b;
+  --so-bg-surface: #0e0e14;
+  --so-bg-card: #12121c;
+  --so-bg-card-hover: #171724;
+  --so-border: #1c1c2e;
+  --so-border-bright: #28283e;
+  --so-shadow-card-hover: 0 4px 24px rgba(167, 139, 250, 0.08);
+  --so-shadow-health-glow: 0 0 8px rgba(167, 139, 250, 0.3);
+  --so-overlay-active: rgba(167, 139, 250, 0.06);
+  --so-overlay-flash: rgba(167, 139, 250, 0.10);
+  --so-overlay-selection: rgba(167, 139, 250, 0.15);
+  --so-overlay-selection-focused: rgba(167, 139, 250, 0.25);
+}
+
+.theme-signal {
+  --so-accent: #fb923c;
+  --so-accent-dim: #f97316;
+  --so-bg-base: #0c0a08;
+  --so-bg-surface: #141010;
+  --so-bg-card: #1a1412;
+  --so-bg-card-hover: #201a16;
+  --so-border: #2e2218;
+  --so-border-bright: #3e3028;
+  --so-shadow-card-hover: 0 4px 24px rgba(251, 146, 60, 0.08);
+  --so-shadow-health-glow: 0 0 8px rgba(251, 146, 60, 0.3);
+  --so-overlay-active: rgba(251, 146, 60, 0.06);
+  --so-overlay-flash: rgba(251, 146, 60, 0.10);
+  --so-overlay-selection: rgba(251, 146, 60, 0.15);
+  --so-overlay-selection-focused: rgba(251, 146, 60, 0.25);
+}
+
+.theme-neon {
+  --so-accent: #22d3ee;
+  --so-accent-dim: #06b6d4;
+  --so-success: #4ade80;
+  --so-warning: #facc15;
+  --so-danger: #f87171;
+  --so-bg-base: #050510;
+  --so-bg-surface: #0a0a1e;
+  --so-bg-card: #0f0f28;
+  --so-bg-card-hover: #141432;
+  --so-border: #1a1a3a;
+  --so-border-bright: #26264a;
+  --so-shadow-card-hover: 0 4px 24px rgba(34, 211, 238, 0.12);
+  --so-shadow-health-glow: 0 0 8px rgba(34, 211, 238, 0.4);
+  --so-overlay-active: rgba(34, 211, 238, 0.06);
+  --so-overlay-flash: rgba(34, 211, 238, 0.10);
+  --so-overlay-selection: rgba(34, 211, 238, 0.15);
+  --so-overlay-selection-focused: rgba(34, 211, 238, 0.25);
+}
+
+/* ---------------------------------------------------------------------------
+ * Typography axis -- override --so-font-* tokens.
+ * Switch typography by adding .typography-* to <html>. Default (Geist) is :root.
+ * --------------------------------------------------------------------------- */
+
+.typography-jetbrains {
+  --so-font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --so-font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+.typography-ibm-plex {
+  --so-font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --so-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+ * Animation axis -- marker classes consumed by useAnimationPreset() hook.
+ * These do not define CSS variables; JS reads classList to determine preset.
+ * --------------------------------------------------------------------------- */
+
+/* .animation-minimal   -- reduced motion, minimal transitions           */
+/* .animation-spring    -- playful spring physics                         */
+/* .animation-instant   -- zero-duration, maximum performance             */
+/* .animation-status-driven -- animations only on state changes (default) */
+/* .animation-aggressive -- high energy, scale+slide+glow                 */
 
 /* ---------------------------------------------------------------------------
  * Skeleton shimmer animation

@@ -1,0 +1,232 @@
+import { useEffect, useRef } from 'react'
+import { EditorState, Compartment, type Extension } from '@codemirror/state'
+import { EditorView, lineNumbers, drawSelection, keymap } from '@codemirror/view'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { bracketMatching, syntaxHighlighting, HighlightStyle } from '@codemirror/language'
+import { json } from '@codemirror/lang-json'
+import { yaml } from '@codemirror/lang-yaml'
+import { tags } from '@lezer/highlight'
+import { cn } from '@/lib/utils'
+
+export interface CodeMirrorEditorProps {
+  /** Current document text (external source of truth). */
+  value: string
+  /** Called when the user edits the document. Receives the full new text. */
+  onChange: (value: string) => void
+  /** Language mode for syntax highlighting. */
+  language: 'json' | 'yaml'
+  /** When true, the editor is non-editable. */
+  readOnly?: boolean
+  /** Accessible label for the editor. */
+  'aria-label'?: string
+  /** Additional CSS class on the outer container. */
+  className?: string
+}
+
+// ---------------------------------------------------------------------------
+// CodeMirror theme using --so-* design tokens (dark: true tells CM to use
+// light-on-dark base colors; actual colors come from design tokens which
+// may vary by palette).
+// ---------------------------------------------------------------------------
+
+const darkTheme = EditorView.theme(
+  {
+    '&': {
+      backgroundColor: 'var(--so-bg-surface)',
+      color: 'var(--so-text-primary)',
+      fontFamily: 'var(--so-font-mono)',
+      fontSize: 'var(--so-text-body-sm)',
+      borderRadius: 'var(--so-radius-lg)',
+      border: '1px solid var(--so-border)',
+    },
+    '&.cm-focused': {
+      outline: 'none',
+      boxShadow: '0 0 0 2px var(--so-accent)',
+    },
+    '.cm-content': {
+      caretColor: 'var(--so-accent)',
+      padding: 'var(--so-space-4) var(--so-space-2)',
+      fontFamily: 'var(--so-font-mono)',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'var(--so-bg-base)',
+      color: 'var(--so-text-muted)',
+      borderRight: '1px solid var(--so-border)',
+      fontFamily: 'var(--so-font-mono)',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'var(--so-bg-card)',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'var(--so-bg-card)',
+    },
+    '.cm-selectionBackground': {
+      backgroundColor: 'var(--so-overlay-selection) !important',
+    },
+    '&.cm-focused .cm-selectionBackground': {
+      backgroundColor: 'var(--so-overlay-selection-focused) !important',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: 'var(--so-accent)',
+    },
+    '.cm-matchingBracket': {
+      backgroundColor: 'var(--so-overlay-selection)',
+      outline: '1px solid var(--so-accent-dim)',
+    },
+    '.cm-nonmatchingBracket': {
+      backgroundColor: 'var(--so-overlay-active)',
+      outline: '1px solid var(--so-danger)',
+    },
+    '.cm-scroller': {
+      overflow: 'auto',
+    },
+  },
+  { dark: true },
+)
+
+// ---------------------------------------------------------------------------
+// Syntax highlighting
+// ---------------------------------------------------------------------------
+
+const highlightStyle = HighlightStyle.define([
+  { tag: tags.propertyName, color: 'var(--so-accent)' },
+  { tag: tags.keyword, color: 'var(--so-accent)' },
+  { tag: tags.string, color: 'var(--so-success)' },
+  { tag: tags.number, color: 'var(--so-warning)' },
+  { tag: tags.bool, color: 'var(--so-accent-dim)' },
+  { tag: tags.null, color: 'var(--so-text-muted)' },
+  { tag: tags.punctuation, color: 'var(--so-text-secondary)' },
+  { tag: tags.comment, color: 'var(--so-text-muted)', fontStyle: 'italic' },
+])
+
+// ---------------------------------------------------------------------------
+// Language helpers
+// ---------------------------------------------------------------------------
+
+function getLanguageExtension(lang: 'json' | 'yaml'): Extension {
+  return lang === 'json' ? json() : yaml()
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function CodeMirrorEditor({
+  value,
+  onChange,
+  language,
+  readOnly = false,
+  'aria-label': ariaLabel,
+  className,
+}: CodeMirrorEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const languageCompartmentRef = useRef(new Compartment())
+  const readOnlyCompartmentRef = useRef(new Compartment())
+
+  // Keep callbacks in refs to avoid recreating extensions
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  // Track whether a programmatic update is in progress
+  const isProgrammaticRef = useRef(false)
+
+  // Create editor on mount
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged && !isProgrammaticRef.current) {
+        onChangeRef.current(update.state.doc.toString())
+      }
+    })
+
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        lineNumbers(),
+        drawSelection(),
+        bracketMatching(),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        syntaxHighlighting(highlightStyle),
+        languageCompartmentRef.current.of(getLanguageExtension(language)),
+        readOnlyCompartmentRef.current.of(EditorState.readOnly.of(readOnly)),
+        EditorView.lineWrapping,
+        darkTheme,
+        updateListener,
+      ],
+    })
+
+    const view = new EditorView({
+      state,
+      parent: containerRef.current,
+    })
+
+    viewRef.current = view
+
+    return () => {
+      view.destroy()
+      viewRef.current = null
+    }
+    // Only run on mount -- value/language/readOnly synced via separate effects
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+  }, [])
+
+  // Sync external value changes to CodeMirror
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+
+    const currentDoc = view.state.doc.toString()
+    if (value !== currentDoc) {
+      isProgrammaticRef.current = true
+      try {
+        view.dispatch({
+          changes: { from: 0, to: currentDoc.length, insert: value },
+        })
+      } finally {
+        isProgrammaticRef.current = false
+      }
+    }
+  }, [value])
+
+  // Reconfigure language when format changes
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+
+    view.dispatch({
+      effects: languageCompartmentRef.current.reconfigure(
+        getLanguageExtension(language),
+      ),
+    })
+  }, [language])
+
+  // Reconfigure readOnly when the prop changes
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+
+    view.dispatch({
+      effects: readOnlyCompartmentRef.current.reconfigure(
+        EditorState.readOnly.of(readOnly),
+      ),
+    })
+  }, [readOnly])
+
+  return (
+    <div
+      ref={containerRef}
+      role="textbox"
+      aria-label={ariaLabel}
+      aria-readonly={readOnly}
+      aria-multiline
+      className={cn(
+        'min-h-96 [&_.cm-editor]:min-h-96',
+        readOnly && 'opacity-60',
+        className,
+      )}
+    />
+  )
+}
