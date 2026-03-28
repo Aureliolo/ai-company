@@ -375,11 +375,11 @@ class PlannerWorktreeStrategy:
                 event=WORKSPACE_MERGE_FAILED,
             )
 
+            start = time.monotonic()
             pre_merge_sha = await self._checkout_and_capture_sha(
                 workspace,
             )
 
-            start = time.monotonic()
             rc, _, stderr = await self._run_git(
                 "merge",
                 "--no-ff",
@@ -426,12 +426,20 @@ class PlannerWorktreeStrategy:
             msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
             raise WorkspaceMergeError(msg)
 
-        pre_rc, pre_sha_out, _ = await self._run_git(
+        pre_rc, pre_sha_out, pre_stderr = await self._run_git(
             "rev-parse",
             "HEAD",
             log_event=WORKSPACE_MERGE_FAILED,
         )
-        return pre_sha_out.strip() if pre_rc == 0 else ""
+        if pre_rc != 0:
+            logger.warning(
+                WORKSPACE_MERGE_FAILED,
+                workspace_id=workspace.workspace_id,
+                operation="rev-parse",
+                error=f"Failed to capture pre-merge SHA: {pre_stderr}",
+            )
+            return ""
+        return pre_sha_out.strip()
 
     async def _finalize_successful_merge(
         self,

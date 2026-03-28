@@ -223,31 +223,22 @@ class LlmSemanticAnalyzer:
                 config=comp_config,
             )
             conflicts = parse_tool_call_response(response)
-        except ValueError:
-            if attempt < max_retries:
-                logger.debug(
-                    WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                    workspace_id=workspace.workspace_id,
-                    analyzer="llm",
-                    attempt=attempt,
-                    reason="parse_error",
-                )
-                return None
-            logger.warning(
-                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
-                workspace_id=workspace.workspace_id,
-                analyzer="llm",
-                reason="parse_exhausted",
+        except ValueError as exc:
+            return self._handle_parse_error(
+                workspace=workspace,
+                attempt=attempt,
+                max_retries=max_retries,
+                error=exc,
             )
-            return ()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                 workspace_id=workspace.workspace_id,
                 analyzer="llm",
                 reason="provider_error",
+                error=f"{type(exc).__name__}: {exc}",
                 exc_info=True,
             )
             return ()
@@ -260,6 +251,38 @@ class LlmSemanticAnalyzer:
                 attempt=attempt,
             )
             return conflicts
+
+    @staticmethod
+    def _handle_parse_error(
+        *,
+        workspace: Workspace,
+        attempt: int,
+        max_retries: int,
+        error: ValueError,
+    ) -> tuple[MergeConflict, ...] | None:
+        """Handle a parse error from ``parse_tool_call_response``.
+
+        Returns:
+            ``None`` to signal a retry, or ``()`` on exhaustion.
+        """
+        if attempt < max_retries:
+            logger.debug(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                workspace_id=workspace.workspace_id,
+                analyzer="llm",
+                attempt=attempt,
+                reason="parse_error",
+                error=str(error),
+            )
+            return None
+        logger.warning(
+            WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            workspace_id=workspace.workspace_id,
+            analyzer="llm",
+            reason="parse_exhausted",
+            error=str(error),
+        )
+        return ()
 
 
 def _read_file_contents(

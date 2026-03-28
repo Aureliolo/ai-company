@@ -743,39 +743,32 @@ class TestValidateFilePath:
     """Tests for the _validate_file_path module-level function."""
 
     @pytest.mark.unit
-    def test_empty_string(self) -> None:
-        """Empty string returns False."""
-        assert _validate_file_path("") is False
-
-    @pytest.mark.unit
-    def test_starts_with_dash(self) -> None:
-        """Flag-like path starting with dash returns False."""
-        assert _validate_file_path("-malicious") is False
-
-    @pytest.mark.unit
-    def test_directory_traversal(self) -> None:
-        """Path containing '..' traversal returns False."""
-        assert _validate_file_path("src/../etc/passwd") is False
-
-    @pytest.mark.unit
-    def test_absolute_path(self) -> None:
-        """Absolute path starting with '/' returns False."""
-        assert _validate_file_path("/etc/passwd") is False
-
-    @pytest.mark.unit
-    def test_valid_relative_path(self) -> None:
-        """Valid relative path returns True."""
-        assert _validate_file_path("src/main.py") is True
-
-    @pytest.mark.unit
-    def test_path_with_spaces(self) -> None:
-        """Path with spaces returns True (spaces are allowed)."""
-        assert _validate_file_path("src/my file.py") is True
-
-    @pytest.mark.unit
-    def test_path_with_special_chars(self) -> None:
-        """Path with disallowed special chars returns False."""
-        assert _validate_file_path("src/main;rm -rf.py") is False
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("", False),
+            ("-malicious", False),
+            ("src/../etc/passwd", False),
+            ("/etc/passwd", False),
+            ("C:/Windows/system32", False),
+            ("src/main.py", True),
+            ("src/my file.py", True),
+            ("src/main;rm -rf.py", False),
+        ],
+        ids=[
+            "empty",
+            "dash_prefix",
+            "traversal",
+            "absolute_unix",
+            "absolute_windows",
+            "valid_relative",
+            "spaces",
+            "special_chars",
+        ],
+    )
+    def test_validate_file_path(self, path: str, expected: bool) -> None:
+        """Validate file path safety checks."""
+        assert _validate_file_path(path) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -1100,20 +1093,6 @@ class TestRunSemanticAnalysis:
 
 class TestDoSemanticAnalysis:
     """Tests for the semantic analysis pipeline via _run_semantic_analysis."""
-
-    @pytest.mark.unit
-    async def test_returns_empty_when_analyzer_is_none(self) -> None:
-        """Returns () when analyzer is None (no error raised)."""
-        strategy = _make_strategy(semantic_analyzer=None)
-        ws = make_workspace()
-
-        result = await strategy._run_semantic_analysis(
-            workspace=ws,
-            pre_merge_sha="abc123",
-            merge_sha="def456",
-        )
-
-        assert result == ()
 
     @pytest.mark.unit
     async def test_catches_non_cancelled_exception(self) -> None:

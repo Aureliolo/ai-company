@@ -110,11 +110,21 @@ async def get_changed_files(
         return ()
     if not stdout:
         return ()
-    return tuple(
-        line.strip()
-        for line in stdout.splitlines()
-        if line.strip() and _validate_file_path(line.strip())
-    )
+    safe: list[str] = []
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _validate_file_path(stripped):
+            safe.append(stripped)
+        else:
+            logger.warning(
+                WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+                operation="diff",
+                file=stripped,
+                error="skipping file with unsafe path characters",
+            )
+    return tuple(safe)
 
 
 async def get_base_sources(
@@ -134,6 +144,8 @@ async def get_base_sources(
 
     Returns:
         Mapping of file path to content at the given commit.
+        Files that do not exist at the given commit are omitted
+        (logged at warning level).
     """
     sources: dict[str, str] = {}
     sem = asyncio.Semaphore(concurrency)
@@ -156,7 +168,7 @@ async def get_base_sources(
             if rc == 0:
                 sources[fp] = stdout
             else:
-                logger.debug(
+                logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                     operation="show",
                     base_sha=base_sha,
@@ -198,7 +210,15 @@ async def run_semantic_analysis(  # noqa: PLR0913
     Returns:
         Tuple of semantic ``MergeConflict`` instances.
     """
-    if analyzer is None or not pre_merge_sha:
+    if analyzer is None:
+        return ()
+    if not pre_merge_sha:
+        logger.warning(
+            WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            workspace_id=workspace.workspace_id,
+            reason="missing_pre_merge_sha",
+            error="Cannot run semantic analysis without pre-merge SHA",
+        )
         return ()
     if not config.enabled:
         return ()
@@ -220,6 +240,32 @@ async def run_semantic_analysis(  # noqa: PLR0913
     return result
 
 
+async def _resolve_branch_point(
+    run_git: GitRunner,
+    workspace: Workspace,
+    pre_merge_sha: str,
+) -> str:
+    """Resolve the branch point for semantic analysis.
+
+    Falls back to ``pre_merge_sha`` when merge-base lookup fails.
+    """
+    branch_point = await get_merge_base(
+        run_git,
+        pre_merge_sha,
+        workspace.branch_name,
+    )
+    if not branch_point:
+        logger.warning(
+            WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
+            workspace_id=workspace.workspace_id,
+            operation="merge-base-fallback",
+            fallback_sha=pre_merge_sha,
+            error="Could not determine merge base, falling back to pre-merge SHA",
+        )
+        return pre_merge_sha
+    return branch_point
+
+
 async def _do_analysis(  # noqa: PLR0913
     *,
     run_git: GitRunner,
@@ -232,14 +278,11 @@ async def _do_analysis(  # noqa: PLR0913
 ) -> tuple[MergeConflict, ...]:
     """Execute semantic analysis, returning ``()`` on failure."""
     try:
-        branch_point = await get_merge_base(
+        branch_point = await _resolve_branch_point(
             run_git,
+            workspace,
             pre_merge_sha,
-            workspace.branch_name,
         )
-        if not branch_point:
-            branch_point = pre_merge_sha
-
         changed_files = await get_changed_files(
             run_git,
             branch_point,

@@ -96,6 +96,18 @@ class TestFilterFiles:
         result = filter_files(("readme.md", "config.yaml"), config)
         assert result == []
 
+    def test_extension_filter_applied_before_max_files(self) -> None:
+        """Extension filtering narrows before max_files truncates."""
+        config = SemanticAnalysisConfig(
+            file_extensions=(".py",),
+            max_files=2,
+        )
+        result = filter_files(
+            ("a.md", "b.py", "c.md", "d.py", "e.py"),
+            config,
+        )
+        assert result == ["b.py", "d.py"]
+
 
 # ---------------------------------------------------------------------------
 # AstSemanticAnalyzer
@@ -362,7 +374,7 @@ class TestCompositeSemanticAnalyzer:
         analyzer.analyze.side_effect = _blocking
 
         composite = CompositeSemanticAnalyzer(analyzers=(analyzer,))
-        task = asyncio.get_event_loop().create_task(
+        task = asyncio.create_task(
             composite.analyze(
                 workspace=_make_workspace(),
                 changed_files=("a.py",),

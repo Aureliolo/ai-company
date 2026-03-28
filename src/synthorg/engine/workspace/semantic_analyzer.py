@@ -78,12 +78,12 @@ def filter_files(
         List of file paths whose extensions match, in input order,
         truncated to ``max_files``.
     """
-    py_files = [
+    matched = [
         f
         for f in changed_files
         if any(f.endswith(ext) for ext in config.file_extensions)
     ]
-    return py_files[: config.max_files]
+    return matched[: config.max_files]
 
 
 def _read_sources(
@@ -252,8 +252,10 @@ class CompositeSemanticAnalyzer:
     """Chains multiple semantic analyzers and deduplicates results.
 
     Runs all analyzers concurrently via ``asyncio.TaskGroup`` and
-    collects their conflicts. If an analyzer raises an exception,
-    it is logged and skipped.
+    collects their conflicts. If an analyzer raises an ``Exception``,
+    it is logged and skipped. Cancellation (``CancelledError``)
+    propagates via the ``TaskGroup`` as a ``BaseExceptionGroup``
+    and is never suppressed.
 
     Args:
         analyzers: Tuple of analyzers to run concurrently.
@@ -292,8 +294,9 @@ class CompositeSemanticAnalyzer:
         Returns:
             Deduplicated tuple of semantic conflicts from all analyzers.
         """
-        # Safe without a lock: asyncio tasks yield only at await
-        # points, so list.extend is never interleaved.
+        # No lock needed: list.extend runs synchronously after the
+        # analyzer's await returns, so concurrent tasks never
+        # interleave on this list.
         all_conflicts: list[MergeConflict] = []
 
         async def _run(analyzer: SemanticAnalyzer) -> None:
