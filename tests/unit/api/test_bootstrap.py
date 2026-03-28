@@ -189,12 +189,12 @@ class TestBootstrapAgents:
         assert len(agents) == 1
         assert agents[0].autonomy_level == AutonomyLevel.SEMI
 
-    async def test_empty_model_uses_unknown_fallback(
+    async def test_empty_model_skips_agent(
         self,
         registry: AgentRegistryService,
         config_resolver: AsyncMock,
     ) -> None:
-        """Agent with empty model dict gets provider='unknown' fallback."""
+        """Agent with empty model dict is skipped (not registered)."""
         from synthorg.api.bootstrap import bootstrap_agents
 
         config = AgentConfig(
@@ -207,11 +207,8 @@ class TestBootstrapAgents:
 
         count = await bootstrap_agents(config_resolver, registry)
 
-        assert count == 1
-        agents = await registry.list_active()
-        assert len(agents) == 1
-        assert agents[0].model.provider == "unknown"
-        assert agents[0].model.model_id == "unknown"
+        assert count == 0
+        assert await registry.agent_count() == 0
 
 
 @pytest.mark.unit

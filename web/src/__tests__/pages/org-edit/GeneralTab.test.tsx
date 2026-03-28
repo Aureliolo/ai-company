@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import fc from 'fast-check'
 import { GeneralTab } from '@/pages/org-edit/GeneralTab'
 import { makeCompanyConfig } from '../../helpers/factories'
 
@@ -6,7 +7,7 @@ describe('GeneralTab', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(undefined)
 
   beforeEach(() => {
-    vi.resetAllMocks()
+    vi.clearAllMocks()
   })
 
   it('renders empty state when config is null', () => {
@@ -64,12 +65,36 @@ describe('GeneralTab', () => {
   it('disables save button when form is pristine', () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
-    expect(screen.getByText('Save Settings').closest('button')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
+  })
+
+  it('save button disablement follows invariant across states', () => {
+    fc.assert(
+      fc.property(fc.boolean(), fc.string({ minLength: 1 }), (saving, nextName) => {
+        cleanup()
+        const config = makeCompanyConfig()
+        render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={saving} />)
+        if (nextName !== config.company_name) {
+          fireEvent.change(screen.getByLabelText(/company name/i), {
+            target: { value: nextName },
+          })
+        }
+        const button = screen.getByRole('button', { name: /save settings/i })
+        const isPristine = nextName === config.company_name
+        const shouldBeDisabled = isPristine || saving
+        if (shouldBeDisabled) {
+          expect(button).toBeDisabled()
+        } else {
+          expect(button).toBeEnabled()
+        }
+      }),
+      { numRuns: 20 },
+    )
   })
 
   it('disables save button when saving', () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={true} />)
-    expect(screen.getByText('Save Settings').closest('button')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
   })
 })

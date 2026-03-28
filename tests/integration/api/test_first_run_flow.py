@@ -6,7 +6,8 @@ setup completion -- verifying that agents end up in the runtime
 registry.
 """
 
-from collections.abc import Generator
+import asyncio
+from collections.abc import AsyncGenerator, Generator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -39,10 +40,11 @@ def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-async def fake_persistence() -> FakePersistenceBackend:
+async def fake_persistence() -> AsyncGenerator[FakePersistenceBackend]:
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
@@ -195,4 +197,8 @@ class TestFirstRunFlow:
 
         # ── 8. Verify agents are registered in the runtime registry ──
         app_state = client.app.state.app_state
-        assert len(app_state.agent_registry._agents) >= 1
+        loop = asyncio.get_event_loop()
+        agent_count = loop.run_until_complete(
+            app_state.agent_registry.agent_count(),
+        )
+        assert agent_count >= 1

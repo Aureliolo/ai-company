@@ -165,6 +165,24 @@ describe('LoginPage', () => {
     expect(mockLogin).not.toHaveBeenCalled()
   })
 
+  it('validates password is required for login', async () => {
+    mockGetSetupStatus.mockResolvedValue(setupStatusResponse())
+    const user = userEvent.setup()
+
+    renderLogin()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Password is required')
+    })
+    expect(mockLogin).not.toHaveBeenCalled()
+  })
+
   it('admin creation validates password match', async () => {
     mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
     const user = userEvent.setup()
@@ -203,6 +221,25 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('at least 12 characters')
+    })
+    expect(mockSetup).not.toHaveBeenCalled()
+  })
+
+  it('admin creation validates username is required', async () => {
+    mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
+    const user = userEvent.setup()
+
+    renderLogin()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Create Admin Account' })).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByLabelText('Password'), 'validpassword1')
+    await user.type(screen.getByLabelText(/confirm password/i), 'validpassword1')
+    await user.click(screen.getByRole('button', { name: 'Create Account' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Username is required')
     })
     expect(mockSetup).not.toHaveBeenCalled()
   })

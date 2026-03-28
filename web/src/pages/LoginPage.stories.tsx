@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter } from 'react-router'
 import LoginPage from './LoginPage'
@@ -57,12 +58,11 @@ export const AdminCreation: Story = {
   ],
   decorators: [
     (Story, context) => {
-      // Restore the original function after render via useEffect.
       const restore = (context.loaded as { restoreSetup?: () => void })?.restoreSetup
-      if (restore) {
-        // Defer restoration so the component's useEffect runs first.
-        setTimeout(restore, 100)
-      }
+      // Restore on unmount via useEffect cleanup instead of setTimeout.
+      useEffect(() => {
+        return () => { if (restore) restore() }
+      }, [restore])
       return (
         <MemoryRouter>
           <Story />

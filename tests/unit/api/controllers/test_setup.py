@@ -1,5 +1,6 @@
 """Tests for the first-run setup controller."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -50,6 +51,8 @@ class TestSetupTemplates:
             assert isinstance(template["tags"], list)
             assert "skill_patterns" in template
             assert isinstance(template["skill_patterns"], list)
+            assert "variables" in template
+            assert isinstance(template["variables"], list)
 
     def test_observer_can_read_templates(
         self,
@@ -543,7 +546,11 @@ class TestSetupComplete:
             assert resp.status_code == 201
             assert resp.json()["data"]["setup_complete"] is True
             # Agent should now be in the runtime registry.
-            assert len(app_state.agent_registry._agents) >= 1
+            loop = asyncio.get_event_loop()
+            agent_count = loop.run_until_complete(
+                app_state.agent_registry.agent_count(),
+            )
+            assert agent_count >= 1
         finally:
             app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)
@@ -641,6 +648,58 @@ class TestSetupComplete:
             assert reinit_called
             # The provider registry should have been swapped.
             assert app_state._provider_registry is fresh_registry
+        finally:
+            app_state._provider_registry = original_registry
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+            repo._store.pop(("api", "setup_complete"), None)
+
+    def test_complete_bootstraps_even_when_provider_reload_fails(
+        self,
+        test_client: TestClient[Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Agent bootstrap runs even when provider reload raises."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps(
+            [
+                {
+                    "name": "alice",
+                    "role": "developer",
+                    "department": "engineering",
+                    "model": {
+                        "provider": "test-provider",
+                        "model_id": "test-small-001",
+                    },
+                },
+            ]
+        )
+        repo._store[("company", "agents")] = (agents, now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+
+        # Make provider config loading raise to simulate reload failure.
+        monkeypatch.setattr(
+            "synthorg.providers.registry.ProviderRegistry.from_config",
+            MagicMock(side_effect=RuntimeError("provider config broken")),
+        )
+
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            assert resp.json()["data"]["setup_complete"] is True
+            # Agent bootstrap should still have run despite provider
+            # reload failure -- the two operations are independent.
+            agent_count = asyncio.get_event_loop().run_until_complete(
+                app_state.agent_registry.agent_count(),
+            )
+            assert agent_count >= 1
         finally:
             app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)

@@ -73,6 +73,9 @@ from synthorg.observability.events.api import (
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
 )
+from synthorg.observability.events.setup import (
+    SETUP_AGENT_BOOTSTRAP_FAILED,
+)
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
@@ -214,6 +217,10 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         and app_state.has_agent_registry
         and app_state.has_settings_service
     ):
+        logger.debug(
+            API_APP_STARTUP,
+            note="Agent bootstrap skipped: required services not available",
+        )
         return
 
     try:
@@ -225,7 +232,7 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     except MemoryError, RecursionError:
         raise
     except Exception:
-        logger.debug(
+        logger.warning(
             API_APP_STARTUP,
             note="Could not read setup_complete setting; skipping agent bootstrap",
             exc_info=True,
@@ -233,6 +240,10 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         is_complete = False
 
     if not is_complete:
+        logger.debug(
+            API_APP_STARTUP,
+            note="Agent bootstrap skipped: setup not complete",
+        )
         return
 
     try:
@@ -245,10 +256,6 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     except MemoryError, RecursionError:
         raise
     except Exception:
-        from synthorg.observability.events.setup import (  # noqa: PLC0415
-            SETUP_AGENT_BOOTSTRAP_FAILED,
-        )
-
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
             error="Agent bootstrap failed at startup (non-fatal)",

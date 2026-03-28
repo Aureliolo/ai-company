@@ -93,6 +93,7 @@ export default function LoginPage() {
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
+      if (mode === 'loading') return
       if (mode === 'setup') {
         void handleSetup()
       } else {

@@ -33,15 +33,15 @@ logger = get_logger(__name__)
 
 
 def _build_model_config(config: AgentConfig) -> ModelConfig:
-    """Build a ModelConfig from agent config, logging a warning on fallback."""
+    """Build a ModelConfig from agent config.
+
+    Raises:
+        ValueError: When the agent config has no model section.
+    """
     if config.model:
         return ModelConfig(**config.model)
-    logger.warning(
-        SETUP_AGENT_BOOTSTRAP_SKIPPED,
-        agent_name=config.name,
-        reason="missing_model_config",
-    )
-    return ModelConfig(provider="unknown", model_id="unknown")
+    msg = f"Agent {config.name!r} has no model config -- skipping"
+    raise ValueError(msg)
 
 
 def _identity_from_config(config: AgentConfig) -> AgentIdentity:
@@ -68,6 +68,9 @@ def _identity_from_config(config: AgentConfig) -> AgentIdentity:
         tools=(ToolPermissions(**config.tools) if config.tools else ToolPermissions()),
         authority=(Authority(**config.authority) if config.authority else Authority()),
         autonomy_level=config.autonomy_level,
+        # Hiring date is always "today" -- bootstrap represents re-activation
+        # into runtime, not re-creation.  AgentConfig does not persist
+        # hiring_date.
         hiring_date=datetime.now(UTC).date(),
     )
 

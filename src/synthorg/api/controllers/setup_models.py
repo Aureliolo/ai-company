@@ -39,7 +39,7 @@ class TemplateVariableResponse(BaseModel):
     Attributes:
         name: Variable name used in Jinja2 placeholders.
         description: Human-readable description.
-        var_type: Expected Python type name.
+        var_type: Expected value type (one of "str", "int", "float", "bool").
         default: Default value (None means no default).
         required: Whether the user must supply a value.
     """
@@ -48,8 +48,8 @@ class TemplateVariableResponse(BaseModel):
 
     name: NotBlankStr
     description: str = ""
-    var_type: str = "str"
-    default: Any = None
+    var_type: Literal["str", "int", "float", "bool"] = "str"
+    default: str | int | float | bool | None = None
     required: bool = False
 
 
@@ -168,7 +168,7 @@ class SetupAgentRequest(BaseModel):
         model_provider: Provider name for the agent's model.
         model_id: Model identifier from that provider.
         department: Department to assign the agent to.
-        budget_limit_monthly: Optional monthly budget limit in USD (base currency).
+        budget_limit_monthly: Optional monthly budget limit in base currency.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

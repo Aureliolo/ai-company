@@ -783,7 +783,8 @@ async def _post_setup_reinit(app_state: AppState) -> None:
             exc_info=True,
         )
 
-    # 2. Bootstrap agents into runtime registry.
+    # 2. Bootstrap agents into runtime registry (uses whatever provider
+    #    registry is current -- may be stale if reload above failed).
     if app_state.has_agent_registry:
         try:
             from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
@@ -809,10 +810,11 @@ async def _check_needs_admin(persistence: PersistenceBackend) -> bool:
         count = await persistence.users.count_by_role(HumanRole.CEO)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             context="admin_count",
+            error=str(exc),
             exc_info=True,
         )
         return True
