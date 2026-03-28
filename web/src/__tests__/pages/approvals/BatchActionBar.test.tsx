@@ -43,4 +43,9 @@ describe('BatchActionBar', () => {
     expect(screen.getByRole('button', { name: /reject all/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled()
   })
+
+  it('has toolbar role and accessible label', () => {
+    render(<BatchActionBar {...defaultProps} />)
+    expect(screen.getByRole('toolbar', { name: /batch actions/i })).toBeInTheDocument()
+  })
 })

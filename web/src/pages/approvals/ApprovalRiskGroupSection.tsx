@@ -34,6 +34,7 @@ export function ApprovalRiskGroupSection({
   const allSelected = pendingIds.length > 0 && pendingIds.every((id) => selectedIds.has(id))
 
   return (
+    <div data-testid={`riskgroup-${riskLevel}`}>
     <ErrorBoundary level="section">
       <SectionCard
         title={`${getRiskLevelLabel(riskLevel)} Approvals`}
@@ -74,5 +75,6 @@ export function ApprovalRiskGroupSection({
         </StaggerGroup>
       </SectionCard>
     </ErrorBoundary>
+    </div>
   )
 }

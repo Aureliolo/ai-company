@@ -112,6 +112,19 @@ describe('ApprovalDetailDrawer', () => {
     expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument()
   })
 
+  it('error state hides stale approval content', () => {
+    render(
+      <ApprovalDetailDrawer
+        approval={makeApproval('stale-1', { title: 'Stale approval title' })}
+        open={true}
+        error="Refetch failed"
+        {...defaultHandlers}
+      />,
+    )
+    expect(screen.getByText('Refetch failed')).toBeInTheDocument()
+    expect(screen.queryByText('Stale approval title')).not.toBeInTheDocument()
+  })
+
   it('close button calls onClose', async () => {
     const user = userEvent.setup()
     renderDrawer()

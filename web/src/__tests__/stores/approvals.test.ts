@@ -424,6 +424,10 @@ describe('batchApprove', () => {
     expect(result).toEqual({ succeeded: 1, failed: 1, failedReasons: ['Server error'] })
     // Item 2 should be rolled back to pending
     expect(useApprovalsStore.getState().approvals.find((a) => a.id === '2')!.status).toBe('pending')
+    // Failed ID should remain selected for retry; successful ID should not
+    const ids = useApprovalsStore.getState().selectedIds
+    expect(ids.has('2')).toBe(true)
+    expect(ids.has('1')).toBe(false)
   })
 })
 

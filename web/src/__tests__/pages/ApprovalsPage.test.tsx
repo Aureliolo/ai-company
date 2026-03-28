@@ -114,13 +114,9 @@ describe('ApprovalsPage', () => {
       selectedIds: new Set(),
     }
     renderPage()
-    // Scope card assertions to each risk group via its heading
-    const criticalHeading = screen.getByRole('heading', { name: 'Critical Approvals' })
-    const criticalSection = criticalHeading.closest('[class*="rounded"]')!
-    expect(within(criticalSection as HTMLElement).getByText('Deploy prod')).toBeInTheDocument()
-    const highHeading = screen.getByRole('heading', { name: 'High Approvals' })
-    const highSection = highHeading.closest('[class*="rounded"]')!
-    expect(within(highSection as HTMLElement).getByText('Push to main')).toBeInTheDocument()
+    // Scope card assertions to each risk group via stable test ID
+    expect(within(screen.getByTestId('riskgroup-critical')).getByText('Deploy prod')).toBeInTheDocument()
+    expect(within(screen.getByTestId('riskgroup-high')).getByText('Push to main')).toBeInTheDocument()
   })
 
   it('does not render skeleton when loading with existing data', () => {
