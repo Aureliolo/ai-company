@@ -19,6 +19,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	statusWatch    bool
+	statusInterval string
+	statusWide     bool
+	statusNoTrunc  bool
+	statusServices string
+	statusCheck    bool
+)
+
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show container states, health, and versions",
@@ -26,6 +35,12 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
+	statusCmd.Flags().BoolVarP(&statusWatch, "watch", "w", false, "continuously poll status")
+	statusCmd.Flags().StringVar(&statusInterval, "interval", "2s", "watch polling interval (e.g. 2s, 5s)")
+	statusCmd.Flags().BoolVar(&statusWide, "wide", false, "show extra columns (ports)")
+	statusCmd.Flags().BoolVar(&statusNoTrunc, "no-trunc", false, "show full image names")
+	statusCmd.Flags().StringVar(&statusServices, "services", "", "filter by service names (comma-separated)")
+	statusCmd.Flags().BoolVar(&statusCheck, "check", false, "exit code only: 0=healthy, 3=unhealthy, 4=unreachable")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -37,6 +52,57 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	// --check: silent exit code mode.
+	if statusCheck {
+		_, statusCode, fetchErr := fetchHealth(ctx, state.BackendPort)
+		if fetchErr != nil {
+			return NewExitError(ExitUnreachable, fetchErr)
+		}
+		if statusCode >= 200 && statusCode < 300 {
+			return nil // exit 0
+		}
+		return NewExitError(ExitUnhealthy, nil)
+	}
+
+	// --watch: continuous polling loop.
+	if statusWatch {
+		interval, parseErr := time.ParseDuration(statusInterval)
+		if parseErr != nil {
+			return fmt.Errorf("invalid --interval %q: %w", statusInterval, parseErr)
+		}
+		return runStatusWatch(cmd, state, opts, interval)
+	}
+
+	return runStatusOnce(cmd, state, opts)
+}
+
+func runStatusWatch(cmd *cobra.Command, state config.State, opts *GlobalOpts, interval time.Duration) error {
+	ctx := cmd.Context()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		// Clear screen (best-effort: ANSI escape for TTY, separator for non-TTY).
+		if isInteractive() && !opts.Plain {
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "\033[H\033[2J")
+		} else {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "---")
+		}
+		if err := runStatusOnce(cmd, state, opts); err != nil {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+func runStatusOnce(cmd *cobra.Command, state config.State, opts *GlobalOpts) error {
+	ctx := cmd.Context()
 	jsonOut := opts.JSON
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	printVersionInfo(out, state)
@@ -144,8 +210,12 @@ func parseContainerJSON(psOut string) ([]containerInfo, int) {
 }
 
 // renderContainerTable formats containers as a table.
+// Uses package-level statusWide and statusNoTrunc flags.
 func renderContainerTable(out *ui.UI, containers []containerInfo) {
 	headers := []string{"SERVICE", "STATE", "HEALTH", "IMAGE", "STATUS"}
+	if statusWide {
+		headers = append(headers, "PORTS")
+	}
 	rows := make([][]string, 0, len(containers))
 	for _, c := range containers {
 		icon := healthIcon(c.State, c.Health)
@@ -153,10 +223,18 @@ func renderContainerTable(out *ui.UI, containers []containerInfo) {
 		if healthLabel == "" {
 			healthLabel = "-"
 		}
-		rows = append(rows, []string{
+		imageDisplay := imageTag(c.Image)
+		if statusNoTrunc {
+			imageDisplay = c.Image
+		}
+		row := []string{
 			c.Service, icon + " " + c.State, healthLabel,
-			imageTag(c.Image), c.Status,
-		})
+			imageDisplay, c.Status,
+		}
+		if statusWide {
+			row = append(row, c.Ports)
+		}
+		rows = append(rows, row)
 	}
 	out.Table(headers, rows)
 }
@@ -169,6 +247,25 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 	}
 	w := out.Writer()
 	containers, failures := parseContainerJSON(psOut)
+
+	// Filter by --services when set.
+	if statusServices != "" {
+		filter := make(map[string]bool)
+		for _, s := range strings.Split(statusServices, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				filter[s] = true
+			}
+		}
+		filtered := containers[:0]
+		for _, c := range containers {
+			if filter[c.Service] {
+				filtered = append(filtered, c)
+			}
+		}
+		containers = filtered
+	}
+
 	if jsonOut {
 		b, err := json.MarshalIndent(containers, "", "  ")
 		if err != nil {

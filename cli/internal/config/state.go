@@ -28,6 +28,19 @@ type State struct {
 	MemoryBackend      string            `json:"memory_backend"`
 	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
+
+	// Display preferences (empty = use default).
+	Color      string `json:"color,omitempty"`      // always/auto/never
+	Output     string `json:"output,omitempty"`     // text/json
+	Timestamps string `json:"timestamps,omitempty"` // relative/iso8601
+	Hints      string `json:"hints,omitempty"`      // always/auto/never
+
+	// Auto-behavior keys (false = prompt interactively).
+	AutoUpdateCLI      bool `json:"auto_update_cli"`
+	AutoPull           bool `json:"auto_pull"`
+	AutoRestart        bool `json:"auto_restart"`
+	AutoApplyCompose   bool `json:"auto_apply_compose"`
+	AutoStartAfterWipe bool `json:"auto_start_after_wipe"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init
@@ -106,6 +119,10 @@ var validPersistenceBackends = map[string]bool{"sqlite": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
 var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+var validColorModes = map[string]bool{"always": true, "auto": true, "never": true}
+var validOutputModes = map[string]bool{"text": true, "json": true}
+var validTimestampModes = map[string]bool{"relative": true, "iso8601": true}
+var validHintsModes = map[string]bool{"always": true, "auto": true, "never": true}
 
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
@@ -157,6 +174,30 @@ func PersistenceBackendNames() string { return sortedKeys(validPersistenceBacken
 // MemoryBackendNames returns the allowed memory backend names.
 func MemoryBackendNames() string { return sortedKeys(validMemoryBackends) }
 
+// IsValidColorMode reports whether name is a known color mode.
+func IsValidColorMode(name string) bool { return validColorModes[name] }
+
+// ColorModeNames returns the allowed color mode names.
+func ColorModeNames() string { return sortedKeys(validColorModes) }
+
+// IsValidOutputMode reports whether name is a known output mode.
+func IsValidOutputMode(name string) bool { return validOutputModes[name] }
+
+// OutputModeNames returns the allowed output mode names.
+func OutputModeNames() string { return sortedKeys(validOutputModes) }
+
+// IsValidTimestampMode reports whether name is a known timestamp mode.
+func IsValidTimestampMode(name string) bool { return validTimestampModes[name] }
+
+// TimestampModeNames returns the allowed timestamp mode names.
+func TimestampModeNames() string { return sortedKeys(validTimestampModes) }
+
+// IsValidHintsMode reports whether name is a known hints mode.
+func IsValidHintsMode(name string) bool { return validHintsModes[name] }
+
+// HintsModeNames returns the allowed hints mode names.
+func HintsModeNames() string { return sortedKeys(validHintsModes) }
+
 // validate checks that loaded config values are within safe ranges.
 func (s State) validate() error {
 	if s.BackendPort < 1 || s.BackendPort > 65535 {
@@ -179,6 +220,18 @@ func (s State) validate() error {
 	}
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
 		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)
+	}
+	if s.Color != "" && !IsValidColorMode(s.Color) {
+		return fmt.Errorf("invalid color %q: must be one of %s", s.Color, ColorModeNames())
+	}
+	if s.Output != "" && !IsValidOutputMode(s.Output) {
+		return fmt.Errorf("invalid output %q: must be one of %s", s.Output, OutputModeNames())
+	}
+	if s.Timestamps != "" && !IsValidTimestampMode(s.Timestamps) {
+		return fmt.Errorf("invalid timestamps %q: must be one of %s", s.Timestamps, TimestampModeNames())
+	}
+	if s.Hints != "" && !IsValidHintsMode(s.Hints) {
+		return fmt.Errorf("invalid hints %q: must be one of %s", s.Hints, HintsModeNames())
 	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {

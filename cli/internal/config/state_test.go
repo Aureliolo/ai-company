@@ -402,3 +402,217 @@ func FuzzIsValidBool(f *testing.F) {
 		}
 	})
 }
+
+func TestIsValidColorMode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"always", true},
+		{"auto", true},
+		{"never", true},
+		{"", false},
+		{"Always", false},
+		{"AUTO", false},
+		{"NEVER", false},
+		{"none", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidColorMode(tt.input); got != tt.want {
+				t.Errorf("IsValidColorMode(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidOutputMode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"text", true},
+		{"json", true},
+		{"", false},
+		{"JSON", false},
+		{"TEXT", false},
+		{"yaml", false},
+		{"xml", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidOutputMode(tt.input); got != tt.want {
+				t.Errorf("IsValidOutputMode(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidTimestampMode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"relative", true},
+		{"iso8601", true},
+		{"", false},
+		{"ISO8601", false},
+		{"Relative", false},
+		{"unix", false},
+		{"rfc3339", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidTimestampMode(tt.input); got != tt.want {
+				t.Errorf("IsValidTimestampMode(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidHintsMode(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"always", true},
+		{"auto", true},
+		{"never", true},
+		{"", false},
+		{"Always", false},
+		{"NEVER", false},
+		{"none", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidHintsMode(tt.input); got != tt.want {
+				t.Errorf("IsValidHintsMode(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSaveLoadRoundTripNewFields(t *testing.T) {
+	tmp := t.TempDir()
+	original := State{
+		DataDir:            tmp,
+		ImageTag:           "v2.0.0",
+		BackendPort:        8080,
+		WebPort:            3030,
+		LogLevel:           "warn",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		Color:              "never",
+		Output:             "json",
+		Timestamps:         "iso8601",
+		Hints:              "always",
+		AutoUpdateCLI:      true,
+		AutoPull:           true,
+		AutoRestart:        true,
+		AutoApplyCompose:   true,
+		AutoStartAfterWipe: true,
+	}
+
+	if err := Save(original); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load(tmp)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.Color != original.Color {
+		t.Errorf("Color = %q, want %q", loaded.Color, original.Color)
+	}
+	if loaded.Output != original.Output {
+		t.Errorf("Output = %q, want %q", loaded.Output, original.Output)
+	}
+	if loaded.Timestamps != original.Timestamps {
+		t.Errorf("Timestamps = %q, want %q", loaded.Timestamps, original.Timestamps)
+	}
+	if loaded.Hints != original.Hints {
+		t.Errorf("Hints = %q, want %q", loaded.Hints, original.Hints)
+	}
+	if loaded.AutoUpdateCLI != original.AutoUpdateCLI {
+		t.Errorf("AutoUpdateCLI = %v, want %v", loaded.AutoUpdateCLI, original.AutoUpdateCLI)
+	}
+	if loaded.AutoPull != original.AutoPull {
+		t.Errorf("AutoPull = %v, want %v", loaded.AutoPull, original.AutoPull)
+	}
+	if loaded.AutoRestart != original.AutoRestart {
+		t.Errorf("AutoRestart = %v, want %v", loaded.AutoRestart, original.AutoRestart)
+	}
+	if loaded.AutoApplyCompose != original.AutoApplyCompose {
+		t.Errorf("AutoApplyCompose = %v, want %v", loaded.AutoApplyCompose, original.AutoApplyCompose)
+	}
+	if loaded.AutoStartAfterWipe != original.AutoStartAfterWipe {
+		t.Errorf("AutoStartAfterWipe = %v, want %v", loaded.AutoStartAfterWipe, original.AutoStartAfterWipe)
+	}
+}
+
+func TestDefaultStateNewFields(t *testing.T) {
+	s := DefaultState()
+	if s.Color != "" {
+		t.Errorf("Color should default to empty, got %q", s.Color)
+	}
+	if s.Output != "" {
+		t.Errorf("Output should default to empty, got %q", s.Output)
+	}
+	if s.Timestamps != "" {
+		t.Errorf("Timestamps should default to empty, got %q", s.Timestamps)
+	}
+	if s.Hints != "" {
+		t.Errorf("Hints should default to empty, got %q", s.Hints)
+	}
+	if s.AutoUpdateCLI {
+		t.Error("AutoUpdateCLI should default to false")
+	}
+	if s.AutoPull {
+		t.Error("AutoPull should default to false")
+	}
+	if s.AutoRestart {
+		t.Error("AutoRestart should default to false")
+	}
+	if s.AutoApplyCompose {
+		t.Error("AutoApplyCompose should default to false")
+	}
+	if s.AutoStartAfterWipe {
+		t.Error("AutoStartAfterWipe should default to false")
+	}
+}
+
+func FuzzIsValidColorMode(f *testing.F) {
+	f.Add("always")
+	f.Add("auto")
+	f.Add("never")
+	f.Add("")
+	f.Add("Always")
+	f.Add("NEVER")
+
+	valid := map[string]bool{"always": true, "auto": true, "never": true}
+	f.Fuzz(func(t *testing.T, s string) {
+		got := IsValidColorMode(s)
+		want := valid[s]
+		if got != want {
+			t.Fatalf("IsValidColorMode(%q) = %v, want %v", s, got, want)
+		}
+	})
+}
+
+func FuzzIsValidOutputMode(f *testing.F) {
+	f.Add("text")
+	f.Add("json")
+	f.Add("")
+	f.Add("TEXT")
+	f.Add("yaml")
+
+	valid := map[string]bool{"text": true, "json": true}
+	f.Fuzz(func(t *testing.T, s string) {
+		got := IsValidOutputMode(s)
+		want := valid[s]
+		if got != want {
+			t.Fatalf("IsValidOutputMode(%q) = %v, want %v", s, got, want)
+		}
+	})
+}

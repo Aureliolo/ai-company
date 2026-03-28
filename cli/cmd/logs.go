@@ -15,8 +15,12 @@ import (
 )
 
 var (
-	logFollow bool
-	logTail   string
+	logFollow     bool
+	logTail       string
+	logSince      string
+	logUntil      string
+	logTimestamps bool
+	logNoPrefix   bool
 )
 
 // serviceNamePattern validates service names to prevent command injection via
@@ -33,6 +37,10 @@ var logsCmd = &cobra.Command{
 func init() {
 	logsCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "follow log output")
 	logsCmd.Flags().StringVar(&logTail, "tail", "100", "number of lines to show from end")
+	logsCmd.Flags().StringVar(&logSince, "since", "", "show logs since timestamp or relative (e.g. 2024-01-01, 1h)")
+	logsCmd.Flags().StringVar(&logUntil, "until", "", "show logs until timestamp or relative")
+	logsCmd.Flags().BoolVarP(&logTimestamps, "timestamps", "t", false, "show timestamps")
+	logsCmd.Flags().BoolVar(&logNoPrefix, "no-log-prefix", false, "don't print service prefix in logs")
 	rootCmd.AddCommand(logsCmd)
 }
 
@@ -76,6 +84,18 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	composeArgs := []string{"logs", "--tail", tail}
 	if logFollow {
 		composeArgs = append(composeArgs, "-f")
+	}
+	if logSince != "" {
+		composeArgs = append(composeArgs, "--since", logSince)
+	}
+	if logUntil != "" {
+		composeArgs = append(composeArgs, "--until", logUntil)
+	}
+	if logTimestamps {
+		composeArgs = append(composeArgs, "--timestamps")
+	}
+	if logNoPrefix {
+		composeArgs = append(composeArgs, "--no-log-prefix")
 	}
 	// Use -- separator to prevent service names from being parsed as flags.
 	composeArgs = append(composeArgs, "--")

@@ -18,29 +18,60 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	initBackendPort int
+	initWebPort     int
+	initSandbox     string
+	initImageTag    string
+	initChannel     string
+	initLogLevel    string
+)
+
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Interactive setup wizard for SynthOrg",
-	Long:  "Creates a data directory, generates a Docker Compose file, and optionally pulls images.",
-	RunE:  runInit,
+	Long: `Creates a data directory, generates a Docker Compose file, and optionally pulls images.
+
+When all required flags are provided, the interactive wizard is skipped
+(useful for CI/automation).`,
+	RunE: runInit,
 }
 
 func init() {
+	initCmd.Flags().IntVar(&initBackendPort, "backend-port", 0, "backend API port (1-65535)")
+	initCmd.Flags().IntVar(&initWebPort, "web-port", 0, "web dashboard port (1-65535)")
+	initCmd.Flags().StringVar(&initSandbox, "sandbox", "", "enable agent sandbox (\"true\" or \"false\")")
+	initCmd.Flags().StringVar(&initImageTag, "image-tag", "", "container image tag")
+	initCmd.Flags().StringVar(&initChannel, "channel", "", "update channel (\"stable\" or \"dev\")")
+	initCmd.Flags().StringVar(&initLogLevel, "log-level", "", "log level (\"debug\", \"info\", \"warn\", \"error\")")
 	rootCmd.AddCommand(initCmd)
 }
 
-func runInit(cmd *cobra.Command, _ []string) error {
-	if !isInteractive() {
-		return fmt.Errorf("synthorg init requires an interactive terminal")
-	}
+// initAllFlagsSet returns true when all init flags are provided,
+// enabling fully non-interactive setup.
+func initAllFlagsSet() bool {
+	return initBackendPort > 0 && initWebPort > 0 && initSandbox != "" &&
+		initLogLevel != ""
+}
 
+func runInit(cmd *cobra.Command, _ []string) error {
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-	out.Logo(version.Version)
 
-	answers, err := runSetupForm()
-	if err != nil {
-		return err
+	var answers setupAnswers
+	switch {
+	case initAllFlagsSet():
+		// Non-interactive: all required flags provided.
+		answers = buildAnswersFromFlags(opts.DataDir)
+	case isInteractive():
+		out.Logo(version.Version)
+		var err error
+		answers, err = runSetupFormWithOverrides()
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("synthorg init requires an interactive terminal (or provide all flags: --backend-port, --web-port, --sandbox, --log-level)")
 	}
 
 	state, err := buildState(answers)
@@ -109,9 +140,31 @@ type setupAnswers struct {
 	logLevel           string
 	persistenceBackend string
 	memoryBackend      string
+	channel            string // optional override (empty = default "stable")
+	imageTag           string // optional override (empty = use CLI version)
 }
 
-func runSetupForm() (setupAnswers, error) {
+// buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.
+func buildAnswersFromFlags(dataDir string) setupAnswers {
+	defaults := config.DefaultState()
+	a := setupAnswers{
+		dir:                dataDir,
+		backendPortStr:     strconv.Itoa(initBackendPort),
+		webPortStr:         strconv.Itoa(initWebPort),
+		sandbox:            initSandbox == "true",
+		dockerSock:         defaultDockerSock(),
+		logLevel:           initLogLevel,
+		persistenceBackend: defaults.PersistenceBackend,
+		memoryBackend:      defaults.MemoryBackend,
+		channel:            initChannel,
+		imageTag:           initImageTag,
+	}
+	return a
+}
+
+// runSetupFormWithOverrides runs the interactive form with any CLI flag values
+// pre-filled as defaults.
+func runSetupFormWithOverrides() (setupAnswers, error) {
 	defaults := config.DefaultState()
 	a := setupAnswers{
 		dir:                defaults.DataDir,
@@ -122,6 +175,26 @@ func runSetupForm() (setupAnswers, error) {
 		logLevel:           defaults.LogLevel,
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
+	}
+
+	// Apply flag overrides.
+	if initBackendPort > 0 {
+		a.backendPortStr = strconv.Itoa(initBackendPort)
+	}
+	if initWebPort > 0 {
+		a.webPortStr = strconv.Itoa(initWebPort)
+	}
+	if initSandbox != "" {
+		a.sandbox = initSandbox == "true"
+	}
+	if initLogLevel != "" {
+		a.logLevel = initLogLevel
+	}
+	if initChannel != "" {
+		a.channel = initChannel
+	}
+	if initImageTag != "" {
+		a.imageTag = initImageTag
 	}
 
 	form := huh.NewForm(
@@ -194,10 +267,22 @@ func buildState(a setupAnswers) (config.State, error) {
 	if imageTag == "" || imageTag == "dev" {
 		imageTag = "latest"
 	}
+	if a.imageTag != "" {
+		imageTag = a.imageTag
+	}
+
+	channel := "stable"
+	if a.channel != "" {
+		if !config.IsValidChannel(a.channel) {
+			return config.State{}, fmt.Errorf("invalid channel %q: must be one of %s", a.channel, config.ChannelNames())
+		}
+		channel = a.channel
+	}
 
 	return config.State{
 		DataDir:            dir,
 		ImageTag:           imageTag,
+		Channel:            channel,
 		BackendPort:        backendPort,
 		WebPort:            webPort,
 		Sandbox:            a.sandbox,

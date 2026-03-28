@@ -104,12 +104,24 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		Plain:      flagPlain,
 		JSON:       flagJSON,
 		Yes:        yes,
-		Hints:      "auto", // default; will be overridden by config in PR 2
+		Hints:      "auto",
 	}
 
-	// Defensive: validHintsMode check will become reachable when PR 2 adds
-	// the --hints flag and config file override. Currently Hints is hardcoded
-	// to "auto" above, so this cannot fail.
+	// Override from config (best-effort: config may not exist before init).
+	// Flag > env > config > default precedence is maintained because flags
+	// and env vars are resolved above before this block runs.
+	if state, loadErr := config.Load(opts.DataDir); loadErr == nil {
+		if state.Hints != "" {
+			opts.Hints = state.Hints
+		}
+		if state.Color == "never" && !flagNoColor {
+			opts.NoColor = true
+		}
+		if state.Output == "json" && !flagJSON {
+			opts.JSON = true
+		}
+	}
+
 	if !validHintsMode(opts.Hints) {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
