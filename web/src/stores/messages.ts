@@ -97,17 +97,14 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
     const { messages: existing, loadingMore } = get()
     if (loadingMore) return
     const seq = messageRequestSeq
-    set({ loadingMore: true })
+    set({ loadingMore: true, error: null })
     try {
       const result = await messagesApi.listMessages({
         channel,
         limit: MESSAGES_FETCH_LIMIT,
         offset: existing.length,
       })
-      if (seq !== messageRequestSeq) {
-        set({ loadingMore: false })
-        return
-      }
+      if (seq !== messageRequestSeq) return
       set((s) => {
         const existingIds = new Set(
           s.messages.map((m) => m.id),
@@ -122,10 +119,7 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
         }
       })
     } catch (err) {
-      if (seq !== messageRequestSeq) {
-        set({ loadingMore: false })
-        return
-      }
+      if (seq !== messageRequestSeq) return
       set({ loadingMore: false, error: getErrorMessage(err) })
     }
   },
