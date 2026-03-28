@@ -333,18 +333,22 @@ Scalars (`company_name`, `company_type`)
 
 ## Company Builder
 
-The web dashboard includes a setup wizard with seven steps: Account (conditional -- only
-shown when no admin exists), Template (choose a company template with category grouping and
-side-by-side comparison), Company (name, description, currency, and model tier profile),
-Agents (customize names, roles, and model assignments), Providers (configure LLM providers
-with auto-detection for local instances and manual addition for cloud providers), Theme (set
-UI preferences for palette, density, animation, sidebar, and typography), and Complete (review summary
-and launch). When a template is selected, all template agents are auto-created with models
-matched to configured providers via a tier classification engine that respects each agent's
-priority axis (quality, speed, cost, or balanced). All configuration is persisted to the
-database via REST API calls. To re-run the setup wizard from scratch, use `synthorg wipe`
-(walks you through an interactive backup, wipes all data, and optionally restarts the stack
-to re-open the wizard).
+The web dashboard includes a setup wizard with a mode selection gate after account creation
+(conditional -- only shown when no admin exists). The user chooses **Guided Setup**
+(recommended, full wizard) or **Quick Setup** (minimal: company name + provider, configure
+the rest later in Settings). Guided mode steps: Mode, Template (flat grid with category
+tags), Company (name, description, currency, and model tier profile), Providers (configure
+LLM providers with auto-detection for local instances and manual addition for cloud
+providers), Agents (customize names, roles, personality presets, and model assignments),
+Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
+Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and
+Complete -- skipping template, agents, and theme. Providers are configured before agents so
+model assignment is available during agent customization. When a template is selected, all
+template agents are auto-created with models matched to configured providers via a tier
+classification engine that respects each agent's priority axis (quality, speed, cost, or
+balanced). All configuration is persisted to the database via REST API calls. To re-run the
+setup wizard from scratch, use `synthorg wipe` (walks you through an interactive backup,
+wipes all data, and optionally restarts the stack to re-open the wizard).
 
 ---
 

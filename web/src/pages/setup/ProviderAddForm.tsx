@@ -1,45 +1,32 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/utils/errors'
-import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
+import type { ProviderPreset, ProviderConfig } from '@/api/types'
 
 export interface ProviderAddFormProps {
   presets: readonly ProviderPreset[]
+  providers: Readonly<Record<string, ProviderConfig>>
   onAdd: (presetName: string, name: string, apiKey?: string) => Promise<void>
-  onTest: (name: string) => Promise<TestConnectionResponse>
 }
 
-export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps) {
+export function ProviderAddForm({ presets, providers, onAdd }: ProviderAddFormProps) {
   const [selectedPreset, setSelectedPreset] = useState('')
   const [providerName, setProviderName] = useState('')
   const [apiKey, setApiKey] = useState('')
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<TestConnectionResponse | null>(null)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cloudPresets = presets.filter((p) => p.auth_type !== 'none')
+  const cloudPresets = useMemo(
+    () => presets.filter((p) => p.auth_type === 'api_key'),
+    [presets],
+  )
 
-  const handleTest = useCallback(async () => {
-    if (!providerName.trim()) return
-    setTesting(true)
-    setError(null)
-    try {
-      const result = await onTest(providerName.trim())
-      setTestResult(result)
-    } catch (err) {
-      console.error('ProviderAddForm: test connection failed:', err)
-      setError(getErrorMessage(err))
-    } finally {
-      setTesting(false)
-    }
-  }, [providerName, onTest])
+  const nameConflict = providerName.trim() !== '' && providerName.trim() in providers
 
   const handleAdd = useCallback(async () => {
-    if (!selectedPreset || !providerName.trim()) return
+    if (!selectedPreset || !providerName.trim() || nameConflict) return
     setAdding(true)
     setError(null)
     try {
@@ -48,14 +35,13 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
       setSelectedPreset('')
       setProviderName('')
       setApiKey('')
-      setTestResult(null)
     } catch (err) {
       console.error('ProviderAddForm: create provider failed:', err)
       setError(getErrorMessage(err))
     } finally {
       setAdding(false)
     }
-  }, [selectedPreset, providerName, apiKey, onAdd])
+  }, [selectedPreset, providerName, apiKey, nameConflict, onAdd])
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
@@ -90,6 +76,7 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
             value={providerName}
             onChange={(e) => setProviderName(e.currentTarget.value)}
             placeholder="my-provider"
+            error={nameConflict ? `Provider '${providerName.trim()}' already exists` : null}
           />
 
           <InputField
@@ -103,34 +90,13 @@ export function ProviderAddForm({ presets, onAdd, onTest }: ProviderAddFormProps
 
           <div className="flex gap-2">
             <Button
-              variant="outline"
               size="sm"
-              onClick={handleTest}
-              disabled={testing || !providerName.trim()}
-            >
-              {testing ? 'Testing...' : 'Test Connection'}
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleAdd}
-              disabled={adding || !providerName.trim() || !selectedPreset}
+              onClick={() => void handleAdd()}
+              disabled={adding || !providerName.trim() || !selectedPreset || nameConflict}
             >
               {adding ? 'Creating...' : 'Create Provider'}
             </Button>
           </div>
-
-          {testResult && (
-            <div className={cn(
-              'rounded-md border px-3 py-2 text-sm',
-              testResult.success
-                ? 'border-success/30 bg-success/5 text-success'
-                : 'border-danger/30 bg-danger/5 text-danger',
-            )}>
-              {testResult.success
-                ? `Connected! ${testResult.model_tested ? `Model: ${testResult.model_tested}` : ''} (${testResult.latency_ms}ms)`
-                : `Failed: ${testResult.error ?? 'Unknown error'}`}
-            </div>
-          )}
 
           {error && (
             <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">

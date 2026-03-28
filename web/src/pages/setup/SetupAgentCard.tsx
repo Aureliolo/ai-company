@@ -1,28 +1,43 @@
+import { useMemo } from 'react'
 import { Dices } from 'lucide-react'
 import { Avatar } from '@/components/ui/avatar'
 import { InlineEdit } from '@/components/ui/inline-edit'
+import { SelectField } from '@/components/ui/select-field'
 import { StatPill } from '@/components/ui/stat-pill'
 import { Button } from '@/components/ui/button'
-import type { SetupAgentSummary, ProviderConfig } from '@/api/types'
+import type { SetupAgentSummary, ProviderConfig, PersonalityPresetInfo } from '@/api/types'
 import { AgentModelPicker } from './AgentModelPicker'
 
 export interface SetupAgentCardProps {
   agent: SetupAgentSummary
   index: number
   providers: Readonly<Record<string, ProviderConfig>>
+  personalityPresets: readonly PersonalityPresetInfo[]
   onNameChange: (index: number, name: string) => Promise<void>
   onModelChange: (index: number, provider: string, modelId: string) => Promise<void>
   onRandomizeName: (index: number) => Promise<void>
+  onPersonalityChange: (index: number, preset: string) => Promise<void>
 }
 
 export function SetupAgentCard({
   agent,
   index,
   providers,
+  personalityPresets,
   onNameChange,
   onModelChange,
   onRandomizeName,
+  onPersonalityChange,
 }: SetupAgentCardProps) {
+  const personalityOptions = useMemo(
+    () =>
+      personalityPresets.map((p) => ({
+        value: p.name,
+        label: p.name.replaceAll('_', ' '),
+      })),
+    [personalityPresets],
+  )
+
   return (
     <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
       <Avatar name={agent.name} size="md" />
@@ -37,7 +52,7 @@ export function SetupAgentCard({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={() => onRandomizeName(index)}
+            onClick={() => void onRandomizeName(index)}
             aria-label="Randomize name"
           >
             <Dices className="size-3.5" />
@@ -49,10 +64,16 @@ export function SetupAgentCard({
           <StatPill label="Role" value={agent.role} />
           <StatPill label="Dept" value={agent.department} />
           <StatPill label="Level" value={agent.level} />
-          {agent.personality_preset && (
-            <StatPill label="Personality" value={agent.personality_preset} />
-          )}
         </div>
+
+        {/* Personality preset picker */}
+        <SelectField
+          label="Personality"
+          options={personalityOptions}
+          value={agent.personality_preset ?? ''}
+          onChange={(val) => { void onPersonalityChange(index, val) }}
+          placeholder={personalityPresets.length === 0 ? 'Loading presets...' : 'Select personality...'}
+        />
 
         {/* Model picker */}
         <AgentModelPicker

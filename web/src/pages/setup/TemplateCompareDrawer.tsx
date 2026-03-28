@@ -3,16 +3,12 @@ import { Drawer } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types'
-import type { CurrencyCode } from '@/utils/currencies'
 import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
-import { TemplateCostBadge } from './TemplateCostBadge'
 
 export interface TemplateCompareDrawerProps {
   open: boolean
   onClose: () => void
   templates: readonly TemplateInfoResponse[]
-  estimatedCosts: ReadonlyMap<string, number>
-  currency: CurrencyCode
   onSelect: (name: string) => void
   onRemove: (name: string) => void
 }
@@ -112,8 +108,6 @@ export function TemplateCompareDrawer({
   open,
   onClose,
   templates,
-  estimatedCosts,
-  currency,
   onSelect,
   onRemove,
 }: TemplateCompareDrawerProps) {
@@ -128,7 +122,6 @@ export function TemplateCompareDrawer({
             <div key={t.name} className="space-y-2 rounded-md border border-border p-3">
               <h3 className="text-sm font-semibold text-foreground">{t.display_name}</h3>
               <p className="text-xs text-muted-foreground line-clamp-3">{t.description}</p>
-              <TemplateCostBadge monthlyCost={estimatedCosts.get(t.name) ?? 0} currency={currency} />
             </div>
           ))}
         </div>

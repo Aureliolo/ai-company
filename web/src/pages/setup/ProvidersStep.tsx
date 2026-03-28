@@ -45,34 +45,29 @@ export function ProvidersStep() {
   const fetchProviders = useSetupWizardStore((s) => s.fetchProviders)
   const fetchPresets = useSetupWizardStore((s) => s.fetchPresets)
   const probeAllPresets = useSetupWizardStore((s) => s.probeAllPresets)
+  const reprobePresets = useSetupWizardStore((s) => s.reprobePresets)
   const createProviderFromPreset = useSetupWizardStore((s) => s.createProviderFromPreset)
-  const testProviderConnection = useSetupWizardStore((s) => s.testProviderConnection)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
-  const providersCount = Object.keys(providers).length
   const probeResultsCount = Object.keys(probeResults).length
+  const fetchedRef = useRef(false)
+
+  // Fetch providers and presets once on first mount (not on every re-render)
+  useEffect(() => {
+    if (fetchedRef.current) return
+    fetchedRef.current = true
+
+    void fetchProviders()
+    void fetchPresets()
+  }, [fetchProviders, fetchPresets])
+
+  // Auto-probe local presets once after presets are loaded
   const probeAttemptedRef = useRef(false)
-
-  // Fetch providers on mount
-  useEffect(() => {
-    if (providersCount === 0 && !providersLoading && !providersError) {
-      fetchProviders()
-    }
-  }, [providersCount, providersLoading, providersError, fetchProviders])
-
-  // Fetch presets on mount
-  useEffect(() => {
-    if (presets.length === 0 && !presetsLoading && !presetsError) {
-      fetchPresets()
-    }
-  }, [presets.length, presetsLoading, presetsError, fetchPresets])
-
-  // Auto-probe local presets (once per mount)
   useEffect(() => {
     if (presets.length > 0 && probeResultsCount === 0 && !probing && !probeAttemptedRef.current) {
       probeAttemptedRef.current = true
-      probeAllPresets()
+      void probeAllPresets()
     }
   }, [presets.length, probeResultsCount, probing, probeAllPresets])
 
@@ -89,18 +84,26 @@ export function ProvidersStep() {
   const handleAddPreset = useCallback(
     async (presetName: string) => {
       await createProviderFromPreset(presetName, presetName)
+      // Refresh provider list to get updated model counts
+      await fetchProviders()
     },
-    [createProviderFromPreset],
+    [createProviderFromPreset, fetchProviders],
   )
+
+  const handleReprobe = useCallback(async () => {
+    probeAttemptedRef.current = true
+    await reprobePresets()
+  }, [reprobePresets])
 
   const handleAddCloud = useCallback(
     async (presetName: string, name: string, apiKey?: string) => {
       await createProviderFromPreset(presetName, name, apiKey)
+      await fetchProviders()
     },
-    [createProviderFromPreset],
+    [createProviderFromPreset, fetchProviders],
   )
 
-  if (providersLoading) {
+  if (providersLoading && Object.keys(providers).length === 0) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-24 rounded-lg" />
@@ -124,8 +127,13 @@ export function ProvidersStep() {
       </div>
 
       {providersError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-          {providersError}
+        <div className="space-y-2">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {providersError}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
+            Retry
+          </Button>
         </div>
       )}
 
@@ -154,13 +162,15 @@ export function ProvidersStep() {
             presets={presets}
             probeResults={probeResults}
             probing={probing}
+            providers={providers}
             onAddPreset={handleAddPreset}
+            onReprobe={handleReprobe}
           />
 
           <ProviderAddForm
             presets={presets}
+            providers={providers}
             onAdd={handleAddCloud}
-            onTest={testProviderConnection}
           />
         </>
       )}

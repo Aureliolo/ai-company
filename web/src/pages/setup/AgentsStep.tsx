@@ -14,10 +14,15 @@ export function AgentsStep() {
   const agentsLoading = useSetupWizardStore((s) => s.agentsLoading)
   const agentsError = useSetupWizardStore((s) => s.agentsError)
   const providers = useSetupWizardStore((s) => s.providers)
+  const personalityPresets = useSetupWizardStore((s) => s.personalityPresets)
+  const personalityPresetsLoading = useSetupWizardStore((s) => s.personalityPresetsLoading)
+  const personalityPresetsError = useSetupWizardStore((s) => s.personalityPresetsError)
   const fetchAgents = useSetupWizardStore((s) => s.fetchAgents)
+  const fetchPersonalityPresets = useSetupWizardStore((s) => s.fetchPersonalityPresets)
   const updateAgentName = useSetupWizardStore((s) => s.updateAgentName)
   const updateAgentModel = useSetupWizardStore((s) => s.updateAgentModel)
   const randomizeAgentName = useSetupWizardStore((s) => s.randomizeAgentName)
+  const updateAgentPersonality = useSetupWizardStore((s) => s.updateAgentPersonality)
   const markStepComplete = useSetupWizardStore((s) => s.markStepComplete)
   const markStepIncomplete = useSetupWizardStore((s) => s.markStepIncomplete)
 
@@ -27,6 +32,22 @@ export function AgentsStep() {
       void fetchAgents()
     }
   }, [agents.length, agentsLoading, agentsError, fetchAgents])
+
+  // Fetch personality presets on mount (stop on error to avoid loop)
+  useEffect(() => {
+    if (
+      personalityPresets.length === 0 &&
+      !personalityPresetsLoading &&
+      !personalityPresetsError
+    ) {
+      void fetchPersonalityPresets()
+    }
+  }, [
+    personalityPresets.length,
+    personalityPresetsLoading,
+    personalityPresetsError,
+    fetchPersonalityPresets,
+  ])
 
   // Track step completion
   useEffect(() => {
@@ -57,6 +78,13 @@ export function AgentsStep() {
       await randomizeAgentName(index)
     },
     [randomizeAgentName],
+  )
+
+  const handlePersonalityChange = useCallback(
+    async (index: number, preset: string) => {
+      await updateAgentPersonality(index, preset)
+    },
+    [updateAgentPersonality],
   )
 
   if (agentsLoading) {
@@ -98,13 +126,28 @@ export function AgentsStep() {
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Customize Your Agents</h2>
         <p className="text-sm text-muted-foreground">
-          Adjust agent names, roles, and model assignments.
+          Adjust agent names, personalities, and model assignments.
         </p>
       </div>
 
       {agentsError && (
         <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
           {agentsError}
+        </div>
+      )}
+
+      {personalityPresetsError && (
+        <div className="space-y-2">
+          <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
+            Failed to load personality presets. Agents can still be configured without them.
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchPersonalityPresets()}
+          >
+            Retry Presets
+          </Button>
         </div>
       )}
 
@@ -120,9 +163,11 @@ export function AgentsStep() {
               agent={agent}
               index={index}
               providers={providers}
+              personalityPresets={personalityPresets}
               onNameChange={handleNameChange}
               onModelChange={handleModelChange}
               onRandomizeName={handleRandomizeName}
+              onPersonalityChange={handlePersonalityChange}
             />
           </StaggerItem>
         ))}

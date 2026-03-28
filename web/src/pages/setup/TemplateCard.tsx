@@ -2,13 +2,10 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { TemplateInfoResponse } from '@/api/types'
-import type { CurrencyCode } from '@/utils/currencies'
-import { TemplateCostBadge } from './TemplateCostBadge'
+import { deriveCategoryFromTags, getCategoryLabel } from '@/utils/template-categories'
 
 export interface TemplateCardProps {
   template: TemplateInfoResponse
-  estimatedCost: number
-  currency: CurrencyCode
   selected: boolean
   compared: boolean
   recommended?: boolean
@@ -19,8 +16,6 @@ export interface TemplateCardProps {
 
 export function TemplateCard({
   template,
-  estimatedCost,
-  currency,
   selected,
   compared,
   recommended,
@@ -28,6 +23,8 @@ export function TemplateCard({
   onToggleCompare,
   compareDisabled,
 }: TemplateCardProps) {
+  const category = getCategoryLabel(deriveCategoryFromTags(template.tags))
+
   return (
     <div
       className={cn(
@@ -49,7 +46,7 @@ export function TemplateCard({
         Compare
       </label>
 
-      {/* Name + description */}
+      {/* Name + category + recommended */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-foreground">{template.display_name}</h3>
@@ -59,16 +56,16 @@ export function TemplateCard({
             </span>
           )}
         </div>
+        <div className="flex items-center gap-1.5">
+          <StatPill value={category} className="text-compact" />
+        </div>
         <p className="line-clamp-2 text-xs text-muted-foreground">{template.description}</p>
       </div>
-
-      {/* Cost badge */}
-      <TemplateCostBadge monthlyCost={estimatedCost} currency={currency} />
 
       {/* Tags */}
       <div className="flex flex-wrap gap-1">
         {template.tags.map((tag) => (
-          <StatPill key={tag} label="" value={tag} className="text-compact" />
+          <StatPill key={tag} value={tag} className="text-compact" />
         ))}
       </div>
 

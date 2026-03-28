@@ -1,31 +1,47 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useToastStore } from '@/stores/toast'
-import { categorizeTemplates } from '@/utils/template-categories'
-import { estimateTemplateCost } from '@/utils/cost-estimator'
-import { TemplateCategoryGroup } from './TemplateCategoryGroup'
+import { TemplateCard } from './TemplateCard'
 import { TemplateCompareDrawer } from './TemplateCompareDrawer'
 import { LayoutGrid } from 'lucide-react'
+import type { TemplateInfoResponse } from '@/api/types'
 
 const MAX_COMPARE = 3
 
-/** Template size tags used for agent count heuristics. */
+/** Template size tags used for recommendation heuristics. */
 const TAG_SOLO = 'solo'
 const TAG_SMALL_TEAM = 'small-team'
 const TAG_ENTERPRISE = 'enterprise'
 const TAG_FULL_COMPANY = 'full-company'
 
-/** Estimated agent counts per template size category. */
-const AGENT_COUNT_SOLO = 1
-const AGENT_COUNT_SMALL_TEAM = 3
-const AGENT_COUNT_LARGE = 12
-const AGENT_COUNT_DEFAULT = 5
+interface TemplateGridItemProps {
+  template: TemplateInfoResponse
+  selected: boolean
+  compared: boolean
+  recommended: boolean
+  onSelect: () => void
+  onToggleCompare: () => void
+  compareDisabled: boolean
+}
 
-/** Tier distribution ratios for cost estimation. */
-const TIER_RATIO_LARGE = 0.2
-const TIER_RATIO_MEDIUM = 0.5
+function TemplateGridItem({ template, selected, compared, recommended, onSelect, onToggleCompare, compareDisabled }: TemplateGridItemProps) {
+  return (
+    <StaggerItem>
+      <TemplateCard
+        template={template}
+        selected={selected}
+        compared={compared}
+        recommended={recommended}
+        onSelect={onSelect}
+        onToggleCompare={onToggleCompare}
+        compareDisabled={compareDisabled}
+      />
+    </StaggerItem>
+  )
+}
 
 export function TemplateStep() {
   const templates = useSetupWizardStore((s) => s.templates)
@@ -33,7 +49,6 @@ export function TemplateStep() {
   const templatesError = useSetupWizardStore((s) => s.templatesError)
   const selectedTemplate = useSetupWizardStore((s) => s.selectedTemplate)
   const comparedTemplates = useSetupWizardStore((s) => s.comparedTemplates)
-  const currency = useSetupWizardStore((s) => s.currency)
   const fetchTemplates = useSetupWizardStore((s) => s.fetchTemplates)
   const selectTemplate = useSetupWizardStore((s) => s.selectTemplate)
   const toggleCompare = useSetupWizardStore((s) => s.toggleCompare)
@@ -43,7 +58,7 @@ export function TemplateStep() {
 
   useEffect(() => {
     if (templates.length === 0 && !templatesLoading && !templatesError) {
-      fetchTemplates()
+      void fetchTemplates()
     }
   }, [templates.length, templatesLoading, templatesError, fetchTemplates])
 
@@ -58,8 +73,6 @@ export function TemplateStep() {
 
   const providers = useSetupWizardStore((s) => s.providers)
 
-  const categorized = useMemo(() => categorizeTemplates(templates), [templates])
-
   // Determine recommended templates based on configured providers
   const recommendedTemplates = useMemo(() => {
     const recommended = new Set<string>()
@@ -69,12 +82,10 @@ export function TemplateStep() {
 
     for (const template of templates) {
       if (providerCount === 0) {
-        // No providers configured yet -- recommend small/simple templates
         if (template.tags.some((tag) => smallTags.has(tag))) {
           recommended.add(template.name)
         }
       } else {
-        // Providers configured -- recommend larger templates
         if (template.tags.some((tag) => largeTags.has(tag))) {
           recommended.add(template.name)
         }
@@ -82,30 +93,6 @@ export function TemplateStep() {
     }
     return recommended
   }, [templates, providers])
-
-  // Estimate costs per template (using tier fallbacks since no providers yet)
-  const estimatedCosts = useMemo(() => {
-    const costs = new Map<string, number>()
-    // We don't have per-template tier breakdown from TemplateInfoResponse,
-    // so we use a simple heuristic based on template tags
-    for (const template of templates) {
-      // Rough estimate: small templates = fewer agents, lower tiers
-      const agentEstimate = template.tags.includes(TAG_SOLO) ? AGENT_COUNT_SOLO
-        : template.tags.includes(TAG_SMALL_TEAM) ? AGENT_COUNT_SMALL_TEAM
-        : template.tags.includes(TAG_ENTERPRISE) || template.tags.includes(TAG_FULL_COMPANY) ? AGENT_COUNT_LARGE
-        : AGENT_COUNT_DEFAULT
-      const largeCount = Math.max(1, Math.floor(agentEstimate * TIER_RATIO_LARGE))
-      const mediumCount = Math.floor(agentEstimate * TIER_RATIO_MEDIUM)
-      const smallCount = Math.max(0, agentEstimate - largeCount - mediumCount)
-      const cost = estimateTemplateCost([
-        { tier: 'large', count: largeCount },
-        { tier: 'medium', count: mediumCount },
-        { tier: 'small', count: smallCount },
-      ])
-      costs.set(template.name, cost)
-    }
-    return costs
-  }, [templates])
 
   const handleSelect = useCallback(
     (name: string) => {
@@ -130,7 +117,7 @@ export function TemplateStep() {
 
   const handleRemoveFromCompare = useCallback(
     (name: string) => {
-      toggleCompare(name) // Toggles off since already in list
+      toggleCompare(name)
     },
     [toggleCompare],
   )
@@ -158,7 +145,7 @@ export function TemplateStep() {
       <EmptyState
         title="Failed to load templates"
         description={templatesError}
-        action={{ label: 'Retry', onClick: fetchTemplates }}
+        action={{ label: 'Retry', onClick: () => void fetchTemplates() }}
       />
     )
   }
@@ -182,28 +169,25 @@ export function TemplateStep() {
         </p>
       </div>
 
-      {[...categorized.entries()].map(([category, categoryTemplates]) => (
-        <TemplateCategoryGroup
-          key={category}
-          category={category}
-          templates={categoryTemplates}
-          estimatedCosts={estimatedCosts}
-          currency={currency}
-          selectedTemplate={selectedTemplate}
-          comparedTemplates={comparedTemplates}
-          compareDisabled={comparedTemplates.length >= MAX_COMPARE}
-          recommendedTemplates={recommendedTemplates}
-          onSelect={handleSelect}
-          onToggleCompare={handleToggleCompare}
-        />
-      ))}
+      <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
+        {templates.map((template) => (
+          <TemplateGridItem
+            key={template.name}
+            template={template}
+            selected={selectedTemplate === template.name}
+            compared={comparedTemplates.includes(template.name)}
+            recommended={recommendedTemplates.has(template.name)}
+            onSelect={() => handleSelect(template.name)}
+            onToggleCompare={() => handleToggleCompare(template.name)}
+            compareDisabled={comparedTemplates.length >= MAX_COMPARE}
+          />
+        ))}
+      </StaggerGroup>
 
       <TemplateCompareDrawer
         open={comparedTemplates.length >= 2}
         onClose={clearComparison}
         templates={comparedTemplateObjects}
-        estimatedCosts={estimatedCosts}
-        currency={currency}
         onSelect={(name) => {
           handleSelect(name)
           clearComparison()

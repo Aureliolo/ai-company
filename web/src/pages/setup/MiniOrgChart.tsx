@@ -12,11 +12,34 @@ interface DeptNode {
   agents: SetupAgentSummary[]
 }
 
-const NODE_WIDTH = 80
-const NODE_HEIGHT = 32
-const H_GAP = 24
-const V_GAP = 48
-const AVATAR_RADIUS = 12
+/** Minimum height for small teams. */
+const MIN_HEIGHT = 140
+/** Maximum height cap for very large teams. */
+const MAX_HEIGHT = 500
+
+/** Layout constants. */
+const SMALL_TEAM_THRESHOLD = 5
+const LARGE_AVATAR_RADIUS = 16
+const SMALL_AVATAR_RADIUS = 14
+const LARGE_NODE_WIDTH = 110
+const SMALL_NODE_WIDTH = 90
+const AGENT_SPACING_GAP = 10
+/** Max chars to display in department label. */
+const DEPT_LABEL_MAX_DISPLAY = 14
+/** Truncation point for department names. */
+const DEPT_LABEL_TRUNCATE_AT = 12
+/** Root company node radius. */
+const ROOT_RADIUS = 10
+/** Agent initials font sizes. */
+const FONT_SIZE_LARGE = 10
+const FONT_SIZE_SMALL = 8
+/** Department label font sizes (slightly larger than agent text). */
+const DEPT_FONT_SIZE_LARGE = 11
+const DEPT_FONT_SIZE_SMALL = 9
+/** Vertical gap between agent circles. */
+const AGENT_VERTICAL_GAP = 6
+/** Bottom padding below agent rows in the SVG viewport. */
+const SVG_BOTTOM_PADDING = 24
 
 function getInitials(name: string): string {
   return name
@@ -33,17 +56,19 @@ interface AgentNodeProps {
   agentY: number
   deptX: number
   deptY: number
+  radius: number
+  deptHalfHeight: number
 }
 
-function AgentNode({ agent, agentX, agentY, deptX, deptY }: AgentNodeProps) {
+function AgentNode({ agent, agentX, agentY, deptX, deptY, radius, deptHalfHeight }: AgentNodeProps) {
   return (
     <g>
       {/* Line from dept to agent */}
       <line
         x1={deptX}
-        y1={deptY + NODE_HEIGHT / 2}
+        y1={deptY + deptHalfHeight}
         x2={agentX}
-        y2={agentY - AVATAR_RADIUS}
+        y2={agentY - radius}
         className="stroke-border"
         strokeWidth={1}
       />
@@ -51,7 +76,7 @@ function AgentNode({ agent, agentX, agentY, deptX, deptY }: AgentNodeProps) {
       <circle
         cx={agentX}
         cy={agentY}
-        r={AVATAR_RADIUS}
+        r={radius}
         className="fill-card stroke-accent/40"
         strokeWidth={1}
       >
@@ -61,10 +86,70 @@ function AgentNode({ agent, agentX, agentY, deptX, deptY }: AgentNodeProps) {
         x={agentX}
         y={agentY + 3}
         textAnchor="middle"
-        className="fill-foreground text-[8px] font-medium"
+        className="fill-foreground font-medium"
+        fontSize={radius > SMALL_AVATAR_RADIUS ? FONT_SIZE_LARGE : FONT_SIZE_SMALL}
       >
         {getInitials(agent.name)}
       </text>
+    </g>
+  )
+}
+
+interface DepartmentGroupProps {
+  pos: { x: number; y: number; dept: DeptNode }
+  nodeWidth: number
+  nodeHeight: number
+  avatarRadius: number
+  vGap: number
+  isSmallTeam: boolean
+}
+
+function DepartmentGroup({ pos, nodeWidth, nodeHeight, avatarRadius, vGap, isSmallTeam }: DepartmentGroupProps) {
+  return (
+    <g>
+      {/* Dept label */}
+      <rect
+        x={pos.x - nodeWidth / 2}
+        y={pos.y - nodeHeight / 2}
+        width={nodeWidth}
+        height={nodeHeight}
+        rx={6}
+        className="fill-surface stroke-border"
+        strokeWidth={1}
+      />
+      <text
+        x={pos.x}
+        y={pos.y + 4}
+        textAnchor="middle"
+        className="fill-muted-foreground"
+        fontSize={isSmallTeam ? DEPT_FONT_SIZE_LARGE : DEPT_FONT_SIZE_SMALL}
+      >
+        {pos.dept.name.length > DEPT_LABEL_MAX_DISPLAY
+          ? pos.dept.name.slice(0, DEPT_LABEL_TRUNCATE_AT) + '..'
+          : pos.dept.name}
+      </text>
+
+      {/* Agent nodes */}
+      {pos.dept.agents.map((agent, agentIdx) => {
+        const agentSpacing = avatarRadius * 2 + AGENT_SPACING_GAP
+        const centerOffset = agentIdx - (pos.dept.agents.length - 1) / 2
+        const agentX = pos.x + centerOffset * agentSpacing
+        const agentY = pos.y + vGap
+
+        return (
+          <AgentNode
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
+            key={`${agent.name}-${agentIdx}`}
+            agent={agent}
+            agentX={agentX}
+            agentY={agentY}
+            deptX={pos.x}
+            deptY={pos.y}
+            radius={avatarRadius}
+            deptHalfHeight={nodeHeight / 2}
+          />
+        )
+      })}
     </g>
   )
 }
@@ -89,22 +174,35 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
 
   if (agents.length === 0) return null
 
+  // Scale node sizes based on team size
+  const isSmallTeam = agents.length <= SMALL_TEAM_THRESHOLD
+  const avatarRadius = isSmallTeam
+    ? LARGE_AVATAR_RADIUS : SMALL_AVATAR_RADIUS
+  const nodeWidth = isSmallTeam
+    ? LARGE_NODE_WIDTH : SMALL_NODE_WIDTH
+  const nodeHeight = 36
+  const hGap = isSmallTeam ? 40 : 28
+  const vGap = isSmallTeam ? 60 : 50
+
   // Layout calculation
   const maxAgentsInDept = Math.max(...departments.map((d) => d.agents.length), 1)
   const deptWidths = departments.map((d) =>
-    Math.max(NODE_WIDTH, d.agents.length * (AVATAR_RADIUS * 2 + 8)),
+    Math.max(nodeWidth, d.agents.length * (avatarRadius * 2 + AGENT_SPACING_GAP)),
   )
-  const totalWidth = deptWidths.reduce((sum, w) => sum + w + H_GAP, 0) - H_GAP
-  const svgWidth = Math.max(totalWidth + 40, 200)
-  const svgHeight = V_GAP * 2 + NODE_HEIGHT + maxAgentsInDept * (AVATAR_RADIUS * 2 + 4) + 20
+  const totalWidth = deptWidths.reduce((sum, w) => sum + w + hGap, 0) - hGap
+  const svgWidth = Math.max(totalWidth + 40, 300)
+  const svgHeight = vGap * 2 + nodeHeight + maxAgentsInDept * (avatarRadius * 2 + AGENT_VERTICAL_GAP) + SVG_BOTTOM_PADDING
+
+  // Dynamic height: scale with team, capped at bounds
+  const displayHeight = Math.min(Math.max(svgHeight, MIN_HEIGHT), MAX_HEIGHT)
 
   // Positions
   let xOffset = (svgWidth - totalWidth) / 2
   const deptPositions = departments.map((dept, i) => {
     const width = deptWidths[i]!
     const x = xOffset + width / 2
-    xOffset += width + H_GAP
-    return { x, y: V_GAP, dept }
+    xOffset += width + hGap
+    return { x, y: vGap, dept }
   })
 
   const rootX = svgWidth / 2
@@ -115,21 +213,21 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
       <svg
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         width="100%"
-        height={Math.min(svgHeight, 200)}
+        height={displayHeight}
         role="img"
         aria-label="Organization chart"
       >
         {/* Root node (company) */}
-        <circle cx={rootX} cy={rootY} r={8} className="fill-accent" />
+        <circle cx={rootX} cy={rootY} r={ROOT_RADIUS} className="fill-accent" />
 
         {/* Lines from root to departments */}
         {deptPositions.map((pos) => (
           <line
             key={`root-${pos.dept.name}`}
             x1={rootX}
-            y1={rootY + 8}
+            y1={rootY + ROOT_RADIUS}
             x2={pos.x}
-            y2={pos.y - NODE_HEIGHT / 2}
+            y2={pos.y - nodeHeight / 2}
             className="stroke-border"
             strokeWidth={1}
           />
@@ -137,44 +235,15 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
 
         {/* Department nodes */}
         {deptPositions.map((pos) => (
-          <g key={pos.dept.name}>
-            {/* Dept label */}
-            <rect
-              x={pos.x - NODE_WIDTH / 2}
-              y={pos.y - NODE_HEIGHT / 2}
-              width={NODE_WIDTH}
-              height={NODE_HEIGHT}
-              rx={6}
-              className="fill-surface stroke-border"
-              strokeWidth={1}
-            />
-            <text
-              x={pos.x}
-              y={pos.y + 4}
-              textAnchor="middle"
-              className="fill-muted-foreground text-[9px]"
-            >
-              {pos.dept.name.length > 12 ? pos.dept.name.slice(0, 10) + '..' : pos.dept.name}
-            </text>
-
-            {/* Agent nodes */}
-            {pos.dept.agents.map((agent, agentIdx) => {
-              const agentX = pos.x + (agentIdx - (pos.dept.agents.length - 1) / 2) * (AVATAR_RADIUS * 2 + 8)
-              const agentY = pos.y + V_GAP
-
-              return (
-                <AgentNode
-                  // eslint-disable-next-line @eslint-react/no-array-index-key -- setup agents can share names; index as tiebreaker
-                  key={`${agent.name}-${agentIdx}`}
-                  agent={agent}
-                  agentX={agentX}
-                  agentY={agentY}
-                  deptX={pos.x}
-                  deptY={pos.y}
-                />
-              )
-            })}
-          </g>
+          <DepartmentGroup
+            key={pos.dept.name}
+            pos={pos}
+            nodeWidth={nodeWidth}
+            nodeHeight={nodeHeight}
+            avatarRadius={avatarRadius}
+            vGap={vGap}
+            isSmallTeam={isSmallTeam}
+          />
         ))}
       </svg>
     </div>

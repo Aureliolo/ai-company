@@ -9,6 +9,8 @@ vi.mock('@/api/endpoints/setup', () => ({
   updateAgentModel: vi.fn(),
   updateAgentName: vi.fn(),
   randomizeAgentName: vi.fn(),
+  updateAgentPersonality: vi.fn(),
+  listPersonalityPresets: vi.fn(),
   getAvailableLocales: vi.fn(),
   getNameLocales: vi.fn(),
   saveNameLocales: vi.fn(),
@@ -21,6 +23,8 @@ vi.mock('@/api/endpoints/providers', () => ({
   createFromPreset: vi.fn(),
   testConnection: vi.fn(),
   probePreset: vi.fn(),
+  discoverModels: vi.fn(),
+  getProvider: vi.fn(),
 }))
 
 function resetStore() {
@@ -34,10 +38,10 @@ describe('setup wizard store', () => {
   })
 
   describe('initialization', () => {
-    it('initializes with template as first step when needsAdmin is false', () => {
+    it('initializes with mode as first step when needsAdmin is false', () => {
       const state = useSetupWizardStore.getState()
       expect(state.needsAdmin).toBe(false)
-      expect(state.stepOrder[0]).toBe('template')
+      expect(state.stepOrder[0]).toBe('mode')
       expect(state.stepOrder).not.toContain('account')
     })
 
@@ -86,22 +90,23 @@ describe('setup wizard store', () => {
     })
 
     it('canNavigateTo returns true for first step', () => {
-      expect(useSetupWizardStore.getState().canNavigateTo('template')).toBe(true)
+      expect(useSetupWizardStore.getState().canNavigateTo('mode')).toBe(true)
     })
 
     it('canNavigateTo returns false for later steps when prior are incomplete', () => {
-      expect(useSetupWizardStore.getState().canNavigateTo('company')).toBe(false)
+      expect(useSetupWizardStore.getState().canNavigateTo('template')).toBe(false)
     })
 
     it('canNavigateTo returns true when all prior steps are complete', () => {
-      useSetupWizardStore.getState().markStepComplete('template')
-      expect(useSetupWizardStore.getState().canNavigateTo('company')).toBe(true)
+      useSetupWizardStore.getState().markStepComplete('mode')
+      expect(useSetupWizardStore.getState().canNavigateTo('template')).toBe(true)
     })
 
     it('canNavigateTo checks all prior steps', () => {
+      useSetupWizardStore.getState().markStepComplete('mode')
       useSetupWizardStore.getState().markStepComplete('template')
-      // company not complete, so agents should be inaccessible
-      expect(useSetupWizardStore.getState().canNavigateTo('agents')).toBe(false)
+      // company not complete, so providers should be inaccessible
+      expect(useSetupWizardStore.getState().canNavigateTo('providers')).toBe(false)
     })
   })
 
@@ -117,6 +122,45 @@ describe('setup wizard store', () => {
       useSetupWizardStore.getState().setNeedsAdmin(false)
       const state = useSetupWizardStore.getState()
       expect(state.stepOrder).not.toContain('account')
+    })
+
+    it('sets quick mode step order when setWizardMode("quick") is called', () => {
+      useSetupWizardStore.getState().setWizardMode('quick')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual(['mode', 'company', 'providers', 'complete'])
+      expect(state.wizardMode).toBe('quick')
+    })
+
+    it('restores guided mode step order when setWizardMode("guided") is called', () => {
+      useSetupWizardStore.getState().setWizardMode('quick')
+      useSetupWizardStore.getState().setWizardMode('guided')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toEqual([
+        'mode', 'template', 'company',
+        'providers', 'agents', 'theme', 'complete',
+      ])
+      expect(state.wizardMode).toBe('guided')
+    })
+
+    it('clears template state when switching to quick mode', () => {
+      useSetupWizardStore.setState({ selectedTemplate: 'startup' })
+      useSetupWizardStore.getState().setWizardMode('quick')
+      expect(useSetupWizardStore.getState().selectedTemplate).toBeNull()
+    })
+
+    it('setStep ignores steps not in current flow', () => {
+      useSetupWizardStore.getState().setWizardMode('quick')
+      const before = useSetupWizardStore.getState().currentStep
+      useSetupWizardStore.getState().setStep('agents')
+      expect(useSetupWizardStore.getState().currentStep).toBe(before)
+    })
+
+    it('includes account in quick mode when needsAdmin is true', () => {
+      useSetupWizardStore.getState().setNeedsAdmin(true)
+      useSetupWizardStore.getState().setWizardMode('quick')
+      const state = useSetupWizardStore.getState()
+      expect(state.stepOrder).toContain('account')
+      expect(state.stepOrder).toEqual(['account', 'mode', 'company', 'providers', 'complete'])
     })
   })
 

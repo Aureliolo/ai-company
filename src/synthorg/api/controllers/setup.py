@@ -7,25 +7,64 @@ selection, company creation, name locale configuration, agent management
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, NamedTuple
 
 from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
-from synthorg.api.auth.config import AuthConfig
 from synthorg.api.controllers.setup_agents import (
     agent_dict_to_summary,
     agents_to_summaries,
     build_agent_config,
-    departments_to_json,
-    expand_template_agents,
     get_existing_agents,
-    match_and_assign_models,
     normalize_description,
-    validate_agents_value,
     validate_model_assignment,
     validate_provider_and_model,
+)
+from synthorg.api.controllers.setup_helpers import (
+    AGENT_LOCK as _AGENT_LOCK,
+)
+from synthorg.api.controllers.setup_helpers import (
+    auto_create_template_agents as _auto_create_template_agents,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_has_agents as _check_has_agents,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_has_company as _check_has_company,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_has_name_locales as _check_has_name_locales,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_needs_admin as _check_needs_admin,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_needs_setup as _check_needs_setup,
+)
+from synthorg.api.controllers.setup_helpers import (
+    check_setup_not_complete as _check_setup_not_complete,
+)
+from synthorg.api.controllers.setup_helpers import (
+    persist_company_settings as _persist_company_settings,
+)
+from synthorg.api.controllers.setup_helpers import (
+    post_setup_reinit as _post_setup_reinit,
+)
+from synthorg.api.controllers.setup_helpers import (
+    read_name_locales as _read_name_locales,
+)
+from synthorg.api.controllers.setup_helpers import (
+    resolve_min_password_length as _resolve_min_password_length,
+)
+from synthorg.api.controllers.setup_helpers import (
+    resolve_template as _resolve_template,
+)
+from synthorg.api.controllers.setup_helpers import (
+    validate_agent_index as _validate_agent_index,
+)
+from synthorg.api.controllers.setup_helpers import (
+    validate_locale_selection as _validate_locale_selection,
 )
 from synthorg.api.controllers.setup_models import (
     AvailableLocalesResponse,
@@ -45,76 +84,29 @@ from synthorg.api.controllers.setup_models import (
     UpdateAgentNameRequest,
 )
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
-from synthorg.api.guards import HumanRole, require_ceo, require_read_access
+from synthorg.api.errors import ApiValidationError
+from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
-    SETUP_AGENT_BOOTSTRAP_FAILED,
     SETUP_AGENT_CREATED,
-    SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_AGENT_MODEL_UPDATED,
     SETUP_AGENT_NAME_RANDOMIZED,
     SETUP_AGENT_NAME_UPDATED,
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
-    SETUP_ALREADY_COMPLETE,
     SETUP_COMPANY_CREATED,
-    SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETED,
-    SETUP_NAME_LOCALES_CORRUPTED,
-    SETUP_NAME_LOCALES_INVALID,
     SETUP_NAME_LOCALES_LISTED,
     SETUP_NAME_LOCALES_SAVED,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
-    SETUP_PROVIDER_RELOAD_FAILED,
     SETUP_STATUS_CHECKED,
-    SETUP_STATUS_SETTINGS_DEFAULT_USED,
-    SETUP_STATUS_SETTINGS_UNAVAILABLE,
-    SETUP_TEMPLATE_INVALID,
-    SETUP_TEMPLATE_NOT_FOUND,
     SETUP_TEMPLATES_LISTED,
 )
-from synthorg.persistence.errors import QueryError
-from synthorg.providers.registry import ProviderRegistry
-from synthorg.settings.enums import SettingSource
-from synthorg.settings.errors import SettingNotFoundError
-
-if TYPE_CHECKING:
-    from synthorg.persistence.protocol import PersistenceBackend
-    from synthorg.settings.service import SettingsService
-    from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
-
-# Derive from AuthConfig default to prevent silent divergence.
-_DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
-    "min_password_length"
-].default
-
-# Module-level lock: serializes read-modify-write on agents settings.
-_AGENT_LOCK = asyncio.Lock()
-
-
-def _validate_agent_index(
-    agent_index: int,
-    agents: list[dict[str, Any]],
-) -> None:
-    """Raise ``NotFoundError`` if *agent_index* is out of range."""
-    if agent_index < 0 or agent_index >= len(agents):
-        if not agents:
-            msg = f"Agent index {agent_index} out of range (no agents configured)"
-        else:
-            msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
-        logger.warning(
-            SETUP_AGENT_INDEX_OUT_OF_RANGE,
-            agent_index=agent_index,
-            agent_count=len(agents),
-        )
-        raise NotFoundError(msg)
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -706,8 +698,9 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupCompleteResponse]:
         """Mark first-run setup as complete.
 
-        Validates that a company, at least one agent, and at least one
-        provider are configured before allowing completion.
+        Validates that a company and at least one provider are configured
+        before allowing completion.  Agent configuration is optional
+        (Quick Setup mode) -- a warning is logged when no agents exist.
 
         Args:
             state: Application state.
@@ -717,7 +710,7 @@ class SetupController(Controller):
 
         Raises:
             ConflictError: If setup has already been completed.
-            ApiValidationError: If company, agents, or providers are missing.
+            ApiValidationError: If company or providers are missing.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
@@ -730,12 +723,12 @@ class SetupController(Controller):
             logger.warning(SETUP_NO_COMPANY)
             raise ApiValidationError(msg)
 
-        # Verify at least one agent has been created (strict: propagate errors).
-        has_agents = await _check_has_agents(settings_svc, strict=True)
+        # Verify at least one agent exists (warn-only, not required).
+        # Quick Setup mode skips agent configuration -- users add agents
+        # later in Settings.
+        has_agents = await _check_has_agents(settings_svc)
         if not has_agents:
-            msg = "At least one agent must be created before completing setup"
-            logger.warning(SETUP_NO_AGENTS)
-            raise ApiValidationError(msg)
+            logger.info(SETUP_NO_AGENTS, note="allowed_for_quick_setup")
 
         # Verify at least one provider is configured.
         if not app_state.has_provider_registry or len(app_state.provider_registry) == 0:
@@ -751,524 +744,3 @@ class SetupController(Controller):
         await _post_setup_reinit(app_state)
 
         return ApiResponse(data=SetupCompleteResponse(setup_complete=True))
-
-
-# ── Helpers ──────────────────────────────────────────────────
-
-
-async def _post_setup_reinit(app_state: AppState) -> None:
-    """Reload providers and bootstrap agents after setup completion.
-
-    Both operations are non-fatal: setup completion must succeed
-    even if re-init partially fails (the user can restart the
-    server to pick up changes).
-
-    Args:
-        app_state: Application state containing services.
-    """
-    if not app_state.has_config_resolver:
-        return
-
-    # 1. Reload provider registry from persisted config.
-    try:
-        provider_configs = await app_state.config_resolver.get_provider_configs()
-        if provider_configs:
-            new_registry = ProviderRegistry.from_config(provider_configs)
-            app_state.swap_provider_registry(new_registry)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            SETUP_PROVIDER_RELOAD_FAILED,
-            error="Provider reload failed after setup (non-fatal)",
-            exc_info=True,
-        )
-
-    # 2. Bootstrap agents into runtime registry (uses whatever provider
-    #    registry is current -- may be stale if reload above failed).
-    if app_state.has_agent_registry:
-        try:
-            from synthorg.api.bootstrap import bootstrap_agents  # noqa: PLC0415
-
-            await bootstrap_agents(
-                config_resolver=app_state.config_resolver,
-                agent_registry=app_state.agent_registry,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                SETUP_AGENT_BOOTSTRAP_FAILED,
-                error="Agent bootstrap failed after setup (non-fatal)",
-                exc_info=True,
-            )
-
-
-async def _check_needs_admin(persistence: PersistenceBackend) -> bool:
-    """Return True if no CEO-role user exists (fail-open on error)."""
-    count: int | None = None
-    try:
-        count = await persistence.users.count_by_role(HumanRole.CEO)
-    except MemoryError, RecursionError:
-        raise
-    except QueryError as exc:
-        # Database query failure -- fail-open so the status endpoint
-        # surfaces the admin-creation form rather than crashing.
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            context="admin_count",
-            error=str(exc),
-            exc_info=True,
-        )
-        return True
-    except Exception as exc:
-        # Unexpected error (connection, schema, programming) --
-        # same fail-open behavior with full traceback.
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            context="admin_count",
-            error=str(exc),
-            exc_info=True,
-        )
-        return True
-    return count == 0 if count is not None else True
-
-
-async def _check_needs_setup(settings_svc: SettingsService) -> bool:
-    """Return True if setup is still needed (fail-open on error)."""
-    try:
-        entry = await settings_svc.get_entry("api", "setup_complete")
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            exc_info=True,
-        )
-        return True
-    else:
-        return entry.value != "true"
-
-
-async def _check_has_company(
-    settings_svc: SettingsService,
-    *,
-    strict: bool = False,
-) -> bool:
-    """Check whether a company name has been explicitly created.
-
-    Only values persisted to the database (i.e. saved by the user
-    through the setup wizard) count.  YAML/code defaults like
-    ``"SynthOrg"`` must not cause a fresh setup to report the
-    company as already existing.
-
-    Args:
-        settings_svc: Settings service instance.
-        strict: When True, propagate unexpected exceptions instead of
-            returning False (use for validation gates, not status checks).
-
-    Returns:
-        True if a user-created company name exists, False otherwise.
-    """
-    try:
-        entry = await settings_svc.get_entry("company", "company_name")
-        if entry.source != SettingSource.DATABASE:
-            logger.debug(
-                SETUP_STATUS_SETTINGS_DEFAULT_USED,
-                setting="company_name",
-                source=entry.source,
-            )
-            return False
-        return bool(entry.value and entry.value.strip())
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        logger.debug(
-            SETUP_STATUS_SETTINGS_DEFAULT_USED,
-            setting="company_name",
-        )
-        return False
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="company_name",
-            exc_info=True,
-        )
-        if strict:
-            raise
-        return False
-
-
-async def _check_has_agents(
-    settings_svc: SettingsService,
-    *,
-    strict: bool = False,
-) -> bool:
-    """Check whether any agents have been explicitly created.
-
-    Only values persisted to the database (i.e. saved by the user
-    through the setup wizard) count.  YAML/code defaults must not
-    cause a fresh setup to report agents as already existing.
-
-    Args:
-        settings_svc: Settings service instance.
-        strict: When True, propagate parsing/validation exceptions
-            instead of returning False (use for validation gates).
-
-    Returns:
-        True if user-created agents exist, False otherwise.
-    """
-    try:
-        entry = await settings_svc.get_entry("company", "agents")
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        logger.debug(
-            SETUP_STATUS_SETTINGS_DEFAULT_USED,
-            setting="agents",
-        )
-        return False
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="agents",
-            exc_info=True,
-        )
-        if strict:
-            raise
-        return False
-
-    if entry.source != SettingSource.DATABASE:
-        logger.debug(
-            SETUP_STATUS_SETTINGS_DEFAULT_USED,
-            setting="agents",
-            source=entry.source,
-        )
-        return False
-    if not entry.value:
-        return False
-    return validate_agents_value(entry.value, strict=strict)
-
-
-def _validate_locale_selection(
-    locales: list[str],
-    sentinel: str,
-    valid_codes: frozenset[str],
-) -> None:
-    """Validate locale selection, raising on invalid input.
-
-    Args:
-        locales: User-submitted locale codes.
-        sentinel: The "all locales" sentinel value.
-        valid_codes: Set of valid locale codes.
-
-    Raises:
-        ApiValidationError: On mixed sentinel or invalid codes.
-    """
-    if sentinel in locales and len(locales) > 1:
-        msg = f"'{sentinel}' cannot be combined with explicit locale codes"
-        logger.warning(SETUP_NAME_LOCALES_INVALID, reason="mixed_sentinel")
-        raise ApiValidationError(msg)
-    invalid = [loc for loc in locales if loc != sentinel and loc not in valid_codes]
-    if invalid:
-        logger.warning(SETUP_NAME_LOCALES_INVALID, invalid_locales=invalid)
-        msg = f"Invalid locale codes: {invalid}"
-        raise ApiValidationError(msg)
-    unique = list(dict.fromkeys(locales))
-    if len(unique) != len(locales):
-        logger.warning(SETUP_NAME_LOCALES_INVALID, reason="duplicates")
-        msg = "Duplicate locale codes are not allowed"
-        raise ApiValidationError(msg)
-
-
-async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
-    """Check whether name locales have been explicitly configured.
-
-    Args:
-        settings_svc: Settings service instance.
-
-    Returns:
-        True if name locales are user-configured, False otherwise.
-    """
-    try:
-        entry = await settings_svc.get_entry("company", "name_locales")
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        return False
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="name_locales",
-            exc_info=True,
-        )
-        return False
-    if entry.source != SettingSource.DATABASE or not entry.value:
-        return False
-    try:
-        parsed = json.loads(entry.value)
-    except json.JSONDecodeError, TypeError:
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="invalid_json_or_type",
-            raw=entry.value[:200] if entry.value else None,
-        )
-        return False
-    return isinstance(parsed, list) and len(parsed) > 0
-
-
-async def _resolve_min_password_length(
-    settings_svc: SettingsService,
-) -> int:
-    """Resolve the minimum password length from settings.
-
-    Falls back to the ``AuthConfig`` default when the setting is absent,
-    non-integer, or otherwise unreadable.
-
-    Args:
-        settings_svc: Settings service instance.
-
-    Returns:
-        Resolved minimum password length (never below the default).
-    """
-    raw_pw_value: str | None = None
-    try:
-        pw_entry = await settings_svc.get_entry("api", "min_password_length")
-        raw_pw_value = pw_entry.value
-        parsed = int(raw_pw_value)
-        return max(parsed, _DEFAULT_MIN_PASSWORD_LENGTH)
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        logger.debug(
-            SETUP_STATUS_SETTINGS_DEFAULT_USED,
-            setting="min_password_length",
-        )
-    except ValueError:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="min_password_length",
-            reason="non_integer_value",
-            raw=raw_pw_value,
-        )
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="min_password_length",
-            exc_info=True,
-        )
-    return _DEFAULT_MIN_PASSWORD_LENGTH
-
-
-async def _check_setup_not_complete(settings_svc: SettingsService) -> None:
-    """Raise ConflictError if setup has already been completed."""
-    is_complete = await _is_setup_complete(settings_svc)
-    if is_complete:
-        logger.warning(SETUP_ALREADY_COMPLETE)
-        msg = "Setup has already been completed"
-        raise ConflictError(msg)
-
-
-async def _auto_create_template_agents(
-    template: CompanyTemplate,
-    app_state: AppState,
-    settings_svc: SettingsService,
-) -> tuple[SetupAgentSummary, ...]:
-    """Expand template agents, match models, persist, and return summaries."""
-    locales = await _read_name_locales(settings_svc)
-    agents = expand_template_agents(template, locales=locales)
-    providers = await app_state.provider_management.list_providers()
-    agents = match_and_assign_models(agents, providers)
-
-    async with _AGENT_LOCK:
-        await settings_svc.set(
-            "company",
-            "agents",
-            json.dumps(agents),
-        )
-
-    return agents_to_summaries(agents)
-
-
-def _parse_locale_json(raw: str) -> list[str] | None:
-    """Parse and validate a JSON-encoded locale list.
-
-    Returns a ``list`` on success, or ``None`` when the value is
-    invalid JSON or not a list.  Logs a warning with context on
-    failure.
-    """
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="invalid_json",
-            raw=raw[:200] if raw else None,
-        )
-        return None
-    if not isinstance(parsed, list):
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="expected_list",
-            actual_type=type(parsed).__name__,
-        )
-        return None
-    return parsed
-
-
-async def _read_name_locales(
-    settings_svc: SettingsService,
-    *,
-    resolve: bool = True,
-) -> list[str] | None:
-    """Read stored name locale preference, optionally resolving sentinels.
-
-    Deserialises the JSON-encoded locale list from settings, validates
-    it as a list, and optionally resolves it through ``resolve_locales``
-    (which filters out invalid codes and expands the ``__all__``
-    sentinel).  Returns ``None`` when the setting is absent,
-    unparseable, or resolves to an empty list.
-
-    Args:
-        settings_svc: Settings service instance.
-        resolve: When True (default), expand the ``__all__`` sentinel
-            to concrete locale codes via ``resolve_locales``.  When
-            False, return the raw stored list (including the sentinel)
-            without expansion -- used by the GET endpoint so the
-            frontend receives the sentinel value.
-
-    Returns:
-        Locale codes (resolved or raw), or None when the setting is
-        absent, unparseable, or the resulting list is empty.
-    """
-    try:
-        entry = await settings_svc.get_entry("company", "name_locales")
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        return None
-    except Exception:
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="name_locales",
-            exc_info=True,
-        )
-        return None
-    if not entry.value:
-        return None
-    parsed = _parse_locale_json(entry.value)
-    if parsed is None:
-        return None
-    if resolve:
-        from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
-
-        parsed = resolve_locales(parsed)
-    return parsed or None
-
-
-async def _is_setup_complete(settings_svc: SettingsService) -> bool:
-    """Check whether setup has been completed.
-
-    Args:
-        settings_svc: Settings service instance.
-
-    Returns:
-        True if setup_complete is "true", False when the setting
-        does not exist.
-
-    Raises:
-        Exception: Propagates unexpected errors after logging.
-    """
-    try:
-        entry = await settings_svc.get_entry("api", "setup_complete")
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        return False
-    except Exception:
-        logger.error(
-            SETUP_COMPLETE_CHECK_ERROR,
-            exc_info=True,
-        )
-        raise
-    else:
-        return entry.value == "true"
-
-
-class _TemplateResult(NamedTuple):
-    departments_json: str
-    department_count: int
-    template_applied: str | None
-    template: CompanyTemplate | None
-
-
-def _resolve_template(template_name: str | None) -> _TemplateResult:
-    """Validate template and extract department data + template object."""
-    if template_name is None:
-        return _TemplateResult("", 0, None, None)
-
-    loaded = _load_template_safe(template_name)
-    departments_json = departments_to_json(loaded.template.departments)
-    return _TemplateResult(
-        departments_json,
-        len(loaded.template.departments),
-        template_name,
-        loaded.template,
-    )
-
-
-async def _persist_company_settings(
-    settings_svc: SettingsService,
-    company_name: str,
-    description: str | None,
-    departments_json: str,
-) -> None:
-    """Write company name, description, and departments to settings.
-
-    Always writes all three keys to clear stale data from previous runs.
-    Stores ``""`` when description is None (settings values are strings);
-    consumers should treat ``""`` as absent.
-    """
-    await settings_svc.set("company", "company_name", company_name)
-    await settings_svc.set("company", "description", description or "")
-    await settings_svc.set(
-        "company",
-        "departments",
-        departments_json or "[]",
-    )
-
-
-def _load_template_safe(template_name: str) -> LoadedTemplate:
-    """Load a template by name with API-friendly error handling.
-
-    Args:
-        template_name: Template name to load.
-
-    Returns:
-        ``LoadedTemplate`` instance.
-
-    Raises:
-        NotFoundError: If the template does not exist.
-        ApiValidationError: If the template fails to render or validate.
-    """
-    from synthorg.templates.errors import (  # noqa: PLC0415
-        TemplateNotFoundError,
-        TemplateRenderError,
-        TemplateValidationError,
-    )
-    from synthorg.templates.loader import load_template  # noqa: PLC0415
-
-    try:
-        return load_template(template_name)
-    except TemplateNotFoundError as exc:
-        msg = f"Template {template_name!r} not found"
-        logger.warning(SETUP_TEMPLATE_NOT_FOUND, template=template_name)
-        raise NotFoundError(msg) from exc
-    except (TemplateRenderError, TemplateValidationError) as exc:
-        msg = f"Template {template_name!r} is invalid: {exc}"
-        logger.warning(
-            SETUP_TEMPLATE_INVALID,
-            template=template_name,
-            error=str(exc),
-        )
-        raise ApiValidationError(msg) from exc

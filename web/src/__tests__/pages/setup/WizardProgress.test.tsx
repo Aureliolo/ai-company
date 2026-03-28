@@ -3,14 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { WizardProgress } from '@/pages/setup/WizardProgress'
 import type { WizardStep } from '@/stores/setup-wizard'
 
-const stepOrder: WizardStep[] = ['template', 'company', 'agents', 'providers', 'theme', 'complete']
+const stepOrder: WizardStep[] = ['template', 'company', 'providers', 'agents', 'theme', 'complete']
 
 const defaultStepsCompleted: Record<WizardStep, boolean> = {
   account: false,
+  mode: false,
   template: false,
   company: false,
-  agents: false,
   providers: false,
+  agents: false,
   theme: false,
   complete: false,
 }

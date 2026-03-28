@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -6,7 +6,6 @@ import { SkipWizardForm } from './SkipWizardForm'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { useSetupStore } from '@/stores/setup'
 import { useToastStore } from '@/stores/toast'
-import { estimateMonthlyCost } from '@/utils/cost-estimator'
 import { MiniOrgChart } from './MiniOrgChart'
 import { SetupSummary } from './SetupSummary'
 import { CheckCircle } from 'lucide-react'
@@ -19,29 +18,15 @@ export function CompleteStep() {
   const agents = useSetupWizardStore((s) => s.agents)
   const providers = useSetupWizardStore((s) => s.providers)
   const currency = useSetupWizardStore((s) => s.currency)
-  const budgetCapEnabled = useSetupWizardStore((s) => s.budgetCapEnabled)
-  const budgetCap = useSetupWizardStore((s) => s.budgetCap)
   const completing = useSetupWizardStore((s) => s.completing)
   const completionError = useSetupWizardStore((s) => s.completionError)
   const wizardCompleteSetup = useSetupWizardStore((s) => s.completeSetup)
-
-  const costEstimate = useMemo(() => {
-    if (agents.length === 0) return null
-    return estimateMonthlyCost(
-      agents.map((a) => ({
-        model_provider: a.model_provider,
-        model_id: a.model_id,
-        tier: a.tier,
-      })),
-      Object.values(providers).flatMap((p) => [...p.models]),
-    )
-  }, [agents, providers])
 
   const handleComplete = useCallback(async () => {
     try {
       await wizardCompleteSetup()
     } catch {
-      // Error is already stored in completionError by the store action
+      // Error stored in completionError by the store action and rendered below.
       return
     }
     useSetupStore.setState({ setupComplete: true })
@@ -74,10 +59,7 @@ export function CompleteStep() {
         companyResponse={companyResponse}
         agents={agents}
         providers={providers}
-        costEstimate={costEstimate}
         currency={currency}
-        budgetCapEnabled={budgetCapEnabled}
-        budgetCap={budgetCap}
       />
 
       {completionError && (

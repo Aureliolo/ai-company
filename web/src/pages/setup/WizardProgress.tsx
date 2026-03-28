@@ -9,10 +9,11 @@ interface StepConfig {
 
 const STEP_LABELS: Record<WizardStep, string> = {
   account: 'Account',
+  mode: 'Mode',
   template: 'Template',
   company: 'Company',
-  agents: 'Agents',
   providers: 'Providers',
+  agents: 'Agents',
   theme: 'Theme',
   complete: 'Done',
 }
