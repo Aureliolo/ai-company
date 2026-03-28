@@ -61,7 +61,7 @@ export function DeptHealthBar({
       {/* Stats row */}
       <div className="flex gap-3 text-xs text-muted-foreground">
         <span>{agentCount} {agentCount === 1 ? 'agent' : 'agents'}</span>
-        <span>{taskCount != null ? `${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}` : 'N/A tasks'}</span>
+        <span>{taskCount != null ? `${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}` : 'N/A'}</span>
       </div>
     </div>
   )

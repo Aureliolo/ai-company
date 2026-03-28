@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -37,6 +37,14 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setForm(INITIAL_FORM)
+      setErrors({})
+      setSubmitError(null)
+    }
+  }, [open])
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))

@@ -74,6 +74,7 @@ export function makeAgent(name: string, overrides?: Partial<AgentConfig>): Agent
   }
 }
 
+/** Intentionally accepts `string` for test flexibility (non-enum dept names). */
 export function makeDepartment(name: string, overrides?: Partial<Department>): Department {
   return {
     name: name as Department['name'],

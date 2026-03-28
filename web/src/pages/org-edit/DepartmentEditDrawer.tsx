@@ -44,8 +44,12 @@ export function DepartmentEditDrawer({
   const handleSave = useCallback(async () => {
     if (!department) return
     setSubmitError(null)
+    const pct = Number(budgetPercent)
+    if (Number.isFinite(pct) && (pct < 0 || pct > 100)) {
+      setSubmitError('Budget percent must be between 0 and 100')
+      return
+    }
     try {
-      const pct = Number(budgetPercent)
       await onUpdate(department.name, {
         display_name: displayName.trim() || undefined,
         budget_percent: Number.isFinite(pct) ? pct : undefined,

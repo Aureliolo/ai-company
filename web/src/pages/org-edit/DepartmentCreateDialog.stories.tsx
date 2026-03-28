@@ -3,8 +3,8 @@ import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import type { Department } from '@/api/types'
 
 const stubDept: Department = {
-  name: 'engineering',
-  display_name: 'New Department',
+  name: 'design',
+  display_name: 'Design',
   teams: [],
 }
 

@@ -45,3 +45,7 @@ export const Open: Story = {}
 export const NoHealthData: Story = {
   args: { health: null },
 }
+
+export const Saving: Story = {
+  args: { saving: true },
+}

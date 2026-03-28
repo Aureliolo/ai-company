@@ -183,11 +183,11 @@ export function AgentsTab({
     [config, agentsByDept, optimisticReorderAgents, onReorderAgents],
   )
 
-  if (!config || config.agents.length === 0) {
+  if (!config || (config.agents.length === 0 && config.departments.length === 0)) {
     return (
       <div className="space-y-4">
         <div className="flex justify-end">
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Agent
           </Button>
@@ -210,7 +210,7 @@ export function AgentsTab({
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />
           Add Agent
         </Button>

@@ -37,9 +37,15 @@ function renderTab(overrides?: Partial<AgentsTabProps>) {
 describe('AgentsTab', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('renders empty state when config has no agents', () => {
-    renderTab({ config: { ...knownConfig, agents: [] } })
+  it('renders global empty state when no agents and no departments', () => {
+    renderTab({ config: { ...knownConfig, agents: [], departments: [] } })
     expect(screen.getByText('No agents')).toBeInTheDocument()
+  })
+
+  it('renders per-department empty messages when agents are empty but departments exist', () => {
+    renderTab({ config: { ...knownConfig, agents: [] } })
+    const msgs = screen.getAllByText('No agents in this department')
+    expect(msgs.length).toBe(knownConfig.departments.length)
   })
 
   it('renders Add Agent button', () => {

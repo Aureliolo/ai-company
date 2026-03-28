@@ -70,14 +70,25 @@ export function useOrgEditData(): UseOrgEditDataReturn {
 
   // Initial data fetch (sequential: health depends on config)
   useEffect(() => {
+    let mounted = true
     const store = useCompanyStore.getState()
-    store.fetchCompanyData().then(() => {
-      if (useCompanyStore.getState().config) {
-        store.fetchDepartmentHealths()
-      }
-      polling.start()
-    })
-    return () => polling.stop()
+    store.fetchCompanyData()
+      .then(() => {
+        if (!mounted) return
+        if (useCompanyStore.getState().config) {
+          return store.fetchDepartmentHealths()
+        }
+      })
+      .then(() => {
+        if (mounted) polling.start()
+      })
+      .catch(() => {
+        // Errors are set in store state by the respective fetch methods
+      })
+    return () => {
+      mounted = false
+      polling.stop()
+    }
     // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling ref identity is stable
   }, [])
 

@@ -51,6 +51,10 @@ type Story = StoryObj<typeof meta>
 
 export const Open: Story = {}
 
+export const Closed: Story = {
+  args: { open: false },
+}
+
 export const Saving: Story = {
   args: { saving: true },
 }
