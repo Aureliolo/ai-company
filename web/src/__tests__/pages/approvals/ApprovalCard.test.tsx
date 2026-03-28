@@ -65,6 +65,7 @@ describe('ApprovalCard', () => {
   it('hides approve/reject buttons for non-pending items', () => {
     renderCard({ status: 'approved' })
     expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reject/i })).not.toBeInTheDocument()
   })
 
   it('shows checkbox for pending items', () => {

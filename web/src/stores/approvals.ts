@@ -57,6 +57,7 @@ export function _resetPendingTransitions(): void {
   pendingTransitions.clear()
 }
 
+let listRequestSeq = 0
 let detailRequestSeq = 0
 
 /** Reset module-level detailRequestSeq -- test-only. */
@@ -76,9 +77,11 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   selectedIds: new Set<string>(),
 
   fetchApprovals: async (filters) => {
+    const seq = ++listRequestSeq
     set({ loading: true, error: null })
     try {
       const result = await approvalsApi.listApprovals(filters)
+      if (seq !== listRequestSeq) return // stale response
       // Merge: preserve items with pending optimistic transitions
       const merged = result.data.map((serverItem) => {
         if (pendingTransitions.has(serverItem.id)) {
@@ -93,8 +96,12 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
       const prunedSelected = [...prevSelected].some((sid) => !pendingIds.has(sid))
         ? new Set([...prevSelected].filter((sid) => pendingIds.has(sid)))
         : prevSelected
-      set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected })
+      // Sync selectedApproval with fresh data if drawer is open
+      const currentSelected = get().selectedApproval
+      const freshSelected = currentSelected ? merged.find((a) => a.id === currentSelected.id) ?? currentSelected : null
+      set({ approvals: merged, total: result.total, loading: false, selectedIds: prunedSelected, selectedApproval: freshSelected })
     } catch (err) {
+      if (seq !== listRequestSeq) return
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
