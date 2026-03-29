@@ -128,4 +128,58 @@ describe('useAgentsData', () => {
     expect(result.current.filteredAgents).toHaveLength(1)
     expect(result.current.filteredAgents[0]!.name).toBe('alice')
   })
+
+  describe('WebSocket debounce', () => {
+    let wsHandler: (...args: unknown[]) => void
+
+    async function setupHandler() {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      renderHook(() => useAgentsData())
+      const bindings = vi.mocked(useWebSocket).mock.calls[0]![0].bindings
+      wsHandler = bindings[0]!.handler as (...args: unknown[]) => void
+      // Clear the initial fetchAgents call from mount
+      mockFetchAgents.mockClear()
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('does not call fetchAgents synchronously on WS event', async () => {
+      await setupHandler()
+      wsHandler()
+      expect(mockFetchAgents).not.toHaveBeenCalled()
+    })
+
+    it('calls fetchAgents after 300ms debounce', async () => {
+      await setupHandler()
+      wsHandler()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgents).toHaveBeenCalledTimes(1)
+    })
+
+    it('coalesces burst events into a single fetch', async () => {
+      await setupHandler()
+      for (let i = 0; i < 5; i++) wsHandler()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgents).toHaveBeenCalledTimes(1)
+    })
+
+    it('cleans up timeout on unmount', async () => {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      const { unmount } = renderHook(() => useAgentsData())
+      const bindings = vi.mocked(useWebSocket).mock.calls[0]![0].bindings
+      const handler = bindings[0]!.handler as (...args: unknown[]) => void
+      mockFetchAgents.mockClear()
+
+      handler()
+      unmount()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgents).not.toHaveBeenCalled()
+    })
+  })
 })

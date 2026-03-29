@@ -175,4 +175,59 @@ describe('useAgentDetailData', () => {
     result.current.fetchMoreActivity()
     expect(mockFetchMoreActivity).not.toHaveBeenCalled()
   })
+
+  describe('WebSocket debounce', () => {
+    let wsHandler: (...args: unknown[]) => void
+
+    async function setupHandler() {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      renderHook(() => useAgentDetailData('alice'))
+      const bindings = vi.mocked(useWebSocket).mock.calls[0]![0].bindings
+      wsHandler = bindings[0]!.handler as (...args: unknown[]) => void
+      // Clear the initial fetchAgentDetail call from mount
+      mockFetchAgentDetail.mockClear()
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('does not call fetchAgentDetail synchronously on WS event', async () => {
+      await setupHandler()
+      wsHandler()
+      expect(mockFetchAgentDetail).not.toHaveBeenCalled()
+    })
+
+    it('calls fetchAgentDetail after 300ms debounce', async () => {
+      await setupHandler()
+      wsHandler()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgentDetail).toHaveBeenCalledTimes(1)
+      expect(mockFetchAgentDetail).toHaveBeenCalledWith('alice')
+    })
+
+    it('coalesces burst events into a single fetch', async () => {
+      await setupHandler()
+      for (let i = 0; i < 5; i++) wsHandler()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgentDetail).toHaveBeenCalledTimes(1)
+    })
+
+    it('cleans up timeout on unmount', async () => {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      const { unmount } = renderHook(() => useAgentDetailData('alice'))
+      const bindings = vi.mocked(useWebSocket).mock.calls[0]![0].bindings
+      const handler = bindings[0]!.handler as (...args: unknown[]) => void
+      mockFetchAgentDetail.mockClear()
+
+      handler()
+      unmount()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgentDetail).not.toHaveBeenCalled()
+    })
+  })
 })

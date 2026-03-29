@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAgentsStore } from '@/stores/agents'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
@@ -14,6 +14,7 @@ import type {
 import type { MetricCardProps } from '@/components/ui/metric-card'
 
 const DETAIL_POLL_INTERVAL = 30_000
+const WS_DEBOUNCE_MS = 300
 const DETAIL_CHANNELS = ['agents', 'tasks'] as const satisfies readonly WsChannel[]
 const EMPTY_BINDINGS: ChannelBinding[] = []
 
@@ -87,14 +88,25 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [agentName])
 
-  // WebSocket -- only bind when agentName is truthy
+  // WebSocket -- debounce to coalesce burst events into a single refetch
+  const wsDebouncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const agentNameRef = useRef(agentName)
+  agentNameRef.current = agentName
+
+  useEffect(() => () => {
+    if (wsDebouncRef.current) clearTimeout(wsDebouncRef.current)
+  }, [])
+
   const bindings: ChannelBinding[] = useMemo(
     () =>
       agentName
         ? DETAIL_CHANNELS.map((channel) => ({
             channel,
             handler: () => {
-              useAgentsStore.getState().fetchAgentDetail(agentName)
+              if (wsDebouncRef.current) clearTimeout(wsDebouncRef.current)
+              wsDebouncRef.current = setTimeout(() => {
+                useAgentsStore.getState().fetchAgentDetail(agentNameRef.current)
+              }, WS_DEBOUNCE_MS)
             },
           }))
         : EMPTY_BINDINGS,
