@@ -218,14 +218,21 @@ describe('sortAgents', () => {
 
   it('treats agent with undefined status as active for sorting', () => {
     const withUndefined = [
-      makeAgent({ name: 'Active Agent', status: 'active' }),
-      makeAgent({ name: 'No Status', status: undefined }),
       makeAgent({ name: 'Terminated Agent', status: 'terminated' }),
+      makeAgent({ name: 'No Status', status: undefined }),
+      makeAgent({ name: 'Active Agent', status: 'active' }),
     ]
     const result = sortAgents(withUndefined, 'status', 'asc')
-    // undefined status treated as 'active' -- should sort with active agents, before terminated
     const names = result.map((a) => a.name)
-    expect(names.indexOf('Terminated Agent')).toBeGreaterThan(names.indexOf('No Status'))
+    // undefined status treated as 'active' -- should sort identically to explicit 'active'
+    const activeIdx = names.indexOf('Active Agent')
+    const noStatusIdx = names.indexOf('No Status')
+    const terminatedIdx = names.indexOf('Terminated Agent')
+    // Both active and undefined-status sort before terminated
+    expect(terminatedIdx).toBeGreaterThan(activeIdx)
+    expect(terminatedIdx).toBeGreaterThan(noStatusIdx)
+    // Active and undefined-status share the same rank
+    expect(Math.abs(activeIdx - noStatusIdx)).toBeLessThanOrEqual(1)
   })
 
   it('sorts by name ascending', () => {
