@@ -431,8 +431,25 @@ export interface AgentPerformanceSummary {
 
 // ── Agent Activity & Career ─────────────────────────────────
 
+export type ActivityEventType =
+  | 'hired' | 'fired' | 'promoted' | 'demoted' | 'onboarded'
+  | 'offboarded' | 'status_changed'
+  | 'task_completed' | 'task_started'
+  | 'cost_incurred'
+  | 'tool_used'
+  | 'delegation_sent' | 'delegation_received'
+
+export const ACTIVITY_EVENT_TYPE_VALUES = [
+  'hired', 'fired', 'promoted', 'demoted', 'onboarded',
+  'offboarded', 'status_changed',
+  'task_completed', 'task_started',
+  'cost_incurred',
+  'tool_used',
+  'delegation_sent', 'delegation_received',
+] as const satisfies readonly ActivityEventType[]
+
 export interface AgentActivityEvent {
-  event_type: string
+  event_type: ActivityEventType | (string & {})
   timestamp: string
   description: string
   readonly related_ids: Readonly<Record<string, string>>

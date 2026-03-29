@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type {
+  ActivityEventType,
   AgentConfig,
   AgentPerformanceSummary,
   AgentStatus,
@@ -245,7 +246,7 @@ export function getCareerEventColor(eventType: CareerEventType): SemanticColor {
 
 // ── Activity event icons ───────────────────────────────────
 
-const ACTIVITY_ICON_MAP: Record<string, LucideIcon> = {
+const ACTIVITY_ICON_MAP: Partial<Record<ActivityEventType, LucideIcon>> = {
   hired: UserPlus,
   fired: UserMinus,
   promoted: ArrowUpCircle,
@@ -263,5 +264,5 @@ const FALLBACK_ICON: LucideIcon = Activity
 
 /** Map an activity event type string to a Lucide icon component. */
 export function getActivityEventIcon(eventType: string): LucideIcon {
-  return ACTIVITY_ICON_MAP[eventType] ?? FALLBACK_ICON
+  return ACTIVITY_ICON_MAP[eventType as ActivityEventType] ?? FALLBACK_ICON
 }
