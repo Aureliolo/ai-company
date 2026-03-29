@@ -1,14 +1,17 @@
 """In-memory, append-only tool invocation tracker.
 
 Records :class:`ToolInvocationRecord` entries from tool executions and
-provides filtered queries for the activity timeline.
+provides filtered queries for the activity timeline.  When the record
+count exceeds ``max_records``, oldest entries are evicted (FIFO).
 """
 
 import asyncio
+from collections import deque
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
+    TOOL_INVOCATION_EVICTED,
     TOOL_INVOCATION_RECORDED,
     TOOL_INVOCATIONS_QUERIED,
 )
@@ -20,16 +23,34 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_DEFAULT_MAX_RECORDS = 10_000
+
 
 class ToolInvocationTracker:
     """In-memory, append-only tool invocation tracking service.
 
     Records tool invocation outcomes and provides filtered queries
-    for the activity timeline.
+    for the activity timeline.  When record count exceeds
+    ``max_records``, oldest entries are evicted (FIFO).
+
+    Args:
+        max_records: Maximum records before oldest are evicted.
+
+    Raises:
+        ValueError: If *max_records* < 1.
     """
 
-    def __init__(self) -> None:
-        self._records: list[ToolInvocationRecord] = []
+    def __init__(
+        self,
+        *,
+        max_records: int = _DEFAULT_MAX_RECORDS,
+    ) -> None:
+        if max_records < 1:
+            msg = f"max_records must be >= 1, got {max_records}"
+            raise ValueError(msg)
+        self._records: deque[ToolInvocationRecord] = deque(
+            maxlen=max_records,
+        )
         self._lock: asyncio.Lock = asyncio.Lock()
 
     async def record(self, invocation: ToolInvocationRecord) -> None:
@@ -39,6 +60,11 @@ class ToolInvocationTracker:
             invocation: Immutable invocation record to store.
         """
         async with self._lock:
+            if len(self._records) == self._records.maxlen:
+                logger.warning(
+                    TOOL_INVOCATION_EVICTED,
+                    max_records=self._records.maxlen,
+                )
             self._records.append(invocation)
             logger.debug(
                 TOOL_INVOCATION_RECORDED,

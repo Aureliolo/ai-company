@@ -104,3 +104,43 @@ class TestToolInvocationTracker:
         await tracker.record(_make_record())
         records = await tracker.get_records()
         assert isinstance(records, tuple)
+
+
+# ── Eviction ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestToolInvocationTrackerEviction:
+    """FIFO eviction when record count exceeds max_records."""
+
+    async def test_eviction_when_max_exceeded(self) -> None:
+        tracker = ToolInvocationTracker(max_records=3)
+        for i in range(5):
+            await tracker.record(
+                _make_record(
+                    agent_id=f"agent-{i:03d}",
+                    timestamp=_NOW + timedelta(seconds=i),
+                ),
+            )
+        records = await tracker.get_records()
+        assert len(records) == 3
+        # Oldest two evicted (agent-000, agent-001)
+        assert records[0].agent_id == "agent-002"
+        assert records[2].agent_id == "agent-004"
+
+    async def test_no_eviction_below_max(self) -> None:
+        tracker = ToolInvocationTracker(max_records=10)
+        for i in range(5):
+            await tracker.record(
+                _make_record(agent_id=f"agent-{i:03d}"),
+            )
+        records = await tracker.get_records()
+        assert len(records) == 5
+
+    def test_max_records_zero_rejected(self) -> None:
+        with pytest.raises(ValueError, match="max_records must be >= 1"):
+            ToolInvocationTracker(max_records=0)
+
+    def test_max_records_negative_rejected(self) -> None:
+        with pytest.raises(ValueError, match="max_records must be >= 1"):
+            ToolInvocationTracker(max_records=-1)
