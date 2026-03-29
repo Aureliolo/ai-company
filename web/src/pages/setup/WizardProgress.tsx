@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import type { WizardStep } from '@/stores/setup-wizard'
 
 interface StepConfig {
@@ -46,7 +46,7 @@ function StepIndicator({
         aria-current={isActive ? 'step' : undefined}
         className={cn(
           'flex flex-col items-center gap-1',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          FOCUS_RING,
           'rounded-md px-2 py-1 transition-colors',
           isAccessible && !isActive && 'cursor-pointer hover:bg-card-hover',
           !isAccessible && 'cursor-not-allowed opacity-50',

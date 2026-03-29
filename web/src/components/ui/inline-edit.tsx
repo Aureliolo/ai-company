@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { useFlash } from '@/hooks/useFlash'
 
 type EditState = 'display' | 'editing' | 'saving'
@@ -160,7 +160,7 @@ export function InlineEdit({
           disabled={state === 'saving'}
           className={cn(
             'rounded-md border bg-surface px-2 py-1 text-sm text-foreground outline-none',
-            'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            FOCUS_RING,
             error ? 'border-danger' : 'border-border-bright',
             state === 'saving' && 'pointer-events-none opacity-60',
           )}

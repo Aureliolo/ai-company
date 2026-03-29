@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
@@ -121,7 +121,7 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
           onSelectTask(task.id)
         }
       }}
-      className="flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className={cn('flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover', FOCUS_RING)}
       aria-label={`Task: ${task.title}`}
     >
       <span className="w-20">

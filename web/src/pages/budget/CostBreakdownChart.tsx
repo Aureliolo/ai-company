@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency } from '@/utils/format'
@@ -85,7 +85,8 @@ export function CostBreakdownChart({
                 disabled={isDisabled}
                 onClick={() => { if (!isDisabled) onDimensionChange(opt.value) }}
                 className={cn(
-                  'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                  'px-3 py-1 text-xs transition-colors',
+                  FOCUS_RING,
                   isActive && 'bg-accent/10 text-accent font-medium',
                   !isActive && !isDisabled && 'text-text-muted hover:text-foreground',
                   isDisabled && 'opacity-50 cursor-not-allowed',

@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { AGGREGATION_PERIOD_VALUES, type AggregationPeriod } from '@/utils/budget'
 
 export interface PeriodSelectorProps {
@@ -26,7 +26,8 @@ export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
           type="button"
           onClick={() => onChange(period.value)}
           className={cn(
-            'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+            'px-3 py-1 text-xs transition-colors',
+            FOCUS_RING,
             value === period.value
               ? 'bg-accent/10 text-accent font-medium'
               : 'text-text-muted hover:text-foreground',
