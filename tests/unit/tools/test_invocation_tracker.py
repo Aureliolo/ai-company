@@ -104,3 +104,59 @@ class TestToolInvocationTracker:
         await tracker.record(_make_record())
         records = await tracker.get_records()
         assert isinstance(records, tuple)
+
+
+# ── Eviction ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestToolInvocationTrackerEviction:
+    """FIFO eviction when record count exceeds max_records."""
+
+    async def test_eviction_when_max_exceeded(self) -> None:
+        tracker = ToolInvocationTracker(max_records=3)
+        for i in range(5):
+            await tracker.record(
+                _make_record(
+                    agent_id=f"agent-{i:03d}",
+                    timestamp=_NOW + timedelta(seconds=i),
+                ),
+            )
+        records = await tracker.get_records()
+        assert len(records) == 3
+        # Oldest two evicted (agent-000, agent-001)
+        assert records[0].agent_id == "agent-002"
+        assert records[2].agent_id == "agent-004"
+
+    async def test_no_eviction_below_max(self) -> None:
+        tracker = ToolInvocationTracker(max_records=10)
+        for i in range(5):
+            await tracker.record(
+                _make_record(agent_id=f"agent-{i:03d}"),
+            )
+        records = await tracker.get_records()
+        assert len(records) == 5
+
+    @pytest.mark.parametrize("value", [0, -1], ids=["zero", "negative"])
+    def test_max_records_invalid_rejected(self, value: int) -> None:
+        with pytest.raises(ValueError, match="max_records must be >= 1"):
+            ToolInvocationTracker(max_records=value)
+
+    async def test_no_eviction_at_exact_max(self) -> None:
+        tracker = ToolInvocationTracker(max_records=3)
+        for i in range(3):
+            await tracker.record(
+                _make_record(agent_id=f"agent-{i:03d}"),
+            )
+        records = await tracker.get_records()
+        assert len(records) == 3
+        assert records[0].agent_id == "agent-000"
+        assert records[2].agent_id == "agent-002"
+
+    async def test_max_records_one_keeps_only_last(self) -> None:
+        tracker = ToolInvocationTracker(max_records=1)
+        await tracker.record(_make_record(agent_id="agent-first"))
+        await tracker.record(_make_record(agent_id="agent-last"))
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].agent_id == "agent-last"

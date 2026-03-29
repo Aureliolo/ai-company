@@ -1,15 +1,19 @@
-"""In-memory, append-only tool invocation tracker.
+"""In-memory tool invocation tracker with size-cap eviction.
 
 Records :class:`ToolInvocationRecord` entries from tool executions and
-provides filtered queries for the activity timeline.
+provides filtered queries for the activity timeline.  When the record
+count exceeds ``max_records``, oldest entries are evicted (FIFO).
 """
 
 import asyncio
+from collections import deque
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
+    TOOL_INVOCATION_EVICTED,
     TOOL_INVOCATION_RECORDED,
+    TOOL_INVOCATION_TIME_RANGE_INVALID,
     TOOL_INVOCATIONS_QUERIED,
 )
 
@@ -20,17 +24,37 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_DEFAULT_MAX_RECORDS = 10_000
+
 
 class ToolInvocationTracker:
-    """In-memory, append-only tool invocation tracking service.
+    """In-memory tool invocation tracking service with size-cap eviction.
 
     Records tool invocation outcomes and provides filtered queries
-    for the activity timeline.
+    for the activity timeline.  When record count exceeds
+    ``max_records``, oldest entries are evicted (FIFO) via bounded
+    ``deque``.
+
+    Args:
+        max_records: Maximum records before oldest are evicted.
+
+    Raises:
+        ValueError: If *max_records* < 1.
     """
 
-    def __init__(self) -> None:
-        self._records: list[ToolInvocationRecord] = []
+    def __init__(
+        self,
+        *,
+        max_records: int = _DEFAULT_MAX_RECORDS,
+    ) -> None:
+        if max_records < 1:
+            msg = f"max_records must be >= 1, got {max_records}"
+            raise ValueError(msg)
+        self._records: deque[ToolInvocationRecord] = deque(
+            maxlen=max_records,
+        )
         self._lock: asyncio.Lock = asyncio.Lock()
+        self._eviction_warned: bool = False
 
     async def record(self, invocation: ToolInvocationRecord) -> None:
         """Append a tool invocation record.
@@ -39,6 +63,12 @@ class ToolInvocationTracker:
             invocation: Immutable invocation record to store.
         """
         async with self._lock:
+            if not self._eviction_warned and len(self._records) == self._records.maxlen:
+                logger.warning(
+                    TOOL_INVOCATION_EVICTED,
+                    max_records=self._records.maxlen,
+                )
+                self._eviction_warned = True
             self._records.append(invocation)
             logger.debug(
                 TOOL_INVOCATION_RECORDED,
@@ -70,9 +100,7 @@ class ToolInvocationTracker:
             ValueError: If both *start* and *end* are given and
                 ``start >= end``.
         """
-        if start is not None and end is not None and start >= end:
-            msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
-            raise ValueError(msg)
+        _validate_time_range(start, end)
         logger.debug(
             TOOL_INVOCATIONS_QUERIED,
             agent_id=agent_id,
@@ -88,3 +116,21 @@ class ToolInvocationTracker:
             and (start is None or r.timestamp >= start)
             and (end is None or r.timestamp < end)
         )
+
+
+# ── Module-level pure helpers ────────────────────────────────────
+
+
+def _validate_time_range(
+    start: datetime | None,
+    end: datetime | None,
+) -> None:
+    """Raise ``ValueError`` if *start* >= *end* when both are given."""
+    if start is not None and end is not None and start >= end:
+        logger.warning(
+            TOOL_INVOCATION_TIME_RANGE_INVALID,
+            start=start.isoformat(),
+            end=end.isoformat(),
+        )
+        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+        raise ValueError(msg)

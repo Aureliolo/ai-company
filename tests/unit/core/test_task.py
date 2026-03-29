@@ -368,6 +368,15 @@ class TestTaskBudget:
         task = _make_task(budget_limit=99.99)
         assert task.budget_limit == 99.99
 
+    @pytest.mark.parametrize(
+        "value",
+        [float("inf"), float("-inf"), float("nan")],
+        ids=["inf", "neg_inf", "nan"],
+    )
+    def test_budget_limit_rejects_inf_nan(self, value: float) -> None:
+        with pytest.raises(ValidationError, match="finite number"):
+            _make_task(budget_limit=value)
+
 
 # ── Task: Immutability ───────────────────────────────────────────
 

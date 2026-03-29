@@ -60,3 +60,5 @@ TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED: Final[str] = (
 TOOL_INVOCATION_RECORDED: Final[str] = "tool.invocation.recorded"
 TOOL_INVOCATION_RECORD_FAILED: Final[str] = "tool.invocation.record_failed"
 TOOL_INVOCATIONS_QUERIED: Final[str] = "tool.invocations.queried"
+TOOL_INVOCATION_EVICTED: Final[str] = "tool.invocation.evicted"
+TOOL_INVOCATION_TIME_RANGE_INVALID: Final[str] = "tool.invocation.time_range.invalid"

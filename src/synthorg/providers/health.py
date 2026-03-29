@@ -22,12 +22,17 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.provider import (
+    PROVIDER_HEALTH_AUTO_PRUNED,
+    PROVIDER_HEALTH_PRUNED,
+)
 
 logger = get_logger(__name__)
 
 _HEALTH_WINDOW_HOURS = 24
 _DEGRADED_THRESHOLD = 10.0  # error_rate >= 10% -> DEGRADED
 _DOWN_THRESHOLD = 50.0  # error_rate >= 50% -> DOWN
+_AUTO_PRUNE_THRESHOLD = 100_000
 
 
 class ProviderHealthStatus(StrEnum):
@@ -145,17 +150,35 @@ def _aggregate_records(
 
 
 class ProviderHealthTracker:
-    """In-memory tracker for provider call outcomes.
+    """In-memory tracker for provider call outcomes with TTL-based eviction.
 
     Concurrency-safe via ``asyncio.Lock``.  Follows the same
-    append-only pattern as :class:`~synthorg.budget.tracker.CostTracker`.
+    TTL-based eviction pattern as
+    :class:`~synthorg.budget.tracker.CostTracker`: memory is bounded by
+    a soft auto-prune that removes records older than 24 hours when the
+    record count exceeds *auto_prune_threshold*.
+
+    Args:
+        auto_prune_threshold: Maximum record count before auto-pruning
+            is triggered on snapshot.  Defaults to 100,000.
+
+    Raises:
+        ValueError: If *auto_prune_threshold* < 1.
     """
 
-    __slots__ = ("_lock", "_records")
+    __slots__ = ("_auto_prune_threshold", "_lock", "_records")
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
+    ) -> None:
+        if auto_prune_threshold < 1:
+            msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
+            raise ValueError(msg)
         self._records: list[ProviderHealthRecord] = []
         self._lock = asyncio.Lock()
+        self._auto_prune_threshold = auto_prune_threshold
 
     async def record(self, record: ProviderHealthRecord) -> None:
         """Append a health record.
@@ -167,7 +190,7 @@ class ProviderHealthTracker:
             self._records.append(record)
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
-        """Remove records older than the health window.
+        """Remove records older than the 24-hour health window.
 
         Call periodically from long-running services to bound
         memory growth.
@@ -181,9 +204,14 @@ class ProviderHealthTracker:
         ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
         async with self._lock:
-            before = len(self._records)
-            self._records = [r for r in self._records if r.timestamp >= cutoff]
-            return before - len(self._records)
+            pruned = self._prune_before(cutoff)
+            if pruned:
+                logger.info(
+                    PROVIDER_HEALTH_PRUNED,
+                    pruned=pruned,
+                    remaining=len(self._records),
+                )
+            return pruned
 
     async def get_summary(
         self,
@@ -206,11 +234,11 @@ class ProviderHealthTracker:
         ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
 
-        snapshot = await self._snapshot()
+        snapshot = await self._snapshot(now=ref)
         recent = [
             r
             for r in snapshot
-            if r.provider_name == provider_name and r.timestamp >= cutoff
+            if r.provider_name == provider_name and cutoff <= r.timestamp <= ref
         ]
 
         if not recent:
@@ -234,10 +262,10 @@ class ProviderHealthTracker:
         ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
 
-        snapshot = await self._snapshot()
+        snapshot = await self._snapshot(now=ref)
         by_provider: dict[str, list[ProviderHealthRecord]] = defaultdict(list)
         for r in snapshot:
-            if r.timestamp >= cutoff:
+            if cutoff <= r.timestamp <= ref:
                 by_provider[r.provider_name].append(r)
 
         return {
@@ -245,7 +273,37 @@ class ProviderHealthTracker:
             for name, records in sorted(by_provider.items())
         }
 
-    async def _snapshot(self) -> tuple[ProviderHealthRecord, ...]:
-        """Return an immutable snapshot of all current records."""
+    async def _snapshot(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[ProviderHealthRecord, ...]:
+        """Return an immutable snapshot of all current records.
+
+        When the record count exceeds the auto-prune threshold,
+        expired records are removed before the snapshot is taken.
+
+        Args:
+            now: Reference time for auto-prune cutoff.  Defaults to
+                current UTC time.
+        """
         async with self._lock:
+            if len(self._records) > self._auto_prune_threshold:
+                ref = now or datetime.now(UTC)
+                cutoff = ref - timedelta(hours=_HEALTH_WINDOW_HOURS)
+                pruned = self._prune_before(cutoff)
+                if pruned:
+                    logger.info(
+                        PROVIDER_HEALTH_AUTO_PRUNED,
+                        pruned=pruned,
+                        remaining=len(self._records),
+                    )
             return tuple(self._records)
+
+    def _prune_before(self, cutoff: datetime) -> int:
+        """Remove records older than *cutoff*.  Caller must hold ``_lock``."""
+        if not self._records:
+            return 0
+        before = len(self._records)
+        self._records = [r for r in self._records if r.timestamp >= cutoff]
+        return before - len(self._records)
