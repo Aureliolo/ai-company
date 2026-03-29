@@ -51,9 +51,9 @@ export function useAgentsData(): UseAgentsDataReturn {
   }, [])
 
   // WebSocket -- debounce to coalesce burst events into a single refetch
-  const wsDebouncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
-    if (wsDebouncRef.current) clearTimeout(wsDebouncRef.current)
+    if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
   }, [])
 
   const bindings: ChannelBinding[] = useMemo(
@@ -61,8 +61,8 @@ export function useAgentsData(): UseAgentsDataReturn {
       AGENT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
-          if (wsDebouncRef.current) clearTimeout(wsDebouncRef.current)
-          wsDebouncRef.current = setTimeout(() => {
+          if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+          wsDebounceRef.current = setTimeout(() => {
             useAgentsStore.getState().fetchAgents()
           }, WS_DEBOUNCE_MS)
         },

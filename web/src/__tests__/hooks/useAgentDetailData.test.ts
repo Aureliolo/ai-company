@@ -229,5 +229,20 @@ describe('useAgentDetailData', () => {
       vi.advanceTimersByTime(300)
       expect(mockFetchAgentDetail).not.toHaveBeenCalled()
     })
+
+    it('coalesces events across agents and tasks channels', async () => {
+      const { useWebSocket } = await import('@/hooks/useWebSocket')
+      renderHook(() => useAgentDetailData('alice'))
+      const bindings = vi.mocked(useWebSocket).mock.calls[0]![0].bindings
+      const agentsHandler = bindings[0]!.handler as (...args: unknown[]) => void
+      const tasksHandler = bindings[1]!.handler as (...args: unknown[]) => void
+      mockFetchAgentDetail.mockClear()
+
+      agentsHandler()
+      tasksHandler()
+      agentsHandler()
+      vi.advanceTimersByTime(300)
+      expect(mockFetchAgentDetail).toHaveBeenCalledTimes(1)
+    })
   })
 })

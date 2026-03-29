@@ -29,6 +29,7 @@ function makeAgent(overrides: Partial<AgentConfig> & { id: string; name: string 
     model: { provider: 'test', model_id: 'test-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
     memory: { type: 'session', retention_days: null },
     tools: { access_level: 'standard', allowed: [], denied: [] },
+    authority: {},
     autonomy_level: null,
     hiring_date: '2026-01-01',
     ...overrides,
@@ -329,5 +330,35 @@ describe('buildOrgTree', () => {
     for (const edge of result.edges) {
       expect(edge.type).toBe('hierarchy')
     }
+  })
+
+  it('uses agent.name as node id when agent.id is undefined', () => {
+    const agents = [
+      makeAgent({ id: 'lead-1', name: 'Lead', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: undefined as unknown as string, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    const agentNode = result.nodes.find((n) => n.data.name === 'NoIdAgent')
+    expect(agentNode).toBeDefined()
+    expect(agentNode!.id).toBe('NoIdAgent')
+    expect(agentNode!.data.agentId).toBe('NoIdAgent')
+  })
+
+  it('treats agent without status as active (not filtered out)', () => {
+    const agents = [
+      makeAgent({ id: 'a0', name: 'Lead', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a1', name: 'ActiveDefault', department: 'engineering', level: 'mid', status: undefined }),
+      makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', level: 'mid', status: 'terminated' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    const agentNames = result.nodes
+      .filter((n) => n.type === 'agent' || n.type === 'ceo')
+      .map((n) => n.data.name as string)
+    expect(agentNames).toContain('ActiveDefault')
+    expect(agentNames).not.toContain('Terminated')
   })
 })

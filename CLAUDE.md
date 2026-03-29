@@ -243,7 +243,7 @@ site/             # Astro landing page (synthorg.io)
 | `Sparkline` | `@/components/ui/sparkline` | Inline SVG trend lines with `color?` and `animated?` props (used inside MetricCard or standalone) |
 | `SectionCard` | `@/components/ui/section-card` | Titled card wrapper with icon and action slot |
 | `AgentCard` | `@/components/ui/agent-card` | Agent display: avatar, name, role, status, current task |
-| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department health: animated fill bar + `health?` (optional, shows N/A when null) + `agentCount` (required) + `taskCount?` (optional) |
+| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department utilization: animated fill bar + `health?` (optional, shows N/A when null) + `agentCount` (required) |
 | `ProgressGauge` | `@/components/ui/progress-gauge` | Circular gauge for budget/utilization (`max?` defaults to 100) |
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |

@@ -70,6 +70,7 @@ export function makeAgent(name: string, overrides?: Partial<AgentConfig>): Agent
     },
     memory: { type: 'persistent' },
     tools: { access_level: 'standard', allowed: ['code_edit'], denied: [] },
+    authority: {},
     autonomy_level: 'semi',
     hiring_date: '2026-03-01T00:00:00Z',
     ...overrides,

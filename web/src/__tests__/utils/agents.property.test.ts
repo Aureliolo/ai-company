@@ -71,6 +71,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   }),
   memory: fc.constant({ type: 'persistent' as const, retention_days: null }),
   tools: fc.constant({ access_level: 'standard' as const, allowed: ['git'], denied: [] }),
+  authority: fc.constant({}),
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),

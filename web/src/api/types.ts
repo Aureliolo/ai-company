@@ -317,47 +317,6 @@ export interface ApprovalFilters {
 
 // ── Agents ───────────────────────────────────────────────────
 
-export interface PersonalityConfig {
-  readonly traits: readonly string[]
-  communication_style: string
-  risk_tolerance: RiskTolerance
-  creativity: CreativityLevel
-  description: string
-  openness: number
-  conscientiousness: number
-  extraversion: number
-  agreeableness: number
-  stress_response: number
-  decision_making: DecisionMakingStyle
-  collaboration: CollaborationPreference
-  verbosity: CommunicationVerbosity
-  conflict_approach: ConflictApproach
-}
-
-export interface ModelConfig {
-  provider: string
-  model_id: string
-  temperature: number
-  max_tokens: number
-  fallback_model: string | null
-}
-
-export interface SkillSet {
-  readonly primary: readonly string[]
-  readonly secondary: readonly string[]
-}
-
-export interface MemoryConfig {
-  type: MemoryLevel
-  retention_days: number | null
-}
-
-export interface ToolPermissions {
-  access_level: ToolAccessLevel
-  readonly allowed: readonly string[]
-  readonly denied: readonly string[]
-}
-
 /**
  * Agent configuration as returned by the /agents API endpoints.
  *
@@ -376,7 +335,7 @@ export interface AgentConfig {
   model: Record<string, unknown>
   memory: Record<string, unknown>
   tools: Record<string, unknown>
-  authority?: Record<string, unknown>
+  authority: Record<string, unknown>
   autonomy_level: AutonomyLevel | null
   hiring_date?: string
 }
@@ -600,11 +559,15 @@ export interface DepartmentHealth {
   department_name: DepartmentName
   agent_count: number
   active_agent_count: number
+  /** ISO 4217 currency code (e.g. "EUR", "USD"). */
   currency: string
+  /** Mean quality score across agents, 0.0 to 10.0, or null when insufficient data. */
   avg_performance_score: number | null
   department_cost_7d: number
   readonly cost_trend: readonly TrendDataPoint[]
+  /** Mean collaboration score, 0.0 to 10.0, or null when insufficient data. */
   collaboration_score: number | null
+  /** Backend-computed: active_agent_count / agent_count * 100. */
   utilization_percent: number
 }
 

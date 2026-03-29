@@ -71,7 +71,7 @@ export default function AgentDetailPage() {
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
-        <ToolBadges tools={Array.isArray(agent.tools.allowed) ? agent.tools.allowed as string[] : []} />
+        <ToolBadges tools={Array.isArray(agent.tools.allowed) ? (agent.tools.allowed as unknown[]).filter((t): t is string => typeof t === 'string') : []} />
       </ErrorBoundary>
 
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">

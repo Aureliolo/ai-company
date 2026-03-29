@@ -50,6 +50,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['git'], denied: [] },
+    authority: {},
     autonomy_level: 'semi',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,

@@ -131,6 +131,7 @@ function setupSuccessfulFetches() {
         },
         memory: { type: 'persistent', retention_days: null },
         tools: { access_level: 'standard', allowed: [], denied: [] },
+        authority: {},
         autonomy_level: 'semi',
         hiring_date: '2026-01-01T00:00:00Z',
       },

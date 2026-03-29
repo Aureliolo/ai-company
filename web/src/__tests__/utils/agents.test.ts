@@ -51,6 +51,7 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
     },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },
+    authority: {},
     autonomy_level: 'semi',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
@@ -197,6 +198,12 @@ describe('filterAgents', () => {
   it('search is case-insensitive', () => {
     const result = filterAgents(agents, { search: 'ALICE' })
     expect(result).toHaveLength(1)
+  })
+
+  it('treats agent with undefined status as active for filtering', () => {
+    const withUndefined = [...agents, { ...agents[0]!, status: undefined, name: 'NoStatus' }]
+    const result = filterAgents(withUndefined, { status: 'active' })
+    expect(result.map((a) => a.name)).toContain('NoStatus')
   })
 })
 
