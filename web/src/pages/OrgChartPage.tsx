@@ -17,7 +17,9 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useToastStore } from '@/stores/toast'
+import { useCompanyStore } from '@/stores/company'
 import { prefersReducedMotion } from '@/lib/motion'
+import { findDropTarget, type DepartmentBounds } from './org/drop-target'
 import { AgentNode } from './org/AgentNode'
 import { CeoNode } from './org/CeoNode'
 import { DepartmentGroupNode } from './org/DepartmentGroupNode'
@@ -181,13 +183,34 @@ function OrgChartInner() {
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; label: string } | null>(null)
+  const [dragOverDeptId, setDragOverDeptId] = useState<string | null>(null)
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const addToast = useToastStore((s) => s.add)
   const navigate = useNavigate()
   const prevNodesRef = useRef<Node[]>([])
   const animFrameRef = useRef<number | null>(null)
+  const announceRef = useRef<HTMLDivElement>(null)
+  const dragOriginalDeptRef = useRef<string | null>(null)
 
   const defaultViewport = useMemo(() => loadViewport(), [])
+
+  const announce = useCallback((msg: string) => {
+    if (announceRef.current) announceRef.current.textContent = msg
+  }, [])
+
+  // Compute department bounds for drop target detection
+  const deptBounds = useMemo<DepartmentBounds[]>(() => {
+    return transition.displayNodes
+      .filter((n) => n.type === 'department')
+      .map((n) => ({
+        departmentName: (n.data as import('./org/build-org-tree').DepartmentGroupData).departmentName,
+        nodeId: n.id,
+        x: n.position.x,
+        y: n.position.y,
+        width: (n.measured?.width ?? n.width ?? 200) as number,
+        height: (n.measured?.height ?? n.height ?? 120) as number,
+      }))
+  }, [transition.displayNodes])
 
   useRegisterCommands([
     {
@@ -314,6 +337,88 @@ function OrgChartInner() {
     setContextMenu(null)
   }, [])
 
+  // ── Drag-drop handlers (hierarchy view only) ────────────────
+
+  const handleNodeDragStart = useCallback(
+    (_event: ReactMouseEvent, node: Node) => {
+      if (node.type !== 'agent' && node.type !== 'ceo') return
+      if (viewMode !== 'hierarchy') return
+      const dept = (node.data as AgentNodeData).department
+      dragOriginalDeptRef.current = dept
+      const name = (node.data as AgentNodeData).name
+      announce(`Started dragging ${name}`)
+    },
+    [viewMode, announce],
+  )
+
+  const handleNodeDrag = useCallback(
+    (_event: ReactMouseEvent, node: Node) => {
+      if (!dragOriginalDeptRef.current) return
+      const target = findDropTarget(
+        { x: node.position.x + 80, y: node.position.y + 40 },
+        deptBounds,
+      )
+      const newOverId = target?.nodeId ?? null
+      setDragOverDeptId((prev) => {
+        if (prev !== newOverId && target) {
+          announce(`Over ${target.departmentName}`)
+        }
+        return newOverId
+      })
+    },
+    [deptBounds, announce],
+  )
+
+  const handleNodeDragStop = useCallback(
+    (_event: ReactMouseEvent, node: Node) => {
+      const originalDept = dragOriginalDeptRef.current
+      dragOriginalDeptRef.current = null
+      setDragOverDeptId(null)
+
+      if (!originalDept) return
+      if (node.type !== 'agent' && node.type !== 'ceo') return
+
+      const target = findDropTarget(
+        { x: node.position.x + 80, y: node.position.y + 40 },
+        deptBounds,
+      )
+
+      const agentName = (node.data as AgentNodeData).name
+      const newDept = target?.departmentName
+
+      if (!newDept || newDept === originalDept) {
+        announce(`Cancelled moving ${agentName}`)
+        return
+      }
+
+      // Optimistic update with rollback
+      const rollback = useCompanyStore.getState().optimisticReassignAgent(agentName, newDept)
+
+      useCompanyStore.getState().updateAgent(agentName, { department: newDept })
+        .then(() => {
+          announce(`Moved ${agentName} to ${newDept}`)
+          addToast({ variant: 'success', title: `Moved ${agentName} to ${newDept}` })
+        })
+        .catch((err: unknown) => {
+          rollback()
+          const msg = err instanceof Error ? err.message : 'Unknown error'
+          announce(`Failed to move ${agentName}, returned to ${originalDept}`)
+          addToast({ variant: 'error', title: 'Reassignment failed', description: msg })
+        })
+    },
+    [deptBounds, addToast, announce],
+  )
+
+  // Apply isDropTarget highlighting to department nodes during drag
+  const renderedNodes = useMemo(() => {
+    if (!dragOverDeptId) return transition.displayNodes
+    return transition.displayNodes.map((n) =>
+      n.type === 'department'
+        ? { ...n, data: { ...n.data, isDropTarget: n.id === dragOverDeptId } }
+        : n,
+    )
+  }, [transition.displayNodes, dragOverDeptId])
+
   if (loading && transition.displayNodes.length === 0) {
     return <OrgChartSkeleton />
   }
@@ -371,7 +476,7 @@ function OrgChartInner() {
 
       <div className="relative flex-1 rounded-lg border border-border">
         <ReactFlow
-          nodes={transition.displayNodes}
+          nodes={renderedNodes}
           edges={transition.displayEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -381,6 +486,9 @@ function OrgChartInner() {
           onMoveEnd={handleMoveEnd}
           onNodeClick={handleNodeClick}
           onNodeContextMenu={handleNodeContextMenu}
+          onNodeDragStart={viewMode === 'hierarchy' ? handleNodeDragStart : undefined}
+          onNodeDrag={viewMode === 'hierarchy' ? handleNodeDrag : undefined}
+          onNodeDragStop={viewMode === 'hierarchy' ? handleNodeDragStop : undefined}
           onPaneClick={handlePaneClick}
           nodesConnectable={false}
           nodesDraggable={viewMode === 'hierarchy'}
@@ -390,6 +498,9 @@ function OrgChartInner() {
         >
           <Background color="var(--color-border)" gap={24} size={1} />
         </ReactFlow>
+
+        {/* ARIA live region for drag-drop announcements */}
+        <div ref={announceRef} className="sr-only" aria-live="assertive" />
 
         {contextMenu && (
           <NodeContextMenu

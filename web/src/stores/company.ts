@@ -20,6 +20,7 @@ import type {
   CreateDepartmentRequest,
   Department,
   DepartmentHealth,
+  DepartmentName,
   UpdateAgentOrgRequest,
   UpdateCompanyRequest,
   UpdateDepartmentRequest,
@@ -51,6 +52,7 @@ interface CompanyState {
 
   optimisticReorderDepartments: (orderedNames: string[]) => () => void
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
+  optimisticReassignAgent: (agentName: string, newDepartment: DepartmentName) => () => void
 }
 
 export const useCompanyStore = create<CompanyState>()((set, get) => ({
@@ -317,6 +319,27 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         return a
       })
       set({ config: { ...current, agents: restoredAgents } })
+    }
+  },
+
+  optimisticReassignAgent: (agentName, newDepartment) => {
+    const prev = get().config
+    if (!prev) return () => {}
+    const agent = prev.agents.find((a) => a.name === agentName)
+    if (!agent || agent.department === newDepartment) return () => {}
+    const prevDepartment = agent.department
+    const agents = prev.agents.map((a) =>
+      a.name === agentName ? { ...a, department: newDepartment } : a,
+    )
+    set({ config: { ...prev, agents } })
+    // Targeted rollback: restore only this agent's department
+    return () => {
+      const current = get().config
+      if (!current) return
+      const currentAgents = current.agents.map((a) =>
+        a.name === agentName ? { ...a, department: prevDepartment } : a,
+      )
+      set({ config: { ...current, agents: currentAgents } })
     }
   },
 }))

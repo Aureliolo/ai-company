@@ -20,9 +20,9 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
   return (
     <div
       className={cn(
-        'rounded-xl border p-3',
+        'rounded-xl border p-3 transition-colors duration-200',
         'min-h-[120px] min-w-[200px]',
-        bgClasses,
+        data.isDropTarget ? 'border-accent bg-accent/5' : bgClasses,
       )}
       data-testid="department-group-node"
       aria-label={`Department: ${data.displayName}${data.healthPercent !== null ? `, health ${data.healthPercent}%` : ''}`}

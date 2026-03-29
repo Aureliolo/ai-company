@@ -85,3 +85,18 @@ export const Critical: Story = {
     },
   },
 }
+
+export const DropTargetActive: Story = {
+  args: {
+    data: {
+      departmentName: 'engineering',
+      displayName: 'Engineering',
+      healthPercent: 85,
+      agentCount: 5,
+      activeCount: 3,
+      taskCount: 10,
+      costUsd: 38.5,
+      isDropTarget: true,
+    },
+  },
+}

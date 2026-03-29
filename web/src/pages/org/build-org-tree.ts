@@ -28,6 +28,7 @@ export interface DepartmentGroupData {
   activeCount: number
   taskCount: number | null
   costUsd: number | null
+  isDropTarget?: boolean
   [key: string]: unknown
 }
 
