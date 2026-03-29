@@ -8,10 +8,8 @@ test.describe('Dashboard visual regression', () => {
     // Set auth token to bypass login
     await page.addInitScript(() => {
       localStorage.setItem('auth_token', 'mock-token')
-      localStorage.setItem('auth_user', JSON.stringify({
-        username: 'admin',
-        role: 'admin',
-      }))
+      // Set expiration far in the future (auth store checks this on init)
+      localStorage.setItem('auth_token_expires_at', String(Date.now() + 86400000))
     })
   })
 

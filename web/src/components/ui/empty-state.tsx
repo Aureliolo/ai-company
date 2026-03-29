@@ -18,6 +18,8 @@ export interface EmptyStateProps {
   /** Optional action button. */
   action?: EmptyStateAction
   className?: string
+  /** Enable live-region announcements for dynamic state changes. Default: false. */
+  announce?: boolean
 }
 
 /**
@@ -31,10 +33,12 @@ export function EmptyState({
   description,
   action,
   className,
+  announce = false,
 }: EmptyStateProps) {
   return (
     <div
-      role="status"
+      role={announce ? 'status' : undefined}
+      aria-live={announce ? 'polite' : undefined}
       className={cn(
         'flex flex-col items-center justify-center gap-3 py-12 text-center',
         className,

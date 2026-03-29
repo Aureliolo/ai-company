@@ -153,7 +153,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
                 : 'bg-warning animate-pulse'
           }
         />
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground" aria-live="polite">
           {wsConnected ? 'live' : wsReconnectExhausted ? 'offline' : 'reconnecting'}
         </span>
       </StatusItem>

@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { cn, FOCUS_RING } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency } from '@/utils/format'
 import type { BreakdownDimension, BreakdownSlice } from '@/utils/budget'
@@ -15,7 +15,7 @@ export interface CostBreakdownChartProps {
   currency?: string
 }
 
-const DIMENSION_OPTIONS: { value: BreakdownDimension; label: string }[] = [
+const DIMENSION_OPTIONS: readonly SegmentedControlOption<BreakdownDimension>[] = [
   { value: 'agent', label: 'Agent' },
   { value: 'department', label: 'Dept' },
   { value: 'provider', label: 'Provider' },
@@ -68,35 +68,14 @@ export function CostBreakdownChart({
       title="Cost Breakdown"
       icon={PieChartIcon}
       action={
-        <div
-          role="radiogroup"
-          aria-label="Breakdown dimension"
-          className="flex rounded-lg border border-border"
-        >
-          {DIMENSION_OPTIONS.map((opt) => {
-            const isActive = dimension === opt.value
-            const isDisabled = opt.value === 'department' && deptDisabled
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                role="radio"
-                aria-checked={isActive}
-                disabled={isDisabled}
-                onClick={() => { if (!isDisabled) onDimensionChange(opt.value) }}
-                className={cn(
-                  'px-3 py-1 text-xs transition-colors',
-                  FOCUS_RING,
-                  isActive && 'bg-accent/10 text-accent font-medium',
-                  !isActive && !isDisabled && 'text-text-muted hover:text-foreground',
-                  isDisabled && 'opacity-50 cursor-not-allowed',
-                )}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
+        <SegmentedControl
+          label="Breakdown dimension"
+          options={deptDisabled
+            ? DIMENSION_OPTIONS.map((o) => o.value === 'department' ? { ...o, disabled: true } : o)
+            : DIMENSION_OPTIONS}
+          value={dimension}
+          onChange={onDimensionChange}
+        />
       }
     >
       {breakdown.length === 0 ? (

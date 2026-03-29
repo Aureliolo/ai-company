@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
-interface SparklineProps {
+export interface SparklineProps {
   data: number[]
   color?: string
   width?: number

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-interface LiveRegionProps {
+export interface LiveRegionProps {
   children: React.ReactNode
   /** ARIA politeness level. Default: 'polite'. */
   politeness?: 'polite' | 'assertive'

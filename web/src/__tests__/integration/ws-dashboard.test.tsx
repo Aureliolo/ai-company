@@ -51,7 +51,12 @@ describe('WS Dashboard Integration', () => {
     useAnalyticsStore.getState().updateFromWsEvent(event)
 
     const activities = useAnalyticsStore.getState().activities
-    expect(activities.length).toBeGreaterThan(0)
+    expect(activities).toHaveLength(1)
+    expect(activities[0]).toMatchObject({
+      action_type: 'task.created',
+      task_id: 'task-99',
+    })
+    expect(activities[0]!.timestamp).toBeDefined()
   })
 
   it('updates overview metrics via setState', () => {
@@ -74,8 +79,8 @@ describe('WS Dashboard Integration', () => {
       useAnalyticsStore.getState().updateFromWsEvent(event)
     }
 
-    // Activities should be capped (store caps at 50)
+    // Activities should be capped at MAX_ACTIVITIES (50) defined in stores/analytics.ts
     const activities = useAnalyticsStore.getState().activities
-    expect(activities.length).toBeLessThanOrEqual(50)
+    expect(activities).toHaveLength(50)
   })
 })

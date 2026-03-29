@@ -15,7 +15,10 @@ function getRecentIds(): string[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((v): v is string => typeof v === 'string').slice(0, MAX_RECENT)
+    const VALID_ID = /^[\w\-:.]+$/
+    return parsed
+      .filter((v): v is string => typeof v === 'string' && v.length <= 64 && VALID_ID.test(v))
+      .slice(0, MAX_RECENT)
   } catch (err) {
     if (import.meta.env.DEV) {
       console.warn('Failed to read recent commands from localStorage:', err)

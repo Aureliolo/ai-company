@@ -27,6 +27,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWebSocketStore } from '@/stores/websocket'
 import { ROUTES } from '@/router/routes'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
 
 export const STORAGE_KEY = 'sidebar_collapsed'
@@ -110,7 +111,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
 
   // Hidden at mobile or when sidebarMode is 'hidden' at desktop
   if (isHidden) return null
-  if (breakpoint === 'desktop' && sidebarMode === 'hidden') return null
+  if ((breakpoint === 'desktop' || breakpoint === 'desktop-sm') && sidebarMode === 'hidden') return null
 
   // At tablet, render as overlay with backdrop
   if (isOverlayMode) {
@@ -147,7 +148,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
               collapsed={false}
               showCollapseToggle={false}
               toggleCollapse={toggleCollapse}
-              openCommandPalette={openCommandPalette}
+              openCommandPalette={() => { onOverlayClose?.(); openCommandPalette() }}
               shortcutKey={shortcutKey}
               wsConnected={wsConnected}
               wsReconnectExhausted={wsReconnectExhausted}
@@ -304,29 +305,9 @@ function SidebarFooter({
             collapsed && 'justify-center',
           )}
         >
-          <span
-            className={cn(
-              'size-2 shrink-0 rounded-full',
-              wsConnected
-                ? 'bg-success'
-                : wsReconnectExhausted
-                  ? 'bg-danger'
-                  : 'bg-warning animate-pulse',
-            )}
-            title={
-              wsConnected
-                ? 'Connected'
-                : wsReconnectExhausted
-                  ? 'Disconnected'
-                  : 'Reconnecting...'
-            }
-            aria-label={
-              wsConnected
-                ? 'Connection status: connected'
-                : wsReconnectExhausted
-                  ? 'Connection status: disconnected'
-                  : 'Connection status: reconnecting'
-            }
+          <StatusBadge
+            status={wsConnected ? 'active' : wsReconnectExhausted ? 'error' : 'idle'}
+            pulse={!wsConnected && !wsReconnectExhausted}
           />
           {!collapsed && (
             <span className="text-xs text-muted-foreground">
@@ -337,6 +318,14 @@ function SidebarFooter({
                   : 'Reconnecting...'}
             </span>
           )}
+          {/* Screen reader live announcement for status changes */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {wsConnected
+              ? 'Connection status: connected'
+              : wsReconnectExhausted
+                ? 'Connection status: disconnected'
+                : 'Connection status: reconnecting'}
+          </span>
         </div>
 
         {user && (

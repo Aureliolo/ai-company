@@ -17,15 +17,16 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
   const visible = activities.slice(0, MAX_VISIBLE)
   const feedRef = useRef<HTMLDivElement>(null)
   const { isAutoScrolling, scrollToBottom } = useAutoScroll(feedRef)
-  const prevCountRef = useRef(visible.length)
+  const prevCountRef = useRef(activities.length)
 
   // Auto-scroll when new items arrive and user hasn't scrolled away
+  // Track total activities.length (not visible.length which caps at MAX_VISIBLE)
   useEffect(() => {
-    if (visible.length > prevCountRef.current && isAutoScrolling) {
+    if (activities.length > prevCountRef.current && isAutoScrolling) {
       scrollToBottom()
     }
-    prevCountRef.current = visible.length
-  }, [visible.length, isAutoScrolling, scrollToBottom])
+    prevCountRef.current = activities.length
+  }, [activities.length, isAutoScrolling, scrollToBottom])
 
   return (
     <SectionCard title="Activity" icon={Activity}>

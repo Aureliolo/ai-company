@@ -25,28 +25,41 @@ function manualChunks(id: string): string | undefined {
   return undefined
 }
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
-  },
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        ws: true,
+export default defineConfig(async () => {
+  const plugins = [react(), tailwindcss()]
+
+  if (process.env.VITE_ANALYZE) {
+    const { visualizer } = await import('rollup-plugin-visualizer')
+    plugins.push(visualizer({ filename: 'stats.html', open: true }) as ReturnType<typeof react>)
+  }
+
+  return {
+    plugins,
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
     },
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks,
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
-  },
+    preview: {
+      port: 4173,
+      strictPort: true,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks,
+        },
+      },
+    },
+  }
 })

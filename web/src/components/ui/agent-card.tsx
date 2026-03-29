@@ -2,7 +2,7 @@ import { cn, type AgentRuntimeStatus } from '@/lib/utils'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
 
-interface AgentCardProps {
+export interface AgentCardProps {
   name: string
   role: string
   department: string

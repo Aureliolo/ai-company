@@ -42,6 +42,7 @@ export function StatusBadge({ status, label = false, pulse = false, className, a
           data-slot="status-dot"
           className={cn(
             'size-1.5 shrink-0 rounded-full',
+            DOT_COLOR_CLASSES[color],
             pulse && 'animate-pulse',
           )}
           {...motionProps}

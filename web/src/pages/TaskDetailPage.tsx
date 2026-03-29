@@ -39,7 +39,7 @@ export default function TaskDetailPage() {
       useTasksStore.getState().handleWsEvent(event)
     },
   }], [])
-  useWebSocket({ bindings: wsBindings })
+  const { setupError: wsSetupError } = useWebSocket({ bindings: wsBindings })
 
   useEffect(() => {
     if (taskId) {
@@ -115,6 +115,12 @@ export default function TaskDetailPage() {
         <ArrowLeft className="mr-1 size-4" />
         Back to Board
       </Button>
+
+      {wsSetupError && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning">
+          Real-time updates unavailable: {wsSetupError}
+        </div>
+      )}
 
       <ErrorBoundary level="section">
         <div className="rounded-lg border border-border bg-card p-6 space-y-6">

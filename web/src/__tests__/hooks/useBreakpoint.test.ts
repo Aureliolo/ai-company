@@ -102,9 +102,7 @@ describe('useBreakpoint', () => {
     expect(result.current.breakpoint).toBe('desktop-sm')
   })
 
-  it('returns desktop by default when window is undefined', () => {
-    // jsdom has window, but we test the fallback path indirectly
-    // since the hook checks typeof window === 'undefined'
+  it('returns desktop when all breakpoints match', () => {
     mockMatchMedia(true, true, true)
     const { result } = renderHook(() => useBreakpoint())
     expect(result.current.breakpoint).toBe('desktop')

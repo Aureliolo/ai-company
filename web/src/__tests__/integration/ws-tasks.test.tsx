@@ -9,6 +9,12 @@ import { makeTask } from '../helpers/factories'
 import type { WsEvent } from '@/api/types'
 
 describe('WS Tasks Integration', () => {
+  afterEach(() => {
+    // Ensure pendingTransitions is cleared even if a test fails mid-way
+    // (the module-scoped Set in tasks.ts is not part of Zustand state)
+    useTasksStore.getState().pendingTransitions.clear()
+  })
+
   beforeEach(() => {
     useTasksStore.setState({
       tasks: [

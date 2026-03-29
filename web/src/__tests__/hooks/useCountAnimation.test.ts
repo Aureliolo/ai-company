@@ -4,22 +4,32 @@ import { useCountAnimation } from '@/hooks/useCountAnimation'
 describe('useCountAnimation', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    // Mock requestAnimationFrame for deterministic testing
+    // Mock requestAnimationFrame with proper handle mapping for cancelAnimationFrame
+    const timeoutMap = new Map<number, ReturnType<typeof setTimeout>>()
     let rafId = 0
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
       rafId += 1
       const id = rafId
-      setTimeout(() => cb(performance.now()), 16)
+      const timeoutId = setTimeout(() => {
+        timeoutMap.delete(id)
+        cb(performance.now())
+      }, 16)
+      timeoutMap.set(id, timeoutId)
       return id
     })
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
-      clearTimeout(id)
+      const timeoutId = timeoutMap.get(id)
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId)
+        timeoutMap.delete(id)
+      }
     })
   })
 
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('returns the target value immediately on first render', () => {
@@ -86,7 +96,7 @@ describe('useCountAnimation', () => {
     expect(result.current).toBe(100)
   })
 
-  it('handles string values by parsing and formatting', () => {
+  it('returns a numeric value', () => {
     const { result } = renderHook(() => useCountAnimation(42))
     expect(typeof result.current).toBe('number')
   })

@@ -54,9 +54,17 @@ export async function mockApiRoutes(page: Page) {
     }),
   )
 
-  // Catch-all for other API routes -- return empty success
+  // Catch-all for other API routes -- return empty success with ApiResponse envelope
   await page.route('**/api/v1/**', (route) =>
-    route.fulfill({ json: { data: [], total: 0 } }),
+    route.fulfill({
+      json: {
+        data: [],
+        error: null,
+        error_detail: null,
+        success: true,
+        pagination: { total: 0, offset: 0, limit: 10 },
+      },
+    }),
   )
 }
 

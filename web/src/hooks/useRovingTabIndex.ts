@@ -56,20 +56,24 @@ export function useRovingTabIndex(options: UseRovingTabIndexOptions): UseRovingT
       const count = items.length
       if (count === 0) return
 
+      // Derive origin from actual DOM focus to avoid stale index after click/programmatic focus
+      const activeIndex = Array.from(items).findIndex((item) => item === document.activeElement)
+      const originIndex = activeIndex >= 0 ? activeIndex : focusedIndex
+
       let nextIndex: number | null = null
       const { key } = event
 
       if (orientation === 'vertical') {
-        if (key === 'ArrowDown') nextIndex = focusedIndex + 1
-        else if (key === 'ArrowUp') nextIndex = focusedIndex - 1
+        if (key === 'ArrowDown') nextIndex = originIndex + 1
+        else if (key === 'ArrowUp') nextIndex = originIndex - 1
       } else if (orientation === 'horizontal') {
-        if (key === 'ArrowRight') nextIndex = focusedIndex + 1
-        else if (key === 'ArrowLeft') nextIndex = focusedIndex - 1
+        if (key === 'ArrowRight') nextIndex = originIndex + 1
+        else if (key === 'ArrowLeft') nextIndex = originIndex - 1
       } else if (orientation === 'grid') {
-        if (key === 'ArrowRight') nextIndex = focusedIndex + 1
-        else if (key === 'ArrowLeft') nextIndex = focusedIndex - 1
-        else if (key === 'ArrowDown') nextIndex = focusedIndex + columns
-        else if (key === 'ArrowUp') nextIndex = focusedIndex - columns
+        if (key === 'ArrowRight') nextIndex = originIndex + 1
+        else if (key === 'ArrowLeft') nextIndex = originIndex - 1
+        else if (key === 'ArrowDown') nextIndex = originIndex + columns
+        else if (key === 'ArrowUp') nextIndex = originIndex - columns
       }
 
       if (key === 'Home') nextIndex = 0

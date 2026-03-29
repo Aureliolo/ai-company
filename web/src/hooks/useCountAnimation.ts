@@ -18,9 +18,10 @@ export function useCountAnimation(
   target: number,
   options?: UseCountAnimationOptions,
 ): number {
-  const durationMs = options?.durationMs ?? DEFAULT_DURATION_MS
+  const rawDuration = options?.durationMs ?? DEFAULT_DURATION_MS
+  const durationMs = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : DEFAULT_DURATION_MS
   const [display, setDisplay] = useState(target)
-  const previousValueRef = useRef(target)
+  const displayRef = useRef(target)
   const firstRenderRef = useRef(true)
   const animationFrameRef = useRef<number | null>(null)
 
@@ -28,8 +29,14 @@ export function useCountAnimation(
     // On first render, just set the value -- no animation needed
     if (firstRenderRef.current) {
       firstRenderRef.current = false
-      previousValueRef.current = target
+      displayRef.current = target
       return
+    }
+
+    // Cancel any in-progress animation
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
     }
 
     // Check reduced motion preference
@@ -38,14 +45,14 @@ export function useCountAnimation(
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
     ) {
-      previousValueRef.current = target
+      displayRef.current = target
       setDisplay(target) // eslint-disable-line @eslint-react/set-state-in-effect -- reduced-motion early return
       return
     }
 
-    const from = previousValueRef.current
+    // Start tween from the currently displayed value (not the previous target)
+    const from = displayRef.current
     const delta = target - from
-    previousValueRef.current = target
 
     // No change -- skip animation
     if (delta === 0) return
@@ -58,8 +65,10 @@ export function useCountAnimation(
       // Ease-out cubic
       const eased = 1 - Math.pow(1 - progress, 3)
       const current = from + delta * eased
+      const rounded = Math.round(current)
 
-      setDisplay(Math.round(current))
+      displayRef.current = rounded
+      setDisplay(rounded)
 
       if (progress < 1) {
         animationFrameRef.current = requestAnimationFrame(animate)

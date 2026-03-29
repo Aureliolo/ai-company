@@ -230,6 +230,9 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `CodeMirrorEditor` | `code-mirror-editor.tsx` | `value`, `onChange`, `language`, `readOnly?`, `aria-label?`, `className?` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, and `readOnly` support. |
 | `SegmentedControl` | `segmented-control.tsx` | `label`, `options`, `value`, `onChange`, `disabled?`, `size?`, `className?` | Accessible radiogroup with keyboard navigation (arrow keys + wrapping), size variants (`sm`/`md`), generic `<T extends string>` typing. |
 | `ThemeToggle` | `theme-toggle.tsx` | `className?` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
+| `LiveRegion` | `live-region.tsx` | `children`, `politeness?`, `debounceMs?`, `className?` | Debounced ARIA live region wrapper for real-time WS updates without overwhelming screen readers. Default: 500ms polite, 0ms assertive. |
+| `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none -- self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
+| `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |
 
 ### Utility Functions
 
@@ -258,7 +261,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `DOT_COLOR_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "accent-dim"` to Tailwind background classes. |
 | `URGENCY_BADGE_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "text-secondary"` to Tailwind badge classes. |
 
-### Animation Hooks
+### Design System Hooks
 
 | Hook | File | Purpose |
 |------|------|---------|
@@ -266,6 +269,11 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colors. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
 | `useCommandPalette()` | `hooks/useCommandPalette.ts` | Global command palette state. `registerCommands()` adds page-local commands (cleanup on unmount). `open()` / `close()` / `toggle()`. |
 | `useAnimationPreset()` | `hooks/useAnimationPreset.ts` | Returns animation config (`spring`, `tween`, `staggerDelay`, `enableLayout`) based on the user's theme animation preference. Components use this instead of directly referencing `lib/motion.ts` constants. |
+| `useCountAnimation()` | `hooks/useCountAnimation.ts` | Animated numeric value transitions for metric displays. Uses rAF with ease-out cubic and `prefers-reduced-motion` support. |
+| `useAutoScroll()` | `hooks/useAutoScroll.ts` | Auto-scroll container to bottom on new content, pausing when user scrolls away. Returns `{ isAutoScrolling, scrollToBottom }`. |
+| `useRovingTabIndex()` | `hooks/useRovingTabIndex.ts` | WAI-ARIA roving tabindex for arrow-key navigation in lists and grids. Supports vertical, horizontal, and grid orientations with loop/clamp. |
+| `useBreakpoint()` | `hooks/useBreakpoint.ts` | Reactive viewport breakpoint detection via matchMedia. Returns `{ breakpoint, isDesktop, isTablet, isMobile }`. |
+| `useJustUpdated()` | `hooks/useJustUpdated.ts` | Tracks recently-updated entity IDs with TTL and relative time strings for flash/highlight effects. |
 
 ### Types
 
