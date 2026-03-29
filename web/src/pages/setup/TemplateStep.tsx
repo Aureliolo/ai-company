@@ -125,15 +125,6 @@ export function TemplateStep() {
     }
   }, [templates.length, templatesLoading, templatesError, fetchTemplates])
 
-  // Track step completion
-  useEffect(() => {
-    if (selectedTemplate) {
-      markStepComplete('template')
-    } else {
-      markStepIncomplete('template')
-    }
-  }, [selectedTemplate, markStepComplete, markStepIncomplete])
-
   const providers = useSetupWizardStore((s) => s.providers)
 
   // Determine recommended templates based on configured providers
@@ -190,6 +181,16 @@ export function TemplateStep() {
       return true
     })
   }, [templates, searchQuery, categoryFilter, sizeFilter])
+
+  // Track step completion -- only mark complete when the selected template
+  // is visible in the current filtered view
+  useEffect(() => {
+    if (selectedTemplate && filteredTemplates.some((t) => t.name === selectedTemplate)) {
+      markStepComplete('template')
+    } else {
+      markStepIncomplete('template')
+    }
+  }, [selectedTemplate, filteredTemplates, markStepComplete, markStepIncomplete])
 
   // Split into recommended and others
   const { recommended, others } = useMemo(() => {
@@ -285,7 +286,7 @@ export function TemplateStep() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-end gap-3">
         {/* Search -- custom wrapper for leading icon + clear button (InputField does not support icons) */}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="relative flex-1 min-w-52 max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <InputField
             label="Search"
