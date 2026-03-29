@@ -64,16 +64,18 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
  */
 export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR'): string {
   if (!Number.isFinite(value)) return '--'
+  // Normalize to 3-letter uppercase ISO 4217 code; fall back to EUR
+  const code = /^[A-Za-z]{3}$/.test(currencyCode) ? currencyCode.toUpperCase() : 'EUR'
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currencyCode,
+      currency: code,
       maximumFractionDigits: 0,
       notation: 'compact',
     }).format(value)
   } catch (error) {
-    console.error(`[format] Intl.NumberFormat compact failed for currency "${currencyCode}":`, error)
-    return `${currencyCode} ${Math.round(value)}`
+    console.error(`[format] Intl.NumberFormat compact failed for currency "${code}":`, error)
+    return `${code} ${Math.round(value)}`
   }
 }
 

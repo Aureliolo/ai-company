@@ -191,8 +191,8 @@ describe('formatCurrencyCompact', () => {
 
   it('formats large values with compact notation', () => {
     const result = formatCurrencyCompact(1500, 'USD')
-    // Compact notation should abbreviate (e.g. "$2K" or "$1.5K")
-    expect(result.length).toBeLessThan(10)
+    // Compact notation should include currency marker and abbreviation
+    expect(result).toMatch(/\$.*K/i)
   })
 
   it('returns -- for NaN', () => {

@@ -28,7 +28,7 @@ export interface ProviderFormOverrides {
   onUpdateProvider?: (name: string, data: UpdateProviderRequest) => Promise<ProviderConfig | null>
 }
 
-interface ProviderFormDrawerProps {
+interface ProviderFormModalProps {
   open: boolean
   onClose: () => void
   mode: 'create' | 'edit'
@@ -37,13 +37,13 @@ interface ProviderFormDrawerProps {
   overrides?: ProviderFormOverrides
 }
 
-export function ProviderFormDrawer({
+export function ProviderFormModal({
   open,
   onClose,
   mode,
   provider,
   overrides,
-}: ProviderFormDrawerProps) {
+}: ProviderFormModalProps) {
   // Resolve store vs overrides
   const storePresets = useProvidersStore((s) => s.presets)
   const storePresetsLoading = useProvidersStore((s) => s.presetsLoading)
@@ -216,7 +216,7 @@ export function ProviderFormDrawer({
         if (result) handleClose()
       }
     } catch (err) {
-      console.error('ProviderFormDrawer: submit failed:', err)
+      console.error('ProviderFormModal: submit failed:', err)
     } finally {
       setSubmitting(false)
     }
@@ -248,6 +248,9 @@ export function ProviderFormDrawer({
               <Dialog.Title className="text-base font-semibold text-foreground">
                 {dialogTitle}
               </Dialog.Title>
+              <Dialog.Description className="sr-only">
+                {mode === 'create' ? 'Configure a new LLM provider' : 'Update provider settings'}
+              </Dialog.Description>
               <Dialog.Close asChild>
                 <button
                   type="button"
@@ -358,11 +361,9 @@ export function ProviderFormDrawer({
                         hint={
                           isCustom || mode === 'edit'
                             ? undefined
-                            : preset && !preset.default_base_url
+                            : !preset?.default_base_url
                               ? 'Required for this provider'
-                              : !preset?.default_base_url
-                                ? 'Optional for known cloud providers'
-                                : undefined
+                              : undefined
                         }
                       />
                     )}

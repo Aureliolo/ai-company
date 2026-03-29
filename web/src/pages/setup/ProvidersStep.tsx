@@ -8,7 +8,7 @@ import { validateProvidersStep } from '@/utils/setup-validation'
 import { getProviderStatus } from '@/utils/provider-status'
 import type { ProviderConfig } from '@/api/types'
 import { ProviderProbeResults } from './ProviderProbeResults'
-import { ProviderFormDrawer, type ProviderFormOverrides } from '@/pages/providers/ProviderFormDrawer'
+import { ProviderFormModal, type ProviderFormOverrides } from '@/pages/providers/ProviderFormModal'
 import { Server, Plus } from 'lucide-react'
 
 interface ProviderRowProps {
@@ -198,7 +198,7 @@ export function ProvidersStep() {
         Add Provider
       </Button>
 
-      <ProviderFormDrawer
+      <ProviderFormModal
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         mode="create"

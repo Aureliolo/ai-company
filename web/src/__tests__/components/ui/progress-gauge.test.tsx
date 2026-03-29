@@ -92,7 +92,7 @@ describe('ProgressGauge', () => {
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
-  it('treats Infinity value as clamped to max', () => {
+  it('treats Infinity as non-finite and defaults to 0%', () => {
     render(<ProgressGauge value={Infinity} />)
     expect(screen.getByText('0%')).toBeInTheDocument()
   })

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ProviderGridView } from './providers/ProviderGridView'
 import { ProviderFilters } from './providers/ProviderFilters'
 import { ProvidersSkeleton } from './providers/ProvidersSkeleton'
-import { ProviderFormDrawer } from './providers/ProviderFormDrawer'
+import { ProviderFormModal } from './providers/ProviderFormModal'
 
 
 export default function ProvidersPage() {
@@ -53,7 +53,7 @@ export default function ProvidersPage() {
       )}
 
       {/* Create drawer */}
-      <ProviderFormDrawer
+      <ProviderFormModal
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         mode="create"

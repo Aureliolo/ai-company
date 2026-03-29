@@ -10,7 +10,7 @@ import { ProviderDetailHeader } from './providers/ProviderDetailHeader'
 import { ProviderHealthMetrics } from './providers/ProviderHealthMetrics'
 import { ProviderModelList } from './providers/ProviderModelList'
 import { ProviderDetailSkeleton } from './providers/ProviderDetailSkeleton'
-import { ProviderFormDrawer } from './providers/ProviderFormDrawer'
+import { ProviderFormModal } from './providers/ProviderFormModal'
 import { TestConnectionResult } from './providers/TestConnectionResult'
 import { Server } from 'lucide-react'
 
@@ -100,7 +100,7 @@ export default function ProviderDetailPage() {
       </ErrorBoundary>
 
       {/* Edit drawer */}
-      <ProviderFormDrawer
+      <ProviderFormModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         mode="edit"

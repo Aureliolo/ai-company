@@ -16,7 +16,7 @@ const DENSITY_CLASS: Record<string, string> = {
   sparse: 'density-sparse',
 }
 
-const PALETTE_CLASS: Record<string, string> = {
+const PALETTE_CLASS: Record<ThemeSettings['palette'], string> = {
   'warm-ops': '',
   'ice-station': 'theme-ice-station',
   stealth: 'theme-stealth',
@@ -24,11 +24,11 @@ const PALETTE_CLASS: Record<string, string> = {
   neon: 'theme-neon',
 }
 
-const ANIMATION_TRANSITIONS = {
-  minimal: { type: 'tween' as const, duration: 0.15 },
-  'status-driven': { type: 'tween' as const, duration: 0.2 },
-  spring: { type: 'spring' as const, stiffness: 200, damping: 15 },
-  instant: { type: 'tween' as const, duration: 0 },
+const ANIMATION_TRANSITIONS: Record<ThemeSettings['animation'], { type: 'tween' | 'spring'; [k: string]: unknown }> = {
+  minimal: { type: 'tween', duration: 0.15 },
+  'status-driven': { type: 'tween', duration: 0.2 },
+  spring: { type: 'spring', stiffness: 200, damping: 15 },
+  instant: { type: 'tween', duration: 0 },
 }
 
 const SIDEBAR_NAV = [
@@ -89,15 +89,22 @@ function SidebarPreview({ mode }: { mode: ThemeSettings['sidebar'] }) {
   )
 }
 
-function AnimationDemo({ animation }: { animation: string }) {
+function AnimationDemo({ animation }: { animation: ThemeSettings['animation'] }) {
   const [cycling, setCycling] = useState(true)
-  const transition = ANIMATION_TRANSITIONS[animation as keyof typeof ANIMATION_TRANSITIONS] ?? ANIMATION_TRANSITIONS['status-driven']
+  const transition = ANIMATION_TRANSITIONS[animation]
   const showCard = animation === 'instant' || cycling
 
   useEffect(() => {
     if (animation === 'instant') return
-    const interval = setInterval(() => setCycling((v) => !v), 1500)
-    return () => clearInterval(interval)
+    // Start with the card visible; interval toggles visibility
+    let active = true
+    const interval = setInterval(() => {
+      if (active) setCycling((v) => !v)
+    }, 1500)
+    return () => {
+      active = false
+      clearInterval(interval)
+    }
   }, [animation])
 
   return (
