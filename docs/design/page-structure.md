@@ -28,12 +28,17 @@ Org overview: department health indicators (green/amber/red), recent activity wi
 
 #### Org Chart (`/org`)
 
-Living org visualization with real-time agent status. Default mode is read-only: interactive graph (XyFlow) showing CEO, departments, teams, agents with status dots and health overlays. Click agent nodes to open Agent Detail panel.
+Living org visualization with real-time agent status. Two view modes toggled via toolbar:
+
+- **Hierarchy view** (default): Dagre-based hierarchical layout with CEO, departments, teams, agents with status dots and health overlays. Supports drag-drop agent reassignment between departments (optimistic update with rollback on API failure, ARIA live announcements, drop zone highlight with accent border).
+- **Communication view**: Force-directed layout (d3-force) showing inter-agent communication patterns. Edge thickness encodes message volume, animated dashes encode frequency. Data sourced from `GET /messages` with client-side aggregation. Smooth 400ms animated transition between views.
+
+Click agent nodes to open Agent Detail panel.
 
 "Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD and read-only teams summary; nested teams/reporting/policies editing is deferred). This is the former Company page merged into the Org Chart -- same data domain, one destination.
 
-**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`. Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `PATCH /agents/{name}`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents` (stub -- backend not yet implemented).
-**WS channels**: `agents` (status changes, hired/fired), `system` (read-only mode only; edit mode subscribes to `agents` only)
+**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`, `GET /messages` (communication view). Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `PATCH /agents/{name}`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents` (stub -- backend not yet implemented).
+**WS channels**: `agents` (status changes, hired/fired), `system` (read-only mode only; edit mode subscribes to `agents` only). Communication view uses REST polling for message data (not WS).
 
 #### Task Board (`/tasks`)
 
@@ -269,7 +274,8 @@ Single WebSocket connection per session, established after login. Each page subs
 | Page | Channels | Events of Interest |
 |------|----------|--------------------|
 | **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All -- aggregated into health indicators, activity feed, badge counts |
-| **Org Chart** (read-only) | `agents`, `system` | Agent hired/fired, status changes |
+| **Org Chart** (hierarchy) | `agents`, `system` | Agent hired/fired, status changes |
+| **Org Chart** (communication) | `agents`, `system` | Agent status changes. Message data via REST polling (`GET /messages`) |
 | **Org Chart** (edit mode) | `agents` | Agent hired/fired (triggers config refresh) |
 | **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
 | **Budget** | `budget` | Cost records added, budget alerts |
@@ -323,7 +329,7 @@ Messages have a dedicated API (`/messages` + channel filtering) and WebSocket ch
 
 ### Org Chart + Company: Merged with mode separation
 
-Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization. An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Inline graph editing (drag to reorganize) is deferred to v0.6+.
+Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization with two view modes: hierarchy (dagre) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Drag-drop agent reassignment between departments is available in hierarchy view (v0.5.1).
 
 ---
 

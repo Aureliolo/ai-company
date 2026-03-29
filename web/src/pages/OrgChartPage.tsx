@@ -475,6 +475,23 @@ function OrgChartInner() {
       </div>
 
       <div className="relative flex-1 rounded-lg border border-border">
+        {/* Drag-drop visual feedback styles */}
+        <style>{`
+          .react-flow__node.dragging {
+            opacity: 0.6;
+            transform: scale(1.02);
+            z-index: 1000 !important;
+          }
+          .react-flow__node.dragging > div {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+          }
+          .react-flow__node {
+            transition: transform 0.4s cubic-bezier(0.17, 0.67, 0.29, 1.01);
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .react-flow__node { transition: none; }
+          }
+        `}</style>
         <ReactFlow
           nodes={renderedNodes}
           edges={transition.displayEdges}

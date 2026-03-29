@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { listMessages } from '@/api/endpoints/messages'
 import { aggregateMessages, type CommunicationLink } from '@/pages/org/aggregate-messages'
 
@@ -17,6 +17,31 @@ export interface UseCommunicationEdgesReturn {
   error: string | null
 }
 
+interface FetchState {
+  messages: Array<{ sender: string; to: string }>
+  loading: boolean
+  error: string | null
+}
+
+type FetchAction =
+  | { type: 'reset' }
+  | { type: 'loading' }
+  | { type: 'success'; messages: Array<{ sender: string; to: string }> }
+  | { type: 'error'; error: string }
+
+function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'reset':
+      return { messages: [], loading: false, error: null }
+    case 'loading':
+      return { messages: [], loading: true, error: null }
+    case 'success':
+      return { messages: action.messages, loading: false, error: null }
+    case 'error':
+      return { messages: [], loading: false, error: action.error }
+  }
+}
+
 /**
  * Fetch inter-agent messages and aggregate into communication links.
  *
@@ -24,18 +49,22 @@ export interface UseCommunicationEdgesReturn {
  * and returns communication links with volume and frequency data.
  */
 export function useCommunicationEdges(enabled = true): UseCommunicationEdgesReturn {
-  const [messages, setMessages] = useState<Array<{ sender: string; to: string }>>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [state, dispatch] = useReducer(fetchReducer, {
+    messages: [],
+    loading: false,
+    error: null,
+  })
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      dispatch({ type: 'reset' })
+      return
+    }
 
     let cancelled = false
+    dispatch({ type: 'loading' })
 
     async function fetchAll() {
-      setLoading(true)
-      setError(null)
       try {
         const allMessages: Array<{ sender: string; to: string }> = []
         let offset = 0
@@ -50,15 +79,11 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
         }
 
         if (!cancelled) {
-          setMessages(allMessages)
+          dispatch({ type: 'success', messages: allMessages })
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to fetch messages')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
+          dispatch({ type: 'error', error: err instanceof Error ? err.message : 'Failed to fetch messages' })
         }
       }
     }
@@ -68,9 +93,9 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
   }, [enabled])
 
   const links = useMemo(
-    () => (messages.length > 0 ? aggregateMessages(messages, DEFAULT_TIME_WINDOW_MS) : []),
-    [messages],
+    () => (state.messages.length > 0 ? aggregateMessages(state.messages, DEFAULT_TIME_WINDOW_MS) : []),
+    [state.messages],
   )
 
-  return { links, loading, error }
+  return { links, loading: state.loading, error: state.error }
 }

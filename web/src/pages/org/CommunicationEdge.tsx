@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react'
 import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react'
+import { prefersReducedMotion } from '@/lib/motion'
 
 export interface CommunicationEdgeData {
   volume: number
@@ -44,15 +45,17 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
 
   const edgeId = `comm-dash-${props.id}`
 
+  const reduced = prefersReducedMotion()
+
   const style = useMemo(
     () => ({
       stroke: 'var(--color-accent)',
       strokeWidth,
       strokeOpacity: opacity,
       strokeDasharray: '8 4',
-      animation: `${edgeId} ${dashDuration}s linear infinite`,
+      ...(reduced ? {} : { animation: `${edgeId} ${dashDuration}s linear infinite` }),
     }),
-    [strokeWidth, opacity, dashDuration, edgeId],
+    [strokeWidth, opacity, dashDuration, edgeId, reduced],
   )
 
   return (

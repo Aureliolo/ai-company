@@ -13,6 +13,10 @@ vi.mock('@xyflow/react', () => ({
   Position: { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' },
 }))
 
+vi.mock('@/lib/motion', () => ({
+  prefersReducedMotion: () => false,
+}))
+
 // Import after mock
 import { CommunicationEdge } from '@/pages/org/CommunicationEdge'
 
