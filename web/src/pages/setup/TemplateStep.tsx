@@ -176,7 +176,7 @@ export function TemplateStep() {
       if (query) {
         const keywords = query.split(' ').filter(Boolean)
         if (keywords.length > 0) {
-          const haystack = `${t.display_name} ${t.description} ${t.tags.join(' ')}`.toLowerCase()
+          const haystack = `${t.display_name} ${t.description} ${t.tags.join(' ')} ${t.workflow} ${t.autonomy_level}`.toLowerCase()
           if (!keywords.every((kw) => haystack.includes(kw))) return false
         }
       }
