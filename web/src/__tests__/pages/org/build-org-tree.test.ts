@@ -4,7 +4,7 @@ import type { AgentConfig, CompanyConfig, DepartmentHealth, DepartmentName } fro
 
 // ── Test helpers ────────────────────────────────────────────
 
-function makeAgent(overrides: Partial<AgentConfig> & { id: string; name: string }): AgentConfig {
+function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string }): AgentConfig {
   return {
     role: 'Developer',
     department: 'engineering' as DepartmentName,
@@ -337,7 +337,7 @@ describe('buildOrgTree', () => {
   it('uses agent.name as node id when agent.id is undefined', () => {
     const agents = [
       makeAgent({ id: 'lead-1', name: 'Lead', department: 'engineering', level: 'lead' }),
-      makeAgent({ id: undefined as unknown as string, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
+      makeAgent({ id: undefined, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
     ]
     const config = makeConfig(agents)
     const result = buildOrgTree(config, {}, [])

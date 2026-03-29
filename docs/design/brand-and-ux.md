@@ -200,7 +200,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `Sparkline` | `sparkline.tsx` | `data`, `color?`, `width?`, `height?`, `animated?` | Pure SVG sparkline with gradient fill and animated draw. `color` defaults to `var(--so-accent)`. Standalone or inside MetricCard. |
 | `SectionCard` | `section-card.tsx` | `title`, `icon?`, `action?`, `children` | Titled card wrapper with Lucide icon, action slot, and content area. Use for every content section. |
 | `AgentCard` | `agent-card.tsx` | `name`, `role`, `department`, `status`, `currentTask?`, `timestamp?` | Consistent agent display. Composes Avatar + StatusBadge internally. Must look identical everywhere. |
-| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilization percentage (null-safe -- shows N/A when health unavailable). Color auto-mapped via `getHealthColor()`. |
+| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilization percentage (null-safe -- shows N/A when utilization unavailable). Color auto-mapped via `getHealthColor()`. |
 | `ProgressGauge` | `progress-gauge.tsx` | `value`, `max?`, `label?`, `size?` | Circular SVG gauge for budget/utilization. `max` defaults to 100. |
 | `StatPill` | `stat-pill.tsx` | `label`, `value` | Compact inline label + value pair for metadata rows. |
 | `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |

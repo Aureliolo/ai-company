@@ -49,6 +49,7 @@ const agents: AgentConfig[] = [
 const meta = {
   title: 'Agents/AgentGridView',
   component: AgentGridView,
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <MemoryRouter>
