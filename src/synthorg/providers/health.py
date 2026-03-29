@@ -302,7 +302,7 @@ class ProviderHealthTracker:
 
     def _prune_before(self, cutoff: datetime) -> int:
         """Remove records older than *cutoff*.  Caller must hold ``_lock``."""
-        if not self._records or self._records[0].timestamp >= cutoff:
+        if not self._records:
             return 0
         before = len(self._records)
         self._records = [r for r in self._records if r.timestamp >= cutoff]
