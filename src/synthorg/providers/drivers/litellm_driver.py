@@ -352,9 +352,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                     }
             case AuthType.SUBSCRIPTION:
                 if self._config.subscription_token is not None:
-                    kwargs["extra_headers"] = {
-                        "Authorization": f"Bearer {self._config.subscription_token}",
-                    }
+                    kwargs["auth_token"] = self._config.subscription_token
             case AuthType.NONE:
                 pass
 

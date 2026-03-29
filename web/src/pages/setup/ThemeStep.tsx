@@ -53,8 +53,11 @@ function OptionGroup<K extends keyof ThemeSettings>({
 }
 
 const PALETTE_OPTIONS = [
-  { value: 'dark' as const, label: 'Dark', description: 'Dark theme with warm soft blue accent' },
-  { value: 'light' as const, label: 'Light', description: 'Light theme for bright environments' },
+  { value: 'warm-ops' as const, label: 'Warm Ops', description: 'Warm soft blue accent. The default.' },
+  { value: 'ice-station' as const, label: 'Ice Station', description: 'Cool emerald green tones.' },
+  { value: 'stealth' as const, label: 'Stealth', description: 'Muted purple, low contrast.' },
+  { value: 'signal' as const, label: 'Signal', description: 'Warm orange, high energy.' },
+  { value: 'neon' as const, label: 'Neon', description: 'Vibrant cyan, deep blacks.' },
 ]
 
 const DENSITY_OPTIONS = [

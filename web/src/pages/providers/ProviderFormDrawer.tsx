@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Drawer } from '@/components/ui/drawer'
+import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X } from 'lucide-react'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PresetPicker } from './PresetPicker'
 import { useProvidersStore } from '@/stores/providers'
+import { cn } from '@/lib/utils'
 import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
 
@@ -33,6 +36,17 @@ interface ProviderFormDrawerProps {
   provider?: ProviderWithName | null
   /** When provided, uses these callbacks instead of `useProvidersStore`. */
   overrides?: ProviderFormOverrides
+}
+
+const overlayVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+}
+
+const panelVariants = {
+  hidden: { opacity: 0, scale: 0.95 },
+  visible: { opacity: 1, scale: 1, transition: { type: 'spring' as const, stiffness: 300, damping: 30 } },
+  exit: { opacity: 0, scale: 0.95, transition: { duration: 0.15, ease: 'easeIn' as const } },
 }
 
 export function ProviderFormDrawer({
@@ -70,12 +84,35 @@ export function ProviderFormDrawer({
   const preset: ProviderPreset | undefined = presets.find((p) => p.name === selectedPreset)
   const isCustom = selectedPreset === '__custom__'
 
-  // Fetch presets when drawer opens in create mode
+  // Panel ref for focus management
+  const panelRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<Element | null>(null)
+
+  // Fetch presets when dialog opens in create mode
   useEffect(() => {
     if (open && mode === 'create') {
       fetchPresetsFn()
     }
   }, [open, mode, fetchPresetsFn])
+
+  // Focus management
+  useEffect(() => {
+    if (!open || !panelRef.current) return
+    openerRef.current = document.activeElement
+    panelRef.current.focus()
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (openerRef.current instanceof HTMLElement) {
+        openerRef.current.focus()
+      }
+      openerRef.current = null
+    }
+  }, [open, onClose])
 
   // Render-phase state sync: capture previous values before comparisons
   const prevProviderRef = useRef<typeof provider | undefined>(undefined)
@@ -222,141 +259,194 @@ export function ProviderFormDrawer({
 
   return (
     <>
-      <Drawer
-        open={open}
-        onClose={handleClose}
-        title={mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`}
-      >
-        <div className="flex flex-col gap-6 p-4">
-          {/* Presets error banner */}
-          {presetsError && (
-            <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
-              Failed to load provider presets: {presetsError}
-            </div>
-          )}
-
-          {/* Step 1: Preset picker (create only) */}
-          {mode === 'create' && (
-            <div>
-              <h3 className="mb-3 text-sm font-medium text-foreground">
-                Select Provider Type
-              </h3>
-              <PresetPicker
-                presets={presets}
-                selected={selectedPreset}
-                onSelect={setSelectedPreset}
-                loading={presetsLoading}
-              />
-            </div>
-          )}
-
-          {/* Step 2+: Configuration (shown after preset selected or in edit mode) */}
-          {(selectedPreset !== null || mode === 'edit') && (
+      {createPortal(
+        <AnimatePresence>
+          {open && (
             <>
-              {/* Auth type */}
-              <SelectField
-                label="Authentication"
-                options={availableAuthTypes}
-                value={authType}
-                onChange={handleAuthTypeChange}
+              {/* Overlay */}
+              <motion.div
+                variants={overlayVariants}
+                initial="hidden"
+                animate="visible"
+                exit="hidden"
+                transition={{ duration: 0.15 }}
+                className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
+                onClick={handleClose}
+                aria-hidden="true"
               />
+              {/* Centered panel */}
+              <motion.div
+                ref={panelRef}
+                variants={panelVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                role="dialog"
+                aria-modal="true"
+                aria-label={mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`}
+                tabIndex={-1}
+                className={cn(
+                  'fixed inset-0 z-50 m-auto flex max-h-[85vh] w-full max-w-3xl flex-col',
+                  'rounded-xl border border-border bg-card shadow-[var(--so-shadow-card-hover)]',
+                  'h-fit',
+                )}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-border px-6 py-4">
+                  <h2 className="text-base font-semibold text-foreground">
+                    {mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    aria-label="Close"
+                    className={cn(
+                      'rounded-md p-1 text-muted-foreground transition-colors',
+                      'hover:bg-card-hover hover:text-foreground',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                    )}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                  <div className="flex flex-col gap-6">
+                    {/* Presets error banner */}
+                    {presetsError && (
+                      <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
+                        Failed to load provider presets: {presetsError}
+                      </div>
+                    )}
 
-              {/* Auth-specific fields */}
-              {authType === 'api_key' && (
-                <InputField
-                  label="API Key"
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={mode === 'edit' && provider?.has_api_key ? '(unchanged)' : 'sk-...'}
-                  hint={mode === 'edit' ? 'Leave empty to keep existing key' : undefined}
-                />
-              )}
+                    {/* Step 1: Preset picker (create only) */}
+                    {mode === 'create' && (
+                      <div>
+                        <h3 className="mb-3 text-sm font-medium text-foreground">
+                          Select Provider Type
+                        </h3>
+                        <PresetPicker
+                          presets={presets}
+                          selected={selectedPreset}
+                          onSelect={setSelectedPreset}
+                          loading={presetsLoading}
+                        />
+                      </div>
+                    )}
 
-              {authType === 'subscription' && (
-                <>
-                  {!tosAccepted && (
-                    <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-text-secondary">
-                      You must accept the Terms of Service warning before using subscription auth.
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="ml-2"
-                        onClick={() => setShowTosDialog(true)}
-                      >
-                        Review & Accept
-                      </Button>
-                    </div>
-                  )}
-                  {tosAccepted && (
-                    <InputField
-                      label="Subscription Token"
-                      type="password"
-                      value={subscriptionToken}
-                      onChange={(e) => setSubscriptionToken(e.target.value)}
-                      placeholder="sub-token-..."
-                      hint="Run 'claude setup-token' in your terminal to get this token"
-                    />
-                  )}
-                </>
-              )}
+                    {/* Step 2+: Configuration (shown after preset selected or in edit mode) */}
+                    {(selectedPreset !== null || mode === 'edit') && (
+                      <>
+                        {/* Auth type */}
+                        <SelectField
+                          label="Authentication"
+                          options={availableAuthTypes}
+                          value={authType}
+                          onChange={handleAuthTypeChange}
+                        />
 
-              {/* Provider name */}
-              <InputField
-                label="Provider Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="my-provider"
-                hint="Lowercase, alphanumeric + hyphens"
-                disabled={mode === 'edit'}
-              />
+                        {/* Auth-specific fields */}
+                        {authType === 'api_key' && (
+                          <InputField
+                            label="API Key"
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder={mode === 'edit' && provider?.has_api_key ? '(unchanged)' : 'sk-...'}
+                            hint={mode === 'edit' ? 'Leave empty to keep existing key' : undefined}
+                          />
+                        )}
 
-              {/* Base URL */}
-              {(isCustom || preset != null || mode === 'edit') && (
-                <InputField
-                  label="Base URL"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
-                  hint={
-                    isCustom || mode === 'edit'
-                      ? undefined
-                      : preset && !preset.default_base_url
-                        ? 'Required for this provider'
-                        : !preset?.default_base_url
-                          ? 'Optional for known cloud providers'
-                          : undefined
-                  }
-                />
-              )}
+                        {authType === 'subscription' && (
+                          <>
+                            {!tosAccepted && (
+                              <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-text-secondary">
+                                You must accept the Terms of Service warning before using subscription auth.
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="ml-2"
+                                  onClick={() => setShowTosDialog(true)}
+                                >
+                                  Review & Accept
+                                </Button>
+                              </div>
+                            )}
+                            {tosAccepted && (
+                              <InputField
+                                label="Subscription Token"
+                                type="password"
+                                value={subscriptionToken}
+                                onChange={(e) => setSubscriptionToken(e.target.value)}
+                                placeholder="sub-token-..."
+                                hint="Run 'claude setup-token' in your terminal to get this token"
+                              />
+                            )}
+                          </>
+                        )}
 
-              {/* LiteLLM Provider (custom only) */}
-              {(isCustom || mode === 'edit') && (
-                <InputField
-                  label="LiteLLM Provider"
-                  value={litellmProvider}
-                  onChange={(e) => setLitellmProvider(e.target.value)}
-                  placeholder="anthropic, openai, ollama..."
-                  hint="LiteLLM routing identifier for model name prefixing"
-                />
-              )}
+                        {/* Provider name */}
+                        <InputField
+                          label="Provider Name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="my-provider"
+                          hint="Lowercase, alphanumeric + hyphens"
+                          disabled={mode === 'edit'}
+                        />
 
-              {/* Submit */}
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={handleClose} disabled={submitting}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={submitting || !name.trim() || (authType === 'subscription' && !tosAccepted)}
-                >
-                  {submitting ? 'Saving...' : mode === 'create' ? 'Create Provider' : 'Save Changes'}
-                </Button>
-              </div>
+                        {/* Base URL */}
+                        {(isCustom || preset != null || mode === 'edit') && (
+                          <InputField
+                            label="Base URL"
+                            value={baseUrl}
+                            onChange={(e) => setBaseUrl(e.target.value)}
+                            placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
+                            hint={
+                              isCustom || mode === 'edit'
+                                ? undefined
+                                : preset && !preset.default_base_url
+                                  ? 'Required for this provider'
+                                  : !preset?.default_base_url
+                                    ? 'Optional for known cloud providers'
+                                    : undefined
+                            }
+                          />
+                        )}
+
+                        {/* LiteLLM Provider (custom only) */}
+                        {(isCustom || mode === 'edit') && (
+                          <InputField
+                            label="LiteLLM Provider"
+                            value={litellmProvider}
+                            onChange={(e) => setLitellmProvider(e.target.value)}
+                            placeholder="anthropic, openai, ollama..."
+                            hint="LiteLLM routing identifier for model name prefixing"
+                          />
+                        )}
+
+                        {/* Submit */}
+                        <div className="flex justify-end gap-3 pt-2">
+                          <Button variant="outline" onClick={handleClose} disabled={submitting}>
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleSubmit}
+                            disabled={submitting || !name.trim() || (authType === 'subscription' && !tosAccepted)}
+                          >
+                            {submitting ? 'Saving...' : mode === 'create' ? 'Create Provider' : 'Save Changes'}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
             </>
           )}
-        </div>
-      </Drawer>
+        </AnimatePresence>,
+        document.body,
+      )}
 
       {/* Subscription ToS Dialog */}
       <ConfirmDialog

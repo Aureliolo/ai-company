@@ -29,16 +29,16 @@ function PresetOptionCard({
       aria-label={ariaLabel}
       onClick={onClick}
       className={cn(
-        'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-center transition-all duration-150',
+        'flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all duration-150',
         'hover:bg-card-hover hover:border-bright',
         selected
           ? 'border-accent bg-accent/5'
           : cn('border-border bg-card', dashed && 'border-dashed'),
       )}
     >
-      <Server className={cn('size-5', iconMuted ? 'text-text-muted' : 'text-text-secondary')} />
+      <Server className={cn('size-6', iconMuted ? 'text-text-muted' : 'text-text-secondary')} />
       <span className="text-sm font-medium text-foreground">{displayName}</span>
-      <span className="text-xs text-text-muted line-clamp-1">{description}</span>
+      <span className="text-xs text-text-muted line-clamp-2">{description}</span>
     </button>
   )
 }
@@ -55,7 +55,7 @@ export function PresetPicker({ presets, selected, onSelect, loading }: PresetPic
     return (
       <div className="grid grid-cols-3 gap-3 max-[767px]:grid-cols-2">
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="h-20 animate-pulse rounded-lg border border-border bg-bg-surface" />
+          <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-bg-surface" />
         ))}
       </div>
     )

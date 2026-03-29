@@ -111,7 +111,7 @@ function getStepOrder(
 }
 
 export type ThemeSettings = {
-  palette: 'dark' | 'light'
+  palette: 'warm-ops' | 'ice-station' | 'stealth' | 'signal' | 'neon'
   density: 'dense' | 'balanced' | 'sparse'
   animation: 'minimal' | 'status-driven' | 'spring' | 'instant'
   sidebar: 'rail' | 'collapsible' | 'hidden' | 'compact'
@@ -119,7 +119,7 @@ export type ThemeSettings = {
 }
 
 const DEFAULT_THEME: ThemeSettings = {
-  palette: 'dark',
+  palette: 'warm-ops',
   density: 'balanced',
   animation: 'status-driven',
   sidebar: 'collapsible',

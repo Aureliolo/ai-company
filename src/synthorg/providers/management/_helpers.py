@@ -1,17 +1,32 @@
 """Private helpers for ProviderManagementService."""
 
+import re
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any, Final
 from urllib.parse import urlparse
 
 from synthorg.api.dto import CreateProviderRequest, UpdateProviderRequest  # noqa: TC001
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import PROVIDER_DISCOVERY_FAILED
 from synthorg.providers.enums import AuthType
 
 logger = get_logger(__name__)
+
+# Date suffix pattern for model names (e.g. "-20250514")
+_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
+
+# Provider-specific minimum model version filters.
+# Only models matching the pattern are included. Providers not
+# listed here include all models from litellm.model_cost.
+_PROVIDER_MODEL_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = (
+    MappingProxyType(
+        {
+            "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-[56789]"),
+        }
+    )
+)
 
 
 def build_provider_config(
@@ -225,3 +240,76 @@ def infer_preset_hint(base_url: str) -> str | None:
     if port is None:
         return None
     return PORT_TO_PRESET.get(port)
+
+
+def models_from_litellm(
+    litellm_provider: str,
+) -> tuple[ProviderModelConfig, ...]:
+    """Query litellm.model_cost for all models of a given provider.
+
+    Returns model configs populated with pricing and context data
+    from LiteLLM's built-in model database. Prefers short alias
+    names over dated variants (e.g. ``claude-opus-4-6`` over
+    ``claude-opus-4-6-20260205``).
+
+    Provider-specific version filters (defined in
+    ``_PROVIDER_MODEL_FILTERS``) exclude older model generations.
+
+    Args:
+        litellm_provider: LiteLLM provider identifier
+            (e.g. ``"anthropic"``, ``"openai"``).
+
+    Returns:
+        Tuple of model configs, or empty tuple on import failure.
+    """
+    try:
+        import litellm  # noqa: PLC0415
+    except ImportError:
+        logger.debug(
+            "litellm_model_lookup_skipped",
+            reason="litellm_not_installed",
+        )
+        return ()
+
+    version_filter = _PROVIDER_MODEL_FILTERS.get(litellm_provider)
+    # Collect all matching models, preferring short (alias) names
+    # over dated variants.
+    seen: dict[str, ProviderModelConfig] = {}
+
+    for model_name, info in litellm.model_cost.items():
+        if not isinstance(info, dict):
+            continue
+        if info.get("litellm_provider") != litellm_provider:
+            continue
+
+        # Strip provider prefix if present (e.g. "anthropic/claude-...")
+        model_id = model_name.removeprefix(f"{litellm_provider}/")
+
+        if version_filter and not version_filter.search(model_id):
+            continue
+
+        # Dedup: prefer the shorter (alias) name over dated variant
+        base_name = _DATE_SUFFIX_RE.sub("", model_id)
+        existing = seen.get(base_name)
+        if existing is not None and len(existing.id) <= len(model_id):
+            continue
+
+        input_cost = info.get("input_cost_per_token", 0)
+        output_cost = info.get("output_cost_per_token", 0)
+        max_input = info.get("max_input_tokens", 200_000)
+
+        seen[base_name] = ProviderModelConfig(
+            id=model_id,
+            cost_per_1k_input=round(input_cost * 1000, 6),
+            cost_per_1k_output=round(output_cost * 1000, 6),
+            max_context=max_input if isinstance(max_input, int) else 200_000,
+        )
+
+    result = tuple(sorted(seen.values(), key=lambda m: m.id))
+    if result:
+        logger.info(
+            "litellm_models_loaded",
+            provider=litellm_provider,
+            count=len(result),
+        )
+    return result

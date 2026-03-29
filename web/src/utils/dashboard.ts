@@ -96,8 +96,10 @@ export function computeSpendTrend(
 
 export function computeOrgHealth(departments: readonly DepartmentHealth[]): number | null {
   if (departments.length === 0) return null
-  const sum = departments.reduce((acc, d) => acc + d.health_percent, 0)
-  return Math.round(sum / departments.length)
+  const valid = departments.filter((d) => Number.isFinite(d.health_percent))
+  if (valid.length === 0) return null
+  const sum = valid.reduce((acc, d) => acc + d.health_percent, 0)
+  return Math.round(sum / valid.length)
 }
 
 export function describeEvent(eventType: WsEventType): string {

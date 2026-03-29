@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { MetricCard } from '@/components/ui/metric-card'
 import { AgentCard } from '@/components/ui/agent-card'
@@ -6,12 +8,114 @@ import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { ThemeSettings } from '@/stores/setup-wizard'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Home, Users, ListChecks, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const DENSITY_CLASS: Record<string, string> = {
   dense: 'density-dense',
   balanced: 'density-medium',
   sparse: 'density-sparse',
+}
+
+const PALETTE_CLASS: Record<string, string> = {
+  'warm-ops': '',
+  'ice-station': 'theme-ice-station',
+  stealth: 'theme-stealth',
+  signal: 'theme-signal',
+  neon: 'theme-neon',
+}
+
+const ANIMATION_TRANSITIONS = {
+  minimal: { type: 'tween' as const, duration: 0.15 },
+  'status-driven': { type: 'tween' as const, duration: 0.2 },
+  spring: { type: 'spring' as const, stiffness: 200, damping: 15 },
+  instant: { type: 'tween' as const, duration: 0 },
+}
+
+const SIDEBAR_NAV = [
+  { icon: Home, label: 'Overview' },
+  { icon: Users, label: 'Agents' },
+  { icon: ListChecks, label: 'Tasks' },
+  { icon: Settings, label: 'Settings' },
+]
+
+function SidebarPreview({ mode }: { mode: string }) {
+  if (mode === 'hidden') return null
+
+  const isCompact = mode === 'compact'
+  const isRail = mode === 'rail'
+
+  return (
+    <div
+      className={cn(
+        'flex flex-col gap-2 rounded-lg border border-border bg-bg-surface p-2 transition-all duration-200',
+        isCompact ? 'w-10' : 'w-28',
+      )}
+    >
+      {SIDEBAR_NAV.map(({ icon: Icon, label }) => (
+        <div
+          key={label}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-text-secondary',
+            label === 'Overview' && 'bg-accent/10 text-accent',
+          )}
+        >
+          <Icon className="size-3.5 shrink-0" />
+          {!isCompact && (
+            <span className="truncate text-[9px]">{label}</span>
+          )}
+        </div>
+      ))}
+      {mode === 'collapsible' && (
+        <div className="mt-auto flex justify-center pt-1 text-text-muted">
+          {isRail ? <ChevronLeft className="size-3" /> : <ChevronRight className="size-3" />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnimationDemo({ animation }: { animation: string }) {
+  const [cycling, setCycling] = useState(true)
+  const transition = ANIMATION_TRANSITIONS[animation as keyof typeof ANIMATION_TRANSITIONS] ?? ANIMATION_TRANSITIONS['status-driven']
+  const showCard = animation === 'instant' || cycling
+
+  useEffect(() => {
+    if (animation === 'instant') return
+    const interval = setInterval(() => setCycling((v) => !v), 1500)
+    return () => clearInterval(interval)
+  }, [animation])
+
+  return (
+    <div className="flex items-center gap-3">
+      <AnimatePresence mode="wait">
+        {showCard && (
+          <motion.div
+            key="demo-card"
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={transition}
+            className="flex items-center gap-2 rounded-md border border-border bg-bg-surface px-3 py-1.5"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{
+                ...transition,
+                repeat: Infinity,
+                repeatDelay: 1,
+                duration: animation === 'instant' ? 0 : 0.6,
+              }}
+              className="size-2 rounded-full bg-success"
+            />
+            <span className="text-xs text-foreground">Agent active</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <span className="text-[9px] text-text-muted italic">
+        {animation === 'instant' ? 'No animations' : animation}
+      </span>
+    </div>
+  )
 }
 
 export interface ThemePreviewProps {
@@ -21,44 +125,56 @@ export interface ThemePreviewProps {
 export function ThemePreview({ settings }: ThemePreviewProps) {
   return (
     <div
-      className={cn('space-y-4 rounded-lg border border-border bg-background p-4', DENSITY_CLASS[settings.density])}
-      data-palette={settings.palette}
+      className={cn(
+        'flex gap-3 rounded-lg border border-border bg-background p-4',
+        DENSITY_CLASS[settings.density],
+        PALETTE_CLASS[settings.palette],
+      )}
       data-density={settings.density}
       data-animation={settings.animation}
       data-sidebar={settings.sidebar}
       data-typography={settings.typography}
     >
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard label="Active Agents" value={12} />
-        <MetricCard label="Tasks Today" value={47} />
-      </div>
+      {/* Sidebar mockup */}
+      <SidebarPreview mode={settings.sidebar} />
 
-      {/* Agent card mock */}
-      <AgentCard name="Akira Tanaka" role="CEO" department="executive" status="idle" />
-
-      {/* Health bar */}
-      <DeptHealthBar name="Engineering" health={72} agentCount={3} taskCount={15} />
-
-      {/* Buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm">Default</Button>
-        <Button variant="outline" size="sm">Outline</Button>
-        <Button variant="ghost" size="sm">Ghost</Button>
-        <Button variant="secondary" size="sm">Secondary</Button>
-      </div>
-
-      {/* Section card */}
-      <SectionCard title="Sample Section" icon={BarChart3}>
-        <p className="text-sm text-muted-foreground">
-          Content with <span className="text-foreground">text-foreground</span> and{' '}
-          <span className="text-compact text-muted-foreground">timestamps</span>.
-        </p>
-        <div className="mt-2 flex gap-2">
-          <StatPill label="Agents" value={5} />
-          <StatPill label="Cost" value="~45/mo" />
+      {/* Main content */}
+      <div className="flex-1 space-y-4">
+        {/* Metric cards */}
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Active Agents" value={12} />
+          <MetricCard label="Tasks Today" value={47} />
         </div>
-      </SectionCard>
+
+        {/* Agent card mock */}
+        <AgentCard name="Akira Tanaka" role="CEO" department="executive" status="idle" />
+
+        {/* Health bar */}
+        <DeptHealthBar name="Engineering" health={72} agentCount={3} taskCount={15} />
+
+        {/* Animation demo */}
+        <AnimationDemo animation={settings.animation} />
+
+        {/* Buttons */}
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm">Default</Button>
+          <Button variant="outline" size="sm">Outline</Button>
+          <Button variant="ghost" size="sm">Ghost</Button>
+          <Button variant="secondary" size="sm">Secondary</Button>
+        </div>
+
+        {/* Section card */}
+        <SectionCard title="Sample Section" icon={BarChart3}>
+          <p className="text-sm text-muted-foreground">
+            Content with <span className="text-foreground">text-foreground</span> and{' '}
+            <span className="text-compact text-muted-foreground">timestamps</span>.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <StatPill label="Agents" value={5} />
+            <StatPill label="Cost" value="~45/mo" />
+          </div>
+        </SectionCard>
+      </div>
     </div>
   )
 }

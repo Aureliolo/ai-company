@@ -59,7 +59,12 @@ export async function deleteProvider(name: string): Promise<void> {
 }
 
 export async function testConnection(name: string, data?: TestConnectionRequest): Promise<TestConnectionResponse> {
-  const response = await apiClient.post<ApiResponse<TestConnectionResponse>>(`/providers/${encodeURIComponent(name)}/test`, data ?? {})
+  // Extended timeout: local providers (Ollama) may need to load models into memory
+  const response = await apiClient.post<ApiResponse<TestConnectionResponse>>(
+    `/providers/${encodeURIComponent(name)}/test`,
+    data ?? {},
+    { timeout: 120_000 },
+  )
   return unwrap(response)
 }
 

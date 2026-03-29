@@ -46,6 +46,7 @@ from synthorg.providers.management._helpers import (
     build_discovery_headers,
     build_provider_config,
     infer_preset_hint,
+    models_from_litellm,
     serialize_providers,
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
@@ -387,7 +388,12 @@ class ProviderManagementService:
             )
             raise ProviderValidationError(msg)
 
-        models = request.models if request.models is not None else preset.default_models
+        litellm_models = models_from_litellm(preset.litellm_provider)
+        models = (
+            request.models
+            if request.models is not None
+            else litellm_models or preset.default_models
+        )
         base_url = request.base_url or preset.default_base_url
         auth_type = request.auth_type or preset.auth_type
         models = await self._maybe_discover_preset_models(

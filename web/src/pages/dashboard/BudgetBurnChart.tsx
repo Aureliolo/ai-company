@@ -12,7 +12,7 @@ import { DollarSign } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import { EmptyState } from '@/components/ui/empty-state'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatCurrencyCompact } from '@/utils/format'
 import type { ForecastResponse, TrendDataPoint } from '@/api/types'
 
 interface BudgetBurnChartProps {
@@ -124,7 +124,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
       ) : (
         <div className="h-48 w-full" data-testid="budget-burn-chart">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 20, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="var(--so-border)"
@@ -140,7 +140,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
                 tick={{ fontSize: 10, fill: 'var(--so-text-muted)' }}
                 axisLine={false}
                 tickLine={false}
-                tickFormatter={(v: number) => `$${v}`}
+                tickFormatter={(v: number) => formatCurrencyCompact(v, currency)}
                 width={48}
               />
               <Tooltip content={<ChartTooltipContent />} />

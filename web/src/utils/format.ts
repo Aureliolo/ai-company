@@ -59,6 +59,23 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
 }
 
 /**
+ * Format a currency value compactly for chart axes (e.g. "EUR 5", "USD 10").
+ */
+export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR'): string {
+  if (!Number.isFinite(value)) return '--'
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+      maximumFractionDigits: 0,
+      notation: 'compact',
+    }).format(value)
+  } catch {
+    return `${currencyCode} ${Math.round(value)}`
+  }
+}
+
+/**
  * Format a number with locale-appropriate separators.
  */
 export function formatNumber(value: number): string {
