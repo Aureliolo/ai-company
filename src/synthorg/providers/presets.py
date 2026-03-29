@@ -37,7 +37,7 @@ class ProviderPreset(BaseModel):
         default_models: Pre-configured model definitions.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
     display_name: NotBlankStr

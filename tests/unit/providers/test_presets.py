@@ -74,12 +74,20 @@ class TestProviderPresets:
             preset.name = "changed"  # type: ignore[misc]
 
     def test_cloud_presets_do_not_require_base_url(self) -> None:
-        """Cloud providers (Anthropic, OpenAI, etc.) don't require a base URL.
+        """Cloud presets don't require a base URL.
 
         LiteLLM knows their endpoints natively; base_url is an optional
         override for cloud presets.
         """
-        cloud_names = ("anthropic", "openai", "gemini", "mistral", "groq", "deepseek")
+        cloud_names = (
+            "anthropic",
+            "openai",
+            "gemini",
+            "mistral",
+            "groq",
+            "deepseek",
+            "openrouter",
+        )
         for name in cloud_names:
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"

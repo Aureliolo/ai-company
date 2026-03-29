@@ -382,7 +382,7 @@ export function ProviderFormModal({
                       </Dialog.Close>
                       <Button
                         onClick={handleSubmit}
-                        disabled={submitting || !name.trim() || (authType === 'subscription' && !tosAccepted)}
+                        disabled={submitting || !name.trim() || (authType === 'subscription' && !tosAccepted) || (preset?.requires_base_url && !baseUrl.trim())}
                       >
                         {submitting ? 'Saving...' : mode === 'create' ? 'Create Provider' : 'Save Changes'}
                       </Button>

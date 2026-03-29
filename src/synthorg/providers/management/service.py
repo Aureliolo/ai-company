@@ -394,6 +394,17 @@ class ProviderManagementService:
             litellm_models = models_from_litellm(preset.litellm_provider)
             models = litellm_models or preset.default_models
         base_url = request.base_url or preset.default_base_url
+        if preset.requires_base_url and not base_url:
+            msg = (
+                f"Preset {preset.name!r} requires a base URL -- "
+                "provide one via base_url"
+            )
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset=request.preset_name,
+                error=msg,
+            )
+            raise ProviderValidationError(msg)
         auth_type = request.auth_type or preset.auth_type
         models = await self._maybe_discover_preset_models(
             preset,

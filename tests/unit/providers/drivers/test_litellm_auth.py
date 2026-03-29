@@ -124,10 +124,10 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_subscription_sets_api_key(self) -> None:
         """Subscription auth passes token as api_key for LiteLLM.
 
-        LiteLLM auto-detects OAuth tokens by prefix (e.g. "sk-ant-oat"
-        for Anthropic) and switches to Authorization: Bearer with the
-        correct beta headers.  "auth_token" is NOT a litellm.completion()
-        parameter and would be silently discarded.
+        LiteLLM auto-detects OAuth tokens by prefix and switches to
+        Authorization: Bearer with the correct headers.  "auth_token"
+        is NOT a litellm.completion() parameter and would be silently
+        discarded.
         """
         config = _make_config(
             auth_type=AuthType.SUBSCRIPTION,
@@ -146,9 +146,10 @@ class TestLiteLLMDriverAuth:
             subscription_token="test-subscription-token",
             tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        # Bypass frozen model to simulate a runtime-cleared token;
-        # ProviderConfig validators require subscription_token at
-        # construction, so direct construction with None is not possible.
+        # Bypass frozen model to simulate a runtime-cleared token.
+        # model_copy(update=...) is the normal convention, but here the
+        # _validate_auth_fields validator rejects None for subscription
+        # auth.  object.__setattr__ is the only way to test this branch.
         object.__setattr__(config, "subscription_token", None)
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs

@@ -4,9 +4,9 @@ import type { ProviderPreset } from '@/api/types'
 import { useState } from 'react'
 
 const samplePresets: ProviderPreset[] = [
-  { name: 'anthropic', display_name: 'Anthropic', description: 'Claude models', driver: 'litellm', litellm_provider: 'anthropic', auth_type: 'api_key', supported_auth_types: ['api_key', 'subscription'], default_base_url: null, candidate_urls: [], default_models: [] },
-  { name: 'openai', display_name: 'OpenAI', description: 'GPT and o-series', driver: 'litellm', litellm_provider: 'openai', auth_type: 'api_key', supported_auth_types: ['api_key'], default_base_url: null, candidate_urls: [], default_models: [] },
-  { name: 'ollama', display_name: 'Ollama', description: 'Local inference', driver: 'litellm', litellm_provider: 'ollama', auth_type: 'none', supported_auth_types: ['none'], default_base_url: 'http://localhost:11434', candidate_urls: [], default_models: [] },
+  { name: 'anthropic', display_name: 'Anthropic', description: 'Claude models', driver: 'litellm', litellm_provider: 'anthropic', auth_type: 'api_key', supported_auth_types: ['api_key', 'subscription'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
+  { name: 'openai', display_name: 'OpenAI', description: 'GPT and o-series', driver: 'litellm', litellm_provider: 'openai', auth_type: 'api_key', supported_auth_types: ['api_key'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
+  { name: 'ollama', display_name: 'Ollama', description: 'Local inference', driver: 'litellm', litellm_provider: 'ollama', auth_type: 'none', supported_auth_types: ['none'], default_base_url: 'http://localhost:11434', requires_base_url: true, candidate_urls: [], default_models: [] },
 ]
 
 const meta = {

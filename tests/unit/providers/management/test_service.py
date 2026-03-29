@@ -252,6 +252,19 @@ class TestCreateFromPreset:
         with pytest.raises(ProviderValidationError, match="Unknown preset"):
             await service.create_from_preset(request)
 
+    async def test_create_from_preset_requires_base_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Presets with requires_base_url=True reject creation without a URL."""
+        request = CreateFromPresetRequest(
+            preset_name="azure",
+            name="my-azure",
+            api_key="test-key",
+        )
+        with pytest.raises(ProviderValidationError, match="requires a base URL"):
+            await service.create_from_preset(request)
+
 
 @pytest.mark.unit
 class TestConcurrency:
