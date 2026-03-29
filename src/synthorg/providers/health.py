@@ -238,7 +238,7 @@ class ProviderHealthTracker:
         recent = [
             r
             for r in snapshot
-            if r.provider_name == provider_name and r.timestamp >= cutoff
+            if r.provider_name == provider_name and cutoff <= r.timestamp <= ref
         ]
 
         if not recent:
@@ -265,7 +265,7 @@ class ProviderHealthTracker:
         snapshot = await self._snapshot(now=ref)
         by_provider: dict[str, list[ProviderHealthRecord]] = defaultdict(list)
         for r in snapshot:
-            if r.timestamp >= cutoff:
+            if cutoff <= r.timestamp <= ref:
                 by_provider[r.provider_name].append(r)
 
         return {

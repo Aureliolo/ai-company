@@ -37,6 +37,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
+    BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
     BUDGET_RECORDS_AUTO_PRUNED,
     BUDGET_RECORDS_PRUNED,
@@ -295,6 +296,16 @@ class CostTracker:
             ValueError: If ``start >= end``.
         """
         _validate_time_range(start, end)
+        retention_cutoff = datetime.now(UTC) - timedelta(
+            hours=_COST_WINDOW_HOURS,
+        )
+        if start < retention_cutoff:
+            logger.warning(
+                BUDGET_QUERY_EXCEEDS_RETENTION,
+                requested_start=start.isoformat(),
+                retention_cutoff=retention_cutoff.isoformat(),
+                retention_hours=_COST_WINDOW_HOURS,
+            )
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
         totals = _aggregate(filtered)

@@ -38,3 +38,4 @@ BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"
 # -- Cost tracker eviction events --
 BUDGET_RECORDS_PRUNED: Final[str] = "budget.records.pruned"
 BUDGET_RECORDS_AUTO_PRUNED: Final[str] = "budget.records.auto_pruned"
+BUDGET_QUERY_EXCEEDS_RETENTION: Final[str] = "budget.query.exceeds_retention"
