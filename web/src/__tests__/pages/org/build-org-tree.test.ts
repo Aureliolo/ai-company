@@ -52,12 +52,15 @@ function makeConfig(agents: AgentConfig[], departments?: CompanyConfig['departme
 
 function makeHealth(name: DepartmentName, health: number): DepartmentHealth {
   return {
-    name,
-    display_name: name.charAt(0).toUpperCase() + name.slice(1),
-    health_percent: health,
+    department_name: name,
     agent_count: 3,
-    task_count: 5,
-    cost_usd: 12.5,
+    active_agent_count: 2,
+    currency: 'EUR',
+    avg_performance_score: 7.5,
+    department_cost_7d: 12.5,
+    cost_trend: [],
+    collaboration_score: 6.0,
+    utilization_percent: health,
   }
 }
 
@@ -216,8 +219,7 @@ describe('buildOrgTree', () => {
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode).toBeDefined()
     expect(deptNode!.data.healthPercent).toBe(85)
-    expect(deptNode!.data.taskCount).toBe(5)
-    expect(deptNode!.data.costUsd).toBe(12.5)
+    expect(deptNode!.data.cost7d).toBe(12.5)
   })
 
   it('uses runtime status from the status map', () => {
@@ -301,7 +303,7 @@ describe('buildOrgTree', () => {
 
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode!.data.healthPercent).toBeNull()
-    expect(deptNode!.data.taskCount).toBeNull()
+    expect(deptNode!.data.cost7d).toBeNull()
   })
 
   it('includes companyName in CEO node data', () => {

@@ -575,19 +575,19 @@ export interface ActivityItem {
 // ── Department Health ───────────────────────────────────────
 
 /**
- * Frontend DepartmentHealth shape.
- *
- * NOTE: This type does not match the backend DepartmentHealth model
- * (which uses department_name, active_agent_count, utilization_percent, etc.).
- * A full type alignment is tracked separately.
+ * Department-level health aggregation as returned by the backend.
+ * Matches the Pydantic DepartmentHealth model in controllers/departments.py.
  */
 export interface DepartmentHealth {
-  name: DepartmentName
-  display_name: string
-  health_percent: number
+  department_name: DepartmentName
   agent_count: number
-  task_count: number
-  cost_usd: number | null
+  active_agent_count: number
+  currency: string
+  avg_performance_score: number | null
+  department_cost_7d: number
+  readonly cost_trend: readonly TrendDataPoint[]
+  collaboration_score: number | null
+  utilization_percent: number
 }
 
 // ── Company / Organization ───────────────────────────────────

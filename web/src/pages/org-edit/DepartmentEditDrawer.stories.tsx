@@ -12,12 +12,15 @@ const mockDept: Department = {
 }
 
 const mockHealth: DepartmentHealth = {
-  name: 'engineering',
-  display_name: 'Engineering',
-  health_percent: 85,
+  department_name: 'engineering',
   agent_count: 3,
-  task_count: 8,
-  cost_usd: 25.5,
+  active_agent_count: 2,
+  currency: 'EUR',
+  avg_performance_score: 7.5,
+  department_cost_7d: 25.5,
+  cost_trend: [],
+  collaboration_score: 6.0,
+  utilization_percent: 85,
 }
 
 const meta = {

@@ -172,7 +172,7 @@ export function ThemePreview({ settings }: ThemePreviewProps) {
         <AgentCard name="Akira Tanaka" role="CEO" department="executive" status="idle" />
 
         {/* Health bar */}
-        <DeptHealthBar name="Engineering" health={72} agentCount={3} taskCount={15} />
+        <DeptHealthBar name="Engineering" health={72} agentCount={3} />
 
         {/* Animation demo */}
         <AnimationDemo animation={settings.animation} />

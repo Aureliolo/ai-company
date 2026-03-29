@@ -103,12 +103,15 @@ describe('computeMetricCards (properties)', () => {
 describe('computeOrgHealth (properties)', () => {
   it('returns null for empty array and a value in [0, 100] otherwise', () => {
     const arbDeptHealth: fc.Arbitrary<DepartmentHealth> = fc.record({
-      name: fc.constantFrom(...DEPT_NAMES),
-      display_name: fc.string({ minLength: 1 }),
-      health_percent: fc.float({ min: 0, max: 100, noNaN: true }),
+      department_name: fc.constantFrom(...DEPT_NAMES),
       agent_count: fc.nat({ max: 50 }),
-      task_count: fc.nat({ max: 200 }),
-      cost_usd: fc.option(fc.float({ min: 0, max: 10000, noNaN: true }), { nil: null }),
+      active_agent_count: fc.nat({ max: 50 }),
+      currency: fc.constant('EUR'),
+      avg_performance_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
+      department_cost_7d: fc.float({ min: 0, max: 10000, noNaN: true }),
+      cost_trend: fc.constant([] as readonly { timestamp: string; value: number }[]),
+      collaboration_score: fc.option(fc.float({ min: 0, max: 10, noNaN: true }), { nil: null }),
+      utilization_percent: fc.float({ min: 0, max: 100, noNaN: true }),
     })
 
     fc.assert(

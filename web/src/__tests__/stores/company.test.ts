@@ -50,12 +50,15 @@ const mockConfig: CompanyConfig = {
 }
 
 const mockDeptHealth: DepartmentHealth = {
-  name: 'engineering',
-  display_name: 'Engineering',
-  health_percent: 85,
+  department_name: 'engineering',
   agent_count: 3,
-  task_count: 5,
-  cost_usd: 12.5,
+  active_agent_count: 2,
+  currency: 'EUR',
+  avg_performance_score: 7.5,
+  department_cost_7d: 12.5,
+  cost_trend: [],
+  collaboration_score: 6.0,
+  utilization_percent: 85,
 }
 
 function resetStore() {
@@ -152,7 +155,7 @@ describe('useCompanyStore', () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
     const healths = useCompanyStore.getState().departmentHealths
     expect(healths).toHaveLength(1)
-    expect(healths[0]!.name).toBe('engineering')
+    expect(healths[0]!.department_name).toBe('engineering')
   })
 
   it('updateFromWsEvent triggers re-fetch of config and health on agent.hired', async () => {

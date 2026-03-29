@@ -77,9 +77,8 @@ function SortableDepartmentCard({
         <SectionCard title={dept.display_name ?? dept.name} icon={Building2}>
           <DeptHealthBar
             name={dept.display_name ?? dept.name}
-            health={health?.health_percent}
+            health={health?.utilization_percent}
             agentCount={agentCount}
-            taskCount={health?.task_count}
           />
           {dept.teams.length > 0 && (
             <p className="mt-2 text-xs text-text-secondary">
@@ -112,7 +111,7 @@ export function DepartmentsTab({
   )
 
   const healthMap = useMemo(
-    () => new Map(departmentHealths.map((h) => [h.name, h])),
+    () => new Map(departmentHealths.map((h) => [h.department_name, h])),
     [departmentHealths],
   )
 

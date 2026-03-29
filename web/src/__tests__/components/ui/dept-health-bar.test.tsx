@@ -7,7 +7,6 @@ describe('DeptHealthBar', () => {
     name: 'Engineering',
     health: 85,
     agentCount: 5,
-    taskCount: 12,
   }
 
   it('renders department name', () => {
@@ -28,21 +27,14 @@ describe('DeptHealthBar', () => {
     expect(screen.getByText(/5 agents/)).toBeInTheDocument()
   })
 
-  it('renders task count', () => {
-    render(<DeptHealthBar {...defaultProps} />)
-
-    expect(screen.getByText(/12 tasks/)).toBeInTheDocument()
-  })
-
   it('uses singular form for count of 1', () => {
-    render(<DeptHealthBar {...defaultProps} agentCount={1} taskCount={1} />)
+    render(<DeptHealthBar {...defaultProps} agentCount={1} />)
 
     expect(screen.getByText(/1 agent$/)).toBeInTheDocument()
-    expect(screen.getByText(/1 task$/)).toBeInTheDocument()
   })
 
   it('clamps health to 0-100 range', () => {
-    render(<DeptHealthBar {...defaultProps} health={120} agentCount={1} taskCount={1} />)
+    render(<DeptHealthBar {...defaultProps} health={120} agentCount={1} />)
 
     expect(screen.getByText('100%')).toBeInTheDocument()
   })
@@ -54,13 +46,13 @@ describe('DeptHealthBar', () => {
   })
 
   it('handles zero health', () => {
-    render(<DeptHealthBar name="Broken" health={0} agentCount={0} taskCount={0} />)
+    render(<DeptHealthBar name="Broken" health={0} agentCount={0} />)
 
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
   it('has accessible meter role', () => {
-    render(<DeptHealthBar name="Eng" health={75} agentCount={3} taskCount={8} />)
+    render(<DeptHealthBar name="Eng" health={75} agentCount={3} />)
 
     const meter = screen.getByRole('meter')
     expect(meter).toHaveAttribute('aria-valuenow', '75')
@@ -68,7 +60,7 @@ describe('DeptHealthBar', () => {
 
   it('applies custom className', () => {
     const { container } = render(
-      <DeptHealthBar name="Eng" health={75} agentCount={3} taskCount={8} className="my-class" />,
+      <DeptHealthBar name="Eng" health={75} agentCount={3} className="my-class" />,
     )
 
     expect(container.firstChild).toHaveClass('my-class')

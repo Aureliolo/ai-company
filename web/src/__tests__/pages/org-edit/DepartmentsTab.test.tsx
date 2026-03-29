@@ -10,7 +10,7 @@ function renderTab(overrides?: Partial<DepartmentsTabProps>) {
     config: makeCompanyConfig(),
     departmentHealths: [
       makeDepartmentHealth('engineering'),
-      makeDepartmentHealth('product', { health_percent: 72, agent_count: 1, task_count: 3 }),
+      makeDepartmentHealth('product', { utilization_percent: 72, agent_count: 1 }),
     ],
     saving: false,
     onCreateDepartment: noopAsync,

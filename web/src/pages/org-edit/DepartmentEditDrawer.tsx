@@ -85,9 +85,8 @@ export function DepartmentEditDrawer({
           <div className="space-y-5">
             <DeptHealthBar
               name={department.display_name ?? department.name}
-              health={health?.health_percent}
+              health={health?.utilization_percent}
               agentCount={health?.agent_count ?? 0}
-              taskCount={health?.task_count}
             />
 
             <InputField

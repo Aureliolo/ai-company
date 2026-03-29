@@ -184,57 +184,47 @@ describe('computeSpendTrend', () => {
   })
 })
 
+function dh(name: string, utilization: number, agents = 1): DepartmentHealth {
+  return {
+    department_name: name as DepartmentHealth['department_name'],
+    agent_count: agents,
+    active_agent_count: agents,
+    currency: 'EUR',
+    avg_performance_score: null,
+    department_cost_7d: 0,
+    cost_trend: [],
+    collaboration_score: null,
+    utilization_percent: utilization,
+  }
+}
+
 describe('computeOrgHealth', () => {
   it('returns null for empty array', () => {
     expect(computeOrgHealth([])).toBeNull()
   })
 
   it('returns exact value for single department', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'engineering', display_name: 'Engineering', health_percent: 85, agent_count: 4, task_count: 10, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBe(85)
+    expect(computeOrgHealth([dh('engineering', 85, 4)])).toBe(85)
   })
 
   it('averages multiple departments', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'engineering', display_name: 'Engineering', health_percent: 80, agent_count: 4, task_count: 10, cost_usd: null },
-      { name: 'design', display_name: 'Design', health_percent: 60, agent_count: 2, task_count: 5, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBe(70)
+    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', 60, 2)])).toBe(70)
   })
 
   it('rounds to nearest integer', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'engineering', display_name: 'Engineering', health_percent: 33, agent_count: 1, task_count: 1, cost_usd: null },
-      { name: 'design', display_name: 'Design', health_percent: 33, agent_count: 1, task_count: 1, cost_usd: null },
-      { name: 'product', display_name: 'Product', health_percent: 34, agent_count: 1, task_count: 1, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBe(33)
+    expect(computeOrgHealth([dh('engineering', 33), dh('design', 33), dh('product', 34)])).toBe(33)
   })
 
-  it('filters out NaN health_percent values', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'engineering', display_name: 'Engineering', health_percent: 80, agent_count: 4, task_count: 10, cost_usd: null },
-      { name: 'design', display_name: 'Design', health_percent: NaN, agent_count: 1, task_count: 0, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBe(80)
+  it('filters out NaN utilization_percent values', () => {
+    expect(computeOrgHealth([dh('engineering', 80, 4), dh('design', NaN)])).toBe(80)
   })
 
-  it('filters out Infinity health_percent values', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'engineering', display_name: 'Engineering', health_percent: 60, agent_count: 2, task_count: 5, cost_usd: null },
-      { name: 'product', display_name: 'Product', health_percent: Infinity, agent_count: 1, task_count: 0, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBe(60)
+  it('filters out Infinity utilization_percent values', () => {
+    expect(computeOrgHealth([dh('engineering', 60, 2), dh('product', Infinity)])).toBe(60)
   })
 
-  it('returns null when all departments have non-finite health', () => {
-    const depts: DepartmentHealth[] = [
-      { name: 'design', display_name: 'Design', health_percent: NaN, agent_count: 1, task_count: 0, cost_usd: null },
-      { name: 'product', display_name: 'Product', health_percent: Infinity, agent_count: 1, task_count: 0, cost_usd: null },
-    ]
-    expect(computeOrgHealth(depts)).toBeNull()
+  it('returns null when all departments have non-finite utilization', () => {
+    expect(computeOrgHealth([dh('design', NaN), dh('product', Infinity)])).toBeNull()
   })
 })
 

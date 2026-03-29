@@ -4,12 +4,15 @@ import type { DepartmentHealth, DepartmentName } from '@/api/types'
 
 function makeDepts(configs: Array<{ name: DepartmentName; health: number }>): DepartmentHealth[] {
   return configs.map((c, i) => ({
-    name: c.name,
-    display_name: c.name.charAt(0).toUpperCase() + c.name.slice(1).replace('_', ' '),
-    health_percent: c.health,
+    department_name: c.name,
     agent_count: 2 + i,
-    task_count: 5 + i * 2,
-    cost_usd: null,
+    active_agent_count: 1 + i,
+    currency: 'EUR',
+    avg_performance_score: 7.0 + i * 0.5,
+    department_cost_7d: 10 + i * 3,
+    cost_trend: [],
+    collaboration_score: 6.0,
+    utilization_percent: c.health,
   }))
 }
 

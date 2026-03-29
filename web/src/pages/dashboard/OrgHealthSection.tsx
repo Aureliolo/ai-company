@@ -4,34 +4,32 @@ import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
-import { formatCurrency } from '@/utils/format'
+import { formatCurrency, formatLabel } from '@/utils/format'
 import type { DepartmentHealth } from '@/api/types'
 
 interface OrgHealthSectionProps {
   departments: readonly DepartmentHealth[]
   overallHealth: number | null
-  currency?: string
 }
 
-function DepartmentRow({ dept, currency }: { dept: DepartmentHealth; currency?: string }) {
+function DepartmentRow({ dept }: { dept: DepartmentHealth }) {
   return (
     <div>
       <DeptHealthBar
-        name={dept.display_name}
-        health={dept.health_percent}
+        name={formatLabel(dept.department_name)}
+        health={dept.utilization_percent}
         agentCount={dept.agent_count}
-        taskCount={dept.task_count}
       />
-      {dept.cost_usd !== null && (
+      {dept.department_cost_7d > 0 && (
         <span className="mt-0.5 block text-right font-mono text-xs text-muted-foreground">
-          {formatCurrency(dept.cost_usd, currency)}
+          {formatCurrency(dept.department_cost_7d, dept.currency)}
         </span>
       )}
     </div>
   )
 }
 
-export function OrgHealthSection({ departments, overallHealth, currency }: OrgHealthSectionProps) {
+export function OrgHealthSection({ departments, overallHealth }: OrgHealthSectionProps) {
   return (
     <SectionCard title="Org Health" icon={Building2}>
       {departments.length === 0 ? (
@@ -49,8 +47,8 @@ export function OrgHealthSection({ departments, overallHealth, currency }: OrgHe
           )}
           <StaggerGroup className="space-y-3">
             {departments.map((dept) => (
-              <StaggerItem key={dept.name}>
-                <DepartmentRow dept={dept} currency={currency} />
+              <StaggerItem key={dept.department_name}>
+                <DepartmentRow dept={dept} />
               </StaggerItem>
             ))}
           </StaggerGroup>

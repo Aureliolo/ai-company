@@ -34,8 +34,8 @@ const mockConfig: CompanyConfig = {
 }
 
 const mockHealths: DepartmentHealth[] = [
-  { name: 'engineering', display_name: 'Engineering', health_percent: 85, agent_count: 1, task_count: 4, cost_usd: null },
-  { name: 'product', display_name: 'Product', health_percent: 60, agent_count: 0, task_count: 1, cost_usd: null },
+  { department_name: 'engineering', agent_count: 1, active_agent_count: 1, currency: 'EUR', avg_performance_score: 7.5, department_cost_7d: 10.0, cost_trend: [], collaboration_score: 6.0, utilization_percent: 85 },
+  { department_name: 'product', agent_count: 0, active_agent_count: 0, currency: 'EUR', avg_performance_score: null, department_cost_7d: 0, cost_trend: [], collaboration_score: null, utilization_percent: 60 },
 ]
 
 const meta = {

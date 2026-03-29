@@ -115,12 +115,15 @@ export function makeCompanyConfig(overrides?: Partial<CompanyConfig>): CompanyCo
 
 export function makeDepartmentHealth(name: string, overrides?: Partial<DepartmentHealth>): DepartmentHealth {
   return {
-    name: name as DepartmentHealth['name'],
-    display_name: name.charAt(0).toUpperCase() + name.slice(1),
-    health_percent: 85,
+    department_name: name as DepartmentHealth['department_name'],
     agent_count: 3,
-    task_count: 5,
-    cost_usd: 12.5,
+    active_agent_count: 2,
+    currency: 'EUR',
+    avg_performance_score: 7.5,
+    department_cost_7d: 12.5,
+    cost_trend: [],
+    collaboration_score: 6.0,
+    utilization_percent: 85,
     ...overrides,
   }
 }

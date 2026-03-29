@@ -26,8 +26,7 @@ export interface DepartmentGroupData {
   healthPercent: number | null
   agentCount: number
   activeCount: number
-  taskCount: number | null
-  costUsd: number | null
+  cost7d: number | null
   isDropTarget?: boolean
   [key: string]: unknown
 }
@@ -74,7 +73,7 @@ export function buildOrgTree(
   // Filter out terminated agents
   const agents = config.agents.filter((a) => a.status !== 'terminated')
 
-  const healthMap = new Map(departmentHealths.map((h) => [h.name, h]))
+  const healthMap = new Map(departmentHealths.map((h) => [h.department_name, h]))
   const nodes: Node[] = []
   const edges: Edge[] = []
 
@@ -106,11 +105,10 @@ export function buildOrgTree(
       data: {
         departmentName: dept.name,
         displayName: dept.display_name ?? dept.name,
-        healthPercent: health?.health_percent ?? null,
+        healthPercent: health?.utilization_percent ?? null,
         agentCount: deptMembers.length,
         activeCount,
-        taskCount: health?.task_count ?? null,
-        costUsd: health?.cost_usd ?? null,
+        cost7d: health?.department_cost_7d ?? null,
       } satisfies DepartmentGroupData,
     })
 

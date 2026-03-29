@@ -4,35 +4,33 @@ import { DepartmentStatsBar } from '@/pages/org/DepartmentStatsBar'
 import { formatCurrency } from '@/utils/format'
 
 describe('DepartmentStatsBar', () => {
-  it('renders all stat values and labels', () => {
-    render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
+  it('renders agent and active stat values', () => {
+    render(<DepartmentStatsBar agentCount={5} activeCount={3} cost7d={null} />)
     expect(screen.getByText('5')).toBeInTheDocument()
     expect(screen.getByText('Agents')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('Active')).toBeInTheDocument()
-    expect(screen.getByText('8')).toBeInTheDocument()
-    expect(screen.getByText('Tasks')).toBeInTheDocument()
   })
 
-  it('renders cost with default USD currency', () => {
-    render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={45.8} />)
-    expect(screen.getByText(formatCurrency(45.8, 'USD'))).toBeInTheDocument()
-    expect(screen.getByText('Cost')).toBeInTheDocument()
+  it('renders cost with default EUR currency', () => {
+    render(<DepartmentStatsBar agentCount={5} activeCount={3} cost7d={45.8} />)
+    expect(screen.getByText(formatCurrency(45.8, 'EUR'))).toBeInTheDocument()
+    expect(screen.getByText('Cost (7d)')).toBeInTheDocument()
   })
 
   it('forwards explicit currency to formatCurrency', () => {
-    render(<DepartmentStatsBar agentCount={1} activeCount={0} taskCount={0} costUsd={100} currency="EUR" />)
-    expect(screen.getByText(formatCurrency(100, 'EUR'))).toBeInTheDocument()
-    expect(screen.getByText('Cost')).toBeInTheDocument()
+    render(<DepartmentStatsBar agentCount={1} activeCount={0} cost7d={100} currency="JPY" />)
+    expect(screen.getByText(formatCurrency(100, 'JPY'))).toBeInTheDocument()
+    expect(screen.getByText('Cost (7d)')).toBeInTheDocument()
   })
 
   it('does not render cost when null', () => {
-    render(<DepartmentStatsBar agentCount={5} activeCount={3} taskCount={8} costUsd={null} />)
-    expect(screen.queryByText('Cost')).not.toBeInTheDocument()
+    render(<DepartmentStatsBar agentCount={5} activeCount={3} cost7d={null} />)
+    expect(screen.queryByText('Cost (7d)')).not.toBeInTheDocument()
   })
 
   it('has data-testid', () => {
-    render(<DepartmentStatsBar agentCount={1} activeCount={0} taskCount={0} costUsd={null} />)
+    render(<DepartmentStatsBar agentCount={1} activeCount={0} cost7d={null} />)
     expect(screen.getByTestId('dept-stats-bar')).toBeInTheDocument()
   })
 })
