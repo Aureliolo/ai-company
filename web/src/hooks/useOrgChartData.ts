@@ -63,13 +63,13 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
     const companyStore = useCompanyStore.getState()
     companyStore.fetchCompanyData().then(() => {
       if (useCompanyStore.getState().config) {
-        companyStore.fetchDepartmentHealths().catch(() => {
-          // Error set in store state by fetchDepartmentHealths
+        companyStore.fetchDepartmentHealths().catch((err: unknown) => {
+          console.warn('[useOrgChartData] fetchDepartmentHealths failed:', err)
         })
       }
       polling.start()
-    }).catch(() => {
-      // Error set in store state by fetchCompanyData; start polling so the page can self-heal
+    }).catch((err: unknown) => {
+      console.warn('[useOrgChartData] fetchCompanyData failed:', err)
       polling.start()
     })
     return () => polling.stop()

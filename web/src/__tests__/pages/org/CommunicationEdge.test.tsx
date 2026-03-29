@@ -107,15 +107,17 @@ describe('CommunicationEdge', () => {
     expect(path.style.animation).toContain('linear infinite')
   })
 
-  it('injects keyframes style element', () => {
-    const { container } = render(
+  it('injects shared keyframe into document head', () => {
+    render(
       <svg>
         <CommunicationEdge {...baseProps} />
       </svg>,
     )
-    const style = container.querySelector('style')
-    expect(style).toBeInTheDocument()
-    expect(style!.textContent).toContain('@keyframes')
-    expect(style!.textContent).toContain('stroke-dashoffset')
+    // Keyframes are injected into document.head, not inline
+    const headStyles = Array.from(document.head.querySelectorAll('style'))
+    const keyframeStyle = headStyles.find((s) => s.textContent?.includes('comm-dash'))
+    expect(keyframeStyle).toBeDefined()
+    expect(keyframeStyle!.textContent).toContain('@keyframes')
+    expect(keyframeStyle!.textContent).toContain('stroke-dashoffset')
   })
 })

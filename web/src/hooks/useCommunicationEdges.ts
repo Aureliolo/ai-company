@@ -15,30 +15,33 @@ export interface UseCommunicationEdgesReturn {
   links: CommunicationLink[]
   loading: boolean
   error: string | null
+  /** True when MAX_PAGES was reached before all messages were fetched. */
+  truncated: boolean
 }
 
 interface FetchState {
   messages: Array<{ sender: string; to: string }>
   loading: boolean
   error: string | null
+  truncated: boolean
 }
 
 type FetchAction =
   | { type: 'reset' }
   | { type: 'loading' }
-  | { type: 'success'; messages: Array<{ sender: string; to: string }> }
+  | { type: 'success'; messages: Array<{ sender: string; to: string }>; truncated: boolean }
   | { type: 'error'; error: string }
 
 function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
     case 'reset':
-      return { messages: [], loading: false, error: null }
+      return { messages: [], loading: false, error: null, truncated: false }
     case 'loading':
-      return { messages: [], loading: true, error: null }
+      return { messages: [], loading: true, error: null, truncated: false }
     case 'success':
-      return { messages: action.messages, loading: false, error: null }
+      return { messages: action.messages, loading: false, error: null, truncated: action.truncated }
     case 'error':
-      return { messages: [], loading: false, error: action.error }
+      return { messages: [], loading: false, error: action.error, truncated: false }
   }
 }
 
@@ -53,6 +56,7 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
     messages: [],
     loading: false,
     error: null,
+    truncated: false,
   })
 
   useEffect(() => {
@@ -69,18 +73,22 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
         const allMessages: Array<{ sender: string; to: string }> = []
         let offset = 0
 
+        let truncated = false
         for (let page = 0; page < MAX_PAGES; page++) {
           if (controller.signal.aborted) return
-          const result = await listMessages({ offset, limit: PAGE_LIMIT })
+          const result = await listMessages({ offset, limit: PAGE_LIMIT, signal: controller.signal })
           for (const msg of result.data) {
             allMessages.push({ sender: msg.sender, to: msg.to })
           }
           offset += result.data.length
           if (offset >= result.total || result.data.length === 0) break
+          if (page === MAX_PAGES - 1 && offset < result.total) {
+            truncated = true
+          }
         }
 
         if (!controller.signal.aborted) {
-          dispatch({ type: 'success', messages: allMessages })
+          dispatch({ type: 'success', messages: allMessages, truncated })
         }
       } catch (err) {
         if (!controller.signal.aborted) {
@@ -98,5 +106,5 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
     [state.messages],
   )
 
-  return { links, loading: state.loading, error: state.error }
+  return { links, loading: state.loading, error: state.error, truncated: state.truncated }
 }

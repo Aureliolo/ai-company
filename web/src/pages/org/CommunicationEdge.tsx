@@ -21,6 +21,18 @@ const MAX_OPACITY = 0.8
 const MIN_DASH_DURATION = 0.5 // seconds (fast)
 const MAX_DASH_DURATION = 4 // seconds (slow)
 
+/** Shared keyframe name -- all communication edges use the same animation, varying only duration. */
+const KEYFRAME_NAME = 'comm-dash'
+let keyframeInjected = false
+
+function ensureKeyframe() {
+  if (keyframeInjected || typeof document === 'undefined') return
+  const style = document.createElement('style')
+  style.textContent = `@keyframes ${KEYFRAME_NAME} { to { stroke-dashoffset: -24; } }`
+  document.head.appendChild(style)
+  keyframeInjected = true
+}
+
 function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
   const { volume = 1, frequency = 1, maxVolume = 1 } = (props.data ?? {}) as CommunicationEdgeData
 
@@ -44,10 +56,10 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
     Math.max(MIN_DASH_DURATION, MAX_DASH_DURATION / Math.max(frequency, 0.1)),
   )
 
-  const safeId = String(props.id).replace(/[^a-zA-Z0-9_-]/g, '_')
-  const edgeId = `comm-dash-${safeId}`
-
   const reduced = prefersReducedMotion()
+
+  // Inject shared keyframe once on first render
+  ensureKeyframe()
 
   const style = useMemo(
     () => ({
@@ -55,17 +67,12 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
       strokeWidth,
       strokeOpacity: opacity,
       strokeDasharray: '8 4',
-      ...(reduced ? {} : { animation: `${edgeId} ${dashDuration}s linear infinite` }),
+      ...(reduced ? {} : { animation: `${KEYFRAME_NAME} ${dashDuration}s linear infinite` }),
     }),
-    [strokeWidth, opacity, dashDuration, edgeId, reduced],
+    [strokeWidth, opacity, dashDuration, reduced],
   )
 
-  return (
-    <>
-      <style>{`@keyframes ${edgeId} { to { stroke-dashoffset: -24; } }`}</style>
-      <BaseEdge id={props.id} path={edgePath} style={style} />
-    </>
-  )
+  return <BaseEdge id={props.id} path={edgePath} style={style} />
 }
 
 export const CommunicationEdge = memo(CommunicationEdgeComponent)

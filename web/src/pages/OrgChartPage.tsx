@@ -188,6 +188,7 @@ function OrgChartInner() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ nodeId: string; label: string } | null>(null)
   const [dragOverDeptId, setDragOverDeptId] = useState<string | null>(null)
+  const dragOverDeptIdRef = useRef<string | null>(null)
   const { fitView, zoomIn, zoomOut } = useReactFlow()
   const addToast = useToastStore((s) => s.add)
   const navigate = useNavigate()
@@ -358,18 +359,16 @@ function OrgChartInner() {
   const handleNodeDrag = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
       if (!dragOriginalDeptRef.current) return
-      const target = findDropTarget(
-        { x: node.position.x + AGENT_NODE_WIDTH / 2, y: node.position.y + AGENT_NODE_HEIGHT / 2 },
-        deptBounds,
-      )
+      const centerX = node.position.x + ((node.measured?.width ?? AGENT_NODE_WIDTH) / 2)
+      const centerY = node.position.y + ((node.measured?.height ?? AGENT_NODE_HEIGHT) / 2)
+      const target = findDropTarget({ x: centerX, y: centerY }, deptBounds)
       const newOverId = target?.nodeId ?? null
-      setDragOverDeptId((prev) => {
-        if (prev !== newOverId && target) {
-          // Announce outside updater to avoid impure side effects in React state updaters
-          queueMicrotask(() => announce(`Over ${target.departmentName}`))
-        }
-        return newOverId
-      })
+      const shouldAnnounce = dragOverDeptIdRef.current !== newOverId && target
+      dragOverDeptIdRef.current = newOverId
+      setDragOverDeptId(newOverId)
+      if (shouldAnnounce) {
+        queueMicrotask(() => announce(`Over ${target.departmentName}`))
+      }
     },
     [deptBounds, announce],
   )
@@ -378,15 +377,15 @@ function OrgChartInner() {
     (_event: ReactMouseEvent, node: Node) => {
       const originalDept = dragOriginalDeptRef.current
       dragOriginalDeptRef.current = null
+      dragOverDeptIdRef.current = null
       setDragOverDeptId(null)
 
       if (!originalDept) return
       if (node.type !== 'agent') return
 
-      const target = findDropTarget(
-        { x: node.position.x + AGENT_NODE_WIDTH / 2, y: node.position.y + AGENT_NODE_HEIGHT / 2 },
-        deptBounds,
-      )
+      const centerX = node.position.x + ((node.measured?.width ?? AGENT_NODE_WIDTH) / 2)
+      const centerY = node.position.y + ((node.measured?.height ?? AGENT_NODE_HEIGHT) / 2)
+      const target = findDropTarget({ x: centerX, y: centerY }, deptBounds)
 
       const agentName = (node.data as AgentNodeData).name
       const newDept = target?.departmentName
@@ -483,7 +482,7 @@ function OrgChartInner() {
         {/* Drag-drop visual feedback styles */}
         <style>{`
           .react-flow__node.dragging {
-            opacity: 0.6;
+            opacity: var(--so-opacity-dragging, 0.6);
             transform: scale(1.02);
             z-index: 1000 !important;
           }

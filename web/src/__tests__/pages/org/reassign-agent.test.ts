@@ -63,7 +63,9 @@ describe('optimisticReassignAgent', () => {
   it('returns no-op when config is null', () => {
     useCompanyStore.setState({ config: null })
     const rollback = useCompanyStore.getState().optimisticReassignAgent('alice', 'design')
+    expect(useCompanyStore.getState().config).toBeNull()
     rollback()
+    expect(useCompanyStore.getState().config).toBeNull()
   })
 
   it('returns no-op when agent not found', () => {

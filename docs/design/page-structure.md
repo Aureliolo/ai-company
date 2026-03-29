@@ -225,7 +225,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
 | `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `company`, `providers`, `agents`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `company`, `providers`, `complete` |
-| `/org` | Org Chart | Read-only visualization |
+| `/org` | Org Chart | Interactive visualization with Hierarchy (default, drag-drop agent reassignment) and Communication (d3-force) views, 400ms animated transitions |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
 | `/tasks` | Task Board | Kanban default |
 | `/tasks?view=list` | Task Board (list) | List view toggle |
@@ -329,7 +329,7 @@ Messages have a dedicated API (`/messages` + channel filtering) and WebSocket ch
 
 ### Org Chart + Company: Merged with mode separation
 
-Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization with two view modes: hierarchy (dagre) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Drag-drop agent reassignment between departments is available in hierarchy view (v0.5.1).
+Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization with two view modes: hierarchy (dagre) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Drag-drop agent reassignment between departments is available in hierarchy view.
 
 ---
 

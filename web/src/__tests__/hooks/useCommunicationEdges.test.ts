@@ -78,8 +78,8 @@ describe('useCommunicationEdges', () => {
 
     expect(result.current.links.length).toBeGreaterThan(0)
     expect(mockListMessages).toHaveBeenCalledTimes(2)
-    expect(mockListMessages).toHaveBeenNthCalledWith(1, { offset: 0, limit: 100 })
-    expect(mockListMessages).toHaveBeenNthCalledWith(2, { offset: 100, limit: 100 })
+    expect(mockListMessages).toHaveBeenNthCalledWith(1, expect.objectContaining({ offset: 0, limit: 100 }))
+    expect(mockListMessages).toHaveBeenNthCalledWith(2, expect.objectContaining({ offset: 100, limit: 100 }))
   })
 
   it('sets error on API failure', async () => {
