@@ -25,14 +25,14 @@ const TAG_ENTERPRISE = 'enterprise'
 const TAG_FULL_COMPANY = 'full-company'
 
 /** Agent-count filter buckets. */
-const SIZE_OPTIONS = [
+type SizeFilter = 'all' | 'small' | 'medium' | 'large'
+
+const SIZE_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'all', label: 'Any size' },
   { value: 'small', label: '1-3 agents' },
   { value: 'medium', label: '4-8 agents' },
   { value: 'large', label: '9+ agents' },
-] as const
-
-type SizeFilter = (typeof SIZE_OPTIONS)[number]['value']
+]
 
 function matchesSize(template: TemplateInfoResponse, size: SizeFilter): boolean {
   if (size === 'all') return true
@@ -322,7 +322,7 @@ export function TemplateStep() {
         {/* Size filter */}
         <SelectField
           label="Size"
-          options={[...SIZE_OPTIONS]}
+          options={SIZE_OPTIONS}
           value={sizeFilter}
           onChange={(v) => setSizeFilter(v as SizeFilter)}
         />
