@@ -23,6 +23,7 @@ export interface UseOrgChartDataReturn {
   error: string | null
   commLoading: boolean
   commError: string | null
+  commTruncated: boolean
   wsConnected: boolean
   wsSetupError: string | null
 }
@@ -94,7 +95,7 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
   })
 
   // Communication data for force view (only fetched when needed)
-  const { links: commLinks, loading: commLoading, error: commError } = useCommunicationEdges(
+  const { links: commLinks, loading: commLoading, error: commError, truncated: commTruncated } = useCommunicationEdges(
     viewMode === 'force',
   )
 
@@ -131,6 +132,7 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
     error,
     commLoading,
     commError,
+    commTruncated,
     wsConnected,
     wsSetupError,
   }

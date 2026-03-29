@@ -30,6 +30,7 @@ let mockLoading = false
 let mockError: string | null = null
 let mockCommLoading = false
 let mockCommError: string | null = null
+let mockCommTruncated = false
 let mockWsConnected = true
 let mockWsSetupError: string | null = null
 
@@ -41,6 +42,7 @@ function mockUseOrgChartData() {
     error: mockError,
     commLoading: mockCommLoading,
     commError: mockCommError,
+    commTruncated: mockCommTruncated,
     wsConnected: mockWsConnected,
     wsSetupError: mockWsSetupError,
   }
@@ -90,6 +92,7 @@ describe('OrgChartPage', () => {
     mockError = null
     mockCommLoading = false
     mockCommError = null
+    mockCommTruncated = false
     mockWsConnected = true
     mockWsSetupError = null
   })

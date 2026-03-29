@@ -329,7 +329,7 @@ Messages have a dedicated API (`/messages` + channel filtering) and WebSocket ch
 
 ### Org Chart + Company: Merged with mode separation
 
-Both deal with the same data domain (departments, teams, agents, reporting lines). The default is a read-only interactive visualization with two view modes: hierarchy (dagre) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay. Drag-drop agent reassignment between departments is available in hierarchy view.
+Both deal with the same data domain (departments, teams, agents, reporting lines). The default is an interactive visualization with two view modes: hierarchy (dagre, with drag-drop agent reassignment as an inline mutating action) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay for bulk configuration changes.
 
 ---
 

@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Position } from '@xyflow/react'
 
 // Module-level mock component (eslint-react requires top-level definitions)
@@ -13,8 +13,10 @@ vi.mock('@xyflow/react', () => ({
   Position: { Top: 'top', Bottom: 'bottom', Left: 'left', Right: 'right' },
 }))
 
+const mockPrefersReducedMotion = vi.fn(() => false)
+
 vi.mock('@/lib/motion', () => ({
-  prefersReducedMotion: () => false,
+  prefersReducedMotion: () => mockPrefersReducedMotion(),
 }))
 
 // Import after mock
@@ -55,6 +57,10 @@ const baseProps = {
 } as const
 
 describe('CommunicationEdge', () => {
+  beforeEach(() => {
+    mockPrefersReducedMotion.mockReturnValue(false)
+  })
+
   it('renders a path element', () => {
     const { container } = render(
       <svg>
@@ -105,6 +111,17 @@ describe('CommunicationEdge', () => {
     const path = container.querySelector('[data-testid="edge-e-1"]') as HTMLElement
     expect(path.style.strokeDasharray).toBe('8 4')
     expect(path.style.animation).toContain('linear infinite')
+  })
+
+  it('omits animation when prefers-reduced-motion is active', () => {
+    mockPrefersReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <svg>
+        <CommunicationEdge {...baseProps} />
+      </svg>,
+    )
+    const path = container.querySelector('[data-testid="edge-e-1"]') as HTMLElement
+    expect(path.style.animation).toBe('')
   })
 
   it('injects shared keyframe into document head', () => {

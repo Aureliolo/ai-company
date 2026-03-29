@@ -176,7 +176,7 @@ interface ContextMenuState {
 
 function OrgChartInner() {
   const [viewMode, setViewMode] = useState<ViewMode>('hierarchy')
-  const { nodes, edges, loading, error, commLoading, commError, wsConnected, wsSetupError } =
+  const { nodes, edges, loading, error, commLoading, commError, commTruncated, wsConnected, wsSetupError } =
     useOrgChartData(viewMode)
 
   const [transition, dispatch] = useReducer(transitionReducer, {
@@ -237,17 +237,18 @@ function OrgChartInner() {
       animFrameRef.current = null
     }
 
-    const prevNodes = prevNodesRef.current
+    // Use on-screen positions as the animation starting point so mid-animation
+    // restarts interpolate from the actual displayed positions, not the canceled target.
+    const fromNodes = transition.displayNodes.length > 0 ? transition.displayNodes : prevNodesRef.current
 
     // Snap instantly: empty, reduced motion, or first render
-    if (nodes.length === 0 || prefersReducedMotion() || prevNodes.length === 0) {
+    if (nodes.length === 0 || prefersReducedMotion() || fromNodes.length === 0) {
       prevNodesRef.current = nodes
       dispatch({ type: 'snap', nodes, edges })
       return
     }
 
     // Animate position interpolation
-    const fromNodes = prevNodes
     prevNodesRef.current = nodes
     dispatch({ type: 'start', edges })
 
@@ -275,6 +276,7 @@ function OrgChartInner() {
         animFrameRef.current = null
       }
     }
+  // eslint-disable-next-line @eslint-react/exhaustive-deps -- transition.displayNodes is read for starting position only; including it would cause infinite loops
   }, [nodes, edges])
 
   const handleNodeContextMenu = useCallback(
@@ -406,8 +408,14 @@ function OrgChartInner() {
         .catch((err: unknown) => {
           rollback()
           const msg = err instanceof Error ? err.message : 'Unknown error'
-          announce(`Failed to move ${agentName}, returned to ${originalDept}`)
-          addToast({ variant: 'error', title: 'Reassignment failed', description: msg })
+          const currentDept = useCompanyStore.getState().config?.agents.find((a) => a.name === agentName)?.department
+          if (currentDept === originalDept) {
+            announce(`Failed to move ${agentName}, returned to ${originalDept}`)
+            addToast({ variant: 'error', title: 'Reassignment failed', description: msg })
+          } else {
+            announce(`Failed to move ${agentName}`)
+            addToast({ variant: 'error', title: 'Reassignment failed', description: msg })
+          }
         })
     },
     [deptBounds, addToast, announce],
@@ -453,6 +461,12 @@ function OrgChartInner() {
         <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
           Communication data unavailable: {commError}
+        </div>
+      )}
+      {commTruncated && !commError && (
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+          Communication graph shows partial data (message limit reached)
         </div>
       )}
       {!wsConnected && wsSetupError && (

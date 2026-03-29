@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useInsertionEffect, useMemo } from 'react'
 import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/react'
 import { prefersReducedMotion } from '@/lib/motion'
 
@@ -58,8 +58,8 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
 
   const reduced = prefersReducedMotion()
 
-  // Inject shared keyframe once on first render
-  ensureKeyframe()
+  // Inject shared keyframe once (useInsertionEffect runs before DOM mutations)
+  useInsertionEffect(() => { ensureKeyframe() }, [])
 
   const style = useMemo(
     () => ({
