@@ -27,7 +27,7 @@ const TAG_FULL_COMPANY = 'full-company'
 /** Agent-count filter buckets. */
 type SizeFilter = 'all' | 'small' | 'medium' | 'large'
 
-const SIZE_OPTIONS: readonly { value: string; label: string }[] = [
+const SIZE_OPTIONS: readonly { value: SizeFilter; label: string }[] = [
   { value: 'all', label: 'Any size' },
   { value: 'small', label: '1-3 agents' },
   { value: 'medium', label: '4-8 agents' },
