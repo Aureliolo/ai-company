@@ -429,3 +429,47 @@ class TestPruneExpired:
         )
         removed = await tracker.prune_expired(now=now)
         assert removed == 0
+
+
+# ── auto-eviction in _snapshot ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestAutoEviction:
+    """Auto-prune during _snapshot when records exceed threshold."""
+
+    async def test_snapshot_auto_prunes_when_threshold_exceeded(
+        self,
+    ) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        # 6 expired + 6 recent = 12 > threshold of 10
+        for i in range(6):
+            await tracker.record(
+                _make_record(
+                    timestamp=now - timedelta(hours=25, seconds=i),
+                ),
+            )
+        for i in range(6):
+            await tracker.record(
+                _make_record(
+                    timestamp=now - timedelta(minutes=i),
+                ),
+            )
+        summary = await tracker.get_summary("test-provider", now=now)
+        assert summary.calls_last_24h == 6
+
+    async def test_snapshot_no_prune_below_threshold(self) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        # Add 1 expired + 1 recent = 2 < threshold of 10
+        await tracker.record(
+            _make_record(timestamp=now - timedelta(hours=25)),
+        )
+        await tracker.record(
+            _make_record(timestamp=now - timedelta(hours=1)),
+        )
+        # Both records still in internal list (no auto-prune)
+        # but only 1 is within the 24h window
+        summary = await tracker.get_summary("test-provider", now=now)
+        assert summary.calls_last_24h == 1

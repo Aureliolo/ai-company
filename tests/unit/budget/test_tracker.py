@@ -1,7 +1,7 @@
 """Unit tests for the CostTracker service."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import structlog.testing
@@ -456,3 +456,72 @@ class TestCostTrackerAlertLevel:
         )
         assert summary.alert_level == BudgetAlertLevel.NORMAL
         assert summary.budget_used_percent == 0.0
+
+
+# ── CostTracker: prune_expired ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestCostTrackerPruneExpired:
+    """Tests for CostTracker.prune_expired()."""
+
+    _NOW = datetime(2026, 3, 15, tzinfo=UTC)
+    _WINDOW_HOURS = 168  # 7 days
+
+    async def test_prune_removes_old_records(self) -> None:
+        tracker = CostTracker()
+        old_ts = self._NOW - timedelta(hours=self._WINDOW_HOURS + 1)
+        recent_ts = self._NOW - timedelta(hours=1)
+        await tracker.record(make_cost_record(timestamp=old_ts))
+        await tracker.record(make_cost_record(timestamp=recent_ts))
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 1
+        assert await tracker.get_record_count() == 1
+
+    async def test_prune_empty_tracker(self) -> None:
+        tracker = CostTracker()
+        removed = await tracker.prune_expired()
+        assert removed == 0
+
+    async def test_prune_nothing_expired(self) -> None:
+        tracker = CostTracker()
+        recent_ts = self._NOW - timedelta(hours=1)
+        await tracker.record(make_cost_record(timestamp=recent_ts))
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 0
+        assert await tracker.get_record_count() == 1
+
+
+# ── CostTracker: auto-eviction in _snapshot ─────────────────
+
+
+@pytest.mark.unit
+class TestCostTrackerAutoEviction:
+    """Auto-prune during _snapshot when records exceed threshold."""
+
+    async def test_snapshot_auto_prunes_when_threshold_exceeded(
+        self,
+    ) -> None:
+        tracker = CostTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        old_ts = now - timedelta(hours=169)  # > 168h window
+        recent_ts = now - timedelta(hours=1)
+        for _ in range(6):
+            await tracker.record(make_cost_record(timestamp=old_ts))
+        for _ in range(6):
+            await tracker.record(make_cost_record(timestamp=recent_ts))
+        # Trigger _snapshot via get_total_cost (any query method)
+        await tracker.get_total_cost()
+        # After auto-prune, only 6 recent records remain
+        assert await tracker.get_record_count() == 6
+
+    async def test_snapshot_no_prune_below_threshold(self) -> None:
+        tracker = CostTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        old_ts = now - timedelta(hours=169)
+        recent_ts = now - timedelta(hours=1)
+        await tracker.record(make_cost_record(timestamp=old_ts))
+        await tracker.record(make_cost_record(timestamp=recent_ts))
+        # 2 < 10, no auto-prune; both still in internal list
+        await tracker.get_total_cost()
+        assert await tracker.get_record_count() == 2

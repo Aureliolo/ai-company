@@ -22,12 +22,14 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.provider import PROVIDER_HEALTH_AUTO_PRUNED
 
 logger = get_logger(__name__)
 
 _HEALTH_WINDOW_HOURS = 24
 _DEGRADED_THRESHOLD = 10.0  # error_rate >= 10% -> DEGRADED
 _DOWN_THRESHOLD = 50.0  # error_rate >= 50% -> DOWN
+_AUTO_PRUNE_THRESHOLD = 100_000
 
 
 class ProviderHealthStatus(StrEnum):
@@ -151,11 +153,16 @@ class ProviderHealthTracker:
     append-only pattern as :class:`~synthorg.budget.tracker.CostTracker`.
     """
 
-    __slots__ = ("_lock", "_records")
+    __slots__ = ("_auto_prune_threshold", "_lock", "_records")
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
+    ) -> None:
         self._records: list[ProviderHealthRecord] = []
         self._lock = asyncio.Lock()
+        self._auto_prune_threshold = auto_prune_threshold
 
     async def record(self, record: ProviderHealthRecord) -> None:
         """Append a health record.
@@ -246,6 +253,23 @@ class ProviderHealthTracker:
         }
 
     async def _snapshot(self) -> tuple[ProviderHealthRecord, ...]:
-        """Return an immutable snapshot of all current records."""
+        """Return an immutable snapshot of all current records.
+
+        When the record count exceeds the auto-prune threshold,
+        expired records are removed before the snapshot is taken.
+        """
         async with self._lock:
+            if len(self._records) > self._auto_prune_threshold:
+                cutoff = datetime.now(UTC) - timedelta(
+                    hours=_HEALTH_WINDOW_HOURS,
+                )
+                before = len(self._records)
+                self._records = [r for r in self._records if r.timestamp >= cutoff]
+                pruned = before - len(self._records)
+                if pruned:
+                    logger.info(
+                        PROVIDER_HEALTH_AUTO_PRUNED,
+                        pruned=pruned,
+                        remaining=len(self._records),
+                    )
             return tuple(self._records)

@@ -79,3 +79,6 @@ PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
     "provider.discovery.allowlist_updated"
 )
 PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"
+
+# -- Health tracker eviction events --
+PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"
