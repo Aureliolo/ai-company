@@ -303,7 +303,7 @@ export function TemplateStep() {
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 bottom-2.5 text-muted-foreground hover:text-foreground"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
             >
               <X className="size-3.5" aria-hidden="true" />
