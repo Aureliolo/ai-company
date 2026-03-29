@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { SectionCard } from '@/components/ui/section-card'
 import { StatPill } from '@/components/ui/stat-pill'
 import type { ThemeSettings } from '@/stores/setup-wizard'
-import { BarChart3, Home, Users, ListChecks, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
+import { BarChart3, Home, Users, ListChecks, Settings, ChevronRight } from 'lucide-react'
 
 const DENSITY_CLASS: Record<string, string> = {
   dense: 'density-dense',
@@ -42,7 +42,6 @@ function SidebarPreview({ mode }: { mode: string }) {
   if (mode === 'hidden') return null
 
   const isCompact = mode === 'compact'
-  const isRail = mode === 'rail'
 
   return (
     <div
@@ -67,7 +66,7 @@ function SidebarPreview({ mode }: { mode: string }) {
       ))}
       {mode === 'collapsible' && (
         <div className="mt-auto flex justify-center pt-1 text-text-muted">
-          {isRail ? <ChevronLeft className="size-3" /> : <ChevronRight className="size-3" />}
+          <ChevronRight className="size-3" />
         </div>
       )}
     </div>

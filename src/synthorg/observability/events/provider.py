@@ -80,6 +80,12 @@ PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
 )
 PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"
 
+# ── LiteLLM model database lookup ───────────────────────────
+
+PROVIDER_LITELLM_LOOKUP_SKIPPED: Final[str] = "provider.litellm.lookup_skipped"
+PROVIDER_LITELLM_MODELS_LOADED: Final[str] = "provider.litellm.models_loaded"
+PROVIDER_LITELLM_MODELS_EMPTY: Final[str] = "provider.litellm.models_empty"
+
 # -- Health tracker eviction events --
 PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"
 PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"

@@ -115,11 +115,17 @@ class TestCreateFromPresetAutoDiscovery:
             ProviderModelConfig(id="test-model-x"),
             ProviderModelConfig(id="test-model-y"),
         )
-        with patch(
-            "synthorg.providers.management.service.discover_models",
-            new_callable=AsyncMock,
-            return_value=discovered,
-        ) as mock_discover:
+        with (
+            patch(
+                "synthorg.providers.management.service.models_from_litellm",
+                return_value=(),
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=discovered,
+            ) as mock_discover,
+        ):
             request = CreateFromPresetRequest(
                 preset_name="ollama",
                 name="my-ollama",
@@ -137,11 +143,17 @@ class TestCreateFromPresetAutoDiscovery:
     ) -> None:
         """User-supplied base_url not in seeded allowlist is NOT trusted."""
         discovered = (ProviderModelConfig(id="test-model-z"),)
-        with patch(
-            "synthorg.providers.management.service.discover_models",
-            new_callable=AsyncMock,
-            return_value=discovered,
-        ) as mock_discover:
+        with (
+            patch(
+                "synthorg.providers.management.service.models_from_litellm",
+                return_value=(),
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=discovered,
+            ) as mock_discover,
+        ):
             request = CreateFromPresetRequest(
                 preset_name="ollama",
                 name="my-ollama",

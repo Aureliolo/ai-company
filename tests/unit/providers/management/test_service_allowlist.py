@@ -296,11 +296,17 @@ class TestCreateFromPresetAllowlistTrust:
         service: ProviderManagementService,
     ) -> None:
         """Preset default URL is in the seeded allowlist, so trust_url=True."""
-        with patch(
-            "synthorg.providers.management.service.discover_models",
-            new_callable=AsyncMock,
-            return_value=(),
-        ) as mock_discover:
+        with (
+            patch(
+                "synthorg.providers.management.service.models_from_litellm",
+                return_value=(),
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=(),
+            ) as mock_discover,
+        ):
             request = CreateFromPresetRequest(
                 preset_name="ollama",
                 name="test-preset-provider",
@@ -315,11 +321,17 @@ class TestCreateFromPresetAllowlistTrust:
         service: ProviderManagementService,
     ) -> None:
         """User-supplied base_url not in allowlist gets trust_url=False."""
-        with patch(
-            "synthorg.providers.management.service.discover_models",
-            new_callable=AsyncMock,
-            return_value=(),
-        ) as mock_discover:
+        with (
+            patch(
+                "synthorg.providers.management.service.models_from_litellm",
+                return_value=(),
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=(),
+            ) as mock_discover,
+        ):
             request = CreateFromPresetRequest(
                 preset_name="ollama",
                 name="test-preset-provider",

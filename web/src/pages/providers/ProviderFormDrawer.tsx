@@ -95,14 +95,34 @@ export function ProviderFormDrawer({
     }
   }, [open, mode, fetchPresetsFn])
 
-  // Focus management
+  // Focus management: Escape-to-close, focus trap, and opener restoration
   useEffect(() => {
     if (!open || !panelRef.current) return
     openerRef.current = document.activeElement
     panelRef.current.focus()
 
+    const panel = panelRef.current
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      const active = document.activeElement
+      const outsideOrPanel = active === panel || !panel.contains(active)
+      if (e.shiftKey && (active === first || outsideOrPanel)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && (active === last || outsideOrPanel)) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => {

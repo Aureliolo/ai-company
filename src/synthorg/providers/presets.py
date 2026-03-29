@@ -4,8 +4,9 @@ Presets provide sensible defaults for popular providers so users
 can add them with minimal configuration (e.g. just an API key).
 """
 
+import re
 from types import MappingProxyType
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -302,3 +303,17 @@ def list_presets() -> tuple[ProviderPreset, ...]:
         Tuple of all provider presets.
     """
     return PROVIDER_PRESETS
+
+
+# ── Model version filters ────────────────────────────────────
+# Provider-specific minimum model version filters for
+# ``models_from_litellm()``.  Only models matching the pattern
+# are included.  Providers not listed here include all models.
+# Vendor-specific names are allowed here per CLAUDE.md:
+# "provider presets (presets.py) which are user-facing runtime data".
+
+MODEL_VERSION_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = MappingProxyType(
+    {
+        "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-[56789]"),
+    }
+)

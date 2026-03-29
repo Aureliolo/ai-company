@@ -9,24 +9,18 @@ from urllib.parse import urlparse
 from synthorg.api.dto import CreateProviderRequest, UpdateProviderRequest  # noqa: TC001
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
-from synthorg.observability.events.provider import PROVIDER_DISCOVERY_FAILED
+from synthorg.observability.events.provider import (
+    PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_LITELLM_LOOKUP_SKIPPED,
+    PROVIDER_LITELLM_MODELS_EMPTY,
+    PROVIDER_LITELLM_MODELS_LOADED,
+)
 from synthorg.providers.enums import AuthType
 
 logger = get_logger(__name__)
 
 # Date suffix pattern for model names (e.g. "-20250514")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
-
-# Provider-specific minimum model version filters.
-# Only models matching the pattern are included. Providers not
-# listed here include all models from litellm.model_cost.
-_PROVIDER_MODEL_FILTERS: Final[MappingProxyType[str, re.Pattern[str]]] = (
-    MappingProxyType(
-        {
-            "anthropic": re.compile(r"^claude-(opus|sonnet|haiku)-4-[56789]"),
-        }
-    )
-)
 
 
 def build_provider_config(
@@ -253,7 +247,8 @@ def models_from_litellm(
     ``claude-opus-4-6-20260205``).
 
     Provider-specific version filters (defined in
-    ``_PROVIDER_MODEL_FILTERS``) exclude older model generations.
+    ``presets.MODEL_VERSION_FILTERS``) exclude older model
+    generations.
 
     Args:
         litellm_provider: LiteLLM provider identifier
@@ -265,13 +260,16 @@ def models_from_litellm(
     try:
         import litellm  # noqa: PLC0415
     except ImportError:
-        logger.debug(
-            "litellm_model_lookup_skipped",
+        logger.warning(
+            PROVIDER_LITELLM_LOOKUP_SKIPPED,
             reason="litellm_not_installed",
+            provider=litellm_provider,
         )
         return ()
 
-    version_filter = _PROVIDER_MODEL_FILTERS.get(litellm_provider)
+    from synthorg.providers.presets import MODEL_VERSION_FILTERS  # noqa: PLC0415
+
+    version_filter = MODEL_VERSION_FILTERS.get(litellm_provider)
     # Collect all matching models, preferring short (alias) names
     # over dated variants.
     seen: dict[str, ProviderModelConfig] = {}
@@ -308,8 +306,14 @@ def models_from_litellm(
     result = tuple(sorted(seen.values(), key=lambda m: m.id))
     if result:
         logger.info(
-            "litellm_models_loaded",
+            PROVIDER_LITELLM_MODELS_LOADED,
             provider=litellm_provider,
             count=len(result),
+        )
+    else:
+        logger.info(
+            PROVIDER_LITELLM_MODELS_EMPTY,
+            provider=litellm_provider,
+            version_filter_applied=version_filter is not None,
         )
     return result

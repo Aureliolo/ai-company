@@ -70,7 +70,8 @@ export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR
       maximumFractionDigits: 0,
       notation: 'compact',
     }).format(value)
-  } catch {
+  } catch (error) {
+    console.error(`[format] Intl.NumberFormat compact failed for currency "${currencyCode}":`, error)
     return `${currencyCode} ${Math.round(value)}`
   }
 }

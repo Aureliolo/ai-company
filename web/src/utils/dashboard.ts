@@ -97,6 +97,12 @@ export function computeSpendTrend(
 export function computeOrgHealth(departments: readonly DepartmentHealth[]): number | null {
   if (departments.length === 0) return null
   const valid = departments.filter((d) => Number.isFinite(d.health_percent))
+  if (valid.length < departments.length) {
+    console.warn(
+      `[dashboard] computeOrgHealth: ${departments.length - valid.length} department(s) had non-finite health_percent`,
+      departments.filter((d) => !Number.isFinite(d.health_percent)).map((d) => d.name),
+    )
+  }
   if (valid.length === 0) return null
   const sum = valid.reduce((acc, d) => acc + d.health_percent, 0)
   return Math.round(sum / valid.length)
