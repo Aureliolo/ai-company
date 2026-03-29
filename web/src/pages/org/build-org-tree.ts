@@ -71,7 +71,7 @@ export function buildOrgTree(
   departmentHealths: readonly DepartmentHealth[],
 ): OrgTree {
   // Filter out terminated agents
-  const agents = config.agents.filter((a) => a.status !== 'terminated')
+  const agents = config.agents.filter((a) => (a.status ?? 'active') !== 'terminated')
 
   const healthMap = new Map(departmentHealths.map((h) => [h.department_name, h]))
   const nodes: Node[] = []
@@ -93,7 +93,7 @@ export function buildOrgTree(
     const deptMembers = deptAgents.get(dept.name) ?? []
     const health = healthMap.get(dept.name)
     const activeCount = deptMembers.filter(
-      (a) => resolveRuntimeStatus(a.id, a.status, runtimeStatuses) === 'active',
+      (a) => resolveRuntimeStatus(a.id ?? a.name, a.status ?? 'active', runtimeStatuses) === 'active',
     ).length
 
     // Department group node
@@ -121,19 +121,23 @@ export function buildOrgTree(
       const teamMembers = deptMembers.filter((a) => team.members.includes(a.name))
       const teamLead = findHighestSeniority(teamMembers)
       for (const member of teamMembers) {
-        if (teamLead && member.id !== teamLead.id && !teamMemberSet.has(member.id)) {
-          teamMemberSet.set(member.id, teamLead.id)
+        const memberId = member.id ?? member.name
+        const leadId = teamLead ? (teamLead.id ?? teamLead.name) : undefined
+        if (leadId && memberId !== leadId && !teamMemberSet.has(memberId)) {
+          teamMemberSet.set(memberId, leadId)
         }
       }
     }
 
     // Create agent nodes and edges within this department
     for (const agent of deptMembers) {
-      const isCeo = ceo && agent.id === ceo.id
-      const runtimeStatus = resolveRuntimeStatus(agent.id, agent.status, runtimeStatuses)
+      const agentId = agent.id ?? agent.name
+      const ceoId = ceo ? (ceo.id ?? ceo.name) : undefined
+      const isCeo = ceoId != null && agentId === ceoId
+      const runtimeStatus = resolveRuntimeStatus(agentId, agent.status ?? 'active', runtimeStatuses)
 
       const nodeData: AgentNodeData = {
-        agentId: agent.id,
+        agentId,
         name: agent.name,
         role: agent.role,
         department: agent.department,
@@ -142,7 +146,7 @@ export function buildOrgTree(
       }
 
       nodes.push({
-        id: agent.id,
+        id: agentId,
         type: isCeo ? 'ceo' : 'agent',
         position: { x: 0, y: 0 },
         parentId: groupId,
@@ -152,39 +156,42 @@ export function buildOrgTree(
       })
 
       // Create edges
+      const headId = head ? (head.id ?? head.name) : undefined
       if (isCeo) {
         // CEO connects to all department heads
         // (edges created below after all nodes exist)
-      } else if (teamMemberSet.has(agent.id)) {
+      } else if (teamMemberSet.has(agentId)) {
         // Agent reports to team lead
-        const leadId = teamMemberSet.get(agent.id)!
+        const leadId = teamMemberSet.get(agentId)!
         edges.push({
-          id: `e-${leadId}-${agent.id}`,
+          id: `e-${leadId}-${agentId}`,
           source: leadId,
-          target: agent.id,
+          target: agentId,
           type: 'hierarchy',
         })
-      } else if (head && agent.id !== head.id) {
+      } else if (headId && agentId !== headId) {
         // Agent reports to department head
         edges.push({
-          id: `e-${head.id}-${agent.id}`,
-          source: head.id,
-          target: agent.id,
+          id: `e-${headId}-${agentId}`,
+          source: headId,
+          target: agentId,
           type: 'hierarchy',
         })
       }
     }
 
     // Edge from CEO to department head (avoid duplicate if already connected via team)
-    if (ceo && head && ceo.id !== head.id) {
+    const ceoNodeId = ceo ? (ceo.id ?? ceo.name) : undefined
+    const headNodeId = head ? (head.id ?? head.name) : undefined
+    if (ceoNodeId && headNodeId && ceoNodeId !== headNodeId) {
       const alreadyConnected = edges.some(
-        (e) => e.source === ceo.id && e.target === head.id,
+        (e) => e.source === ceoNodeId && e.target === headNodeId,
       )
       if (!alreadyConnected) {
         edges.push({
-          id: `e-${ceo.id}-${head.id}`,
-          source: ceo.id,
-          target: head.id,
+          id: `e-${ceoNodeId}-${headNodeId}`,
+          source: ceoNodeId,
+          target: headNodeId,
           type: 'hierarchy',
         })
       }
@@ -225,6 +232,7 @@ function findDepartmentHead(
   ceo: AgentConfig | null,
 ): AgentConfig | null {
   // Department head is the highest-seniority member, excluding CEO
-  const candidates = ceo ? members.filter((m) => m.id !== ceo.id) : members
+  const ceoId = ceo ? (ceo.id ?? ceo.name) : undefined
+  const candidates = ceoId ? members.filter((m) => (m.id ?? m.name) !== ceoId) : members
   return findHighestSeniority(candidates)
 }

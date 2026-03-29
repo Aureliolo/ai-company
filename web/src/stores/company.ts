@@ -281,14 +281,15 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
   optimisticReorderAgents: (deptName, orderedIds) => {
     const prev = get().config
     if (!prev) return () => {}
+    const idOf = (a: AgentConfig) => a.id ?? a.name
     const idSet = new Set(orderedIds)
     const prevDeptAgentIds = prev.agents
-      .filter((a) => a.department === deptName && idSet.has(a.id))
-      .map((a) => a.id)
+      .filter((a) => a.department === deptName && idSet.has(idOf(a)))
+      .map(idOf)
     const agentMap = new Map(
       prev.agents
-        .filter((a) => a.department === deptName && idSet.has(a.id))
-        .map((a) => [a.id, a]),
+        .filter((a) => a.department === deptName && idSet.has(idOf(a)))
+        .map((a) => [idOf(a), a]),
     )
     // Preserve original array positions: replace in-place instead of appending
     let reorderIdx = 0
@@ -296,7 +297,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       .map((id) => agentMap.get(id))
       .filter((a): a is AgentConfig => a !== undefined)
     const agents = prev.agents.map((a) => {
-      if (a.department === deptName && idSet.has(a.id)) {
+      if (a.department === deptName && idSet.has(idOf(a))) {
         return reorderedList[reorderIdx++] ?? a
       }
       return a
@@ -309,14 +310,14 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       const currentAgentMap = new Map(
         current.agents
           .filter((a) => a.department === deptName)
-          .map((a) => [a.id, a]),
+          .map((a) => [idOf(a), a]),
       )
       let restoreIdx = 0
       const restoredOrder = prevDeptAgentIds
         .map((id) => currentAgentMap.get(id))
         .filter((a): a is AgentConfig => a !== undefined)
       const restoredAgents = current.agents.map((a) => {
-        if (a.department === deptName && idSet.has(a.id)) {
+        if (a.department === deptName && idSet.has(idOf(a))) {
           return restoredOrder[restoreIdx++] ?? a
         }
         return a

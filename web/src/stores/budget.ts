@@ -122,8 +122,9 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       try {
         const agentsResult = await listAgents({ limit: 100 })
         for (const agent of agentsResult.data) {
-          agentNameMap.set(agent.id, agent.name)
-          agentDeptMap.set(agent.id, agent.department)
+          const agentId = agent.id ?? agent.name
+          agentNameMap.set(agentId, agent.name)
+          agentDeptMap.set(agentId, agent.department)
         }
       } catch (err) {
         console.warn('Failed to fetch agent list for name/dept mapping:', sanitizeForLog(err))

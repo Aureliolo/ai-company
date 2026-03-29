@@ -389,7 +389,7 @@ describe('useCompanyStore', () => {
 
       const agentIds = config.agents
         .filter((a) => a.department === 'engineering')
-        .map((a) => a.id)
+        .map((a) => a.id ?? a.name)
         .reverse()
 
       const rollback = useCompanyStore.getState().optimisticReorderAgents('engineering', agentIds)

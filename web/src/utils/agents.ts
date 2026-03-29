@@ -68,7 +68,7 @@ export function filterAgents(
     result = result.filter((a) => a.level === filters.level)
   }
   if (filters.status) {
-    result = result.filter((a) => a.status === filters.status)
+    result = result.filter((a) => (a.status ?? 'active') === filters.status)
   }
   if (filters.search) {
     const q = filters.search.trim().toLowerCase()
@@ -102,16 +102,16 @@ export function sortAgents(
   const dir = direction === 'asc' ? 1 : -1
 
   sorted.sort((a, b) => {
-    let va: string | number = a[sortBy]
-    let vb: string | number = b[sortBy]
+    let va: string | number = a[sortBy] ?? ''
+    let vb: string | number = b[sortBy] ?? ''
 
     // Use semantic rank for ordinal fields
     if (sortBy === 'level') {
       va = LEVEL_RANK[a.level]
       vb = LEVEL_RANK[b.level]
     } else if (sortBy === 'status') {
-      va = STATUS_RANK[a.status]
-      vb = STATUS_RANK[b.status]
+      va = STATUS_RANK[a.status ?? 'active']
+      vb = STATUS_RANK[b.status ?? 'active']
     }
 
     if (va < vb) return -1 * dir

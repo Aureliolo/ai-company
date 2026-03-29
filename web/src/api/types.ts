@@ -359,25 +359,26 @@ export interface ToolPermissions {
 }
 
 /**
- * Agent identity as returned by the /agents API endpoints.
- * Models the enriched agent shape combining config + runtime state
- * (the backend currently serves config-level data; typed sub-objects
- * here anticipate the full DTO shape from the agent controller).
+ * Agent configuration as returned by the /agents API endpoints.
+ *
+ * Matches the backend AgentConfig Pydantic model (config/schema.py).
+ * Runtime fields (id, status, hiring_date) are optional -- they exist
+ * on AgentIdentity but may not be present in config-level responses.
  */
 export interface AgentConfig {
-  id: string
+  id?: string
   name: string
   role: string
   department: DepartmentName
   level: SeniorityLevel
-  status: AgentStatus
-  personality: PersonalityConfig
-  model: ModelConfig
-  skills: SkillSet
-  memory: MemoryConfig
-  tools: ToolPermissions
+  status?: AgentStatus
+  personality: Record<string, unknown>
+  model: Record<string, unknown>
+  memory: Record<string, unknown>
+  tools: Record<string, unknown>
+  authority?: Record<string, unknown>
   autonomy_level: AutonomyLevel | null
-  hiring_date: string
+  hiring_date?: string
 }
 
 // ── Agent Performance ────────────────────────────────────────

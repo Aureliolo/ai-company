@@ -12,7 +12,7 @@ interface AgentIdentityHeaderProps {
 }
 
 export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderProps) {
-  const runtimeStatus = toRuntimeStatus(agent.status)
+  const runtimeStatus = toRuntimeStatus(agent.status ?? 'active')
 
   return (
     <div className={cn('flex items-start gap-4', className)}>
@@ -36,12 +36,14 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
           {agent.autonomy_level && (
             <StatPill label="AUTONOMY" value={formatLabel(agent.autonomy_level)} />
           )}
-          <time
-            dateTime={agent.hiring_date}
-            className="text-micro font-mono text-muted-foreground"
-          >
-            Hired {formatDate(agent.hiring_date)}
-          </time>
+          {agent.hiring_date && (
+            <time
+              dateTime={agent.hiring_date}
+              className="text-micro font-mono text-muted-foreground"
+            >
+              Hired {formatDate(agent.hiring_date)}
+            </time>
+          )}
         </div>
       </div>
     </div>

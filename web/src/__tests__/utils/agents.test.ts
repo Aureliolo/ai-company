@@ -49,7 +49,6 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
       max_tokens: 4096,
       fallback_model: null,
     },
-    skills: { primary: ['python', 'typescript'], secondary: ['docker'] },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },
     autonomy_level: 'semi',

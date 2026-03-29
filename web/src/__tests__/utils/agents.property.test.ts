@@ -69,7 +69,6 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     max_tokens: 4096,
     fallback_model: null,
   }),
-  skills: fc.constant({ primary: ['python'], secondary: [] }),
   memory: fc.constant({ type: 'persistent' as const, retention_days: null }),
   tools: fc.constant({ access_level: 'standard' as const, allowed: ['git'], denied: [] }),
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),

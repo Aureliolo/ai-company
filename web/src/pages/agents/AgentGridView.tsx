@@ -25,8 +25,8 @@ function AgentGridItem({ agent }: { agent: AgentConfig }) {
           name={agent.name}
           role={agent.role}
           department={agent.department}
-          status={toRuntimeStatus(agent.status)}
-          timestamp={formatRelativeTime(agent.hiring_date)}
+          status={toRuntimeStatus(agent.status ?? 'active')}
+          timestamp={agent.hiring_date ? formatRelativeTime(agent.hiring_date) : undefined}
         />
       </Link>
     </StaggerItem>
@@ -52,7 +52,7 @@ export function AgentGridView({ agents, className }: AgentGridViewProps) {
       )}
     >
       {agents.map((agent) => (
-        <AgentGridItem key={agent.id} agent={agent} />
+        <AgentGridItem key={agent.id ?? agent.name} agent={agent} />
       ))}
     </StaggerGroup>
   )
