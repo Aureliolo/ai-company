@@ -57,8 +57,8 @@ export function computeForceLayout(
   // Create simulation nodes seeded from current positions
   const simNodes: SimNode[] = nodes.map((n) => ({
     id: n.id,
-    x: n.position.x || 0,
-    y: n.position.y || 0,
+    x: n.position.x ?? 0,
+    y: n.position.y ?? 0,
   }))
 
   // Filter links to only include existing nodes
