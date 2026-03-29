@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
@@ -119,11 +119,13 @@ export function TemplateStep() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [sizeFilter, setSizeFilter] = useState<SizeFilter>('all')
 
+  const hasFetchedRef = useRef(false)
   useEffect(() => {
-    if (templates.length === 0 && !templatesLoading && !templatesError) {
+    if (!hasFetchedRef.current && !templatesLoading && !templatesError) {
+      hasFetchedRef.current = true
       void fetchTemplates()
     }
-  }, [templates.length, templatesLoading, templatesError, fetchTemplates])
+  }, [templatesLoading, templatesError, fetchTemplates])
 
   const providers = useSetupWizardStore((s) => s.providers)
 
@@ -182,17 +184,17 @@ export function TemplateStep() {
     })
   }, [templates, searchQuery, categoryFilter, sizeFilter])
 
-  // Track step completion -- only mark complete when the selected template
-  // is visible in the current filtered view; skip while loading to avoid
-  // false negatives from an empty filteredTemplates list.
+  // Track step completion -- validates against the full template list (not
+  // filtered) so UI filters don't invalidate the selection. Skip while
+  // loading to avoid false negatives from an empty templates array.
   useEffect(() => {
     if (templatesLoading) return
-    if (selectedTemplate && filteredTemplates.some((t) => t.name === selectedTemplate)) {
+    if (selectedTemplate && templates.some((t) => t.name === selectedTemplate)) {
       markStepComplete('template')
     } else {
       markStepIncomplete('template')
     }
-  }, [selectedTemplate, filteredTemplates, templatesLoading, markStepComplete, markStepIncomplete])
+  }, [selectedTemplate, templates, templatesLoading, markStepComplete, markStepIncomplete])
 
   // Split into recommended and others
   const { recommended, others } = useMemo(() => {
