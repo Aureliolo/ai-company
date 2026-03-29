@@ -491,6 +491,16 @@ class TestCostTrackerPruneExpired:
         assert removed == 0
         assert await tracker.get_record_count() == 1
 
+    async def test_prune_boundary_record_at_exact_cutoff_retained(
+        self,
+    ) -> None:
+        tracker = CostTracker()
+        cutoff_ts = self._NOW - timedelta(hours=self._WINDOW_HOURS)
+        await tracker.record(make_cost_record(timestamp=cutoff_ts))
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 0
+        assert await tracker.get_record_count() == 1
+
 
 # ── CostTracker: auto-eviction in _snapshot ─────────────────
 
@@ -509,11 +519,17 @@ class TestCostTrackerAutoEviction:
         for _ in range(6):
             await tracker.record(make_cost_record(timestamp=old_ts))
         for _ in range(6):
-            await tracker.record(make_cost_record(timestamp=recent_ts))
-        # Trigger _snapshot via get_total_cost (any query method)
-        await tracker.get_total_cost()
+            await tracker.record(
+                make_cost_record(
+                    timestamp=recent_ts,
+                    agent_id="recent-agent",
+                ),
+            )
+        # Trigger _snapshot via get_records (returns actual records)
+        records = await tracker.get_records()
         # After auto-prune, only 6 recent records remain
-        assert await tracker.get_record_count() == 6
+        assert len(records) == 6
+        assert all(r.agent_id == "recent-agent" for r in records)
 
     async def test_snapshot_no_prune_below_threshold(self) -> None:
         tracker = CostTracker(auto_prune_threshold=10)
@@ -539,10 +555,19 @@ class TestCostTrackerAutoEviction:
         await tracker.get_total_cost()
         assert await tracker.get_record_count() == 10
 
-    def test_auto_prune_threshold_zero_rejected(self) -> None:
-        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
-            CostTracker(auto_prune_threshold=0)
+    async def test_snapshot_all_records_expired(self) -> None:
+        tracker = CostTracker(auto_prune_threshold=5)
+        now = datetime.now(UTC)
+        old_ts = now - timedelta(hours=169)
+        for _ in range(6):
+            await tracker.record(make_cost_record(timestamp=old_ts))
+        await tracker.get_total_cost()
+        assert await tracker.get_record_count() == 0
 
-    def test_auto_prune_threshold_negative_rejected(self) -> None:
+    @pytest.mark.parametrize("value", [0, -1], ids=["zero", "negative"])
+    def test_auto_prune_threshold_invalid_rejected(
+        self,
+        value: int,
+    ) -> None:
         with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
-            CostTracker(auto_prune_threshold=-1)
+            CostTracker(auto_prune_threshold=value)

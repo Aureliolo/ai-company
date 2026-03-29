@@ -1,11 +1,12 @@
 """Real-time cost tracking service.
 
-Provides an append-only in-memory store for :class:`CostRecord` entries and
-aggregation queries consumed by the CFO agent and budget monitoring.
+Provides an in-memory store with TTL-based eviction for
+:class:`CostRecord` entries and aggregation queries consumed by the CFO
+agent and budget monitoring.
 
-Service layer for the cost tracking schema defined in the Operations design page.
-The current implementation is purely in-memory; persistence integration is
-planned.
+Service layer for the cost tracking schema defined in the Operations
+design page.  The current implementation is purely in-memory;
+persistence integration is planned.
 """
 
 import asyncio
@@ -71,10 +72,13 @@ class _AggregateResult(NamedTuple):
 
 
 class CostTracker:
-    """In-memory, append-only cost tracking service.
+    """In-memory cost tracking service with TTL-based eviction.
 
     Records :class:`CostRecord` entries from LLM API calls and provides
-    aggregation queries for budget monitoring.
+    aggregation queries for budget monitoring.  Memory is bounded by a
+    soft TTL-based auto-prune: when the record count exceeds
+    *auto_prune_threshold*, records older than 168 hours (7 days)
+    are removed on the next query.
 
     Args:
         budget_config: Optional budget configuration for alert level
@@ -83,7 +87,20 @@ class CostTracker:
         department_resolver: Optional callable mapping ``agent_id`` to a
             department name.  When ``None`` or returning ``None`` for an
             agent, the agent is excluded from department aggregation.
+        auto_prune_threshold: Maximum record count before auto-pruning
+            is triggered on snapshot.  Defaults to 100,000.
+
+    Raises:
+        ValueError: If *auto_prune_threshold* < 1.
     """
+
+    __slots__ = (
+        "_auto_prune_threshold",
+        "_budget_config",
+        "_department_resolver",
+        "_lock",
+        "_records",
+    )
 
     def __init__(
         self,
@@ -131,7 +148,7 @@ class CostTracker:
             )
 
     async def prune_expired(self, *, now: datetime | None = None) -> int:
-        """Remove records older than the cost tracking window.
+        """Remove records older than the 168-hour (7-day) cost window.
 
         Call periodically from long-running services to bound
         memory growth.
@@ -145,9 +162,7 @@ class CostTracker:
         ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)
         async with self._lock:
-            before = len(self._records)
-            self._records = [r for r in self._records if r.timestamp >= cutoff]
-            pruned = before - len(self._records)
+            pruned = self._prune_before(cutoff)
             if pruned:
                 logger.info(
                     BUDGET_RECORDS_PRUNED,
@@ -418,20 +433,25 @@ class CostTracker:
 
     # ── Private helpers ──────────────────────────────────────────────
 
-    async def _snapshot(self) -> tuple[CostRecord, ...]:
+    async def _snapshot(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[CostRecord, ...]:
         """Return an immutable snapshot of all current records.
 
         When the record count exceeds the auto-prune threshold,
         expired records are removed before the snapshot is taken.
+
+        Args:
+            now: Reference time for auto-prune cutoff.  Defaults to
+                current UTC time.
         """
         async with self._lock:
             if len(self._records) > self._auto_prune_threshold:
-                cutoff = datetime.now(UTC) - timedelta(
-                    hours=_COST_WINDOW_HOURS,
-                )
-                before = len(self._records)
-                self._records = [r for r in self._records if r.timestamp >= cutoff]
-                pruned = before - len(self._records)
+                ref = now or datetime.now(UTC)
+                cutoff = ref - timedelta(hours=_COST_WINDOW_HOURS)
+                pruned = self._prune_before(cutoff)
                 if pruned:
                     logger.info(
                         BUDGET_RECORDS_AUTO_PRUNED,
@@ -439,6 +459,14 @@ class CostTracker:
                         remaining=len(self._records),
                     )
             return tuple(self._records)
+
+    def _prune_before(self, cutoff: datetime) -> int:
+        """Remove records older than *cutoff*.  Caller must hold ``_lock``."""
+        if not self._records or self._records[0].timestamp >= cutoff:
+            return 0
+        before = len(self._records)
+        self._records = [r for r in self._records if r.timestamp >= cutoff]
+        return before - len(self._records)
 
     def _build_dept_spendings(
         self,

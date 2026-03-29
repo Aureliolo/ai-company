@@ -430,6 +430,16 @@ class TestPruneExpired:
         removed = await tracker.prune_expired(now=now)
         assert removed == 0
 
+    async def test_prune_boundary_record_at_exact_cutoff_retained(
+        self,
+    ) -> None:
+        tracker = ProviderHealthTracker()
+        now = datetime(2026, 3, 15, tzinfo=UTC)
+        cutoff_ts = now - timedelta(hours=24)
+        await tracker.record(_make_record(timestamp=cutoff_ts))
+        removed = await tracker.prune_expired(now=now)
+        assert removed == 0
+
 
 # ── auto-eviction in _snapshot ──────────────────────────────
 
@@ -438,65 +448,81 @@ class TestPruneExpired:
 class TestAutoEviction:
     """Auto-prune during _snapshot when records exceed threshold."""
 
+    _NOW = datetime(2026, 3, 15, tzinfo=UTC)
+
     async def test_snapshot_auto_prunes_when_threshold_exceeded(
         self,
     ) -> None:
         tracker = ProviderHealthTracker(auto_prune_threshold=10)
-        now = datetime.now(UTC)
         # 6 expired + 6 recent = 12 > threshold of 10
         for i in range(6):
             await tracker.record(
                 _make_record(
-                    timestamp=now - timedelta(hours=25, seconds=i),
+                    timestamp=self._NOW - timedelta(hours=25, seconds=i),
                 ),
             )
         for i in range(6):
             await tracker.record(
                 _make_record(
-                    timestamp=now - timedelta(minutes=i),
+                    timestamp=self._NOW - timedelta(minutes=i),
                 ),
             )
-        summary = await tracker.get_summary("test-provider", now=now)
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 6
 
     async def test_snapshot_no_prune_below_threshold(self) -> None:
         tracker = ProviderHealthTracker(auto_prune_threshold=10)
-        now = datetime.now(UTC)
         # Add 1 expired + 1 recent = 2 < threshold of 10
         await tracker.record(
-            _make_record(timestamp=now - timedelta(hours=25)),
+            _make_record(timestamp=self._NOW - timedelta(hours=25)),
         )
         await tracker.record(
-            _make_record(timestamp=now - timedelta(hours=1)),
+            _make_record(timestamp=self._NOW - timedelta(hours=1)),
         )
         # Both records still in internal list (no auto-prune)
         # but only 1 is within the 24h window
-        summary = await tracker.get_summary("test-provider", now=now)
+        summary = await tracker.get_summary(
+            "test-provider",
+            now=self._NOW,
+        )
         assert summary.calls_last_24h == 1
+        # Confirm expired record survives (no prune triggered)
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 1
 
     async def test_snapshot_no_prune_at_exact_threshold(self) -> None:
         tracker = ProviderHealthTracker(auto_prune_threshold=10)
-        now = datetime.now(UTC)
         # Exactly 10 records = threshold, should NOT trigger prune
         for i in range(5):
             await tracker.record(
                 _make_record(
-                    timestamp=now - timedelta(hours=25, seconds=i),
+                    timestamp=self._NOW - timedelta(hours=25, seconds=i),
                 ),
             )
         for i in range(5):
             await tracker.record(
                 _make_record(
-                    timestamp=now - timedelta(minutes=i),
+                    timestamp=self._NOW - timedelta(minutes=i),
                 ),
             )
-        summary = await tracker.get_summary("test-provider", now=now)
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 5
 
-    def test_auto_prune_threshold_zero_rejected(self) -> None:
-        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
-            ProviderHealthTracker(auto_prune_threshold=0)
+    async def test_snapshot_all_records_expired(self) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=5)
+        for i in range(6):
+            await tracker.record(
+                _make_record(
+                    timestamp=self._NOW - timedelta(hours=25, seconds=i),
+                ),
+            )
+        summary = await tracker.get_summary("test-provider", now=self._NOW)
+        assert summary.calls_last_24h == 0
 
-    def test_auto_prune_threshold_negative_rejected(self) -> None:
+    @pytest.mark.parametrize("value", [0, -1], ids=["zero", "negative"])
+    def test_auto_prune_threshold_invalid_rejected(
+        self,
+        value: int,
+    ) -> None:
         with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
-            ProviderHealthTracker(auto_prune_threshold=-1)
+            ProviderHealthTracker(auto_prune_threshold=value)

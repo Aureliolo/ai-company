@@ -374,7 +374,7 @@ class TestTaskBudget:
         ids=["inf", "neg_inf", "nan"],
     )
     def test_budget_limit_rejects_inf_nan(self, value: float) -> None:
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="finite number"):
             _make_task(budget_limit=value)
 
 
