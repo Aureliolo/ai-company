@@ -524,6 +524,9 @@ class TestAutoEviction:
             )
         summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 0
+        # Verify auto-prune evicted all expired records
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 0
 
     @pytest.mark.parametrize("value", [0, -1], ids=["zero", "negative"])
     def test_auto_prune_threshold_invalid_rejected(
