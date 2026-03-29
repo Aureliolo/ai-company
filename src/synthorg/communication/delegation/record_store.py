@@ -14,6 +14,7 @@ from synthorg.observability.events.delegation import (
     DELEGATION_RECORD_EVICTED,
     DELEGATION_RECORD_STORED,
     DELEGATION_RECORDS_QUERIED,
+    DELEGATION_TIME_RANGE_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -180,6 +181,11 @@ def _validate_time_range(
 ) -> None:
     """Raise ``ValueError`` if *start* >= *end* when both are given."""
     if start is not None and end is not None and start >= end:
+        logger.warning(
+            DELEGATION_TIME_RANGE_INVALID,
+            start=start.isoformat(),
+            end=end.isoformat(),
+        )
         msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
         raise ValueError(msg)
 

@@ -226,3 +226,11 @@ class TestDelegationRecordStoreEviction:
     def test_max_records_negative_rejected(self) -> None:
         with pytest.raises(ValueError, match="max_records must be >= 1"):
             DelegationRecordStore(max_records=-1)
+
+    async def test_max_records_one_keeps_only_last(self) -> None:
+        store = DelegationRecordStore(max_records=1)
+        store.record_sync(_make_record(delegation_id="del-first"))
+        store.record_sync(_make_record(delegation_id="del-last"))
+        records = await store.get_all_records()
+        assert len(records) == 1
+        assert records[0].delegation_id == "del-last"

@@ -473,3 +473,30 @@ class TestAutoEviction:
         # but only 1 is within the 24h window
         summary = await tracker.get_summary("test-provider", now=now)
         assert summary.calls_last_24h == 1
+
+    async def test_snapshot_no_prune_at_exact_threshold(self) -> None:
+        tracker = ProviderHealthTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        # Exactly 10 records = threshold, should NOT trigger prune
+        for i in range(5):
+            await tracker.record(
+                _make_record(
+                    timestamp=now - timedelta(hours=25, seconds=i),
+                ),
+            )
+        for i in range(5):
+            await tracker.record(
+                _make_record(
+                    timestamp=now - timedelta(minutes=i),
+                ),
+            )
+        summary = await tracker.get_summary("test-provider", now=now)
+        assert summary.calls_last_24h == 5
+
+    def test_auto_prune_threshold_zero_rejected(self) -> None:
+        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
+            ProviderHealthTracker(auto_prune_threshold=0)
+
+    def test_auto_prune_threshold_negative_rejected(self) -> None:
+        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
+            ProviderHealthTracker(auto_prune_threshold=-1)

@@ -144,3 +144,11 @@ class TestToolInvocationTrackerEviction:
     def test_max_records_negative_rejected(self) -> None:
         with pytest.raises(ValueError, match="max_records must be >= 1"):
             ToolInvocationTracker(max_records=-1)
+
+    async def test_max_records_one_keeps_only_last(self) -> None:
+        tracker = ToolInvocationTracker(max_records=1)
+        await tracker.record(_make_record(agent_id="agent-first"))
+        await tracker.record(_make_record(agent_id="agent-last"))
+        records = await tracker.get_records()
+        assert len(records) == 1
+        assert records[0].agent_id == "agent-last"

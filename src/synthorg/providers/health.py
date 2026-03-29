@@ -22,7 +22,10 @@ from pydantic import (
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.provider import PROVIDER_HEALTH_AUTO_PRUNED
+from synthorg.observability.events.provider import (
+    PROVIDER_HEALTH_AUTO_PRUNED,
+    PROVIDER_HEALTH_PRUNED,
+)
 
 logger = get_logger(__name__)
 
@@ -160,6 +163,9 @@ class ProviderHealthTracker:
         *,
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
     ) -> None:
+        if auto_prune_threshold < 1:
+            msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
+            raise ValueError(msg)
         self._records: list[ProviderHealthRecord] = []
         self._lock = asyncio.Lock()
         self._auto_prune_threshold = auto_prune_threshold
@@ -190,7 +196,14 @@ class ProviderHealthTracker:
         async with self._lock:
             before = len(self._records)
             self._records = [r for r in self._records if r.timestamp >= cutoff]
-            return before - len(self._records)
+            pruned = before - len(self._records)
+            if pruned:
+                logger.info(
+                    PROVIDER_HEALTH_PRUNED,
+                    pruned=pruned,
+                    remaining=len(self._records),
+                )
+            return pruned
 
     async def get_summary(
         self,

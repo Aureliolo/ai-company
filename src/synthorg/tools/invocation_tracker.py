@@ -13,6 +13,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_INVOCATION_EVICTED,
     TOOL_INVOCATION_RECORDED,
+    TOOL_INVOCATION_TIME_RANGE_INVALID,
     TOOL_INVOCATIONS_QUERIED,
 )
 
@@ -97,6 +98,11 @@ class ToolInvocationTracker:
                 ``start >= end``.
         """
         if start is not None and end is not None and start >= end:
+            logger.warning(
+                TOOL_INVOCATION_TIME_RANGE_INVALID,
+                start=start.isoformat(),
+                end=end.isoformat(),
+            )
             msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
             raise ValueError(msg)
         logger.debug(

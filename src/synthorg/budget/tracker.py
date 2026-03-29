@@ -92,6 +92,9 @@ class CostTracker:
         department_resolver: Callable[[str], str | None] | None = None,
         auto_prune_threshold: int = _AUTO_PRUNE_THRESHOLD,
     ) -> None:
+        if auto_prune_threshold < 1:
+            msg = f"auto_prune_threshold must be >= 1, got {auto_prune_threshold}"
+            raise ValueError(msg)
         self._records: list[CostRecord] = []
         self._lock: asyncio.Lock = asyncio.Lock()
         self._budget_config = budget_config

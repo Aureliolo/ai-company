@@ -525,3 +525,24 @@ class TestCostTrackerAutoEviction:
         # 2 < 10, no auto-prune; both still in internal list
         await tracker.get_total_cost()
         assert await tracker.get_record_count() == 2
+
+    async def test_snapshot_no_prune_at_exact_threshold(self) -> None:
+        tracker = CostTracker(auto_prune_threshold=10)
+        now = datetime.now(UTC)
+        old_ts = now - timedelta(hours=169)
+        recent_ts = now - timedelta(hours=1)
+        # Exactly 10 records = threshold, should NOT trigger prune
+        for _ in range(5):
+            await tracker.record(make_cost_record(timestamp=old_ts))
+        for _ in range(5):
+            await tracker.record(make_cost_record(timestamp=recent_ts))
+        await tracker.get_total_cost()
+        assert await tracker.get_record_count() == 10
+
+    def test_auto_prune_threshold_zero_rejected(self) -> None:
+        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
+            CostTracker(auto_prune_threshold=0)
+
+    def test_auto_prune_threshold_negative_rejected(self) -> None:
+        with pytest.raises(ValueError, match="auto_prune_threshold must be >= 1"):
+            CostTracker(auto_prune_threshold=-1)
