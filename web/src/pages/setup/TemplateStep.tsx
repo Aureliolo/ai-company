@@ -183,14 +183,16 @@ export function TemplateStep() {
   }, [templates, searchQuery, categoryFilter, sizeFilter])
 
   // Track step completion -- only mark complete when the selected template
-  // is visible in the current filtered view
+  // is visible in the current filtered view; skip while loading to avoid
+  // false negatives from an empty filteredTemplates list.
   useEffect(() => {
+    if (templatesLoading) return
     if (selectedTemplate && filteredTemplates.some((t) => t.name === selectedTemplate)) {
       markStepComplete('template')
     } else {
       markStepIncomplete('template')
     }
-  }, [selectedTemplate, filteredTemplates, markStepComplete, markStepIncomplete])
+  }, [selectedTemplate, filteredTemplates, templatesLoading, markStepComplete, markStepIncomplete])
 
   // Split into recommended and others
   const { recommended, others } = useMemo(() => {

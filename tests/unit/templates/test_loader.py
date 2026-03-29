@@ -130,7 +130,7 @@ class TestListTemplates:
             tmpl = loaded.template
             assert t.agent_count == len(tmpl.agents)
             assert t.department_count == len(tmpl.departments)
-            assert t.autonomy_level in set(AutonomyLevel)
+            assert isinstance(t.autonomy_level, AutonomyLevel)
             raw_level = str(tmpl.autonomy.get("level", "semi"))
             expected_level = (
                 AutonomyLevel(raw_level)
@@ -138,6 +138,8 @@ class TestListTemplates:
                 else AutonomyLevel.SEMI
             )
             assert t.autonomy_level == expected_level
+            assert isinstance(t.workflow, str)
+            assert t.workflow.strip() != ""
             assert t.workflow == tmpl.workflow
 
     def test_user_template_overrides_builtin(
