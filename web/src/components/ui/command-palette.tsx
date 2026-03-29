@@ -149,7 +149,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         <FocusScope trapped loop>
         <Command
           className={cn(
-            'relative w-full max-w-[640px] rounded-xl border border-border-bright bg-surface shadow-lg',
+            'relative w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] rounded-xl border border-border-bright bg-surface shadow-lg',
             className,
           )}
           label="Command palette"

@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from 'react'
+import { Suspense, useCallback, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import {
   Cpu,
@@ -32,6 +32,7 @@ import {
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { CommandPalette } from '@/components/ui/command-palette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { MobileUnsupportedOverlay } from '@/components/ui/mobile-unsupported'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ToastContainer } from '@/components/ui/toast'
 import { Sidebar } from './Sidebar'
@@ -54,6 +55,9 @@ function PageLoadingFallback() {
 export default function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false)
+  const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
+  const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 
   // Register global navigation commands for the command palette
   const globalCommands: CommandItem[] = useMemo(
@@ -120,9 +124,9 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <StatusBar />
+      <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
         <main className="flex-1 overflow-y-auto p-6">
           <ErrorBoundary level="page" onReset={() => navigate(ROUTES.DASHBOARD)}>
             <Suspense fallback={<PageLoadingFallback />}>
@@ -135,6 +139,7 @@ export default function AppLayout() {
       </div>
       <ToastContainer />
       <CommandPalette />
+      <MobileUnsupportedOverlay />
     </div>
   )
 }
