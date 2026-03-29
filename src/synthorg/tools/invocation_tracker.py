@@ -42,8 +42,6 @@ class ToolInvocationTracker:
         ValueError: If *max_records* < 1.
     """
 
-    __slots__ = ("_eviction_warned", "_lock", "_records")
-
     def __init__(
         self,
         *,

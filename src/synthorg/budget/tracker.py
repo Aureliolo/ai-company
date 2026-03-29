@@ -94,14 +94,6 @@ class CostTracker:
         ValueError: If *auto_prune_threshold* < 1.
     """
 
-    __slots__ = (
-        "_auto_prune_threshold",
-        "_budget_config",
-        "_department_resolver",
-        "_lock",
-        "_records",
-    )
-
     def __init__(
         self,
         *,
