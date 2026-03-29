@@ -53,6 +53,10 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
+npm --prefix web run analyze               # bundle size treemap (opens stats.html)
+npm --prefix web run e2e                   # Playwright visual regression tests
+npm --prefix web run e2e:update            # update Playwright screenshot baselines
+npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+)
 npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
 npm --prefix web run storybook:build       # Storybook production build
 ```

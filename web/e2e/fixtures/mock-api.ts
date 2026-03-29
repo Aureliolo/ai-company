@@ -1,0 +1,78 @@
+import type { Page } from '@playwright/test'
+
+/**
+ * Mock all API endpoints with deterministic data for screenshot testing.
+ *
+ * Intercepts /api/* requests and returns static JSON responses.
+ * This ensures visual regression screenshots are deterministic
+ * regardless of backend state.
+ */
+export async function mockApiRoutes(page: Page) {
+  // Health endpoint
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({ json: { status: 'ok' } }),
+  )
+
+  // Auth ticket for WebSocket
+  await page.route('**/api/v1/auth/ws-ticket', (route) =>
+    route.fulfill({ json: { ticket: 'mock-ticket' } }),
+  )
+
+  // Overview metrics
+  await page.route('**/api/v1/analytics/overview', (route) =>
+    route.fulfill({
+      json: {
+        total_agents: 8,
+        active_agents_count: 5,
+        idle_agents_count: 3,
+        total_tasks: 24,
+        tasks_by_status: {
+          created: 2,
+          assigned: 4,
+          in_progress: 6,
+          in_review: 3,
+          completed: 7,
+          blocked: 1,
+          failed: 0,
+          interrupted: 1,
+          cancelled: 0,
+        },
+        total_cost_usd: 127.43,
+        budget_remaining_usd: 372.57,
+        budget_used_percent: 25.5,
+        currency: 'EUR',
+        cost_7d_trend: [
+          { timestamp: '2026-03-23T00:00:00Z', value: 15.2 },
+          { timestamp: '2026-03-24T00:00:00Z', value: 18.7 },
+          { timestamp: '2026-03-25T00:00:00Z', value: 22.1 },
+          { timestamp: '2026-03-26T00:00:00Z', value: 19.3 },
+          { timestamp: '2026-03-27T00:00:00Z', value: 25.8 },
+          { timestamp: '2026-03-28T00:00:00Z', value: 12.9 },
+          { timestamp: '2026-03-29T00:00:00Z', value: 13.4 },
+        ],
+      },
+    }),
+  )
+
+  // Catch-all for other API routes -- return empty success
+  await page.route('**/api/v1/**', (route) =>
+    route.fulfill({ json: { data: [], total: 0 } }),
+  )
+}
+
+/**
+ * Freeze Date.now() for deterministic timestamp rendering.
+ */
+export async function freezeTime(page: Page) {
+  await page.addInitScript(() => {
+    const fixedTime = new Date('2026-03-29T12:00:00Z').getTime()
+    Date.now = () => fixedTime
+  })
+}
+
+/**
+ * Wait for fonts to load before taking screenshots.
+ */
+export async function waitForFonts(page: Page) {
+  await page.evaluate(() => document.fonts.ready)
+}
