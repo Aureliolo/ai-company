@@ -65,7 +65,8 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
 export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR'): string {
   if (!Number.isFinite(value)) return '--'
   // Normalize to 3-letter uppercase ISO 4217 code; fall back to EUR
-  const code = /^[A-Za-z]{3}$/.test(currencyCode) ? currencyCode.toUpperCase() : 'EUR'
+  const trimmed = currencyCode.trim()
+  const code = /^[A-Za-z]{3}$/.test(trimmed) ? trimmed.toUpperCase() : 'EUR'
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',

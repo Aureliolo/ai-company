@@ -207,10 +207,10 @@ describe('formatCurrencyCompact', () => {
     expect(formatCurrencyCompact(-Infinity)).toBe('--')
   })
 
-  it('falls back gracefully for invalid currency code', () => {
+  it('normalizes invalid currency code to EUR', () => {
     const result = formatCurrencyCompact(100, 'INVALID')
-    // Should use the fallback path: "INVALID 100"
-    expect(result).toContain('100')
+    const expected = formatCurrencyCompact(100, 'EUR')
+    expect(result).toBe(expected)
   })
 
   it('formats zero correctly', () => {

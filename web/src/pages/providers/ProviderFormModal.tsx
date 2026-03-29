@@ -132,6 +132,12 @@ export function ProviderFormModal({
   prevOpenRef.current = open
   prevSelectedPresetRef.current = selectedPreset
 
+  // Derived hints
+  const baseUrlHint =
+    isCustom || mode === 'edit' ? undefined
+    : preset && !preset.default_base_url ? 'Required for this provider'
+    : undefined
+
   // Available auth types based on selected preset
   const availableAuthTypes = preset
     ? AUTH_OPTIONS.filter((opt) => preset.supported_auth_types.includes(opt.value))
@@ -358,13 +364,7 @@ export function ProviderFormModal({
                         value={baseUrl}
                         onChange={(e) => setBaseUrl(e.target.value)}
                         placeholder={preset?.default_base_url ?? 'https://api.example.com/v1'}
-                        hint={
-                          isCustom || mode === 'edit'
-                            ? undefined
-                            : !preset?.default_base_url
-                              ? 'Required for this provider'
-                              : undefined
-                        }
+                        hint={baseUrlHint}
                       />
                     )}
 

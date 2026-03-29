@@ -97,6 +97,11 @@ describe('ProgressGauge', () => {
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
+  it('treats -Infinity as non-finite and defaults to 0%', () => {
+    render(<ProgressGauge value={-Infinity} />)
+    expect(screen.getByText('0%')).toBeInTheDocument()
+  })
+
   it('treats NaN max as 1 (no division by zero)', () => {
     render(<ProgressGauge value={50} max={NaN} />)
     // safeMax becomes 1, clampedValue = min(50, 1) = 1, percentage = 100%

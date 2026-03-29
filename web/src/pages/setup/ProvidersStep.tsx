@@ -101,7 +101,7 @@ export function ProvidersStep() {
     await reprobePresets()
   }, [reprobePresets])
 
-  // Overrides for ProviderFormDrawer to use setup wizard store
+  // Overrides for ProviderFormModal to use setup wizard store
   const drawerOverrides: ProviderFormOverrides = useMemo(() => ({
     presets,
     presetsLoading,
