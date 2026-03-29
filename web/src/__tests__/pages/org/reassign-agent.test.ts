@@ -88,4 +88,14 @@ describe('optimisticReassignAgent', () => {
     expect(config.agents.find((a) => a.name === 'alice')!.department).toBe('engineering')
     expect(config.agents.find((a) => a.name === 'bob')!.department).toBe('engineering')
   })
+
+  it('stale rollback does not overwrite newer reassignment of same agent', () => {
+    const rollbackOld = useCompanyStore.getState().optimisticReassignAgent('alice', 'design')
+    useCompanyStore.getState().optimisticReassignAgent('alice', 'product')
+
+    // Old rollback fires after newer reassignment -- should be a no-op
+    rollbackOld()
+    const alice = useCompanyStore.getState().config!.agents.find((a) => a.name === 'alice')
+    expect(alice!.department).toBe('product')
+  })
 })

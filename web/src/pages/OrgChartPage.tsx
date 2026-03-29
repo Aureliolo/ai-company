@@ -53,6 +53,10 @@ function getAgentName(node: Node): string | undefined {
   return undefined
 }
 
+// Approximate agent node dimensions for center-point hit testing during drag
+const AGENT_NODE_WIDTH = 160
+const AGENT_NODE_HEIGHT = 80
+
 // Declared outside component for stable reference identity
 const nodeTypes = { agent: AgentNode, ceo: CeoNode, department: DepartmentGroupNode }
 const edgeTypes = { hierarchy: HierarchyEdge, communication: CommunicationEdge }
@@ -68,8 +72,8 @@ interface ViewportState {
 function saveViewport(viewport: ViewportState) {
   try {
     localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
-  } catch {
-    // localStorage may be full or unavailable
+  } catch (err) {
+    console.warn('[OrgChart] Failed to save viewport:', err)
   }
 }
 
@@ -86,8 +90,8 @@ function loadViewport(): ViewportState | undefined {
     ) {
       return parsed as ViewportState
     }
-  } catch {
-    // Invalid stored value
+  } catch (err) {
+    console.warn('[OrgChart] Failed to load viewport:', err)
   }
   return undefined
 }
@@ -341,7 +345,7 @@ function OrgChartInner() {
 
   const handleNodeDragStart = useCallback(
     (_event: ReactMouseEvent, node: Node) => {
-      if (node.type !== 'agent' && node.type !== 'ceo') return
+      if (node.type !== 'agent') return
       if (viewMode !== 'hierarchy') return
       const dept = (node.data as AgentNodeData).department
       dragOriginalDeptRef.current = dept
@@ -355,13 +359,14 @@ function OrgChartInner() {
     (_event: ReactMouseEvent, node: Node) => {
       if (!dragOriginalDeptRef.current) return
       const target = findDropTarget(
-        { x: node.position.x + 80, y: node.position.y + 40 },
+        { x: node.position.x + AGENT_NODE_WIDTH / 2, y: node.position.y + AGENT_NODE_HEIGHT / 2 },
         deptBounds,
       )
       const newOverId = target?.nodeId ?? null
       setDragOverDeptId((prev) => {
         if (prev !== newOverId && target) {
-          announce(`Over ${target.departmentName}`)
+          // Announce outside updater to avoid impure side effects in React state updaters
+          queueMicrotask(() => announce(`Over ${target.departmentName}`))
         }
         return newOverId
       })
@@ -376,10 +381,10 @@ function OrgChartInner() {
       setDragOverDeptId(null)
 
       if (!originalDept) return
-      if (node.type !== 'agent' && node.type !== 'ceo') return
+      if (node.type !== 'agent') return
 
       const target = findDropTarget(
-        { x: node.position.x + 80, y: node.position.y + 40 },
+        { x: node.position.x + AGENT_NODE_WIDTH / 2, y: node.position.y + AGENT_NODE_HEIGHT / 2 },
         deptBounds,
       )
 
@@ -483,7 +488,7 @@ function OrgChartInner() {
             z-index: 1000 !important;
           }
           .react-flow__node.dragging > div {
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            box-shadow: var(--so-shadow-card-hover);
           }
           .react-flow__node {
             transition: transform 0.4s cubic-bezier(0.17, 0.67, 0.29, 1.01);

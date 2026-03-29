@@ -38,7 +38,7 @@ function Wrapper({ edges }: WrapperProps) {
 
   return (
     <ReactFlowProvider>
-      <div style={{ width: 500, height: 250 }}>
+      <div className="h-64 w-[500px]">
         <ReactFlow
           nodes={nodes}
           edges={flowEdges}
@@ -120,7 +120,7 @@ function MultiEdgeWrapper() {
 
   return (
     <ReactFlowProvider>
-      <div style={{ width: 500, height: 300 }}>
+      <div className="h-72 w-[500px]">
         <ReactFlow
           nodes={nodes}
           edges={edges}

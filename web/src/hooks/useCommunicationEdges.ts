@@ -61,7 +61,7 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
     dispatch({ type: 'loading' })
 
     async function fetchAll() {
@@ -70,26 +70,27 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
         let offset = 0
 
         for (let page = 0; page < MAX_PAGES; page++) {
+          if (controller.signal.aborted) return
           const result = await listMessages({ offset, limit: PAGE_LIMIT })
           for (const msg of result.data) {
             allMessages.push({ sender: msg.sender, to: msg.to })
           }
-          offset += result.limit
-          if (offset >= result.total) break
+          offset += result.data.length
+          if (offset >= result.total || result.data.length === 0) break
         }
 
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           dispatch({ type: 'success', messages: allMessages })
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           dispatch({ type: 'error', error: err instanceof Error ? err.message : 'Failed to fetch messages' })
         }
       }
     }
 
     fetchAll()
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [enabled])
 
   const links = useMemo(

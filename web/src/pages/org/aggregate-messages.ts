@@ -24,7 +24,7 @@ export interface CommunicationLink {
  * @returns Deduplicated, bidirectional communication links sorted by volume descending.
  */
 export function aggregateMessages(
-  messages: readonly Pick<{ sender: string; to: string }, 'sender' | 'to'>[],
+  messages: readonly { sender: string; to: string }[],
   timeWindowMs: number,
 ): CommunicationLink[] {
   const volumeMap = new Map<string, { source: string; target: string; volume: number }>()
@@ -45,7 +45,8 @@ export function aggregateMessages(
     }
   }
 
-  const timeWindowHours = timeWindowMs / 3_600_000
+  const MS_PER_HOUR = 3_600_000
+  const timeWindowHours = timeWindowMs / MS_PER_HOUR
 
   return [...volumeMap.values()]
     .map(({ source, target, volume }) => ({

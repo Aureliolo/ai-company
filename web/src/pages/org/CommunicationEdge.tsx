@@ -3,7 +3,9 @@ import { BaseEdge, getBezierPath, type EdgeProps, type Edge } from '@xyflow/reac
 import { prefersReducedMotion } from '@/lib/motion'
 
 export interface CommunicationEdgeData {
+  /** Total message count for this edge. */
   volume: number
+  /** Messages per hour -- used for animation speed scaling. */
   frequency: number
   /** Max volume across all edges -- used for relative scaling. */
   maxVolume: number
@@ -37,13 +39,13 @@ function CommunicationEdgeComponent(props: EdgeProps<CommunicationEdgeType>) {
   const opacity = MIN_OPACITY + ratio * (MAX_OPACITY - MIN_OPACITY)
 
   // Animation duration: higher frequency = faster (shorter duration)
-  const maxFreq = Math.max(frequency, 0.01)
-  const dashDuration = Math.max(
-    MIN_DASH_DURATION,
-    MAX_DASH_DURATION / Math.max(maxFreq, 0.1),
+  const dashDuration = Math.min(
+    MAX_DASH_DURATION,
+    Math.max(MIN_DASH_DURATION, MAX_DASH_DURATION / Math.max(frequency, 0.1)),
   )
 
-  const edgeId = `comm-dash-${props.id}`
+  const safeId = String(props.id).replace(/[^a-zA-Z0-9_-]/g, '_')
+  const edgeId = `comm-dash-${safeId}`
 
   const reduced = prefersReducedMotion()
 

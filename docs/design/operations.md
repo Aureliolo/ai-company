@@ -1174,7 +1174,7 @@ For the full page list, navigation hierarchy, URL routing map, and WebSocket cha
 **Primary navigation** (sidebar, always visible):
 
 - **Dashboard** (`/`): Org overview -- department health indicators, recent activity widget, budget snapshot, active task summary, agent status counts, approval badge count
-- **Org Chart** (`/org`): Living org visualization with real-time agent status. Merged with former Company page -- "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
+- **Org Chart** (`/org`): Living org visualization with hierarchy and communication graph views, real-time agent status, drag-drop agent reassignment. Merged with former Company page -- "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
 - **Task Board** (`/tasks`): Kanban (default) and list view toggle. Task detail includes "Coordinate" action for multi-agent coordination
 - **Budget** (`/budget`): P&L management dashboard -- current spend vs budget, per-agent/department breakdowns, trend lines, forecast projections (`/budget/forecast`)
 - **Approvals** (`/approvals`): Pending decisions queue with risk-level badges, approve/reject with comment, history view

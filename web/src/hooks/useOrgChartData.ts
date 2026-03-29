@@ -32,7 +32,7 @@ function buildCommunicationEdges(
 ): Edge[] {
   const maxVolume = Math.max(1, ...links.map((l) => l.volume))
   return links.map((link) => ({
-    id: `comm-${link.source}-${link.target}`,
+    id: `comm:${encodeURIComponent(link.source)}::${encodeURIComponent(link.target)}`,
     source: link.source,
     target: link.target,
     type: 'communication',
@@ -63,8 +63,13 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
     const companyStore = useCompanyStore.getState()
     companyStore.fetchCompanyData().then(() => {
       if (useCompanyStore.getState().config) {
-        companyStore.fetchDepartmentHealths()
+        companyStore.fetchDepartmentHealths().catch(() => {
+          // Error set in store state by fetchDepartmentHealths
+        })
       }
+      polling.start()
+    }).catch(() => {
+      // Error set in store state by fetchCompanyData; start polling so the page can self-heal
       polling.start()
     })
     return () => polling.stop()
@@ -104,8 +109,13 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
       const agentNodes = tree.nodes.filter((n) => n.type === 'agent' || n.type === 'ceo')
       // Remove parentId so nodes are not grouped inside departments
       const freeNodes = agentNodes.map((n) => ({ ...n, parentId: undefined }))
-      const layoutNodes = computeForceLayout(freeNodes, commLinks)
-      const commEdges = buildCommunicationEdges(commLinks)
+      // Filter links to only include edges between visible nodes
+      const visibleIds = new Set(freeNodes.map((n) => n.id))
+      const filteredLinks = commLinks.filter(
+        (l) => visibleIds.has(l.source) && visibleIds.has(l.target),
+      )
+      const layoutNodes = computeForceLayout(freeNodes, filteredLinks)
+      const commEdges = buildCommunicationEdges(filteredLinks)
       return { nodes: layoutNodes, edges: commEdges }
     }
 

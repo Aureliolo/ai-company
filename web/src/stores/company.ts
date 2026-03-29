@@ -80,7 +80,10 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       const config = useCompanyStore.getState().config
       if (!config) return
       const healthPromises = config.departments.map((dept) =>
-        getDepartmentHealth(dept.name).catch(() => null),
+        getDepartmentHealth(dept.name).catch((err: unknown) => {
+          console.warn('[CompanyStore] Health fetch failed for dept:', dept.name, err)
+          return null
+        }),
       )
       const healthResults = await Promise.all(healthPromises)
       const departmentHealths = healthResults.filter(
@@ -332,10 +335,13 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       a.name === agentName ? { ...a, department: newDepartment } : a,
     )
     set({ config: { ...prev, agents } })
-    // Targeted rollback: restore only this agent's department
+    // Targeted rollback: restore only this agent's department if still on the optimistic value
     return () => {
       const current = get().config
       if (!current) return
+      const currentAgent = current.agents.find((a) => a.name === agentName)
+      // Only rollback if this exact optimistic change is still the active one
+      if (!currentAgent || currentAgent.department !== newDepartment) return
       const currentAgents = current.agents.map((a) =>
         a.name === agentName ? { ...a, department: prevDepartment } : a,
       )

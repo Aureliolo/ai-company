@@ -92,7 +92,7 @@ describe('aggregateMessages', () => {
     expect(result[2]!.volume).toBe(1)
   })
 
-  it('handles zero time window gracefully (frequency = Infinity clamped to volume)', () => {
+  it('handles zero time window gracefully (frequency = Infinity)', () => {
     const messages = [{ sender: 'alice', to: 'bob' }]
     const result = aggregateMessages(messages, 0)
     expect(result[0]!.frequency).toBe(Infinity)

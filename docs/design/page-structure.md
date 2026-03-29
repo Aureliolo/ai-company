@@ -37,8 +37,8 @@ Click agent nodes to open Agent Detail panel.
 
 "Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD and read-only teams summary; nested teams/reporting/policies editing is deferred). This is the former Company page merged into the Org Chart -- same data domain, one destination.
 
-**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`, `GET /messages` (communication view). Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `PATCH /agents/{name}`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents` (stub -- backend not yet implemented).
-**WS channels**: `agents` (status changes, hired/fired), `system` (read-only mode only; edit mode subscribes to `agents` only). Communication view uses REST polling for message data (not WS).
+**API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`, `GET /messages` (communication view), `PATCH /agents/{name}` (drag-drop reassignment in hierarchy view). Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents` (stub -- backend not yet implemented).
+**WS channels**: `agents` (status changes, hired/fired). Communication view uses REST polling for message data (not WS).
 
 #### Task Board (`/tasks`)
 
@@ -274,8 +274,8 @@ Single WebSocket connection per session, established after login. Each page subs
 | Page | Channels | Events of Interest |
 |------|----------|--------------------|
 | **Dashboard** | `tasks`, `agents`, `budget`, `system`, `approvals` | All -- aggregated into health indicators, activity feed, badge counts |
-| **Org Chart** (hierarchy) | `agents`, `system` | Agent hired/fired, status changes |
-| **Org Chart** (communication) | `agents`, `system` | Agent status changes. Message data via REST polling (`GET /messages`) |
+| **Org Chart** (hierarchy) | `agents` | Agent hired/fired, status changes |
+| **Org Chart** (communication) | `agents` | Agent status changes. Message data via REST polling (`GET /messages`) |
 | **Org Chart** (edit mode) | `agents` | Agent hired/fired (triggers config refresh) |
 | **Task Board** | `tasks` | Task created/updated/transitioned/cancelled |
 | **Budget** | `budget` | Cost records added, budget alerts |

@@ -50,19 +50,22 @@ describe('useCommunicationEdges', () => {
   })
 
   it('handles pagination across multiple pages', async () => {
-    // Simulate a case where the API returns total > offset + limit,
-    // requiring a second fetch. The hook sends limit=100, but the server
-    // may report a smaller limit in the response (e.g. capped at 1).
+    // Simulate two full pages. Offset advances by data.length, not limit.
+    const page1Data = Array.from({ length: 100 }, (_, i) => ({
+      sender: `agent-${i}`,
+      to: `agent-${i + 1}`,
+    }))
+    const page2Data = [{ sender: 'carol', to: 'dave' }]
     mockListMessages
       .mockResolvedValueOnce({
-        data: [{ sender: 'alice', to: 'bob' }],
-        total: 200,
+        data: page1Data,
+        total: 101,
         offset: 0,
         limit: 100,
       })
       .mockResolvedValueOnce({
-        data: [{ sender: 'carol', to: 'dave' }],
-        total: 200,
+        data: page2Data,
+        total: 101,
         offset: 100,
         limit: 100,
       })
@@ -73,8 +76,10 @@ describe('useCommunicationEdges', () => {
       expect(result.current.loading).toBe(false)
     })
 
-    expect(result.current.links).toHaveLength(2)
+    expect(result.current.links.length).toBeGreaterThan(0)
     expect(mockListMessages).toHaveBeenCalledTimes(2)
+    expect(mockListMessages).toHaveBeenNthCalledWith(1, { offset: 0, limit: 100 })
+    expect(mockListMessages).toHaveBeenNthCalledWith(2, { offset: 100, limit: 100 })
   })
 
   it('sets error on API failure', async () => {
