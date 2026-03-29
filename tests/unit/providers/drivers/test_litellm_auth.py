@@ -121,20 +121,26 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
 
-    def test_build_kwargs_subscription_sets_auth_token(self) -> None:
-        """Subscription auth sets auth_token kwarg for LiteLLM."""
+    def test_build_kwargs_subscription_sets_api_key(self) -> None:
+        """Subscription auth passes token as api_key for LiteLLM.
+
+        LiteLLM auto-detects OAuth tokens by prefix (e.g. "sk-ant-oat"
+        for Anthropic) and switches to Authorization: Bearer with the
+        correct beta headers.  "auth_token" is NOT a litellm.completion()
+        parameter and would be silently discarded.
+        """
         config = _make_config(
             auth_type=AuthType.SUBSCRIPTION,
             subscription_token="test-subscription-token",
             tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         kwargs = _build_kwargs(config)
-        assert kwargs["auth_token"] == "test-subscription-token"
-        assert "api_key" not in kwargs
+        assert kwargs["api_key"] == "test-subscription-token"
+        assert "auth_token" not in kwargs
         assert "extra_headers" not in kwargs
 
-    def test_build_kwargs_subscription_no_token_skips_auth_token(self) -> None:
-        """Subscription auth without a token omits auth_token."""
+    def test_build_kwargs_subscription_no_token_skips_api_key(self) -> None:
+        """Subscription auth without a token omits api_key."""
         config = _make_config(
             auth_type=AuthType.SUBSCRIPTION,
             subscription_token="test-subscription-token",
@@ -145,4 +151,5 @@ class TestLiteLLMDriverAuth:
         # construction, so direct construction with None is not possible.
         object.__setattr__(config, "subscription_token", None)
         kwargs = _build_kwargs(config)
+        assert "api_key" not in kwargs
         assert "auth_token" not in kwargs

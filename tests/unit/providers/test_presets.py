@@ -73,6 +73,29 @@ class TestProviderPresets:
         with pytest.raises(ValidationError, match="frozen"):
             preset.name = "changed"  # type: ignore[misc]
 
+    def test_cloud_presets_do_not_require_base_url(self) -> None:
+        """Cloud providers (Anthropic, OpenAI, etc.) don't require a base URL.
+
+        LiteLLM knows their endpoints natively; base_url is an optional
+        override for cloud presets.
+        """
+        cloud_names = ("anthropic", "openai", "gemini", "mistral", "groq", "deepseek")
+        for name in cloud_names:
+            preset = get_preset(name)
+            assert preset is not None, f"Preset {name!r} not found"
+            assert preset.requires_base_url is False, (
+                f"Cloud preset {name!r} should not require base_url"
+            )
+
+    def test_self_hosted_presets_require_base_url(self) -> None:
+        """Self-hosted and Azure presets require a user-supplied base URL."""
+        for name in ("ollama", "lm-studio", "vllm", "azure"):
+            preset = get_preset(name)
+            assert preset is not None, f"Preset {name!r} not found"
+            assert preset.requires_base_url is True, (
+                f"Preset {name!r} should require base_url"
+            )
+
     def test_auth_type_not_in_supported_raises(self) -> None:
         """Creating a preset with auth_type not in supported_auth_types fails."""
         from pydantic import ValidationError

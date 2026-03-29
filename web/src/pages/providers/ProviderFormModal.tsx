@@ -135,7 +135,8 @@ export function ProviderFormModal({
   // Derived hints
   const baseUrlHint =
     isCustom || mode === 'edit' ? undefined
-    : preset && !preset.default_base_url ? 'Required for this provider'
+    : preset?.requires_base_url ? 'Required for this provider'
+    : preset ? 'Optional -- override the default endpoint'
     : undefined
 
   // Available auth types based on selected preset

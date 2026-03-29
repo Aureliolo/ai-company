@@ -769,6 +769,7 @@ export interface ProviderPreset {
   auth_type: AuthType
   readonly supported_auth_types: readonly AuthType[]
   default_base_url: string | null
+  requires_base_url: boolean
   readonly candidate_urls: readonly string[]
   readonly default_models: readonly ProviderModelConfig[]
 }
