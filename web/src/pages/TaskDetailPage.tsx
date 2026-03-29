@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -9,6 +9,7 @@ import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { Avatar } from '@/components/ui/avatar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
@@ -30,6 +31,15 @@ export default function TaskDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
+
+  // Subscribe to real-time task updates via WebSocket
+  const wsBindings = useMemo(() => [{
+    channel: 'tasks' as const,
+    handler: (event: import('@/api/types').WsEvent) => {
+      useTasksStore.getState().handleWsEvent(event)
+    },
+  }], [])
+  useWebSocket({ bindings: wsBindings })
 
   useEffect(() => {
     if (taskId) {

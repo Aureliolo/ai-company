@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAnalyticsStore } from '@/stores/analytics'
+import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { usePolling } from '@/hooks/usePolling'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { useWebSocketStore } from '@/stores/websocket'
 import type { HealthStatus } from '@/api/types'
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
@@ -17,7 +20,15 @@ const STATUS_CONFIG: Record<SystemStatus, { color: string; label: string }> = {
   down: { color: 'bg-danger', label: 'system down' },
 }
 
-export function StatusBar() {
+interface StatusBarProps {
+  /** Callback to open the sidebar overlay (tablet mode). */
+  onHamburgerClick?: () => void
+  /** Whether the sidebar overlay is currently open. */
+  sidebarOverlayOpen?: boolean
+}
+
+export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: StatusBarProps) {
+  const { isTablet } = useBreakpoint()
   const totalAgents = useAnalyticsStore((s) => s.overview?.total_agents)
   const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks)
@@ -26,6 +37,9 @@ export function StatusBar() {
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
   const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
+
+  const wsConnected = useWebSocketStore((s) => s.connected)
+  const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
 
   const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
 
@@ -71,6 +85,17 @@ export function StatusBar() {
         'text-text-secondary select-none',
       )}
     >
+      {isTablet && onHamburgerClick && (
+        <button
+          onClick={onHamburgerClick}
+          aria-label="Open navigation menu"
+          aria-expanded={sidebarOverlayOpen}
+          className="flex items-center justify-center rounded-md p-0.5 text-muted-foreground hover:bg-card-hover hover:text-foreground"
+        >
+          <Menu className="size-4" aria-hidden="true" />
+        </button>
+      )}
+
       <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
         SynthOrg
       </span>
@@ -119,8 +144,23 @@ export function StatusBar() {
       <div className="flex-1" />
 
       <StatusItem>
+        <Dot
+          color={
+            wsConnected
+              ? 'bg-success'
+              : wsReconnectExhausted
+                ? 'bg-danger'
+                : 'bg-warning animate-pulse'
+          }
+        />
+        <span className="text-muted-foreground">
+          {wsConnected ? 'live' : wsReconnectExhausted ? 'offline' : 'reconnecting'}
+        </span>
+      </StatusItem>
+
+      <StatusItem>
         <Dot color={statusCfg.color} />
-        <span className="text-muted-foreground">{statusCfg.label}</span>
+        <span className="text-muted-foreground" aria-live="polite">{statusCfg.label}</span>
       </StatusItem>
 
       <Divider />

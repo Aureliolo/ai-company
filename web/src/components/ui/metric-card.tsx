@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useCountAnimation } from '@/hooks/useCountAnimation'
 import { Sparkline } from './sparkline'
 
 export interface MetricCardProps {
@@ -9,6 +10,10 @@ export interface MetricCardProps {
   progress?: { current: number; total: number }
   subText?: string
   className?: string
+  /** Inline style for flash animation (from useFlash). */
+  flashStyle?: React.CSSProperties
+  /** Whether to animate numeric value transitions. Default: false. */
+  animateValue?: boolean
 }
 
 export function MetricCard({
@@ -19,7 +24,12 @@ export function MetricCard({
   progress,
   subText,
   className,
+  flashStyle,
+  animateValue = false,
 }: MetricCardProps) {
+  const numericValue = typeof value === 'number' ? value : undefined
+  const animatedValue = useCountAnimation(numericValue ?? 0)
+  const displayValue = animateValue && numericValue !== undefined ? animatedValue : value
   const progressPct = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
     : 0
@@ -32,6 +42,7 @@ export function MetricCard({
         'hover:bg-card-hover',
         className,
       )}
+      style={flashStyle}
     >
       {/* Top row: label + sparkline */}
       <div className="flex items-start justify-between">
@@ -45,7 +56,7 @@ export function MetricCard({
 
       {/* Value */}
       <div className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground" data-testid="metric-value">
-        {value}
+        {displayValue}
       </div>
 
       {/* Progress bar */}

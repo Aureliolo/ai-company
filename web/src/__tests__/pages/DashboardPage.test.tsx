@@ -131,15 +131,6 @@ describe('DashboardPage', () => {
     expect(screen.queryByLabelText('Loading dashboard')).not.toBeInTheDocument()
   })
 
-  it('shows WebSocket disconnect warning when not connected', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false }
-    renderDashboard()
-    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
-  })
-
-  it('shows custom wsSetupError message when provided', () => {
-    hookReturn = { ...defaultHookReturn, wsConnected: false, wsSetupError: 'WebSocket auth failed' }
-    renderDashboard()
-    expect(screen.getByText('WebSocket auth failed')).toBeInTheDocument()
-  })
+  // WebSocket connection status is now shown globally in Sidebar/StatusBar,
+  // not as an inline warning on the Dashboard page.
 })

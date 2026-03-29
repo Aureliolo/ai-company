@@ -29,6 +29,7 @@ export function TaskStatusIndicator({ status, label = false, pulse = false, clas
     <span
       className={cn('inline-flex items-center gap-1.5', className)}
       aria-label={statusLabel}
+      role="status"
     >
       <span
         data-slot="status-dot"
@@ -68,6 +69,7 @@ export function PriorityBadge({ priority, className }: PriorityBadgeProps) {
 
   return (
     <span
+      aria-label={`Priority: ${label}`}
       className={cn(
         'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none',
         BADGE_COLOR_CLASSES[color],
