@@ -469,6 +469,9 @@ class TestAutoEviction:
             )
         summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 6
+        # Verify auto-prune actually evicted expired records
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 0
 
     async def test_snapshot_no_prune_below_threshold(self) -> None:
         tracker = ProviderHealthTracker(auto_prune_threshold=10)
@@ -507,6 +510,9 @@ class TestAutoEviction:
             )
         summary = await tracker.get_summary("test-provider", now=self._NOW)
         assert summary.calls_last_24h == 5
+        # Confirm expired records survived (no prune at exact threshold)
+        removed = await tracker.prune_expired(now=self._NOW)
+        assert removed == 5
 
     async def test_snapshot_all_records_expired(self) -> None:
         tracker = ProviderHealthTracker(auto_prune_threshold=5)
