@@ -132,7 +132,7 @@ export function SpendBurnChart({
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        <div className="h-80 w-full" data-testid="spend-burn-chart">
+        <div className="h-80 w-full" data-testid="spend-burn-chart" role="img" aria-label="Spend over time chart">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid

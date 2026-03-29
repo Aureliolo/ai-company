@@ -85,7 +85,7 @@ export function CostBreakdownChart({
                 disabled={isDisabled}
                 onClick={() => { if (!isDisabled) onDimensionChange(opt.value) }}
                 className={cn(
-                  'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
+                  'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                   isActive && 'bg-accent/10 text-accent font-medium',
                   !isActive && !isDisabled && 'text-text-muted hover:text-foreground',
                   isDisabled && 'opacity-50 cursor-not-allowed',
@@ -106,7 +106,7 @@ export function CostBreakdownChart({
         />
       ) : (
         <div className="flex flex-col items-center gap-4">
-          <div className="h-[200px] w-full" data-testid="cost-breakdown-chart">
+          <div className="h-[200px] w-full" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

@@ -45,7 +45,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
       className={cn(
         'cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors',
         'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         isDragging && 'scale-[1.02] opacity-50 shadow-lg',
         isOverlay && 'scale-[1.02] shadow-lg border-accent/50',
         className,

@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 interface SectionCardProps {
@@ -17,8 +17,11 @@ export function SectionCard({
   children,
   className,
 }: SectionCardProps) {
+  const titleId = useId()
+
   return (
-    <div
+    <section
+      aria-labelledby={titleId}
       className={cn(
         'rounded-lg border border-border bg-card',
         className,
@@ -26,12 +29,12 @@ export function SectionCard({
     >
       <div className="flex items-center gap-2 border-b border-border px-card py-3">
         {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-        <h3 className="flex-1 text-sm font-semibold text-foreground">{title}</h3>
+        <h3 id={titleId} className="flex-1 text-sm font-semibold text-foreground">{title}</h3>
         {action}
       </div>
       <div className="p-card">
         {children}
       </div>
-    </div>
+    </section>
   )
 }

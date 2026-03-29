@@ -160,7 +160,7 @@ export function InlineEdit({
           disabled={state === 'saving'}
           className={cn(
             'rounded-md border bg-surface px-2 py-1 text-sm text-foreground outline-none',
-            'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
+            'focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
             error ? 'border-danger' : 'border-border-bright',
             state === 'saving' && 'pointer-events-none opacity-60',
           )}

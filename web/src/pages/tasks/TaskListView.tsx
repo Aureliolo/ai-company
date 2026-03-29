@@ -121,7 +121,7 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
           onSelectTask(task.id)
         }
       }}
-      className="flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+      className="flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       aria-label={`Task: ${task.title}`}
     >
       <span className="w-20">

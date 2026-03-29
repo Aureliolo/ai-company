@@ -41,6 +41,8 @@ export function SidebarNavItem({
           <span className="flex-1 truncate">{label}</span>
           {badge !== undefined && badge > 0 && (
             <span
+              aria-live="polite"
+              aria-label={`${badge} pending ${label.toLowerCase()}`}
               className={cn(
                 'flex size-5 items-center justify-center',
                 'rounded-full bg-danger',

@@ -511,6 +511,7 @@ function OrgChartInner() {
           }
         `}</style>
         <ReactFlow
+          aria-label="Organization chart"
           nodes={renderedNodes}
           edges={transition.displayEdges}
           nodeTypes={nodeTypes}

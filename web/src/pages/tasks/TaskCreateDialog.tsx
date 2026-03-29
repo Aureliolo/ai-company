@@ -268,8 +268,8 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   )
 }
 
-const INPUT_CLASSES = 'w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1'
-const TEXTAREA_CLASSES = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none resize-y focus:ring-2 focus:ring-accent focus:ring-offset-1'
+const INPUT_CLASSES = 'w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background'
+const TEXTAREA_CLASSES = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none resize-y focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-background'
 
 function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (
