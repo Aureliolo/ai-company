@@ -27,11 +27,12 @@ class ProviderPreset(BaseModel):
         auth_type: Default authentication type.
         supported_auth_types: All auth types this preset supports.
             Shown in the UI so users can choose (e.g. API key or
-            subscription for Anthropic).
+            subscription).
         default_base_url: Default API base URL.
         requires_base_url: Whether the user must supply a base URL.
-            ``False`` for cloud providers (LiteLLM knows the URL),
-            ``True`` for self-hosted backends and Azure (per-deployment).
+            ``False`` for cloud providers (the routing library knows
+            the URL), ``True`` for self-hosted and deployment-specific
+            backends (per-deployment).
         candidate_urls: URLs to probe during auto-detection, in priority
             order.  The first reachable URL becomes the base URL.
         default_models: Pre-configured model definitions.

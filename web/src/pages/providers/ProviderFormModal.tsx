@@ -223,7 +223,8 @@ export function ProviderFormModal({
         if (result) handleClose()
       }
     } catch (err) {
-      console.error('ProviderFormModal: submit failed:', err)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('ProviderFormModal: submit failed:', msg)
     } finally {
       setSubmitting(false)
     }
@@ -368,7 +369,7 @@ export function ProviderFormModal({
                         label="LiteLLM Provider"
                         value={litellmProvider}
                         onChange={(e) => setLitellmProvider(e.target.value)}
-                        placeholder="anthropic, openai, ollama..."
+                        placeholder="e.g. my-cloud, my-local..."
                         hint="LiteLLM routing identifier for model name prefixing"
                       />
                     )}

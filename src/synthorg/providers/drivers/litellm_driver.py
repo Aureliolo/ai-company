@@ -351,11 +351,10 @@ class LiteLLMDriver(BaseCompletionProvider):
                         ),
                     }
             case AuthType.SUBSCRIPTION:
-                # Pass as api_key -- LiteLLM auto-detects OAuth tokens
-                # by prefix and switches to Authorization: Bearer with
-                # the correct headers.  Do NOT use "auth_token" -- it
-                # is not a litellm.completion() parameter and is
-                # silently discarded.
+                # Pass as api_key -- the correct kwarg for LiteLLM
+                # authentication.  Do NOT use "auth_token" -- it is
+                # not a litellm.completion() parameter and is silently
+                # discarded.
                 if self._config.subscription_token is not None:
                     kwargs["api_key"] = self._config.subscription_token
             case AuthType.NONE:

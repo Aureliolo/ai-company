@@ -4,9 +4,9 @@ import type { ProviderPreset } from '@/api/types'
 import { useState } from 'react'
 
 const samplePresets: ProviderPreset[] = [
-  { name: 'anthropic', display_name: 'Anthropic', description: 'Claude models', driver: 'litellm', litellm_provider: 'anthropic', auth_type: 'api_key', supported_auth_types: ['api_key', 'subscription'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
-  { name: 'openai', display_name: 'OpenAI', description: 'GPT and o-series', driver: 'litellm', litellm_provider: 'openai', auth_type: 'api_key', supported_auth_types: ['api_key'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
-  { name: 'ollama', display_name: 'Ollama', description: 'Local inference', driver: 'litellm', litellm_provider: 'ollama', auth_type: 'none', supported_auth_types: ['none'], default_base_url: 'http://localhost:11434', requires_base_url: true, candidate_urls: [], default_models: [] },
+  { name: 'example-cloud', display_name: 'Example Cloud', description: 'Cloud-hosted models', driver: 'litellm', litellm_provider: 'example-cloud', auth_type: 'api_key', supported_auth_types: ['api_key', 'subscription'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
+  { name: 'example-provider', display_name: 'Example Provider', description: 'Large and medium models', driver: 'litellm', litellm_provider: 'example-provider', auth_type: 'api_key', supported_auth_types: ['api_key'], default_base_url: null, requires_base_url: false, candidate_urls: [], default_models: [] },
+  { name: 'example-local', display_name: 'Example Local', description: 'Local inference', driver: 'litellm', litellm_provider: 'example-local', auth_type: 'none', supported_auth_types: ['none'], default_base_url: 'http://localhost:11434', requires_base_url: true, candidate_urls: [], default_models: [] },
 ]
 
 const meta = {
@@ -24,7 +24,7 @@ export const Default: Story = {
 }
 
 export const WithSelection: Story = {
-  args: { presets: samplePresets, selected: 'anthropic', onSelect: () => {} },
+  args: { presets: samplePresets, selected: 'example-cloud', onSelect: () => {} },
 }
 
 export const Loading: Story = {

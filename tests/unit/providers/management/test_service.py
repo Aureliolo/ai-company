@@ -255,11 +255,29 @@ class TestCreateFromPreset:
     async def test_create_from_preset_requires_base_url(
         self,
         service: ProviderManagementService,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Presets with requires_base_url=True reject creation without a URL."""
+        from synthorg.providers.presets import ProviderPreset
+
+        test_preset = ProviderPreset(
+            name="test-provider",
+            display_name="Test Provider",
+            description="Test preset requiring base URL",
+            driver="litellm",
+            litellm_provider="test-provider",
+            auth_type=AuthType.API_KEY,
+            supported_auth_types=(AuthType.API_KEY,),
+            requires_base_url=True,
+            default_models=(),
+        )
+        monkeypatch.setattr(
+            "synthorg.providers.management.service.get_preset",
+            lambda name: test_preset if name == "test-provider" else None,
+        )
         request = CreateFromPresetRequest(
-            preset_name="azure",
-            name="my-azure",
+            preset_name="test-provider",
+            name="my-provider",
             api_key="test-key",
         )
         with pytest.raises(ProviderValidationError, match="requires a base URL"):

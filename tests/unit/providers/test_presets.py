@@ -73,36 +73,42 @@ class TestProviderPresets:
         with pytest.raises(ValidationError, match="frozen"):
             preset.name = "changed"  # type: ignore[misc]
 
-    def test_cloud_presets_do_not_require_base_url(self) -> None:
+    _CLOUD_PRESETS = (
+        "anthropic",
+        "openai",
+        "gemini",
+        "mistral",
+        "groq",
+        "deepseek",
+        "openrouter",
+    )
+    _SELF_HOSTED_PRESETS = ("ollama", "lm-studio", "vllm", "azure")
+
+    @pytest.mark.parametrize("name", _CLOUD_PRESETS)
+    def test_cloud_preset_does_not_require_base_url(self, name: str) -> None:
         """Cloud presets don't require a base URL.
 
-        LiteLLM knows their endpoints natively; base_url is an optional
-        override for cloud presets.
+        The routing library knows their endpoints natively; base_url
+        is an optional override for cloud presets.
         """
-        cloud_names = (
-            "anthropic",
-            "openai",
-            "gemini",
-            "mistral",
-            "groq",
-            "deepseek",
-            "openrouter",
-        )
-        for name in cloud_names:
-            preset = get_preset(name)
-            assert preset is not None, f"Preset {name!r} not found"
-            assert preset.requires_base_url is False, (
-                f"Cloud preset {name!r} should not require base_url"
-            )
+        preset = get_preset(name)
+        assert preset is not None, f"Preset {name!r} not found"
+        assert preset.requires_base_url is False
 
-    def test_self_hosted_presets_require_base_url(self) -> None:
-        """Self-hosted and Azure presets require a user-supplied base URL."""
-        for name in ("ollama", "lm-studio", "vllm", "azure"):
-            preset = get_preset(name)
-            assert preset is not None, f"Preset {name!r} not found"
-            assert preset.requires_base_url is True, (
-                f"Preset {name!r} should require base_url"
-            )
+    @pytest.mark.parametrize("name", _SELF_HOSTED_PRESETS)
+    def test_self_hosted_preset_requires_base_url(self, name: str) -> None:
+        """Self-hosted and deployment-specific presets require a base URL."""
+        preset = get_preset(name)
+        assert preset is not None, f"Preset {name!r} not found"
+        assert preset.requires_base_url is True
+
+    def test_all_presets_categorized_for_base_url(self) -> None:
+        """Every preset must be covered by the cloud or self-hosted set."""
+        all_names = {p.name for p in PROVIDER_PRESETS}
+        categorized = set(self._CLOUD_PRESETS) | set(self._SELF_HOSTED_PRESETS)
+        assert all_names == categorized, (
+            f"Uncategorized presets: {all_names - categorized}"
+        )
 
     def test_auth_type_not_in_supported_raises(self) -> None:
         """Creating a preset with auth_type not in supported_auth_types fails."""

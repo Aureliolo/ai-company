@@ -124,10 +124,9 @@ class TestLiteLLMDriverAuth:
     def test_build_kwargs_subscription_sets_api_key(self) -> None:
         """Subscription auth passes token as api_key for LiteLLM.
 
-        LiteLLM auto-detects OAuth tokens by prefix and switches to
-        Authorization: Bearer with the correct headers.  "auth_token"
-        is NOT a litellm.completion() parameter and would be silently
-        discarded.
+        ``api_key`` is the correct kwarg for authentication.
+        ``auth_token`` is NOT a ``litellm.completion()`` parameter
+        and would be silently discarded.
         """
         config = _make_config(
             auth_type=AuthType.SUBSCRIPTION,
