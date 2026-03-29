@@ -290,7 +290,7 @@ export function TemplateStep() {
           <InputField
             label="Search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
+            onValueChange={setSearchQuery}
             placeholder="Search templates..."
             className="pl-8 pr-8"
           />

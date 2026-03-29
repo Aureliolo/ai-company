@@ -5,6 +5,8 @@ interface BaseFieldProps {
   label: string
   error?: string | null
   hint?: string
+  /** Convenience callback that receives the value string directly. */
+  onValueChange?: (value: string) => void
 }
 
 interface InputProps extends BaseFieldProps, Omit<React.ComponentProps<'input'>, 'id'> {
@@ -20,7 +22,7 @@ interface TextareaProps extends BaseFieldProps, Omit<React.ComponentProps<'texta
 export type InputFieldProps = InputProps | TextareaProps
 
 export function InputField({
-  label, error, hint, multiline, className, ref, ...props
+  label, error, hint, multiline, className, ref, onValueChange, onChange, ...props
 }: InputFieldProps) {
   const id = useId()
   const errorId = `${id}-error`
@@ -36,6 +38,16 @@ export function InputField({
     className,
   )
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onValueChange?.(e.target.value)
+    ;(onChange as React.ChangeEventHandler<HTMLInputElement> | undefined)?.(e)
+  }
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onValueChange?.(e.target.value)
+    ;(onChange as React.ChangeEventHandler<HTMLTextAreaElement> | undefined)?.(e)
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
@@ -50,7 +62,8 @@ export function InputField({
           aria-errormessage={hasError ? errorId : undefined}
           aria-describedby={hint && !hasError ? hintId : undefined}
           className={cn(inputClasses, 'resize-y')}
-          {...(props as React.ComponentProps<'textarea'>)}
+          onChange={handleTextareaChange}
+          {...(props as Omit<React.ComponentProps<'textarea'>, 'onChange'>)}
         />
       ) : (
         <input
@@ -60,7 +73,8 @@ export function InputField({
           aria-errormessage={hasError ? errorId : undefined}
           aria-describedby={hint && !hasError ? hintId : undefined}
           className={inputClasses}
-          {...(props as React.ComponentProps<'input'>)}
+          onChange={handleInputChange}
+          {...(props as Omit<React.ComponentProps<'input'>, 'onChange'>)}
         />
       )}
       {hint && !hasError && (

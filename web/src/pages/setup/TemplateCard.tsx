@@ -19,6 +19,13 @@ const WORKFLOW_LABELS: Record<string, string> = {
   waterfall: 'Waterfall',
 }
 
+function humanizeWorkflow(raw: string): string {
+  return raw
+    .replace(/[_-]/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export interface TemplateCardProps {
   template: TemplateInfoResponse
   selected: boolean
@@ -93,7 +100,7 @@ export function TemplateCard({
         </div>
         <div className="flex items-center gap-1.5" title="Workflow">
           <GitBranch className="size-3.5 text-accent" aria-hidden="true" />
-          <span>{WORKFLOW_LABELS[template.workflow] ?? template.workflow}</span>
+          <span>{WORKFLOW_LABELS[template.workflow] ?? humanizeWorkflow(template.workflow)}</span>
         </div>
       </div>
 

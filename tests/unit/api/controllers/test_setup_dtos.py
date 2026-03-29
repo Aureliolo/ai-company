@@ -18,7 +18,7 @@ class TestSetupDTOs:
         req = SetupAgentRequest(
             name="Alice",
             role="CEO",
-            personality_preset="visionary_leader",
+            personality_preset="Visionary_Leader",
             model_provider="test-provider",
             model_id="model-001",
         )

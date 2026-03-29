@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from synthorg.core.enums import AutonomyLevel
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -127,7 +128,7 @@ class TestListTemplates:
         for t in templates:
             assert t.agent_count >= 0
             assert t.department_count >= 0
-            assert t.autonomy_level in ("full", "semi", "supervised", "locked")
+            assert t.autonomy_level in set(AutonomyLevel)
             assert t.workflow  # non-empty string
 
     def test_user_template_overrides_builtin(
