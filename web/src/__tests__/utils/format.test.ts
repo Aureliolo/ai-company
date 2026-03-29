@@ -213,6 +213,12 @@ describe('formatCurrencyCompact', () => {
     expect(result).toBe(expected)
   })
 
+  it('trims whitespace and uppercases currency code', () => {
+    const result = formatCurrencyCompact(100, ' usd ')
+    const expected = formatCurrencyCompact(100, 'USD')
+    expect(result).toBe(expected)
+  })
+
   it('formats zero correctly', () => {
     const result = formatCurrencyCompact(0)
     expect(result).toMatch(/0/)

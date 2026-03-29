@@ -229,8 +229,9 @@ export function ProviderFormModal({
   }, [mode, preset, selectedPreset, name, authType, apiKey, subscriptionToken, tosAccepted, baseUrl, litellmProvider, provider, handleClose, overrides])
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && submitting) return
     if (!nextOpen) handleClose()
-  }, [handleClose])
+  }, [handleClose, submitting])
 
   const dialogTitle = mode === 'create' ? 'Add Provider' : `Edit ${provider?.name ?? 'Provider'}`
 
@@ -258,17 +259,9 @@ export function ProviderFormModal({
                 {mode === 'create' ? 'Configure a new LLM provider' : 'Update provider settings'}
               </Dialog.Description>
               <Dialog.Close asChild>
-                <button
-                  type="button"
-                  aria-label="Close"
-                  className={cn(
-                    'rounded-md p-1 text-muted-foreground transition-colors',
-                    'hover:bg-card-hover hover:text-foreground',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                  )}
-                >
+                <Button variant="ghost" size="icon" aria-label="Close">
                   <X className="size-4" />
-                </button>
+                </Button>
               </Dialog.Close>
             </div>
             {/* Content */}
