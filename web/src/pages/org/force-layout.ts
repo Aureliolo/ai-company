@@ -1,0 +1,121 @@
+/**
+ * Force-directed layout engine for the Org Chart communication graph.
+ *
+ * Uses d3-force to compute node positions based on communication links.
+ * Higher-volume links pull connected nodes closer together.
+ */
+
+import {
+  forceSimulation,
+  forceLink,
+  forceManyBody,
+  forceCenter,
+  forceCollide,
+  type SimulationNodeDatum,
+  type SimulationLinkDatum,
+} from 'd3-force'
+import type { Node } from '@xyflow/react'
+import type { CommunicationLink } from './aggregate-messages'
+
+export interface ForceLayoutOptions {
+  width?: number
+  height?: number
+}
+
+interface SimNode extends SimulationNodeDatum {
+  id: string
+}
+
+const DEFAULT_WIDTH = 800
+const DEFAULT_HEIGHT = 600
+const NODE_RADIUS = 80
+const CHARGE_STRENGTH = -200
+const TICK_COUNT = 300
+
+// Distance range: high-volume links get shorter distance
+const MAX_LINK_DISTANCE = 250
+const MIN_LINK_DISTANCE = 80
+
+/**
+ * Compute force-directed layout positions for React Flow nodes.
+ *
+ * @param nodes - React Flow nodes (positions used as initial seed).
+ * @param links - Communication links between agents.
+ * @param options - Optional width/height for centering.
+ * @returns New array of nodes with updated positions. Original data and IDs preserved.
+ */
+export function computeForceLayout(
+  nodes: Node[],
+  links: CommunicationLink[],
+  options: ForceLayoutOptions = {},
+): Node[] {
+  if (nodes.length === 0) return []
+
+  const { width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT } = options
+  const nodeIdSet = new Set(nodes.map((n) => n.id))
+
+  // Create simulation nodes seeded from current positions
+  const simNodes: SimNode[] = nodes.map((n) => ({
+    id: n.id,
+    x: n.position.x || 0,
+    y: n.position.y || 0,
+  }))
+
+  // Filter links to only include existing nodes
+  const validLinks = links.filter(
+    (l) => nodeIdSet.has(l.source) && nodeIdSet.has(l.target),
+  )
+
+  // Compute max volume for distance scaling
+  const maxVolume = Math.max(1, ...validLinks.map((l) => l.volume))
+
+  // Create simulation links
+  const simLinks: SimulationLinkDatum<SimNode>[] = validLinks.map((l) => ({
+    source: l.source,
+    target: l.target,
+  }))
+
+  // Build volume lookup for link distance function
+  const volumeMap = new Map<string, number>()
+  for (const l of validLinks) {
+    volumeMap.set(`${l.source}::${l.target}`, l.volume)
+    volumeMap.set(`${l.target}::${l.source}`, l.volume)
+  }
+
+  const simulation = forceSimulation<SimNode>(simNodes)
+    .force(
+      'link',
+      forceLink<SimNode, SimulationLinkDatum<SimNode>>(simLinks)
+        .id((d) => d.id)
+        .distance((d) => {
+          const srcId = typeof d.source === 'object' ? d.source.id : String(d.source)
+          const tgtId = typeof d.target === 'object' ? d.target.id : String(d.target)
+          const volume = volumeMap.get(`${srcId}::${tgtId}`) ?? 1
+          // Higher volume = shorter distance (inverse relationship)
+          const ratio = volume / maxVolume
+          return MAX_LINK_DISTANCE - ratio * (MAX_LINK_DISTANCE - MIN_LINK_DISTANCE)
+        }),
+    )
+    .force('charge', forceManyBody().strength(CHARGE_STRENGTH))
+    .force('center', forceCenter(width / 2, height / 2))
+    .force('collide', forceCollide(NODE_RADIUS))
+    .stop()
+
+  // Run simulation to convergence synchronously
+  simulation.tick(TICK_COUNT)
+
+  // Build position lookup from simulation results
+  const positionMap = new Map<string, { x: number; y: number }>()
+  for (const simNode of simNodes) {
+    positionMap.set(simNode.id, { x: simNode.x ?? 0, y: simNode.y ?? 0 })
+  }
+
+  // Map positions back to React Flow nodes
+  return nodes.map((node) => {
+    const pos = positionMap.get(node.id)
+    return {
+      ...node,
+      position: pos ? { x: pos.x, y: pos.y } : node.position,
+    }
+  })
+}

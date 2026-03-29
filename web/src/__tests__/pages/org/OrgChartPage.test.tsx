@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { Node } from '@xyflow/react'
 
-// ── Module-level mock components/hooks (eslint-react requires top-level) ──
+// ── Module-level mock components/hooks ────────────────────────
 
 function MockReactFlow({ children }: { children?: React.ReactNode }) {
   return <div data-testid="react-flow">{children}</div>
@@ -23,25 +23,30 @@ function mockUseReactFlow() {
 
 function mockUseRegisterCommands() {}
 
-// Track mock return value for useOrgChartData
+// Track mock return values (edges must be a stable reference to avoid infinite useEffect loops)
+const EMPTY_EDGES: never[] = []
 let mockNodes: Node[] = []
 let mockLoading = false
 let mockError: string | null = null
+let mockCommLoading = false
+let mockCommError: string | null = null
 let mockWsConnected = true
 let mockWsSetupError: string | null = null
 
 function mockUseOrgChartData() {
   return {
     nodes: mockNodes,
-    edges: [],
+    edges: EMPTY_EDGES,
     loading: mockLoading,
     error: mockError,
+    commLoading: mockCommLoading,
+    commError: mockCommError,
     wsConnected: mockWsConnected,
     wsSetupError: mockWsSetupError,
   }
 }
 
-// ── vi.mock calls ────────────────────────────────────────────
+// ── vi.mock calls (keep minimal -- only mock what causes issues) ──
 
 vi.mock('@xyflow/react', () => ({
   ReactFlow: MockReactFlow,
@@ -51,6 +56,7 @@ vi.mock('@xyflow/react', () => ({
   Handle: () => null,
   Position: { Top: 'top', Bottom: 'bottom' },
   getSmoothStepPath: () => ['M0 0'],
+  getBezierPath: () => ['M0 0'],
   BaseEdge: () => null,
 }))
 
@@ -60,6 +66,10 @@ vi.mock('@/hooks/useCommandPalette', () => ({
 
 vi.mock('@/hooks/useOrgChartData', () => ({
   useOrgChartData: mockUseOrgChartData,
+}))
+
+vi.mock('@/lib/motion', () => ({
+  prefersReducedMotion: () => true,
 }))
 
 // Import after mocks
@@ -78,6 +88,8 @@ describe('OrgChartPage', () => {
     mockNodes = []
     mockLoading = false
     mockError = null
+    mockCommLoading = false
+    mockCommError = null
     mockWsConnected = true
     mockWsSetupError = null
   })
@@ -139,5 +151,12 @@ describe('OrgChartPage', () => {
     renderPage()
     expect(screen.queryByLabelText('Loading org chart')).not.toBeInTheDocument()
     expect(screen.getByTestId('react-flow')).toBeInTheDocument()
+  })
+
+  it('shows communication error banner', () => {
+    mockCommError = 'Failed to fetch messages'
+    mockNodes = [{ id: '1', position: { x: 0, y: 0 }, data: {} }]
+    renderPage()
+    expect(screen.getByText(/Failed to fetch messages/)).toBeInTheDocument()
   })
 })
