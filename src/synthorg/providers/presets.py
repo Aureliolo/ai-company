@@ -305,10 +305,11 @@ def list_presets() -> tuple[ProviderPreset, ...]:
     return PROVIDER_PRESETS
 
 
-# ── Model version filters ────────────────────────────────────
-# Provider-specific minimum model version filters for
+# ── Model generation filters ─────────────────────────────────
+# Provider-specific model generation allowlists for
 # ``models_from_litellm()``.  Only models matching the pattern
 # are included.  Providers not listed here include all models.
+# Patterns must be updated when new major generations are released.
 # Vendor-specific names are allowed here per CLAUDE.md:
 # "provider presets (presets.py) which are user-facing runtime data".
 

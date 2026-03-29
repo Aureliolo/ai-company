@@ -38,7 +38,28 @@ const SIDEBAR_NAV = [
   { icon: Settings, label: 'Settings' },
 ]
 
-function SidebarPreview({ mode }: { mode: string }) {
+interface SidebarNavItemProps {
+  icon: React.ElementType
+  label: string
+  isActive: boolean
+  isCompact: boolean
+}
+
+function SidebarNavItem({ icon: Icon, label, isActive, isCompact }: SidebarNavItemProps) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-text-secondary',
+        isActive && 'bg-accent/10 text-accent',
+      )}
+    >
+      <Icon className="size-3.5 shrink-0" />
+      {!isCompact && <span className="truncate text-[9px]">{label}</span>}
+    </div>
+  )
+}
+
+function SidebarPreview({ mode }: { mode: ThemeSettings['sidebar'] }) {
   if (mode === 'hidden') return null
 
   const isCompact = mode === 'compact'
@@ -50,19 +71,14 @@ function SidebarPreview({ mode }: { mode: string }) {
         isCompact ? 'w-10' : 'w-28',
       )}
     >
-      {SIDEBAR_NAV.map(({ icon: Icon, label }) => (
-        <div
+      {SIDEBAR_NAV.map(({ icon, label }) => (
+        <SidebarNavItem
           key={label}
-          className={cn(
-            'flex items-center gap-1.5 rounded-md px-1.5 py-1 text-text-secondary',
-            label === 'Overview' && 'bg-accent/10 text-accent',
-          )}
-        >
-          <Icon className="size-3.5 shrink-0" />
-          {!isCompact && (
-            <span className="truncate text-[9px]">{label}</span>
-          )}
-        </div>
+          icon={icon}
+          label={label}
+          isActive={label === 'Overview'}
+          isCompact={isCompact}
+        />
       ))}
       {mode === 'collapsible' && (
         <div className="mt-auto flex justify-center pt-1 text-text-muted">

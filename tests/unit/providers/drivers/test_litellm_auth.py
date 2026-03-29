@@ -140,7 +140,9 @@ class TestLiteLLMDriverAuth:
             subscription_token="test-subscription-token",
             tos_accepted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
-        # Bypass frozen model to simulate a cleared token
+        # Bypass frozen model to simulate a runtime-cleared token;
+        # ProviderConfig validators require subscription_token at
+        # construction, so direct construction with None is not possible.
         object.__setattr__(config, "subscription_token", None)
         kwargs = _build_kwargs(config)
         assert "auth_token" not in kwargs

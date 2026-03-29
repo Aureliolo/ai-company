@@ -388,12 +388,11 @@ class ProviderManagementService:
             )
             raise ProviderValidationError(msg)
 
-        litellm_models = models_from_litellm(preset.litellm_provider)
-        models = (
-            request.models
-            if request.models is not None
-            else litellm_models or preset.default_models
-        )
+        if request.models is not None:
+            models = request.models
+        else:
+            litellm_models = models_from_litellm(preset.litellm_provider)
+            models = litellm_models or preset.default_models
         base_url = request.base_url or preset.default_base_url
         auth_type = request.auth_type or preset.auth_type
         models = await self._maybe_discover_preset_models(

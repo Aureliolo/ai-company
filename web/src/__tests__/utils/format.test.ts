@@ -2,6 +2,7 @@ import {
   formatDate,
   formatRelativeTime,
   formatCurrency,
+  formatCurrencyCompact,
   formatNumber,
   formatUptime,
   formatLabel,
@@ -179,5 +180,41 @@ describe('formatLabel', () => {
 
   it('handles empty string', () => {
     expect(formatLabel('')).toBe('')
+  })
+})
+
+describe('formatCurrencyCompact', () => {
+  it('formats a small value with default EUR currency', () => {
+    const result = formatCurrencyCompact(5)
+    expect(result).toMatch(/5/)
+  })
+
+  it('formats large values with compact notation', () => {
+    const result = formatCurrencyCompact(1500, 'USD')
+    // Compact notation should abbreviate (e.g. "$2K" or "$1.5K")
+    expect(result.length).toBeLessThan(10)
+  })
+
+  it('returns -- for NaN', () => {
+    expect(formatCurrencyCompact(NaN)).toBe('--')
+  })
+
+  it('returns -- for Infinity', () => {
+    expect(formatCurrencyCompact(Infinity)).toBe('--')
+  })
+
+  it('returns -- for -Infinity', () => {
+    expect(formatCurrencyCompact(-Infinity)).toBe('--')
+  })
+
+  it('falls back gracefully for invalid currency code', () => {
+    const result = formatCurrencyCompact(100, 'INVALID')
+    // Should use the fallback path: "INVALID 100"
+    expect(result).toContain('100')
+  })
+
+  it('formats zero correctly', () => {
+    const result = formatCurrencyCompact(0)
+    expect(result).toMatch(/0/)
   })
 })

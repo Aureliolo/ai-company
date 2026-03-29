@@ -59,7 +59,8 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
 }
 
 /**
- * Format a currency value compactly for chart axes (e.g. "EUR 5", "USD 10").
+ * Format a currency value compactly for chart axes (e.g. "$5", "$10K").
+ * Exact format depends on locale and currency. Falls back to "CODE N" on error.
  */
 export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR'): string {
   if (!Number.isFinite(value)) return '--'

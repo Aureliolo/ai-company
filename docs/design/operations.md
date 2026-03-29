@@ -47,7 +47,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
         family: "example-family"       # cross-validation grouping (optional)
         auth_type: api_key             # api_key | oauth | custom_header | subscription | none
         api_key: "${PROVIDER_API_KEY}"
-        # subscription_token: "..."    # bearer token (subscription auth only; sensitive -- use env vars or secret management)
+        # subscription_token: "..."    # subscription token (subscription auth only; passed to LiteLLM as auth_token; sensitive -- use env vars or secret management)
         # tos_accepted_at: "..."       # timestamp when subscription ToS was accepted
         models:                        # example entries -- real list loaded from provider
           - id: "example-large-001"

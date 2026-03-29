@@ -27,7 +27,7 @@ export function ProgressGauge({
   size = 'md',
   className,
 }: ProgressGaugeProps) {
-  const safeMax = Math.max(max, 1)
+  const safeMax = Number.isFinite(max) ? Math.max(max, 1) : 1
   const safeValue = Number.isFinite(value) ? value : 0
   const clampedValue = Math.max(0, Math.min(safeValue, safeMax))
   const percentage = Math.round((clampedValue / safeMax) * 100)

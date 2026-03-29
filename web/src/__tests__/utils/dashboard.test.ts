@@ -212,6 +212,30 @@ describe('computeOrgHealth', () => {
     ]
     expect(computeOrgHealth(depts)).toBe(33)
   })
+
+  it('filters out NaN health_percent values', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'engineering', display_name: 'Engineering', health_percent: 80, agent_count: 4, task_count: 10, cost_usd: null },
+      { name: 'broken', display_name: 'Broken', health_percent: NaN, agent_count: 1, task_count: 0, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBe(80)
+  })
+
+  it('filters out Infinity health_percent values', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'engineering', display_name: 'Engineering', health_percent: 60, agent_count: 2, task_count: 5, cost_usd: null },
+      { name: 'overflow', display_name: 'Overflow', health_percent: Infinity, agent_count: 1, task_count: 0, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBe(60)
+  })
+
+  it('returns null when all departments have non-finite health', () => {
+    const depts: DepartmentHealth[] = [
+      { name: 'a', display_name: 'A', health_percent: NaN, agent_count: 1, task_count: 0, cost_usd: null },
+      { name: 'b', display_name: 'B', health_percent: Infinity, agent_count: 1, task_count: 0, cost_usd: null },
+    ]
+    expect(computeOrgHealth(depts)).toBeNull()
+  })
 })
 
 describe('describeEvent', () => {

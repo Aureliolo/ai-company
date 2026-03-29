@@ -14,6 +14,7 @@ from synthorg.providers.management._helpers import (
     _apply_credential_updates,
     apply_update,
     build_discovery_headers,
+    models_from_litellm,
 )
 
 
@@ -152,3 +153,179 @@ class TestApplyUpdateAuthTransitions:
         assert result.api_key is None
         assert result.subscription_token == "test-subscription-token"
         assert result.tos_accepted_at is not None
+
+
+def _fake_model_cost() -> dict[str, Any]:
+    """Build a realistic litellm.model_cost subset for testing."""
+    return {
+        "test-provider/test-large-001": {
+            "litellm_provider": "test-provider",
+            "input_cost_per_token": 0.000015,
+            "output_cost_per_token": 0.000075,
+            "max_input_tokens": 200_000,
+        },
+        "test-provider/test-large-001-20260205": {
+            "litellm_provider": "test-provider",
+            "input_cost_per_token": 0.000015,
+            "output_cost_per_token": 0.000075,
+            "max_input_tokens": 200_000,
+        },
+        "test-provider/test-small-001": {
+            "litellm_provider": "test-provider",
+            "input_cost_per_token": 0.000003,
+            "output_cost_per_token": 0.000015,
+            "max_input_tokens": 128_000,
+        },
+        "other-provider/other-model": {
+            "litellm_provider": "other-provider",
+            "input_cost_per_token": 0.00001,
+            "output_cost_per_token": 0.00003,
+            "max_input_tokens": 100_000,
+        },
+        "not-a-dict-entry": "malformed",
+    }
+
+
+@pytest.mark.unit
+class TestModelsFromLitellm:
+    """Tests for ``models_from_litellm`` LiteLLM database lookup."""
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_returns_matching_models(self) -> None:
+        """Returns models filtered to the requested provider."""
+        result = models_from_litellm("test-provider")
+
+        assert len(result) == 2
+        ids = {m.id for m in result}
+        assert "test-large-001" in ids
+        assert "test-small-001" in ids
+        assert "other-model" not in ids
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_deduplicates_dated_variants(self) -> None:
+        """Prefers shorter model ID over dated variant."""
+        result = models_from_litellm("test-provider")
+
+        large_models = [m for m in result if "large" in m.id]
+        assert len(large_models) == 1
+        assert large_models[0].id == "test-large-001"
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_strips_provider_prefix(self) -> None:
+        """Strips provider/ prefix from model IDs."""
+        result = models_from_litellm("test-provider")
+
+        for m in result:
+            assert not m.id.startswith("test-provider/")
+
+    @patch(
+        "litellm.model_cost",
+        {
+            "test-provider/null-cost-model": {
+                "litellm_provider": "test-provider",
+                "input_cost_per_token": None,
+                "output_cost_per_token": None,
+                "max_input_tokens": 50_000,
+            },
+        },
+    )
+    def test_none_cost_values_default_to_zero(self) -> None:
+        """None cost values in litellm data are treated as zero."""
+        result = models_from_litellm("test-provider")
+
+        assert len(result) == 1
+        assert result[0].cost_per_1k_input == 0.0
+        assert result[0].cost_per_1k_output == 0.0
+
+    @patch(
+        "litellm.model_cost",
+        {
+            "test-provider/string-max-model": {
+                "litellm_provider": "test-provider",
+                "input_cost_per_token": 0.00001,
+                "output_cost_per_token": 0.00005,
+                "max_input_tokens": "unlimited",
+            },
+        },
+    )
+    def test_non_int_max_input_falls_back_to_default(self) -> None:
+        """Non-integer max_input_tokens falls back to default."""
+        result = models_from_litellm("test-provider")
+
+        assert len(result) == 1
+        assert result[0].max_context == 200_000
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_skips_non_dict_entries(self) -> None:
+        """Non-dict entries in model_cost are safely skipped."""
+        result = models_from_litellm("test-provider")
+
+        # Should still return valid models despite "not-a-dict-entry"
+        assert len(result) == 2
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_empty_results_for_unknown_provider(self) -> None:
+        """Unknown provider returns empty tuple."""
+        result = models_from_litellm("nonexistent-provider")
+
+        assert result == ()
+
+    def test_version_filter_applied(self) -> None:
+        """Version filter regex excludes non-matching models."""
+        import re
+
+        with (
+            patch("litellm.model_cost", _fake_model_cost()),
+            patch(
+                "synthorg.providers.presets.MODEL_VERSION_FILTERS",
+                {"test-provider": re.compile(r"^test-large")},
+            ),
+        ):
+            result = models_from_litellm("test-provider")
+
+        assert len(result) == 1
+        assert result[0].id == "test-large-001"
+
+    def test_import_failure_returns_empty(self) -> None:
+        """Returns empty tuple when litellm is not installed."""
+        import builtins
+        import sys
+
+        # Temporarily remove litellm from sys.modules to force re-import
+        saved = sys.modules.pop("litellm", None)
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            if name == "litellm":
+                raise ImportError(name)
+            return original_import(name, *args, **kwargs)
+
+        try:
+            with patch("builtins.__import__", side_effect=mock_import):
+                result = models_from_litellm("test-provider")
+            assert result == ()
+        finally:
+            if saved is not None:
+                sys.modules["litellm"] = saved
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_results_sorted_by_id(self) -> None:
+        """Results are sorted alphabetically by model ID."""
+        result = models_from_litellm("test-provider")
+
+        ids = [m.id for m in result]
+        assert ids == sorted(ids)
+
+    @patch("litellm.model_cost", _fake_model_cost())
+    def test_populates_cost_fields(self) -> None:
+        """Cost fields are correctly converted to per-1k pricing."""
+        result = models_from_litellm("test-provider")
+
+        small = next(m for m in result if m.id == "test-small-001")
+        assert small.cost_per_1k_input == round(0.000003 * 1000, 6)
+        assert small.cost_per_1k_output == round(0.000015 * 1000, 6)
+        assert small.max_context == 128_000
