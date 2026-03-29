@@ -14,6 +14,7 @@ import type {
 import type { MetricCardProps } from '@/components/ui/metric-card'
 
 const DETAIL_POLL_INTERVAL = 30_000
+/** Shared across agent hooks -- change both if tuning. See useAgentsData.ts. */
 const WS_DEBOUNCE_MS = 300
 const DETAIL_CHANNELS = ['agents', 'tasks'] as const satisfies readonly WsChannel[]
 const EMPTY_BINDINGS: ChannelBinding[] = []
@@ -93,9 +94,18 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
   const agentNameRef = useRef(agentName)
   agentNameRef.current = agentName
 
-  useEffect(() => () => {
-    if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
-  }, [])
+  useEffect(() => {
+    if (!agentName && wsDebounceRef.current) {
+      clearTimeout(wsDebounceRef.current)
+      wsDebounceRef.current = null
+    }
+    return () => {
+      if (wsDebounceRef.current) {
+        clearTimeout(wsDebounceRef.current)
+        wsDebounceRef.current = null
+      }
+    }
+  }, [agentName])
 
   const bindings: ChannelBinding[] = useMemo(
     () =>

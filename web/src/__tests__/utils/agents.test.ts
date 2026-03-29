@@ -216,6 +216,18 @@ describe('sortAgents', () => {
     makeAgent({ name: 'Bob Jones', department: 'operations', level: 'junior', hiring_date: '2026-02-01T00:00:00Z' }),
   ]
 
+  it('treats agent with undefined status as active for sorting', () => {
+    const withUndefined = [
+      makeAgent({ name: 'Active Agent', status: 'active' }),
+      makeAgent({ name: 'No Status', status: undefined }),
+      makeAgent({ name: 'Terminated Agent', status: 'terminated' }),
+    ]
+    const result = sortAgents(withUndefined, 'status', 'asc')
+    // undefined status treated as 'active' -- should sort with active agents, before terminated
+    const names = result.map((a) => a.name)
+    expect(names.indexOf('Terminated Agent')).toBeGreaterThan(names.indexOf('No Status'))
+  })
+
   it('sorts by name ascending', () => {
     const result = sortAgents(agents, 'name', 'asc')
     expect(result.map((a) => a.name)).toEqual(['Alice Smith', 'Bob Jones', 'Carol Xu'])

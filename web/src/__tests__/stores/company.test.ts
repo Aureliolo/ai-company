@@ -397,13 +397,13 @@ describe('useCompanyStore', () => {
       const reordered = useCompanyStore.getState().config!.agents.filter(
         (a) => a.department === 'engineering',
       )
-      expect(reordered.map((a) => a.id)).toEqual(agentIds)
+      expect(reordered.map((a) => a.id ?? a.name)).toEqual(agentIds)
 
       rollback()
       const restored = useCompanyStore.getState().config!.agents.filter(
         (a) => a.department === 'engineering',
       )
-      expect(restored.map((a) => a.id)).toEqual(agentIds.toReversed())
+      expect(restored.map((a) => a.id ?? a.name)).toEqual(agentIds.toReversed())
     })
   })
 })

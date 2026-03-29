@@ -169,6 +169,17 @@ describe('useAgentsData', () => {
       expect(mockFetchAgents).toHaveBeenCalledTimes(1)
     })
 
+    it('resets debounce timer on subsequent event within window', async () => {
+      await setupHandler()
+      wsHandler()
+      vi.advanceTimersByTime(200)
+      wsHandler() // resets the 300ms window
+      vi.advanceTimersByTime(200)
+      expect(mockFetchAgents).not.toHaveBeenCalled() // only 200ms since last event
+      vi.advanceTimersByTime(100)
+      expect(mockFetchAgents).toHaveBeenCalledTimes(1) // 300ms since last event
+    })
+
     it('cleans up timeout on unmount', async () => {
       const { useWebSocket } = await import('@/hooks/useWebSocket')
       const { unmount } = renderHook(() => useAgentsData())

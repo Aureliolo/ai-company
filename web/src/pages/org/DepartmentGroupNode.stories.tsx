@@ -53,6 +53,7 @@ export const Healthy: Story = {
       agentCount: 5,
       activeCount: 4,
       cost7d: 45.8,
+      currency: 'EUR',
     },
   },
 }
@@ -66,6 +67,7 @@ export const Warning: Story = {
       agentCount: 3,
       activeCount: 1,
       cost7d: 22.3,
+      currency: 'EUR',
     },
   },
 }
@@ -79,6 +81,7 @@ export const Critical: Story = {
       agentCount: 2,
       activeCount: 0,
       cost7d: null,
+      currency: null,
     },
   },
 }
@@ -92,6 +95,7 @@ export const DropTargetActive: Story = {
       agentCount: 5,
       activeCount: 3,
       cost7d: 38.5,
+      currency: 'EUR',
       isDropTarget: true,
     },
   },

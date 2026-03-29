@@ -37,7 +37,7 @@ const arbLevel: fc.Arbitrary<SeniorityLevel> = fc.constantFrom(...LEVELS)
 const arbStatus: fc.Arbitrary<AgentStatus> = fc.constantFrom(...STATUSES)
 
 const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
-  id: fc.uuid(),
+  id: fc.option(fc.uuid(), { nil: undefined }),
   name: fc.tuple(
     fc.constantFrom('Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank'),
     fc.constantFrom('Smith', 'Jones', 'Xu', 'Park', 'Lee', 'Garcia'),
@@ -45,7 +45,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   role: fc.constantFrom('Engineer', 'Designer', 'Analyst', 'Manager', 'SRE'),
   department: arbDepartment,
   level: arbLevel,
-  status: arbStatus,
+  status: fc.option(arbStatus, { nil: undefined }),
   personality: fc.constant({
     traits: ['analytical'],
     communication_style: 'direct',

@@ -69,6 +69,13 @@ export function AgentEditDrawer({
     () => agent?.hiring_date ? new Date(agent.hiring_date).toLocaleDateString() : '',
     [agent],
   )
+  const modelDisplay = useMemo(() => {
+    if (!agent) return ''
+    return [
+      typeof agent.model['provider'] === 'string' ? agent.model['provider'] : '',
+      typeof agent.model['model_id'] === 'string' ? agent.model['model_id'] : '',
+    ].filter((v) => v.length > 0).join(' / ')
+  }, [agent])
 
   const handleSave = useCallback(async () => {
     if (!agent) return
@@ -152,7 +159,9 @@ export function AgentEditDrawer({
             {/* Read-only info */}
             <div className="border-t border-border pt-4 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
-              <p className="text-xs text-text-secondary font-mono">{String(agent.model.provider ?? '')} / {String(agent.model.model_id ?? '')}</p>
+              {modelDisplay && (
+                <p className="text-xs text-text-secondary font-mono">{modelDisplay}</p>
+              )}
             </div>
 
             {submitError && (

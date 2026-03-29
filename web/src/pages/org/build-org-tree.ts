@@ -27,6 +27,7 @@ export interface DepartmentGroupData {
   agentCount: number
   activeCount: number
   cost7d: number | null
+  currency: string | null
   isDropTarget?: boolean
   [key: string]: unknown
 }
@@ -109,6 +110,7 @@ export function buildOrgTree(
         agentCount: deptMembers.length,
         activeCount,
         cost7d: health?.department_cost_7d ?? null,
+        currency: health?.currency ?? null,
       } satisfies DepartmentGroupData,
     })
 

@@ -6,6 +6,7 @@ import { filterAgents, sortAgents } from '@/utils/agents'
 import type { AgentConfig, WsChannel } from '@/api/types'
 
 const AGENTS_POLL_INTERVAL = 30_000
+/** Shared across agent hooks -- change both if tuning. See useAgentDetailData.ts. */
 const WS_DEBOUNCE_MS = 300
 const AGENT_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]
 

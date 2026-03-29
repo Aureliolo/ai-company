@@ -86,6 +86,20 @@ describe('DeptHealthBar', () => {
     )
   })
 
+  it('displays N/A when health is null', () => {
+    render(<DeptHealthBar name="Empty" health={null} agentCount={2} />)
+
+    expect(screen.getByText('N/A')).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
+  })
+
+  it('displays N/A when health is undefined', () => {
+    render(<DeptHealthBar name="Unknown" agentCount={3} />)
+
+    expect(screen.getByText('N/A')).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
+  })
+
   it('displays health within 0-100 as-is (property)', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 100 }), (health) => {

@@ -40,6 +40,7 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
           agentCount={data.agentCount}
           activeCount={data.activeCount}
           cost7d={data.cost7d}
+          currency={data.currency ?? undefined}
           className="mt-1.5"
         />
       </div>

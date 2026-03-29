@@ -21,7 +21,9 @@ export function DepartmentStatsBar({
     <div className={cn('flex flex-wrap gap-1.5', className)} data-testid="dept-stats-bar">
       <StatPill label="Agents" value={agentCount} />
       <StatPill label="Active" value={activeCount} />
-      {cost7d !== null && <StatPill label="Cost (7d)" value={formatCurrency(cost7d, currency)} />}
+      {cost7d !== null && Number.isFinite(cost7d) && (
+        <StatPill label="Cost (7d)" value={formatCurrency(cost7d, currency)} />
+      )}
     </div>
   )
 }

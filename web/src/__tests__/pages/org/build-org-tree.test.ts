@@ -220,6 +220,7 @@ describe('buildOrgTree', () => {
     expect(deptNode).toBeDefined()
     expect(deptNode!.data.healthPercent).toBe(85)
     expect(deptNode!.data.cost7d).toBe(12.5)
+    expect(deptNode!.data.currency).toBe('EUR')
   })
 
   it('uses runtime status from the status map', () => {
@@ -304,6 +305,7 @@ describe('buildOrgTree', () => {
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode!.data.healthPercent).toBeNull()
     expect(deptNode!.data.cost7d).toBeNull()
+    expect(deptNode!.data.currency).toBeNull()
   })
 
   it('includes companyName in CEO node data', () => {

@@ -184,9 +184,13 @@ describe('computeSpendTrend', () => {
   })
 })
 
-function dh(name: string, utilization: number, agents = 1): DepartmentHealth {
+function dh(
+  name: DepartmentHealth['department_name'],
+  utilization: number,
+  agents = 1,
+): DepartmentHealth {
   return {
-    department_name: name as DepartmentHealth['department_name'],
+    department_name: name,
     agent_count: agents,
     active_agent_count: agents,
     currency: 'EUR',
