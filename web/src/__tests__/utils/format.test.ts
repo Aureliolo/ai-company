@@ -187,6 +187,7 @@ describe('formatCurrencyCompact', () => {
   it('formats a small value with default EUR currency', () => {
     const result = formatCurrencyCompact(5)
     expect(result).toMatch(/5/)
+    expect(result).toMatch(/€|EUR/)
   })
 
   it('formats large values with compact notation', () => {
