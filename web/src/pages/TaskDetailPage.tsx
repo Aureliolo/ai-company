@@ -16,7 +16,7 @@ import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPrior
 import { formatDate, formatCurrency } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
-import type { Priority, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus, WsEvent } from '@/api/types'
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
@@ -35,7 +35,7 @@ export default function TaskDetailPage() {
   // Subscribe to real-time task updates via WebSocket
   const wsBindings = useMemo(() => [{
     channel: 'tasks' as const,
-    handler: (event: import('@/api/types').WsEvent) => {
+    handler: (event: WsEvent) => {
       useTasksStore.getState().handleWsEvent(event)
     },
   }], [])

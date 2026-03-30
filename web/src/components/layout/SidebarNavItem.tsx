@@ -39,19 +39,20 @@ export function SidebarNavItem({
       {!collapsed && (
         <>
           <span className="flex-1 truncate">{label}</span>
-          {badge !== undefined && badge > 0 && (
-            <span
-              aria-live="polite"
-              aria-label={`${badge} pending ${label.toLowerCase()}`}
-              className={cn(
-                'flex size-5 items-center justify-center',
-                'rounded-full bg-danger',
-                'text-xs font-semibold text-white',
-              )}
-            >
-              {badge > 99 ? '99+' : badge}
-            </span>
-          )}
+          <span aria-live="polite" className="contents">
+            {badge !== undefined && badge > 0 && (
+              <span
+                aria-label={`${badge} pending ${label.toLowerCase()}`}
+                className={cn(
+                  'flex size-5 items-center justify-center',
+                  'rounded-full bg-danger',
+                  'text-xs font-semibold text-white',
+                )}
+              >
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
+          </span>
           {dotColor && (
             <span
               className={cn('size-2 rounded-full', dotColor)}

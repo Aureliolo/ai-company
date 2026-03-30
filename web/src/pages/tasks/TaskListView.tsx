@@ -81,8 +81,9 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
             type="button"
             onClick={() => col.sortable && handleSort(col.key)}
             className={cn(
-              'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
+              'flex items-center gap-1 rounded-sm text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
               col.sortable && 'cursor-pointer hover:text-foreground',
+              col.sortable && FOCUS_RING,
               col.width,
             )}
             aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}

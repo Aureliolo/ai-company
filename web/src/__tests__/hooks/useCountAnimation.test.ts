@@ -75,9 +75,9 @@ describe('useCountAnimation', () => {
       vi.advanceTimersByTime(100)
     })
 
-    // Value should be between 0 and 100 (not yet at target)
-    expect(result.current).toBeGreaterThanOrEqual(0)
-    expect(result.current).toBeLessThanOrEqual(100)
+    // Value should be strictly between 0 and 100 (mid-animation, not yet at target)
+    expect(result.current).toBeGreaterThan(0)
+    expect(result.current).toBeLessThan(100)
   })
 
   it('reaches the target value after full duration', () => {

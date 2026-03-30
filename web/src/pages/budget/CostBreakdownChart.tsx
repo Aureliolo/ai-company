@@ -46,6 +46,13 @@ export function CostBreakdownChart({
   deptDisabled = false,
   currency,
 }: CostBreakdownChartProps) {
+  const dimensionOptions = useMemo(
+    () => deptDisabled
+      ? DIMENSION_OPTIONS.map((o) => o.value === 'department' ? { ...o, disabled: true } : o)
+      : DIMENSION_OPTIONS,
+    [deptDisabled],
+  )
+
   const legendSlices = useMemo(() => {
     if (breakdown.length <= MAX_LEGEND_SLICES) return breakdown
     const overflow = breakdown.slice(MAX_LEGEND_SLICES)
@@ -70,9 +77,7 @@ export function CostBreakdownChart({
       action={
         <SegmentedControl
           label="Breakdown dimension"
-          options={deptDisabled
-            ? DIMENSION_OPTIONS.map((o) => o.value === 'department' ? { ...o, disabled: true } : o)
-            : DIMENSION_OPTIONS}
+          options={dimensionOptions}
           value={dimension}
           onChange={onDimensionChange}
         />

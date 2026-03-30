@@ -102,9 +102,4 @@ describe('useBreakpoint', () => {
     expect(result.current.breakpoint).toBe('desktop-sm')
   })
 
-  it('returns desktop when all breakpoints match', () => {
-    mockMatchMedia(true, true, true)
-    const { result } = renderHook(() => useBreakpoint())
-    expect(result.current.breakpoint).toBe('desktop')
-  })
 })

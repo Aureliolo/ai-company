@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url'
 /** Vendor chunk groups for production bundle splitting. */
 const VENDOR_CHUNKS: Record<string, readonly string[]> = {
   'vendor-react': ['react', 'react-dom', 'react-router'],
-  'vendor-ui': ['radix-ui', 'class-variance-authority', 'clsx', 'tailwind-merge', 'cmdk', 'lucide-react'],
+  'vendor-ui': ['@radix-ui/', 'class-variance-authority', 'clsx', 'tailwind-merge', 'cmdk', 'lucide-react'],
   'vendor-charts': ['recharts'],
   'vendor-flow': ['@xyflow/react', '@dagrejs/dagre', 'd3-force'],
   'vendor-editor': ['@codemirror/commands', '@codemirror/lang-json', '@codemirror/lang-yaml', '@codemirror/language', '@codemirror/state', '@codemirror/view'],

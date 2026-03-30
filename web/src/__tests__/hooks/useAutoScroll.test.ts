@@ -58,6 +58,25 @@ describe('useAutoScroll', () => {
     expect(result.current.isAutoScrolling).toBe(true)
   })
 
+  it('scrollToBottom re-enables auto-scrolling after user scrolled away', () => {
+    const container = makeContainer({ scrollTop: 100 })
+    const ref = { current: container }
+    const { result } = renderHook(() => useAutoScroll(ref))
+
+    // User scrolls away
+    act(() => {
+      container.dispatchEvent(new Event('scroll'))
+    })
+    expect(result.current.isAutoScrolling).toBe(false)
+
+    // scrollToBottom re-enables auto-scrolling
+    act(() => {
+      result.current.scrollToBottom()
+    })
+    expect(result.current.isAutoScrolling).toBe(true)
+    expect(container.scrollTop).toBe(container.scrollHeight)
+  })
+
   it('handles null ref gracefully', () => {
     const ref = { current: null }
     const { result } = renderHook(() => useAutoScroll(ref))

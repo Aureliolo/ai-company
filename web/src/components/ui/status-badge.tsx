@@ -17,16 +17,18 @@ const DOT_COLOR_CLASSES: Record<SemanticColor | 'text-secondary', string> = {
   'text-secondary': 'bg-text-secondary',
 }
 
-interface StatusBadgeProps {
+export interface StatusBadgeProps {
   status: AgentRuntimeStatus
   label?: boolean
   pulse?: boolean
   className?: string
   /** Enable animated color transition on status change. Default: false. */
   animated?: boolean
+  /** Enable live-region announcements for dynamic state changes. Default: false. */
+  announce?: boolean
 }
 
-export function StatusBadge({ status, label = false, pulse = false, className, animated = false }: StatusBadgeProps) {
+export function StatusBadge({ status, label = false, pulse = false, className, animated = false, announce = false }: StatusBadgeProps) {
   const color = getStatusColor(status)
   const statusLabel = STATUS_LABELS[status]
   const { motionProps } = useStatusTransition(status)
@@ -35,7 +37,8 @@ export function StatusBadge({ status, label = false, pulse = false, className, a
     <span
       className={cn('inline-flex items-center gap-1.5', className)}
       aria-label={statusLabel}
-      role="status"
+      role={announce ? 'status' : undefined}
+      aria-live={announce ? 'polite' : undefined}
     >
       {animated ? (
         <motion.span

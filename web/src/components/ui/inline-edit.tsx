@@ -132,8 +132,9 @@ export function InlineEdit({
           data-inline-display=""
           aria-label={`Edit: ${value || placeholder || 'empty'}`}
           className={cn(
-            'cursor-pointer border-b border-dashed border-transparent text-left transition-colors',
+            'cursor-pointer rounded-sm border-b border-dashed border-transparent text-left transition-colors',
             !disabled && 'hover:border-border-bright',
+            !disabled && FOCUS_RING,
             disabled && 'cursor-default opacity-60',
             flashClassName,
           )}
