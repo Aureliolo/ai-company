@@ -3,7 +3,7 @@ import { initialize, mswLoader } from 'msw-storybook-addon'
 import '../src/styles/global.css'
 
 // Start the MSW service worker before any stories render.
-// 'bypass' lets non-mocked requests (assets, HMR) pass through silently.
+// 'bypass' silences warnings for any request without a matching handler.
 initialize({ onUnhandledRequest: 'bypass' })
 
 export default definePreview({

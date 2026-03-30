@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
 
 /** Vendor chunk groups for production bundle splitting. */
 const VENDOR_CHUNKS: Record<string, readonly string[]> = {
@@ -26,7 +28,17 @@ function manualChunks(id: string): string | undefined {
 }
 
 export default defineConfig(async () => {
-  const plugins = [react(), tailwindcss()]
+  const plugins = [
+    react(),
+    tailwindcss(),
+    {
+      name: 'remove-msw-worker',
+      apply: 'build' as const,
+      closeBundle: async () => {
+        await rm(path.resolve(__dirname, 'dist', 'mockServiceWorker.js'), { force: true })
+      },
+    },
+  ]
 
   if (process.env.VITE_ANALYZE) {
     const { visualizer } = await import('rollup-plugin-visualizer')
