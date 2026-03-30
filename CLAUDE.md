@@ -46,122 +46,11 @@ uv run zensical serve                      # local docs preview (http://127.0.0.
 
 ### Web Dashboard
 
-```bash
-npm --prefix web install                   # install frontend deps
-npm --prefix web run dev                   # dev server (http://localhost:5173)
-npm --prefix web run build                 # production build
-npm --prefix web run lint                  # ESLint (zero warnings enforced)
-npm --prefix web run type-check            # TypeScript type checking
-npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
-npm --prefix web run analyze               # bundle size treemap (opens stats.html)
-npm --prefix web run e2e                   # Playwright visual regression tests
-npm --prefix web run e2e:update            # update Playwright screenshot baselines
-npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+)
-npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
-npm --prefix web run storybook:build       # Storybook production build
-```
+See `web/CLAUDE.md` for commands, design system, and component inventory.
 
 ### CLI (Go Binary)
 
-Note: Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. golangci-lint is registered as a `tool` in `cli/go.mod` so it runs via `go -C cli tool golangci-lint`.
-
-```bash
-go -C cli build -o synthorg ./main.go                                  # build CLI
-go -C cli test ./...                                                   # run tests (fuzz targets run seed corpus only without -fuzz flag)
-go -C cli vet ./...                                                    # vet
-go -C cli tool golangci-lint run                                       # lint
-go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
-```
-
-#### Global Flags
-
-All commands accept these persistent flags (precedence: flag > env var > config > default):
-
-| Flag | Short | Env Var | Description |
-|------|-------|---------|-------------|
-| `--data-dir` | | `SYNTHORG_DATA_DIR` | Data directory (default: platform-appropriate) |
-| `--skip-verify` | | `SYNTHORG_NO_VERIFY` / `SYNTHORG_SKIP_VERIFY` | Skip image signature verification |
-| `--quiet` | `-q` | `SYNTHORG_QUIET` | Errors only, no spinners/hints/boxes |
-| `--verbose` | `-v` | | Increase verbosity (`-v`=verbose, `-vv`=trace) |
-| `--no-color` | | `NO_COLOR`, `CLICOLOR=0`, `TERM=dumb` | Disable ANSI color output |
-| `--plain` | | | ASCII-only output (no Unicode, no spinners) |
-| `--json` | | | Machine-readable JSON output |
-| `--yes` | `-y` | `SYNTHORG_YES` | Auto-accept all prompts (non-interactive) |
-| `--help-all` | | | Show help for all commands (recursive) |
-
-Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces color on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
-
-#### Hint Tiers
-
-The CLI uses four hint tiers with different visibility rules per `hints` mode. When adding hints, choose the tier that matches the intent:
-
-| Tier | `always` | `auto` | `never` | `--quiet` | Use for |
-|------|----------|--------|---------|-----------|---------|
-| `HintError` | shown | shown | shown | suppressed | Error recovery (always visible unless quiet) |
-| `HintNextStep` | shown | shown | shown | suppressed | Natural next action, destructive-action feedback |
-| `HintTip` | shown | once/session | suppressed | suppressed | Config automation suggestions (e.g. `auto_pull`) |
-| `HintGuidance` | shown | suppressed | suppressed | suppressed | Flag/feature discovery (e.g. `--watch`, `--keep N`) |
-
-`HintTip` deduplicates within a session (same message shown at most once). `HintGuidance` is invisible in the default `auto` mode -- only users who opt in with `synthorg config set hints always` see it.
-
-Additional env vars (no corresponding flag -- settable via env var or `config set`):
-
-| Env Var | Description |
-|---------|-------------|
-| `SYNTHORG_LOG_LEVEL` | Override backend log level |
-| `SYNTHORG_BACKEND_PORT` | Override backend API port |
-| `SYNTHORG_WEB_PORT` | Override web dashboard port |
-| `SYNTHORG_CHANNEL` | Override release channel (stable/dev) |
-| `SYNTHORG_IMAGE_TAG` | Override container image tag |
-| `SYNTHORG_AUTO_UPDATE_CLI` | Auto-accept CLI self-updates |
-| `SYNTHORG_AUTO_PULL` | Auto-accept container image pulls |
-| `SYNTHORG_AUTO_RESTART` | Auto-restart containers after update |
-
-#### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | Runtime error |
-| 2 | Usage error (bad arguments) |
-| 3 | Unhealthy (backend/containers) |
-| 4 | Unreachable (Docker not available) |
-| 10 | Updates available (`--check`) |
-
-#### Config Subcommands
-
-`synthorg config <subcommand>`:
-
-| Subcommand | Description |
-|------------|-------------|
-| `show` | Display all current settings (default when no subcommand) |
-| `get <key>` | Get a single config value (19 gettable keys) |
-| `set <key> <value>` | Set a config value (17 settable keys, compose-affecting keys trigger regeneration) |
-| `unset <key>` | Reset a key to its default value |
-| `list` | Show all keys with resolved value and source (env/config/default) |
-| `path` | Print the config file path |
-| `edit` | Open config file in $VISUAL/$EDITOR |
-
-Settable keys: `auto_apply_compose`, `auto_cleanup`, `auto_pull`, `auto_restart`, `auto_start_after_wipe`, `auto_update_cli`, `backend_port`, `channel`, `color`, `docker_sock`, `hints`, `image_tag`, `log_level`, `output`, `sandbox`, `timestamps`, `web_port`. Keys that affect Docker compose (`backend_port`, `web_port`, `sandbox`, `docker_sock`, `image_tag`, `log_level`) trigger automatic `compose.yml` regeneration.
-
-#### Per-Command Flags
-
-| Command | Flags |
-|---------|-------|
-| `init` | `--backend-port`, `--web-port`, `--sandbox`, `--image-tag`, `--channel`, `--log-level` (all flags = non-interactive mode) |
-| `start` | `--no-wait`, `--timeout`, `--no-pull`, `--dry-run`, `--no-detach`, `--no-verify` |
-| `stop` | `--timeout`/`-t`, `--volumes` |
-| `status` | `--watch`/`-w`, `--interval`, `--wide`, `--no-trunc`, `--services`, `--check` |
-| `logs` | `--follow`/`-f`, `--tail`, `--since`, `--until`, `--timestamps`/`-t`, `--no-log-prefix` |
-| `update` | `--dry-run`, `--no-restart`, `--timeout`, `--cli-only`, `--images-only`, `--check` |
-| `cleanup` | `--dry-run`, `--all`, `--keep N` |
-| `backup create` | `--output`/`-o`, `--timeout` |
-| `backup list` | `--limit`/`-n`, `--sort` |
-| `backup restore` | `--confirm`, `--dry-run`, `--no-restart`, `--timeout` |
-| `wipe` | `--dry-run`, `--no-backup`, `--keep-images` |
-| `doctor` | `--checks`, `--fix` |
-| `version` | `--short` |
-| `uninstall` | `--keep-data`, `--keep-images` |
+See `cli/CLAUDE.md` for commands, flags, and reference. Key rule: use `go -C cli` (never `cd cli`).
 
 ## Documentation
 
@@ -215,104 +104,17 @@ src/synthorg/
   templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching, locale-aware name generation
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory, invocation tracking
 
-web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
-  api/            # Axios client, endpoint modules (19 domains), shared types
-  components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
-  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, communication edges)
-  lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader
-  mocks/          # MSW request handlers for Storybook API mocking (handlers/)
-  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
-  router/         # React Router config, route constants, auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, providers, theme, and per-domain stores for each page)
-  styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
-  utils/          # Constants, error handling, formatting, logging
-  __tests__/      # Vitest unit + property tests (mirrors src/ structure)
-
-cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
-  cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.), global options, exit codes, env var constants
-  internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify
-
+web/src/          # React 19 dashboard (see web/CLAUDE.md for full structure)
+cli/              # Go CLI binary (see cli/CLAUDE.md for full structure)
 site/             # Astro landing page (synthorg.io)
 ```
 
 ## Web Dashboard Design System (MANDATORY)
 
-### Component Reuse
-
-**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. These are the shared building blocks -- every page composes from them:
-
-| Component | Import | Use for |
-|-----------|--------|---------|
-| `StatusBadge` | `@/components/ui/status-badge` | Agent/task/system status indicators (colored dot + optional built-in label toggle) |
-| `MetricCard` | `@/components/ui/metric-card` | Numeric KPIs with sparkline, change badge, progress bar |
-| `Sparkline` | `@/components/ui/sparkline` | Inline SVG trend lines with `color?` and `animated?` props (used inside MetricCard or standalone) |
-| `SectionCard` | `@/components/ui/section-card` | Titled card wrapper with icon and action slot |
-| `AgentCard` | `@/components/ui/agent-card` | Agent display: avatar, name, role, status, current task |
-| `DeptHealthBar` | `@/components/ui/dept-health-bar` | Department utilization: animated fill bar + `health?` (optional, shows N/A when null) + `agentCount` (required) |
-| `ProgressGauge` | `@/components/ui/progress-gauge` | Circular or linear gauge for budget/utilization (`variant?` defaults to `'circular'`, `max?` defaults to 100) |
-| `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair |
-| `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop |
-| `Button` | `@/components/ui/button` | Standard button (shadcn) |
-| `Toast` / `ToastContainer` | `@/components/ui/toast` | Success/error/warning/info notifications with auto-dismiss queue (mount `ToastContainer` once in AppLayout) |
-| `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
-| `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
-| `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |
-| `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Radix AlertDialog) with `default` / `destructive` variants and `loading` state |
-| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
-| `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
-| `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Framer Motion AnimatePresence keyed by route) |
-| `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
-| `Drawer` | `@/components/ui/drawer` | Slide-in panel (`side` prop: left or right, default right) with overlay, spring animation, focus trap, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), and `contentClassName` override |
-| `InputField` | `@/components/ui/input-field` | Labeled text input with error/hint display, optional multiline textarea mode |
-| `SelectField` | `@/components/ui/select-field` | Labeled select dropdown with error/hint and placeholder support |
-| `SliderField` | `@/components/ui/slider-field` | Labeled range slider with custom value formatter and aria-live display |
-| `ToggleField` | `@/components/ui/toggle-field` | Labeled toggle switch (role="switch") with optional description text |
-| `TaskStatusIndicator` | `@/components/ui/task-status-indicator` | Task status dot with optional label and pulse animation (accepts `TaskStatus`) |
-| `PriorityBadge` | `@/components/ui/task-status-indicator` | Task priority colored pill badge (critical/high/medium/low) |
-| `ProviderHealthBadge` | `@/components/ui/provider-health-badge` | Provider health status indicator (up/degraded/down colored dot + optional label) |
-| `TokenUsageBar` | `@/components/ui/token-usage-bar` | Segmented horizontal meter bar for token usage (multi-segment with auto-colors, `role="meter"`, animated transitions) |
-| `CodeMirrorEditor` | `@/components/ui/code-mirror-editor` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, `readOnly` support |
-| `SegmentedControl` | `@/components/ui/segmented-control` | Accessible radiogroup with keyboard navigation, size variants (`sm`/`md`), generic `<T extends string>` typing |
-| `ThemeToggle` | `@/components/ui/theme-toggle` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar), rendered in StatusBar |
-| `LiveRegion` | `@/components/ui/live-region` | Debounced ARIA live region wrapper (`polite`/`assertive`) for real-time WS updates without overwhelming screen readers |
-| `MobileUnsupportedOverlay` | `@/components/ui/mobile-unsupported` | Full-screen overlay at `<768px` viewports directing users to desktop or CLI; self-manages visibility via `useBreakpoint` |
-| `LazyCodeMirrorEditor` | `@/components/ui/lazy-code-mirror-editor` | Suspense-wrapped lazy-loaded `CodeMirrorEditor` (drop-in replacement, defers ~200KB+ CodeMirror bundle) |
-
-### Design Token Rules
-
-- **Colors**: use Tailwind semantic classes (`text-foreground`, `bg-card`, `text-accent`, `text-success`, `bg-danger`, etc.) or CSS variables (`var(--so-accent)`). NEVER hardcode hex values in `.tsx`/`.ts` files.
-- **Typography**: use `font-sans` or `font-mono` (maps to Geist tokens). NEVER set `fontFamily` directly.
-- **Spacing**: use density-aware tokens (`p-card`, `gap-section-gap`, `gap-grid-gap`) or standard Tailwind spacing. NEVER hardcode pixel values for layout spacing.
-- **Shadows/Borders**: use token variables (`var(--so-shadow-card-hover)`, `border-border`, `border-bright`).
-
-### Creating New Components
-
-When a new shared component is needed (not covered by the inventory above):
-1. Place it in `web/src/components/ui/` with a descriptive kebab-case filename
-2. Create a `.stories.tsx` file alongside it with all states (default, hover, loading, error, empty)
-3. Export props as a TypeScript interface
-4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
-5. Import `cn` from `@/lib/utils` for conditional class merging
-
-### What NOT to Do
-
-- **Do NOT** recreate status dots inline -- use `<StatusBadge>`
-- **Do NOT** build card-with-header layouts from scratch -- use `<SectionCard>`
-- **Do NOT** create metric displays with `text-metric font-bold` -- use `<MetricCard>`
-- **Do NOT** render initials circles manually -- use `<Avatar>`
-- **Do NOT** create complex (>8 line) JSX inside `.map()` -- extract to a shared component
-- **Do NOT** use `rgba()` with hardcoded values -- use design token variables
-
-### Enforcement
-
-A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on every Edit/Write to `web/src/` files. It catches:
-- Hardcoded hex colors and rgba values
-- Hardcoded font-family declarations
-- New components without Storybook stories
-- Duplicate patterns that should use existing shared components
-- Complex `.map()` blocks that should be extracted
-
-Fix all violations before proceeding -- do not suppress or ignore hook output.
+See `web/CLAUDE.md` for the full component inventory, design token rules, and post-training references (TS6, Storybook 10). Key rules:
+- **ALWAYS reuse** existing components from `web/src/components/ui/` before creating new ones
+- **NEVER hardcode** hex colors, font-family, or pixel spacing -- use design tokens
+- A PostToolUse hook (`scripts/check_web_design_system.py`) enforces these rules on every Edit/Write to `web/src/`
 
 ## Shell Usage
 
@@ -430,29 +232,3 @@ Fix all violations before proceeding -- do not suppress or ignore hook output.
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Framer Motion, cmdk, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, MSW, msw-storybook-addon, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security, Playwright, @lhci/cli, rollup-plugin-visualizer, cross-env)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)
-
-## Post-Training Reference (TypeScript 6 & Storybook 10)
-
-These tools were released after Claude's training cutoff. Key facts for correct code generation:
-
-### TypeScript 6.0 (https://aka.ms/ts6)
-
-- **`baseUrl` deprecated** -- will stop working in TS 7. Remove it; `paths` entries are relative to the tsconfig directory
-- **`esModuleInterop` always true** -- cannot be set to `false`; remove explicit `"esModuleInterop": true` to avoid deprecation warning
-- **`types` defaults to `[]`** -- no longer auto-discovers `@types/*`; must explicitly list needed types (e.g. `"types": ["vitest/globals"]`)
-- **`DOM.Iterable` merged into `DOM`** -- `"lib": ["ES2025", "DOM"]` is sufficient, no separate `DOM.Iterable`
-- **`moduleResolution: "classic"` and `"node10"` removed** -- use `"bundler"` or `"nodenext"`
-- **`strict` defaults to `true`** -- explicit `"strict": true` is redundant but harmless
-- **`noUncheckedSideEffectImports` defaults to `true`** -- CSS side-effect imports need type declarations (Vite's `/// <reference types="vite/client" />` covers this)
-- **Last JS-based TypeScript** -- TS 7.0 will be rewritten in Go. Migration tool: `npx @andrewbranch/ts5to6`
-
-### Storybook 10 (https://storybook.js.org/docs/releases/migration-guide)
-
-- **ESM-only** -- all CJS support removed
-- **Packages removed** -- `@storybook/addon-essentials`, `@storybook/addon-interactions`, `@storybook/test`, `@storybook/blocks` no longer published. Essentials (backgrounds, controls, viewport, actions, toolbars, measure, outline) and interactions are built into core `storybook`
-- **`@storybook/addon-docs` is separate** -- must be installed and added to addons if using `tags: ['autodocs']` or MDX
-- **Import paths changed** -- use `storybook/test` (not `@storybook/test`), `storybook/actions` (not `@storybook/addon-actions`)
-- **Type-safe config** -- use `defineMain` from `@storybook/react-vite/node` and `definePreview` from `@storybook/react-vite` (must still include explicit `framework` field)
-- **Backgrounds API changed** -- use `parameters.backgrounds.options` (object keyed by name) + `initialGlobals.backgrounds.value` (replaces old `default` + `values` array)
-- **a11y testing** -- use `parameters.a11y.test: 'error' | 'todo' | 'off'` (replaces old `.element` and `.manual`). Set globally in `preview.tsx` to enforce WCAG compliance on all stories
-- **Minimum versions** -- Node 20.19+, Vite 5+, Vitest 3+, TypeScript 4.9+
