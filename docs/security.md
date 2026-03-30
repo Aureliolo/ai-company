@@ -76,6 +76,17 @@ on resolution.
 - **One-time WebSocket tickets** -- short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`) -- WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
 - **Rate limiting** -- configurable per-deployment (default: 100 req/min). The WebSocket path is excluded from rate limiting -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. Auth-sensitive endpoints (``/auth/login``, ``/auth/setup``, ``/auth/change-password``) have a stricter route-level rate limit of 10 req/min to mitigate credential brute-forcing.
 
+### Frontend Security
+
+The React dashboard enforces several measures to reduce the client-side attack
+surface:
+
+| Measure | Mechanism |
+|---------|-----------|
+| **XSS prevention** | ESLint `no-restricted-syntax` rule bans `dangerouslySetInnerHTML` at write time. Override requires `// eslint-disable-next-line` with justification. |
+| **CSP nonce readiness** | `<MotionConfig nonce>` wrapper in `App.tsx` + `lib/csp.ts` reader. When nonce-based CSP is activated (nginx `sub_filter` replaces the `__CSP_NONCE__` placeholder per request), Framer Motion's dynamically injected `<style>` tags pass CSP without `'unsafe-inline'`. Currently staged -- see the activation checklist in `web/index.html`. |
+| **JWT storage** | `localStorage` with short-lived tokens, automatic expiry cleanup, and 401 interceptor. Cookie-based auth (httpOnly) is a future enhancement tracked separately. |
+
 ### Security Headers
 
 All API responses include:
@@ -90,7 +101,7 @@ All API responses include:
 | `Cross-Origin-Resource-Policy` | `same-origin` |
 | `Cross-Origin-Opener-Policy` | `same-origin` (API); `same-origin-allow-popups` (docs) |
 | `Cache-Control` | `no-store` (API); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
-| `Content-Security-Policy` | Strict default; relaxed only for docs UI |
+| `Content-Security-Policy` | Strict default; relaxed only for docs UI. Dashboard is nonce-ready (`MotionConfig` + `lib/csp.ts`); activate by replacing `style-src 'unsafe-inline'` with nonce-based policy in `web/security-headers.conf`. |
 
 ---
 

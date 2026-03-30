@@ -219,7 +219,7 @@ web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules (19 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, communication edges)
-  lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
+  lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants, auth/setup guards
   stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, providers, theme, and per-domain stores for each page)

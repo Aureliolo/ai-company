@@ -1,6 +1,9 @@
 describe('getCspNonce', () => {
   afterEach(() => {
-    document.querySelector('meta[name="csp-nonce"]')?.remove()
+    document
+      .querySelectorAll('meta[name="csp-nonce"]')
+      .forEach((el) => el.remove())
+    vi.restoreAllMocks()
     vi.resetModules()
   })
 
@@ -53,6 +56,26 @@ describe('getCspNonce', () => {
     expect(getCspNonce()).toBeUndefined()
   })
 
+  it('returns undefined for un-substituted __CSP_NONCE__ placeholder', async () => {
+    const meta = document.createElement('meta')
+    meta.name = 'csp-nonce'
+    meta.content = '__CSP_NONCE__'
+    document.head.appendChild(meta)
+
+    const { getCspNonce } = await import('@/lib/csp')
+    expect(getCspNonce()).toBeUndefined()
+  })
+
+  it('trims whitespace from valid nonce values', async () => {
+    const meta = document.createElement('meta')
+    meta.name = 'csp-nonce'
+    meta.content = '  abc123  '
+    document.head.appendChild(meta)
+
+    const { getCspNonce } = await import('@/lib/csp')
+    expect(getCspNonce()).toBe('abc123')
+  })
+
   it('caches absent result and does not re-query DOM', async () => {
     const spy = vi.spyOn(document, 'querySelector')
 
@@ -60,13 +83,11 @@ describe('getCspNonce', () => {
     expect(getCspNonce()).toBeUndefined()
     expect(getCspNonce()).toBeUndefined()
 
-    // querySelector called once during import-time init + once for first call
-    // Second call should hit cache, not query DOM again
+    // querySelector called once on first getCspNonce() call.
+    // Subsequent calls hit the cache, so no additional DOM queries.
     const cspCalls = spy.mock.calls.filter(
       ([sel]) => sel === 'meta[name="csp-nonce"]',
     )
     expect(cspCalls).toHaveLength(1)
-
-    spy.mockRestore()
   })
 })
