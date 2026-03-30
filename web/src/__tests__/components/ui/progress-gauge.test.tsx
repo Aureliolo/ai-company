@@ -146,16 +146,30 @@ describe('ProgressGauge linear variant', () => {
   })
 
   it('renders a bar track and fill', () => {
-    const { container } = render(<ProgressGauge value={60} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track).toBeInTheDocument()
-    expect(track?.firstElementChild).toBeInTheDocument()
+    render(<ProgressGauge value={60} variant="linear" />)
+    expect(screen.getByTestId('progress-track')).toBeInTheDocument()
+    expect(screen.getByTestId('progress-fill')).toBeInTheDocument()
   })
 
   it('has accessible role and aria attributes', () => {
     render(<ProgressGauge value={75} variant="linear" label="CPU" />)
     const gauge = screen.getByRole('meter')
     expect(gauge).toHaveAttribute('aria-valuenow', '75')
+    expect(gauge).toHaveAttribute('aria-valuemin', '0')
+    expect(gauge).toHaveAttribute('aria-valuemax', '100')
+    expect(gauge).toHaveAttribute('aria-label', 'CPU: 75%')
+  })
+
+  it('has aria-label without label prop', () => {
+    render(<ProgressGauge value={60} variant="linear" />)
+    const gauge = screen.getByRole('meter')
+    expect(gauge).toHaveAttribute('aria-label', '60%')
+  })
+
+  it('normalizes aria-valuenow to percentage with custom max', () => {
+    render(<ProgressGauge value={50} max={200} variant="linear" label="Tokens" />)
+    const gauge = screen.getByRole('meter')
+    expect(gauge).toHaveAttribute('aria-valuenow', '25')
     expect(gauge).toHaveAttribute('aria-valuemin', '0')
     expect(gauge).toHaveAttribute('aria-valuemax', '100')
   })
@@ -168,33 +182,39 @@ describe('ProgressGauge linear variant', () => {
   })
 
   it('applies bg-danger for low values', () => {
-    const { container } = render(<ProgressGauge value={10} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track?.firstElementChild).toHaveClass('bg-danger')
+    render(<ProgressGauge value={10} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveClass('bg-danger')
   })
 
   it('applies bg-warning for moderate values', () => {
-    const { container } = render(<ProgressGauge value={35} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track?.firstElementChild).toHaveClass('bg-warning')
+    render(<ProgressGauge value={35} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveClass('bg-warning')
   })
 
   it('applies bg-accent for mid-range values', () => {
-    const { container } = render(<ProgressGauge value={60} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track?.firstElementChild).toHaveClass('bg-accent')
+    render(<ProgressGauge value={60} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveClass('bg-accent')
   })
 
   it('applies bg-success for high values', () => {
-    const { container } = render(<ProgressGauge value={90} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track?.firstElementChild).toHaveClass('bg-success')
+    render(<ProgressGauge value={90} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveClass('bg-success')
   })
 
   it('sets fill width to percentage', () => {
-    const { container } = render(<ProgressGauge value={75} variant="linear" />)
-    const track = container.querySelector('.bg-border')
-    expect(track?.firstElementChild).toHaveStyle({ width: '75%' })
+    render(<ProgressGauge value={75} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveStyle({ width: '75%' })
+  })
+
+  it('renders sm size with smaller track', () => {
+    render(<ProgressGauge value={50} variant="linear" size="sm" />)
+    expect(screen.getByTestId('progress-track')).toHaveClass('h-1.5')
+  })
+
+  it('renders 0% fill width at zero value', () => {
+    render(<ProgressGauge value={0} variant="linear" />)
+    expect(screen.getByTestId('progress-fill')).toHaveStyle({ width: '0%' })
+    expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
   it('handles NaN value as 0%', () => {

@@ -69,16 +69,17 @@ export function ProgressGauge({
             </span>
           </div>
         )}
-        <div className={cn('w-full overflow-hidden rounded-full bg-border', config.trackHeight)}>
+        <div
+          data-testid="progress-track"
+          className={cn('w-full overflow-hidden rounded-full bg-border', config.trackHeight)}
+        >
           <div
+            data-testid="progress-fill"
             className={cn(
-              'h-full rounded-full transition-all duration-[900ms]',
+              'h-full rounded-full transition-all duration-[900ms] ease-in-out',
               FILL_COLOR_CLASSES[color],
             )}
-            style={{
-              width: `${percentage}%`,
-              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
+            style={{ width: `${percentage}%` }}
           />
         </div>
         {!label && (
@@ -129,11 +130,10 @@ export function ProgressGauge({
           d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
           fill="none"
           strokeWidth={stroke}
-          className={cn(STROKE_COLOR_CLASSES[color], 'transition-all duration-[900ms]')}
+          className={cn(STROKE_COLOR_CLASSES[color], 'transition-all duration-[900ms] ease-in-out')}
           style={{
             strokeDasharray: circumference,
             strokeDashoffset: dashOffset,
-            transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
           }}
           strokeLinecap="round"
         />
