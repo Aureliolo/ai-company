@@ -121,9 +121,21 @@ async def _run_async_fetchers(
     except ExceptionGroup as eg:
         fatal = eg.subgroup((MemoryError, RecursionError))
         if fatal is not None:
+            logger.error(
+                API_REQUEST_ERROR,
+                endpoint="activities",
+                detail="fatal error in async fetchers",
+                exc_info=True,
+            )
             raise fatal.exceptions[0] from eg
         svc = eg.subgroup(ServiceUnavailableError)
         if svc is not None:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="activities",
+                detail="service unavailable in async fetchers",
+                exc_info=True,
+            )
             raise svc.exceptions[0] from eg
         failed_sources = [
             src
