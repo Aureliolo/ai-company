@@ -82,11 +82,12 @@ function loadViewport(): ViewportState | undefined {
     const stored = localStorage.getItem(VIEWPORT_KEY)
     if (!stored) return undefined
     const parsed: unknown = JSON.parse(stored)
+    const rec = parsed as Record<string, unknown>
     if (
       typeof parsed === 'object' && parsed !== null &&
-      typeof (parsed as Record<string, unknown>).x === 'number' &&
-      typeof (parsed as Record<string, unknown>).y === 'number' &&
-      typeof (parsed as Record<string, unknown>).zoom === 'number'
+      typeof rec.x === 'number' && Number.isFinite(rec.x) &&
+      typeof rec.y === 'number' && Number.isFinite(rec.y) &&
+      typeof rec.zoom === 'number' && Number.isFinite(rec.zoom) && (rec.zoom as number) > 0
     ) {
       return parsed as ViewportState
     }
@@ -511,6 +512,7 @@ function OrgChartInner() {
           }
         `}</style>
         <ReactFlow
+          aria-label="Organization chart"
           nodes={renderedNodes}
           edges={transition.displayEdges}
           nodeTypes={nodeTypes}

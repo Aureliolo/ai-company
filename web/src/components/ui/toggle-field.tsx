@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 
 export interface ToggleFieldProps {
   label: string
@@ -31,7 +31,7 @@ export function ToggleField({
         disabled={disabled}
         className={cn(
           'relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          FOCUS_RING,
           'disabled:opacity-60 disabled:cursor-not-allowed',
           checked ? 'bg-accent' : 'bg-border',
         )}

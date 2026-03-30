@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Dialog } from 'radix-ui'
 import { Loader2, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import type { CreateTaskRequest, Priority, TaskType, Complexity } from '@/api/types'
@@ -268,8 +268,8 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   )
 }
 
-const INPUT_CLASSES = 'w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1'
-const TEXTAREA_CLASSES = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none resize-y focus:ring-2 focus:ring-accent focus:ring-offset-1'
+const INPUT_CLASSES = cn('w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none', FOCUS_RING)
+const TEXTAREA_CLASSES = cn('w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none resize-y', FOCUS_RING)
 
 function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (

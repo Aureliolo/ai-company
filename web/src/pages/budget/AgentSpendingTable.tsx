@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -51,7 +51,8 @@ function ColumnHeader({ col, sortKey, sortDir, onSort }: {
       type="button"
       onClick={() => col.sortable && onSort(col.key)}
       className={cn(
-        'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:text-foreground',
+        'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors focus-visible:text-foreground',
+        FOCUS_RING,
         col.sortable && 'cursor-pointer hover:text-foreground',
         col.width,
         col.key !== 'agentName' && 'justify-end',

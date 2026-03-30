@@ -1,0 +1,104 @@
+import { useCallback, useEffect, useState } from 'react'
+import type { RefObject } from 'react'
+
+interface UseRovingTabIndexOptions {
+  containerRef: RefObject<HTMLElement | null>
+  orientation: 'vertical' | 'horizontal' | 'grid'
+  /** Number of columns for grid orientation. Required when orientation is 'grid'. */
+  columns?: number
+  /** Whether to wrap focus around at boundaries. Default: true. */
+  loop?: boolean
+}
+
+interface UseRovingTabIndexReturn {
+  /** Index of the currently focused item. */
+  focusedIndex: number
+  /** Returns 0 for the focused item, -1 for all others. */
+  getTabIndex: (index: number) => 0 | -1
+  /** Key event handler to attach to the container. */
+  handleKeyDown: (event: KeyboardEvent | React.KeyboardEvent) => void
+}
+
+const ITEM_SELECTOR = '[data-roving-item]'
+
+/**
+ * Roving tabindex pattern for arrow-key navigation through lists and grids.
+ *
+ * The focused item gets `tabIndex={0}` and all others get `tabIndex={-1}`.
+ * Attach `data-roving-item` to each navigable child element.
+ */
+export function useRovingTabIndex(options: UseRovingTabIndexOptions): UseRovingTabIndexReturn {
+  const { containerRef, orientation, columns = 1, loop = true } = options
+  const [focusedIndex, setFocusedIndex] = useState(0)
+
+  // Clamp focusedIndex when the number of items shrinks below it
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const items = container.querySelectorAll<HTMLElement>(ITEM_SELECTOR)
+    if (items.length > 0 && focusedIndex >= items.length) {
+      setFocusedIndex(items.length - 1) // eslint-disable-line @eslint-react/set-state-in-effect -- clamp index when items shrink
+      return // The state update will re-trigger this effect to sync tabindex
+    }
+
+    items.forEach((item, i) => {
+      item.setAttribute('tabindex', i === focusedIndex ? '0' : '-1')
+    })
+  }, [containerRef, focusedIndex])
+
+  const getTabIndex = useCallback(
+    (index: number): 0 | -1 => (index === focusedIndex ? 0 : -1),
+    [focusedIndex],
+  )
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent | React.KeyboardEvent) => {
+      const container = containerRef.current
+      if (!container) return
+
+      const items = container.querySelectorAll<HTMLElement>(ITEM_SELECTOR)
+      const count = items.length
+      if (count === 0) return
+
+      // Derive origin from actual DOM focus to avoid stale index after click/programmatic focus
+      const activeIndex = Array.from(items).findIndex((item) => item === document.activeElement)
+      const originIndex = activeIndex >= 0 ? activeIndex : focusedIndex
+
+      let nextIndex: number | null = null
+      const { key } = event
+
+      if (orientation === 'vertical') {
+        if (key === 'ArrowDown') nextIndex = originIndex + 1
+        else if (key === 'ArrowUp') nextIndex = originIndex - 1
+      } else if (orientation === 'horizontal') {
+        if (key === 'ArrowRight') nextIndex = originIndex + 1
+        else if (key === 'ArrowLeft') nextIndex = originIndex - 1
+      } else if (orientation === 'grid') {
+        if (key === 'ArrowRight') nextIndex = originIndex + 1
+        else if (key === 'ArrowLeft') nextIndex = originIndex - 1
+        else if (key === 'ArrowDown') nextIndex = originIndex + columns
+        else if (key === 'ArrowUp') nextIndex = originIndex - columns
+      }
+
+      if (key === 'Home') nextIndex = 0
+      else if (key === 'End') nextIndex = count - 1
+
+      if (nextIndex === null) return
+
+      event.preventDefault()
+
+      if (loop) {
+        nextIndex = ((nextIndex % count) + count) % count
+      } else {
+        nextIndex = Math.max(0, Math.min(count - 1, nextIndex))
+      }
+
+      setFocusedIndex(nextIndex)
+      items[nextIndex]?.focus()
+    },
+    [containerRef, orientation, columns, loop, focusedIndex],
+  )
+
+  return { focusedIndex, getTabIndex, handleKeyDown }
+}

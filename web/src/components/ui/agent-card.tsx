@@ -2,7 +2,7 @@ import { cn, type AgentRuntimeStatus } from '@/lib/utils'
 import { Avatar } from './avatar'
 import { StatusBadge } from './status-badge'
 
-interface AgentCardProps {
+export interface AgentCardProps {
   name: string
   role: string
   department: string
@@ -10,6 +10,8 @@ interface AgentCardProps {
   currentTask?: string
   timestamp?: string
   className?: string
+  /** Inline style for flash animation (from useFlash). */
+  flashStyle?: React.CSSProperties
 }
 
 export function AgentCard({
@@ -20,6 +22,7 @@ export function AgentCard({
   currentTask,
   timestamp,
   className,
+  flashStyle,
 }: AgentCardProps) {
   return (
     <div
@@ -29,6 +32,7 @@ export function AgentCard({
         'hover:bg-card-hover hover:-translate-y-px hover:shadow-[var(--so-shadow-card-hover)]',
         className,
       )}
+      style={flashStyle}
     >
       {/* Header: avatar + name + status */}
       <div className="flex items-center gap-2.5">

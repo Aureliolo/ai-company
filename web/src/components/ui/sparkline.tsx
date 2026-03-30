@@ -1,13 +1,15 @@
 import { useId } from 'react'
 import { cn } from '@/lib/utils'
 
-interface SparklineProps {
+export interface SparklineProps {
   data: number[]
   color?: string
   width?: number
   height?: number
   animated?: boolean
   className?: string
+  /** When provided, sets role="img" and aria-label instead of aria-hidden. Use for standalone sparklines. */
+  ariaLabel?: string
 }
 
 function buildPoints(data: number[], width: number, height: number): string {
@@ -32,6 +34,7 @@ export function Sparkline({
   height = 24,
   animated = true,
   className,
+  ariaLabel,
 }: SparklineProps) {
   const gradientId = useId()
 
@@ -58,7 +61,10 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       fill="none"
       className={cn('shrink-0', className)}
-      aria-hidden="true"
+      {...(ariaLabel
+        ? { role: 'img' as const, 'aria-label': ariaLabel }
+        : { 'aria-hidden': true as const }
+      )}
     >
       {animated && (
         <style>{`

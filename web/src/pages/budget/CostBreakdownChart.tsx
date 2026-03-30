@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
-import { cn } from '@/lib/utils'
 import { SectionCard } from '@/components/ui/section-card'
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/segmented-control'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency } from '@/utils/format'
 import type { BreakdownDimension, BreakdownSlice } from '@/utils/budget'
@@ -15,7 +15,7 @@ export interface CostBreakdownChartProps {
   currency?: string
 }
 
-const DIMENSION_OPTIONS: { value: BreakdownDimension; label: string }[] = [
+const DIMENSION_OPTIONS: readonly SegmentedControlOption<BreakdownDimension>[] = [
   { value: 'agent', label: 'Agent' },
   { value: 'department', label: 'Dept' },
   { value: 'provider', label: 'Provider' },
@@ -46,6 +46,13 @@ export function CostBreakdownChart({
   deptDisabled = false,
   currency,
 }: CostBreakdownChartProps) {
+  const dimensionOptions = useMemo(
+    () => deptDisabled
+      ? DIMENSION_OPTIONS.map((o) => o.value === 'department' ? { ...o, disabled: true } : o)
+      : DIMENSION_OPTIONS,
+    [deptDisabled],
+  )
+
   const legendSlices = useMemo(() => {
     if (breakdown.length <= MAX_LEGEND_SLICES) return breakdown
     const overflow = breakdown.slice(MAX_LEGEND_SLICES)
@@ -68,34 +75,12 @@ export function CostBreakdownChart({
       title="Cost Breakdown"
       icon={PieChartIcon}
       action={
-        <div
-          role="radiogroup"
-          aria-label="Breakdown dimension"
-          className="flex rounded-lg border border-border"
-        >
-          {DIMENSION_OPTIONS.map((opt) => {
-            const isActive = dimension === opt.value
-            const isDisabled = opt.value === 'department' && deptDisabled
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                role="radio"
-                aria-checked={isActive}
-                disabled={isDisabled}
-                onClick={() => { if (!isDisabled) onDimensionChange(opt.value) }}
-                className={cn(
-                  'px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-                  isActive && 'bg-accent/10 text-accent font-medium',
-                  !isActive && !isDisabled && 'text-text-muted hover:text-foreground',
-                  isDisabled && 'opacity-50 cursor-not-allowed',
-                )}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
+        <SegmentedControl
+          label="Breakdown dimension"
+          options={dimensionOptions}
+          value={dimension}
+          onChange={onDimensionChange}
+        />
       }
     >
       {breakdown.length === 0 ? (
@@ -106,7 +91,7 @@ export function CostBreakdownChart({
         />
       ) : (
         <div className="flex flex-col items-center gap-4">
-          <div className="h-[200px] w-full" data-testid="cost-breakdown-chart">
+          <div className="h-[200px] w-full" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

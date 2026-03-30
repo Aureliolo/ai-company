@@ -122,7 +122,7 @@ export function BudgetBurnChart({ trendData, forecast, budgetTotal, budgetRemain
           description="Cost records will appear as agents consume tokens"
         />
       ) : (
-        <div className="h-48 w-full" data-testid="budget-burn-chart">
+        <div className="h-48 w-full" data-testid="budget-burn-chart" role="img" aria-label="Budget spend over time chart">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 20, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid

@@ -15,7 +15,10 @@ function getRecentIds(): string[] {
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((v): v is string => typeof v === 'string').slice(0, MAX_RECENT)
+    const VALID_ID = /^[\w\-:.]+$/
+    return parsed
+      .filter((v): v is string => typeof v === 'string' && v.length <= 64 && VALID_ID.test(v))
+      .slice(0, MAX_RECENT)
   } catch (err) {
     if (import.meta.env.DEV) {
       console.warn('Failed to read recent commands from localStorage:', err)
@@ -149,7 +152,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         <FocusScope trapped loop>
         <Command
           className={cn(
-            'relative w-full max-w-[640px] rounded-xl border border-border-bright bg-surface shadow-lg',
+            'relative w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] rounded-xl border border-border-bright bg-surface shadow-lg',
             className,
           )}
           label="Command palette"

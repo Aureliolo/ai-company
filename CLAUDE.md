@@ -53,6 +53,10 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint (zero warnings enforced)
 npm --prefix web run type-check            # TypeScript type checking
 npm --prefix web run test                  # Vitest unit tests (coverage scoped to files changed vs origin/main)
+npm --prefix web run analyze               # bundle size treemap (opens stats.html)
+npm --prefix web run e2e                   # Playwright visual regression tests
+npm --prefix web run e2e:update            # update Playwright screenshot baselines
+npm --prefix web run lighthouse            # Lighthouse performance audit (target: 90+)
 npm --prefix web run storybook             # Storybook dev server (http://localhost:6006)
 npm --prefix web run storybook:build       # Storybook production build
 ```
@@ -214,7 +218,7 @@ src/synthorg/
 web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules (19 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
-  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition)
+  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, communication edges)
   lib/            # Utilities (cn() class merging, semantic color mappers, etc.)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants, auth/setup guards
@@ -269,6 +273,9 @@ site/             # Astro landing page (synthorg.io)
 | `CodeMirrorEditor` | `@/components/ui/code-mirror-editor` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, `readOnly` support |
 | `SegmentedControl` | `@/components/ui/segmented-control` | Accessible radiogroup with keyboard navigation, size variants (`sm`/`md`), generic `<T extends string>` typing |
 | `ThemeToggle` | `@/components/ui/theme-toggle` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar), rendered in StatusBar |
+| `LiveRegion` | `@/components/ui/live-region` | Debounced ARIA live region wrapper (`polite`/`assertive`) for real-time WS updates without overwhelming screen readers |
+| `MobileUnsupportedOverlay` | `@/components/ui/mobile-unsupported` | Full-screen overlay at `<768px` viewports directing users to desktop or CLI; self-manages visibility via `useBreakpoint` |
+| `LazyCodeMirrorEditor` | `@/components/ui/lazy-code-mirror-editor` | Suspense-wrapped lazy-loaded `CodeMirrorEditor` (drop-in replacement, defers ~200KB+ CodeMirror bundle) |
 
 ### Design Token Rules
 
@@ -420,7 +427,7 @@ Fix all violations before proceeding -- do not suppress or ignore hook output.
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Framer Motion, cmdk, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security)
+- **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Framer Motion, cmdk, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security, Playwright, @lhci/cli, rollup-plugin-visualizer, cross-env)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)

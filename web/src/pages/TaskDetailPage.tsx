@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -9,13 +9,14 @@ import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { Avatar } from '@/components/ui/avatar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { useTasksStore } from '@/stores/tasks'
 import { useToastStore } from '@/stores/toast'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { getErrorMessage } from '@/utils/errors'
 import { ROUTES } from '@/router/routes'
-import type { Priority, TaskStatus } from '@/api/types'
+import type { Priority, TaskStatus, WsEvent } from '@/api/types'
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
@@ -30,6 +31,15 @@ export default function TaskDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [transitioning, setTransitioning] = useState<TaskStatus | null>(null)
+
+  // Subscribe to real-time task updates via WebSocket
+  const wsBindings = useMemo(() => [{
+    channel: 'tasks' as const,
+    handler: (event: WsEvent) => {
+      useTasksStore.getState().handleWsEvent(event)
+    },
+  }], [])
+  const { setupError: wsSetupError } = useWebSocket({ bindings: wsBindings })
 
   useEffect(() => {
     if (taskId) {
@@ -105,6 +115,12 @@ export default function TaskDetailPage() {
         <ArrowLeft className="mr-1 size-4" />
         Back to Board
       </Button>
+
+      {wsSetupError && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning">
+          Real-time updates unavailable: {wsSetupError}
+        </div>
+      )}
 
       <ErrorBoundary level="section">
         <div className="rounded-lg border border-border bg-card p-6 space-y-6">

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ReactFlow, Background, Controls, type Node, type Edge, MarkerType, Position } from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
+// @xyflow CSS is imported globally in styles/global.css
 import { getTaskStatusColor, getTaskStatusLabel } from '@/utils/tasks'
 import type { Task } from '@/api/types'
 

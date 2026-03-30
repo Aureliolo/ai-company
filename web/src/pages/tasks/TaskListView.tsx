@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, FOCUS_RING } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
@@ -81,8 +81,9 @@ export function TaskListView({ tasks, onSelectTask }: TaskListViewProps) {
             type="button"
             onClick={() => col.sortable && handleSort(col.key)}
             className={cn(
-              'flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
+              'flex items-center gap-1 rounded-sm text-[11px] font-semibold uppercase tracking-wider text-text-muted transition-colors',
               col.sortable && 'cursor-pointer hover:text-foreground',
+              col.sortable && FOCUS_RING,
               col.width,
             )}
             aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
@@ -121,7 +122,7 @@ function TaskListRow({ task, onSelectTask }: { task: Task; onSelectTask: (taskId
           onSelectTask(task.id)
         }
       }}
-      className="flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+      className={cn('flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-card-hover', FOCUS_RING)}
       aria-label={`Task: ${task.title}`}
     >
       <span className="w-20">
