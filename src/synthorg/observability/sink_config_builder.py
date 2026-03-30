@@ -17,6 +17,7 @@ The two JSON inputs come from ``SettingsService`` settings:
 
 import json
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from synthorg.observability.config import (
@@ -55,7 +56,7 @@ class SinkBuildResult:
     """
 
     config: LogConfig
-    routing_overrides: dict[str, tuple[str, ...]]
+    routing_overrides: MappingProxyType[str, tuple[str, ...]]
 
 
 # ── JSON parsing helpers ─────────────────────────────────────────
@@ -164,10 +165,21 @@ def _parse_rotation_override(
         updates["strategy"] = strategy
 
     if "max_bytes" in raw:
-        updates["max_bytes"] = int(raw["max_bytes"])
+        try:
+            updates["max_bytes"] = int(raw["max_bytes"])
+        except (ValueError, TypeError) as exc:
+            msg = f"Invalid max_bytes value {raw['max_bytes']!r}: must be an integer"
+            raise ValueError(msg) from exc
 
     if "backup_count" in raw:
-        updates["backup_count"] = int(raw["backup_count"])
+        try:
+            updates["backup_count"] = int(raw["backup_count"])
+        except (ValueError, TypeError) as exc:
+            msg = (
+                f"Invalid backup_count value "
+                f"{raw['backup_count']!r}: must be an integer"
+            )
+            raise ValueError(msg) from exc
 
     return base.model_copy(update=updates) if updates else base
 
@@ -227,7 +239,14 @@ def _build_custom_sink(
         msg = f"custom_sinks[{index}] is missing required field 'file_path'"
         raise ValueError(msg)
 
-    file_path = str(entry["file_path"])
+    raw_path = entry["file_path"]
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        msg = (
+            f"custom_sinks[{index}].file_path must be a non-empty string, "
+            f"got {raw_path!r}"
+        )
+        raise ValueError(msg)
+    file_path = raw_path
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
     json_format = bool(entry.get("json_format", True))
 
@@ -364,4 +383,7 @@ def build_log_config_from_settings(
         log_dir=log_dir,
     )
 
-    return SinkBuildResult(config=config, routing_overrides=routing_overrides)
+    return SinkBuildResult(
+        config=config,
+        routing_overrides=MappingProxyType(routing_overrides),
+    )

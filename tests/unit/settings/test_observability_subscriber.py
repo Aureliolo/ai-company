@@ -172,6 +172,14 @@ class TestObservabilitySubscriberErrorHandling:
             # Should not raise -- error is caught internally
             await sub.on_settings_changed("observability", "root_log_level")
 
+    async def test_invalid_root_level_preserves_config(self) -> None:
+        sub, _ = _make_subscriber(root_log_level="verbose")
+        with patch(
+            "synthorg.settings.subscribers.observability_subscriber.configure_logging",
+        ) as mock_configure:
+            await sub.on_settings_changed("observability", "root_log_level")
+            mock_configure.assert_not_called()
+
 
 # ── Namespace guard ──────────────────────────────────────────────
 

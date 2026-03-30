@@ -199,6 +199,11 @@ class TestRotationOverrides:
         assert debug.rotation is not None
         assert debug.rotation.strategy == RotationStrategy.EXTERNAL
 
+    def test_invalid_rotation_strategy_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"rotation": {"strategy": "daily"}}})
+        with pytest.raises(ValueError, match=r"[Ss]trategy"):
+            _build(overrides=overrides)
+
 
 # ── Validation ───────────────────────────────────────────────────
 
@@ -348,6 +353,23 @@ class TestCustomSinksValidation:
         with pytest.raises(ValueError, match=r"[Pp]refix"):
             _build(custom=custom)
 
+    def test_routing_prefixes_non_array_raises(self) -> None:
+        custom = json.dumps(
+            [{"file_path": "x.log", "routing_prefixes": "not-an-array"}]
+        )
+        with pytest.raises(TypeError, match=r"[Aa]rray"):
+            _build(custom=custom)
+
+    def test_non_string_file_path_raises(self) -> None:
+        custom = json.dumps([{"file_path": 123}])
+        with pytest.raises(ValueError, match=r"non-empty string"):
+            _build(custom=custom)
+
+    def test_null_file_path_raises(self) -> None:
+        custom = json.dumps([{"file_path": None}])
+        with pytest.raises(ValueError, match=r"non-empty string"):
+            _build(custom=custom)
+
 
 # ── Combined overrides + custom ──────────────────────────────────
 
@@ -372,3 +394,45 @@ class TestCombined:
         custom = json.dumps([{"file_path": "audit.log"}])
         with pytest.raises(ValueError, match=r"audit\.log"):
             _build(overrides=overrides, custom=custom)
+
+    def test_multiple_fields_overridden_simultaneously(self) -> None:
+        overrides = json.dumps(
+            {
+                "synthorg.log": {
+                    "level": "warning",
+                    "json_format": False,
+                    "rotation": {"max_bytes": 20_000_000},
+                },
+            }
+        )
+        result = _build(overrides=overrides)
+        sink = next(s for s in result.config.sinks if s.file_path == "synthorg.log")
+        assert sink.level == LogLevel.WARNING
+        assert sink.json_format is False
+        assert sink.rotation is not None
+        assert sink.rotation.max_bytes == 20_000_000
+
+    def test_custom_sink_with_rotation_override(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "file_path": "large.log",
+                    "rotation": {"max_bytes": 50_000_000, "backup_count": 3},
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        sink = next(s for s in result.config.sinks if s.file_path == "large.log")
+        assert sink.rotation is not None
+        assert sink.rotation.max_bytes == 50_000_000
+        assert sink.rotation.backup_count == 3
+
+    def test_custom_log_dir_propagated(self) -> None:
+        result = build_log_config_from_settings(
+            root_level=LogLevel.DEBUG,
+            enable_correlation=True,
+            sink_overrides_json="{}",
+            custom_sinks_json="[]",
+            log_dir="custom_logs",
+        )
+        assert result.config.log_dir == "custom_logs"

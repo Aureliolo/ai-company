@@ -36,7 +36,9 @@ class ObservabilitySettingsSubscriber:
     settings, merges defaults with overrides, and reconfigures.
 
     On failure (settings read error, validation error, or critical
-    sink failure), the existing logging configuration is preserved.
+    sink failure), the existing logging configuration is preserved
+    where possible.  Note that ``configure_logging`` is not atomic --
+    if it fails mid-rebuild, the pipeline may be in a degraded state.
 
     Args:
         settings_service: Settings service for reading current values.
@@ -105,6 +107,8 @@ class ObservabilitySettingsSubscriber:
                 "observability",
                 "custom_sinks",
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
@@ -115,16 +119,33 @@ class ObservabilitySettingsSubscriber:
             )
             return
 
+        # Parse root level separately for accurate error reporting.
+        try:
+            root_level = LogLevel(root_level_result.value.upper())
+        except ValueError, AttributeError:
+            logger.error(
+                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+                subscriber=self.subscriber_name,
+                key=key,
+                note=f"invalid root_log_level: {root_level_result.value!r}",
+                exc_info=True,
+            )
+            return
+
+        enable_correlation = str(correlation_result.value).lower() == "true"
+
         # Build LogConfig from settings + defaults.
         try:
             build_result = build_log_config_from_settings(
-                root_level=LogLevel(root_level_result.value.upper()),
-                enable_correlation=(correlation_result.value.lower() == "true"),
+                root_level=root_level,
+                enable_correlation=enable_correlation,
                 sink_overrides_json=overrides_result.value,
                 custom_sinks_json=custom_result.value,
                 log_dir=self._log_dir,
             )
-        except ValueError, TypeError, KeyError:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
@@ -134,18 +155,25 @@ class ObservabilitySettingsSubscriber:
             )
             return
 
-        # Rebuild the logging pipeline.
+        # Rebuild the logging pipeline.  configure_logging is not atomic:
+        # it clears old handlers before attaching new ones, so a failure
+        # here may leave the pipeline degraded.
         try:
             configure_logging(
                 build_result.config,
-                routing_overrides=build_result.routing_overrides or None,
+                routing_overrides=dict(build_result.routing_overrides) or None,
             )
-        except RuntimeError:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,
                 key=key,
-                note="configure_logging failed -- pipeline may be degraded",
+                note=(
+                    "configure_logging failed -- old pipeline was already "
+                    "torn down; logging may be degraded"
+                ),
                 exc_info=True,
             )
             return
