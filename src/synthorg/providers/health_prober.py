@@ -20,12 +20,14 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBE_SKIPPED,
     PROVIDER_HEALTH_PROBE_STARTED,
     PROVIDER_HEALTH_PROBE_SUCCESS,
+    PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 
 if TYPE_CHECKING:
+    from synthorg.config.schema import ProviderConfig
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -131,7 +133,12 @@ class ProviderHealthProber:
     async def _run_loop(self) -> None:
         """Main loop: probe all, then sleep until next cycle or stop."""
         while not self._stop_event.is_set():
-            await self._probe_all()
+            try:
+                await self._probe_all()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(PROVIDER_HEALTH_PROBER_CYCLE_FAILED)
             try:
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -142,8 +149,9 @@ class ProviderHealthProber:
                 continue  # timeout = time to probe again
 
     async def _probe_all(self) -> None:
-        """Probe all providers that need it."""
+        """Probe all eligible providers in parallel."""
         providers = await self._config_resolver.get_provider_configs()
+        eligible: list[tuple[str, ProviderConfig]] = []
         for name, config in providers.items():
             if config.base_url is None:
                 continue  # cloud providers -- no lightweight ping available
@@ -159,24 +167,28 @@ class ProviderHealthProber:
                         seconds_since_last=round(elapsed),
                     )
                     continue
-            await self._probe_one(name, config)
+            eligible.append((name, config))
+        if eligible:
+            async with asyncio.TaskGroup() as tg:
+                for name, config in eligible:
+                    tg.create_task(self._probe_one(name, config))
 
     async def _probe_one(
         self,
         name: str,
-        config: object,
+        config: ProviderConfig,
     ) -> None:
         """Ping a single provider and record the result.
 
         Args:
             name: Provider name.
-            config: Provider configuration (must have base_url,
-                litellm_provider, auth_type, api_key attributes).
+            config: Provider configuration.
         """
-        base_url: str = getattr(config, "base_url", "")
-        litellm_provider: str | None = getattr(config, "litellm_provider", None)
-        auth_type: str = getattr(config, "auth_type", "none")
-        api_key: str | None = getattr(config, "api_key", None)
+        base_url = config.base_url or ""
+        litellm_provider = config.litellm_provider
+        raw_auth = config.auth_type
+        auth_type = raw_auth.value if hasattr(raw_auth, "value") else str(raw_auth)
+        api_key = config.api_key
 
         url = _build_ping_url(base_url, litellm_provider)
         headers = _build_auth_headers(auth_type, api_key)
@@ -201,6 +213,8 @@ class ProviderHealthProber:
         except httpx.TimeoutException:
             error_msg = "timeout"
         except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             error_msg = f"{type(exc).__name__}: {exc}"

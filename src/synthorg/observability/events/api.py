@@ -71,6 +71,9 @@ API_PROVIDER_HEALTH_QUERIED: Final[str] = "api.provider.health_queried"
 API_MODEL_CAPABILITIES_LOOKUP_FAILED: Final[str] = (
     "api.provider.model_capabilities_lookup_failed"
 )
+API_PROVIDER_USAGE_ENRICHMENT_FAILED: Final[str] = (
+    "api.provider.usage_enrichment_failed"
+)
 API_ACTIVITY_FEED_QUERIED: Final[str] = "api.activity.feed_queried"
 API_MEETING_TRIGGERED: Final[str] = "api.meeting.triggered"
 API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"

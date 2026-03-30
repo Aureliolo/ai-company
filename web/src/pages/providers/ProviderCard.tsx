@@ -58,12 +58,12 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
               {health.calls_last_24h} calls/24h
             </span>
           )}
-          {health && (health.total_tokens_24h ?? 0) > 0 && (
+          {health && health.total_tokens_24h > 0 && (
             <span className="text-xs text-text-muted">
               {formatTokenCount(health.total_tokens_24h)} tok
             </span>
           )}
-          {health && (health.total_cost_24h ?? 0) > 0 && (
+          {health && health.total_cost_24h > 0 && (
             <span className="text-xs text-text-muted">
               {formatCost(health.total_cost_24h)}
             </span>

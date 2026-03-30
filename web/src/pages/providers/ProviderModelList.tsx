@@ -1,5 +1,6 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { cn } from '@/lib/utils'
 import { Boxes } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types'
 
@@ -34,7 +35,7 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
       {visible.map((b) => (
         <span
           key={b.label}
-          className={`rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight ${b.className}`}
+          className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight', b.className)}
         >
           {b.label}
         </span>

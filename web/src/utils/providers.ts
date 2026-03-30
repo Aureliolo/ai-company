@@ -6,6 +6,7 @@ import type {
   ProviderHealthSummary,
 } from '@/api/types'
 import type { SemanticColor } from '@/lib/utils'
+import { formatCurrency } from '@/utils/format'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -143,9 +144,15 @@ export function formatTokenCount(n: number): string {
   return n.toLocaleString()
 }
 
-/** Format a USD cost value. */
-export function formatCost(cost: number): string {
-  if (cost === 0) return '$0.00'
-  if (cost < 0.01) return '<$0.01'
-  return `$${cost.toFixed(2)}`
+/** Format a cost value using the project currency (defaults to EUR). */
+export function formatCost(
+  cost: number,
+  currencyCode: string = 'EUR',
+): string {
+  if (cost === 0) return formatCurrency(0, currencyCode)
+  if (cost > 0 && cost < 0.01) {
+    const symbol = formatCurrency(0.01, currencyCode).replace(/[\d.,\s]+/, '').trim()
+    return `<${symbol}0.01`
+  }
+  return formatCurrency(cost, currencyCode)
 }

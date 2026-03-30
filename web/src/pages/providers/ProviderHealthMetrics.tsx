@@ -23,11 +23,11 @@ export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
       />
       <MetricCard
         label="Tokens (24h)"
-        value={formatTokenCount(health.total_tokens_24h ?? 0)}
+        value={formatTokenCount(health.total_tokens_24h)}
       />
       <MetricCard
         label="Cost (24h)"
-        value={formatCost(health.total_cost_24h ?? 0)}
+        value={formatCost(health.total_cost_24h)}
       />
       <MetricCard
         label="Avg Response Time"

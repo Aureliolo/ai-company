@@ -115,7 +115,7 @@ Meeting history list with status/type filters. Click opens meeting detail (`/mee
 
 #### Providers (`/providers`)
 
-LLM provider management. CRUD cards for configured providers with health status display (up/degraded/down) and health metrics (average response time, error rate percentage, call count). Connection test button. Preset-based creation flow with subscription auth support requiring ToS acceptance for applicable providers. Model auto-discovery. Provider list supports filtering and sorting by health status, name, and model count. Provider detail/edit at `/providers/{name}`.
+LLM provider management. CRUD cards for configured providers with health status display (up/degraded/down/unknown) and health metrics (average response time, error rate percentage, call count, total tokens, cost). Connection test button. Preset-based creation flow with subscription auth support requiring ToS acceptance for applicable providers. Model auto-discovery with capability badges (tools, vision, streaming) per model. Provider list supports filtering and sorting by health status, name, and model count. Provider detail/edit at `/providers/{name}`.
 
 No WebSocket subscription -- provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
 

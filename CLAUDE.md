@@ -98,7 +98,7 @@ src/synthorg/
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
   persistence/    # Pluggable PersistenceBackend, SQLite, settings + user repositories
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
-  providers/      # LLM provider abstraction, presets, model auto-discovery, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking
+  providers/      # LLM provider abstraction, presets, model auto-discovery, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
   templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching, locale-aware name generation

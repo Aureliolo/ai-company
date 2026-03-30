@@ -35,7 +35,7 @@ class TestBuildPingUrl:
 
     def test_strips_trailing_slash(self) -> None:
         assert (
-            _build_ping_url("http://localhost:8000/v1/", "openai")
+            _build_ping_url("http://localhost:8000/v1/", "test-api")
             == "http://localhost:8000/v1/models"
         )
 

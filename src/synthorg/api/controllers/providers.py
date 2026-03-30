@@ -15,11 +15,9 @@ from synthorg.api.dto import (
     DiscoverModelsResponse,
     ProbePresetRequest,
     ProbePresetResponse,
-    ProviderModelResponse,
     ProviderResponse,
     TestConnectionResponse,
     UpdateProviderRequest,
-    to_provider_model_response,
     to_provider_response,
 )
 from synthorg.api.dto import (
@@ -30,6 +28,10 @@ from synthorg.api.dto_discovery import (
     DiscoveryPolicyResponse,
     RemoveAllowlistEntryRequest,
 )
+from synthorg.api.dto_providers import (
+    ProviderModelResponse,
+    to_provider_model_response,
+)
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
@@ -38,6 +40,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MODEL_CAPABILITIES_LOOKUP_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
+    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
@@ -217,11 +220,15 @@ class ProviderController(Controller):
             if driver is not None:
                 try:
                     caps = await driver.get_model_capabilities(model_config.id)
-                except Exception:
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
                     logger.warning(
                         API_MODEL_CAPABILITIES_LOOKUP_FAILED,
                         provider=name,
                         model=model_config.id,
+                        error=str(exc),
+                        error_type=type(exc).__qualname__,
                     )
             results.append(to_provider_model_response(model_config, caps))
         return ApiResponse(data=tuple(results))
@@ -258,18 +265,28 @@ class ProviderController(Controller):
             raise NotFoundError(msg)
         summary = await app_state.provider_health_tracker.get_summary(name)
         if app_state.has_cost_tracker:
-            now = datetime.now(UTC)
-            usage = await app_state.cost_tracker.get_provider_usage(
-                name,
-                start=now - timedelta(hours=24),
-                end=now,
-            )
-            summary = summary.model_copy(
-                update={
-                    "total_tokens_24h": usage.total_tokens,
-                    "total_cost_24h": usage.total_cost,
-                },
-            )
+            try:
+                now = datetime.now(UTC)
+                usage = await app_state.cost_tracker.get_provider_usage(
+                    name,
+                    start=now - timedelta(hours=24),
+                    end=now,
+                )
+                summary = summary.model_copy(
+                    update={
+                        "total_tokens_24h": usage.total_tokens,
+                        "total_cost_24h": usage.total_cost,
+                    },
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
+                    provider=name,
+                    error=str(exc),
+                    error_type=type(exc).__qualname__,
+                )
         logger.debug(
             API_PROVIDER_HEALTH_QUERIED,
             provider=name,

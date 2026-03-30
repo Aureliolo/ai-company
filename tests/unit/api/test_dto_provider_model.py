@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.dto import ProviderModelResponse, to_provider_model_response
+from synthorg.api.dto_providers import ProviderModelResponse, to_provider_model_response
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.capabilities import ModelCapabilities
 
