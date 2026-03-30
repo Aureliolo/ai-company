@@ -46,11 +46,14 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
   const openerRef = useRef<Element | null>(null)
   const panelVariants = useMemo(() => getPanelVariants(side), [side])
 
+  // Resolve accessible name: prefer ariaLabel, fall back to title, skip empty strings
+  const accessibleName = ariaLabel || title || undefined
+
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production' && !(ariaLabel ?? title)) {
+    if (process.env.NODE_ENV !== 'production' && !accessibleName) {
       console.warn('Drawer: either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
     }
-  }, [ariaLabel, title])
+  }, [accessibleName])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -77,7 +80,13 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
       const focusable = panel.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable]:not([contenteditable="false"])',
       )
-      if (focusable.length === 0) return
+      if (focusable.length === 0) {
+        // No focusable children (e.g. headerless drawer with text-only content) --
+        // keep focus on the panel itself so Tab cannot escape the modal.
+        e.preventDefault()
+        panel.focus()
+        return
+      }
       const first = focusable[0]!
       const last = focusable[focusable.length - 1]!
       const active = document.activeElement
@@ -126,7 +135,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
             exit="exit"
             role="dialog"
             aria-modal="true"
-            aria-label={ariaLabel ?? title}
+            aria-label={accessibleName}
             tabIndex={-1}
             className={cn(
               'fixed inset-y-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',

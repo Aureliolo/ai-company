@@ -1,8 +1,10 @@
 import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import fc from 'fast-check'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ROUTES } from '@/router/routes'
 import { renderWithRouter } from '../../test-utils'
 
 // Mock framer-motion (Drawer uses it for overlay animation)
@@ -332,6 +334,21 @@ describe('Sidebar', () => {
       // Navigate to a different route (wrapped in act for state update)
       await act(() => router.navigate('/settings'))
       expect(onOverlayClose).toHaveBeenCalledOnce()
+    })
+
+    // Property: navigating to any different static route while overlay is open triggers exactly one close
+    const staticRoutes = Object.values(ROUTES).filter((r) => !r.includes(':') && r !== '/')
+    it('close-on-navigate fires exactly once for any static route (property)', async () => {
+      await fc.assert(
+        fc.asyncProperty(fc.constantFrom(...staticRoutes), async (route) => {
+          const onOverlayClose = vi.fn()
+          const { router, unmount } = setupTablet(true, onOverlayClose)
+          onOverlayClose.mockClear()
+          await act(() => router.navigate(route))
+          expect(onOverlayClose).toHaveBeenCalledOnce()
+          unmount()
+        }),
+      )
     })
   })
 })
