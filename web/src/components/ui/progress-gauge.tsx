@@ -1,21 +1,35 @@
 import { cn, getHealthColor, type SemanticColor } from '@/lib/utils'
 
-const COLOR_CLASSES: Record<SemanticColor, string> = {
+const STROKE_COLOR_CLASSES: Record<SemanticColor, string> = {
   success: 'stroke-success',
   accent: 'stroke-accent',
   warning: 'stroke-warning',
   danger: 'stroke-danger',
 }
 
+const FILL_COLOR_CLASSES: Record<SemanticColor, string> = {
+  success: 'bg-success',
+  accent: 'bg-accent',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
+}
+
 const SIZE_CONFIG = {
-  sm: { radius: 32, stroke: 6, valueSize: 'text-sm', labelSize: 'text-micro' },
-  md: { radius: 48, stroke: 6, valueSize: 'text-lg', labelSize: 'text-compact' },
+  sm: {
+    radius: 32, stroke: 6, valueSize: 'text-sm', labelSize: 'text-micro',
+    trackHeight: 'h-1.5', percentSize: 'text-xs', barLabelSize: 'text-micro',
+  },
+  md: {
+    radius: 48, stroke: 6, valueSize: 'text-lg', labelSize: 'text-compact',
+    trackHeight: 'h-2', percentSize: 'text-sm', barLabelSize: 'text-compact',
+  },
 } as const
 
 interface ProgressGaugeProps {
   value: number
   max?: number
   label?: string
+  variant?: 'circular' | 'linear'
   size?: 'sm' | 'md'
   className?: string
 }
@@ -24,6 +38,7 @@ export function ProgressGauge({
   value,
   max = 100,
   label,
+  variant = 'circular',
   size = 'md',
   className,
 }: ProgressGaugeProps) {
@@ -34,14 +49,54 @@ export function ProgressGauge({
   const color = getHealthColor(percentage)
   const config = SIZE_CONFIG[size]
 
-  // SVG arc geometry for a 180-degree half-circle (bottom open)
+  if (variant === 'linear') {
+    return (
+      <div
+        role="meter"
+        aria-valuenow={percentage}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label ? `${label}: ${percentage}%` : `${percentage}%`}
+        className={cn('flex flex-col gap-1', className)}
+      >
+        {label && (
+          <div className="flex items-baseline justify-between">
+            <span className={cn('text-muted-foreground', config.barLabelSize)}>
+              {label}
+            </span>
+            <span className={cn('font-mono font-semibold text-foreground', config.percentSize)}>
+              {percentage}%
+            </span>
+          </div>
+        )}
+        <div className={cn('w-full overflow-hidden rounded-full bg-border', config.trackHeight)}>
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-[900ms]',
+              FILL_COLOR_CLASSES[color],
+            )}
+            style={{
+              width: `${percentage}%`,
+              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+          />
+        </div>
+        {!label && (
+          <span className={cn('font-mono font-semibold text-foreground', config.percentSize)}>
+            {percentage}%
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  // Circular variant (default) -- SVG arc geometry for a 180-degree half-circle
   const { radius, stroke } = config
   const svgWidth = (radius + stroke) * 2
   const svgHeight = radius + stroke * 2
   const cx = svgWidth / 2
   const cy = radius + stroke
 
-  // Arc circumference (half circle)
   const circumference = Math.PI * radius
   const filledLength = (percentage / 100) * circumference
   const dashOffset = circumference - filledLength
@@ -74,7 +129,7 @@ export function ProgressGauge({
           d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
           fill="none"
           strokeWidth={stroke}
-          className={cn(COLOR_CLASSES[color], 'transition-all duration-[900ms]')}
+          className={cn(STROKE_COLOR_CLASSES[color], 'transition-all duration-[900ms]')}
           style={{
             strokeDasharray: circumference,
             strokeDashoffset: dashOffset,
