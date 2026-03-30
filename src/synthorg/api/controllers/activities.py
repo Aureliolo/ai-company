@@ -121,10 +121,10 @@ async def _run_async_fetchers(
     except ExceptionGroup as eg:
         fatal = eg.subgroup((MemoryError, RecursionError))
         if fatal is not None:
-            raise fatal from eg
+            raise fatal.exceptions[0] from eg
         svc = eg.subgroup(ServiceUnavailableError)
         if svc is not None:
-            raise svc from eg
+            raise svc.exceptions[0] from eg
         failed_sources = [
             src
             for src, task in [

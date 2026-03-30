@@ -191,7 +191,7 @@ class PaginatedResponse[T](BaseModel):
     error: str | None = None
     error_detail: ErrorDetail | None = None
     pagination: PaginationMeta
-    degraded_sources: tuple[str, ...] = Field(
+    degraded_sources: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Data sources that failed gracefully (partial data)",
     )

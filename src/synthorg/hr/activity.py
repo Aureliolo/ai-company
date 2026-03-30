@@ -264,7 +264,8 @@ def redact_cost_events(
             else:
                 logger.warning(
                     HR_ACTIVITY_REDACTION_MISMATCH,
-                    description=event.description[:80],
+                    event_type=event.event_type.value,
+                    description_length=len(event.description),
                 )
                 redacted = "API call (details redacted)"
             redacted_event = event.model_copy(
