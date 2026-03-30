@@ -220,6 +220,7 @@ web/src/          # React 19 + shadcn/ui + Tailwind CSS dashboard
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, communication edges)
   lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader
+  mocks/          # MSW request handlers for Storybook API mocking (handlers/)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants, auth/setup guards
   stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, providers, theme, and per-domain stores for each page)
@@ -427,7 +428,7 @@ Fix all violations before proceeding -- do not suppress or ignore hook output.
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Framer Motion, cmdk, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security, Playwright, @lhci/cli, rollup-plugin-visualizer, cross-env)
+- **Web dashboard**: Node.js 22+, TypeScript 6.0+, dependencies in `web/package.json` (React 19, react-router, shadcn/ui, Radix UI, Tailwind CSS 4, Zustand, @tanstack/react-query, @xyflow/react, @dagrejs/dagre, d3-force, @dnd-kit, Recharts, Framer Motion, cmdk, js-yaml, Axios, Lucide React, @fontsource-variable/geist, @fontsource-variable/geist-mono, @fontsource-variable/jetbrains-mono, @fontsource-variable/inter, @fontsource/ibm-plex-mono, @fontsource/ibm-plex-sans, CodeMirror 6, Storybook 10, MSW, msw-storybook-addon, Vitest, @vitest/coverage-v8, @testing-library/react, fast-check, ESLint, @eslint-react/eslint-plugin, eslint-plugin-security, Playwright, @lhci/cli, rollup-plugin-visualizer, cross-env)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)
