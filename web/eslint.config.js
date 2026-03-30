@@ -23,6 +23,15 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
       'no-useless-assignment': 'error',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXAttribute[name.name="dangerouslySetInnerHTML"]',
+          message:
+            'dangerouslySetInnerHTML is banned -- use text content or a sanitization library. ' +
+            'If absolutely necessary, add // eslint-disable-next-line with a justification comment.',
+        },
+      ],
       // Rule flags every obj[var] with no data-flow analysis -- too many false
       // positives. Prototype pollution is guarded explicitly at system boundaries.
       'security/detect-object-injection': 'off',
