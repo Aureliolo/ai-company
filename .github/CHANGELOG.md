@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1](https://github.com/Aureliolo/synthorg/compare/v0.5.0...v0.5.1) (2026-03-30)
+
+
+### Features
+
+* add linear variant to ProgressGauge component ([#927](https://github.com/Aureliolo/synthorg/issues/927)) ([89bf8d0](https://github.com/Aureliolo/synthorg/commit/89bf8d0d40b543ff7a6f28912c22573df1660b0d))
+* frontend security hardening -- ESLint XSS ban + MotionConfig CSP nonce ([#926](https://github.com/Aureliolo/synthorg/issues/926)) ([6592ed0](https://github.com/Aureliolo/synthorg/commit/6592ed038c2aa5d9b5e9068ec0779cc96626f988))
+* set up MSW for Storybook API mocking ([#930](https://github.com/Aureliolo/synthorg/issues/930)) ([214078c](https://github.com/Aureliolo/synthorg/commit/214078c3bfb8cd12aebbc04002be16510cd74c31))
+
+
+### Refactoring
+
+* **web:** replace Sidebar tablet overlay with shared Drawer component ([#928](https://github.com/Aureliolo/synthorg/issues/928)) ([ad5451d](https://github.com/Aureliolo/synthorg/commit/ad5451dc2223d7866366b7c21c56eb3ccdacd417))
+
 ## [0.5.0](https://github.com/Aureliolo/synthorg/compare/v0.4.9...v0.5.0) (2026-03-30)
 
 
