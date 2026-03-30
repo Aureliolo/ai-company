@@ -50,6 +50,12 @@ export function ProgressGauge({
   const config = SIZE_CONFIG[size]
 
   if (variant === 'linear') {
+    const percentageText = (
+      <span className={cn('font-mono font-semibold text-foreground', config.percentSize)}>
+        {percentage}%
+      </span>
+    )
+
     return (
       <div
         role="meter"
@@ -64,9 +70,7 @@ export function ProgressGauge({
             <span className={cn('text-muted-foreground', config.barLabelSize)}>
               {label}
             </span>
-            <span className={cn('font-mono font-semibold text-foreground', config.percentSize)}>
-              {percentage}%
-            </span>
+            {percentageText}
           </div>
         )}
         <div
@@ -82,11 +86,7 @@ export function ProgressGauge({
             style={{ width: `${percentage}%` }}
           />
         </div>
-        {!label && (
-          <span className={cn('font-mono font-semibold text-foreground', config.percentSize)}>
-            {percentage}%
-          </span>
-        )}
+        {!label && percentageText}
       </div>
     )
   }
