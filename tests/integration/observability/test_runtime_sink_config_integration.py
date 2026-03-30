@@ -150,7 +150,7 @@ class TestHotReloadAddCustomSink:
         )
         configure_logging(
             result.config,
-            routing_overrides=result.routing_overrides,
+            routing_overrides=dict(result.routing_overrides),
         )
 
         tools_logger = logging.getLogger("synthorg.tools.invoker")
