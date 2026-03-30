@@ -153,12 +153,11 @@ async def _run_async_fetchers(
         degraded,
     )
 
-    del_ok = (
+    if (
         del_task is not None
         and not del_task.cancelled()
         and del_task.exception() is None
-    )
-    if del_ok:
+    ):
         del_result = del_task.result()
         sent, received, del_deg = del_result[0], del_result[1], del_result[2]
         if del_deg:

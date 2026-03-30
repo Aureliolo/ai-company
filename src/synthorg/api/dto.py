@@ -500,7 +500,7 @@ class CoordinationResultResponse(BaseModel):
 
 # ── Provider management DTOs (split to dto_providers.py) ────
 # Re-exported for backwards compatibility.
-from synthorg.api.dto_providers import (  # noqa: E402, F401
+from synthorg.api.dto_providers import (  # noqa: E402
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
@@ -512,3 +512,16 @@ from synthorg.api.dto_providers import (  # noqa: E402, F401
     UpdateProviderRequest,
     to_provider_response,
 )
+
+__all__ = [
+    "CreateFromPresetRequest",
+    "CreateProviderRequest",
+    "DiscoverModelsResponse",
+    "ProbePresetRequest",
+    "ProbePresetResponse",
+    "ProviderResponse",
+    "TestConnectionRequest",
+    "TestConnectionResponse",
+    "UpdateProviderRequest",
+    "to_provider_response",
+]
