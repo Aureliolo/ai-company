@@ -1,9 +1,10 @@
 """Background health prober for LLM providers.
 
-Periodically pings provider endpoints with lightweight HTTP requests
-(no model loading) to detect reachability.  Real API call outcomes
-recorded in :class:`ProviderHealthTracker` automatically reset the
-probe interval for that provider.
+Periodically pings provider endpoints with lightweight HTTP GET
+requests (model list or root URL -- does not trigger inference or
+model loading into memory) to detect reachability.  Real API call
+outcomes recorded in :class:`ProviderHealthTracker` automatically
+reset the probe interval for that provider.
 """
 
 import asyncio
@@ -24,9 +25,15 @@ from synthorg.observability.events.provider import (
     PROVIDER_HEALTH_PROBER_STARTED,
     PROVIDER_HEALTH_PROBER_STOPPED,
 )
+from synthorg.providers.discovery_policy import (
+    ProviderDiscoveryPolicy,
+    is_url_allowed,
+)
 from synthorg.providers.health import ProviderHealthRecord, ProviderHealthTracker
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.config.schema import ProviderConfig
     from synthorg.settings.resolver import ConfigResolver
 
@@ -34,12 +41,17 @@ logger = get_logger(__name__)
 
 _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800  # 30 minutes
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
+_HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
+_MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
 
 
 def _build_ping_url(base_url: str, litellm_provider: str | None) -> str:
     """Build a lightweight ping URL for a provider.
 
     Uses the cheapest possible endpoint -- no model loading.
+    Providers whose ``litellm_provider`` is ``"ollama"`` (or whose
+    URL contains the default port ``:11434``) use the root URL;
+    all others append ``/models``.
 
     Args:
         base_url: Provider base URL.
@@ -50,7 +62,7 @@ def _build_ping_url(base_url: str, litellm_provider: str | None) -> str:
     """
     stripped = base_url.rstrip("/")
     if litellm_provider == "ollama" or ":11434" in stripped:
-        return stripped  # Ollama root returns "Ollama is running"
+        return stripped  # Root URL returns a liveness string
     return f"{stripped}/models"
 
 
@@ -59,6 +71,10 @@ def _build_auth_headers(
     api_key: str | None,
 ) -> dict[str, str]:
     """Build auth headers for the probe request.
+
+    Only ``api_key`` and ``subscription`` auth types produce an
+    ``Authorization: Bearer`` header.  Other types (oauth,
+    custom_header, none) result in no probe auth headers.
 
     Args:
         auth_type: Provider auth type.
@@ -70,6 +86,13 @@ def _build_auth_headers(
     if api_key and auth_type in ("api_key", "subscription"):
         return {"Authorization": f"Bearer {api_key}"}
     return {}
+
+
+def _truncate(msg: str, limit: int = _MAX_ERROR_MESSAGE_LENGTH) -> str:
+    """Truncate a string to *limit* characters."""
+    if len(msg) <= limit:
+        return msg
+    return msg[: limit - 3] + "..."
 
 
 class ProviderHealthProber:
@@ -85,11 +108,19 @@ class ProviderHealthProber:
     Args:
         health_tracker: Health tracker to record probe results.
         config_resolver: Config resolver to read provider configs.
-        interval_seconds: Seconds between probe cycles.
+        discovery_policy_loader: Async callable returning the current
+            discovery policy.  When provided, the prober validates
+            probe URLs against the SSRF allowlist before sending
+            requests (including auth headers).
+        interval_seconds: Seconds between probe cycles (must be >= 1).
+
+    Raises:
+        ValueError: If *interval_seconds* is less than 1.
     """
 
     __slots__ = (
         "_config_resolver",
+        "_discovery_policy_loader",
         "_health_tracker",
         "_interval",
         "_stop_event",
@@ -101,10 +132,17 @@ class ProviderHealthProber:
         health_tracker: ProviderHealthTracker,
         config_resolver: ConfigResolver,
         *,
+        discovery_policy_loader: (
+            Callable[[], Awaitable[ProviderDiscoveryPolicy]] | None
+        ) = None,
         interval_seconds: int = _DEFAULT_INTERVAL_SECONDS,
     ) -> None:
+        if interval_seconds < 1:
+            msg = f"interval_seconds must be >= 1, got {interval_seconds}"
+            raise ValueError(msg)
         self._health_tracker = health_tracker
         self._config_resolver = config_resolver
+        self._discovery_policy_loader = discovery_policy_loader
         self._interval = interval_seconds
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -137,6 +175,8 @@ class ProviderHealthProber:
                 await self._probe_all()
             except asyncio.CancelledError:
                 raise
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(PROVIDER_HEALTH_PROBER_CYCLE_FAILED)
             try:
@@ -151,10 +191,21 @@ class ProviderHealthProber:
     async def _probe_all(self) -> None:
         """Probe all eligible providers in parallel."""
         providers = await self._config_resolver.get_provider_configs()
+        policy: ProviderDiscoveryPolicy | None = None
+        if self._discovery_policy_loader is not None:
+            policy = await self._discovery_policy_loader()
         eligible: list[tuple[str, ProviderConfig]] = []
         for name, config in providers.items():
             if config.base_url is None:
                 continue  # cloud providers -- no lightweight ping available
+            url = _build_ping_url(config.base_url, config.litellm_provider)
+            if policy is not None and not is_url_allowed(url, policy):
+                logger.warning(
+                    PROVIDER_HEALTH_PROBE_FAILED,
+                    provider=name,
+                    error="url_not_allowed_by_discovery_policy",
+                )
+                continue
             summary = await self._health_tracker.get_summary(name)
             if summary.last_check_timestamp is not None:
                 elapsed = (
@@ -184,42 +235,14 @@ class ProviderHealthProber:
             name: Provider name.
             config: Provider configuration.
         """
-        base_url = config.base_url or ""
-        litellm_provider = config.litellm_provider
+        url = _build_ping_url(config.base_url or "", config.litellm_provider)
         raw_auth = config.auth_type
         auth_type = raw_auth.value if hasattr(raw_auth, "value") else str(raw_auth)
-        api_key = config.api_key
-
-        url = _build_ping_url(base_url, litellm_provider)
-        headers = _build_auth_headers(auth_type, api_key)
+        headers = _build_auth_headers(auth_type, config.api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)
-        start = time.monotonic()
-        success = False
-        error_msg: str | None = None
-
-        try:
-            async with httpx.AsyncClient(
-                timeout=_PROBE_TIMEOUT_SECONDS,
-                follow_redirects=False,
-            ) as client:
-                resp = await client.get(url, headers=headers)
-                _server_error_threshold = 500
-                success = resp.status_code < _server_error_threshold
-                if not success:
-                    error_msg = f"HTTP {resp.status_code}"
-        except httpx.ConnectError:
-            error_msg = "connection refused"
-        except httpx.TimeoutException:
-            error_msg = "timeout"
-        except asyncio.CancelledError:
-            raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            error_msg = f"{type(exc).__name__}: {exc}"
-
-        elapsed_ms = (time.monotonic() - start) * 1000
+        result = await self._execute_probe(url, headers)
+        elapsed_ms, success, error_msg = result
 
         record = ProviderHealthRecord(
             provider_name=name,
@@ -243,3 +266,44 @@ class ProviderHealthProber:
                 error=error_msg,
                 latency_ms=round(elapsed_ms, 1),
             )
+
+    @staticmethod
+    async def _execute_probe(
+        url: str,
+        headers: dict[str, str],
+    ) -> tuple[float, bool, str | None]:
+        """Execute the HTTP probe request.
+
+        Args:
+            url: URL to probe.
+            headers: Auth headers for the request.
+
+        Returns:
+            Tuple of (elapsed_ms, success, error_message).
+        """
+        start = time.monotonic()
+        success = False
+        error_msg: str | None = None
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=_PROBE_TIMEOUT_SECONDS,
+                follow_redirects=False,
+            ) as client:
+                resp = await client.get(url, headers=headers)
+                success = resp.status_code < _HTTP_SERVER_ERROR_THRESHOLD
+                if not success:
+                    error_msg = f"HTTP {resp.status_code}"
+        except httpx.ConnectError as exc:
+            error_msg = f"connect failed: {type(exc).__name__}"
+        except httpx.TimeoutException:
+            error_msg = "timeout"
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            error_msg = _truncate(f"{type(exc).__name__}: {exc}")
+
+        elapsed_ms = (time.monotonic() - start) * 1000
+        return elapsed_ms, success, error_msg

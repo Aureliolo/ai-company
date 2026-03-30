@@ -827,10 +827,3 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         oauth_scope=config.oauth_scope,
         custom_header_name=config.custom_header_name,
     )
-
-
-# Re-export from dto_providers to keep imports stable.
-from synthorg.api.dto_providers import (  # noqa: E402, F401
-    ProviderModelResponse,
-    to_provider_model_response,
-)

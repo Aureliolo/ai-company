@@ -19,7 +19,7 @@ function makeProvider(name: string): ProviderWithName {
   return {
     name,
     driver: 'litellm',
-    litellm_provider: 'anthropic',
+    litellm_provider: 'test-provider',
     auth_type: 'api_key',
     base_url: null,
     models: [
@@ -51,7 +51,7 @@ const defaultReturn: UseProviderDetailDataReturn = {
   testingConnection: false,
 }
 
-function renderDetail(name = 'anthropic') {
+function renderDetail(name = 'test-provider') {
   return render(
     <MemoryRouter initialEntries={[`/providers/${name}`]}>
       <Routes>
@@ -80,18 +80,18 @@ describe('ProviderDetailPage', () => {
   })
 
   it('renders provider name when data loaded', () => {
-    const provider = makeProvider('anthropic')
+    const provider = makeProvider('test-provider')
     hookReturn = {
       ...defaultReturn,
       provider,
       models: testModels,
     }
     renderDetail()
-    expect(screen.getByRole('heading', { name: 'anthropic' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'test-provider' })).toBeInTheDocument()
   })
 
   it('renders model list when models present', () => {
-    const provider = makeProvider('anthropic')
+    const provider = makeProvider('test-provider')
     hookReturn = {
       ...defaultReturn,
       provider,
@@ -102,7 +102,7 @@ describe('ProviderDetailPage', () => {
   })
 
   it('renders health metrics when health available', () => {
-    const provider = makeProvider('anthropic')
+    const provider = makeProvider('test-provider')
     hookReturn = {
       ...defaultReturn,
       provider,
@@ -120,10 +120,11 @@ describe('ProviderDetailPage', () => {
     renderDetail()
     expect(screen.getByText('500')).toBeInTheDocument()
     expect(screen.getByText('250ms')).toBeInTheDocument()
+    expect(screen.getByText('50.0K')).toBeInTheDocument()
   })
 
   it('renders test connection result when present', () => {
-    const provider = makeProvider('anthropic')
+    const provider = makeProvider('test-provider')
     hookReturn = {
       ...defaultReturn,
       provider,

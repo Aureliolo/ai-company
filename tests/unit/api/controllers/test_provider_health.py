@@ -323,3 +323,35 @@ class TestProviderHealthUsageEnrichment:
             data = resp.json()["data"]
             assert data["total_tokens_24h"] == 1500
             assert data["total_cost_24h"] == 0.10
+
+    async def test_health_graceful_degradation_on_cost_tracker_error(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Endpoint returns 200 with zero usage when CostTracker raises."""
+        from unittest.mock import AsyncMock, patch
+
+        tracker = CostTracker()
+        with (
+            patch.object(
+                tracker,
+                "get_provider_usage",
+                new=AsyncMock(
+                    side_effect=RuntimeError("cost tracker broken"),
+                ),
+            ),
+            _build_provider_client(
+                fake_persistence=fake_persistence,
+                fake_message_bus=fake_message_bus,
+                cost_tracker=tracker,
+            ) as client,
+        ):
+            resp = client.get(
+                "/api/v1/providers/test-provider/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["total_tokens_24h"] == 0
+            assert data["total_cost_24h"] == 0.0

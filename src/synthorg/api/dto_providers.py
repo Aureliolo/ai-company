@@ -16,8 +16,8 @@ class ProviderModelResponse(BaseModel):
     Attributes:
         id: Model identifier.
         alias: Short alias for routing rules.
-        cost_per_1k_input: Cost per 1k input tokens in USD (base currency).
-        cost_per_1k_output: Cost per 1k output tokens in USD (base currency).
+        cost_per_1k_input: Cost per 1k input tokens.
+        cost_per_1k_output: Cost per 1k output tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
         supports_tools: Whether the model supports tool/function calling.
@@ -83,16 +83,20 @@ def to_provider_model_response(
     Returns:
         Enriched model response DTO.
     """
-    kwargs: dict[str, object] = {
-        "id": config.id,
-        "alias": config.alias,
-        "cost_per_1k_input": config.cost_per_1k_input,
-        "cost_per_1k_output": config.cost_per_1k_output,
-        "max_context": config.max_context,
-        "estimated_latency_ms": config.estimated_latency_ms,
-    }
-    if capabilities is not None:
-        kwargs["supports_tools"] = capabilities.supports_tools
-        kwargs["supports_vision"] = capabilities.supports_vision
-        kwargs["supports_streaming"] = capabilities.supports_streaming
-    return ProviderModelResponse(**kwargs)  # type: ignore[arg-type]
+    return ProviderModelResponse(
+        id=config.id,
+        alias=config.alias,
+        cost_per_1k_input=config.cost_per_1k_input,
+        cost_per_1k_output=config.cost_per_1k_output,
+        max_context=config.max_context,
+        estimated_latency_ms=config.estimated_latency_ms,
+        supports_tools=(
+            capabilities.supports_tools if capabilities is not None else False
+        ),
+        supports_vision=(
+            capabilities.supports_vision if capabilities is not None else False
+        ),
+        supports_streaming=(
+            capabilities.supports_streaming if capabilities is not None else True
+        ),
+    )

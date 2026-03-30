@@ -87,8 +87,11 @@ class ProviderHealthSummary(BaseModel):
         avg_response_time_ms: Average response time over the last 24h.
         error_rate_percent_24h: Error rate percentage over the last 24h.
         calls_last_24h: Total calls in the last 24h.
-        health_status: Derived (computed_field) from error rate
-            (up/degraded/down). Not a constructor parameter.
+        total_tokens_24h: Total tokens (input + output) in the last 24h.
+        total_cost_24h: Total cost in the last 24h.
+        health_status: Derived (computed_field) from call count and
+            error rate (unknown/up/degraded/down). Not a constructor
+            parameter.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -121,7 +124,7 @@ class ProviderHealthSummary(BaseModel):
     total_cost_24h: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost in USD (base currency) in the last 24h",
+        description="Total cost in the last 24h",
     )
 
     @computed_field  # type: ignore[prop-decorator]

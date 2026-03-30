@@ -248,6 +248,10 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `getPriorityLabel()` | `utils/tasks.ts` | Maps `Priority` to display label. |
 | `getTaskTypeLabel()` | `utils/tasks.ts` | Maps `TaskType` to display label. |
 | `getProviderHealthColor()` | `utils/providers.ts` | Maps `ProviderHealthStatus` to `SemanticColor \| "muted"`. |
+| `formatLatency()` | `utils/providers.ts` | Formats milliseconds to human-readable string (e.g. "123ms", "1.5s"). |
+| `formatErrorRate()` | `utils/providers.ts` | Formats error rate percentage with <0.1% handling. |
+| `formatTokenCount()` | `utils/providers.ts` | Formats token count with K/M suffixes. |
+| `formatCost()` | `utils/providers.ts` | Formats cost value using project currency (defaults to EUR). |
 | `toRuntimeStatus()` | `utils/agents.ts` | Maps API-layer `AgentStatus` (HR lifecycle) to `AgentRuntimeStatus` for UI components. |
 | `getRiskLevelColor()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to `SemanticColor \| "accent-dim"`. |
 | `getRiskLevelLabel()` | `utils/approvals.ts` | Maps `ApprovalRiskLevel` to display label. |

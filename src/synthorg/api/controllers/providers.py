@@ -57,6 +57,48 @@ from synthorg.providers.probing import probe_preset_urls
 logger = get_logger(__name__)
 
 
+async def _enrich_with_usage(
+    summary: ProviderHealthSummary,
+    app_state: AppState,
+    name: str,
+) -> ProviderHealthSummary:
+    """Enrich a health summary with token/cost data from CostTracker.
+
+    Args:
+        summary: Base health summary from the health tracker.
+        app_state: Application state.
+        name: Provider name.
+
+    Returns:
+        Enriched summary (or unchanged if enrichment is unavailable).
+    """
+    if not app_state.has_cost_tracker:
+        return summary
+    try:
+        now = datetime.now(UTC)
+        usage = await app_state.cost_tracker.get_provider_usage(
+            name,
+            start=now - timedelta(hours=24),
+            end=now,
+        )
+        return summary.model_copy(
+            update={
+                "total_tokens_24h": usage.total_tokens,
+                "total_cost_24h": usage.total_cost,
+            },
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_PROVIDER_USAGE_ENRICHMENT_FAILED,
+            provider=name,
+            error=str(exc),
+            error_type=type(exc).__qualname__,
+        )
+        return summary
+
+
 class ProviderController(Controller):
     """LLM provider management: CRUD, test, and presets."""
 
@@ -245,7 +287,9 @@ class ProviderController(Controller):
         """Get provider health summary.
 
         Returns health status, error rate, average response time,
-        and call count for the last 24 hours.
+        call count, total tokens, and total cost for the last 24
+        hours.  Token and cost totals are enriched from the cost
+        tracker when available.
 
         Args:
             state: Application state.
@@ -264,29 +308,7 @@ class ProviderController(Controller):
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
             raise NotFoundError(msg)
         summary = await app_state.provider_health_tracker.get_summary(name)
-        if app_state.has_cost_tracker:
-            try:
-                now = datetime.now(UTC)
-                usage = await app_state.cost_tracker.get_provider_usage(
-                    name,
-                    start=now - timedelta(hours=24),
-                    end=now,
-                )
-                summary = summary.model_copy(
-                    update={
-                        "total_tokens_24h": usage.total_tokens,
-                        "total_cost_24h": usage.total_cost,
-                    },
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    API_PROVIDER_USAGE_ENRICHMENT_FAILED,
-                    provider=name,
-                    error=str(exc),
-                    error_type=type(exc).__qualname__,
-                )
+        summary = await _enrich_with_usage(summary, app_state, name)
         logger.debug(
             API_PROVIDER_HEALTH_QUERIED,
             provider=name,

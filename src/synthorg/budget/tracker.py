@@ -58,6 +58,8 @@ if TYPE_CHECKING:
     )
     from synthorg.budget.cost_record import CostRecord
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 logger = get_logger(__name__)
 
 _COST_WINDOW_HOURS = 168  # 7 days
@@ -248,7 +250,7 @@ class CostTracker:
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
-        provider: str | None = None,
+        provider: NotBlankStr | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> tuple[CostRecord, ...]:
@@ -291,7 +293,7 @@ class CostTracker:
 
     async def get_provider_usage(
         self,
-        provider_name: str,
+        provider_name: NotBlankStr,
         *,
         start: datetime | None = None,
         end: datetime | None = None,

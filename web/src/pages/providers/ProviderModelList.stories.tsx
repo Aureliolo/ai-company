@@ -59,8 +59,8 @@ export const AllCapabilities: Story = {
 export const NoCapabilities: Story = {
   args: {
     models: [{
-      id: 'local-llama',
-      alias: 'llama',
+      id: 'test-local-001',
+      alias: 'local-small',
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
       max_context: 128000,

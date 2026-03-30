@@ -41,6 +41,7 @@ export const NoUsage: Story = {
       calls_last_24h: 0,
       total_tokens_24h: 0,
       total_cost_24h: 0,
+      health_status: 'unknown',
       last_check_timestamp: null,
       avg_response_time_ms: null,
       error_rate_percent_24h: 0,
