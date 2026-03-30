@@ -132,3 +132,18 @@ export function formatErrorRate(rate: number): string {
   if (rate < 0.1) return '<0.1%'
   return `${rate.toFixed(1)}%`
 }
+
+/** Format a token count with K/M suffixes. */
+export function formatTokenCount(n: number): string {
+  if (n === 0) return '0'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString()
+}
+
+/** Format a USD cost value. */
+export function formatCost(cost: number): string {
+  if (cost === 0) return '$0.00'
+  if (cost < 0.01) return '<$0.01'
+  return `$${cost.toFixed(2)}`
+}

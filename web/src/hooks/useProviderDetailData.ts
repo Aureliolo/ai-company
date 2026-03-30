@@ -3,7 +3,7 @@ import { useProvidersStore } from '@/stores/providers'
 import { usePolling } from '@/hooks/usePolling'
 import type {
   ProviderHealthSummary,
-  ProviderModelConfig,
+  ProviderModelResponse,
   TestConnectionResponse,
 } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
@@ -12,7 +12,7 @@ const DETAIL_POLL_INTERVAL = 30_000
 
 export interface UseProviderDetailDataReturn {
   provider: ProviderWithName | null
-  models: readonly ProviderModelConfig[]
+  models: readonly ProviderModelResponse[]
   health: ProviderHealthSummary | null
   loading: boolean
   error: string | null

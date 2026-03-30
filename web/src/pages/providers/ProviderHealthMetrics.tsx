@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { MetricCard } from '@/components/ui/metric-card'
-import { formatLatency, formatErrorRate } from '@/utils/providers'
+import { formatLatency, formatErrorRate, formatTokenCount, formatCost } from '@/utils/providers'
 import type { ProviderHealthSummary } from '@/api/types'
 
 interface ProviderHealthMetricsProps {
@@ -16,10 +16,18 @@ export function ProviderHealthMetrics({ health }: ProviderHealthMetricsProps) {
   )
 
   return (
-    <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
+    <div className="grid grid-cols-6 gap-grid-gap max-[1279px]:grid-cols-3 max-[767px]:grid-cols-2">
       <MetricCard
         label="Calls (24h)"
         value={health.calls_last_24h.toLocaleString()}
+      />
+      <MetricCard
+        label="Tokens (24h)"
+        value={formatTokenCount(health.total_tokens_24h ?? 0)}
+      />
+      <MetricCard
+        label="Cost (24h)"
+        value={formatCost(health.total_cost_24h ?? 0)}
       />
       <MetricCard
         label="Avg Response Time"

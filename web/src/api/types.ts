@@ -662,6 +662,8 @@ export interface ProviderHealthSummary {
   error_rate_percent_24h: number
   calls_last_24h: number
   health_status: ProviderHealthStatus
+  total_tokens_24h: number
+  total_cost_24h: number
 }
 
 export interface ProviderModelConfig {
@@ -671,6 +673,18 @@ export interface ProviderModelConfig {
   cost_per_1k_output: number
   max_context: number
   estimated_latency_ms: number | null
+}
+
+export interface ProviderModelResponse {
+  id: string
+  alias: string | null
+  cost_per_1k_input: number
+  cost_per_1k_output: number
+  max_context: number
+  estimated_latency_ms: number | null
+  supports_tools: boolean
+  supports_vision: boolean
+  supports_streaming: boolean
 }
 
 /**

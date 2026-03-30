@@ -1,0 +1,75 @@
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { ProviderModelList } from './ProviderModelList'
+import type { ProviderModelResponse } from '@/api/types'
+
+const models: ProviderModelResponse[] = [
+  {
+    id: 'example-large-001',
+    alias: 'large',
+    cost_per_1k_input: 0.015,
+    cost_per_1k_output: 0.075,
+    max_context: 200000,
+    estimated_latency_ms: 1500,
+    supports_tools: true,
+    supports_vision: true,
+    supports_streaming: true,
+  },
+  {
+    id: 'example-medium-001',
+    alias: 'medium',
+    cost_per_1k_input: 0.003,
+    cost_per_1k_output: 0.015,
+    max_context: 200000,
+    estimated_latency_ms: 500,
+    supports_tools: true,
+    supports_vision: false,
+    supports_streaming: true,
+  },
+  {
+    id: 'example-small-001',
+    alias: 'small',
+    cost_per_1k_input: 0.0008,
+    cost_per_1k_output: 0.004,
+    max_context: 200000,
+    estimated_latency_ms: 200,
+    supports_tools: false,
+    supports_vision: false,
+    supports_streaming: true,
+  },
+]
+
+const meta = {
+  title: 'Providers/ProviderModelList',
+  component: ProviderModelList,
+  tags: ['autodocs'],
+  decorators: [(Story) => <div className="max-w-3xl"><Story /></div>],
+} satisfies Meta<typeof ProviderModelList>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Default: Story = { args: { models } }
+
+export const AllCapabilities: Story = {
+  args: {
+    models: models.slice(0, 1),
+  },
+}
+
+export const NoCapabilities: Story = {
+  args: {
+    models: [{
+      id: 'local-llama',
+      alias: 'llama',
+      cost_per_1k_input: 0,
+      cost_per_1k_output: 0,
+      max_context: 128000,
+      estimated_latency_ms: null,
+      supports_tools: false,
+      supports_vision: false,
+      supports_streaming: false,
+    }],
+  },
+}
+
+export const Empty: Story = { args: { models: [] } }

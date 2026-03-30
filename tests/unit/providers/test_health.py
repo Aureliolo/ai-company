@@ -76,6 +76,39 @@ class TestProviderHealthSummary:
         with pytest.raises(ValidationError):
             summary.error_rate_percent_24h = 99.0  # type: ignore[misc]
 
+    def test_default_tokens_and_cost(self) -> None:
+        summary = ProviderHealthSummary()
+        assert summary.total_tokens_24h == 0
+        assert summary.total_cost_24h == 0.0
+
+    def test_with_tokens_and_cost(self) -> None:
+        summary = ProviderHealthSummary(
+            total_tokens_24h=50000,
+            total_cost_24h=1.25,
+        )
+        assert summary.total_tokens_24h == 50000
+        assert summary.total_cost_24h == 1.25
+
+    def test_model_copy_enrichment(self) -> None:
+        """model_copy(update=...) works on frozen model for enrichment."""
+        base = ProviderHealthSummary(calls_last_24h=100)
+        enriched = base.model_copy(
+            update={"total_tokens_24h": 5000, "total_cost_24h": 0.75},
+        )
+        assert enriched.calls_last_24h == 100
+        assert enriched.total_tokens_24h == 5000
+        assert enriched.total_cost_24h == 0.75
+        # Original unchanged
+        assert base.total_tokens_24h == 0
+
+    def test_tokens_non_negative(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            ProviderHealthSummary(total_tokens_24h=-1)
+
+    def test_cost_non_negative(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            ProviderHealthSummary(total_cost_24h=-0.01)
+
 
 # ── Tracker tests ─────────────────────────────────────────────
 

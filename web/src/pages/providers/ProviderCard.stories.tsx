@@ -30,6 +30,8 @@ const healthUp: ProviderHealthSummary = {
   error_rate_percent_24h: 0.5,
   calls_last_24h: 1234,
   health_status: 'up',
+  total_tokens_24h: 245000,
+  total_cost_24h: 3.72,
 }
 
 const meta = {

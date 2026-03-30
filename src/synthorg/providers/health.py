@@ -112,6 +112,16 @@ class ProviderHealthSummary(BaseModel):
         ge=0,
         description="Total calls in the last 24h",
     )
+    total_tokens_24h: int = Field(
+        default=0,
+        ge=0,
+        description="Total tokens (input + output) in the last 24h",
+    )
+    total_cost_24h: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Total cost in USD (base currency) in the last 24h",
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

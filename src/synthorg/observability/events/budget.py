@@ -39,3 +39,5 @@ BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"
 BUDGET_RECORDS_PRUNED: Final[str] = "budget.records.pruned"
 BUDGET_RECORDS_AUTO_PRUNED: Final[str] = "budget.records.auto_pruned"
 BUDGET_QUERY_EXCEEDS_RETENTION: Final[str] = "budget.query.exceeds_retention"
+
+BUDGET_PROVIDER_USAGE_QUERIED: Final[str] = "budget.provider_usage.queried"

@@ -37,6 +37,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
+    BUDGET_PROVIDER_USAGE_QUERIED,
     BUDGET_QUERY_EXCEEDS_RETENTION,
     BUDGET_RECORD_ADDED,
     BUDGET_RECORDS_AUTO_PRUNED,
@@ -61,6 +62,13 @@ logger = get_logger(__name__)
 
 _COST_WINDOW_HOURS = 168  # 7 days
 _AUTO_PRUNE_THRESHOLD = 100_000
+
+
+class ProviderUsageSummary(NamedTuple):
+    """Per-provider usage totals for a time window."""
+
+    total_tokens: int
+    total_cost: float
 
 
 class _AggregateResult(NamedTuple):
@@ -240,6 +248,7 @@ class CostTracker:
         *,
         agent_id: str | None = None,
         task_id: str | None = None,
+        provider: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> tuple[CostRecord, ...]:
@@ -250,6 +259,7 @@ class CostTracker:
         Args:
             agent_id: Filter by agent.
             task_id: Filter by task.
+            provider: Filter by provider name.
             start: Inclusive lower bound on ``timestamp``.
             end: Exclusive upper bound on ``timestamp``.
 
@@ -265,6 +275,7 @@ class CostTracker:
             BUDGET_RECORDS_QUERIED,
             agent_id=agent_id,
             task_id=task_id,
+            provider=provider,
             start=start,
             end=end,
         )
@@ -273,8 +284,52 @@ class CostTracker:
             snapshot,
             agent_id=agent_id,
             task_id=task_id,
+            provider=provider,
             start=start,
             end=end,
+        )
+
+    async def get_provider_usage(
+        self,
+        provider_name: str,
+        *,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> ProviderUsageSummary:
+        """Return aggregated token and cost totals for a provider.
+
+        Args:
+            provider_name: Provider to aggregate usage for.
+            start: Inclusive lower bound on ``timestamp``.
+            end: Exclusive upper bound on ``timestamp``.
+
+        Returns:
+            Total tokens (input + output) and total cost.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        logger.debug(
+            BUDGET_PROVIDER_USAGE_QUERIED,
+            provider=provider_name,
+            start=start,
+            end=end,
+        )
+        snapshot = await self._snapshot()
+        filtered = _filter_records(
+            snapshot,
+            provider=provider_name,
+            start=start,
+            end=end,
+        )
+        if not filtered:
+            return ProviderUsageSummary(total_tokens=0, total_cost=0.0)
+        agg = _aggregate(filtered)
+        return ProviderUsageSummary(
+            total_tokens=agg.input_tokens + agg.output_tokens,
+            total_cost=agg.cost,
         )
 
     async def build_summary(
@@ -566,15 +621,16 @@ def _validate_time_range(
         raise ValueError(msg)
 
 
-def _filter_records(
+def _filter_records(  # noqa: PLR0913
     records: Sequence[CostRecord],
     *,
     agent_id: str | None = None,
     task_id: str | None = None,
+    provider: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:
-    """Filter records by agent, task, and/or time range.
+    """Filter records by agent, task, provider, and/or time range.
 
     Time semantics: ``start <= timestamp < end``.
     """
@@ -583,6 +639,7 @@ def _filter_records(
         for r in records
         if (agent_id is None or r.agent_id == agent_id)
         and (task_id is None or r.task_id == task_id)
+        and (provider is None or r.provider == provider)
         and (start is None or r.timestamp >= start)
         and (end is None or r.timestamp < end)
     )

@@ -68,6 +68,9 @@ API_AGENT_ACTIVITY_QUERIED: Final[str] = "api.agent.activity_queried"
 API_AGENT_HISTORY_QUERIED: Final[str] = "api.agent.history_queried"
 API_DEPARTMENT_HEALTH_QUERIED: Final[str] = "api.department.health_queried"
 API_PROVIDER_HEALTH_QUERIED: Final[str] = "api.provider.health_queried"
+API_MODEL_CAPABILITIES_LOOKUP_FAILED: Final[str] = (
+    "api.provider.model_capabilities_lookup_failed"
+)
 API_ACTIVITY_FEED_QUERIED: Final[str] = "api.activity.feed_queried"
 API_MEETING_TRIGGERED: Final[str] = "api.meeting.triggered"
 API_BUDGET_RECORDS_LISTED: Final[str] = "api.budget.records_listed"

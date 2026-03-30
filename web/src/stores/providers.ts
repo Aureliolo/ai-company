@@ -22,7 +22,7 @@ import type {
   ProviderConfig,
   ProviderHealthStatus,
   ProviderHealthSummary,
-  ProviderModelConfig,
+  ProviderModelResponse,
   ProviderPreset,
   TestConnectionRequest,
   TestConnectionResponse,
@@ -46,7 +46,7 @@ interface ProvidersState {
 
   // ── Detail view ──
   selectedProvider: ProviderWithName | null
-  selectedProviderModels: readonly ProviderModelConfig[]
+  selectedProviderModels: readonly ProviderModelResponse[]
   selectedProviderHealth: ProviderHealthSummary | null
   detailLoading: boolean
   detailError: string | null

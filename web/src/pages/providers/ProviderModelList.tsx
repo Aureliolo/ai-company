@@ -1,10 +1,46 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Boxes } from 'lucide-react'
-import type { ProviderModelConfig } from '@/api/types'
+import type { ProviderModelResponse } from '@/api/types'
 
 interface ProviderModelRowProps {
-  model: ProviderModelConfig
+  model: ProviderModelResponse
+}
+
+function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
+  const badges: { label: string; show: boolean; className: string }[] = [
+    {
+      label: 'tools',
+      show: model.supports_tools,
+      className: 'bg-accent/10 text-accent',
+    },
+    {
+      label: 'vision',
+      show: model.supports_vision,
+      className: 'bg-success/10 text-success',
+    },
+    {
+      label: 'stream',
+      show: model.supports_streaming,
+      className: 'bg-text-muted/10 text-text-secondary',
+    },
+  ]
+
+  const visible = badges.filter((b) => b.show)
+  if (visible.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {visible.map((b) => (
+        <span
+          key={b.label}
+          className={`rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight ${b.className}`}
+        >
+          {b.label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function ProviderModelRow({ model }: ProviderModelRowProps) {
@@ -12,6 +48,9 @@ function ProviderModelRow({ model }: ProviderModelRowProps) {
     <tr className="border-b border-border/50 last:border-0">
       <td className="py-2 pr-4 font-mono text-foreground">{model.id}</td>
       <td className="py-2 pr-4 text-text-secondary">{model.alias ?? '--'}</td>
+      <td className="py-2 pr-4">
+        <CapabilityBadges model={model} />
+      </td>
       <td className="py-2 pr-4 text-right font-mono text-text-secondary">
         {(model.max_context / 1000).toFixed(0)}k
       </td>
@@ -26,7 +65,7 @@ function ProviderModelRow({ model }: ProviderModelRowProps) {
 }
 
 interface ProviderModelListProps {
-  models: readonly ProviderModelConfig[]
+  models: readonly ProviderModelResponse[]
 }
 
 export function ProviderModelList({ models }: ProviderModelListProps) {
@@ -45,6 +84,7 @@ export function ProviderModelList({ models }: ProviderModelListProps) {
               <tr className="border-b border-border text-left text-xs text-text-muted">
                 <th className="pb-2 pr-4 font-medium">Model ID</th>
                 <th className="pb-2 pr-4 font-medium">Alias</th>
+                <th className="pb-2 pr-4 font-medium">Capabilities</th>
                 <th className="pb-2 pr-4 font-medium text-right">Context</th>
                 <th className="pb-2 pr-4 font-medium text-right">Input/1k</th>
                 <th className="pb-2 font-medium text-right">Output/1k</th>

@@ -9,7 +9,7 @@ import type {
   ProbePresetResponse,
   ProviderConfig,
   ProviderHealthSummary,
-  ProviderModelConfig,
+  ProviderModelResponse,
   ProviderPreset,
   RemoveAllowlistEntryRequest,
   TestConnectionRequest,
@@ -33,8 +33,8 @@ export async function getProvider(name: string): Promise<ProviderConfig> {
   return unwrap(response)
 }
 
-export async function getProviderModels(name: string): Promise<ProviderModelConfig[]> {
-  const response = await apiClient.get<ApiResponse<ProviderModelConfig[]>>(`/providers/${encodeURIComponent(name)}/models`)
+export async function getProviderModels(name: string): Promise<ProviderModelResponse[]> {
+  const response = await apiClient.get<ApiResponse<ProviderModelResponse[]>>(`/providers/${encodeURIComponent(name)}/models`)
   return unwrap(response)
 }
 

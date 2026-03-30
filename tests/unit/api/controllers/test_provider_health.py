@@ -6,6 +6,8 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.budget.cost_record import CostRecord
+from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.providers.health import (
     ProviderHealthRecord,
@@ -43,11 +45,11 @@ def _build_provider_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     provider_health_tracker: ProviderHealthTracker | None = None,
+    cost_tracker: CostTracker | None = None,
 ) -> TestClient[Any]:
     """Build a TestClient with a provider configured."""
     from synthorg.api.app import create_app
     from synthorg.api.auth.service import AuthService
-    from synthorg.budget.tracker import CostTracker
     from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
 
     config = RootConfig(
@@ -75,7 +77,7 @@ def _build_provider_client(
         config=config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
-        cost_tracker=CostTracker(),
+        cost_tracker=cost_tracker or CostTracker(),
         auth_service=auth_service,
         settings_service=settings_service,
         provider_health_tracker=provider_health_tracker or ProviderHealthTracker(),
@@ -207,3 +209,117 @@ class TestProviderHealth:
             data = resp.json()["data"]
             assert data["health_status"] == "down"
             assert data["error_rate_percent_24h"] == 100.0
+
+
+@pytest.mark.unit
+class TestProviderHealthUsageEnrichment:
+    """Tests for cost/token enrichment of the health endpoint."""
+
+    def test_health_includes_zero_usage_when_no_cost_records(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Usage fields present and zero when no cost records exist."""
+        with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+        ) as client:
+            resp = client.get(
+                "/api/v1/providers/test-provider/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["total_tokens_24h"] == 0
+            assert data["total_cost_24h"] == 0.0
+
+    async def test_health_includes_usage_from_cost_tracker(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Usage fields reflect token/cost totals from CostTracker."""
+        tracker = CostTracker()
+        await tracker.record(
+            CostRecord(
+                agent_id="alice",
+                task_id="task-1",
+                provider="test-provider",
+                model="test-small-001",
+                input_tokens=3000,
+                output_tokens=1000,
+                cost_usd=0.25,
+                timestamp=_NOW - timedelta(minutes=5),
+            ),
+        )
+        await tracker.record(
+            CostRecord(
+                agent_id="bob",
+                task_id="task-2",
+                provider="test-provider",
+                model="test-small-001",
+                input_tokens=2000,
+                output_tokens=500,
+                cost_usd=0.15,
+                timestamp=_NOW - timedelta(minutes=10),
+            ),
+        )
+        with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            cost_tracker=tracker,
+        ) as client:
+            resp = client.get(
+                "/api/v1/providers/test-provider/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["total_tokens_24h"] == 6500  # 3000+1000+2000+500
+            assert data["total_cost_24h"] == 0.40
+
+    async def test_health_excludes_other_provider_costs(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Costs from other providers are not included."""
+        tracker = CostTracker()
+        await tracker.record(
+            CostRecord(
+                agent_id="alice",
+                task_id="task-1",
+                provider="test-provider",
+                model="test-small-001",
+                input_tokens=1000,
+                output_tokens=500,
+                cost_usd=0.10,
+                timestamp=_NOW - timedelta(minutes=5),
+            ),
+        )
+        await tracker.record(
+            CostRecord(
+                agent_id="alice",
+                task_id="task-2",
+                provider="other-provider",
+                model="other-model",
+                input_tokens=9000,
+                output_tokens=9000,
+                cost_usd=9.99,
+                timestamp=_NOW - timedelta(minutes=5),
+            ),
+        )
+        with _build_provider_client(
+            fake_persistence=fake_persistence,
+            fake_message_bus=fake_message_bus,
+            cost_tracker=tracker,
+        ) as client:
+            resp = client.get(
+                "/api/v1/providers/test-provider/health",
+                headers=_HEADERS,
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["total_tokens_24h"] == 1500
+            assert data["total_cost_24h"] == 0.10

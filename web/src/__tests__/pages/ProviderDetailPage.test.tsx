@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UseProviderDetailDataReturn } from '@/hooks/useProviderDetailData'
+import type { ProviderModelResponse } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
 
 let hookReturn: UseProviderDetailDataReturn
@@ -35,6 +36,10 @@ function makeProvider(name: string): ProviderWithName {
     custom_header_name: null,
   }
 }
+
+const testModels: ProviderModelResponse[] = [
+  { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null, supports_tools: true, supports_vision: false, supports_streaming: true },
+]
 
 const defaultReturn: UseProviderDetailDataReturn = {
   provider: null,
@@ -79,7 +84,7 @@ describe('ProviderDetailPage', () => {
     hookReturn = {
       ...defaultReturn,
       provider,
-      models: [...provider.models],
+      models: testModels,
     }
     renderDetail()
     expect(screen.getByRole('heading', { name: 'anthropic' })).toBeInTheDocument()
@@ -90,7 +95,7 @@ describe('ProviderDetailPage', () => {
     hookReturn = {
       ...defaultReturn,
       provider,
-      models: [...provider.models],
+      models: testModels,
     }
     renderDetail()
     expect(screen.getByText('test-model')).toBeInTheDocument()
@@ -108,6 +113,8 @@ describe('ProviderDetailPage', () => {
         error_rate_percent_24h: 1.5,
         calls_last_24h: 500,
         health_status: 'up',
+        total_tokens_24h: 50000,
+        total_cost_24h: 1.25,
       },
     }
     renderDetail()
