@@ -31,12 +31,17 @@ export function useRovingTabIndex(options: UseRovingTabIndexOptions): UseRovingT
   const { containerRef, orientation, columns = 1, loop = true } = options
   const [focusedIndex, setFocusedIndex] = useState(0)
 
-  // Sync tabindex attributes when focused index changes
+  // Clamp focusedIndex when the number of items shrinks below it
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const items = container.querySelectorAll<HTMLElement>(ITEM_SELECTOR)
+    if (items.length > 0 && focusedIndex >= items.length) {
+      setFocusedIndex(items.length - 1) // eslint-disable-line @eslint-react/set-state-in-effect -- clamp index when items shrink
+      return // The state update will re-trigger this effect to sync tabindex
+    }
+
     items.forEach((item, i) => {
       item.setAttribute('tabindex', i === focusedIndex ? '0' : '-1')
     })

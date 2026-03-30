@@ -34,7 +34,8 @@ function formatRelative(elapsedMs: number): string {
  * second to keep relative times fresh and garbage-collect expired entries.
  */
 export function useJustUpdated(options?: UseJustUpdatedOptions): UseJustUpdatedReturn {
-  const ttlMs = options?.ttlMs ?? DEFAULT_TTL_MS
+  const rawTtl = options?.ttlMs ?? DEFAULT_TTL_MS
+  const ttlMs = Number.isFinite(rawTtl) && rawTtl > 0 ? rawTtl : DEFAULT_TTL_MS
   const entriesRef = useRef(new Map<string, number>())
   // Tick counter drives re-renders every second so relative times update
   const [tick, setTick] = useState(0)
@@ -75,8 +76,10 @@ export function useJustUpdated(options?: UseJustUpdatedOptions): UseJustUpdatedR
   const relativeTime = useCallback((id: string): string | null => {
     const timestamp = entriesRef.current.get(id)
     if (timestamp === undefined) return null
+    // Consistent with isJustUpdated -- return null for expired entries awaiting GC
+    if (Date.now() - timestamp >= ttlMs) return null
     return formatRelative(Date.now() - timestamp)
-  }, [])
+  }, [ttlMs])
 
   const clearAll = useCallback(() => {
     entriesRef.current.clear()
