@@ -13,6 +13,10 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
+from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_ACTIVITY_REDACTION_MISMATCH
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
@@ -34,7 +38,7 @@ class ActivityEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_type: NotBlankStr = Field(description="Event category")
+    event_type: ActivityEventType = Field(description="Event category")
     timestamp: AwareDatetime = Field(description="When the event occurred")
     description: str = Field(
         default="",
@@ -253,9 +257,16 @@ def redact_cost_events(
         if event.event_type == ActivityEventType.COST_INCURRED:
             match = _COST_DESC_PATTERN.match(event.description)
             if match:
-                event = event.model_copy(  # noqa: PLW2901
-                    update={"description": f"API call ({match.group(1)})"},
+                redacted = f"API call ({match.group(1)})"
+            else:
+                logger.warning(
+                    HR_ACTIVITY_REDACTION_MISMATCH,
+                    description=event.description[:80],
                 )
+                redacted = "API call (details redacted)"
+            event = event.model_copy(  # noqa: PLW2901
+                update={"description": redacted},
+            )
         result.append(event)
     return tuple(result)
 

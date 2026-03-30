@@ -189,7 +189,7 @@ class PaginatedResponse[T](BaseModel):
         success: Whether the request succeeded (computed from ``error``).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     data: tuple[T, ...] = ()
     error: str | None = None

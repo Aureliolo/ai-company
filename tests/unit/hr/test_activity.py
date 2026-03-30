@@ -9,6 +9,7 @@ from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.core.enums import Complexity, TaskType
 from synthorg.hr.activity import (
     ActivityEvent,
+    _cost_record_to_activity,
     filter_career_events,
     merge_activity_timeline,
     redact_cost_events,
@@ -711,6 +712,19 @@ class TestFilterCareerEvents:
 
 
 @pytest.mark.unit
+class TestActivityEventTypeSuperset:
+    """ActivityEventType must include every LifecycleEventType value."""
+
+    def test_lifecycle_values_are_subset(self) -> None:
+        lifecycle_values = {e.value for e in LifecycleEventType}
+        activity_values = {e.value for e in ActivityEventType}
+        missing = lifecycle_values - activity_values
+        assert not missing, (
+            f"LifecycleEventType values missing from ActivityEventType: {missing}"
+        )
+
+
+@pytest.mark.unit
 class TestRedactCostEvents:
     def test_redacts_model_and_cost_from_description(self) -> None:
         event = ActivityEvent(
@@ -752,12 +766,29 @@ class TestRedactCostEvents:
         assert result[0].timestamp == _NOW
         assert result[0].related_ids == {"agent_id": "agent-1", "task_id": "task-1"}
 
-    def test_non_matching_description_left_as_is(self) -> None:
-        """If the description format doesn't match the regex, keep it."""
+    def test_non_matching_description_uses_fallback(self) -> None:
+        """If the description format doesn't match the regex, use fallback."""
         event = ActivityEvent(
             event_type=ActivityEventType.COST_INCURRED,
             timestamp=_NOW,
             description="Custom cost event description",
         )
         result = redact_cost_events((event,))
-        assert result[0].description == "Custom cost event description"
+        assert result[0].description == "API call (details redacted)"
+
+    def test_round_trip_with_real_cost_record(self) -> None:
+        """Regex matches the actual format produced by _cost_record_to_activity."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test-provider",
+            model="test-medium-001",
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.005,
+            timestamp=_NOW,
+        )
+        event = _cost_record_to_activity(record, currency="EUR")
+        result = redact_cost_events((event,))
+        assert "test-medium-001" not in result[0].description
+        assert "500+100 tokens" in result[0].description
