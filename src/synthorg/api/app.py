@@ -86,6 +86,7 @@ from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
+    ObservabilitySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
@@ -743,7 +744,12 @@ def _build_settings_dispatcher(
         settings_service=settings_service,
     )
     memory_sub = MemorySettingsSubscriber()
-    subs: list[SettingsSubscriber] = [provider_sub, memory_sub]
+    log_dir = config.logging.log_dir if config.logging is not None else "logs"
+    observability_sub = ObservabilitySettingsSubscriber(
+        settings_service=settings_service,
+        log_dir=log_dir,
+    )
+    subs: list[SettingsSubscriber] = [provider_sub, memory_sub, observability_sub]
     if backup_service is not None:
         subs.append(
             BackupSettingsSubscriber(

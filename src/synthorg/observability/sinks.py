@@ -53,7 +53,7 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
 # Maps sink file_path to the logger name prefixes that should be
 # routed to that sink.  Sinks not listed here are catch-all sinks
 # (no name filter attached).
-_SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
     {
         "audit.log": (
             "synthorg.security.",
@@ -203,6 +203,8 @@ def build_handler(
     sink: SinkConfig,
     log_dir: Path,
     foreign_pre_chain: list[Any],
+    *,
+    routing: MappingProxyType[str, tuple[str, ...]] | None = None,
 ) -> logging.Handler:
     """Build a stdlib logging handler from a sink configuration.
 
@@ -214,10 +216,15 @@ def build_handler(
         sink: The sink configuration describing the handler to build.
         log_dir: Base directory for log files.
         foreign_pre_chain: Processor chain for stdlib-originated logs.
+        routing: Optional routing table to use instead of the
+            module-level ``SINK_ROUTING``.  When ``None``, the
+            default routing is used.
 
     Returns:
         A configured :class:`logging.Handler` with formatter attached.
     """
+    effective_routing = routing if routing is not None else SINK_ROUTING
+
     if sink.sink_type == SinkType.CONSOLE:
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
     else:
@@ -226,9 +233,9 @@ def build_handler(
     handler.setLevel(sink.level.value)
     handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
 
-    if sink.file_path is not None and sink.file_path in _SINK_ROUTING:
+    if sink.file_path is not None and sink.file_path in effective_routing:
         name_filter = _LoggerNameFilter(
-            include_prefixes=_SINK_ROUTING[sink.file_path],
+            include_prefixes=effective_routing[sink.file_path],
         )
         handler.addFilter(name_filter)
 

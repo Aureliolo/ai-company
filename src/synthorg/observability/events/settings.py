@@ -31,3 +31,18 @@ SETTINGS_SUBSCRIBER_RESTART_REQUIRED: Final[str] = (
 SETTINGS_SERVICE_SWAPPED: Final[str] = "settings.service.swapped"
 SETTINGS_SERVICE_SWAP_FAILED: Final[str] = "settings.service.swap_failed"
 SETTINGS_CHANNEL_CREATED: Final[str] = "settings.channel.created"
+
+# ── Observability subscriber events ──────────────────────────────
+
+SETTINGS_OBSERVABILITY_PIPELINE_REBUILT: Final[str] = (
+    "settings.observability.pipeline_rebuilt"
+)
+SETTINGS_OBSERVABILITY_REBUILD_FAILED: Final[str] = (
+    "settings.observability.rebuild_failed"
+)
+SETTINGS_OBSERVABILITY_VALIDATION_FAILED: Final[str] = (
+    "settings.observability.validation_failed"
+)
+SETTINGS_OBSERVABILITY_CONSOLE_PROTECTED: Final[str] = (
+    "settings.observability.console_protected"
+)
