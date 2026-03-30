@@ -1371,6 +1371,30 @@ export interface UpdateSettingRequest {
   value: string
 }
 
+// ── Sink configuration ──────────────────────────────────────
+
+export interface SinkRotation {
+  strategy: string
+  max_bytes: number
+  backup_count: number
+}
+
+export interface SinkInfo {
+  identifier: string
+  sink_type: 'console' | 'file'
+  level: string
+  json_format: boolean
+  rotation: SinkRotation | null
+  is_default: boolean
+  enabled: boolean
+  routing_prefixes: readonly string[]
+}
+
+export interface TestSinkResult {
+  valid: boolean
+  error: string | null
+}
+
 // ── Company Config (parsed from settings JSON) ────────────
 
 export interface AgentConfigEntry {

@@ -1,8 +1,9 @@
+import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types'
+import { useFlash } from '@/hooks/useFlash'
 import {
   SETTING_DEPENDENCIES,
-  SETTING_DEPENDED_BY,
   SECURITY_SENSITIVE_SETTINGS,
 } from '@/utils/constants'
 import { SourceBadge } from './SourceBadge'
@@ -17,6 +18,8 @@ export interface SettingRowProps {
   saving: boolean
   /** Whether the controller setting for this dependent is disabled. */
   controllerDisabled?: boolean
+  /** Trigger a flash animation (e.g. on WebSocket update). */
+  flash?: boolean
 }
 
 function formatKey(key: string): string {
@@ -29,23 +32,30 @@ export function SettingRow({
   onChange,
   saving,
   controllerDisabled,
+  flash,
 }: SettingRowProps) {
   const { definition, source } = entry
   const compositeKey = `${definition.namespace}/${definition.key}`
+  const { flashStyle, triggerFlash } = useFlash()
+
+  useEffect(() => {
+    if (flash) triggerFlash()
+  }, [flash, triggerFlash])
   const displayValue = dirtyValue ?? entry.value
   const isEnvLocked = source === 'env'
   const isDisabled = isEnvLocked || saving || controllerDisabled === true
   const dependents = SETTING_DEPENDENCIES[compositeKey] ?? []
-  const controller = SETTING_DEPENDED_BY[compositeKey]
   const isSecuritySensitive = SECURITY_SENSITIVE_SETTINGS.has(compositeKey)
 
   return (
     <div
+      data-setting-key={compositeKey}
       className={cn(
-        'grid grid-cols-[1fr_auto] items-start gap-4 rounded-md px-3 py-3',
-        'transition-colors hover:bg-card-hover',
-        controllerDisabled && 'opacity-50',
+        'grid grid-cols-[1fr_auto] items-start gap-4 rounded-md px-3 py-3 max-[639px]:grid-cols-1',
+        'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
+        controllerDisabled && 'pointer-events-none opacity-50',
       )}
+      style={flashStyle}
     >
       {/* Left: label, description, badges */}
       <div className="min-w-0 space-y-1">
@@ -62,11 +72,6 @@ export function SettingRow({
         <p className="text-xs text-text-secondary">{definition.description}</p>
         {isEnvLocked && (
           <p className="text-[10px] text-warning">Value set by environment variable (read-only)</p>
-        )}
-        {controller && controllerDisabled && (
-          <p className="text-[10px] text-text-muted">
-            Requires {formatKey(controller.split('/')[1] ?? controller)} to be enabled
-          </p>
         )}
         {isSecuritySensitive && (
           <p className="text-[10px] text-danger">

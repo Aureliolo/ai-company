@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { SettingDefinition } from '@/api/types'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
-import { SliderField } from '@/components/ui/slider-field'
+import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { SIMPLE_ARRAY_SETTINGS } from '@/utils/constants'
 
@@ -13,59 +13,35 @@ export interface SettingFieldProps {
   disabled?: boolean
 }
 
-function parseArrayValue(value: string): string {
+function parseArrayItems(value: string): string[] {
   try {
     const parsed: unknown = JSON.parse(value)
     if (Array.isArray(parsed)) {
-      return parsed.join('\n')
+      return parsed.map(String)
     }
   } catch (err) {
-    console.warn('[settings] parseArrayValue: not valid JSON, displaying raw value', err)
+    console.warn('[settings] parseArrayItems: not valid JSON, displaying raw value', err)
   }
-  return value
+  return value ? [value] : []
 }
 
-function serializeArrayValue(text: string): string {
-  const items = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  return JSON.stringify(items)
-}
-
-/** Array setting with local draft to avoid serialization on every keystroke. */
+/** Array setting rendered as tag/chip input. */
 function ArraySettingField({
   value,
   onChange,
   disabled,
-  validationError,
-  setValidationError,
 }: {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
-  validationError: string | null
-  setValidationError: (err: string | null) => void
 }) {
-  const [draft, setDraft] = useState(() => parseArrayValue(value))
-  const prevValueRef = useRef(value)
-  if (value !== prevValueRef.current) {
-    prevValueRef.current = value
-    setDraft(parseArrayValue(value))
-  }
+  const items = useMemo(() => parseArrayItems(value), [value])
   return (
-    <InputField
-      label=""
-      multiline
-      value={draft}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        setValidationError(null)
-      }}
-      onBlur={() => onChange(serializeArrayValue(draft))}
+    <TagInput
+      value={items}
+      onChange={(next) => onChange(JSON.stringify(next))}
       disabled={disabled}
-      hint="One entry per line"
-      error={validationError}
+      placeholder="Add item..."
     />
   )
 }
@@ -149,36 +125,12 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     )
   }
 
-  // Numeric with range -- use slider when both bounds exist
-  if (
-    (definition.type === 'int' || definition.type === 'float') &&
-    definition.min_value != null &&
-    definition.max_value != null
-  ) {
-    const parsedValue = Number(value)
-    const numValue = Number.isNaN(parsedValue) ? definition.min_value : parsedValue
-    const step = definition.type === 'int' ? 1 : 0.1
-    return (
-      <SliderField
-        label=""
-        value={numValue}
-        onChange={(v) => onChange(String(v))}
-        min={definition.min_value}
-        max={definition.max_value}
-        step={step}
-        disabled={disabled}
-      />
-    )
-  }
-
   if (isArraySetting) {
     return (
       <ArraySettingField
         value={value}
         onChange={onChange}
         disabled={disabled}
-        validationError={validationError}
-        setValidationError={setValidationError}
       />
     )
   }

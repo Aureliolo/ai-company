@@ -22,6 +22,7 @@ const ProvidersPage = lazy(() => import('@/pages/ProvidersPage'))
 const ProviderDetailPage = lazy(() => import('@/pages/ProviderDetailPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
+const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
 
@@ -102,6 +103,7 @@ const router = createBrowserRouter([
               { path: 'providers', element: <ProvidersPage /> },
               { path: 'providers/:providerName', element: <ProviderDetailPage /> },
               { path: 'settings', element: <SettingsPage /> },
+              { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },
               { path: '*', element: <NotFoundPage /> },
             ],

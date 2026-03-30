@@ -1,5 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import {
+  Activity,
   AlertTriangle,
   Brain,
   Eye,
@@ -13,6 +15,7 @@ import {
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -21,6 +24,7 @@ import { ToggleField } from '@/components/ui/toggle-field'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
+import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
 import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
@@ -32,6 +36,8 @@ import { AdvancedModeBanner } from './settings/AdvancedModeBanner'
 import { CodeEditorPanel } from './settings/CodeEditorPanel'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
+import { NamespaceTabBar } from './settings/SettingsHealthSection'
+import { RestartBanner } from './settings/RestartBanner'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
@@ -72,14 +78,56 @@ export default function SettingsPage() {
   const [showAdvancedWarning, setShowAdvancedWarning] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
   const [showCodeDiscardWarning, setShowCodeDiscardWarning] = useState(false)
+  const [restartBannerCount, setRestartBannerCount] = useState(0)
+  const [activeNamespace, setActiveNamespace] = useState<SettingNamespace | null>(null)
+  const searchRef = useRef<{ focus: () => void }>(null)
+  const prevEntriesRef = useRef<Map<string, string>>(new Map())
+
+  // Track which settings changed externally (WS/poll) for flash animation
+  const changedKeys = useMemo(() => {
+    const changed = new Set<string>()
+    const prev = prevEntriesRef.current
+    for (const e of entries) {
+      const ck = `${e.definition.namespace}/${e.definition.key}`
+      const prevVal = prev.get(ck)
+      if (prevVal !== undefined && prevVal !== e.value) {
+        changed.add(ck)
+      }
+    }
+    // Update ref after computing diff
+    const next = new Map<string, string>()
+    for (const e of entries) {
+      next.set(`${e.definition.namespace}/${e.definition.key}`, e.value)
+    }
+    prevEntriesRef.current = next
+    return changed
+  }, [entries])
 
   const {
     dirtyValues,
     setDirtyValues,
     handleValueChange,
     handleDiscard,
-    handleSave,
+    handleSave: baseSave,
   } = useSettingsDirtyState(entries, updateSetting)
+
+  const handleSave = useCallback(async () => {
+    // Count restart-required settings being saved
+    const restartCount = [...dirtyValues.keys()].filter((ck) => {
+      const entry = entries.find(
+        (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+      )
+      return entry?.definition.restart_required === true
+    }).length
+    await baseSave()
+    if (restartCount > 0) setRestartBannerCount(restartCount)
+  }, [baseSave, dirtyValues, entries])
+
+  useSettingsKeyboard({
+    onSave: handleSave,
+    onSearchFocus: () => searchRef.current?.focus(),
+    canSave: dirtyValues.size > 0 && !saving,
+  })
 
   // Filter entries: exclude hidden, filter by level, filter by search
   const filteredByNamespace = useMemo(() => {
@@ -196,7 +244,13 @@ export default function SettingsPage() {
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         <div className="flex items-center gap-4">
           {viewMode !== 'code' && (
-            <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
+            <SearchInput
+              ref={searchRef}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              className="w-64"
+              resultCount={searchQuery ? [...filteredByNamespace.values()].reduce((sum, arr) => sum + arr.length, 0) : undefined}
+            />
           )}
           <ToggleField
             label="Code"
@@ -216,6 +270,20 @@ export default function SettingsPage() {
           />
         </div>
       </div>
+
+      {viewMode !== 'code' && (
+        <NamespaceTabBar
+          namespaces={NAMESPACE_ORDER}
+          activeNamespace={activeNamespace}
+          onSelect={setActiveNamespace}
+          namespaceCounts={
+            new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0]))
+          }
+          namespaceIcons={NAMESPACE_ICONS}
+        />
+      )}
+
+      <RestartBanner count={restartBannerCount} onDismiss={() => setRestartBannerCount(0)} />
 
       {error && (
         <div className={cn(
@@ -268,7 +336,10 @@ export default function SettingsPage() {
           )}
 
           <StaggerGroup className="space-y-4">
-            {NAMESPACE_ORDER.filter((ns) => filteredByNamespace.has(ns)).map((ns) => (
+            {NAMESPACE_ORDER
+              .filter((ns) => filteredByNamespace.has(ns))
+              .filter((ns) => activeNamespace === null || ns === activeNamespace)
+              .map((ns) => (
               <StaggerItem key={ns}>
                 <ErrorBoundary level="section">
                   <NamespaceSection
@@ -279,8 +350,25 @@ export default function SettingsPage() {
                     onValueChange={handleValueChange}
                     savingKeys={storeSavingKeys}
                     controllerDisabledMap={controllerDisabledMap}
-                    forceOpen={searchQuery.length > 0}
+                    forceOpen={activeNamespace !== null || searchQuery.length > 0}
+                    hideHeader={activeNamespace !== null}
+                    changedKeys={changedKeys}
                   />
+                  {ns === 'observability' && (
+                    <Link
+                      to="/settings/observability/sinks"
+                      className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+                    >
+                      <Activity className="size-4 text-accent" aria-hidden />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-foreground">Manage Log Sinks</span>
+                        <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
+                      </div>
+                      <Button size="sm" variant="outline">
+                        Open
+                      </Button>
+                    </Link>
+                  )}
                 </ErrorBoundary>
               </StaggerItem>
             ))}

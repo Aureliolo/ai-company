@@ -22,6 +22,7 @@ _r.register(
         default="127.0.0.1",
         description="Server bind address",
         group="Server",
+        level=SettingLevel.ADVANCED,
         restart_required=True,
         yaml_path="api.server.host",
     )
@@ -35,6 +36,7 @@ _r.register(
         default="3001",
         description="Server bind port",
         group="Server",
+        level=SettingLevel.ADVANCED,
         restart_required=True,
         min_value=1,
         max_value=65535,
@@ -66,6 +68,7 @@ _r.register(
         default='["http://localhost:5173"]',
         description="Origins permitted to make cross-origin requests",
         group="CORS",
+        level=SettingLevel.ADVANCED,
         restart_required=True,
         yaml_path="api.cors.allowed_origins",
     )
@@ -81,6 +84,7 @@ _r.register(
         default="100",
         description="Maximum requests per time window",
         group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10000,
         yaml_path="api.rate_limit.max_requests",
@@ -95,6 +99,7 @@ _r.register(
         default="minute",
         description="Rate limit time window",
         group="Rate Limiting",
+        level=SettingLevel.ADVANCED,
         enum_values=("second", "minute", "hour", "day"),
         yaml_path="api.rate_limit.time_unit",
     )
@@ -124,6 +129,7 @@ _r.register(
         default="1440",
         description="JWT token lifetime in minutes",
         group="Authentication",
+        level=SettingLevel.ADVANCED,
         min_value=1,
         max_value=10080,
         yaml_path="api.auth.jwt_expiry_minutes",

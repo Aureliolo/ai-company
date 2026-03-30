@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import YAML from 'js-yaml'
+import { Columns2, FileCode } from 'lucide-react'
 import type { SettingEntry } from '@/api/types'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { CodeMirrorEditor, type CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -21,12 +23,22 @@ const FORMAT_OPTIONS = [
   { value: 'yaml' as const, label: 'YAML' },
 ]
 
-function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, string>> {
-  const obj: Record<string, Record<string, string>> = {}
+function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, unknown>> {
+  const obj: Record<string, Record<string, unknown>> = {}
   for (const entry of entries) {
     const ns = entry.definition.namespace
     if (!obj[ns]) obj[ns] = {}
-    obj[ns][entry.definition.key] = entry.value
+    // Parse JSON-type values so they embed as real objects/arrays
+    // instead of escaped string representations (e.g. "[\"http://...\"]")
+    if (entry.definition.type === 'json') {
+      try {
+        obj[ns][entry.definition.key] = JSON.parse(entry.value)
+      } catch {
+        obj[ns][entry.definition.key] = entry.value
+      }
+    } else {
+      obj[ns][entry.definition.key] = entry.value
+    }
   }
   return obj
 }
@@ -43,7 +55,7 @@ type ParsedSettings = Record<string, Record<string, unknown>>
 
 /** Find keys present in original but absent in parsed. */
 function detectRemovedKeys(
-  original: Record<string, Record<string, string>>,
+  original: Record<string, Record<string, unknown>>,
   parsed: ParsedSettings,
 ): string[] {
   const removed: string[] = []
@@ -65,7 +77,7 @@ function detectRemovedKeys(
 /** Validate and diff parsed settings against original. */
 function buildChanges(
   parsed: ParsedSettings,
-  original: Record<string, Record<string, string>>,
+  original: Record<string, Record<string, unknown>>,
   entryLookup: ReadonlyMap<string, SettingEntry>,
 ): {
   changes: Map<string, string>
@@ -84,7 +96,10 @@ function buildChanges(
       if (entry.source === 'env') { envKeys.push(ck); continue }
       const strValue = typeof value === 'string'
         ? value : JSON.stringify(value)
-      if (origNs[key] !== strValue) {
+      const origValue = origNs[key]
+      const origStr = typeof origValue === 'string'
+        ? origValue : JSON.stringify(origValue)
+      if (origStr !== strValue) {
         changes.set(ck, strValue)
       }
     }
@@ -232,23 +247,85 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     setParseError(null)
   }, [entries, format, updateDirty])
 
+  const [splitView, setSplitView] = useState(false)
+  const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
+
+  // Compute diff summary
+  const diffSummary = useMemo(() => {
+    if (!dirty) return null
+    const serverLines = serverText.split('\n')
+    const editedLines = text.split('\n')
+    let changed = 0
+    let added = 0
+    let removed = 0
+    const maxLen = Math.max(serverLines.length, editedLines.length)
+    for (let i = 0; i < maxLen; i++) {
+      const s = serverLines[i]
+      const e = editedLines[i]
+      if (s === undefined) added++
+      else if (e === undefined) removed++
+      else if (s !== e) changed++
+    }
+    if (changed === 0 && added === 0 && removed === 0) return null
+    const parts: string[] = []
+    if (changed > 0) parts.push(`${changed} changed`)
+    if (added > 0) parts.push(`${added} added`)
+    if (removed > 0) parts.push(`${removed} removed`)
+    return parts.join(', ')
+  }, [dirty, serverText, text])
+
   return (
     <div className="space-y-3">
-      <SegmentedControl<CodeFormat>
-        label="Editor format"
-        options={FORMAT_OPTIONS}
-        value={format}
-        onChange={handleFormatChange}
-        disabled={saving}
-      />
+      <div className="flex items-center gap-3">
+        <SegmentedControl<CodeFormat>
+          label="Editor format"
+          options={FORMAT_OPTIONS}
+          value={format}
+          onChange={handleFormatChange}
+          disabled={saving}
+        />
+        <button
+          type="button"
+          onClick={() => setSplitView((v) => !v)}
+          className={cn(
+            'rounded-md p-1.5 transition-colors',
+            splitView ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
+          )}
+          title={splitView ? 'Single pane' : 'Split pane (diff)'}
+        >
+          {splitView ? <FileCode className="size-4" /> : <Columns2 className="size-4" />}
+        </button>
+        {diffSummary && (
+          <span className="text-xs text-text-muted">{diffSummary}</span>
+        )}
+      </div>
 
-      <CodeMirrorEditor
-        value={text}
-        onChange={handleChange}
-        language={format}
-        readOnly={saving}
-        aria-label={`${format.toUpperCase()} editor`}
-      />
+      <div className={cn('gap-3', splitView ? 'grid grid-cols-2' : 'grid grid-cols-1')}>
+        {splitView && (
+          <div className="space-y-1">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Current</span>
+            <CodeMirrorEditor
+              value={serverText}
+              onChange={() => {}}
+              language={format}
+              readOnly
+              aria-label={`Current ${format.toUpperCase()} (read-only)`}
+            />
+          </div>
+        )}
+        <div className="space-y-1">
+          {splitView && (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Edited</span>
+          )}
+          <CodeMirrorEditor
+            value={text}
+            onChange={handleChange}
+            language={format}
+            readOnly={saving}
+            aria-label={`${format.toUpperCase()} editor`}
+          />
+        </div>
+      </div>
 
       {parseError && (
         <p className="text-xs text-danger" role="alert">{parseError}</p>

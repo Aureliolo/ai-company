@@ -151,9 +151,10 @@ describe('SettingsPage', () => {
 
   it('renders namespace sections', () => {
     renderSettings()
-    expect(screen.getByText('API')).toBeInTheDocument()
-    expect(screen.getByText('Budget')).toBeInTheDocument()
-    expect(screen.getByText('Security')).toBeInTheDocument()
+    // Namespace names appear in both the tab bar and section headers
+    expect(screen.getAllByText('Server').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Budget').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Security').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows error banner when error is set', () => {
@@ -165,7 +166,7 @@ describe('SettingsPage', () => {
   it('shows WebSocket disconnect warning when not connected', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     renderSettings()
-    expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+    expect(screen.getByText(/data may be stale/i)).toBeInTheDocument()
   })
 
   it('renders search input', () => {

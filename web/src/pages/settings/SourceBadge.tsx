@@ -8,11 +8,11 @@ const SOURCE_STYLES: Record<SettingSource, string> = {
   default: 'bg-border text-text-muted',
 }
 
-const SOURCE_LABELS: Record<SettingSource, string> = {
-  db: 'DB',
+const SOURCE_LABELS: Record<SettingSource, string | null> = {
+  db: 'Modified',
   env: 'ENV',
-  yaml: 'YAML',
-  default: 'Default',
+  yaml: null,
+  default: null,
 }
 
 export interface SourceBadgeProps {
@@ -21,6 +21,9 @@ export interface SourceBadgeProps {
 }
 
 export function SourceBadge({ source, className }: SourceBadgeProps) {
+  const label = SOURCE_LABELS[source]
+  if (label == null) return null
+
   return (
     <span
       className={cn(
@@ -29,7 +32,7 @@ export function SourceBadge({ source, className }: SourceBadgeProps) {
         className,
       )}
     >
-      {SOURCE_LABELS[source]}
+      {label}
     </span>
   )
 }

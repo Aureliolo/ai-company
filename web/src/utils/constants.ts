@@ -71,7 +71,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
 
 /** Human-readable display names for setting namespaces. */
 export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>> = {
-  api: 'API',
+  api: 'Server',
   company: 'Company',
   providers: 'Providers',
   memory: 'Memory',
@@ -86,7 +86,11 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
 export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
 
 /** Settings that should never be shown in the GUI (internal/system-managed). */
-const HIDDEN_SETTING_KEYS = ['api/setup_complete'] as const
+const HIDDEN_SETTING_KEYS = [
+  'api/setup_complete',
+  'observability/sink_overrides',
+  'observability/custom_sinks',
+] as const
 export const HIDDEN_SETTINGS: ReadonlySet<string> = new Set(HIDDEN_SETTING_KEYS)
 
 /**

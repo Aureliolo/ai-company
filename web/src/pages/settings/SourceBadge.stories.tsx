@@ -12,8 +12,8 @@ type Story = StoryObj<typeof meta>
 
 export const Database: Story = { args: { source: 'db' } }
 export const Environment: Story = { args: { source: 'env' } }
-export const Yaml: Story = { args: { source: 'yaml' } }
-export const Default: Story = { args: { source: 'default' } }
+export const ConfigFile: Story = { args: { source: 'yaml' } }
+export const DefaultRendersNull: Story = { args: { source: 'default' } }
 
 export const AllSources: Story = {
   args: { source: 'db' },
@@ -22,6 +22,7 @@ export const AllSources: Story = {
       <SourceBadge source="db" />
       <SourceBadge source="env" />
       <SourceBadge source="yaml" />
+      {/* default renders nothing */}
       <SourceBadge source="default" />
     </div>
   ),
