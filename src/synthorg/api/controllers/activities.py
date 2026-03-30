@@ -447,8 +447,22 @@ async def _fetch_cost_records(
             end=now,
         ), False
     except MemoryError, RecursionError:
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_COST_TRACKER,
+            detail="fatal error",
+            exc_info=True,
+        )
         raise
     except ServiceUnavailableError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_COST_TRACKER,
+            detail="service unavailable",
+            exc_info=True,
+        )
         raise
     except Exception:
         logger.warning(
@@ -480,8 +494,22 @@ async def _fetch_tool_invocations(
             end=now,
         ), False
     except MemoryError, RecursionError:
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_TOOL_INVOCATION_TRACKER,
+            detail="fatal error",
+            exc_info=True,
+        )
         raise
     except ServiceUnavailableError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_TOOL_INVOCATION_TRACKER,
+            detail="service unavailable",
+            exc_info=True,
+        )
         raise
     except Exception:
         logger.warning(
@@ -505,8 +533,22 @@ async def _safe_delegation_query(
     try:
         return (await coro), False
     except MemoryError, RecursionError:
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=error_label,
+            detail="fatal error",
+            exc_info=True,
+        )
         raise
     except ServiceUnavailableError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=error_label,
+            detail="service unavailable",
+            exc_info=True,
+        )
         raise
     except Exception:
         logger.warning(
