@@ -25,7 +25,7 @@ export default function SettingsSinksPage() {
 
   // Subscribe to WS system channel for setting updates -- auto-refresh on sink config changes
   const sinkHandler = useCallback((event: WsEvent) => {
-    const key = event.payload.key as string | undefined
+    const key = (event.payload as Record<string, unknown> | undefined)?.key as string | undefined
     if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
       fetchSinks()
     }

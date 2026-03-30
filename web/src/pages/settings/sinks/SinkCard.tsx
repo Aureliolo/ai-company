@@ -43,6 +43,8 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
             'inline-flex h-2 w-2 rounded-full',
             sink.enabled ? 'bg-success' : 'bg-text-muted',
           )}
+          role="status"
+          aria-label={sink.enabled ? 'Enabled' : 'Disabled'}
           title={sink.enabled ? 'Enabled' : 'Disabled'}
         />
       </div>

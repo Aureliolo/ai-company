@@ -36,12 +36,12 @@ logger = get_logger(__name__)
 CONSOLE_SINK_ID: str = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
-_DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
+DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
     s.file_path for s in DEFAULT_SINKS if s.file_path is not None
 )
 
 # Valid sink identifiers for overrides.
-_VALID_OVERRIDE_KEYS: frozenset[str] = _DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
+_VALID_OVERRIDE_KEYS: frozenset[str] = DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
 
 _LEVEL_MAP: dict[str, LogLevel] = {level.value.lower(): level for level in LogLevel}
 
@@ -413,7 +413,7 @@ def _process_custom_entries(
     merged: list[SinkConfig],
 ) -> MappingProxyType[str, tuple[str, ...]]:
     """Build custom sinks, append to *merged*, return routing overrides."""
-    used_paths = _DEFAULT_FILE_PATHS  # reserved even if disabled
+    used_paths = DEFAULT_FILE_PATHS  # reserved even if disabled
     custom_paths: set[str] = set()
     routing_overrides: dict[str, tuple[str, ...]] = {}
 

@@ -12,6 +12,7 @@ import contextlib
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
+from urllib.parse import urlparse
 
 import httpx
 
@@ -43,6 +44,7 @@ _DEFAULT_INTERVAL_SECONDS: Final[int] = 1800  # 30 minutes
 _PROBE_TIMEOUT_SECONDS: Final[float] = 10.0
 _HTTP_SERVER_ERROR_THRESHOLD: Final[int] = 500
 _MAX_ERROR_MESSAGE_LENGTH: Final[int] = 200
+_OLLAMA_DEFAULT_PORT: Final[int] = 11434
 
 
 def _build_ping_url(base_url: str, litellm_provider: str | None) -> str:
@@ -61,7 +63,11 @@ def _build_ping_url(base_url: str, litellm_provider: str | None) -> str:
         URL to ping.
     """
     stripped = base_url.rstrip("/")
-    if litellm_provider == "ollama" or ":11434" in stripped:
+    # Detect Ollama by provider name or default port (11434).
+    is_ollama = (
+        litellm_provider == "ollama" or urlparse(stripped).port == _OLLAMA_DEFAULT_PORT
+    )
+    if is_ollama:
         return stripped  # Root URL returns a liveness string
     return f"{stripped}/models"
 
@@ -200,19 +206,13 @@ class ProviderHealthProber:
                 continue  # cloud providers -- no lightweight ping available
             url = _build_ping_url(config.base_url, config.litellm_provider)
             if policy is not None and not is_url_allowed(url, policy):
+                # Skip -- SSRF-blocked providers are in an indeterminate
+                # state, not a failed one.  UNKNOWN (zero records) is the
+                # correct health status for them.
                 logger.warning(
-                    PROVIDER_HEALTH_PROBE_FAILED,
+                    PROVIDER_HEALTH_PROBE_SKIPPED,
                     provider=name,
-                    error="url_not_allowed_by_discovery_policy",
-                )
-                await self._health_tracker.record(
-                    ProviderHealthRecord(
-                        provider_name=name,
-                        timestamp=datetime.now(UTC),
-                        success=False,
-                        response_time_ms=0.0,
-                        error_message="url_not_allowed_by_discovery_policy",
-                    ),
+                    reason="url_not_allowed_by_discovery_policy",
                 )
                 continue
             summary = await self._health_tracker.get_summary(name)
@@ -244,7 +244,9 @@ class ProviderHealthProber:
             name: Provider name.
             config: Provider configuration.
         """
-        url = _build_ping_url(config.base_url or "", config.litellm_provider)
+        # base_url is guaranteed non-None: _probe_all filters out
+        # providers without it before calling _probe_one.
+        url = _build_ping_url(config.base_url, config.litellm_provider)  # type: ignore[arg-type]
         raw_auth = config.auth_type
         auth_type = raw_auth.value if hasattr(raw_auth, "value") else str(raw_auth)
         headers = _build_auth_headers(auth_type, config.api_key)

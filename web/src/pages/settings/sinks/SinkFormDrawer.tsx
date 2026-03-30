@@ -123,7 +123,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
       rotation,
       is_default: isDefault,
       enabled,
-      routing_prefixes: routingPrefixes,
+      routing_prefixes: [...routingPrefixes],
     })
     onClose()
   }, [isDefault, isConsole, isNew, sink, filePath, level, jsonFormat, enabled, rotationStrategy, maxBytes, backupCount, routingPrefixes, onSave, onClose])

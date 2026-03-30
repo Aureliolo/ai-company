@@ -31,12 +31,14 @@ def _make_health_record(
     timestamp: datetime | None = None,
     success: bool = True,
     response_time_ms: float = 100.0,
+    error_message: str | None = None,
 ) -> ProviderHealthRecord:
     return ProviderHealthRecord(
         provider_name=provider_name,
         timestamp=timestamp or _NOW,
         success=success,
         response_time_ms=response_time_ms,
+        error_message=error_message,
     )
 
 
@@ -162,10 +164,12 @@ class TestProviderHealth:
         """Provider with 20% error rate -> degraded."""
         tracker = ProviderHealthTracker()
         for i in range(10):
+            ok = i >= 2  # 2 failures out of 10
             await tracker.record(
                 _make_health_record(
                     timestamp=_NOW - timedelta(minutes=i),
-                    success=i >= 2,  # 2 failures out of 10
+                    success=ok,
+                    error_message=None if ok else "test error",
                 ),
             )
         with _build_provider_client(
@@ -194,6 +198,7 @@ class TestProviderHealth:
                 _make_health_record(
                     timestamp=_NOW - timedelta(minutes=i),
                     success=False,
+                    error_message="test error",
                 ),
             )
         with _build_provider_client(

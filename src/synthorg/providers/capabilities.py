@@ -27,7 +27,7 @@ class ModelCapabilities(BaseModel):
         cost_per_1k_output: Cost per 1 000 output tokens in USD (base currency).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     model_id: NotBlankStr = Field(description="Model identifier")
     provider: NotBlankStr = Field(description="Provider name")

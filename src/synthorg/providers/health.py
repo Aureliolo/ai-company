@@ -72,9 +72,12 @@ class ProviderHealthRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:
-        """Ensure error_message is None when success is True."""
+        """Ensure error_message consistency with success flag."""
         if self.success and self.error_message is not None:
             msg = "error_message must be None when success is True"
+            raise ValueError(msg)
+        if not self.success and self.error_message is None:
+            msg = "error_message must be provided when success is False"
             raise ValueError(msg)
         return self
 
@@ -82,13 +85,20 @@ class ProviderHealthRecord(BaseModel):
 class ProviderHealthSummary(BaseModel):
     """Aggregated provider health for API response.
 
+    ``total_tokens_24h`` and ``total_cost_24h`` default to 0 from
+    :func:`_aggregate_records` and are populated externally via
+    ``model_copy(update=...)`` by the provider controller's usage
+    enrichment step.
+
     Attributes:
         last_check_timestamp: Most recent call timestamp.
         avg_response_time_ms: Average response time over the last 24h.
         error_rate_percent_24h: Error rate percentage over the last 24h.
         calls_last_24h: Total calls in the last 24h.
-        total_tokens_24h: Total tokens (input + output) in the last 24h.
-        total_cost_24h: Total cost in the last 24h.
+        total_tokens_24h: Total tokens (input + output) in the last 24h
+            (default 0, enriched externally).
+        total_cost_24h: Total cost in the last 24h (default 0, enriched
+            externally).
         health_status: Derived (computed_field) from call count and
             error rate (unknown/up/degraded/down). Not a constructor
             parameter.

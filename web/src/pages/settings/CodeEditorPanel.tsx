@@ -353,6 +353,7 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
             splitView ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
           )}
           title={splitView ? 'Single pane' : 'Split pane (diff)'}
+          aria-label={splitView ? 'Single pane' : 'Split pane (diff)'}
         >
           {splitView ? <FileCode className="size-4" /> : <Columns2 className="size-4" />}
         </button>

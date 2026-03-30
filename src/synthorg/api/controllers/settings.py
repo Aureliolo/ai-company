@@ -1,6 +1,7 @@
 """Settings controller -- CRUD for runtime-editable settings."""
 
-from typing import Any, Self
+import asyncio
+from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
@@ -27,6 +28,8 @@ from synthorg.observability.events.settings import (
 )
 from synthorg.observability.sink_config_builder import (
     CONSOLE_SINK_ID,
+    DEFAULT_FILE_PATHS,
+    SinkBuildResult,
     build_log_config_from_settings,
 )
 from synthorg.settings.enums import SettingNamespace
@@ -36,6 +39,9 @@ from synthorg.settings.errors import (
     SettingValidationError,
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -101,11 +107,6 @@ class TestSinkConfigResponse(BaseModel):
         return self
 
 
-_DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
-    s.file_path for s in DEFAULT_SINKS if s.file_path is not None
-)
-
-
 def _sink_to_dict(
     sink: SinkConfig,
     *,
@@ -119,7 +120,7 @@ def _sink_to_dict(
         sink: Sink configuration to convert.
         is_default: Whether this is a default (built-in) sink.
         enabled: Whether the sink is currently active.
-        routing_prefixes: Custom routing prefixes (custom sinks only).
+        routing_prefixes: Custom routing prefixes (if routing overrides apply).
 
     Returns:
         Dict representation with all sink fields.
@@ -353,14 +354,14 @@ class SettingsController(Controller):
         app_state: AppState = state.app_state
         svc = app_state.settings_service
 
-        overrides_json = await _get_setting_or_default(svc, "sink_overrides", "{}")
-        custom_json = await _get_setting_or_default(svc, "custom_sinks", "[]")
-        root_level = _parse_root_level(
-            await _get_setting_or_default(svc, "root_log_level", "debug"),
+        overrides_json, custom_json, raw_level, raw_correlation = await asyncio.gather(
+            _get_setting_or_default(svc, "sink_overrides", "{}"),
+            _get_setting_or_default(svc, "custom_sinks", "[]"),
+            _get_setting_or_default(svc, "root_log_level", "debug"),
+            _get_setting_or_default(svc, "enable_correlation", "true"),
         )
-        enable_correlation = (
-            await _get_setting_or_default(svc, "enable_correlation", "true")
-        ).lower() == "true"
+        root_level = _parse_root_level(raw_level)
+        enable_correlation = raw_correlation.lower() == "true"
 
         try:
             result = build_log_config_from_settings(
@@ -369,9 +370,10 @@ class SettingsController(Controller):
                 sink_overrides_json=overrides_json,
                 custom_sinks_json=custom_json,
             )
-        except ValueError:
+        except ValueError as exc:
             logger.warning(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+                error=str(exc),
                 sink_overrides=overrides_json,
                 custom_sinks=custom_json,
             )
@@ -413,12 +415,10 @@ class SettingsController(Controller):
             return ApiResponse(
                 data=TestSinkConfigResponse(valid=False, error=msg),
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
-            logger.exception(
-                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
-                sink_overrides=data.sink_overrides,
-                custom_sinks=data.custom_sinks,
-            )
+            logger.exception(SETTINGS_OBSERVABILITY_VALIDATION_FAILED)
             return ApiResponse(
                 data=TestSinkConfigResponse(
                     valid=False,
@@ -434,7 +434,7 @@ class SettingsController(Controller):
 
 
 async def _get_setting_or_default(
-    svc: Any,
+    svc: SettingsService,
     key: str,
     fallback: str,
 ) -> str:
@@ -451,7 +451,7 @@ async def _get_setting_or_default(
     try:
         val = await svc.get(SettingNamespace.OBSERVABILITY, key)
     except SettingNotFoundError:
-        logger.warning(
+        logger.debug(
             SETTINGS_FETCH_FAILED,
             namespace=SettingNamespace.OBSERVABILITY.value,
             key=key,
@@ -472,11 +472,17 @@ def _parse_root_level(raw: str) -> LogLevel:
     try:
         return LogLevel(raw.upper())
     except ValueError:
+        logger.warning(
+            SETTINGS_FETCH_FAILED,
+            namespace=SettingNamespace.OBSERVABILITY.value,
+            key="root_log_level",
+            error=f"Invalid log level {raw!r}, defaulting to DEBUG",
+        )
         return LogLevel.DEBUG
 
 
 def _build_sink_list(
-    result: Any,
+    result: SinkBuildResult,
 ) -> list[dict[str, Any]]:
     """Build the active sink list from a SinkBuildResult.
 
@@ -490,7 +496,7 @@ def _build_sink_list(
     for sink in result.config.sinks:
         file_path = sink.file_path
         is_default = (
-            sink.sink_type == SinkType.CONSOLE or file_path in _DEFAULT_FILE_PATHS
+            sink.sink_type == SinkType.CONSOLE or file_path in DEFAULT_FILE_PATHS
         )
         routing = (
             result.routing_overrides.get(file_path) if file_path is not None else None
@@ -543,7 +549,10 @@ def _defaults_only_sinks() -> list[dict[str, Any]]:
 
 
 def _sanitize_error(raw: str) -> str:
-    """Strip internal file paths from a validation error message.
+    """Strip trailing validation hints from a sink builder error.
+
+    Truncates error messages before valid-key/valid-value
+    enumeration suffixes to avoid leaking internal config details.
 
     Args:
         raw: Raw error message from the sink config builder.

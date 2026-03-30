@@ -1,3 +1,5 @@
+import { useCallback, useRef } from 'react'
+
 import type { SettingNamespace } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { NAMESPACE_DISPLAY_NAMES } from '@/utils/constants'
@@ -17,16 +19,44 @@ export function NamespaceTabBar({
   namespaceCounts,
   namespaceIcons,
 }: NamespaceTabBarProps) {
+  const tablistRef = useRef<HTMLDivElement>(null)
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const container = tablistRef.current
+      if (!container) return
+      const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'))
+      const current = tabs.findIndex((t) => t === document.activeElement)
+      if (current === -1) return
+
+      let target: number
+      if (e.key === 'ArrowRight') target = (current + 1) % tabs.length
+      else if (e.key === 'ArrowLeft') target = (current - 1 + tabs.length) % tabs.length
+      else if (e.key === 'Home') target = 0
+      else if (e.key === 'End') target = tabs.length - 1
+      else return
+
+      e.preventDefault()
+      tabs[target]?.focus()
+    },
+    [],
+  )
+
+  const visibleNamespaces = namespaces.filter((ns) => (namespaceCounts.get(ns) ?? 0) > 0)
+
   return (
     <div
+      ref={tablistRef}
       className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5"
       role="tablist"
       aria-label="Setting namespaces"
+      onKeyDown={handleKeyDown}
     >
       <button
         type="button"
         role="tab"
         aria-selected={activeNamespace === null}
+        tabIndex={activeNamespace === null ? 0 : -1}
         onClick={() => onSelect(null)}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200',
@@ -37,9 +67,8 @@ export function NamespaceTabBar({
       >
         All
       </button>
-      {namespaces.map((ns) => {
+      {visibleNamespaces.map((ns) => {
         const count = namespaceCounts.get(ns) ?? 0
-        if (count === 0) return null
         const icon = namespaceIcons?.[ns]
         return (
           <button
@@ -47,6 +76,7 @@ export function NamespaceTabBar({
             type="button"
             role="tab"
             aria-selected={activeNamespace === ns}
+            tabIndex={activeNamespace === ns ? 0 : -1}
             onClick={() => onSelect(ns)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200',

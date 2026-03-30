@@ -265,6 +265,34 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         )
 
 
+async def _maybe_start_health_prober(
+    app_state: AppState,
+) -> ProviderHealthProber | None:
+    """Start the health prober if provider tracking is available.
+
+    Args:
+        app_state: Application state with tracker and resolver.
+
+    Returns:
+        The started prober instance, or None if preconditions are
+        not met.
+    """
+    if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
+        return None
+    policy_loader = (
+        app_state.provider_management.get_discovery_policy
+        if app_state.has_provider_management
+        else None
+    )
+    prober = ProviderHealthProber(
+        health_tracker=app_state.provider_health_tracker,
+        config_resolver=app_state.config_resolver,
+        discovery_policy_loader=policy_loader,
+    )
+    await prober.start()
+    return prober
+
+
 def _build_lifecycle(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -372,19 +400,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             name="ws-ticket-cleanup",
         )
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
-        # Start health prober for local providers (after config is resolved)
-        if app_state.has_provider_health_tracker and app_state.has_config_resolver:
-            policy_loader = (
-                app_state.provider_management.get_discovery_policy
-                if app_state.has_provider_management
-                else None
-            )
-            _health_prober = ProviderHealthProber(
-                health_tracker=app_state.provider_health_tracker,
-                config_resolver=app_state.config_resolver,
-                discovery_policy_loader=policy_loader,
-            )
-            await _health_prober.start()
+        _health_prober = await _maybe_start_health_prober(app_state)
 
     async def on_shutdown() -> None:
         nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
