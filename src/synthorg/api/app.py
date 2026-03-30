@@ -86,6 +86,7 @@ from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
     MemorySettingsSubscriber,
+    ObservabilitySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
@@ -399,25 +400,10 @@ def _build_lifecycle(  # noqa: PLR0913, C901
     return [on_startup], [on_shutdown]
 
 
-# ── 2-Phase Initialisation ────────────────────────────────────────
-#
-# Phase 1 (construct): Litestar bakes middleware, CORS, and routes
-#   into the app at construction time -- these read directly from
-#   RootConfig and are immutable after construction.  Bootstrap-only
-#   settings (server_host, server_port, api_prefix, cors_allowed_origins,
-#   rate_limit_exclude_paths, auth_exclude_paths) are therefore NOT
-#   resolved through SettingsService.
-#
-# Phase 2 (on_startup): After persistence connects and migrations
-#   run, SettingsService + ConfigResolver become available.  Runtime-
-#   editable settings (rate_limit_max_requests, rate_limit_time_unit,
-#   jwt_expiry_minutes, min_password_length) are resolved through
-#   ConfigResolver.get_api_config() by consumers that need current
-#   values post-startup.
-#
-#   Note: Litestar's rate-limit middleware reads max_requests and
-#   time_unit at construction; runtime DB changes are visible only
-#   to code calling get_api_config(), not to the middleware itself.
+# 2-Phase Init: Phase 1 (construct) bakes immutable middleware/CORS/routes
+# from RootConfig.  Phase 2 (on_startup) wires SettingsService + ConfigResolver
+# for runtime-editable settings.  Litestar rate-limit middleware reads config at
+# construction; runtime DB changes only affect code calling get_api_config().
 
 
 def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
@@ -628,7 +614,11 @@ def create_app(  # noqa: PLR0913
         startup_time=time.monotonic(),
     )
 
-    bridge = _build_bridge(message_bus, channels_plugin)
+    bridge = (
+        MessageBusBridge(message_bus, channels_plugin)
+        if message_bus is not None
+        else None
+    )
     backup_service = build_backup_service(
         effective_config,
         resolved_db_path=resolved_db_path,
@@ -717,16 +707,6 @@ def create_app(  # noqa: PLR0913
     )
 
 
-def _build_bridge(
-    message_bus: MessageBus | None,
-    channels_plugin: ChannelsPlugin,
-) -> MessageBusBridge | None:
-    """Create message bus bridge if bus is available."""
-    if message_bus is None:
-        return None
-    return MessageBusBridge(message_bus, channels_plugin)
-
-
 def _build_settings_dispatcher(
     message_bus: MessageBus | None,
     settings_service: SettingsService | None,
@@ -743,7 +723,12 @@ def _build_settings_dispatcher(
         settings_service=settings_service,
     )
     memory_sub = MemorySettingsSubscriber()
-    subs: list[SettingsSubscriber] = [provider_sub, memory_sub]
+    log_dir = config.logging.log_dir if config.logging is not None else "logs"
+    observability_sub = ObservabilitySettingsSubscriber(
+        settings_service=settings_service,
+        log_dir=log_dir,
+    )
+    subs: list[SettingsSubscriber] = [provider_sub, memory_sub, observability_sub]
     if backup_service is not None:
         subs.append(
             BackupSettingsSubscriber(

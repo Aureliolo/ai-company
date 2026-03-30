@@ -8,14 +8,18 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import structlog
 
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.processors import sanitize_sensitive_fields
-from synthorg.observability.sinks import build_handler
+from synthorg.observability.sinks import SINK_ROUTING, build_handler
 
 # Default per-logger levels applied when no config overrides are given.
 _DEFAULT_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
@@ -176,6 +180,8 @@ def _attach_handlers(
     config: LogConfig,
     root_logger: logging.Logger,
     shared_processors: list[Any],
+    *,
+    routing_overrides: Mapping[str, tuple[str, ...]] | None = None,
 ) -> None:
     """Build and attach a handler for each configured sink.
 
@@ -187,10 +193,19 @@ def _attach_handlers(
         config: The logging configuration.
         root_logger: The stdlib root logger.
         shared_processors: Processor chain for the foreign pre-chain.
+        routing_overrides: Optional extra routing entries (e.g. from
+            custom sinks) merged with the default ``SINK_ROUTING``.
+            An empty mapping is treated the same as ``None``.
 
     Raises:
         RuntimeError: If a critical sink fails to initialise.
     """
+    effective_routing: Mapping[str, tuple[str, ...]] | None = None
+    if routing_overrides:
+        merged = dict(SINK_ROUTING)
+        merged.update(routing_overrides)
+        effective_routing = MappingProxyType(merged)
+
     log_dir = Path(config.log_dir)
     for sink in config.sinks:
         try:
@@ -198,6 +213,7 @@ def _attach_handlers(
                 sink=sink,
                 log_dir=log_dir,
                 foreign_pre_chain=shared_processors,
+                routing=effective_routing,
             )
             root_logger.addHandler(handler)
         except (OSError, RuntimeError, ValueError) as exc:
@@ -308,7 +324,11 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
     return config.model_copy(update={"sinks": tuple(new_sinks)})
 
 
-def configure_logging(config: LogConfig | None = None) -> None:
+def configure_logging(
+    config: LogConfig | None = None,
+    *,
+    routing_overrides: Mapping[str, tuple[str, ...]] | None = None,
+) -> None:
     """Configure the structured logging system.
 
     Sets up structlog processor chains, stdlib handlers, and per-logger
@@ -321,6 +341,9 @@ def configure_logging(config: LogConfig | None = None) -> None:
     Args:
         config: Logging configuration.  When ``None``, uses sensible
             defaults with all standard sinks.
+        routing_overrides: Optional extra logger-name routing entries
+            (e.g. from custom sinks) merged with the default
+            ``SINK_ROUTING`` table.
 
     Raises:
         RuntimeError: If a critical sink fails to initialise.
@@ -349,7 +372,12 @@ def configure_logging(config: LogConfig | None = None) -> None:
     _configure_structlog(enable_correlation=config.enable_correlation)
 
     # 6. Build and attach handlers for each sink
-    _attach_handlers(config, root_logger, shared)
+    _attach_handlers(
+        config,
+        root_logger,
+        shared,
+        routing_overrides=routing_overrides,
+    )
 
     # 7. Tame third-party loggers (clear duplicate handlers, set defaults)
     _tame_third_party_loggers()

@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from synthorg.observability.sinks import _SINK_ROUTING, _LoggerNameFilter
+from synthorg.observability.sinks import SINK_ROUTING, _LoggerNameFilter
 
 
 def _make_record(name: str) -> logging.LogRecord:
@@ -67,24 +67,24 @@ class TestLoggerNameFilter:
 @pytest.mark.unit
 class TestSinkRoutingTable:
     def test_audit_routes_security(self) -> None:
-        assert "audit.log" in _SINK_ROUTING
-        assert "synthorg.security." in _SINK_ROUTING["audit.log"]
+        assert "audit.log" in SINK_ROUTING
+        assert "synthorg.security." in SINK_ROUTING["audit.log"]
 
     def test_cost_usage_routes_budget_and_providers(self) -> None:
-        assert "cost_usage.log" in _SINK_ROUTING
-        prefixes = _SINK_ROUTING["cost_usage.log"]
+        assert "cost_usage.log" in SINK_ROUTING
+        prefixes = SINK_ROUTING["cost_usage.log"]
         assert "synthorg.budget." in prefixes
         assert "synthorg.providers." in prefixes
 
     def test_agent_activity_routes_engine_and_core(self) -> None:
-        assert "agent_activity.log" in _SINK_ROUTING
-        prefixes = _SINK_ROUTING["agent_activity.log"]
+        assert "agent_activity.log" in SINK_ROUTING
+        prefixes = SINK_ROUTING["agent_activity.log"]
         assert "synthorg.engine." in prefixes
         assert "synthorg.core." in prefixes
 
     def test_access_routes_api(self) -> None:
-        assert "access.log" in _SINK_ROUTING
-        assert "synthorg.api." in _SINK_ROUTING["access.log"]
+        assert "access.log" in SINK_ROUTING
+        assert "synthorg.api." in SINK_ROUTING["access.log"]
 
     @pytest.mark.parametrize(
         ("sink", "prefix"),
@@ -112,10 +112,10 @@ class TestSinkRoutingTable:
         ],
     )
     def test_sink_routes_prefix(self, sink: str, prefix: str) -> None:
-        assert prefix in _SINK_ROUTING[sink]
+        assert prefix in SINK_ROUTING[sink]
 
     def test_routing_table_has_exactly_expected_sinks(self) -> None:
-        assert set(_SINK_ROUTING.keys()) == {
+        assert set(SINK_ROUTING.keys()) == {
             "audit.log",
             "cost_usage.log",
             "agent_activity.log",
@@ -127,4 +127,4 @@ class TestSinkRoutingTable:
 
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
-            assert name not in _SINK_ROUTING
+            assert name not in SINK_ROUTING

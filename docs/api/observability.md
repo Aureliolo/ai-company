@@ -34,6 +34,10 @@ Structured logging, event constants, correlation tracking, and log sinks.
 
 ::: synthorg.observability.sinks
 
+## Sink Config Builder
+
+::: synthorg.observability.sink_config_builder
+
 ## Enums
 
 ::: synthorg.observability.enums

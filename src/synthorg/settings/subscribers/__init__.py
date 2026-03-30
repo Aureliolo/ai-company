@@ -6,6 +6,9 @@ from synthorg.settings.subscribers.backup_subscriber import (
 from synthorg.settings.subscribers.memory_subscriber import (
     MemorySettingsSubscriber,
 )
+from synthorg.settings.subscribers.observability_subscriber import (
+    ObservabilitySettingsSubscriber,
+)
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
@@ -13,5 +16,6 @@ from synthorg.settings.subscribers.provider_subscriber import (
 __all__ = [
     "BackupSettingsSubscriber",
     "MemorySettingsSubscriber",
+    "ObservabilitySettingsSubscriber",
     "ProviderSettingsSubscriber",
 ]

@@ -1398,12 +1398,21 @@ the console stream for `docker logs` access.
 
 ### Runtime Settings
 
-Two observability settings are runtime-editable via `SettingsService`:
+Four observability settings are runtime-editable via `SettingsService`:
 
 - `root_log_level` (enum: debug/info/warning/error/critical) -- changes the root logger level
 - `enable_correlation` (boolean) -- toggles correlation ID injection
+- `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
+  console sink, file path for file sinks). Each value is an object with optional fields:
+  `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
+  `backup_count`, `strategy`). The console sink cannot be disabled (`enabled: false` is rejected).
+- `custom_sinks` (JSON) -- additional file sinks as a JSON array. Each entry requires `file_path`
+  and optionally: `level` (default info), `json_format` (default true), `rotation` (object),
+  `routing_prefixes` (array of logger name prefix strings for targeted routing).
 
 Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
 
-Full sink CRUD via SettingsService (add/remove/reconfigure sinks at runtime) is planned as a
-future enhancement.
+Changes take effect without restart -- the `ObservabilitySettingsSubscriber` rebuilds the entire
+logging pipeline via `configure_logging()` (idempotent) when any of the four observability
+settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
+Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
