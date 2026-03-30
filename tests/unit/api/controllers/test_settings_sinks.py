@@ -8,9 +8,8 @@ from litestar.testing import TestClient
 
 from synthorg.observability.config import DEFAULT_SINKS
 from synthorg.observability.enums import SinkType
+from synthorg.observability.sink_config_builder import CONSOLE_SINK_ID
 from tests.unit.api.conftest import make_auth_headers
-
-_CONSOLE_ID = "__console__"
 
 
 @pytest.fixture
@@ -69,7 +68,7 @@ class TestListSinks:
         default_ids: set[str] = set()
         for s in DEFAULT_SINKS:
             if s.sink_type == SinkType.CONSOLE:
-                default_ids.add(_CONSOLE_ID)
+                default_ids.add(CONSOLE_SINK_ID)
             else:
                 default_ids.add(s.file_path or "")
 
@@ -89,7 +88,7 @@ class TestListSinks:
         body = resp.json()
         sinks = body["data"]
 
-        console_sinks = [s for s in sinks if s["identifier"] == _CONSOLE_ID]
+        console_sinks = [s for s in sinks if s["identifier"] == CONSOLE_SINK_ID]
         assert len(console_sinks) == 1
         assert console_sinks[0]["sink_type"] == "console"
         assert console_sinks[0]["is_default"] is True
@@ -151,6 +150,33 @@ class TestListSinks:
             headers=observer_headers,
         )
         assert resp.status_code == 200
+
+    def test_list_sinks_with_console_level_override(
+        self,
+        test_client: TestClient[Any],
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Override the console sink level and verify list_sinks reflects it."""
+        overrides = json.dumps({"__console__": {"level": "error"}})
+        put_resp = test_client.put(
+            "/api/v1/settings/observability/sink_overrides",
+            json={"value": overrides},
+            headers=auth_headers,
+        )
+        assert put_resp.status_code == 200
+
+        resp = test_client.get(
+            "/api/v1/settings/observability/sinks",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        sinks = body["data"]
+
+        console = next(s for s in sinks if s["identifier"] == CONSOLE_SINK_ID)
+        assert console["level"] == "ERROR"
+        assert console["enabled"] is True
+        assert console["is_default"] is True
 
 
 @pytest.mark.unit

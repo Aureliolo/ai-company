@@ -1,11 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import YAML from 'js-yaml'
+import type { EditorView } from '@codemirror/view'
 import { Columns2, FileCode } from 'lucide-react'
 import type { SettingEntry } from '@/api/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { CodeMirrorEditor, type CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import {
+  diffGutterExtension,
+  dispatchDiff,
+  settingsLinterExtension,
+  settingsAutocompleteExtension,
+} from './editor-extensions'
 
 const MAX_EDITOR_BYTES = 65_536
 
@@ -33,7 +40,8 @@ function entriesToObject(entries: SettingEntry[]): Record<string, Record<string,
     if (entry.definition.type === 'json') {
       try {
         obj[ns][entry.definition.key] = JSON.parse(entry.value)
-      } catch {
+      } catch (err) {
+        console.warn(`[settings] Failed to parse JSON for ${ns}/${entry.definition.key}:`, err)
         obj[ns][entry.definition.key] = entry.value
       }
     } else {
@@ -115,6 +123,8 @@ function parseText(text: string, format: CodeFormat): ParsedSettings {
 
   const raw: unknown = format === 'json'
     ? JSON.parse(text)
+    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp tags
+    // that could execute arbitrary code. Do not change to DEFAULT_SCHEMA.
     : YAML.load(text, { schema: YAML.CORE_SCHEMA })
 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -180,8 +190,8 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
             setText(YAML.dump(parsed, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false }))
           }
           setParseError(null)
-        } catch {
-          setParseError(`Cannot convert to ${newFormat.toUpperCase()}: fix syntax errors first`)
+        } catch (err) {
+          setParseError(err instanceof Error ? err.message : `Cannot convert to ${newFormat.toUpperCase()}`)
         }
       }
     },
@@ -249,6 +259,57 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
 
   const [splitView, setSplitView] = useState(false)
   const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
+
+  // ── Editor extensions (diff gutter, linter, autocomplete) ──────
+
+  // Stable refs so extension closures always see current values
+  const formatRef = useRef(format)
+  formatRef.current = format
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
+
+  // Diff gutter extension -- only active in split-view on the edited pane
+  const diffGutter = useMemo(() => diffGutterExtension(), [])
+
+  // Linter extension -- debounced syntax + schema validation
+  const linterExt = useMemo(
+    () =>
+      settingsLinterExtension(
+        () => formatRef.current,
+        () => entriesRef.current,
+      ),
+    [],
+  )
+
+  // Autocomplete extension -- namespace/key/enum-value suggestions
+  const autocompleteExt = useMemo(
+    () =>
+      settingsAutocompleteExtension(
+        () => formatRef.current,
+        () => entriesRef.current,
+      ),
+    [],
+  )
+
+  // Extensions array for the edited pane (stable when splitView toggles)
+  const editedExtensions = useMemo(
+    () => (splitView ? [diffGutter, linterExt, autocompleteExt] : [linterExt, autocompleteExt]),
+    [splitView, diffGutter, linterExt, autocompleteExt],
+  )
+
+  // Keep a ref to the edited pane's EditorView for dispatching diff updates
+  const editedViewRef = useRef<EditorView | null>(null)
+
+  const handleEditedViewReady = useCallback((view: EditorView) => {
+    editedViewRef.current = view
+  }, [])
+
+  // Update diff markers whenever the server text or edited text changes
+  useEffect(() => {
+    const view = editedViewRef.current
+    if (!view || !splitView) return
+    dispatchDiff(view, serverText, text)
+  }, [splitView, serverText, text])
 
   // Compute diff summary
   const diffSummary = useMemo(() => {
@@ -323,6 +384,8 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
             language={format}
             readOnly={saving}
             aria-label={`${format.toUpperCase()} editor`}
+            extensions={editedExtensions}
+            onViewReady={handleEditedViewReady}
           />
         </div>
       </div>

@@ -92,13 +92,14 @@
  *
  * Density levels from brand-and-ux.md:
  *   Dense:    p-3/12px  gap-3/12px  text-2xl  text-xs
- *   Balanced: p-4/16px  gap-4/16px  text-3xl  text-sm   (default)
- *   Sparse:   p-5/20px  gap-6/24px  text-3xl  text-sm
+ *   Balanced: p-3.5/14px  gap-3.5/14px  text-3xl  text-sm   (default)
+ *   Medium:   p-4/16px    gap-4/16px    text-3xl  text-sm
+ *   Sparse:   p-5/20px    gap-6/24px    text-3xl  text-sm
  */
 :root {
-  --so-density-card-padding: var(--so-space-4);
-  --so-density-section-gap: var(--so-space-4);
-  --so-density-grid-gap: var(--so-space-4);
+  --so-density-card-padding: var(--so-space-3-5);
+  --so-density-section-gap: var(--so-space-3-5);
+  --so-density-grid-gap: var(--so-space-3-5);
 }
 
 .density-dense {
@@ -108,7 +109,7 @@
 }
 
 .density-medium {
-  --so-density-card-padding: var(--so-space-3-5);
+  --so-density-card-padding: var(--so-space-4);
   --so-density-section-gap: var(--so-space-4);
   --so-density-grid-gap: var(--so-space-4);
 }

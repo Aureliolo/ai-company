@@ -27,7 +27,7 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
         !sink.enabled && 'opacity-50',
       )}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-3 p-card">
         <span className="text-text-secondary">
           {sink.sink_type === 'console' ? (
             <Monitor className="size-4" aria-hidden />
@@ -47,7 +47,7 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
         />
       </div>
 
-      <div className="border-t border-border px-4 py-3 space-y-2">
+      <div className="border-t border-border p-card space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium uppercase', levelColor)}>
             {sink.level}
@@ -71,7 +71,7 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
         )}
       </div>
 
-      <div className="border-t border-border px-4 py-2 flex justify-end">
+      <div className="border-t border-border p-card flex justify-end">
         <Button variant="ghost" size="sm" onClick={() => onEdit(sink)}>
           <Pencil className="mr-1.5 size-3" aria-hidden />
           Edit

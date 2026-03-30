@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Activity, ArrowLeft } from 'lucide-react'
-import type { SinkInfo } from '@/api/types'
+import { Activity, ArrowLeft, Plus } from 'lucide-react'
+import type { SinkInfo, WsEvent } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
+import { Skeleton } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { useSinksStore } from '@/stores/sinks'
 import { SinkCard } from './settings/sinks/SinkCard'
 import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
@@ -15,41 +17,80 @@ export default function SettingsSinksPage() {
   const { sinks, loading, error, fetchSinks, testConfig } = useSinksStore()
   const [editSink, setEditSink] = useState<SinkInfo | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [isNewSink, setIsNewSink] = useState(false)
 
   useEffect(() => {
     fetchSinks()
   }, [fetchSinks])
 
+  // Subscribe to WS system channel for setting updates -- auto-refresh on sink config changes
+  const sinkHandler = useCallback((event: WsEvent) => {
+    const key = event.payload.key as string | undefined
+    if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
+      fetchSinks()
+    }
+  }, [fetchSinks])
+
+  useWebSocket({
+    bindings: [{ channel: 'system', handler: sinkHandler }],
+  })
+
   const handleEdit = useCallback((sink: SinkInfo) => {
     setEditSink(sink)
+    setIsNewSink(false)
+    setDrawerOpen(true)
+  }, [])
+
+  const handleAddNew = useCallback(() => {
+    setEditSink(null)
+    setIsNewSink(true)
     setDrawerOpen(true)
   }, [])
 
   const handleCloseDrawer = useCallback(() => {
     setDrawerOpen(false)
     setEditSink(null)
+    setIsNewSink(false)
   }, [])
+
+  const handleSave = useCallback(() => {
+    // TODO: Persist via settings API (updateSetting for sink_overrides/custom_sinks)
+    // For now, just refresh to pick up any changes
+    fetchSinks()
+  }, [fetchSinks])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-grid-gap">
         <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
           <ArrowLeft className="mr-1.5 size-3.5" aria-hidden />
           Settings
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-2">
           <Activity className="size-4 text-text-secondary" aria-hidden />
           <h1 className="text-lg font-semibold text-foreground">Log Sinks</h1>
         </div>
+        <Button size="sm" onClick={handleAddNew}>
+          <Plus className="mr-1.5 size-3.5" aria-hidden />
+          Add Sink
+        </Button>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div className="rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           {error}
         </div>
       )}
 
-      {!loading && sinks.length === 0 && (
+      {loading && sinks.length === 0 && (
+        <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-40 rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {!loading && sinks.length === 0 && !error && (
         <EmptyState
           icon={Activity}
           title="No sinks configured"
@@ -58,7 +99,7 @@ export default function SettingsSinksPage() {
       )}
 
       <ErrorBoundary level="section">
-        <StaggerGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">
           {sinks.map((sink) => (
             <StaggerItem key={sink.identifier}>
               <SinkCard sink={sink} onEdit={handleEdit} />
@@ -68,10 +109,13 @@ export default function SettingsSinksPage() {
       </ErrorBoundary>
 
       <SinkFormDrawer
+        key={editSink?.identifier ?? (isNewSink ? '__new__' : '__closed__')}
         open={drawerOpen}
         onClose={handleCloseDrawer}
         sink={editSink}
+        isNew={isNewSink}
         onTest={testConfig}
+        onSave={handleSave}
       />
     </div>
   )

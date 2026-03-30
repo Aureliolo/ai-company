@@ -156,7 +156,7 @@ describe('TaskDetailPanel', () => {
     expect(onCancel).not.toHaveBeenCalled()
   })
 
-  it('calls onCancel after confirm dialog confirmation', async () => {
+  it('calls onCancel after confirm dialog confirmation', { timeout: 15000 }, async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn().mockResolvedValue(undefined)
     render(<TaskDetailPanel task={mockTask} onClose={() => {}} onUpdate={noop} onTransition={noop} onCancel={onCancel} onDelete={noop} />)

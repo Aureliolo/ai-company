@@ -2,13 +2,9 @@ import { useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types'
 import { useFlash } from '@/hooks/useFlash'
-import {
-  SETTING_DEPENDENCIES,
-  SECURITY_SENSITIVE_SETTINGS,
-} from '@/utils/constants'
+import { SECURITY_SENSITIVE_SETTINGS } from '@/utils/constants'
 import { SourceBadge } from './SourceBadge'
 import { RestartBadge } from './RestartBadge'
-import { DependencyIndicator } from './DependencyIndicator'
 import { SettingField } from './SettingField'
 
 export interface SettingRowProps {
@@ -20,10 +16,35 @@ export interface SettingRowProps {
   controllerDisabled?: boolean
   /** Trigger a flash animation (e.g. on WebSocket update). */
   flash?: boolean
+  /** Search query to highlight matching text. */
+  highlightQuery?: string
 }
 
-function formatKey(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+/** Highlight matching substrings in text with accent background. */
+function highlightText(text: string, query: string | undefined): React.ReactNode {
+  if (!query || !query.trim()) return text
+  const q = query.trim().toLowerCase()
+  const idx = text.toLowerCase().indexOf(q)
+  if (idx === -1) return text
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="rounded-sm bg-accent/20 text-accent">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  )
+}
+
+/** Generic keys that need the namespace prefix for clarity. */
+const GENERIC_KEYS: ReadonlySet<string> = new Set(['enabled', 'backend', 'path', 'description'])
+
+function formatKey(key: string, namespace?: string): string {
+  const formatted = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  if (namespace && GENERIC_KEYS.has(key)) {
+    const ns = namespace.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    return `${ns} ${formatted}`
+  }
+  return formatted
 }
 
 export function SettingRow({
@@ -33,6 +54,7 @@ export function SettingRow({
   saving,
   controllerDisabled,
   flash,
+  highlightQuery,
 }: SettingRowProps) {
   const { definition, source } = entry
   const compositeKey = `${definition.namespace}/${definition.key}`
@@ -44,14 +66,13 @@ export function SettingRow({
   const displayValue = dirtyValue ?? entry.value
   const isEnvLocked = source === 'env'
   const isDisabled = isEnvLocked || saving || controllerDisabled === true
-  const dependents = SETTING_DEPENDENCIES[compositeKey] ?? []
   const isSecuritySensitive = SECURITY_SENSITIVE_SETTINGS.has(compositeKey)
 
   return (
     <div
       data-setting-key={compositeKey}
       className={cn(
-        'grid grid-cols-[1fr_auto] items-start gap-4 rounded-md px-3 py-3 max-[639px]:grid-cols-1',
+        'grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card max-[639px]:grid-cols-1',
         'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
         controllerDisabled && 'pointer-events-none opacity-50',
       )}
@@ -61,15 +82,12 @@ export function SettingRow({
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-foreground">
-            {formatKey(definition.key)}
+            {highlightText(formatKey(definition.key, definition.namespace), highlightQuery)}
           </span>
           <SourceBadge source={source} />
           {definition.restart_required && <RestartBadge />}
-          {dependents.length > 0 && (
-            <DependencyIndicator dependents={dependents.map(formatDependentKey)} />
-          )}
         </div>
-        <p className="text-xs text-text-secondary">{definition.description}</p>
+        <p className="text-xs text-text-secondary">{highlightText(definition.description, highlightQuery)}</p>
         {isEnvLocked && (
           <p className="text-[10px] text-warning">Value set by environment variable (read-only)</p>
         )}
@@ -91,9 +109,4 @@ export function SettingRow({
       </div>
     </div>
   )
-}
-
-function formatDependentKey(compositeKey: string): string {
-  const key = compositeKey.split('/')[1] ?? compositeKey
-  return formatKey(key)
 }

@@ -19,6 +19,7 @@ function parseArrayItems(value: string): string[] {
     if (Array.isArray(parsed)) {
       return parsed.map(String)
     }
+    console.warn('[settings] parseArrayItems: JSON value is not an array, displaying raw')
   } catch (err) {
     console.warn('[settings] parseArrayItems: not valid JSON, displaying raw value', err)
   }

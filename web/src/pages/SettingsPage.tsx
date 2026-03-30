@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Link } from 'react-router'
 import {
-  Activity,
   AlertTriangle,
   Brain,
   Eye,
@@ -22,6 +22,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { useSettingsStore } from '@/stores/settings'
+import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
 import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
@@ -69,6 +70,7 @@ export default function SettingsPage() {
   } = useSettingsData()
 
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
+  const anim = useAnimationPreset()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [advancedMode, setAdvancedMode] = useState(
@@ -94,13 +96,16 @@ export default function SettingsPage() {
         changed.add(ck)
       }
     }
-    // Update ref after computing diff
+    return changed
+  }, [entries])
+
+  // Update ref after render commits (not inside useMemo to respect concurrent rendering)
+  useEffect(() => {
     const next = new Map<string, string>()
     for (const e of entries) {
       next.set(`${e.definition.namespace}/${e.definition.key}`, e.value)
     }
     prevEntriesRef.current = next
-    return changed
   }, [entries])
 
   const {
@@ -147,6 +152,11 @@ export default function SettingsPage() {
     }
     return result
   }, [entries, advancedMode, searchQuery])
+
+  const namespaceCounts = useMemo(
+    () => new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0])),
+    [filteredByNamespace],
+  )
 
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(entries, dirtyValues),
@@ -271,25 +281,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {viewMode !== 'code' && (
-        <NamespaceTabBar
-          namespaces={NAMESPACE_ORDER}
-          activeNamespace={activeNamespace}
-          onSelect={setActiveNamespace}
-          namespaceCounts={
-            new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0]))
-          }
-          namespaceIcons={NAMESPACE_ICONS}
-        />
-      )}
-
       <RestartBanner count={restartBannerCount} onDismiss={() => setRestartBannerCount(0)} />
 
       {error && (
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-danger/30 bg-danger/5',
-          'px-4 py-2 text-sm text-danger',
+          'p-card text-sm text-danger',
         )}>
           <AlertTriangle className="size-4 shrink-0" />
           {error}
@@ -300,7 +298,7 @@ export default function SettingsPage() {
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-warning/30 bg-warning/5',
-          'px-4 py-2 text-sm text-warning',
+          'p-card text-sm text-warning',
         )}>
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
@@ -323,6 +321,14 @@ export default function SettingsPage() {
         </ErrorBoundary>
       ) : (
         <>
+          <NamespaceTabBar
+            namespaces={NAMESPACE_ORDER}
+            activeNamespace={activeNamespace}
+            onSelect={setActiveNamespace}
+            namespaceCounts={namespaceCounts}
+            namespaceIcons={NAMESPACE_ICONS}
+          />
+
           {filteredByNamespace.size === 0 && (
             <EmptyState
               icon={Settings}
@@ -335,7 +341,15 @@ export default function SettingsPage() {
             />
           )}
 
-          <StaggerGroup className="space-y-4">
+          <AnimatePresence mode="wait">
+          <motion.div
+            key={activeNamespace ?? 'all'}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={anim.tween}
+          >
+          <StaggerGroup className="space-y-[var(--spacing-section-gap)]">
             {NAMESPACE_ORDER
               .filter((ns) => filteredByNamespace.has(ns))
               .filter((ns) => activeNamespace === null || ns === activeNamespace)
@@ -353,26 +367,30 @@ export default function SettingsPage() {
                     forceOpen={activeNamespace !== null || searchQuery.length > 0}
                     hideHeader={activeNamespace !== null}
                     changedKeys={changedKeys}
+                    highlightQuery={searchQuery}
+                    footerAction={ns === 'observability' ? (
+                      <Link
+                        to="/settings/observability/sinks"
+                        className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <span className="text-sm font-medium text-foreground">Log Sinks</span>
+                          <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
+                        </div>
+                        <div className="w-56 shrink-0">
+                          <Button variant="outline" tabIndex={-1} className="w-full justify-center">
+                            Open
+                          </Button>
+                        </div>
+                      </Link>
+                    ) : undefined}
                   />
-                  {ns === 'observability' && (
-                    <Link
-                      to="/settings/observability/sinks"
-                      className="mt-3 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
-                    >
-                      <Activity className="size-4 text-accent" aria-hidden />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium text-foreground">Manage Log Sinks</span>
-                        <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        Open
-                      </Button>
-                    </Link>
-                  )}
                 </ErrorBoundary>
               </StaggerItem>
             ))}
           </StaggerGroup>
+          </motion.div>
+          </AnimatePresence>
 
           <FloatingSaveBar
             dirtyCount={dirtyValues.size}

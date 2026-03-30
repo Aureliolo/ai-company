@@ -33,7 +33,7 @@ from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
 logger = get_logger(__name__)
 
-_CONSOLE_ID: str = "__console__"
+CONSOLE_SINK_ID: str = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
 _DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
@@ -41,7 +41,7 @@ _DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
 )
 
 # Valid sink identifiers for overrides.
-_VALID_OVERRIDE_KEYS: frozenset[str] = _DEFAULT_FILE_PATHS | {_CONSOLE_ID}
+_VALID_OVERRIDE_KEYS: frozenset[str] = _DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
 
 _LEVEL_MAP: dict[str, LogLevel] = {level.value.lower(): level for level in LogLevel}
 
@@ -273,7 +273,7 @@ def _apply_override(
             field_name=f"sink_overrides[{identifier!r}].enabled",
         )
         if not enabled:
-            if identifier == _CONSOLE_ID:
+            if identifier == CONSOLE_SINK_ID:
                 msg = (
                     "Cannot disable the console sink -- at least one output must remain"
                 )
@@ -396,7 +396,7 @@ def _merge_default_sinks(
     for sink in DEFAULT_SINKS:
         identifier = cast(
             "str",
-            _CONSOLE_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
+            CONSOLE_SINK_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
         )
         override = overrides.get(identifier)
         if override is not None:

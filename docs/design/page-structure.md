@@ -123,17 +123,21 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 #### Settings (`/settings`)
 
-Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Collapsible namespace sections with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
+Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Navigation uses a horizontal **namespace tab bar** across the top of the settings page, with each namespace as a clickable tab. Within each namespace, settings are displayed in a single-column layout with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
+
+The **Code edit mode** uses a **split-pane diff editor view**: the left pane shows the current persisted configuration (read-only), and the right pane is an editable CodeMirror editor for composing changes. This allows operators to see exactly what will change before saving.
 
 Enabling advanced mode for the first time shows a confirmation dialog warning about misconfiguration risk. The warning is deduplicated per session via `sessionStorage`. Advanced mode preference persists in `localStorage`.
 
 Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES` map in `web/src/utils/constants.ts` (not by backend schema). When a controller setting is disabled, its dependent settings display in a muted state.
 
+The **observability namespace** includes a dedicated **Sinks** sub-page (`/settings/observability/sinks`) for managing log sink configuration. The sinks page displays all active sinks (console and file) as cards showing identifier, log level, format, rotation policy, and routing prefixes. Operators can edit sink overrides and define custom sinks with a test-before-save workflow.
+
 The **backup namespace** will include backup management CRUD (trigger, list, restore, delete) in a future iteration, consolidating the BackupController under the Settings page. The current implementation covers backup configuration settings only (schedule, retention, path).
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 
-**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (restart-required notifications)
 
 ### Standalone Pages
@@ -252,8 +256,9 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/meetings/:meetingId` | Meeting detail | Transcript and outcomes |
 | `/providers` | Providers | Provider list |
 | `/providers/:providerName` | Provider detail | Edit/test provider |
-| `/settings` | Settings | Namespace overview |
-| `/settings/:namespace` | Settings (filtered) | Single namespace view |
+| `/settings` | Settings | Namespace overview (tab bar navigation) |
+| `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
+| `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
 | `*` | 404 Not Found | Catch-all |
 
 ### Route Guards

@@ -21,6 +21,7 @@ export const useSinksStore = create<SinksState>((set) => ({
       const sinks = await listSinks()
       set({ sinks, loading: false })
     } catch (err) {
+      console.error('[sinks] fetchSinks failed:', err)
       const message = err instanceof Error ? err.message : 'Failed to load sinks'
       set({ error: message, loading: false })
     }
