@@ -29,7 +29,7 @@ export default tseslint.config(
           selector: 'JSXAttribute[name.name="dangerouslySetInnerHTML"]',
           message:
             'dangerouslySetInnerHTML is banned -- use text content or a sanitization library. ' +
-            'If absolutely necessary, add // eslint-disable-next-line with a justification comment.',
+            'If absolutely necessary, add // eslint-disable-next-line no-restricted-syntax with a justification comment.',
         },
       ],
       // Rule flags every obj[var] with no data-flow analysis -- too many false

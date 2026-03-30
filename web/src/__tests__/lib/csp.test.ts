@@ -42,4 +42,31 @@ describe('getCspNonce', () => {
     const { getCspNonce } = await import('@/lib/csp')
     expect(getCspNonce()).toBeUndefined()
   })
+
+  it('returns undefined for whitespace-only content', async () => {
+    const meta = document.createElement('meta')
+    meta.name = 'csp-nonce'
+    meta.content = '   '
+    document.head.appendChild(meta)
+
+    const { getCspNonce } = await import('@/lib/csp')
+    expect(getCspNonce()).toBeUndefined()
+  })
+
+  it('caches absent result and does not re-query DOM', async () => {
+    const spy = vi.spyOn(document, 'querySelector')
+
+    const { getCspNonce } = await import('@/lib/csp')
+    expect(getCspNonce()).toBeUndefined()
+    expect(getCspNonce()).toBeUndefined()
+
+    // querySelector called once during import-time init + once for first call
+    // Second call should hit cache, not query DOM again
+    const cspCalls = spy.mock.calls.filter(
+      ([sel]) => sel === 'meta[name="csp-nonce"]',
+    )
+    expect(cspCalls).toHaveLength(1)
+
+    spy.mockRestore()
+  })
 })
