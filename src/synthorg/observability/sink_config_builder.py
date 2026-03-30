@@ -234,21 +234,18 @@ def _parse_rotation_override(
         updates["strategy"] = strategy
 
     if "max_bytes" in raw:
-        try:
-            updates["max_bytes"] = int(raw["max_bytes"])
-        except (ValueError, TypeError) as exc:
-            msg = f"Invalid max_bytes value {raw['max_bytes']!r}: must be an integer"
-            raise ValueError(msg) from exc
+        val = raw["max_bytes"]
+        if not isinstance(val, int) or isinstance(val, bool):
+            msg = f"Invalid max_bytes value {val!r}: must be an integer"
+            raise ValueError(msg)
+        updates["max_bytes"] = val
 
     if "backup_count" in raw:
-        try:
-            updates["backup_count"] = int(raw["backup_count"])
-        except (ValueError, TypeError) as exc:
-            msg = (
-                f"Invalid backup_count value "
-                f"{raw['backup_count']!r}: must be an integer"
-            )
-            raise ValueError(msg) from exc
+        val = raw["backup_count"]
+        if not isinstance(val, int) or isinstance(val, bool):
+            msg = f"Invalid backup_count value {val!r}: must be an integer"
+            raise ValueError(msg)
+        updates["backup_count"] = val
 
     return base.model_copy(update=updates) if updates else base
 
@@ -380,14 +377,10 @@ def _extract_routing(
 
     prefixes: list[str] = []
     for i, prefix in enumerate(raw):
-        s = str(prefix).strip()
-        if not s:
-            msg = (
-                f"routing_prefixes[{i}] for {file_path!r} "
-                "must be a non-empty prefix string"
-            )
+        if not isinstance(prefix, str) or not prefix.strip():
+            msg = f"routing_prefixes[{i}] for {file_path!r} must be a non-empty string"
             raise ValueError(msg)
-        prefixes.append(s)
+        prefixes.append(prefix.strip())
 
     return tuple(prefixes) if prefixes else None
 

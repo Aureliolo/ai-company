@@ -181,12 +181,11 @@ class ObservabilitySettingsSubscriber:
             raise
         except Exception:
             # Pipeline may be degraded -- stderr as fallback.
-            print(  # noqa: T201
+            sys.stderr.write(
                 f"WARNING: configure_logging failed during hot reload "
-                f"for key={key!r}; logging may be degraded",
-                file=sys.stderr,
-                flush=True,
+                f"for key={key!r}; logging may be degraded\n",
             )
+            sys.stderr.flush()
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,

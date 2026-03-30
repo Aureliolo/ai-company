@@ -1413,5 +1413,6 @@ Four observability settings are runtime-editable via `SettingsService`:
 Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
 
 Changes take effect without restart -- the `ObservabilitySettingsSubscriber` rebuilds the entire
-logging pipeline via `configure_logging()` (idempotent) when any sink setting changes. Custom
-sink file paths cannot collide with default sink paths (reserved even if disabled).
+logging pipeline via `configure_logging()` (idempotent) when any of the four observability
+settings change (`root_log_level`, `enable_correlation`, `sink_overrides`, or `custom_sinks`).
+Custom sink file paths cannot collide with default sink paths (reserved even if disabled).
