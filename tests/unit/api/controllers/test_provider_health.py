@@ -118,7 +118,7 @@ class TestProviderHealth:
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
-            assert data["health_status"] == "up"
+            assert data["health_status"] == "unknown"
             assert data["last_check_timestamp"] is None
             assert data["avg_response_time_ms"] is None
             assert data["error_rate_percent_24h"] == 0.0

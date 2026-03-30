@@ -69,6 +69,15 @@ PROVIDER_PROBE_HIT: Final[str] = "provider.management.probe_hit"
 PROVIDER_PROBE_MISS: Final[str] = "provider.management.probe_miss"
 PROVIDER_PROBE_COMPLETED: Final[str] = "provider.management.probe_completed"
 
+# ── Provider health probing ───────────────────────────────────
+
+PROVIDER_HEALTH_PROBE_STARTED: Final[str] = "provider.health_probe.started"
+PROVIDER_HEALTH_PROBE_SUCCESS: Final[str] = "provider.health_probe.success"
+PROVIDER_HEALTH_PROBE_FAILED: Final[str] = "provider.health_probe.failed"
+PROVIDER_HEALTH_PROBE_SKIPPED: Final[str] = "provider.health_probe.skipped"
+PROVIDER_HEALTH_PROBER_STARTED: Final[str] = "provider.health_prober.started"
+PROVIDER_HEALTH_PROBER_STOPPED: Final[str] = "provider.health_prober.stopped"
+
 # ── Provider discovery allowlist ─────────────────────────────
 
 PROVIDER_DISCOVERY_ALLOWLIST_SEEDED: Final[str] = "provider.discovery.allowlist_seeded"

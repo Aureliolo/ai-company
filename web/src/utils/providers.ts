@@ -69,7 +69,8 @@ export function filterProviders(
 const HEALTH_ORDER: Record<ProviderHealthStatus, number> = {
   down: 0,
   degraded: 1,
-  up: 2,
+  unknown: 2,
+  up: 3,
 }
 
 /** Client-side sort providers. */
@@ -104,16 +105,17 @@ export function sortProviders(
 
 // ── Health colors ─────────────────────────────────────────────
 
-const HEALTH_COLOR_MAP: Record<ProviderHealthStatus, SemanticColor> = {
+const HEALTH_COLOR_MAP: Record<ProviderHealthStatus, SemanticColor | 'muted'> = {
   up: 'success',
   degraded: 'warning',
   down: 'danger',
+  unknown: 'muted',
 }
 
 /** Map provider health status to semantic color. */
 export function getProviderHealthColor(
   status: ProviderHealthStatus,
-): SemanticColor {
+): SemanticColor | 'muted' {
   return HEALTH_COLOR_MAP[status]
 }
 

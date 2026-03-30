@@ -65,7 +65,7 @@ class TestProviderHealthRecord:
 class TestProviderHealthSummary:
     def test_defaults(self) -> None:
         summary = ProviderHealthSummary()
-        assert summary.health_status == ProviderHealthStatus.UP
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
         assert summary.last_check_timestamp is None
         assert summary.avg_response_time_ms is None
         assert summary.error_rate_percent_24h == 0.0
@@ -118,7 +118,7 @@ class TestProviderHealthTracker:
     async def test_empty_summary(self) -> None:
         tracker = ProviderHealthTracker()
         summary = await tracker.get_summary("test-provider")
-        assert summary.health_status == ProviderHealthStatus.UP
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
         assert summary.last_check_timestamp is None
         assert summary.avg_response_time_ms is None
         assert summary.error_rate_percent_24h == 0.0
@@ -396,15 +396,29 @@ class TestGetAllSummaries:
 @pytest.mark.unit
 class TestHealthStatusComputed:
     def test_health_status_derived_from_error_rate(self) -> None:
-        summary = ProviderHealthSummary(error_rate_percent_24h=15.0)
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=15.0,
+            calls_last_24h=100,
+        )
         assert summary.health_status == ProviderHealthStatus.DEGRADED
 
-    def test_default_is_up(self) -> None:
+    def test_default_is_unknown(self) -> None:
         summary = ProviderHealthSummary()
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
+
+    def test_zero_calls_is_unknown(self) -> None:
+        summary = ProviderHealthSummary(calls_last_24h=0)
+        assert summary.health_status == ProviderHealthStatus.UNKNOWN
+
+    def test_up_with_calls(self) -> None:
+        summary = ProviderHealthSummary(calls_last_24h=10)
         assert summary.health_status == ProviderHealthStatus.UP
 
     def test_down_at_50_percent(self) -> None:
-        summary = ProviderHealthSummary(error_rate_percent_24h=50.0)
+        summary = ProviderHealthSummary(
+            error_rate_percent_24h=50.0,
+            calls_last_24h=100,
+        )
         assert summary.health_status == ProviderHealthStatus.DOWN
 
 

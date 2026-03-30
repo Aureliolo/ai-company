@@ -14,6 +14,7 @@ type Story = StoryObj<typeof meta>
 export const Up: Story = { args: { status: 'up', label: true } }
 export const Degraded: Story = { args: { status: 'degraded', label: true } }
 export const Down: Story = { args: { status: 'down', label: true } }
+export const Unknown: Story = { args: { status: 'unknown', label: true } }
 export const DotOnly: Story = { args: { status: 'up' } }
 export const WithPulse: Story = { args: { status: 'degraded', label: true, pulse: true } }
 
@@ -24,6 +25,7 @@ export const AllStates: Story = {
       <ProviderHealthBadge status="up" label />
       <ProviderHealthBadge status="degraded" label />
       <ProviderHealthBadge status="down" label />
+      <ProviderHealthBadge status="unknown" label />
       <ProviderHealthBadge status="up" />
     </div>
   ),

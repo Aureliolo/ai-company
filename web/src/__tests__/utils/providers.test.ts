@@ -172,6 +172,10 @@ describe('getProviderHealthColor', () => {
   it('maps down to danger', () => {
     expect(getProviderHealthColor('down')).toBe('danger')
   })
+
+  it('maps unknown to muted', () => {
+    expect(getProviderHealthColor('unknown')).toBe('muted')
+  })
 })
 
 // ── formatLatency ─────────────────────────────────────────

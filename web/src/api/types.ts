@@ -654,7 +654,7 @@ export interface ReorderAgentsRequest {
 
 export type AuthType = 'api_key' | 'oauth' | 'custom_header' | 'subscription' | 'none'
 
-export type ProviderHealthStatus = 'up' | 'degraded' | 'down'
+export type ProviderHealthStatus = 'up' | 'degraded' | 'down' | 'unknown'
 
 export interface ProviderHealthSummary {
   last_check_timestamp: string | null

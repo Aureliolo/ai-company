@@ -41,6 +41,7 @@ class ProviderHealthStatus(StrEnum):
     UP = "up"
     DEGRADED = "degraded"
     DOWN = "down"
+    UNKNOWN = "unknown"
 
 
 class ProviderHealthRecord(BaseModel):
@@ -126,7 +127,9 @@ class ProviderHealthSummary(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def health_status(self) -> ProviderHealthStatus:
-        """Derive health status from error rate."""
+        """Derive health status from call count and error rate."""
+        if self.calls_last_24h == 0:
+            return ProviderHealthStatus.UNKNOWN
         return _derive_health_status(self.error_rate_percent_24h)
 
 

@@ -7,13 +7,15 @@ const STATUS_LABELS: Record<ProviderHealthStatus, string> = {
   up: 'Up',
   degraded: 'Degraded',
   down: 'Down',
+  unknown: 'Unknown',
 }
 
-const DOT_COLOR_CLASSES: Record<SemanticColor, string> = {
+const DOT_COLOR_CLASSES: Record<SemanticColor | 'muted', string> = {
   success: 'bg-success',
   accent: 'bg-accent',
   warning: 'bg-warning',
   danger: 'bg-danger',
+  muted: 'bg-text-muted',
 }
 
 export interface ProviderHealthBadgeProps {
@@ -35,7 +37,7 @@ export function ProviderHealthBadge({
   pulse = false,
   className,
 }: ProviderHealthBadgeProps) {
-  const color = getProviderHealthColor(status)
+  const color: SemanticColor | 'muted' = getProviderHealthColor(status)
   const statusLabel = STATUS_LABELS[status]
 
   return (
