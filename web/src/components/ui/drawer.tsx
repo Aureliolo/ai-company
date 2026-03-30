@@ -46,8 +46,8 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
   const openerRef = useRef<Element | null>(null)
   const panelVariants = useMemo(() => getPanelVariants(side), [side])
 
-  // Resolve accessible name: prefer ariaLabel, fall back to title, skip empty strings
-  const accessibleName = ariaLabel || title || undefined
+  // Resolve accessible name: prefer ariaLabel, fall back to title, skip empty/whitespace-only strings
+  const accessibleName = ariaLabel?.trim() || title?.trim() || undefined
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' && !accessibleName) {

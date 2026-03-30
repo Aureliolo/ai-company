@@ -2,9 +2,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Drawer } from '@/components/ui/drawer'
 
-// Mock framer-motion to avoid animation timing issues in tests
+// Mock components defined at module level for ESLint compliance
 function MockAnimatePresence({ children }: { children: React.ReactNode }) {
   return <>{children}</>
+}
+
+// React 19: ref is a regular prop, no forwardRef needed
+function MockMotionDiv({ children, ref, ...allProps }: React.ComponentProps<'div'> & { ref?: React.Ref<HTMLDivElement> } & Record<string, unknown>) {
+  const domProps = Object.fromEntries(
+    Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
+  ) as React.HTMLAttributes<HTMLDivElement>
+  return <div ref={ref} {...domProps}>{children as React.ReactNode}</div>
 }
 
 vi.mock('framer-motion', async () => {
@@ -12,15 +20,7 @@ vi.mock('framer-motion', async () => {
   return {
     ...actual,
     AnimatePresence: MockAnimatePresence,
-    motion: {
-      div: ({ children, ...allProps }: React.ComponentProps<'div'> & Record<string, unknown>) => {
-        // Strip framer-motion-specific props before passing to DOM
-        const domProps = Object.fromEntries(
-          Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
-        )
-        return <div {...domProps}>{children}</div>
-      },
-    },
+    motion: { div: MockMotionDiv },
   }
 })
 

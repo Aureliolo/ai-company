@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router'
 import {
   Bell,
@@ -80,8 +80,11 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
     }
   }, [overlayOpen, onOverlayClose])
 
-  // Close overlay on navigation
+  // Close overlay on navigation (skip the initial mount -- only fire on actual route changes)
+  const prevPathnameRef = useRef(location.pathname)
   useEffect(() => {
+    if (prevPathnameRef.current === location.pathname) return
+    prevPathnameRef.current = location.pathname
     if (overlayOpen && onOverlayClose) {
       onOverlayClose()
     }

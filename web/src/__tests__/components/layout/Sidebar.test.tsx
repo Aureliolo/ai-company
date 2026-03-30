@@ -7,9 +7,17 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { ROUTES } from '@/router/routes'
 import { renderWithRouter } from '../../test-utils'
 
-// Mock framer-motion (Drawer uses it for overlay animation)
+// Mock components defined at module level for ESLint compliance
 function MockAnimatePresence({ children }: { children: React.ReactNode }) {
   return <>{children}</>
+}
+
+// React 19: ref is a regular prop, no forwardRef needed
+function MockMotionDiv({ children, ref, ...allProps }: React.ComponentProps<'div'> & { ref?: React.Ref<HTMLDivElement> } & Record<string, unknown>) {
+  const domProps = Object.fromEntries(
+    Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
+  ) as React.HTMLAttributes<HTMLDivElement>
+  return <div ref={ref} {...domProps}>{children as React.ReactNode}</div>
 }
 
 vi.mock('framer-motion', async () => {
@@ -17,15 +25,7 @@ vi.mock('framer-motion', async () => {
   return {
     ...actual,
     AnimatePresence: MockAnimatePresence,
-    motion: {
-      div: ({ children, ...allProps }: React.ComponentProps<'div'> & Record<string, unknown>) => {
-        // Strip framer-motion-specific props before passing to DOM
-        const domProps = Object.fromEntries(
-          Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
-        )
-        return <div {...domProps}>{children}</div>
-      },
-    },
+    motion: { div: MockMotionDiv },
   }
 })
 
@@ -301,11 +301,14 @@ describe('Sidebar', () => {
       expect(screen.getByText('Settings')).toBeInTheDocument()
     })
 
+    it('does not call onOverlayClose on mount', () => {
+      const { onOverlayClose } = setupTablet(true)
+      expect(onOverlayClose).not.toHaveBeenCalled()
+    })
+
     it('calls onOverlayClose when close button is clicked', async () => {
       const user = userEvent.setup()
       const { onOverlayClose } = setupTablet(true)
-      // close-on-navigate effect fires once on mount -- clear the count
-      onOverlayClose.mockClear()
       await user.click(screen.getByLabelText('Close navigation menu'))
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
@@ -313,7 +316,6 @@ describe('Sidebar', () => {
     it('calls onOverlayClose when Escape is pressed', async () => {
       const user = userEvent.setup()
       const { onOverlayClose } = setupTablet(true)
-      onOverlayClose.mockClear()
       await user.keyboard('{Escape}')
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
@@ -321,7 +323,6 @@ describe('Sidebar', () => {
     it('calls onOverlayClose when overlay backdrop is clicked', async () => {
       const user = userEvent.setup()
       const { onOverlayClose } = setupTablet(true)
-      onOverlayClose.mockClear()
       await user.click(screen.getByTestId('drawer-overlay'))
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
@@ -329,9 +330,6 @@ describe('Sidebar', () => {
     it('calls onOverlayClose on route navigation', async () => {
       const onOverlayClose = vi.fn()
       const { router } = setupTablet(true, onOverlayClose)
-      // Initial mount fires close-on-navigate -- clear
-      onOverlayClose.mockClear()
-      // Navigate to a different route (wrapped in act for state update)
       await act(() => router.navigate('/settings'))
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
@@ -343,7 +341,6 @@ describe('Sidebar', () => {
         fc.asyncProperty(fc.constantFrom(...staticRoutes), async (route) => {
           const onOverlayClose = vi.fn()
           const { router, unmount } = setupTablet(true, onOverlayClose)
-          onOverlayClose.mockClear()
           await act(() => router.navigate(route))
           expect(onOverlayClose).toHaveBeenCalledOnce()
           unmount()
