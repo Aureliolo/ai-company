@@ -222,12 +222,12 @@ class TestOverrideValidation:
             _build(overrides="not-json")
 
     def test_non_object_top_level_raises(self) -> None:
-        with pytest.raises(TypeError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"[Oo]bject"):
             _build(overrides="[]")
 
     def test_override_value_must_be_object(self) -> None:
         overrides = json.dumps({"audit.log": "not-an-object"})
-        with pytest.raises(TypeError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"[Oo]bject"):
             _build(overrides=overrides)
 
 
@@ -334,11 +334,11 @@ class TestCustomSinksValidation:
             _build(custom="not-json")
 
     def test_non_array_top_level_raises(self) -> None:
-        with pytest.raises(TypeError, match=r"[Aa]rray"):
+        with pytest.raises(ValueError, match=r"[Aa]rray"):
             _build(custom="{}")
 
     def test_non_object_entry_raises(self) -> None:
-        with pytest.raises(TypeError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"[Oo]bject"):
             _build(custom='["not-an-object"]')
 
     def test_invalid_routing_prefix_raises(self) -> None:
@@ -357,7 +357,7 @@ class TestCustomSinksValidation:
         custom = json.dumps(
             [{"file_path": "x.log", "routing_prefixes": "not-an-array"}]
         )
-        with pytest.raises(TypeError, match=r"[Aa]rray"):
+        with pytest.raises(ValueError, match=r"[Aa]rray"):
             _build(custom=custom)
 
     def test_non_string_file_path_raises(self) -> None:
@@ -436,3 +436,111 @@ class TestCombined:
             log_dir="custom_logs",
         )
         assert result.config.log_dir == "custom_logs"
+
+
+# -- Strict type validation ----------------------------------------
+
+
+@pytest.mark.unit
+class TestStrictTypeValidation:
+    """Strict type checks for boolean and level fields."""
+
+    def test_enabled_string_false_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"enabled": "false"}})
+        with pytest.raises(ValueError, match=r"boolean"):
+            _build(overrides=overrides)
+
+    def test_enabled_int_zero_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"enabled": 0}})
+        with pytest.raises(ValueError, match=r"boolean"):
+            _build(overrides=overrides)
+
+    def test_json_format_string_false_raises(self) -> None:
+        overrides = json.dumps({"synthorg.log": {"json_format": "false"}})
+        with pytest.raises(ValueError, match=r"boolean"):
+            _build(overrides=overrides)
+
+    def test_custom_sink_json_format_string_raises(self) -> None:
+        custom = json.dumps([{"file_path": "x.log", "json_format": "true"}])
+        with pytest.raises(ValueError, match=r"boolean"):
+            _build(custom=custom)
+
+    def test_level_null_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"level": None}})
+        with pytest.raises(ValueError, match=r"string"):
+            _build(overrides=overrides)
+
+    def test_level_number_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"level": 42}})
+        with pytest.raises(ValueError, match=r"string"):
+            _build(overrides=overrides)
+
+    def test_rotation_non_object_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"rotation": "disabled"}})
+        with pytest.raises(ValueError, match=r"[Oo]bject"):
+            _build(overrides=overrides)
+
+    def test_rotation_array_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"rotation": []}})
+        with pytest.raises(ValueError, match=r"[Oo]bject"):
+            _build(overrides=overrides)
+
+    def test_invalid_max_bytes_raises(self) -> None:
+        overrides = json.dumps(
+            {"audit.log": {"rotation": {"max_bytes": "not-a-number"}}},
+        )
+        with pytest.raises(ValueError, match=r"max_bytes"):
+            _build(overrides=overrides)
+
+    def test_invalid_backup_count_raises(self) -> None:
+        overrides = json.dumps(
+            {"audit.log": {"rotation": {"backup_count": None}}},
+        )
+        with pytest.raises(ValueError, match=r"backup_count"):
+            _build(overrides=overrides)
+
+
+# -- Unknown field rejection ---------------------------------------
+
+
+@pytest.mark.unit
+class TestUnknownFieldRejection:
+    """Unknown fields in override/custom sink dicts are rejected."""
+
+    def test_unknown_override_field_raises(self) -> None:
+        overrides = json.dumps({"audit.log": {"levle": "debug"}})
+        with pytest.raises(ValueError, match=r"Unknown fields"):
+            _build(overrides=overrides)
+
+    def test_unknown_custom_sink_field_raises(self) -> None:
+        custom = json.dumps([{"file_path": "x.log", "routing_prefix": ["a."]}])
+        with pytest.raises(ValueError, match=r"Unknown fields"):
+            _build(custom=custom)
+
+    def test_unknown_rotation_field_raises(self) -> None:
+        overrides = json.dumps(
+            {"audit.log": {"rotation": {"max_size": 1000}}},
+        )
+        with pytest.raises(ValueError, match=r"Unknown fields"):
+            _build(overrides=overrides)
+
+
+# -- Limits --------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestLimits:
+    """Caps on custom sinks and routing prefixes."""
+
+    def test_too_many_custom_sinks_raises(self) -> None:
+        sinks = [{"file_path": f"sink_{i}.log"} for i in range(21)]
+        with pytest.raises(ValueError, match=r"exceeds maximum"):
+            _build(custom=json.dumps(sinks))
+
+    def test_too_many_routing_prefixes_raises(self) -> None:
+        prefixes = [f"synthorg.mod{i}." for i in range(51)]
+        custom = json.dumps(
+            [{"file_path": "x.log", "routing_prefixes": prefixes}],
+        )
+        with pytest.raises(ValueError, match=r"exceeds maximum"):
+            _build(custom=custom)

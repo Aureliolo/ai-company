@@ -1,6 +1,8 @@
 """Observability settings subscriber -- reconfigure log pipeline at runtime."""
 
-from typing import TYPE_CHECKING
+import asyncio
+import sys
+from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
 from synthorg.observability.enums import LogLevel
@@ -11,7 +13,10 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_NOTIFIED,
 )
 from synthorg.observability.setup import configure_logging
-from synthorg.observability.sink_config_builder import build_log_config_from_settings
+from synthorg.observability.sink_config_builder import (
+    SinkBuildResult,
+    build_log_config_from_settings,
+)
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -27,6 +32,8 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+_VALID_BOOL_STRINGS: frozenset[str] = frozenset({"true", "false"})
+
 
 class ObservabilitySettingsSubscriber:
     """React to observability-namespace settings changes.
@@ -35,10 +42,14 @@ class ObservabilitySettingsSubscriber:
     via :func:`configure_logging`.  The subscriber reads all current
     settings, merges defaults with overrides, and reconfigures.
 
-    On failure (settings read error, validation error, or critical
-    sink failure), the existing logging configuration is preserved
-    where possible.  Note that ``configure_logging`` is not atomic --
-    if it fails mid-rebuild, the pipeline may be in a degraded state.
+    On settings-read or validation failure, the existing logging
+    configuration is preserved.  On ``configure_logging`` failure,
+    the pipeline may be in a degraded state because old handlers are
+    torn down before new ones are attached (not atomic).
+
+    Rapid successive changes are serialized by an ``asyncio.Lock``
+    so the final configuration reflects the last completed rebuild
+    (last-write-wins).
 
     Args:
         settings_service: Settings service for reading current values.
@@ -52,6 +63,7 @@ class ObservabilitySettingsSubscriber:
     ) -> None:
         self._settings_service = settings_service
         self._log_dir = log_dir
+        self._rebuild_lock = asyncio.Lock()
 
     @property
     def watched_keys(self) -> frozenset[tuple[str, str]]:
@@ -70,10 +82,8 @@ class ObservabilitySettingsSubscriber:
     ) -> None:
         """Handle an observability setting change.
 
-        Reads all current observability settings, builds a merged
-        :class:`LogConfig`, and calls :func:`configure_logging` to
-        rebuild the pipeline.  Errors are caught and logged -- the
-        existing configuration is preserved on failure.
+        Acquires the rebuild lock to serialize concurrent rebuilds,
+        then delegates to :meth:`_rebuild_pipeline`.
 
         Args:
             namespace: Changed setting namespace.
@@ -89,58 +99,58 @@ class ObservabilitySettingsSubscriber:
             )
             return
 
-        # Read all current settings (any key change triggers full rebuild).
-        try:
-            root_level_result = await self._settings_service.get(
-                "observability",
-                "root_log_level",
-            )
-            correlation_result = await self._settings_service.get(
+        async with self._rebuild_lock:
+            await self._rebuild_pipeline(key)
+
+    async def _read_all_settings(self) -> tuple[Any, ...]:
+        """Read all 4 observability settings in parallel."""
+        return await asyncio.gather(
+            self._settings_service.get("observability", "root_log_level"),
+            self._settings_service.get(
                 "observability",
                 "enable_correlation",
-            )
-            overrides_result = await self._settings_service.get(
-                "observability",
-                "sink_overrides",
-            )
-            custom_result = await self._settings_service.get(
-                "observability",
-                "custom_sinks",
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.error(
-                SETTINGS_OBSERVABILITY_REBUILD_FAILED,
-                subscriber=self.subscriber_name,
-                key=key,
-                note="failed to read settings",
-                exc_info=True,
-            )
-            return
+            ),
+            self._settings_service.get("observability", "sink_overrides"),
+            self._settings_service.get("observability", "custom_sinks"),
+        )
 
-        # Parse root level separately for accurate error reporting.
+    def _parse_and_build(
+        self,
+        results: tuple[Any, ...],
+        key: str,
+    ) -> SinkBuildResult | None:
+        """Parse settings and build log config.  ``None`` on failure."""
+        root_result, corr_result, over_result, cust_result = results
+
         try:
-            root_level = LogLevel(root_level_result.value.upper())
+            root_level = LogLevel(root_result.value.upper())
         except ValueError, AttributeError:
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
                 key=key,
-                note=f"invalid root_log_level: {root_level_result.value!r}",
+                note=f"invalid root_log_level: {root_result.value!r}",
                 exc_info=True,
             )
-            return
+            return None
 
-        enable_correlation = str(correlation_result.value).lower() == "true"
+        raw_corr = str(corr_result.value).strip().lower()
+        if raw_corr not in _VALID_BOOL_STRINGS:
+            logger.error(
+                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+                subscriber=self.subscriber_name,
+                key=key,
+                note=f"invalid enable_correlation: {corr_result.value!r}",
+            )
+            return None
+        enable_correlation = raw_corr == "true"
 
-        # Build LogConfig from settings + defaults.
         try:
-            build_result = build_log_config_from_settings(
+            return build_log_config_from_settings(
                 root_level=root_level,
                 enable_correlation=enable_correlation,
-                sink_overrides_json=overrides_result.value,
-                custom_sinks_json=custom_result.value,
+                sink_overrides_json=over_result.value,
+                custom_sinks_json=cust_result.value,
                 log_dir=self._log_dir,
             )
         except MemoryError, RecursionError:
@@ -153,19 +163,30 @@ class ObservabilitySettingsSubscriber:
                 note="invalid sink configuration -- keeping existing config",
                 exc_info=True,
             )
-            return
+            return None
 
-        # Rebuild the logging pipeline.  configure_logging is not atomic:
-        # it clears old handlers before attaching new ones, so a failure
-        # here may leave the pipeline degraded.
+    def _apply_config(
+        self,
+        build_result: SinkBuildResult,
+        key: str,
+    ) -> None:
+        """Call ``configure_logging`` with stderr fallback on failure."""
+        routing = build_result.routing_overrides or None
         try:
             configure_logging(
                 build_result.config,
-                routing_overrides=dict(build_result.routing_overrides) or None,
+                routing_overrides=routing,
             )
         except MemoryError, RecursionError:
             raise
         except Exception:
+            # Pipeline may be degraded -- stderr as fallback.
+            print(  # noqa: T201
+                f"WARNING: configure_logging failed during hot reload "
+                f"for key={key!r}; logging may be degraded",
+                file=sys.stderr,
+                flush=True,
+            )
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,
@@ -185,3 +206,25 @@ class ObservabilitySettingsSubscriber:
             sink_count=len(build_result.config.sinks),
             custom_routing_count=len(build_result.routing_overrides),
         )
+
+    async def _rebuild_pipeline(self, key: str) -> None:
+        """Full pipeline rebuild: read, parse, build, apply."""
+        try:
+            results = await self._read_all_settings()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.error(
+                SETTINGS_OBSERVABILITY_REBUILD_FAILED,
+                subscriber=self.subscriber_name,
+                key=key,
+                note="failed to read settings",
+                exc_info=True,
+            )
+            return
+
+        build_result = self._parse_and_build(results, key)
+        if build_result is None:
+            return
+
+        self._apply_config(build_result, key)

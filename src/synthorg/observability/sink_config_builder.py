@@ -1,3 +1,5 @@
+# ruff: noqa: TRY004 -- all type-validation paths deliberately raise ValueError
+# for a consistent public API contract (callers use `except ValueError`).
 """Build a LogConfig from DEFAULT_SINKS + runtime overrides + custom sinks.
 
 Pure-function module that merges static defaults with runtime settings
@@ -18,8 +20,9 @@ The two JSON inputs come from ``SettingsService`` settings:
 import json
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any
+from typing import Any, cast
 
+from synthorg.observability import get_logger
 from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
@@ -28,7 +31,9 @@ from synthorg.observability.config import (
 )
 from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
-_CONSOLE_ID = "__console__"
+logger = get_logger(__name__)
+
+_CONSOLE_ID: str = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
 _DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
@@ -43,6 +48,20 @@ _LEVEL_MAP: dict[str, LogLevel] = {level.value.lower(): level for level in LogLe
 _STRATEGY_MAP: dict[str, RotationStrategy] = {
     s.value.lower(): s for s in RotationStrategy
 }
+
+# Allowed field names for strict validation.
+_OVERRIDE_FIELDS: frozenset[str] = frozenset(
+    {"enabled", "level", "json_format", "rotation"},
+)
+_CUSTOM_SINK_FIELDS: frozenset[str] = frozenset(
+    {"file_path", "level", "json_format", "rotation", "routing_prefixes"},
+)
+_ROTATION_FIELDS: frozenset[str] = frozenset(
+    {"strategy", "max_bytes", "backup_count"},
+)
+
+_MAX_CUSTOM_SINKS: int = 20
+_MAX_ROUTING_PREFIXES: int = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +78,34 @@ class SinkBuildResult:
     routing_overrides: MappingProxyType[str, tuple[str, ...]]
 
 
-# ── JSON parsing helpers ─────────────────────────────────────────
+# -- Validation helpers --------------------------------------------
+
+
+def _reject_unknown_fields(
+    fields: dict[str, Any],
+    allowed: frozenset[str],
+    context: str,
+) -> None:
+    """Raise ValueError if *fields* contains keys not in *allowed*."""
+    unknown = set(fields) - allowed
+    if unknown:
+        msg = f"Unknown fields in {context}: {sorted(unknown)}"
+        raise ValueError(msg)
+
+
+def _parse_bool(raw: Any, *, field_name: str) -> bool:
+    """Require an actual JSON boolean.
+
+    Raises:
+        ValueError: If *raw* is not a ``bool``.
+    """
+    if not isinstance(raw, bool):
+        msg = f"{field_name} must be a boolean, got {type(raw).__name__}"
+        raise ValueError(msg)
+    return raw
+
+
+# -- JSON parsing helpers ------------------------------------------
 
 
 def _parse_json(raw: str, label: str) -> Any:
@@ -78,12 +124,13 @@ def _parse_sink_overrides(raw: str) -> dict[str, dict[str, Any]]:
         A dict mapping sink identifiers to override dicts.
 
     Raises:
-        ValueError: On invalid JSON, wrong structure, or unknown keys.
+        ValueError: On invalid JSON, wrong structure, unknown sink
+            identifiers, or unknown override fields.
     """
     data = _parse_json(raw, "sink_overrides")
     if not isinstance(data, dict):
         msg = "sink_overrides must be a JSON object"
-        raise TypeError(msg)
+        raise ValueError(msg)
 
     for key, value in data.items():
         if key not in _VALID_OVERRIDE_KEYS:
@@ -97,42 +144,58 @@ def _parse_sink_overrides(raw: str) -> dict[str, dict[str, Any]]:
                 f"Override value for {key!r} must be a JSON object, "
                 f"got {type(value).__name__}"
             )
-            raise TypeError(msg)
+            raise ValueError(msg)
+        _reject_unknown_fields(
+            value,
+            _OVERRIDE_FIELDS,
+            f"sink_overrides[{key!r}]",
+        )
     return data
 
 
-def _parse_custom_sinks(
-    raw: str,
-) -> list[dict[str, Any]]:
+def _parse_custom_sinks(raw: str) -> list[dict[str, Any]]:
     """Parse and validate the ``custom_sinks`` JSON string.
 
     Returns:
         A list of custom sink definition dicts.
 
     Raises:
-        ValueError: On invalid JSON or wrong structure.
+        ValueError: On invalid JSON, wrong structure, too many entries,
+            or unknown fields.
     """
     data = _parse_json(raw, "custom_sinks")
     if not isinstance(data, list):
         msg = "custom_sinks must be a JSON array"
-        raise TypeError(msg)
+        raise ValueError(msg)
+
+    if len(data) > _MAX_CUSTOM_SINKS:
+        msg = f"custom_sinks exceeds maximum of {_MAX_CUSTOM_SINKS} entries"
+        raise ValueError(msg)
 
     for i, entry in enumerate(data):
         if not isinstance(entry, dict):
             msg = f"custom_sinks[{i}] must be a JSON object, got {type(entry).__name__}"
-            raise TypeError(msg)
+            raise ValueError(msg)
+        _reject_unknown_fields(
+            entry,
+            _CUSTOM_SINK_FIELDS,
+            f"custom_sinks[{i}]",
+        )
     return data
 
 
-# ── Level / rotation helpers ─────────────────────────────────────
+# -- Level / rotation helpers --------------------------------------
 
 
-def _parse_level(raw: str) -> LogLevel:
-    """Convert a lowercase level string to LogLevel.
+def _parse_level(raw: Any) -> LogLevel:
+    """Convert a level value to LogLevel (case-insensitive).
 
     Raises:
-        ValueError: If the level string is not recognized.
+        ValueError: If *raw* is not a string or not a recognized level.
     """
+    if not isinstance(raw, str):
+        msg = f"level must be a string, got {type(raw).__name__}"
+        raise ValueError(msg)
     level = _LEVEL_MAP.get(raw.lower())
     if level is None:
         valid = ", ".join(sorted(_LEVEL_MAP))
@@ -142,7 +205,7 @@ def _parse_level(raw: str) -> LogLevel:
 
 
 def _parse_rotation_override(
-    raw: dict[str, Any],
+    raw: Any,
     base: RotationConfig | None,
 ) -> RotationConfig:
     """Merge a rotation override dict into an existing RotationConfig.
@@ -151,8 +214,14 @@ def _parse_rotation_override(
     from *base* (or defaults if base is None).
 
     Raises:
-        ValueError: If strategy string is unrecognized.
+        ValueError: If *raw* is not a dict, contains unknown fields,
+            or field values are invalid.
     """
+    if not isinstance(raw, dict):
+        msg = f"rotation must be a JSON object, got {type(raw).__name__}"
+        raise ValueError(msg)
+    _reject_unknown_fields(raw, _ROTATION_FIELDS, "rotation")
+
     base = base or RotationConfig()
     updates: dict[str, Any] = {}
 
@@ -184,7 +253,7 @@ def _parse_rotation_override(
     return base.model_copy(update=updates) if updates else base
 
 
-# ── Override application ─────────────────────────────────────────
+# -- Override application ------------------------------------------
 
 
 def _apply_override(
@@ -198,13 +267,21 @@ def _apply_override(
         The updated SinkConfig, or ``None`` if the sink is disabled.
 
     Raises:
-        ValueError: If the console sink is disabled or fields are invalid.
+        ValueError: If the console sink is disabled, types are wrong,
+            or fields are invalid.
     """
-    if "enabled" in override and not override["enabled"]:
-        if identifier == _CONSOLE_ID:
-            msg = "Cannot disable the console sink -- at least one output must remain"
-            raise ValueError(msg)
-        return None
+    if "enabled" in override:
+        enabled = _parse_bool(
+            override["enabled"],
+            field_name=f"sink_overrides[{identifier!r}].enabled",
+        )
+        if not enabled:
+            if identifier == _CONSOLE_ID:
+                msg = (
+                    "Cannot disable the console sink -- at least one output must remain"
+                )
+                raise ValueError(msg)
+            return None
 
     updates: dict[str, Any] = {}
 
@@ -212,7 +289,10 @@ def _apply_override(
         updates["level"] = _parse_level(override["level"])
 
     if "json_format" in override:
-        updates["json_format"] = bool(override["json_format"])
+        updates["json_format"] = _parse_bool(
+            override["json_format"],
+            field_name=f"sink_overrides[{identifier!r}].json_format",
+        )
 
     if "rotation" in override:
         updates["rotation"] = _parse_rotation_override(
@@ -223,7 +303,7 @@ def _apply_override(
     return sink.model_copy(update=updates) if updates else sink
 
 
-# ── Custom sink construction ─────────────────────────────────────
+# -- Custom sink construction --------------------------------------
 
 
 def _build_custom_sink(
@@ -248,7 +328,13 @@ def _build_custom_sink(
         raise ValueError(msg)
     file_path = raw_path
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
-    json_format = bool(entry.get("json_format", True))
+
+    json_format = True
+    if "json_format" in entry:
+        json_format = _parse_bool(
+            entry["json_format"],
+            field_name=f"custom_sinks[{index}].json_format",
+        )
 
     rotation: RotationConfig | None = None
     if "rotation" in entry:
@@ -276,14 +362,21 @@ def _extract_routing(
         A tuple of prefix strings, or ``None`` if no routing specified.
 
     Raises:
-        ValueError: If any prefix is empty or whitespace-only.
+        ValueError: If prefixes are invalid, not an array, or too many.
     """
     raw = entry.get("routing_prefixes")
     if raw is None:
         return None
     if not isinstance(raw, list):
         msg = f"routing_prefixes for {file_path!r} must be an array"
-        raise TypeError(msg)
+        raise ValueError(msg)
+
+    if len(raw) > _MAX_ROUTING_PREFIXES:
+        msg = (
+            f"routing_prefixes for {file_path!r} exceeds "
+            f"maximum of {_MAX_ROUTING_PREFIXES} entries"
+        )
+        raise ValueError(msg)
 
     prefixes: list[str] = []
     for i, prefix in enumerate(raw):
@@ -299,7 +392,63 @@ def _extract_routing(
     return tuple(prefixes) if prefixes else None
 
 
-# ── Main builder ─────────────────────────────────────────────────
+# -- Main builder --------------------------------------------------
+
+
+def _merge_default_sinks(
+    overrides: dict[str, dict[str, Any]],
+) -> list[SinkConfig]:
+    """Apply overrides to DEFAULT_SINKS, returning the merged list."""
+    merged: list[SinkConfig] = []
+    for sink in DEFAULT_SINKS:
+        identifier = cast(
+            "str",
+            _CONSOLE_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
+        )
+        override = overrides.get(identifier)
+        if override is not None:
+            result = _apply_override(sink, override, identifier)
+            if result is not None:
+                merged.append(result)
+        else:
+            merged.append(sink)
+    return merged
+
+
+def _process_custom_entries(
+    custom_entries: list[dict[str, Any]],
+    merged: list[SinkConfig],
+) -> MappingProxyType[str, tuple[str, ...]]:
+    """Build custom sinks, append to *merged*, return routing overrides."""
+    used_paths = _DEFAULT_FILE_PATHS  # reserved even if disabled
+    custom_paths: set[str] = set()
+    routing_overrides: dict[str, tuple[str, ...]] = {}
+
+    for i, entry in enumerate(custom_entries):
+        sink = _build_custom_sink(entry, i)
+        path = cast("str", sink.file_path)
+
+        if path in used_paths:
+            msg = (
+                f"custom_sinks[{i}] file_path {path!r} conflicts "
+                "with a default sink (reserved even if disabled)"
+            )
+            raise ValueError(msg)
+        if path in custom_paths:
+            msg = (
+                f"custom_sinks[{i}] file_path {path!r} is duplicated "
+                "within custom_sinks"
+            )
+            raise ValueError(msg)
+
+        custom_paths.add(path)
+        merged.append(sink)
+
+        prefixes = _extract_routing(entry, path)
+        if prefixes is not None:
+            routing_overrides[path] = prefixes
+
+    return MappingProxyType(routing_overrides)
 
 
 def build_log_config_from_settings(
@@ -330,60 +479,13 @@ def build_log_config_from_settings(
     overrides = _parse_sink_overrides(sink_overrides_json)
     custom_entries = _parse_custom_sinks(custom_sinks_json)
 
-    # 1. Apply overrides to DEFAULT_SINKS.
-    merged: list[SinkConfig] = []
-    for sink in DEFAULT_SINKS:
-        identifier: str = (
-            _CONSOLE_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path  # type: ignore[assignment]
-        )
+    merged = _merge_default_sinks(overrides)
+    routing = _process_custom_entries(custom_entries, merged)
 
-        override = overrides.get(identifier)
-        if override is not None:
-            result = _apply_override(sink, override, identifier)
-            if result is not None:
-                merged.append(result)
-        else:
-            merged.append(sink)
-
-    # 2. Build custom sinks and collect routing.
-    used_paths = _DEFAULT_FILE_PATHS  # reserved even if disabled
-    custom_paths: set[str] = set()
-    routing_overrides: dict[str, tuple[str, ...]] = {}
-
-    for i, entry in enumerate(custom_entries):
-        sink = _build_custom_sink(entry, i)
-        path: str = sink.file_path  # type: ignore[assignment]
-
-        if path in used_paths:
-            msg = (
-                f"custom_sinks[{i}] file_path {path!r} conflicts "
-                "with a default sink (reserved even if disabled)"
-            )
-            raise ValueError(msg)
-        if path in custom_paths:
-            msg = (
-                f"custom_sinks[{i}] file_path {path!r} is duplicated "
-                "within custom_sinks"
-            )
-            raise ValueError(msg)
-
-        custom_paths.add(path)
-        merged.append(sink)
-
-        # Extract routing prefixes (if any).
-        prefixes = _extract_routing(entry, path)
-        if prefixes is not None:
-            routing_overrides[path] = prefixes
-
-    # 3. Build and validate LogConfig.
     config = LogConfig(
         root_level=root_level,
         enable_correlation=enable_correlation,
         sinks=tuple(merged),
         log_dir=log_dir,
     )
-
-    return SinkBuildResult(
-        config=config,
-        routing_overrides=MappingProxyType(routing_overrides),
-    )
+    return SinkBuildResult(config=config, routing_overrides=routing)

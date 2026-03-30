@@ -9,7 +9,10 @@ import os
 import sys
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import structlog
 
@@ -178,7 +181,7 @@ def _attach_handlers(
     root_logger: logging.Logger,
     shared_processors: list[Any],
     *,
-    routing_overrides: dict[str, tuple[str, ...]] | None = None,
+    routing_overrides: Mapping[str, tuple[str, ...]] | None = None,
 ) -> None:
     """Build and attach a handler for each configured sink.
 
@@ -192,11 +195,12 @@ def _attach_handlers(
         shared_processors: Processor chain for the foreign pre-chain.
         routing_overrides: Optional extra routing entries (e.g. from
             custom sinks) merged with the default ``SINK_ROUTING``.
+            An empty mapping is treated the same as ``None``.
 
     Raises:
         RuntimeError: If a critical sink fails to initialise.
     """
-    effective_routing: MappingProxyType[str, tuple[str, ...]] | None = None
+    effective_routing: Mapping[str, tuple[str, ...]] | None = None
     if routing_overrides:
         merged = dict(SINK_ROUTING)
         merged.update(routing_overrides)
@@ -323,7 +327,7 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
 def configure_logging(
     config: LogConfig | None = None,
     *,
-    routing_overrides: dict[str, tuple[str, ...]] | None = None,
+    routing_overrides: Mapping[str, tuple[str, ...]] | None = None,
 ) -> None:
     """Configure the structured logging system.
 

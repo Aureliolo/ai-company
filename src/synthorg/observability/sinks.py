@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 import structlog
@@ -204,7 +205,7 @@ def build_handler(
     log_dir: Path,
     foreign_pre_chain: list[Any],
     *,
-    routing: MappingProxyType[str, tuple[str, ...]] | None = None,
+    routing: Mapping[str, tuple[str, ...]] | None = None,
 ) -> logging.Handler:
     """Build a stdlib logging handler from a sink configuration.
 

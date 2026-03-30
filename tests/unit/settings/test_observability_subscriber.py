@@ -214,3 +214,96 @@ class TestObservabilitySubscriberIdempotency:
             await sub.on_settings_changed("observability", "sink_overrides")
             await sub.on_settings_changed("observability", "sink_overrides")
             assert mock_configure.call_count == 2
+
+
+# -- enable_correlation validation ---------------------------------
+
+
+@pytest.mark.unit
+class TestObservabilitySubscriberCorrelationValidation:
+    """Invalid enable_correlation values are rejected."""
+
+    @pytest.mark.parametrize(
+        "value",
+        ["yes", "1", "on", "banana", ""],
+    )
+    async def test_invalid_correlation_value_preserves_config(
+        self,
+        value: str,
+    ) -> None:
+        sub, _ = _make_subscriber(enable_correlation=value)
+        with patch(
+            "synthorg.settings.subscribers.observability_subscriber.configure_logging",
+        ) as mock_configure:
+            await sub.on_settings_changed("observability", "enable_correlation")
+            mock_configure.assert_not_called()
+
+    async def test_true_string_accepted(self) -> None:
+        sub, _ = _make_subscriber(enable_correlation="true")
+        with patch(
+            "synthorg.settings.subscribers.observability_subscriber.configure_logging",
+        ) as mock_configure:
+            await sub.on_settings_changed("observability", "enable_correlation")
+            config = mock_configure.call_args[0][0]
+            assert config.enable_correlation is True
+
+    async def test_false_string_accepted(self) -> None:
+        sub, _ = _make_subscriber(enable_correlation="false")
+        with patch(
+            "synthorg.settings.subscribers.observability_subscriber.configure_logging",
+        ) as mock_configure:
+            await sub.on_settings_changed("observability", "enable_correlation")
+            config = mock_configure.call_args[0][0]
+            assert config.enable_correlation is False
+
+
+# -- MemoryError/RecursionError re-raise ---------------------------
+
+
+@pytest.mark.unit
+class TestObservabilitySubscriberFatalErrors:
+    """MemoryError and RecursionError propagate through the subscriber."""
+
+    async def test_memory_error_from_settings_read_propagates(self) -> None:
+        sub, settings_service = _make_subscriber()
+        settings_service.get = AsyncMock(side_effect=MemoryError)
+        with pytest.raises(MemoryError):
+            await sub.on_settings_changed("observability", "sink_overrides")
+
+    async def test_recursion_error_from_build_propagates(self) -> None:
+        sub, _ = _make_subscriber()
+        with (
+            patch(
+                "synthorg.settings.subscribers.observability_subscriber"
+                ".build_log_config_from_settings",
+                side_effect=RecursionError,
+            ),
+            pytest.raises(RecursionError),
+        ):
+            await sub.on_settings_changed("observability", "sink_overrides")
+
+    async def test_memory_error_from_configure_propagates(self) -> None:
+        sub, _ = _make_subscriber()
+        with (
+            patch(
+                "synthorg.settings.subscribers.observability_subscriber"
+                ".configure_logging",
+                side_effect=MemoryError,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            await sub.on_settings_changed("observability", "sink_overrides")
+
+
+# -- Rebuild lock --------------------------------------------------
+
+
+@pytest.mark.unit
+class TestObservabilitySubscriberLock:
+    """Subscriber has a rebuild lock for serialization."""
+
+    def test_has_rebuild_lock(self) -> None:
+        import asyncio
+
+        sub, _ = _make_subscriber()
+        assert isinstance(sub._rebuild_lock, asyncio.Lock)

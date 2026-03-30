@@ -47,6 +47,7 @@ _r.register(
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,
+        yaml_path="logging.sink_overrides",
     )
 )
 
@@ -64,5 +65,6 @@ _r.register(
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,
+        yaml_path="logging.custom_sinks",
     )
 )

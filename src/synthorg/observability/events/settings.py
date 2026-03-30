@@ -43,6 +43,3 @@ SETTINGS_OBSERVABILITY_REBUILD_FAILED: Final[str] = (
 SETTINGS_OBSERVABILITY_VALIDATION_FAILED: Final[str] = (
     "settings.observability.validation_failed"
 )
-SETTINGS_OBSERVABILITY_CONSOLE_PROTECTED: Final[str] = (
-    "settings.observability.console_protected"
-)
