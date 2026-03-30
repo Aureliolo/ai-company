@@ -628,7 +628,7 @@ def _filter_records(  # noqa: PLR0913
     *,
     agent_id: str | None = None,
     task_id: str | None = None,
-    provider: str | None = None,
+    provider: NotBlankStr | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:

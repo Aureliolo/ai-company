@@ -80,6 +80,7 @@ from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
+from synthorg.providers.health_prober import ProviderHealthProber
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
@@ -303,6 +304,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
     """
     _ticket_cleanup_task: asyncio.Task[None] | None = None
     _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
+    _health_prober: ProviderHealthProber | None = None
 
     def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
         """Log unexpected cleanup-task death."""
@@ -317,7 +319,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             )
 
     async def on_startup() -> None:
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -370,15 +372,35 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             name="ws-ticket-cleanup",
         )
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
+        # Start health prober for local providers (after config is resolved)
+        if app_state.has_provider_health_tracker and app_state.has_config_resolver:
+            policy_loader = (
+                app_state.provider_management.get_discovery_policy
+                if app_state.has_provider_management
+                else None
+            )
+            _health_prober = ProviderHealthProber(
+                health_tracker=app_state.provider_health_tracker,
+                config_resolver=app_state.config_resolver,
+                discovery_policy_loader=policy_loader,
+            )
+            await _health_prober.start()
 
     async def on_shutdown() -> None:
-        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher, _health_prober
         if _ticket_cleanup_task is not None:
             _ticket_cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await _ticket_cleanup_task
             _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
+        if _health_prober is not None:
+            await _try_stop(
+                _health_prober.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop health prober",
+            )
+            _health_prober = None
         if _auto_wired_dispatcher is not None:
             await _try_stop(
                 _auto_wired_dispatcher.stop(),

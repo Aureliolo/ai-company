@@ -205,6 +205,15 @@ class ProviderHealthProber:
                     provider=name,
                     error="url_not_allowed_by_discovery_policy",
                 )
+                await self._health_tracker.record(
+                    ProviderHealthRecord(
+                        provider_name=name,
+                        timestamp=datetime.now(UTC),
+                        success=False,
+                        response_time_ms=0.0,
+                        error_message="url_not_allowed_by_discovery_policy",
+                    ),
+                )
                 continue
             summary = await self._health_tracker.get_summary(name)
             if summary.last_check_timestamp is not None:

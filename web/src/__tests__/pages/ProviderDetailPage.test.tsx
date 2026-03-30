@@ -121,6 +121,7 @@ describe('ProviderDetailPage', () => {
     expect(screen.getByText('500')).toBeInTheDocument()
     expect(screen.getByText('250ms')).toBeInTheDocument()
     expect(screen.getByText('50.0K')).toBeInTheDocument()
+    expect(screen.getByText(/1\.25/)).toBeInTheDocument()
   })
 
   it('renders test connection result when present', () => {
