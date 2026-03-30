@@ -186,6 +186,7 @@ The component development environment uses Storybook 10 with native type-safe co
 - **Addons**: `@storybook/addon-docs` (autodocs) and `@storybook/addon-a11y` (WCAG testing). Essentials (backgrounds, controls, viewport, actions) and interactions are built into core
 - **Backgrounds**: Selected via `initialGlobals.backgrounds.value = 'dark'`, which references our `--so-bg-base` token (`#0a0a12`) through `backgrounds.options.dark.value`, ensuring stories render against the actual brand dark background
 - **Decorator**: Global dark-mode wrapper (`div.dark.bg-background.p-4.text-foreground`) applies our design tokens to all stories
+- **API mocking**: MSW (Mock Service Worker) via `msw-storybook-addon`. Global `mswLoader` in `preview.tsx` intercepts API calls. Stories declare handlers via `parameters.msw.handlers` using pre-built handler arrays from `web/src/mocks/handlers/`. All responses use the `ApiResponse<T>` envelope via `apiSuccess()` helper
 
 ## Component Inventory
 
