@@ -14,13 +14,13 @@ from synthorg.communication.delegation.record_store import (
 )
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import Complexity, TaskType
-from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
-from tests.unit.api.conftest import FakePersistenceBackend
+from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers
 
 _NOW = datetime(2026, 3, 24, 12, 0, 0, tzinfo=UTC)
 _AGENT_ID = "00000000-0000-0000-0000-000000000aaa"
@@ -484,3 +484,242 @@ class TestActivityFeed:
         assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] >= 1
+
+    def test_filter_by_invalid_type_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Invalid event_type values are rejected with 400."""
+        resp = test_client.get(
+            "/api/v1/activities",
+            params={"type": "bogus_event"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize("event_type", list(ActivityEventType))
+    def test_filter_by_valid_enum_types(
+        self,
+        test_client: TestClient[Any],
+        event_type: ActivityEventType,
+    ) -> None:
+        """All 13 known event type values are accepted."""
+        resp = test_client.get(
+            "/api/v1/activities",
+            params={"type": event_type.value},
+        )
+        assert resp.status_code == 200
+
+
+def _make_cost_record(
+    *,
+    agent_id: str = _AGENT_ID,
+    timestamp: datetime | None = None,
+) -> CostRecord:
+    return CostRecord(
+        agent_id=agent_id,
+        task_id="task-001",
+        provider="test-provider",
+        model="test-medium-001",
+        input_tokens=500,
+        output_tokens=100,
+        cost_usd=0.005,
+        timestamp=timestamp or _NOW - timedelta(hours=1),
+    )
+
+
+@pytest.mark.unit
+class TestCostEventRedaction:
+    """Cost event descriptions are redacted for read-only roles."""
+
+    async def test_ceo_sees_full_cost_description(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(_make_cost_record())
+        resp = test_client.get(
+            "/api/v1/activities",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        desc = body["data"][0]["description"]
+        assert "test-medium-001" in desc
+        assert "tokens" in desc
+
+    async def test_manager_sees_full_cost_description(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(_make_cost_record())
+        resp = test_client.get(
+            "/api/v1/activities",
+            headers=make_auth_headers("manager"),
+        )
+        assert resp.status_code == 200
+        desc = resp.json()["data"][0]["description"]
+        assert "test-medium-001" in desc
+
+    async def test_pair_programmer_sees_full_cost_description(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(_make_cost_record())
+        resp = test_client.get(
+            "/api/v1/activities",
+            headers=make_auth_headers("pair_programmer"),
+        )
+        assert resp.status_code == 200
+        desc = resp.json()["data"][0]["description"]
+        assert "test-medium-001" in desc
+
+    async def test_observer_sees_redacted_cost_description(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(_make_cost_record())
+        resp = test_client.get(
+            "/api/v1/activities",
+            headers=make_auth_headers("observer"),
+        )
+        assert resp.status_code == 200
+        desc = resp.json()["data"][0]["description"]
+        assert "test-medium-001" not in desc
+        assert "500+100 tokens" in desc
+        assert desc == "API call (500+100 tokens)"
+
+    async def test_board_member_sees_redacted_cost_description(
+        self,
+        test_client: TestClient[Any],
+        cost_tracker: CostTracker,
+    ) -> None:
+        await cost_tracker.record(_make_cost_record())
+        resp = test_client.get(
+            "/api/v1/activities",
+            headers=make_auth_headers("board_member"),
+        )
+        assert resp.status_code == 200
+        desc = resp.json()["data"][0]["description"]
+        assert "test-medium-001" not in desc
+        assert desc == "API call (500+100 tokens)"
+
+
+@pytest.mark.unit
+class TestDegradedSources:
+    """Degraded data sources are reported in the response."""
+
+    def test_no_degradation_returns_empty_list(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        assert resp.json()["degraded_sources"] == []
+
+    async def test_degraded_performance_tracker(
+        self,
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        """Performance tracker failure is reported in degraded_sources."""
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+
+        from synthorg.hr.performance.tracker import PerformanceTracker
+
+        tracker = PerformanceTracker()
+
+        def _raise(**_kwargs: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        tracker.get_task_metrics = _raise  # type: ignore[assignment]
+
+        from synthorg.api.app import create_app
+        from synthorg.api.auth.service import AuthService
+        from synthorg.budget.tracker import CostTracker
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            _make_test_auth_service,
+            _seed_test_users,
+        )
+
+        config = RootConfig(company_name="test")
+        auth_service: AuthService = _make_test_auth_service()
+        bus = FakeMessageBus()
+        await bus.start()
+        _seed_test_users(fake_persistence, auth_service)
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_service,
+            settings_service=settings_service,
+            performance_tracker=tracker,
+        )
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/api/v1/activities",
+                headers=make_auth_headers("ceo"),
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert "performance_tracker" in body["degraded_sources"]
+
+    async def test_degraded_tool_tracker(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        tool_invocation_tracker: ToolInvocationTracker,
+    ) -> None:
+        """Tool tracker failure is reported in degraded_sources."""
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+
+        async def _raise(**_kw: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        tool_invocation_tracker.get_records = _raise  # type: ignore[assignment]
+
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "tool_invocation_tracker" in body["degraded_sources"]
+
+    async def test_degraded_delegation_store(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+        delegation_record_store: DelegationRecordStore,
+    ) -> None:
+        """Delegation store failure is reported in degraded_sources."""
+        await fake_persistence.lifecycle_events.save(
+            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
+        )
+
+        async def _raise(*_a: object, **_kw: object) -> None:
+            msg = "simulated failure"
+            raise RuntimeError(msg)
+
+        delegation_record_store.get_all_records = _raise  # type: ignore[assignment]
+        delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
+        delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
+
+        resp = test_client.get("/api/v1/activities")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "delegation_record_store" in body["degraded_sources"]

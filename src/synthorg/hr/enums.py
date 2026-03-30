@@ -41,6 +41,29 @@ class LifecycleEventType(StrEnum):
     DEMOTED = "demoted"
 
 
+class ActivityEventType(StrEnum):
+    """Event types produced by the activity feed timeline.
+
+    Superset of ``LifecycleEventType`` plus operational event types
+    generated from task metrics, cost records, tool invocations,
+    and delegation records.
+    """
+
+    HIRED = "hired"
+    ONBOARDED = "onboarded"
+    FIRED = "fired"
+    OFFBOARDED = "offboarded"
+    STATUS_CHANGED = "status_changed"
+    PROMOTED = "promoted"
+    DEMOTED = "demoted"
+    TASK_STARTED = "task_started"
+    TASK_COMPLETED = "task_completed"
+    COST_INCURRED = "cost_incurred"
+    TOOL_USED = "tool_used"
+    DELEGATION_SENT = "delegation_sent"
+    DELEGATION_RECEIVED = "delegation_received"
+
+
 class PromotionDirection(StrEnum):
     """Direction of a seniority level change."""
 

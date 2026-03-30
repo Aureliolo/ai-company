@@ -184,6 +184,8 @@ class PaginatedResponse[T](BaseModel):
         error: Error message (``None`` on success).
         error_detail: Structured error metadata (``None`` on success).
         pagination: Pagination metadata.
+        degraded_sources: Data sources that failed gracefully, resulting
+            in partial data.  Empty when all sources responded normally.
         success: Whether the request succeeded (computed from ``error``).
     """
 
@@ -193,6 +195,10 @@ class PaginatedResponse[T](BaseModel):
     error: str | None = None
     error_detail: ErrorDetail | None = None
     pagination: PaginationMeta
+    degraded_sources: tuple[str, ...] = Field(
+        default=(),
+        description="Data sources that failed gracefully (partial data)",
+    )
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:

@@ -3,18 +3,19 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
 
-from litestar import Controller, get
+from litestar import Controller, Request, get
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
+from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.errors import ServiceUnavailableError
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import _WRITE_ROLES, require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
@@ -23,7 +24,9 @@ from synthorg.communication.delegation.models import DelegationRecord  # noqa: T
 from synthorg.hr.activity import (
     ActivityEvent,
     merge_activity_timeline,
+    redact_cost_events,
 )
+from synthorg.hr.enums import ActivityEventType  # noqa: TC001
 from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -54,16 +57,16 @@ class ActivityController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     @get()
-    async def list_activities(  # noqa: PLR0913
+    async def list_activities(  # noqa: C901, PLR0912, PLR0913, PLR0915
         self,
+        request: Request[Any, Any, Any],
         state: State,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
         event_type: Annotated[
-            str | None,
+            ActivityEventType | None,
             Parameter(
                 query="type",
-                max_length=64,
                 description="Filter by event_type",
             ),
         ] = None,
@@ -87,6 +90,7 @@ class ActivityController(Controller):
         data sources degrade gracefully when unavailable.
 
         Args:
+            request: Incoming HTTP request (used for role-based redaction).
             state: Application state.
             offset: Pagination offset.
             limit: Page size.
@@ -107,7 +111,31 @@ class ActivityController(Controller):
             limit=_MAX_LIFECYCLE_EVENTS,
         )
 
-        task_metrics = _fetch_task_metrics(app_state, agent_id, since, now)
+        degraded: list[str] = []
+
+        task_metrics, tm_degraded = _fetch_task_metrics(
+            app_state,
+            agent_id,
+            since,
+            now,
+        )
+        if tm_degraded:
+            degraded.append("performance_tracker")
+
+        cost_task: asyncio.Task[tuple[tuple[CostRecord, ...], bool]] | None = None
+        tool_task: (
+            asyncio.Task[tuple[tuple[ToolInvocationRecord, ...], bool]] | None
+        ) = None
+        del_task: (
+            asyncio.Task[
+                tuple[
+                    tuple[DelegationRecord, ...],
+                    tuple[DelegationRecord, ...],
+                    bool,
+                ]
+            ]
+            | None
+        ) = None
         try:
             async with asyncio.TaskGroup() as tg:
                 cost_task = tg.create_task(
@@ -132,11 +160,33 @@ class ActivityController(Controller):
                 error_count=len(eg.exceptions),
                 exc_info=True,
             )
-            cost_task = tool_task = del_task = None  # type: ignore[assignment]
-        cost_records = cost_task.result() if cost_task is not None else ()
-        tool_invocations = tool_task.result() if tool_task is not None else ()
+            cost_task = tool_task = del_task = None
+            degraded.extend(
+                [
+                    "cost_tracker",
+                    "tool_invocation_tracker",
+                    "delegation_record_store",
+                ]
+            )
+
+        if cost_task is not None:
+            cost_records, cost_deg = cost_task.result()
+            if cost_deg:
+                degraded.append("cost_tracker")
+        else:
+            cost_records = ()
+
+        if tool_task is not None:
+            tool_invocations, tool_deg = tool_task.result()
+            if tool_deg:
+                degraded.append("tool_invocation_tracker")
+        else:
+            tool_invocations = ()
+
         if del_task is not None:
-            sent, received = del_task.result()
+            sent, received, del_deg = del_task.result()
+            if del_deg:
+                degraded.append("delegation_record_store")
         else:
             sent, received = (), ()
 
@@ -151,6 +201,8 @@ class ActivityController(Controller):
                 exc_info=True,
             )
             currency = DEFAULT_CURRENCY
+            degraded.append("budget_config")
+
         timeline = merge_activity_timeline(
             lifecycle_events=lifecycle_events,
             task_metrics=task_metrics,
@@ -164,6 +216,14 @@ class ActivityController(Controller):
         if event_type is not None:
             timeline = tuple(e for e in timeline if e.event_type == event_type)
 
+        # Redact cost details for read-only roles (observer, board member).
+        auth_user = request.scope.get("user")
+        if (
+            isinstance(auth_user, AuthenticatedUser)
+            and auth_user.role not in _WRITE_ROLES
+        ):
+            timeline = redact_cost_events(timeline)
+
         page, meta = paginate(timeline, offset=offset, limit=limit)
 
         logger.debug(
@@ -174,7 +234,11 @@ class ActivityController(Controller):
             last_n_hours=last_n_hours,
         )
 
-        return PaginatedResponse(data=page, pagination=meta)
+        return PaginatedResponse(
+            data=page,
+            pagination=meta,
+            degraded_sources=tuple(degraded),
+        )
 
 
 # ── Data source fetchers (graceful degradation) ──────────────────
@@ -185,14 +249,18 @@ def _fetch_task_metrics(
     agent_id: str | None,
     since: datetime,
     now: datetime,
-) -> tuple[TaskMetricRecord, ...]:
-    """Fetch task metrics, falling back to empty on failure."""
+) -> tuple[tuple[TaskMetricRecord, ...], bool]:
+    """Fetch task metrics, falling back to empty on failure.
+
+    Returns:
+        ``(records, is_degraded)`` tuple.
+    """
     try:
         return app_state.performance_tracker.get_task_metrics(
             agent_id=agent_id,
             since=since,
             until=now,
-        )
+        ), False
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
@@ -204,7 +272,7 @@ def _fetch_task_metrics(
             error="performance_tracker_unavailable",
             exc_info=True,
         )
-        return ()
+        return (), True
 
 
 async def _fetch_cost_records(
@@ -212,16 +280,20 @@ async def _fetch_cost_records(
     agent_id: str | None,
     since: datetime,
     now: datetime,
-) -> tuple[CostRecord, ...]:
-    """Fetch cost records, falling back to empty on failure."""
+) -> tuple[tuple[CostRecord, ...], bool]:
+    """Fetch cost records, falling back to empty on failure.
+
+    Returns:
+        ``(records, is_degraded)`` tuple.
+    """
     if not app_state.has_cost_tracker:
-        return ()
+        return (), False
     try:
         return await app_state.cost_tracker.get_records(
             agent_id=agent_id,
             start=since,
             end=now,
-        )
+        ), False
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
@@ -233,7 +305,7 @@ async def _fetch_cost_records(
             error="cost_tracker_unavailable",
             exc_info=True,
         )
-        return ()
+        return (), True
 
 
 async def _fetch_tool_invocations(
@@ -241,16 +313,20 @@ async def _fetch_tool_invocations(
     agent_id: str | None,
     since: datetime,
     now: datetime,
-) -> tuple[ToolInvocationRecord, ...]:
-    """Fetch tool invocation records, falling back to empty on failure."""
+) -> tuple[tuple[ToolInvocationRecord, ...], bool]:
+    """Fetch tool invocation records, falling back to empty on failure.
+
+    Returns:
+        ``(records, is_degraded)`` tuple.
+    """
     if not app_state.has_tool_invocation_tracker:
-        return ()
+        return (), False
     try:
         return await app_state.tool_invocation_tracker.get_records(
             agent_id=agent_id,
             start=since,
             end=now,
-        )
+        ), False
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
@@ -262,16 +338,20 @@ async def _fetch_tool_invocations(
             error="tool_invocation_tracker_unavailable",
             exc_info=True,
         )
-        return ()
+        return (), True
 
 
 async def _safe_delegation_query(
     coro: Awaitable[tuple[DelegationRecord, ...]],
     error_label: str,
-) -> tuple[DelegationRecord, ...]:
-    """Run a delegation store query with graceful degradation."""
+) -> tuple[tuple[DelegationRecord, ...], bool]:
+    """Run a delegation store query with graceful degradation.
+
+    Returns:
+        ``(records, is_degraded)`` tuple.
+    """
     try:
-        return await coro
+        return await coro, False
     except MemoryError, RecursionError:
         raise
     except ServiceUnavailableError:
@@ -283,7 +363,7 @@ async def _safe_delegation_query(
             error=error_label,
             exc_info=True,
         )
-        return ()
+        return (), True
 
 
 async def _fetch_delegation_records(
@@ -291,31 +371,35 @@ async def _fetch_delegation_records(
     agent_id: str | None,
     since: datetime,
     now: datetime,
-) -> tuple[tuple[DelegationRecord, ...], tuple[DelegationRecord, ...]]:
+) -> tuple[
+    tuple[DelegationRecord, ...],
+    tuple[DelegationRecord, ...],
+    bool,
+]:
     """Fetch delegation records (sent + received), falling back to empty.
 
     Returns:
-        ``(sent, received)`` tuples of delegation records.
+        ``(sent, received, is_degraded)`` tuple.
     """
     if not app_state.has_delegation_record_store:
-        return (), ()
+        return (), (), False
     store = app_state.delegation_record_store
     if agent_id is None:
         # Org-wide: each record generates both perspectives.
-        all_records = await _safe_delegation_query(
+        all_records, degraded = await _safe_delegation_query(
             store.get_all_records(start=since, end=now),
             "delegation_record_store_unavailable",
         )
-        return all_records, all_records
+        return all_records, all_records, degraded
 
     # Agent-specific: fetch each perspective independently so a
     # failure in one does not discard the other.
-    sent = await _safe_delegation_query(
+    sent, sent_deg = await _safe_delegation_query(
         store.get_records_as_delegator(agent_id, start=since, end=now),
         "delegation_delegator_query_failed",
     )
-    received = await _safe_delegation_query(
+    received, recv_deg = await _safe_delegation_query(
         store.get_records_as_delegatee(agent_id, start=since, end=now),
         "delegation_delegatee_query_failed",
     )
-    return sent, received
+    return sent, received, sent_deg or recv_deg
