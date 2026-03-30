@@ -33,6 +33,12 @@ export default function AgentDetailPage() {
     return <AgentDetailSkeleton />
   }
 
+  const allowedTools = agent
+    ? (Array.isArray(agent.tools['allowed'])
+        ? (agent.tools['allowed'] as unknown[]).filter((t): t is string => typeof t === 'string')
+        : [])
+    : []
+
   if (!agent) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
@@ -71,7 +77,7 @@ export default function AgentDetailPage() {
       </ErrorBoundary>
 
       <ErrorBoundary level="section">
-        <ToolBadges tools={[...agent.tools.allowed]} />
+        <ToolBadges tools={allowedTools} />
       </ErrorBoundary>
 
       <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">

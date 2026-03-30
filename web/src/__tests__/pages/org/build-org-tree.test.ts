@@ -4,7 +4,7 @@ import type { AgentConfig, CompanyConfig, DepartmentHealth, DepartmentName } fro
 
 // ── Test helpers ────────────────────────────────────────────
 
-function makeAgent(overrides: Partial<AgentConfig> & { id: string; name: string }): AgentConfig {
+function makeAgent(overrides: Partial<AgentConfig> & { name: string; id?: string }): AgentConfig {
   return {
     role: 'Developer',
     department: 'engineering' as DepartmentName,
@@ -27,9 +27,9 @@ function makeAgent(overrides: Partial<AgentConfig> & { id: string; name: string 
       conflict_approach: 'collaborate',
     },
     model: { provider: 'test', model_id: 'test-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
-    skills: { primary: [], secondary: [] },
     memory: { type: 'session', retention_days: null },
     tools: { access_level: 'standard', allowed: [], denied: [] },
+    authority: {},
     autonomy_level: null,
     hiring_date: '2026-01-01',
     ...overrides,
@@ -52,12 +52,15 @@ function makeConfig(agents: AgentConfig[], departments?: CompanyConfig['departme
 
 function makeHealth(name: DepartmentName, health: number): DepartmentHealth {
   return {
-    name,
-    display_name: name.charAt(0).toUpperCase() + name.slice(1),
-    health_percent: health,
+    department_name: name,
     agent_count: 3,
-    task_count: 5,
-    cost_usd: 12.5,
+    active_agent_count: 2,
+    currency: 'EUR',
+    avg_performance_score: 7.5,
+    department_cost_7d: 12.5,
+    cost_trend: [],
+    collaboration_score: 6.0,
+    utilization_percent: health,
   }
 }
 
@@ -216,8 +219,8 @@ describe('buildOrgTree', () => {
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode).toBeDefined()
     expect(deptNode!.data.healthPercent).toBe(85)
-    expect(deptNode!.data.taskCount).toBe(5)
-    expect(deptNode!.data.costUsd).toBe(12.5)
+    expect(deptNode!.data.cost7d).toBe(12.5)
+    expect(deptNode!.data.currency).toBe('EUR')
   })
 
   it('uses runtime status from the status map', () => {
@@ -301,7 +304,8 @@ describe('buildOrgTree', () => {
 
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode!.data.healthPercent).toBeNull()
-    expect(deptNode!.data.taskCount).toBeNull()
+    expect(deptNode!.data.cost7d).toBeNull()
+    expect(deptNode!.data.currency).toBeNull()
   })
 
   it('includes companyName in CEO node data', () => {
@@ -328,5 +332,35 @@ describe('buildOrgTree', () => {
     for (const edge of result.edges) {
       expect(edge.type).toBe('hierarchy')
     }
+  })
+
+  it('uses agent.name as node id when agent.id is undefined', () => {
+    const agents = [
+      makeAgent({ id: 'lead-1', name: 'Lead', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: undefined, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    const agentNode = result.nodes.find((n) => n.data.name === 'NoIdAgent')
+    expect(agentNode).toBeDefined()
+    expect(agentNode!.id).toBe('NoIdAgent')
+    expect(agentNode!.data.agentId).toBe('NoIdAgent')
+  })
+
+  it('treats agent without status as active (not filtered out)', () => {
+    const agents = [
+      makeAgent({ id: 'a0', name: 'Lead', department: 'engineering', level: 'lead' }),
+      makeAgent({ id: 'a1', name: 'ActiveDefault', department: 'engineering', level: 'mid', status: undefined }),
+      makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', level: 'mid', status: 'terminated' }),
+    ]
+    const config = makeConfig(agents)
+    const result = buildOrgTree(config, {}, [])
+
+    const agentNames = result.nodes
+      .filter((n) => n.type === 'agent' || n.type === 'ceo')
+      .map((n) => n.data.name as string)
+    expect(agentNames).toContain('ActiveDefault')
+    expect(agentNames).not.toContain('Terminated')
   })
 })

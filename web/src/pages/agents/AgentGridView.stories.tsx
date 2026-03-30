@@ -28,9 +28,9 @@ function makeAgent(overrides: Partial<AgentConfig>): AgentConfig {
       conflict_approach: 'collaborate',
     },
     model: { provider: 'test-provider', model_id: 'test-large-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
-    skills: { primary: ['python'], secondary: [] },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['git'], denied: [] },
+    authority: {},
     autonomy_level: 'semi',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
@@ -49,6 +49,7 @@ const agents: AgentConfig[] = [
 const meta = {
   title: 'Agents/AgentGridView',
   component: AgentGridView,
+  parameters: { a11y: { test: 'error' } },
   decorators: [
     (Story) => (
       <MemoryRouter>

@@ -317,67 +317,27 @@ export interface ApprovalFilters {
 
 // ── Agents ───────────────────────────────────────────────────
 
-export interface PersonalityConfig {
-  readonly traits: readonly string[]
-  communication_style: string
-  risk_tolerance: RiskTolerance
-  creativity: CreativityLevel
-  description: string
-  openness: number
-  conscientiousness: number
-  extraversion: number
-  agreeableness: number
-  stress_response: number
-  decision_making: DecisionMakingStyle
-  collaboration: CollaborationPreference
-  verbosity: CommunicationVerbosity
-  conflict_approach: ConflictApproach
-}
-
-export interface ModelConfig {
-  provider: string
-  model_id: string
-  temperature: number
-  max_tokens: number
-  fallback_model: string | null
-}
-
-export interface SkillSet {
-  readonly primary: readonly string[]
-  readonly secondary: readonly string[]
-}
-
-export interface MemoryConfig {
-  type: MemoryLevel
-  retention_days: number | null
-}
-
-export interface ToolPermissions {
-  access_level: ToolAccessLevel
-  readonly allowed: readonly string[]
-  readonly denied: readonly string[]
-}
-
 /**
- * Agent identity as returned by the /agents API endpoints.
- * Models the enriched agent shape combining config + runtime state
- * (the backend currently serves config-level data; typed sub-objects
- * here anticipate the full DTO shape from the agent controller).
+ * Agent configuration as returned by the /agents API endpoints.
+ *
+ * Matches the backend AgentConfig Pydantic model (config/schema.py).
+ * Runtime fields (id, status, hiring_date) are optional -- they exist
+ * on AgentIdentity but may not be present in config-level responses.
  */
 export interface AgentConfig {
-  id: string
+  id?: string
   name: string
   role: string
   department: DepartmentName
   level: SeniorityLevel
-  status: AgentStatus
-  personality: PersonalityConfig
-  model: ModelConfig
-  skills: SkillSet
-  memory: MemoryConfig
-  tools: ToolPermissions
+  status?: AgentStatus
+  personality: Record<string, unknown>
+  model: Record<string, unknown>
+  memory: Record<string, unknown>
+  tools: Record<string, unknown>
+  authority: Record<string, unknown>
   autonomy_level: AutonomyLevel | null
-  hiring_date: string
+  hiring_date?: string
 }
 
 // ── Agent Performance ────────────────────────────────────────
@@ -430,8 +390,25 @@ export interface AgentPerformanceSummary {
 
 // ── Agent Activity & Career ─────────────────────────────────
 
+export type ActivityEventType =
+  | 'hired' | 'fired' | 'promoted' | 'demoted' | 'onboarded'
+  | 'offboarded' | 'status_changed'
+  | 'task_completed' | 'task_started'
+  | 'cost_incurred'
+  | 'tool_used'
+  | 'delegation_sent' | 'delegation_received'
+
+export const ACTIVITY_EVENT_TYPE_VALUES = [
+  'hired', 'fired', 'promoted', 'demoted', 'onboarded',
+  'offboarded', 'status_changed',
+  'task_completed', 'task_started',
+  'cost_incurred',
+  'tool_used',
+  'delegation_sent', 'delegation_received',
+] as const satisfies readonly ActivityEventType[]
+
 export interface AgentActivityEvent {
-  event_type: string
+  event_type: ActivityEventType | (string & {})
   timestamp: string
   description: string
   readonly related_ids: Readonly<Record<string, string>>
@@ -575,19 +552,23 @@ export interface ActivityItem {
 // ── Department Health ───────────────────────────────────────
 
 /**
- * Frontend DepartmentHealth shape.
- *
- * NOTE: This type does not match the backend DepartmentHealth model
- * (which uses department_name, active_agent_count, utilization_percent, etc.).
- * A full type alignment is tracked separately.
+ * Department-level health aggregation as returned by the backend.
+ * Matches the Pydantic DepartmentHealth model in controllers/departments.py.
  */
 export interface DepartmentHealth {
-  name: DepartmentName
-  display_name: string
-  health_percent: number
+  department_name: DepartmentName
   agent_count: number
-  task_count: number
-  cost_usd: number | null
+  active_agent_count: number
+  /** ISO 4217 currency code (e.g. "EUR", "USD"). */
+  currency: string
+  /** Mean quality score across agents, 0.0 to 10.0, or null when insufficient data. */
+  avg_performance_score: number | null
+  department_cost_7d: number
+  readonly cost_trend: readonly TrendDataPoint[]
+  /** Mean collaboration score, 0.0 to 10.0, or null when insufficient data. */
+  collaboration_score: number | null
+  /** Backend-computed: active_agent_count / agent_count * 100. */
+  utilization_percent: number
 }
 
 // ── Company / Organization ───────────────────────────────────

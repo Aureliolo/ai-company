@@ -5,26 +5,25 @@ import { cn } from '@/lib/utils'
 interface DepartmentStatsBarProps {
   agentCount: number
   activeCount: number
-  taskCount: number
-  costUsd: number | null
-  currency?: string // defaults to 'USD' to match costUsd field semantics
+  cost7d: number | null
+  currency?: string
   className?: string
 }
 
 export function DepartmentStatsBar({
   agentCount,
   activeCount,
-  taskCount,
-  costUsd,
-  currency = 'USD',
+  cost7d,
+  currency = 'EUR',
   className,
 }: DepartmentStatsBarProps) {
   return (
     <div className={cn('flex flex-wrap gap-1.5', className)} data-testid="dept-stats-bar">
       <StatPill label="Agents" value={agentCount} />
       <StatPill label="Active" value={activeCount} />
-      <StatPill label="Tasks" value={taskCount} />
-      {costUsd !== null && <StatPill label="Cost" value={formatCurrency(costUsd, currency)} />}
+      {cost7d !== null && Number.isFinite(cost7d) && (
+        <StatPill label="Cost (7d)" value={formatCurrency(cost7d, currency)} />
+      )}
     </div>
   )
 }

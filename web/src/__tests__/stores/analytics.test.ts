@@ -43,12 +43,15 @@ vi.mock('@/api/endpoints/budget', () => ({
 vi.mock('@/api/endpoints/company', () => ({
   listDepartments: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 50 }),
   getDepartmentHealth: vi.fn().mockResolvedValue({
-    name: 'engineering',
-    display_name: 'Engineering',
-    health_percent: 85,
+    department_name: 'engineering',
     agent_count: 4,
-    task_count: 10,
-    cost_usd: null,
+    active_agent_count: 3,
+    currency: 'EUR',
+    avg_performance_score: 8.0,
+    department_cost_7d: 10.0,
+    cost_trend: [],
+    collaboration_score: 7.0,
+    utilization_percent: 85,
   }),
 }))
 
@@ -136,18 +139,21 @@ describe('useAnalyticsStore', () => {
         total: 1, offset: 0, limit: 100,
       })
       vi.mocked(getDepartmentHealth).mockResolvedValueOnce({
-        name: 'engineering',
-        display_name: 'Engineering',
-        health_percent: 85,
+        department_name: 'engineering',
         agent_count: 4,
-        task_count: 10,
-        cost_usd: null,
+        active_agent_count: 3,
+        currency: 'EUR',
+        avg_performance_score: 8.0,
+        department_cost_7d: 10.0,
+        cost_trend: [],
+        collaboration_score: 7.0,
+        utilization_percent: 85,
       })
 
       await useAnalyticsStore.getState().fetchDashboardData()
       const state = useAnalyticsStore.getState()
       expect(state.departmentHealths).toHaveLength(1)
-      expect(state.departmentHealths[0]!.health_percent).toBe(85)
+      expect(state.departmentHealths[0]!.utilization_percent).toBe(85)
       expect(state.orgHealthPercent).toBe(85)
     })
 
@@ -195,13 +201,13 @@ describe('useAnalyticsStore', () => {
       })
       vi.mocked(getDepartmentHealth)
         .mockResolvedValueOnce({
-          name: 'engineering', display_name: 'Engineering',
-          health_percent: 85, agent_count: 4, task_count: 10, cost_usd: null,
+          department_name: 'engineering', agent_count: 4, active_agent_count: 3, currency: 'EUR',
+          avg_performance_score: 8.0, department_cost_7d: 10.0, cost_trend: [], collaboration_score: 7.0, utilization_percent: 85,
         })
         .mockRejectedValueOnce(new Error('Design health unavailable'))
         .mockResolvedValueOnce({
-          name: 'operations', display_name: 'Operations',
-          health_percent: 70, agent_count: 2, task_count: 3, cost_usd: null,
+          department_name: 'operations', agent_count: 2, active_agent_count: 1, currency: 'EUR',
+          avg_performance_score: 6.0, department_cost_7d: 5.0, cost_trend: [], collaboration_score: null, utilization_percent: 70,
         })
 
       await useAnalyticsStore.getState().fetchDashboardData()

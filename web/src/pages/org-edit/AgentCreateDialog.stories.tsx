@@ -17,9 +17,9 @@ const stubAgent: AgentConfig = {
     collaboration: 'team', verbosity: 'balanced', conflict_approach: 'collaborate',
   },
   model: { provider: 'test-provider', model_id: 'test-medium-001', temperature: 0.7, max_tokens: 4096, fallback_model: null },
-  skills: { primary: [], secondary: [] },
   memory: { type: 'persistent', retention_days: null },
   tools: { access_level: 'standard', allowed: [], denied: [] },
+  authority: {},
   autonomy_level: 'semi',
   hiring_date: '2026-03-01T00:00:00Z',
 }

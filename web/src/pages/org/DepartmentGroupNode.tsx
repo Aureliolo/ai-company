@@ -39,8 +39,8 @@ function DepartmentGroupNodeComponent({ data }: NodeProps<DepartmentGroupType>) 
         <DepartmentStatsBar
           agentCount={data.agentCount}
           activeCount={data.activeCount}
-          taskCount={data.taskCount ?? 0}
-          costUsd={data.costUsd}
+          cost7d={data.cost7d}
+          currency={data.currency ?? undefined}
           className="mt-1.5"
         />
       </div>

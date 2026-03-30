@@ -53,7 +53,7 @@ export function AgentEditDrawer({
         role: agent.role,
         department: agent.department,
         level: agent.level,
-        status: agent.status,
+        status: agent.status ?? 'active',
       })
       setSubmitError(null)
     }
@@ -66,9 +66,16 @@ export function AgentEditDrawer({
     [departments],
   )
   const hiredDate = useMemo(
-    () => agent ? new Date(agent.hiring_date).toLocaleDateString() : '',
+    () => agent?.hiring_date ? new Date(agent.hiring_date).toLocaleDateString() : '',
     [agent],
   )
+  const modelDisplay = useMemo(() => {
+    if (!agent) return ''
+    return [
+      typeof agent.model['provider'] === 'string' ? agent.model['provider'] : '',
+      typeof agent.model['model_id'] === 'string' ? agent.model['model_id'] : '',
+    ].filter((v) => v.length > 0).join(' / ')
+  }, [agent])
 
   const handleSave = useCallback(async () => {
     if (!agent) return
@@ -112,8 +119,8 @@ export function AgentEditDrawer({
         {agent && (
           <div className="space-y-5">
             <div className="flex items-center gap-2">
-              <StatusBadge status={toRuntimeStatus(agent.status)} label />
-              <span className="text-xs text-text-secondary">Hired: {hiredDate}</span>
+              <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} label />
+              {hiredDate && <span className="text-xs text-text-secondary">Hired: {hiredDate}</span>}
             </div>
 
             <InputField
@@ -145,14 +152,16 @@ export function AgentEditDrawer({
             <SelectField
               label="Status"
               options={STATUS_OPTIONS}
-              value={form.status}
+              value={form.status ?? 'active'}
               onChange={(v) => setForm((prev) => ({ ...prev, status: v as AgentConfig['status'] }))}
             />
 
             {/* Read-only info */}
             <div className="border-t border-border pt-4 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
-              <p className="text-xs text-text-secondary font-mono">{agent.model.provider} / {agent.model.model_id}</p>
+              {modelDisplay && (
+                <p className="text-xs text-text-secondary font-mono">{modelDisplay}</p>
+              )}
             </div>
 
             {submitError && (

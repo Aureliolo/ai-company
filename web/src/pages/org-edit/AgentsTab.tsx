@@ -47,7 +47,7 @@ function SortableAgentItem({
   onClick: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: agent.id,
+    id: agent.id ?? agent.name,
     data: { agent },
   })
 
@@ -70,7 +70,7 @@ function SortableAgentItem({
           name={agent.name}
           role={agent.role}
           department={agent.department}
-          status={toRuntimeStatus(agent.status)}
+          status={toRuntimeStatus(agent.status ?? 'active')}
         />
       </button>
     </div>
@@ -99,10 +99,10 @@ function DepartmentAgentsSection({
       {agents.length === 0 ? (
         <p className="py-4 text-center text-sm text-text-secondary">No agents in this department</p>
       ) : (
-        <SortableContext items={agents.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={agents.map((a) => a.id ?? a.name)} strategy={verticalListSortingStrategy}>
           <StaggerGroup className="grid gap-3">
             {agents.map((agent) => (
-              <StaggerItem key={agent.id}>
+              <StaggerItem key={agent.id ?? agent.name}>
                 <SortableAgentItem
                   agent={agent}
                   onClick={() => onEditAgent(agent)}
@@ -165,12 +165,12 @@ export function AgentsTab({
       const deptAgents = agentsByDept.get(draggedAgent.department)
       if (!deptAgents) return
 
-      const oldIndex = deptAgents.findIndex((a) => a.id === active.id)
-      const newIndex = deptAgents.findIndex((a) => a.id === over.id)
+      const oldIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === active.id)
+      const newIndex = deptAgents.findIndex((a) => (a.id ?? a.name) === over.id)
       if (oldIndex === -1 || newIndex === -1) return
 
       const reordered = arrayMove(deptAgents, oldIndex, newIndex)
-      const orderedIds = reordered.map((a) => a.id)
+      const orderedIds = reordered.map((a) => a.id ?? a.name)
 
       const rollback = optimisticReorderAgents(draggedAgent.department, orderedIds)
       try {
@@ -241,7 +241,7 @@ export function AgentsTab({
               name={activeAgent.name}
               role={activeAgent.role}
               department={activeAgent.department}
-              status={toRuntimeStatus(activeAgent.status)}
+              status={toRuntimeStatus(activeAgent.status ?? 'active')}
               className="shadow-lg"
             />
           )}

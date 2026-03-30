@@ -10,7 +10,7 @@ function renderTab(overrides?: Partial<DepartmentsTabProps>) {
     config: makeCompanyConfig(),
     departmentHealths: [
       makeDepartmentHealth('engineering'),
-      makeDepartmentHealth('product', { health_percent: 72, agent_count: 1, task_count: 3 }),
+      makeDepartmentHealth('product', { utilization_percent: 72, agent_count: 1 }),
     ],
     saving: false,
     onCreateDepartment: noopAsync,
@@ -43,11 +43,13 @@ describe('DepartmentsTab', () => {
     expect(screen.getAllByText('Product').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders health bars for departments', () => {
+  it('renders health bars for departments with correct values', () => {
     renderTab()
     // DeptHealthBar uses role="meter"
     const meters = screen.getAllByRole('meter')
     expect(meters.length).toBeGreaterThanOrEqual(2)
+    // Verify the product department's utilization_percent (72) actually renders
+    expect(screen.getByText('72%')).toBeInTheDocument()
   })
 
   it('renders empty state when config is null', () => {

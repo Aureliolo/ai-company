@@ -49,9 +49,9 @@ function makeAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
       max_tokens: 4096,
       fallback_model: null,
     },
-    skills: { primary: ['python', 'typescript'], secondary: ['docker'] },
     memory: { type: 'persistent', retention_days: null },
     tools: { access_level: 'standard', allowed: ['file_system', 'git'], denied: [] },
+    authority: {},
     autonomy_level: 'semi',
     hiring_date: '2026-01-15T00:00:00Z',
     ...overrides,
@@ -199,6 +199,12 @@ describe('filterAgents', () => {
     const result = filterAgents(agents, { search: 'ALICE' })
     expect(result).toHaveLength(1)
   })
+
+  it('treats agent with undefined status as active for filtering', () => {
+    const withUndefined = [...agents, { ...agents[0]!, status: undefined, name: 'NoStatus' }]
+    const result = filterAgents(withUndefined, { status: 'active' })
+    expect(result.map((a) => a.name)).toContain('NoStatus')
+  })
 })
 
 // ── sortAgents ─────────────────────────────────────────────
@@ -209,6 +215,25 @@ describe('sortAgents', () => {
     makeAgent({ name: 'Alice Smith', department: 'design', level: 'senior', hiring_date: '2026-03-01T00:00:00Z' }),
     makeAgent({ name: 'Bob Jones', department: 'operations', level: 'junior', hiring_date: '2026-02-01T00:00:00Z' }),
   ]
+
+  it('treats agent with undefined status as active for sorting', () => {
+    const withUndefined = [
+      makeAgent({ name: 'Terminated Agent', status: 'terminated' }),
+      makeAgent({ name: 'No Status', status: undefined }),
+      makeAgent({ name: 'Active Agent', status: 'active' }),
+    ]
+    const result = sortAgents(withUndefined, 'status', 'asc')
+    const names = result.map((a) => a.name)
+    // undefined status treated as 'active' -- should sort identically to explicit 'active'
+    const activeIdx = names.indexOf('Active Agent')
+    const noStatusIdx = names.indexOf('No Status')
+    const terminatedIdx = names.indexOf('Terminated Agent')
+    // Both active and undefined-status sort before terminated
+    expect(terminatedIdx).toBeGreaterThan(activeIdx)
+    expect(terminatedIdx).toBeGreaterThan(noStatusIdx)
+    // Active and undefined-status share the same rank
+    expect(Math.abs(activeIdx - noStatusIdx)).toBeLessThanOrEqual(1)
+  })
 
   it('sorts by name ascending', () => {
     const result = sortAgents(agents, 'name', 'asc')

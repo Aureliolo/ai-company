@@ -37,7 +37,7 @@ const arbLevel: fc.Arbitrary<SeniorityLevel> = fc.constantFrom(...LEVELS)
 const arbStatus: fc.Arbitrary<AgentStatus> = fc.constantFrom(...STATUSES)
 
 const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
-  id: fc.uuid(),
+  id: fc.option(fc.uuid(), { nil: undefined }),
   name: fc.tuple(
     fc.constantFrom('Alice', 'Bob', 'Carol', 'Dave', 'Eve', 'Frank'),
     fc.constantFrom('Smith', 'Jones', 'Xu', 'Park', 'Lee', 'Garcia'),
@@ -45,7 +45,7 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
   role: fc.constantFrom('Engineer', 'Designer', 'Analyst', 'Manager', 'SRE'),
   department: arbDepartment,
   level: arbLevel,
-  status: arbStatus,
+  status: fc.option(arbStatus, { nil: undefined }),
   personality: fc.constant({
     traits: ['analytical'],
     communication_style: 'direct',
@@ -69,9 +69,9 @@ const arbAgent: fc.Arbitrary<AgentConfig> = fc.record({
     max_tokens: 4096,
     fallback_model: null,
   }),
-  skills: fc.constant({ primary: ['python'], secondary: [] }),
   memory: fc.constant({ type: 'persistent' as const, retention_days: null }),
   tools: fc.constant({ access_level: 'standard' as const, allowed: ['git'], denied: [] }),
+  authority: fc.constant({}),
   autonomy_level: fc.constantFrom('full' as const, 'semi' as const, 'supervised' as const, 'locked' as const, null),
   hiring_date: fc.integer({ min: 1735689600000, max: 1767225600000 }).map(
     (ms) => new Date(ms).toISOString(),

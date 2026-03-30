@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useAgentsStore } from '@/stores/agents'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
@@ -6,6 +6,8 @@ import { filterAgents, sortAgents } from '@/utils/agents'
 import type { AgentConfig, WsChannel } from '@/api/types'
 
 const AGENTS_POLL_INTERVAL = 30_000
+/** Shared across agent hooks -- change both if tuning. See useAgentDetailData.ts. */
+const WS_DEBOUNCE_MS = 300
 const AGENT_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]
 
 export interface UseAgentsDataReturn {
@@ -49,14 +51,21 @@ export function useAgentsData(): UseAgentsDataReturn {
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 
-  // WebSocket
+  // WebSocket -- debounce to coalesce burst events into a single refetch
+  const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+  }, [])
+
   const bindings: ChannelBinding[] = useMemo(
     () =>
       AGENT_CHANNELS.map((channel) => ({
         channel,
         handler: () => {
-          // Refresh agent list on any agent event
-          useAgentsStore.getState().fetchAgents()
+          if (wsDebounceRef.current) clearTimeout(wsDebounceRef.current)
+          wsDebounceRef.current = setTimeout(() => {
+            useAgentsStore.getState().fetchAgents()
+          }, WS_DEBOUNCE_MS)
         },
       })),
     [],
