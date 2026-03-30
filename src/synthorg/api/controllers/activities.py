@@ -201,6 +201,13 @@ async def _resolve_currency(
     try:
         budget_cfg = await app_state.config_resolver.get_budget_config()
     except MemoryError, RecursionError:
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_BUDGET_CONFIG,
+            detail="fatal error",
+            exc_info=True,
+        )
         raise
     except Exception:
         logger.warning(
@@ -393,8 +400,22 @@ async def _fetch_task_metrics(
             until=now,
         ), False
     except MemoryError, RecursionError:
+        logger.error(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_PERFORMANCE_TRACKER,
+            detail="fatal error",
+            exc_info=True,
+        )
         raise
     except ServiceUnavailableError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="activities",
+            source=_SRC_PERFORMANCE_TRACKER,
+            detail="service unavailable",
+            exc_info=True,
+        )
         raise
     except Exception:
         logger.warning(
