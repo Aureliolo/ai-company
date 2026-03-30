@@ -1,5 +1,13 @@
+import { MotionConfig } from 'framer-motion'
 import { AppRouter } from '@/router'
+import { getCspNonce } from '@/lib/csp'
+
+const nonce = getCspNonce()
 
 export default function App() {
-  return <AppRouter />
+  return (
+    <MotionConfig nonce={nonce}>
+      <AppRouter />
+    </MotionConfig>
+  )
 }

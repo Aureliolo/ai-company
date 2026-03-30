@@ -658,6 +658,7 @@ import { springDefault, tweenDefault, cardEntrance, staggerChildren } from "@/li
 | WCAG verification script | `scripts/wcag_check.py` |
 | CSS design tokens | `web/src/styles/design-tokens.css` |
 | Framer Motion presets | `web/src/lib/motion.ts` |
+| CSP nonce reader | `web/src/lib/csp.ts` |
 | Winning prototype (visual reference) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
 | Design exploration mockups | `feat/765-design-exploration` branch, `mockups-v2/` |
 | Design tokens implementation | #775 |
