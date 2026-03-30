@@ -64,7 +64,7 @@ class CareerEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_type: NotBlankStr = Field(description="Lifecycle event type")
+    event_type: LifecycleEventType = Field(description="Lifecycle event type")
     timestamp: AwareDatetime = Field(description="When the event occurred")
     description: str = Field(
         default="",
@@ -133,7 +133,9 @@ def _task_metric_to_started_activity(
 
     Caller must ensure ``record.started_at`` is not None.
     """
-    assert record.started_at is not None  # noqa: S101
+    if record.started_at is None:
+        msg = "started_at must not be None"
+        raise ValueError(msg)
     return ActivityEvent(
         event_type=ActivityEventType.TASK_STARTED,
         timestamp=record.started_at,
@@ -234,7 +236,7 @@ def _delegation_to_received_activity(
 # Coupled to the format string in _cost_record_to_activity -- update
 # both together if the description format changes.
 _COST_DESC_PATTERN = re.compile(
-    r"^API call to .+ \((\d+\+\d+ tokens), .+\)$",
+    r"^API call to [^(]+ \((\d+\+\d+ tokens), [^)]+\)$",
 )
 
 
@@ -243,8 +245,9 @@ def redact_cost_events(
 ) -> tuple[ActivityEvent, ...]:
     """Redact model names and costs from cost_incurred event descriptions.
 
-    Produces a new timeline with sensitive fields stripped from
-    ``cost_incurred`` events.  Non-cost events pass through unchanged.
+    Produces a new timeline with sensitive details stripped from
+    ``cost_incurred`` event descriptions.  Non-cost events pass through
+    unchanged.
 
     Args:
         timeline: Activity events (may contain cost_incurred events).
@@ -264,9 +267,11 @@ def redact_cost_events(
                     description=event.description[:80],
                 )
                 redacted = "API call (details redacted)"
-            event = event.model_copy(  # noqa: PLW2901
+            redacted_event = event.model_copy(
                 update={"description": redacted},
             )
+            result.append(redacted_event)
+            continue
         result.append(event)
     return tuple(result)
 
@@ -339,7 +344,7 @@ def filter_career_events(
     """
     career: list[CareerEvent] = [
         CareerEvent(
-            event_type=e.event_type.value,
+            event_type=e.event_type,
             timestamp=e.timestamp,
             description=e.details or f"Agent {e.event_type.value}",
             initiated_by=e.initiated_by,

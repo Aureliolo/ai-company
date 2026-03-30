@@ -792,3 +792,40 @@ class TestRedactCostEvents:
         result = redact_cost_events((event,))
         assert "test-medium-001" not in result[0].description
         assert "500+100 tokens" in result[0].description
+
+    def test_mixed_timeline_preserves_order(self) -> None:
+        """Redaction preserves event ordering in a mixed timeline."""
+        events = (
+            ActivityEvent(
+                event_type=ActivityEventType.HIRED,
+                timestamp=_NOW,
+                description="Agent hired",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.COST_INCURRED,
+                timestamp=_NOW,
+                description="API call to test-model (100+50 tokens, EUR0.01)",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.TOOL_USED,
+                timestamp=_NOW,
+                description="Tool read_file executed successfully",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.COST_INCURRED,
+                timestamp=_NOW,
+                description="API call to test-model-2 (200+100 tokens, EUR0.02)",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.DELEGATION_SENT,
+                timestamp=_NOW,
+                description="Delegated task t1 to a2",
+            ),
+        )
+        result = redact_cost_events(events)
+        assert len(result) == 5
+        assert result[0].description == "Agent hired"
+        assert result[1].description == "API call (100+50 tokens)"
+        assert result[2].description == "Tool read_file executed successfully"
+        assert result[3].description == "API call (200+100 tokens)"
+        assert result[4].description == "Delegated task t1 to a2"

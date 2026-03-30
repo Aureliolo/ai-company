@@ -64,6 +64,15 @@ class ActivityEventType(StrEnum):
     DELEGATION_RECEIVED = "delegation_received"
 
 
+# Import-time check: ActivityEventType must be a superset of LifecycleEventType.
+_lifecycle_values = {e.value for e in LifecycleEventType}
+_activity_values = {e.value for e in ActivityEventType}
+assert _lifecycle_values <= _activity_values, (  # noqa: S101
+    "ActivityEventType must be superset of LifecycleEventType; "
+    f"missing: {_lifecycle_values - _activity_values}"
+)
+
+
 class PromotionDirection(StrEnum):
     """Direction of a seniority level change."""
 

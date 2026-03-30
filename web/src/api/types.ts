@@ -147,8 +147,8 @@ export interface PaginationMeta {
 
 /** Discriminated paginated response envelope. */
 export type PaginatedResponse<T> =
-  | { data: T[]; error: null; error_detail: null; success: true; pagination: PaginationMeta }
-  | { data: null; error: string; error_detail: ErrorDetail; success: false; pagination: null }
+  | { data: T[]; error: null; error_detail: null; success: true; pagination: PaginationMeta; degraded_sources?: readonly string[] }
+  | { data: null; error: string; error_detail: ErrorDetail; success: false; pagination: null; degraded_sources?: readonly string[] }
 
 // ── Auth ─────────────────────────────────────────────────────
 
@@ -539,11 +539,23 @@ export interface ForecastResponse {
 
 // ── Activities ──────────────────────────────────────────────
 
+/** Activity event as returned by the backend REST API. */
+export interface ActivityEvent {
+  event_type: ActivityEventType
+  timestamp: string
+  description: string
+  related_ids: Record<string, string>
+}
+
+/**
+ * Legacy display-oriented activity item derived from {@link ActivityEvent}.
+ * Used by the dashboard ActivityFeed component.
+ */
 export interface ActivityItem {
   id: string
   timestamp: string
   agent_name: string
-  action_type: WsEventType
+  action_type: ActivityEventType
   description: string
   task_id: string | null
   department: DepartmentName | null

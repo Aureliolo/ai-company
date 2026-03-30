@@ -17,7 +17,7 @@ from litestar.params import Parameter
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.errors import ServiceUnavailableError
-from synthorg.api.guards import _WRITE_ROLES, require_read_access
+from synthorg.api.guards import has_write_role, require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
@@ -58,42 +58,55 @@ class ActivityWindowHours(IntEnum):
     WEEK = 168
 
 
-async def _build_timeline(  # noqa: C901, PLR0912, PLR0915
+def _extract_task_result(
+    task: asyncio.Task[tuple[tuple[Any, ...], bool]] | None,
+    source_name: str,
+    degraded: list[str],
+) -> tuple[Any, ...]:
+    """Extract a completed task's data, appending to degraded if needed."""
+    if task is None or task.cancelled():
+        degraded.append(source_name)
+        return ()
+    if task.exception() is not None:
+        degraded.append(source_name)
+        return ()
+    data, is_degraded = task.result()
+    if is_degraded:
+        degraded.append(source_name)
+    return data
+
+
+async def _run_async_fetchers(
     app_state: AppState,
-    lifecycle_events: tuple[AgentLifecycleEvent, ...],
     agent_id: str | None,
     since: datetime,
     now: datetime,
-) -> tuple[tuple[ActivityEvent, ...], list[str]]:
-    """Fetch all data sources and merge into a timeline.
+    degraded: list[str],
+) -> tuple[
+    tuple[CostRecord, ...],
+    tuple[ToolInvocationRecord, ...],
+    tuple[DelegationRecord, ...],
+    tuple[DelegationRecord, ...],
+]:
+    """Run cost, tool, and delegation fetchers concurrently.
+
+    Completed tasks have their results extracted; failed or cancelled
+    tasks are individually marked as degraded rather than blanket-marking
+    all sources.
+
+    Args:
+        app_state: Application state with service references.
+        agent_id: Optional agent filter.
+        since: Start of the time window.
+        now: End of the time window.
+        degraded: Mutable list to append degraded source names to.
 
     Returns:
-        ``(timeline, degraded_sources)`` where ``degraded_sources``
-        lists the names of data sources that failed.
+        ``(cost_records, tool_invocations, sent, received)`` tuples.
     """
-    degraded: list[str] = []
-
-    task_metrics, tm_degraded = _fetch_task_metrics(
-        app_state,
-        agent_id,
-        since,
-        now,
-    )
-    if tm_degraded:
-        degraded.append(_SRC_PERFORMANCE_TRACKER)
-
     cost_task: asyncio.Task[tuple[tuple[CostRecord, ...], bool]] | None = None
     tool_task: asyncio.Task[tuple[tuple[ToolInvocationRecord, ...], bool]] | None = None
-    del_task: (
-        asyncio.Task[
-            tuple[
-                tuple[DelegationRecord, ...],
-                tuple[DelegationRecord, ...],
-                bool,
-            ]
-        ]
-        | None
-    ) = None
+    del_task: asyncio.Task[tuple[Any, ...]] | None = None
     try:
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(
@@ -112,48 +125,71 @@ async def _build_timeline(  # noqa: C901, PLR0912, PLR0915
         svc = eg.subgroup(ServiceUnavailableError)
         if svc is not None:
             raise svc from eg
+        failed_sources = [
+            src
+            for src, task in [
+                (_SRC_COST_TRACKER, cost_task),
+                (_SRC_TOOL_INVOCATION_TRACKER, tool_task),
+                (_SRC_DELEGATION_RECORD_STORE, del_task),
+            ]
+            if task is None or task.cancelled() or task.exception() is not None
+        ]
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="activities",
             error_count=len(eg.exceptions),
+            failed_sources=failed_sources,
             exc_info=True,
         )
-        cost_task = tool_task = del_task = None
-        degraded.extend(
-            [
-                _SRC_COST_TRACKER,
-                _SRC_TOOL_INVOCATION_TRACKER,
-                _SRC_DELEGATION_RECORD_STORE,
-            ]
-        )
 
-    if cost_task is not None:
-        cost_records, cost_deg = cost_task.result()
-        if cost_deg:
-            degraded.append(_SRC_COST_TRACKER)
-    else:
-        cost_records = ()
+    cost_records: tuple[CostRecord, ...] = _extract_task_result(
+        cost_task,
+        _SRC_COST_TRACKER,
+        degraded,
+    )
+    tool_invocations: tuple[ToolInvocationRecord, ...] = _extract_task_result(
+        tool_task,
+        _SRC_TOOL_INVOCATION_TRACKER,
+        degraded,
+    )
 
-    if tool_task is not None:
-        tool_invocations, tool_deg = tool_task.result()
-        if tool_deg:
-            degraded.append(_SRC_TOOL_INVOCATION_TRACKER)
-    else:
-        tool_invocations = ()
-
-    if del_task is not None:
-        sent, received, del_deg = del_task.result()
+    del_ok = (
+        del_task is not None
+        and not del_task.cancelled()
+        and del_task.exception() is None
+    )
+    if del_ok:
+        del_result = del_task.result()
+        sent, received, del_deg = del_result[0], del_result[1], del_result[2]
         if del_deg:
             degraded.append(_SRC_DELEGATION_RECORD_STORE)
     else:
+        if del_task is not None:
+            degraded.append(_SRC_DELEGATION_RECORD_STORE)
         sent, received = (), ()
 
+    return cost_records, tool_invocations, sent, received
+
+
+async def _resolve_currency(
+    app_state: AppState,
+    degraded: list[str],
+) -> str:
+    """Resolve the display currency from budget config.
+
+    Falls back to ``DEFAULT_CURRENCY`` on any transient error and
+    appends the source name to ``degraded``.
+
+    Args:
+        app_state: Application state with config resolver.
+        degraded: Mutable list to append degraded source names to.
+
+    Returns:
+        ISO 4217 currency code.
+    """
     try:
         budget_cfg = await app_state.config_resolver.get_budget_config()
-        currency = budget_cfg.currency
     except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
         raise
     except Exception:
         logger.warning(
@@ -162,8 +198,52 @@ async def _build_timeline(  # noqa: C901, PLR0912, PLR0915
             detail="budget config unavailable, using default currency",
             exc_info=True,
         )
-        currency = DEFAULT_CURRENCY
         degraded.append(_SRC_BUDGET_CONFIG)
+        return DEFAULT_CURRENCY
+    else:
+        return budget_cfg.currency
+
+
+async def _build_timeline(
+    app_state: AppState,
+    lifecycle_events: tuple[AgentLifecycleEvent, ...],
+    agent_id: str | None,
+    since: datetime,
+    now: datetime,
+) -> tuple[tuple[ActivityEvent, ...], list[str]]:
+    """Fetch non-lifecycle data sources, merge with lifecycle events.
+
+    Args:
+        app_state: Application state with service references.
+        lifecycle_events: Pre-fetched lifecycle events.
+        agent_id: Optional agent filter.
+        since: Start of the time window.
+        now: End of the time window (current time).
+
+    Returns:
+        ``(timeline, degraded_sources)`` where ``degraded_sources``
+        lists the names of data sources that failed.
+    """
+    degraded: list[str] = []
+
+    task_metrics, tm_degraded = await _fetch_task_metrics(
+        app_state,
+        agent_id,
+        since,
+        now,
+    )
+    if tm_degraded:
+        degraded.append(_SRC_PERFORMANCE_TRACKER)
+
+    cost_records, tool_invocations, sent, received = await _run_async_fetchers(
+        app_state,
+        agent_id,
+        since,
+        now,
+        degraded,
+    )
+
+    currency = await _resolve_currency(app_state, degraded)
 
     timeline = merge_activity_timeline(
         lifecycle_events=lifecycle_events,
@@ -174,7 +254,7 @@ async def _build_timeline(  # noqa: C901, PLR0912, PLR0915
         delegation_records_received=received,
         currency=currency,
     )
-    return timeline, degraded
+    return timeline, list(dict.fromkeys(degraded))
 
 
 class ActivityController(Controller):
@@ -222,12 +302,14 @@ class ActivityController(Controller):
             state: Application state.
             offset: Pagination offset.
             limit: Page size.
-            event_type: Filter by event_type (e.g. ``"hired"``).
+            event_type: Filter by ``ActivityEventType`` (e.g. ``"hired"``).
+                Invalid values are rejected with 400.
             agent_id: Filter events for a specific agent.
             last_n_hours: Time window in hours (24, 48, or 168).
 
         Returns:
-            Paginated activity events.
+            Paginated activity events.  The ``degraded_sources`` field
+            lists any data sources that failed gracefully.
         """
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
@@ -251,10 +333,11 @@ class ActivityController(Controller):
             timeline = tuple(e for e in timeline if e.event_type == event_type)
 
         # Redact cost details unless the user has a write role.
-        # Fail-closed: redact by default if auth identity is missing.
+        # Fail-closed: redact by default if auth identity is missing
+        # (e.g. misconfigured excluded path, test stub without scope["user"]).
         auth_user = request.scope.get("user")
         if not (
-            isinstance(auth_user, AuthenticatedUser) and auth_user.role in _WRITE_ROLES
+            isinstance(auth_user, AuthenticatedUser) and has_write_role(auth_user.role)
         ):
             timeline = redact_cost_events(timeline)
 
@@ -278,13 +361,16 @@ class ActivityController(Controller):
 # ── Data source fetchers (graceful degradation) ──────────────────
 
 
-def _fetch_task_metrics(
+async def _fetch_task_metrics(
     app_state: AppState,
     agent_id: str | None,
     since: datetime,
     now: datetime,
 ) -> tuple[tuple[TaskMetricRecord, ...], bool]:
     """Fetch task metrics, falling back to empty on failure.
+
+    The underlying ``PerformanceTracker`` call is synchronous (in-memory),
+    but the wrapper is async for consistency with the other fetchers.
 
     Returns:
         ``(records, is_degraded)`` tuple.
@@ -426,14 +512,21 @@ async def _fetch_delegation_records(
         )
         return all_records, all_records, degraded
 
-    # Agent-specific: fetch each perspective independently so a
+    # Agent-specific: fetch each perspective concurrently so a
     # failure in one does not discard the other.
-    sent, sent_deg = await _safe_delegation_query(
-        store.get_records_as_delegator(agent_id, start=since, end=now),
-        "delegation_delegator_query_failed",
-    )
-    received, recv_deg = await _safe_delegation_query(
-        store.get_records_as_delegatee(agent_id, start=since, end=now),
-        "delegation_delegatee_query_failed",
-    )
+    async with asyncio.TaskGroup() as tg:
+        sent_task = tg.create_task(
+            _safe_delegation_query(
+                store.get_records_as_delegator(agent_id, start=since, end=now),
+                "delegation_delegator_query_failed",
+            ),
+        )
+        recv_task = tg.create_task(
+            _safe_delegation_query(
+                store.get_records_as_delegatee(agent_id, start=since, end=now),
+                "delegation_delegatee_query_failed",
+            ),
+        )
+    sent, sent_deg = sent_task.result()
+    received, recv_deg = recv_task.result()
     return sent, received, sent_deg or recv_deg

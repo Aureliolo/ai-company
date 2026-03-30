@@ -1,9 +1,15 @@
 import { apiClient, unwrapPaginated, type PaginatedResult } from '../client'
-import type { ActivityItem, PaginatedResponse, PaginationParams } from '../types'
+import type { ActivityEvent, ActivityEventType, PaginatedResponse, PaginationParams } from '../types'
+
+export interface ActivityFilterParams extends PaginationParams {
+  type?: ActivityEventType
+  agent_id?: string
+  last_n_hours?: 24 | 48 | 168
+}
 
 export async function listActivities(
-  params?: PaginationParams,
-): Promise<PaginatedResult<ActivityItem>> {
-  const response = await apiClient.get<PaginatedResponse<ActivityItem>>('/activities', { params })
-  return unwrapPaginated<ActivityItem>(response)
+  params?: ActivityFilterParams,
+): Promise<PaginatedResult<ActivityEvent>> {
+  const response = await apiClient.get<PaginatedResponse<ActivityEvent>>('/activities', { params })
+  return unwrapPaginated<ActivityEvent>(response)
 }
