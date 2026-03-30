@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.5.0](https://github.com/Aureliolo/synthorg/compare/v0.4.9...v0.5.0) (2026-03-30)
+
+
+### Features
+
+* add analytics trends and budget forecast API endpoints ([#798](https://github.com/Aureliolo/synthorg/issues/798)) ([16b61f5](https://github.com/Aureliolo/synthorg/commit/16b61f57e66766c56dce941887b1af32369366d5))
+* add department policies to default templates ([#852](https://github.com/Aureliolo/synthorg/issues/852)) ([7a41548](https://github.com/Aureliolo/synthorg/commit/7a41548efe774d09f5455c477919aa9e6eff44ab))
+* add remaining activity event types (task_started, tool_used, delegation, cost_incurred) ([#832](https://github.com/Aureliolo/synthorg/issues/832)) ([4252fac](https://github.com/Aureliolo/synthorg/commit/4252fac35990a03a9386f4d6b326d07850de90a1))
+* agent performance, activity, and history API endpoints ([#811](https://github.com/Aureliolo/synthorg/issues/811)) ([9b75c1d](https://github.com/Aureliolo/synthorg/commit/9b75c1d545974e9b6d6627964a52e6bba2a05e9d))
+* Agent Profiles and Detail pages (biography, career, performance) ([#874](https://github.com/Aureliolo/synthorg/issues/874)) ([62d7880](https://github.com/Aureliolo/synthorg/commit/62d7880331aaf3440d0af49b7e983ea840256754))
+* app shell, Storybook, and CI/CD pipeline ([#819](https://github.com/Aureliolo/synthorg/issues/819)) ([d4dde90](https://github.com/Aureliolo/synthorg/commit/d4dde904e2c3307f09b16ec2d505278cdc19cc29))
+* Approvals page with risk grouping, urgency indicators, batch actions ([#889](https://github.com/Aureliolo/synthorg/issues/889)) ([4e9673d](https://github.com/Aureliolo/synthorg/commit/4e9673da9e03e48a76c4fcbbb8f9b90cc6ecfd65))
+* Budget Panel page (P&L dashboard, breakdown charts, forecast) ([#890](https://github.com/Aureliolo/synthorg/issues/890)) ([b63b0f1](https://github.com/Aureliolo/synthorg/commit/b63b0f16d5d36e485ea05f2ab7f3e09984954f18))
+* build infrastructure layer (API client, auth, WebSocket) ([#815](https://github.com/Aureliolo/synthorg/issues/815)) ([9f01d3e](https://github.com/Aureliolo/synthorg/commit/9f01d3e830bef32077ec06122f96680af0557afd))
+* CLI global options infrastructure, UI modes, exit codes, env vars ([#891](https://github.com/Aureliolo/synthorg/issues/891)) ([fef4fc5](https://github.com/Aureliolo/synthorg/commit/fef4fc540d0db4c6b02a90f3d2d732327f476b71))
+* CodeMirror editor and theme preferences toggle ([#905](https://github.com/Aureliolo/synthorg/issues/905), [#807](https://github.com/Aureliolo/synthorg/issues/807)) ([#909](https://github.com/Aureliolo/synthorg/issues/909)) ([41fbedc](https://github.com/Aureliolo/synthorg/commit/41fbedc9771ccc9f9a341c463bbc8b76aecba71f))
+* Company page (department/agent management) ([#888](https://github.com/Aureliolo/synthorg/issues/888)) ([cfb88b0](https://github.com/Aureliolo/synthorg/commit/cfb88b01c5804986ae634c024fa175d7c5ee7f30))
+* comprehensive hint coverage across all CLI commands ([#900](https://github.com/Aureliolo/synthorg/issues/900)) ([937974e](https://github.com/Aureliolo/synthorg/commit/937974e77dfda2df466d8d7f769901120cc4123a))
+* config system extensions, per-command flags for init/start/stop/status/logs ([#895](https://github.com/Aureliolo/synthorg/issues/895)) ([32f83fe](https://github.com/Aureliolo/synthorg/commit/32f83fe2e9516ef22fff8fe6b4b2df34b907281f))
+* configurable currency system replacing hardcoded USD ([#854](https://github.com/Aureliolo/synthorg/issues/854)) ([b372551](https://github.com/Aureliolo/synthorg/commit/b37255137673d9782f0eb83dc7c80d80ac3c6acb))
+* Dashboard page (metric cards, activity feed, budget burn) ([#861](https://github.com/Aureliolo/synthorg/issues/861)) ([7d519d5](https://github.com/Aureliolo/synthorg/commit/7d519d56601f16e45bb4130143f783a778250e6c))
+* department health, provider status, and activity feed endpoints ([#818](https://github.com/Aureliolo/synthorg/issues/818)) ([6d5f196](https://github.com/Aureliolo/synthorg/commit/6d5f196b4b1058824ff0a5e1ec3caaa807234c56))
+* design tokens and core UI components ([#833](https://github.com/Aureliolo/synthorg/issues/833)) ([ed887f2](https://github.com/Aureliolo/synthorg/commit/ed887f251187dfbcd1a642ab53fa40f210ec59b9))
+* extend approval, meeting, and budget API responses ([#834](https://github.com/Aureliolo/synthorg/issues/834)) ([31472bf](https://github.com/Aureliolo/synthorg/commit/31472bfdbc34be43f29e157894eec3824d3d776c))
+* frontend polish -- real-time UX, accessibility, responsive, performance ([#790](https://github.com/Aureliolo/synthorg/issues/790), [#792](https://github.com/Aureliolo/synthorg/issues/792), [#791](https://github.com/Aureliolo/synthorg/issues/791), [#793](https://github.com/Aureliolo/synthorg/issues/793)) ([#917](https://github.com/Aureliolo/synthorg/issues/917)) ([f04a537](https://github.com/Aureliolo/synthorg/commit/f04a53751cf6e0bdf7a7e93153ffc362d69b6f26))
+* implement human roles and access control levels ([#856](https://github.com/Aureliolo/synthorg/issues/856)) ([d6d8a06](https://github.com/Aureliolo/synthorg/commit/d6d8a06917db687d6400f8241b32ef6d28b64272))
+* implement semantic conflict detection in workspace merge ([#860](https://github.com/Aureliolo/synthorg/issues/860)) ([d97283b](https://github.com/Aureliolo/synthorg/commit/d97283b8efb868e4058160a7b3c58c8a0db821bc))
+* interaction components and animation patterns ([#853](https://github.com/Aureliolo/synthorg/issues/853)) ([82d4b01](https://github.com/Aureliolo/synthorg/commit/82d4b0132c47ba8eda06364c82be7b07b30984b6))
+* Login page + first-run bootstrap + Company page ([#789](https://github.com/Aureliolo/synthorg/issues/789), [#888](https://github.com/Aureliolo/synthorg/issues/888)) ([#896](https://github.com/Aureliolo/synthorg/issues/896)) ([8758e8d](https://github.com/Aureliolo/synthorg/commit/8758e8d0052f13b483c9c61a39edd6b8612e9b6d))
+* Meetings page with timeline viz, token bars, contribution formatting ([#788](https://github.com/Aureliolo/synthorg/issues/788)) ([#904](https://github.com/Aureliolo/synthorg/issues/904)) ([b207f46](https://github.com/Aureliolo/synthorg/commit/b207f467f8ded691fa164a4c93d301ff66e2fa63))
+* Messages page with threading, channel badges, sender indicators ([#787](https://github.com/Aureliolo/synthorg/issues/787)) ([#903](https://github.com/Aureliolo/synthorg/issues/903)) ([28293ad](https://github.com/Aureliolo/synthorg/commit/28293ad5b3b30a2c7e35aeac7622f8efb44e7746))
+* Org Chart force-directed view and drag-drop reassignment ([#872](https://github.com/Aureliolo/synthorg/issues/872), [#873](https://github.com/Aureliolo/synthorg/issues/873)) ([#912](https://github.com/Aureliolo/synthorg/issues/912)) ([a68a938](https://github.com/Aureliolo/synthorg/commit/a68a93896d9e6ff8edab2179b6148895b2bed10d))
+* Org Chart page (living nodes, status, CRUD, department health) ([#870](https://github.com/Aureliolo/synthorg/issues/870)) ([0acbdae](https://github.com/Aureliolo/synthorg/commit/0acbdae65cf7250535990e093041aaaecc0097e7))
+* per-command flags for remaining commands, auto-behavior wiring, help/discoverability ([#897](https://github.com/Aureliolo/synthorg/issues/897)) ([3f7afa2](https://github.com/Aureliolo/synthorg/commit/3f7afa2bb97ccf392cfcdd16663a945ecb15403a))
+* Providers page with backend rework -- health, CRUD, subscription auth ([#893](https://github.com/Aureliolo/synthorg/issues/893)) ([9f8dd98](https://github.com/Aureliolo/synthorg/commit/9f8dd98883f1fe29d5da18434f7a226fa4b4443d))
+* scaffold React + Vite + TypeScript + Tailwind project ([#799](https://github.com/Aureliolo/synthorg/issues/799)) ([bd151aa](https://github.com/Aureliolo/synthorg/commit/bd151aa4b1f5fff639c6052343760a16c54a6f2a))
+* Settings page with search, dependency indicators, grouped rendering ([#784](https://github.com/Aureliolo/synthorg/issues/784)) ([#902](https://github.com/Aureliolo/synthorg/issues/902)) ([a7b9870](https://github.com/Aureliolo/synthorg/commit/a7b9870bac65c049c997fcecd96b42ffaf011fcb))
+* Setup Wizard rebuild with template comparison, cost estimator, theme customization ([#879](https://github.com/Aureliolo/synthorg/issues/879)) ([ae8b50b](https://github.com/Aureliolo/synthorg/commit/ae8b50b1190f4f5bd878ca2fa2b7e30bff805eaa))
+* setup wizard UX -- template filters, card metadata, provider form reuse ([#910](https://github.com/Aureliolo/synthorg/issues/910)) ([7f04676](https://github.com/Aureliolo/synthorg/commit/7f04676b6c48e2e39f6001b84904706a7c07fd50))
+* setup wizard UX overhaul -- mode choice, step reorder, provider fixes ([#907](https://github.com/Aureliolo/synthorg/issues/907)) ([ee964c4](https://github.com/Aureliolo/synthorg/commit/ee964c409665859e32ca24498f2780e8fb517410))
+* structured ModelRequirement in template agent configs ([#795](https://github.com/Aureliolo/synthorg/issues/795)) ([7433548](https://github.com/Aureliolo/synthorg/commit/74335484221414986c60a65276779194332b5096))
+* Task Board page (rich Kanban, filtering, dependency viz) ([#871](https://github.com/Aureliolo/synthorg/issues/871)) ([04a19b0](https://github.com/Aureliolo/synthorg/commit/04a19b09e16f3ef3954e0e059f92ea3f116dc6e2))
+
+
+### Bug Fixes
+
+* align frontend types with backend and debounce WS refetches ([#916](https://github.com/Aureliolo/synthorg/issues/916)) ([134c11b](https://github.com/Aureliolo/synthorg/commit/134c11be6c2c6b47cb04d75a05580ae8f7a1157e))
+* auto-cleanup targets newly pulled images instead of old ones ([#884](https://github.com/Aureliolo/synthorg/issues/884)) ([50e6591](https://github.com/Aureliolo/synthorg/commit/50e6591b9497c5cc19fdd751d4148cc351a72f7f))
+* correct wipe backup-skip flow and harden error handling ([#808](https://github.com/Aureliolo/synthorg/issues/808)) ([c05860f](https://github.com/Aureliolo/synthorg/commit/c05860fc78c657c7f494c0b503651efddd857885))
+* improve provider setup in wizard, subscription auth, dashboard bugs ([#914](https://github.com/Aureliolo/synthorg/issues/914)) ([87bf8e6](https://github.com/Aureliolo/synthorg/commit/87bf8e637bf3c8e77bec89f448177c647b89ad5c))
+* improve update channel detection and add config get command ([#814](https://github.com/Aureliolo/synthorg/issues/814)) ([6b137f0](https://github.com/Aureliolo/synthorg/commit/6b137f015d707b6904833e25d04f16c2a8af22fc))
+* resolve all ESLint warnings, add zero-warnings enforcement ([#899](https://github.com/Aureliolo/synthorg/issues/899)) ([079b46a](https://github.com/Aureliolo/synthorg/commit/079b46af2fcab963e77da7482898905d8214daa0))
+* subscription auth uses api_key, base URL optional for cloud providers ([#915](https://github.com/Aureliolo/synthorg/issues/915)) ([f0098dd](https://github.com/Aureliolo/synthorg/commit/f0098dd72ec5c879111f8163bea029e665c2107a))
+
+
+### Refactoring
+
+* semantic analyzer cleanup -- shared filtering, concurrency, extraction ([#908](https://github.com/Aureliolo/synthorg/issues/908)) ([81372bf](https://github.com/Aureliolo/synthorg/commit/81372bfaec1b6f3828a608af7c6a12c25bc610cd))
+
+
+### Documentation
+
+* brand identity and UX design system from [#765](https://github.com/Aureliolo/synthorg/issues/765) exploration ([#804](https://github.com/Aureliolo/synthorg/issues/804)) ([389a9f4](https://github.com/Aureliolo/synthorg/commit/389a9f48c532be92db8980a2406aa584c2a8ab95))
+* page structure and information architecture for v0.5.0 dashboard ([#809](https://github.com/Aureliolo/synthorg/issues/809)) ([f8d6d4a](https://github.com/Aureliolo/synthorg/commit/f8d6d4a140378a5c9605c160b63853d76c291dbe))
+* write UX design guidelines with WCAG-verified color system ([#816](https://github.com/Aureliolo/synthorg/issues/816)) ([4a4594e](https://github.com/Aureliolo/synthorg/commit/4a4594eb035ea2ddbe2b5b9e3faa8ad748d7e7e0))
+
+
+### Tests
+
+* add unit tests for agent hooks and page components ([#875](https://github.com/Aureliolo/synthorg/issues/875)) ([#901](https://github.com/Aureliolo/synthorg/issues/901)) ([1d81546](https://github.com/Aureliolo/synthorg/commit/1d81546fbdcab3350e7d8dbcc93b2c65cfc08d6b))
+
+
+### CI/CD
+
+* bump actions/deploy-pages from 4.0.5 to 5.0.0 in the major group ([#831](https://github.com/Aureliolo/synthorg/issues/831)) ([01c19de](https://github.com/Aureliolo/synthorg/commit/01c19de66c3a5d91545fec5236f58be9e88574a3))
+* bump astral-sh/setup-uv from 7.6.0 to 8.0.0 in /.github/actions/setup-python-uv in the all group ([#920](https://github.com/Aureliolo/synthorg/issues/920)) ([5f6ba54](https://github.com/Aureliolo/synthorg/commit/5f6ba54dd20f97e05ec86938bc51141d780da231))
+* bump codecov/codecov-action from 5.5.3 to 6.0.0 in the major group ([#868](https://github.com/Aureliolo/synthorg/issues/868)) ([f22a181](https://github.com/Aureliolo/synthorg/commit/f22a181c721dedce569904e12211a5daa913ca56))
+* bump github/codeql-action from 4.34.1 to 4.35.0 in the all group ([#883](https://github.com/Aureliolo/synthorg/issues/883)) ([87a4890](https://github.com/Aureliolo/synthorg/commit/87a4890948380d9ebfe1b502e438279f1a575b7a))
+* bump sigstore/cosign-installer from 4.1.0 to 4.1.1 in the minor-and-patch group ([#830](https://github.com/Aureliolo/synthorg/issues/830)) ([7a69050](https://github.com/Aureliolo/synthorg/commit/7a69050a13ccd9475876c1414befea9073a9aacb))
+* bump the all group with 3 updates ([#923](https://github.com/Aureliolo/synthorg/issues/923)) ([ff27c8e](https://github.com/Aureliolo/synthorg/commit/ff27c8e4963cd4634a8b58bb184f5b87b50ef04e))
+* bump wrangler from 4.76.0 to 4.77.0 in /.github in the minor-and-patch group ([#822](https://github.com/Aureliolo/synthorg/issues/822)) ([07d43eb](https://github.com/Aureliolo/synthorg/commit/07d43eb2920e910b7adc6f5ac28ef8b55a857f7f))
+* bump wrangler from 4.77.0 to 4.78.0 in /.github in the all group ([#882](https://github.com/Aureliolo/synthorg/issues/882)) ([f84118d](https://github.com/Aureliolo/synthorg/commit/f84118d119e595363518c091a8e6bf0097579ee8))
+
+
+### Maintenance
+
+* add design system enforcement hook and component inventory ([#846](https://github.com/Aureliolo/synthorg/issues/846)) ([15abc43](https://github.com/Aureliolo/synthorg/commit/15abc439f754fbd9038e3e69929ddf7254011f72))
+* add dev-only auth bypass for frontend testing ([#885](https://github.com/Aureliolo/synthorg/issues/885)) ([6cdcd8a](https://github.com/Aureliolo/synthorg/commit/6cdcd8a7af5b044ef3b9eb513226c6e61e61c41f))
+* add pre-push rebase check hook ([#855](https://github.com/Aureliolo/synthorg/issues/855)) ([b637a04](https://github.com/Aureliolo/synthorg/commit/b637a04dcd54399fc35fe51236a6e2a4ae17f4f6))
+* backend hardening -- eviction/size-caps and model validation ([#911](https://github.com/Aureliolo/synthorg/issues/911)) ([81253d9](https://github.com/Aureliolo/synthorg/commit/81253d923699fe6c4bd45db0aca90cb51bf61444))
+* bump axios from 1.13.6 to 1.14.0 in /web in the all group across 1 directory ([#922](https://github.com/Aureliolo/synthorg/issues/922)) ([b1b0232](https://github.com/Aureliolo/synthorg/commit/b1b02320e4d34b177d649333f131cedd10f7eb53))
+* bump brace-expansion from 5.0.4 to 5.0.5 in /web ([#862](https://github.com/Aureliolo/synthorg/issues/862)) ([ba4a565](https://github.com/Aureliolo/synthorg/commit/ba4a565d66e62574e539d96e9569fd29a08276c1))
+* bump eslint-plugin-react-refresh from 0.4.26 to 0.5.2 in /web ([#801](https://github.com/Aureliolo/synthorg/issues/801)) ([7574bb5](https://github.com/Aureliolo/synthorg/commit/7574bb500de6193b859fbad1ddb710232ca570ca))
+* bump faker from 40.11.0 to 40.11.1 in the minor-and-patch group ([#803](https://github.com/Aureliolo/synthorg/issues/803)) ([14d322e](https://github.com/Aureliolo/synthorg/commit/14d322ef42ecf6d6416f5097288bc8981ea01d8b))
+* bump https://github.com/astral-sh/ruff-pre-commit from v0.15.7 to 0.15.8 ([#864](https://github.com/Aureliolo/synthorg/issues/864)) ([f52901e](https://github.com/Aureliolo/synthorg/commit/f52901e40992da0d710cddaa4030494cbee6d2c8))
+* bump nginxinc/nginx-unprivileged from `6582a34` to `f99cc61` in /docker/web in the all group ([#919](https://github.com/Aureliolo/synthorg/issues/919)) ([df85e4f](https://github.com/Aureliolo/synthorg/commit/df85e4fc151ad14a9c71cb84e795f12fc3ac3f21))
+* bump nginxinc/nginx-unprivileged from `ccbac1a` to `6582a34` in /docker/web ([#800](https://github.com/Aureliolo/synthorg/issues/800)) ([f4e9450](https://github.com/Aureliolo/synthorg/commit/f4e94505c23d6222691ce0b0c48b62171bbe0d33))
+* bump node from `44bcbf4` to `71be405` in /docker/sandbox ([#827](https://github.com/Aureliolo/synthorg/issues/827)) ([91bec67](https://github.com/Aureliolo/synthorg/commit/91bec67c1751ea6153ac955bc0d89463aa292a4f))
+* bump node from `5209bca` to `cf38e1f` in /docker/web ([#863](https://github.com/Aureliolo/synthorg/issues/863)) ([66d6043](https://github.com/Aureliolo/synthorg/commit/66d60434f69c380dff0e6609e803e926bb84c2f5))
+* bump picomatch in /site ([#842](https://github.com/Aureliolo/synthorg/issues/842)) ([5f20bcc](https://github.com/Aureliolo/synthorg/commit/5f20bcce4115e00fa0ec2bae68baf531bbd92321))
+* bump recharts 2-&gt;3 and @types/node 22-&gt;25 in /web ([#802](https://github.com/Aureliolo/synthorg/issues/802)) ([a908800](https://github.com/Aureliolo/synthorg/commit/a90880090ae5b4ee8a7bdc1dc2a24116eb693f06))
+* Bump requests from 2.32.5 to 2.33.0 ([#843](https://github.com/Aureliolo/synthorg/issues/843)) ([41daf69](https://github.com/Aureliolo/synthorg/commit/41daf6908660bded2c077d44b3a4ea187fc8ed64))
+* bump smol-toml from 1.6.0 to 1.6.1 in /site ([#826](https://github.com/Aureliolo/synthorg/issues/826)) ([3e5dbe4](https://github.com/Aureliolo/synthorg/commit/3e5dbe4de5b69b377dd5f57953d86bdba3e951fc))
+* bump the all group with 3 updates ([#921](https://github.com/Aureliolo/synthorg/issues/921)) ([7bace0b](https://github.com/Aureliolo/synthorg/commit/7bace0b9385707a0141a07342a645098b94004c3))
+* bump the minor-and-patch group across 1 directory with 2 updates ([#829](https://github.com/Aureliolo/synthorg/issues/829)) ([93e611f](https://github.com/Aureliolo/synthorg/commit/93e611f445c296ab19ea016647181658b530e7b8))
+* bump the minor-and-patch group across 1 directory with 3 updates ([#841](https://github.com/Aureliolo/synthorg/issues/841)) ([7010c8e](https://github.com/Aureliolo/synthorg/commit/7010c8e027fd0309eb8fbcbaa055cb4784f88be5))
+* bump the minor-and-patch group across 1 directory with 3 updates ([#869](https://github.com/Aureliolo/synthorg/issues/869)) ([548cee5](https://github.com/Aureliolo/synthorg/commit/548cee572f406e726a599b2f1acde8a3be07be47))
+* bump the minor-and-patch group in /site with 2 updates ([#865](https://github.com/Aureliolo/synthorg/issues/865)) ([9558101](https://github.com/Aureliolo/synthorg/commit/9558101be1cc05f579963d4019c711be08a2b2c2))
+* bump the minor-and-patch group with 2 updates ([#867](https://github.com/Aureliolo/synthorg/issues/867)) ([4830706](https://github.com/Aureliolo/synthorg/commit/4830706ab2ed47460f7b8820f7103d85fe61229a))
+* consolidate Dependabot groups to 1 PR per ecosystem ([06d2556](https://github.com/Aureliolo/synthorg/commit/06d25565c77f653a413f4ccb9e7c8d7e34c58248))
+* consolidate Dependabot groups to 1 PR per ecosystem ([#881](https://github.com/Aureliolo/synthorg/issues/881)) ([06d2556](https://github.com/Aureliolo/synthorg/commit/06d25565c77f653a413f4ccb9e7c8d7e34c58248))
+* improve worktree skill with full dep sync and status enhancements ([#906](https://github.com/Aureliolo/synthorg/issues/906)) ([772c625](https://github.com/Aureliolo/synthorg/commit/772c62551d0a14099908130f3dc7afabf291ad5c))
+* remove Vue remnants and document framework decision ([#851](https://github.com/Aureliolo/synthorg/issues/851)) ([bf2adf6](https://github.com/Aureliolo/synthorg/commit/bf2adf6bae64ff85ae5f2383ae662435c824cb70))
+* update web dependencies and fix brace-expansion CVE ([#880](https://github.com/Aureliolo/synthorg/issues/880)) ([a7a0ed6](https://github.com/Aureliolo/synthorg/commit/a7a0ed6d0c4acd2d5da04801e874b48a8409b59e))
+* upgrade to Storybook 10 and TypeScript 6 ([#845](https://github.com/Aureliolo/synthorg/issues/845)) ([52d95f2](https://github.com/Aureliolo/synthorg/commit/52d95f2d570a29bcb06063f3077d3ef074016f43))
+
 ## [0.4.9](https://github.com/Aureliolo/synthorg/compare/v0.4.8...v0.4.9) (2026-03-23)
 
 
