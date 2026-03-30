@@ -99,6 +99,8 @@ describe('ProviderDetailPage', () => {
     }
     renderDetail()
     expect(screen.getByText('test-model')).toBeInTheDocument()
+    expect(screen.getByText('tools')).toBeInTheDocument()
+    expect(screen.getByText('stream')).toBeInTheDocument()
   })
 
   it('renders health metrics when health available', () => {

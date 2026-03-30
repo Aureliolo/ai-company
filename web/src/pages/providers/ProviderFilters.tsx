@@ -9,6 +9,7 @@ const HEALTH_OPTIONS: { value: string; label: string }[] = [
   { value: 'up', label: 'Up' },
   { value: 'degraded', label: 'Degraded' },
   { value: 'down', label: 'Down' },
+  { value: 'unknown', label: 'Unknown' },
 ]
 
 const SORT_OPTIONS: { value: string; label: string }[] = [

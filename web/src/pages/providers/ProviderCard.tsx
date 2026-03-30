@@ -53,7 +53,7 @@ export function ProviderCard({ provider, health, className }: ProviderCardProps)
           <span className="rounded-md bg-bg-surface px-1.5 py-0.5 text-xs font-mono text-text-secondary">
             {provider.models.length} model{provider.models.length !== 1 ? 's' : ''}
           </span>
-          {health && health.calls_last_24h > 0 && (
+          {health && (
             <span className="text-xs text-text-muted">
               {health.calls_last_24h} calls/24h
             </span>
