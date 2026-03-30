@@ -31,7 +31,6 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
 
 export const STORAGE_KEY = 'sidebar_collapsed'
-const NOOP = () => {}
 
 const SIDEBAR_BUTTON_CLASS = cn(
   'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
@@ -56,9 +55,9 @@ function writeCollapsed(value: boolean): void {
 }
 
 interface SidebarProps {
-  /** Whether the overlay sidebar is open (tablet mode). Controlled by parent. */
+  /** Whether the overlay sidebar is visible (used at tablet breakpoints). */
   overlayOpen?: boolean
-  /** Callback to close the overlay sidebar. */
+  /** Called when the overlay requests close. Required when overlayOpen is used. */
   onOverlayClose?: () => void
 }
 
@@ -74,6 +73,12 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   const location = useLocation()
 
   const shortcutKey = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production' && overlayOpen && !onOverlayClose) {
+      console.warn('Sidebar: `onOverlayClose` is required when `overlayOpen` is true -- dismiss actions will be inert.')
+    }
+  }, [overlayOpen, onOverlayClose])
 
   // Close overlay on navigation
   useEffect(() => {
@@ -119,18 +124,23 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
     return (
       <Drawer
         open={overlayOpen}
-        onClose={onOverlayClose ?? NOOP}
+        onClose={onOverlayClose ?? (() => {})}
         side="left"
         ariaLabel="Navigation menu"
-        className="w-60 bg-surface"
-        contentClassName="p-0"
+        className="w-60 min-w-60 max-w-60 bg-surface"
+        contentClassName="flex h-full flex-col p-0"
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3">
           <span className="text-lg font-bold text-accent">SynthOrg</span>
           <button
+            type="button"
             onClick={onOverlayClose}
             aria-label="Close navigation menu"
-            className="rounded-md p-1 text-muted-foreground hover:bg-card-hover hover:text-foreground"
+            className={cn(
+              'inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+              'hover:bg-card-hover hover:text-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            )}
           >
             <X className="size-5" aria-hidden="true" />
           </button>

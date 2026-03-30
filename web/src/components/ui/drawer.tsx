@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { springDefault } from '@/lib/motion'
 
 interface DrawerPropsBase {
   open: boolean
@@ -17,12 +18,12 @@ interface DrawerPropsBase {
 
 /**
  * At least one of `title` or `ariaLabel` must be provided so the dialog
- * always has an accessible name (WCAG 4.1.2). When `title` is provided the
- * Drawer renders a built-in header; when omitted, the header is skipped and
- * `ariaLabel` supplies the accessible name instead.
+ * always has an accessible name (WAI-ARIA dialog pattern). When `title` is
+ * provided the Drawer renders a built-in header; when omitted, the header is
+ * skipped and `ariaLabel` supplies the accessible name instead.
  */
 export type DrawerProps = DrawerPropsBase & (
-  | { /** Visible header title. */ title: string; /** Explicit aria-label override. Falls back to `title`. */ ariaLabel?: string }
+  | { /** Visible header title. */ title: string; /** Explicit aria-label; when omitted, `title` is used as the accessible name. */ ariaLabel?: string }
   | { title?: undefined; /** Explicit aria-label (required when title is omitted). */ ariaLabel: string }
 )
 
@@ -35,7 +36,7 @@ function getPanelVariants(side: 'left' | 'right') {
   const offscreen = side === 'left' ? '-100%' : '100%'
   return {
     hidden: { x: offscreen },
-    visible: { x: 0, transition: { type: 'spring' as const, stiffness: 300, damping: 30 } },
+    visible: { x: 0, transition: springDefault },
     exit: { x: offscreen, transition: { duration: 0.2, ease: 'easeIn' as const } },
   }
 }
@@ -44,6 +45,12 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
   const panelRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<Element | null>(null)
   const panelVariants = useMemo(() => getPanelVariants(side), [side])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production' && !(ariaLabel ?? title)) {
+      console.warn('Drawer: either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
+    }
+  }, [ariaLabel, title])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -68,7 +75,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
     const handleTab = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return
       const focusable = panel.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable]:not([contenteditable="false"])',
       )
       if (focusable.length === 0) return
       const first = focusable[0]!
@@ -108,6 +115,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
             className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
             onClick={onClose}
             aria-hidden="true"
+            data-testid="drawer-overlay"
           />
           {/* Panel */}
           <motion.div
@@ -146,7 +154,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
               </div>
             )}
             {/* Content */}
-            <div className={cn('flex-1 overflow-y-auto p-4', contentClassName)}>
+            <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-4', contentClassName)}>
               {children}
             </div>
           </motion.div>

@@ -308,7 +308,7 @@ Desktop-first with minimal tablet support. No mobile layout for v0.5.0.
 | 768--1023px | Hidden (hamburger toggle, 240px overlay) | Single column | Tablet landscape |
 | <768px | Hidden | "Use desktop or CLI" message | Not designed for mobile -- Go CLI covers quick-check use cases |
 
-At tablet (768-1023px), the sidebar hamburger trigger is rendered in the StatusBar (top bar), not in the sidebar itself (which is hidden at that breakpoint). The overlay sidebar uses `role="dialog"` and auto-closes on navigation.
+At tablet (768-1023px), the sidebar hamburger trigger is rendered in the StatusBar (top bar), not in the sidebar itself (which is hidden at that breakpoint). The overlay sidebar uses the shared `Drawer` component (`role="dialog"`, `aria-modal="true"`) with a blurred semi-transparent backdrop and auto-closes on navigation.
 
 The density system (Dense/Balanced/Medium/Sparse from [Brand & UX](brand-and-ux.md)) provides additional user control over information density at any breakpoint.
 

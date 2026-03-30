@@ -13,30 +13,13 @@ vi.mock('framer-motion', async () => {
     ...actual,
     AnimatePresence: MockAnimatePresence,
     motion: {
-      div: ({
-        children,
-        className,
-        role,
-        'aria-modal': ariaModal,
-        'aria-label': ariaLabel,
-        tabIndex,
-        onClick,
-        'aria-hidden': ariaHidden,
-        ...rest
-      }: React.ComponentProps<'div'> & Record<string, unknown>) => (
-        <div
-          className={className}
-          role={role}
-          aria-modal={ariaModal}
-          aria-label={ariaLabel}
-          aria-hidden={ariaHidden}
-          tabIndex={tabIndex}
-          onClick={onClick}
-          ref={rest.ref as React.Ref<HTMLDivElement>}
-        >
-          {children}
-        </div>
-      ),
+      div: ({ children, ...allProps }: React.ComponentProps<'div'> & Record<string, unknown>) => {
+        // Strip framer-motion-specific props before passing to DOM
+        const domProps = Object.fromEntries(
+          Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
+        )
+        return <div {...domProps}>{children}</div>
+      },
     },
   }
 })
@@ -88,10 +71,7 @@ describe('Drawer', () => {
     const handleClose = vi.fn()
     const user = userEvent.setup()
     render(<Drawer open={true} onClose={handleClose} title="Test">Content</Drawer>)
-    // The overlay is the element with aria-hidden="true"
-    const overlay = screen.getByRole('dialog').previousElementSibling
-    expect(overlay).toBeInTheDocument()
-    await user.click(overlay!)
+    await user.click(screen.getByTestId('drawer-overlay'))
     expect(handleClose).toHaveBeenCalledOnce()
   })
 
@@ -141,12 +121,11 @@ describe('Drawer', () => {
     it('merges contentClassName into the content wrapper', () => {
       render(
         <Drawer open={true} onClose={() => {}} title="Test" contentClassName="p-0">
-          <span data-testid="child">Hello</span>
+          <span>Hello</span>
         </Drawer>,
       )
-      const child = screen.getByTestId('child')
-      // The content wrapper is the parent of our child
-      expect(child.parentElement?.className).toMatch(/p-0/)
+      const content = screen.getByTestId('drawer-content')
+      expect(content.className).toMatch(/p-0/)
     })
   })
 })

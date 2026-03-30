@@ -16,30 +16,13 @@ vi.mock('framer-motion', async () => {
     ...actual,
     AnimatePresence: MockAnimatePresence,
     motion: {
-      div: ({
-        children,
-        className,
-        role,
-        'aria-modal': ariaModal,
-        'aria-label': ariaLabel,
-        tabIndex,
-        onClick,
-        'aria-hidden': ariaHidden,
-        ...rest
-      }: React.ComponentProps<'div'> & Record<string, unknown>) => (
-        <div
-          className={className}
-          role={role}
-          aria-modal={ariaModal}
-          aria-label={ariaLabel}
-          aria-hidden={ariaHidden}
-          tabIndex={tabIndex}
-          onClick={onClick}
-          ref={rest.ref as React.Ref<HTMLDivElement>}
-        >
-          {children}
-        </div>
-      ),
+      div: ({ children, ...allProps }: React.ComponentProps<'div'> & Record<string, unknown>) => {
+        // Strip framer-motion-specific props before passing to DOM
+        const domProps = Object.fromEntries(
+          Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
+        )
+        return <div {...domProps}>{children}</div>
+      },
     },
   }
 })
@@ -241,6 +224,32 @@ describe('Sidebar', () => {
     })
   })
 
+  it('returns null at mobile breakpoint', () => {
+    getBreakpoint.mockReturnValue({
+      breakpoint: 'mobile',
+      isDesktop: false,
+      isTablet: false,
+      isMobile: true,
+    })
+    setup()
+    expect(screen.queryByLabelText('Main navigation')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('forces collapsed at desktop-sm breakpoint regardless of user preference', () => {
+    getBreakpoint.mockReturnValue({
+      breakpoint: 'desktop-sm',
+      isDesktop: true,
+      isTablet: false,
+      isMobile: false,
+    })
+    localStorage.setItem('sidebar_collapsed', 'false')
+    setup()
+    // Collapsed shows brand mark "S" instead of "SynthOrg"
+    expect(screen.getByText('S')).toBeInTheDocument()
+    expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
+  })
+
   describe('tablet overlay', () => {
     function setupTablet(overlayOpen: boolean, onOverlayClose = vi.fn()) {
       getBreakpoint.mockReturnValue({
@@ -311,10 +320,7 @@ describe('Sidebar', () => {
       const user = userEvent.setup()
       const { onOverlayClose } = setupTablet(true)
       onOverlayClose.mockClear()
-      // The backdrop overlay is the sibling before the dialog panel
-      const overlay = screen.getByRole('dialog').previousElementSibling
-      expect(overlay).toBeInTheDocument()
-      await user.click(overlay!)
+      await user.click(screen.getByTestId('drawer-overlay'))
       expect(onOverlayClose).toHaveBeenCalledOnce()
     })
 
