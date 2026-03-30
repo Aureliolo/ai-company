@@ -2,14 +2,30 @@ import { Link } from 'react-router'
 import { Avatar } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
-import type { ActivityItem, WsEventType } from '@/api/types'
+import type { ActivityEventType, ActivityItem, WsEventType } from '@/api/types'
 
 interface ActivityFeedItemProps {
   activity: ActivityItem
   className?: string
 }
 
-const ACTION_DOT_COLORS: Partial<Record<WsEventType, string>> = {
+/** Dot colors for both REST ActivityEventType and WS WsEventType keys. */
+const ACTION_DOT_COLORS: Partial<Record<ActivityEventType | WsEventType, string>> = {
+  // REST activity event types
+  hired: 'bg-success',
+  fired: 'bg-danger',
+  onboarded: 'bg-success',
+  offboarded: 'bg-warning',
+  status_changed: 'bg-warning',
+  promoted: 'bg-success',
+  demoted: 'bg-warning',
+  task_started: 'bg-accent',
+  task_completed: 'bg-success',
+  cost_incurred: 'bg-warning',
+  tool_used: 'bg-accent',
+  delegation_sent: 'bg-accent',
+  delegation_received: 'bg-accent',
+  // WS event types
   'task.created': 'bg-accent',
   'task.updated': 'bg-accent',
   'task.status_changed': 'bg-success',
@@ -36,7 +52,7 @@ const ACTION_DOT_COLORS: Partial<Record<WsEventType, string>> = {
   'system.shutdown': 'bg-warning',
 }
 
-function getActionDotColor(actionType: WsEventType): string {
+function getActionDotColor(actionType: ActivityEventType | WsEventType): string {
   return ACTION_DOT_COLORS[actionType] ?? 'bg-muted-foreground'
 }
 

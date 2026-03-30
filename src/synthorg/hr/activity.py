@@ -5,13 +5,18 @@ and delegation records into a unified chronological timeline, and
 filters career-relevant events.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.enums import ActivityEventType, LifecycleEventType
+from synthorg.observability import get_logger
+from synthorg.observability.events.hr import HR_ACTIVITY_REDACTION_MISMATCH
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from synthorg.budget.cost_record import CostRecord
@@ -33,7 +38,7 @@ class ActivityEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_type: NotBlankStr = Field(description="Event category")
+    event_type: ActivityEventType = Field(description="Event category")
     timestamp: AwareDatetime = Field(description="When the event occurred")
     description: str = Field(
         default="",
@@ -59,7 +64,7 @@ class CareerEvent(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    event_type: NotBlankStr = Field(description="Lifecycle event type")
+    event_type: LifecycleEventType = Field(description="Lifecycle event type")
     timestamp: AwareDatetime = Field(description="When the event occurred")
     description: str = Field(
         default="",
@@ -89,10 +94,11 @@ _CAREER_EVENT_TYPES: frozenset[LifecycleEventType] = frozenset(
 
 def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
     """Convert a lifecycle event to a timeline activity event."""
+    activity_type = ActivityEventType(event.event_type.value)
     return ActivityEvent(
-        event_type=event.event_type.value,
+        event_type=activity_type,
         timestamp=event.timestamp,
-        description=event.details or f"Agent {event.event_type.value}",
+        description=event.details or f"Agent {activity_type.value}",
         related_ids={"agent_id": str(event.agent_id)},
     )
 
@@ -110,7 +116,7 @@ def _task_metric_to_activity(
         f"{format_cost_detail(record.cost_usd, currency)})"
     )
     return ActivityEvent(
-        event_type="task_completed",
+        event_type=ActivityEventType.TASK_COMPLETED,
         timestamp=record.completed_at,
         description=desc,
         related_ids={
@@ -127,9 +133,11 @@ def _task_metric_to_started_activity(
 
     Caller must ensure ``record.started_at`` is not None.
     """
-    assert record.started_at is not None  # noqa: S101
+    if record.started_at is None:
+        msg = "started_at must not be None"
+        raise ValueError(msg)
     return ActivityEvent(
-        event_type="task_started",
+        event_type=ActivityEventType.TASK_STARTED,
         timestamp=record.started_at,
         description=f"Task {record.task_id} started",
         related_ids={
@@ -151,7 +159,7 @@ def _cost_record_to_activity(
         f"{format_cost_detail(record.cost_usd, currency)})"
     )
     return ActivityEvent(
-        event_type="cost_incurred",
+        event_type=ActivityEventType.COST_INCURRED,
         timestamp=record.timestamp,
         description=desc,
         related_ids={
@@ -175,7 +183,7 @@ def _tool_invocation_to_activity(
     if record.task_id is not None:
         related_ids["task_id"] = str(record.task_id)
     return ActivityEvent(
-        event_type="tool_used",
+        event_type=ActivityEventType.TOOL_USED,
         timestamp=record.timestamp,
         description=desc,
         related_ids=related_ids,
@@ -187,7 +195,7 @@ def _delegation_to_sent_activity(
 ) -> ActivityEvent:
     """Convert a delegation record to a delegation_sent activity event."""
     return ActivityEvent(
-        event_type="delegation_sent",
+        event_type=ActivityEventType.DELEGATION_SENT,
         timestamp=record.timestamp,
         description=(
             f"Delegated task {record.original_task_id} to {record.delegatee_id}"
@@ -207,7 +215,7 @@ def _delegation_to_received_activity(
 ) -> ActivityEvent:
     """Convert a delegation record to a delegation_received activity event."""
     return ActivityEvent(
-        event_type="delegation_received",
+        event_type=ActivityEventType.DELEGATION_RECEIVED,
         timestamp=record.timestamp,
         description=(
             f"Received delegation of task {record.original_task_id} "
@@ -221,6 +229,52 @@ def _delegation_to_received_activity(
             "delegated_task_id": str(record.delegated_task_id),
         },
     )
+
+
+# ── Cost event redaction ────────────────────────────────────────
+
+# Coupled to the format string in _cost_record_to_activity -- update
+# both together if the description format changes.
+_COST_DESC_PATTERN = re.compile(
+    r"^API call to [^(]+ \((\d+\+\d+ tokens), [^)]+\)$",
+)
+
+
+def redact_cost_events(
+    timeline: tuple[ActivityEvent, ...],
+) -> tuple[ActivityEvent, ...]:
+    """Redact model names and costs from cost_incurred event descriptions.
+
+    Produces a new timeline with sensitive details stripped from
+    ``cost_incurred`` event descriptions.  Non-cost events pass through
+    unchanged.
+
+    Args:
+        timeline: Activity events (may contain cost_incurred events).
+
+    Returns:
+        Timeline with redacted cost event descriptions.
+    """
+    result: list[ActivityEvent] = []
+    for event in timeline:
+        if event.event_type == ActivityEventType.COST_INCURRED:
+            match = _COST_DESC_PATTERN.match(event.description)
+            if match:
+                redacted = f"API call ({match.group(1)})"
+            else:
+                logger.warning(
+                    HR_ACTIVITY_REDACTION_MISMATCH,
+                    event_type=event.event_type.value,
+                    description_length=len(event.description),
+                )
+                redacted = "API call (details redacted)"
+            redacted_event = event.model_copy(
+                update={"description": redacted},
+            )
+            result.append(redacted_event)
+            continue
+        result.append(event)
+    return tuple(result)
 
 
 # ── Timeline builders ────────────────────────────────────────────
@@ -291,7 +345,7 @@ def filter_career_events(
     """
     career: list[CareerEvent] = [
         CareerEvent(
-            event_type=e.event_type.value,
+            event_type=e.event_type,
             timestamp=e.timestamp,
             description=e.details or f"Agent {e.event_type.value}",
             initiated_by=e.initiated_by,

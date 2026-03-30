@@ -7,8 +7,14 @@ import pytest
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.delegation.models import DelegationRecord
 from synthorg.core.enums import Complexity, TaskType
-from synthorg.hr.activity import filter_career_events, merge_activity_timeline
-from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.activity import (
+    ActivityEvent,
+    _cost_record_to_activity,
+    filter_career_events,
+    merge_activity_timeline,
+    redact_cost_events,
+)
+from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import TaskMetricRecord
 from synthorg.tools.invocation_record import ToolInvocationRecord
@@ -703,3 +709,123 @@ class TestFilterCareerEvents:
         assert career[0].initiated_by == "ceo"
         assert career[0].description == "Hired as developer"
         assert career[0].metadata == {"reason": "expansion", "team": "backend"}
+
+
+@pytest.mark.unit
+class TestActivityEventTypeSuperset:
+    """ActivityEventType must include every LifecycleEventType value."""
+
+    def test_lifecycle_values_are_subset(self) -> None:
+        lifecycle_values = {e.value for e in LifecycleEventType}
+        activity_values = {e.value for e in ActivityEventType}
+        missing = lifecycle_values - activity_values
+        assert not missing, (
+            f"LifecycleEventType values missing from ActivityEventType: {missing}"
+        )
+
+
+@pytest.mark.unit
+class TestRedactCostEvents:
+    def test_redacts_model_and_cost_from_description(self) -> None:
+        event = ActivityEvent(
+            event_type=ActivityEventType.COST_INCURRED,
+            timestamp=_NOW,
+            description="API call to test-medium-001 (500+100 tokens, EUR0.01)",
+        )
+        result = redact_cost_events((event,))
+        assert len(result) == 1
+        assert result[0].description == "API call (500+100 tokens)"
+
+    def test_leaves_non_cost_events_unchanged(self) -> None:
+        hired = ActivityEvent(
+            event_type=ActivityEventType.HIRED,
+            timestamp=_NOW,
+            description="Agent hired",
+        )
+        tool = ActivityEvent(
+            event_type=ActivityEventType.TOOL_USED,
+            timestamp=_NOW,
+            description="Tool read_file executed successfully",
+        )
+        result = redact_cost_events((hired, tool))
+        assert result[0].description == "Agent hired"
+        assert result[1].description == "Tool read_file executed successfully"
+
+    def test_empty_timeline(self) -> None:
+        assert redact_cost_events(()) == ()
+
+    def test_preserves_other_fields(self) -> None:
+        event = ActivityEvent(
+            event_type=ActivityEventType.COST_INCURRED,
+            timestamp=_NOW,
+            description="API call to test-small-001 (200+50 tokens, $0.005)",
+            related_ids={"agent_id": "agent-1", "task_id": "task-1"},
+        )
+        result = redact_cost_events((event,))
+        assert result[0].event_type == "cost_incurred"
+        assert result[0].timestamp == _NOW
+        assert result[0].related_ids == {"agent_id": "agent-1", "task_id": "task-1"}
+
+    def test_non_matching_description_uses_fallback(self) -> None:
+        """If the description format doesn't match the regex, use fallback."""
+        event = ActivityEvent(
+            event_type=ActivityEventType.COST_INCURRED,
+            timestamp=_NOW,
+            description="Custom cost event description",
+        )
+        result = redact_cost_events((event,))
+        assert result[0].description == "API call (details redacted)"
+
+    def test_round_trip_with_real_cost_record(self) -> None:
+        """Regex matches the actual format produced by _cost_record_to_activity."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test-provider",
+            model="test-medium-001",
+            input_tokens=500,
+            output_tokens=100,
+            cost_usd=0.005,
+            timestamp=_NOW,
+        )
+        event = _cost_record_to_activity(record, currency="EUR")
+        result = redact_cost_events((event,))
+        assert "test-medium-001" not in result[0].description
+        assert "500+100 tokens" in result[0].description
+
+    def test_mixed_timeline_preserves_order(self) -> None:
+        """Redaction preserves event ordering in a mixed timeline."""
+        events = (
+            ActivityEvent(
+                event_type=ActivityEventType.HIRED,
+                timestamp=_NOW,
+                description="Agent hired",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.COST_INCURRED,
+                timestamp=_NOW,
+                description="API call to test-model (100+50 tokens, EUR0.01)",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.TOOL_USED,
+                timestamp=_NOW,
+                description="Tool read_file executed successfully",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.COST_INCURRED,
+                timestamp=_NOW,
+                description="API call to test-model-2 (200+100 tokens, EUR0.02)",
+            ),
+            ActivityEvent(
+                event_type=ActivityEventType.DELEGATION_SENT,
+                timestamp=_NOW,
+                description="Delegated task t1 to a2",
+            ),
+        )
+        result = redact_cost_events(events)
+        assert len(result) == 5
+        assert result[0].description == "Agent hired"
+        assert result[1].description == "API call (100+50 tokens)"
+        assert result[2].description == "Tool read_file executed successfully"
+        assert result[3].description == "API call (200+100 tokens)"
+        assert result[4].description == "Delegated task t1 to a2"

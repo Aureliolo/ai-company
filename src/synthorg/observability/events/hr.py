@@ -43,3 +43,7 @@ HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
+
+# ── Activity timeline ──────────────────────────────────────────
+
+HR_ACTIVITY_REDACTION_MISMATCH: Final[str] = "hr.activity.redaction_pattern_mismatch"

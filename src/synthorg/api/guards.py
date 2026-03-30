@@ -68,6 +68,15 @@ def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[t
     return None
 
 
+def has_write_role(role: HumanRole) -> bool:
+    """Return True if the role grants write access.
+
+    Use this for inline role checks instead of importing ``_WRITE_ROLES``
+    directly.  The write set includes CEO, Manager, and Pair Programmer.
+    """
+    return role in _WRITE_ROLES
+
+
 def require_write_access(
     connection: ASGIConnection,  # type: ignore[type-arg]
     _: object,
