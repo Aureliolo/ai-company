@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router'
-import { FocusScope } from '@radix-ui/react-focus-scope'
 import {
   Bell,
   Command,
@@ -27,6 +26,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWebSocketStore } from '@/stores/websocket'
 import { ROUTES } from '@/router/routes'
+import { Drawer } from '@/components/ui/drawer'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
 
@@ -113,51 +113,40 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   if (isHidden) return null
   if ((breakpoint === 'desktop' || breakpoint === 'desktop-sm') && sidebarMode === 'hidden') return null
 
-  // At tablet, render as overlay with backdrop
+  // At tablet, render as overlay with backdrop (reuses shared Drawer component)
   if (isOverlayMode) {
-    if (!overlayOpen) return null
-
     return (
-      <>
-        {/* Backdrop */}
-        <div
-          className="fixed inset-0 z-40 bg-black/50"
-          onClick={onOverlayClose}
-          aria-hidden="true"
+      <Drawer
+        open={overlayOpen}
+        onClose={onOverlayClose ?? (() => {})}
+        side="left"
+        ariaLabel="Navigation menu"
+        className="w-60 bg-surface"
+        contentClassName="p-0"
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3">
+          <span className="text-lg font-bold text-accent">SynthOrg</span>
+          <button
+            onClick={onOverlayClose}
+            aria-label="Close navigation menu"
+            className="rounded-md p-1 text-muted-foreground hover:bg-card-hover hover:text-foreground"
+          >
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <SidebarNav collapsed={false} />
+        <SidebarFooter
+          collapsed={false}
+          showCollapseToggle={false}
+          toggleCollapse={toggleCollapse}
+          openCommandPalette={() => { onOverlayClose?.(); openCommandPalette() }}
+          shortcutKey={shortcutKey}
+          wsConnected={wsConnected}
+          wsReconnectExhausted={wsReconnectExhausted}
+          user={user}
+          logout={logout}
         />
-        {/* Overlay sidebar */}
-        <aside
-          className="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-surface"
-          role="dialog"
-          aria-label="Navigation menu"
-          onKeyDown={(e) => { if (e.key === 'Escape') onOverlayClose?.() }}
-        >
-          <FocusScope trapped loop>
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3">
-              <span className="text-lg font-bold text-accent">SynthOrg</span>
-              <button
-                onClick={onOverlayClose}
-                aria-label="Close navigation menu"
-                className="rounded-md p-1 text-muted-foreground hover:bg-card-hover hover:text-foreground"
-              >
-                <X className="size-5" aria-hidden="true" />
-              </button>
-            </div>
-            <SidebarNav collapsed={false} />
-            <SidebarFooter
-              collapsed={false}
-              showCollapseToggle={false}
-              toggleCollapse={toggleCollapse}
-              openCommandPalette={() => { onOverlayClose?.(); openCommandPalette() }}
-              shortcutKey={shortcutKey}
-              wsConnected={wsConnected}
-              wsReconnectExhausted={wsReconnectExhausted}
-              user={user}
-              logout={logout}
-            />
-          </FocusScope>
-        </aside>
-      </>
+      </Drawer>
     )
   }
 

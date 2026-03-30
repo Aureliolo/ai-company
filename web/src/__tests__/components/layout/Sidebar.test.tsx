@@ -5,6 +5,52 @@ import { useThemeStore } from '@/stores/theme'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { renderWithRouter } from '../../test-utils'
 
+// Mock framer-motion (Drawer uses it for overlay animation)
+function MockAnimatePresence({ children }: { children: React.ReactNode }) {
+  return <>{children}</>
+}
+
+vi.mock('framer-motion', async () => {
+  const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
+  return {
+    ...actual,
+    AnimatePresence: MockAnimatePresence,
+    motion: {
+      div: ({
+        children,
+        className,
+        role,
+        'aria-modal': ariaModal,
+        'aria-label': ariaLabel,
+        tabIndex,
+        onClick,
+        'aria-hidden': ariaHidden,
+        ...rest
+      }: React.ComponentProps<'div'> & Record<string, unknown>) => (
+        <div
+          className={className}
+          role={role}
+          aria-modal={ariaModal}
+          aria-label={ariaLabel}
+          aria-hidden={ariaHidden}
+          tabIndex={tabIndex}
+          onClick={onClick}
+          ref={rest.ref as React.Ref<HTMLDivElement>}
+        >
+          {children}
+        </div>
+      ),
+    },
+  }
+})
+
+// Mock useBreakpoint so we can control breakpoint per-test
+const getBreakpoint = vi.fn()
+vi.mock('@/hooks/useBreakpoint', () => ({
+  // eslint-disable-next-line @eslint-react/component-hook-factories -- test mock, not a real hook factory
+  useBreakpoint: () => getBreakpoint(),
+}))
+
 // Prevent window.location side effects from auth store
 const originalLocation = window.location
 beforeAll(() => {
@@ -45,6 +91,12 @@ describe('Sidebar', () => {
     useThemeStore.getState().setSidebarMode('collapsible')
     localStorage.clear()
     vi.clearAllMocks()
+    getBreakpoint.mockReturnValue({
+      breakpoint: 'desktop',
+      isDesktop: true,
+      isTablet: false,
+      isMobile: false,
+    })
   })
 
   it('renders all primary navigation items', () => {
@@ -186,6 +238,65 @@ describe('Sidebar', () => {
       setup()
 
       expect(screen.getByTitle('Collapse sidebar')).toBeInTheDocument()
+    })
+  })
+
+  describe('tablet overlay', () => {
+    function setupTablet(overlayOpen: boolean, onOverlayClose = vi.fn()) {
+      getBreakpoint.mockReturnValue({
+        breakpoint: 'tablet',
+        isDesktop: false,
+        isTablet: true,
+        isMobile: false,
+      })
+      useAuthStore.setState({
+        token: 'test-token',
+        user: { id: '1', username: 'admin', role: 'ceo', must_change_password: false },
+        loading: false,
+        _mustChangePasswordFallback: false,
+      })
+      return {
+        onOverlayClose,
+        ...renderWithRouter(
+          <Sidebar overlayOpen={overlayOpen} onOverlayClose={onOverlayClose} />,
+          { initialEntries: ['/'] },
+        ),
+      }
+    }
+
+    it('renders nothing when overlayOpen is false', () => {
+      setupTablet(false)
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('renders dialog when overlayOpen is true', () => {
+      setupTablet(true)
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('has aria-label "Navigation menu"', () => {
+      setupTablet(true)
+      expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Navigation menu')
+    })
+
+    it('shows SynthOrg branding', () => {
+      setupTablet(true)
+      expect(screen.getByText('SynthOrg')).toBeInTheDocument()
+    })
+
+    it('renders navigation items', () => {
+      setupTablet(true)
+      expect(screen.getByText('Dashboard')).toBeInTheDocument()
+      expect(screen.getByText('Settings')).toBeInTheDocument()
+    })
+
+    it('calls onOverlayClose when close button is clicked', async () => {
+      const user = userEvent.setup()
+      const { onOverlayClose } = setupTablet(true)
+      // close-on-navigate effect fires once on mount -- clear the count
+      onOverlayClose.mockClear()
+      await user.click(screen.getByLabelText('Close navigation menu'))
+      expect(onOverlayClose).toHaveBeenCalled()
     })
   })
 })
