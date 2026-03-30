@@ -555,7 +555,8 @@ export interface ActivityItem {
   id: string
   timestamp: string
   agent_name: string
-  action_type: ActivityEventType
+  /** REST path produces ActivityEventType; WS path produces WsEventType. */
+  action_type: ActivityEventType | WsEventType
   description: string
   task_id: string | null
   department: DepartmentName | null
