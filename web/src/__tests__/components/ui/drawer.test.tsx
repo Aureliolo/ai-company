@@ -1,3 +1,4 @@
+import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Drawer } from '@/components/ui/drawer'
@@ -13,6 +14,17 @@ function MockMotionDiv({ children, ref, ...allProps }: React.ComponentProps<'div
     Object.entries(allProps).filter(([key]) => !['variants', 'initial', 'animate', 'exit', 'transition'].includes(key)),
   ) as React.HTMLAttributes<HTMLDivElement>
   return <div ref={ref} {...domProps}>{children as React.ReactNode}</div>
+}
+
+// Test wrapper for focus-restore testing (needs state to toggle open/close)
+function FocusRestoreWrapper() {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <>
+      <button data-testid="opener" onClick={() => setOpen(true)}>Open</button>
+      <Drawer open={open} onClose={() => setOpen(false)} title="Test">Content</Drawer>
+    </>
+  )
 }
 
 vi.mock('framer-motion', async () => {
@@ -81,6 +93,25 @@ describe('Drawer', () => {
     render(<Drawer open={true} onClose={handleClose} title="Test">Content</Drawer>)
     await user.keyboard('{Escape}')
     expect(handleClose).toHaveBeenCalledOnce()
+  })
+
+  it('restores focus to the opener element when closed', async () => {
+    const user = userEvent.setup()
+    render(<FocusRestoreWrapper />)
+    const opener = screen.getByTestId('opener')
+
+    // Focus the opener then open the drawer
+    await user.click(opener)
+
+    // Drawer is now open -- focus should have moved to the dialog panel
+    const dialog = screen.getByRole('dialog')
+    expect(document.activeElement).toBe(dialog)
+
+    // Close the drawer by clicking the close button
+    await user.click(screen.getByLabelText('Close'))
+
+    // Focus should be restored to the opener
+    expect(document.activeElement).toBe(opener)
   })
 
   describe('side prop', () => {

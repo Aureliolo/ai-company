@@ -46,8 +46,9 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
   const openerRef = useRef<Element | null>(null)
   const panelVariants = useMemo(() => getPanelVariants(side), [side])
 
-  // Resolve accessible name: prefer ariaLabel, fall back to title, skip empty/whitespace-only strings
-  const accessibleName = ariaLabel?.trim() || title?.trim() || undefined
+  // Trim once, reuse for accessible name and header rendering
+  const trimmedTitle = title?.trim() || undefined
+  const accessibleName = ariaLabel?.trim() || trimmedTitle || undefined
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' && !accessibleName) {
@@ -144,10 +145,10 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
               className,
             )}
           >
-            {/* Header (omitted when title is not provided) */}
-            {title && (
+            {/* Header (omitted when title is absent or whitespace-only) */}
+            {trimmedTitle && (
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+                <h2 className="text-sm font-semibold text-foreground">{trimmedTitle}</h2>
                 <button
                   type="button"
                   onClick={onClose}
