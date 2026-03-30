@@ -570,7 +570,7 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | 768 - 1023px | Hidden | Hamburger opens overlay | 0px / 240px (overlay) |
 | < 768px | Hidden | No toggle -- mobile not supported | 0px |
 
-Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. The user's theme preference is not mutated -- the effective mode is computed locally by combining the preference with the current breakpoint. At tablet (768-1023px), the sidebar renders as a 240px overlay drawer (`role="dialog"`) with a semi-transparent backdrop (`bg-black/50`). It is triggered by a hamburger button (`Menu` icon) in the StatusBar, with `aria-expanded` tracking. The overlay closes on: backdrop click, X button, Escape key, or navigation (clicking a nav item). Below 768px, a `MobileUnsupportedOverlay` shows "Desktop Required" with a CLI hint (`synthorg status`).
+Sidebar state is persisted in user preferences. When resizing from >= 1280px into the 1024-1279px range, the sidebar auto-collapses to the icon rail. The user's theme preference is not mutated -- the effective mode is computed locally by combining the preference with the current breakpoint. At tablet (768-1023px), the sidebar renders as a 240px overlay via the shared `Drawer` component (`role="dialog"`, `aria-modal="true"`) with a blurred semi-transparent backdrop. It is triggered by a hamburger button (`Menu` icon) in the StatusBar, with `aria-expanded` tracking. The overlay closes on: backdrop click, X button, Escape key, or navigation (clicking a nav item). Below 768px, a `MobileUnsupportedOverlay` shows "Desktop Required" with a CLI hint (`synthorg status`).
 
 ---
 

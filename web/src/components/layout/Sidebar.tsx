@@ -31,6 +31,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
 
 export const STORAGE_KEY = 'sidebar_collapsed'
+const NOOP = () => {}
 
 const SIDEBAR_BUTTON_CLASS = cn(
   'flex items-center gap-3 rounded-md px-3 py-2 text-sm',
@@ -118,7 +119,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
     return (
       <Drawer
         open={overlayOpen}
-        onClose={onOverlayClose ?? (() => {})}
+        onClose={onOverlayClose ?? NOOP}
         side="left"
         ariaLabel="Navigation menu"
         className="w-60 bg-surface"

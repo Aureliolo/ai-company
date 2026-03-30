@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -296,7 +296,36 @@ describe('Sidebar', () => {
       // close-on-navigate effect fires once on mount -- clear the count
       onOverlayClose.mockClear()
       await user.click(screen.getByLabelText('Close navigation menu'))
-      expect(onOverlayClose).toHaveBeenCalled()
+      expect(onOverlayClose).toHaveBeenCalledOnce()
+    })
+
+    it('calls onOverlayClose when Escape is pressed', async () => {
+      const user = userEvent.setup()
+      const { onOverlayClose } = setupTablet(true)
+      onOverlayClose.mockClear()
+      await user.keyboard('{Escape}')
+      expect(onOverlayClose).toHaveBeenCalledOnce()
+    })
+
+    it('calls onOverlayClose when overlay backdrop is clicked', async () => {
+      const user = userEvent.setup()
+      const { onOverlayClose } = setupTablet(true)
+      onOverlayClose.mockClear()
+      // The backdrop overlay is the sibling before the dialog panel
+      const overlay = screen.getByRole('dialog').previousElementSibling
+      expect(overlay).toBeInTheDocument()
+      await user.click(overlay!)
+      expect(onOverlayClose).toHaveBeenCalledOnce()
+    })
+
+    it('calls onOverlayClose on route navigation', async () => {
+      const onOverlayClose = vi.fn()
+      const { router } = setupTablet(true, onOverlayClose)
+      // Initial mount fires close-on-navigate -- clear
+      onOverlayClose.mockClear()
+      // Navigate to a different route (wrapped in act for state update)
+      await act(() => router.navigate('/settings'))
+      expect(onOverlayClose).toHaveBeenCalledOnce()
     })
   })
 })

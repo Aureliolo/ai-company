@@ -130,6 +130,11 @@ describe('Drawer', () => {
       render(<Drawer open={true} onClose={() => {}} ariaLabel="Navigation menu">Content</Drawer>)
       expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Navigation menu')
     })
+
+    it('ariaLabel takes precedence over title when both are provided', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Visible Title" ariaLabel="Screen Reader Label">Content</Drawer>)
+      expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Screen Reader Label')
+    })
   })
 
   describe('contentClassName', () => {

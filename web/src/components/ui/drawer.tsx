@@ -4,13 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export interface DrawerProps {
+interface DrawerPropsBase {
   open: boolean
   onClose: () => void
-  /** Visible header title. When omitted, the header is not rendered. */
-  title?: string
-  /** Explicit aria-label for the dialog panel. Falls back to `title`. */
-  ariaLabel?: string
   /** Which edge the drawer slides in from. @default 'right' */
   side?: 'left' | 'right'
   /** Additional class names merged into the content wrapper (e.g. `"p-0"` to remove default padding). */
@@ -18,6 +14,17 @@ export interface DrawerProps {
   children: React.ReactNode
   className?: string
 }
+
+/**
+ * At least one of `title` or `ariaLabel` must be provided so the dialog
+ * always has an accessible name (WCAG 4.1.2). When `title` is provided the
+ * Drawer renders a built-in header; when omitted, the header is skipped and
+ * `ariaLabel` supplies the accessible name instead.
+ */
+export type DrawerProps = DrawerPropsBase & (
+  | { /** Visible header title. */ title: string; /** Explicit aria-label override. Falls back to `title`. */ ariaLabel?: string }
+  | { title?: undefined; /** Explicit aria-label (required when title is omitted). */ ariaLabel: string }
+)
 
 const overlayVariants = {
   hidden: { opacity: 0 },
