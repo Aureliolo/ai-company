@@ -102,4 +102,46 @@ describe('Drawer', () => {
     await user.keyboard('{Escape}')
     expect(handleClose).toHaveBeenCalledOnce()
   })
+
+  describe('side prop', () => {
+    it('renders on the left when side="left"', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Left" side="left">Content</Drawer>)
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.className).toMatch(/left-0/)
+      expect(dialog.className).not.toMatch(/right-0/)
+    })
+
+    it('renders on the right by default', () => {
+      render(<Drawer open={true} onClose={() => {}} title="Right">Content</Drawer>)
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.className).toMatch(/right-0/)
+      expect(dialog.className).not.toMatch(/left-0/)
+    })
+  })
+
+  describe('optional title (headerless mode)', () => {
+    it('does not render header when title is omitted', () => {
+      render(<Drawer open={true} onClose={() => {}} ariaLabel="Custom panel">Content</Drawer>)
+      expect(screen.queryByLabelText('Close')).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+    })
+
+    it('uses ariaLabel for aria-label when title is omitted', () => {
+      render(<Drawer open={true} onClose={() => {}} ariaLabel="Navigation menu">Content</Drawer>)
+      expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Navigation menu')
+    })
+  })
+
+  describe('contentClassName', () => {
+    it('merges contentClassName into the content wrapper', () => {
+      render(
+        <Drawer open={true} onClose={() => {}} title="Test" contentClassName="p-0">
+          <span data-testid="child">Hello</span>
+        </Drawer>,
+      )
+      const child = screen.getByTestId('child')
+      // The content wrapper is the parent of our child
+      expect(child.parentElement?.className).toMatch(/p-0/)
+    })
+  })
 })

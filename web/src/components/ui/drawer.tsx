@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
@@ -7,7 +7,14 @@ import { cn } from '@/lib/utils'
 export interface DrawerProps {
   open: boolean
   onClose: () => void
-  title: string
+  /** Visible header title. When omitted, the header is not rendered. */
+  title?: string
+  /** Explicit aria-label for the dialog panel. Falls back to `title`. */
+  ariaLabel?: string
+  /** Which edge the drawer slides in from. @default 'right' */
+  side?: 'left' | 'right'
+  /** Additional class names merged into the content wrapper (e.g. `"p-0"` to remove default padding). */
+  contentClassName?: string
   children: React.ReactNode
   className?: string
 }
@@ -17,15 +24,19 @@ const overlayVariants = {
   visible: { opacity: 1 },
 }
 
-const panelVariants = {
-  hidden: { x: '100%' },
-  visible: { x: 0, transition: { type: 'spring' as const, stiffness: 300, damping: 30 } },
-  exit: { x: '100%', transition: { duration: 0.2, ease: 'easeIn' as const } },
+function getPanelVariants(side: 'left' | 'right') {
+  const offscreen = side === 'left' ? '-100%' : '100%'
+  return {
+    hidden: { x: offscreen },
+    visible: { x: 0, transition: { type: 'spring' as const, stiffness: 300, damping: 30 } },
+    exit: { x: offscreen, transition: { duration: 0.2, ease: 'easeIn' as const } },
+  }
 }
 
-export function Drawer({ open, onClose, title, children, className }: DrawerProps) {
+export function Drawer({ open, onClose, title, ariaLabel, side = 'right', contentClassName, children, className }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null)
   const openerRef = useRef<Element | null>(null)
+  const panelVariants = useMemo(() => getPanelVariants(side), [side])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -100,32 +111,35 @@ export function Drawer({ open, onClose, title, children, className }: DrawerProp
             exit="exit"
             role="dialog"
             aria-modal="true"
-            aria-label={title}
+            aria-label={ariaLabel ?? title}
             tabIndex={-1}
             className={cn(
-              'fixed inset-y-0 right-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',
-              'border-l border-border bg-card shadow-[var(--so-shadow-card-hover)]',
+              'fixed inset-y-0 z-50 flex w-[40vw] min-w-80 max-w-xl flex-col',
+              side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
+              'border-border bg-card shadow-[var(--so-shadow-card-hover)]',
               className,
             )}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className={cn(
-                  'rounded-md p-1 text-muted-foreground transition-colors',
-                  'hover:bg-card-hover hover:text-foreground',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                )}
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+            {/* Header (omitted when title is not provided) */}
+            {title && (
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className={cn(
+                    'rounded-md p-1 text-muted-foreground transition-colors',
+                    'hover:bg-card-hover hover:text-foreground',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                  )}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            )}
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className={cn('flex-1 overflow-y-auto p-4', contentClassName)}>
               {children}
             </div>
           </motion.div>

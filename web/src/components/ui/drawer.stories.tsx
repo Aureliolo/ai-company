@@ -58,6 +58,46 @@ export const Interactive: Story = {
   render: () => <InteractiveDrawer />,
 }
 
+export const LeftSide: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    title: 'Navigation',
+    side: 'left',
+    children: (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">Left-side drawer panel.</p>
+        <ul className="space-y-1 text-sm">
+          <li>Dashboard</li>
+          <li>Settings</li>
+          <li>Profile</li>
+        </ul>
+      </div>
+    ),
+  },
+}
+
+export const Headerless: Story = {
+  args: {
+    open: true,
+    onClose: () => {},
+    ariaLabel: 'Custom panel',
+    contentClassName: 'p-0',
+    children: (
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border px-4 py-3">
+          <span className="text-lg font-bold text-accent">Custom Header</span>
+        </div>
+        <div className="flex-1 p-4">
+          <p className="text-sm text-muted-foreground">
+            Headerless drawer with custom content and no default padding.
+          </p>
+        </div>
+      </div>
+    ),
+  },
+}
+
 export const ScrollableContent: Story = {
   args: {
     open: true,
