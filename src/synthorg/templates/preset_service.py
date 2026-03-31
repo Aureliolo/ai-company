@@ -7,10 +7,11 @@ Merges builtin presets (from code) with user-defined custom presets
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from synthorg.api.dto_personalities import PresetSource
 from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
@@ -52,7 +53,7 @@ class PresetEntry(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
-    source: Literal["builtin", "custom"]
+    source: PresetSource
     config: dict[str, Any]
     description: str = ""
     created_at: str | None = None
@@ -63,7 +64,7 @@ def _builtin_to_entry(name: str, preset: dict[str, Any]) -> PresetEntry:
     """Convert a builtin preset dict to a PresetEntry."""
     return PresetEntry(
         name=NotBlankStr(name),
-        source="builtin",
+        source=PresetSource.BUILTIN,
         config=dict(preset),
         description=str(preset.get("description", "")),
     )
@@ -127,8 +128,52 @@ def _validate_personality_config(
             reason="invalid_config",
             error=str(exc),
         )
-        msg = f"Invalid personality configuration: {exc}"
+        msg = "Invalid personality configuration: one or more fields failed validation"
         raise ApiValidationError(msg) from exc
+
+
+def _parse_config_json(config_json: str, preset_name: str) -> dict[str, Any]:
+    """Parse a JSON config string from the database.
+
+    Args:
+        config_json: Serialized personality config.
+        preset_name: Name of the preset (for error context).
+
+    Returns:
+        Parsed config dict.
+
+    Raises:
+        NotFoundError: If the JSON is corrupt.
+    """
+    try:
+        parsed: dict[str, Any] = json.loads(config_json)
+    except json.JSONDecodeError as exc:
+        logger.exception(
+            PRESET_VALIDATION_FAILED,
+            preset_name=preset_name,
+            reason="corrupt_json",
+            error=str(exc),
+        )
+        msg = f"Personality preset {preset_name!r} has corrupt configuration"
+        raise NotFoundError(msg) from exc
+    return parsed
+
+
+def _check_not_builtin(key: str, operation: str) -> None:
+    """Raise ConflictError if the name matches a builtin preset.
+
+    Args:
+        key: Normalized preset name.
+        operation: Operation name for logging context.
+    """
+    if key in PERSONALITY_PRESETS:
+        logger.warning(
+            PRESET_CONFLICT,
+            preset_name=key,
+            reason=f"{operation}_builtin",
+        )
+        msg = f"Cannot {operation} builtin preset {key!r}"
+        raise ConflictError(msg)
 
 
 class PersonalityPresetService:
@@ -152,20 +197,15 @@ class PersonalityPresetService:
         for name, preset in PERSONALITY_PRESETS.items():
             entries[name] = _builtin_to_entry(name, dict(preset))
 
-        for (
-            name,
-            config_json,
-            description,
-            created_at,
-            updated_at,
-        ) in await self._repo.list_all():
-            entries[name] = PresetEntry(
-                name=NotBlankStr(name),
-                source="custom",
-                config=json.loads(config_json),
-                description=description,
-                created_at=created_at,
-                updated_at=updated_at,
+        for row in await self._repo.list_all():
+            config = _parse_config_json(row.config_json, row.name)
+            entries[row.name] = PresetEntry(
+                name=NotBlankStr(row.name),
+                source=PresetSource.CUSTOM,
+                config=config,
+                description=row.description,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
             )
 
         return tuple(entries[k] for k in sorted(entries))
@@ -173,7 +213,7 @@ class PersonalityPresetService:
     async def get(self, name: str) -> PresetEntry:
         """Look up a preset by name (case-insensitive).
 
-        Checks custom presets first, then builtins.
+        Custom presets take precedence over builtins with the same name.
 
         Args:
             name: Preset identifier.
@@ -192,14 +232,14 @@ class PersonalityPresetService:
 
         row = await self._repo.get(NotBlankStr(key))
         if row is not None:
-            config_json, description, created_at, updated_at = row
+            config = _parse_config_json(row.config_json, key)
             return PresetEntry(
                 name=NotBlankStr(key),
-                source="custom",
-                config=json.loads(config_json),
-                description=description,
-                created_at=created_at,
-                updated_at=updated_at,
+                source=PresetSource.CUSTOM,
+                config=config,
+                description=row.description,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
             )
 
         if key in PERSONALITY_PRESETS:
@@ -224,22 +264,12 @@ class PersonalityPresetService:
             The created preset entry.
 
         Raises:
-            ConflictError: If name shadows a builtin preset.
+            ConflictError: If name shadows a builtin preset or a
+                custom preset with the same name already exists.
             ApiValidationError: If name format or config is invalid.
         """
         key = _normalize_preset_name(name)
-
-        if key in PERSONALITY_PRESETS:
-            logger.warning(
-                PRESET_CONFLICT,
-                preset_name=key,
-                reason="shadows_builtin",
-            )
-            msg = (
-                f"Cannot create custom preset {key!r}: "
-                "name conflicts with a builtin preset"
-            )
-            raise ConflictError(msg)
+        _check_not_builtin(key, "create")
 
         existing = await self._repo.get(NotBlankStr(key))
         if existing is not None:
@@ -252,16 +282,25 @@ class PersonalityPresetService:
             raise ConflictError(msg)
 
         validated = _validate_personality_config(config)
-        config_json = json.dumps(validated.model_dump(mode="json"), sort_keys=True)
+        config_json = json.dumps(
+            validated.model_dump(mode="json"),
+            sort_keys=True,
+        )
         description = str(config.get("description", ""))
         now = datetime.now(UTC).isoformat()
 
-        await self._repo.save(NotBlankStr(key), config_json, description, now, now)
+        await self._repo.save(
+            NotBlankStr(key),
+            config_json,
+            description,
+            now,
+            now,
+        )
         logger.info(PRESET_CREATED, preset_name=key)
 
         return PresetEntry(
             name=NotBlankStr(key),
-            source="custom",
+            source=PresetSource.CUSTOM,
             config=validated.model_dump(mode="json"),
             description=description,
             created_at=now,
@@ -288,15 +327,7 @@ class PersonalityPresetService:
             ApiValidationError: If name or config is invalid.
         """
         key = _normalize_preset_name(name)
-
-        if key in PERSONALITY_PRESETS:
-            logger.warning(
-                PRESET_CONFLICT,
-                preset_name=key,
-                reason="update_builtin",
-            )
-            msg = f"Cannot update builtin preset {key!r}"
-            raise ConflictError(msg)
+        _check_not_builtin(key, "update")
 
         existing = await self._repo.get(NotBlankStr(key))
         if existing is None:
@@ -309,26 +340,28 @@ class PersonalityPresetService:
             raise NotFoundError(msg)
 
         validated = _validate_personality_config(config)
-        config_json = json.dumps(validated.model_dump(mode="json"), sort_keys=True)
+        config_json = json.dumps(
+            validated.model_dump(mode="json"),
+            sort_keys=True,
+        )
         description = str(config.get("description", ""))
-        _, _, created_at, _ = existing
         now = datetime.now(UTC).isoformat()
 
         await self._repo.save(
             NotBlankStr(key),
             config_json,
             description,
-            created_at,
+            existing.created_at,
             now,
         )
         logger.info(PRESET_UPDATED, preset_name=key)
 
         return PresetEntry(
             name=NotBlankStr(key),
-            source="custom",
+            source=PresetSource.CUSTOM,
             config=validated.model_dump(mode="json"),
             description=description,
-            created_at=created_at,
+            created_at=existing.created_at,
             updated_at=now,
         )
 
@@ -344,15 +377,7 @@ class PersonalityPresetService:
             ApiValidationError: If name format is invalid.
         """
         key = _normalize_preset_name(name)
-
-        if key in PERSONALITY_PRESETS:
-            logger.warning(
-                PRESET_CONFLICT,
-                preset_name=key,
-                reason="delete_builtin",
-            )
-            msg = f"Cannot delete builtin preset {key!r}"
-            raise ConflictError(msg)
+        _check_not_builtin(key, "delete")
 
         deleted = await self._repo.delete(NotBlankStr(key))
         if not deleted:

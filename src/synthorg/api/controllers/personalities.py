@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from litestar import Controller, Response, delete, get, post, put
+from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -20,10 +20,13 @@ from synthorg.api.pagination import (
     paginate,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.observability import get_logger
 from synthorg.templates.preset_service import (
     PersonalityPresetService,
     PresetEntry,
 )
+
+logger = get_logger(__name__)
 
 
 def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:
@@ -43,21 +46,9 @@ def _to_detail(entry: PresetEntry) -> PresetDetailResponse:
         name=entry.name,
         source=PresetSource(entry.source),
         description=entry.description,
-        traits=tuple(str(t) for t in cfg.get("traits", ())),
-        communication_style=str(cfg.get("communication_style", "neutral")),
-        risk_tolerance=cfg.get("risk_tolerance", "medium"),
-        creativity=cfg.get("creativity", "medium"),
-        openness=cfg.get("openness", 0.5),
-        conscientiousness=cfg.get("conscientiousness", 0.5),
-        extraversion=cfg.get("extraversion", 0.5),
-        agreeableness=cfg.get("agreeableness", 0.5),
-        stress_response=cfg.get("stress_response", 0.5),
-        decision_making=cfg.get("decision_making", "consultative"),
-        collaboration=cfg.get("collaboration", "team"),
-        verbosity=cfg.get("verbosity", "balanced"),
-        conflict_approach=cfg.get("conflict_approach", "collaborate"),
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        **{k: v for k, v in cfg.items() if k != "description"},
     )
 
 
@@ -126,14 +117,11 @@ class PersonalityPresetController(Controller):
         self,
         state: State,
         data: CreatePresetRequest,
-    ) -> Response[ApiResponse[PresetDetailResponse]]:
+    ) -> ApiResponse[PresetDetailResponse]:
         """Create a custom personality preset."""
         service = _get_service(state)
         entry = await service.create(data.name, data.to_config_dict())
-        return Response(
-            content=ApiResponse[PresetDetailResponse](data=_to_detail(entry)),
-            status_code=201,
-        )
+        return ApiResponse[PresetDetailResponse](data=_to_detail(entry))
 
     @put(
         "/presets/{name:str}",

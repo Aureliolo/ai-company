@@ -11,6 +11,11 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,
     TaskMetricRepository,
 )
+from synthorg.persistence.preset_repository import (
+    PersonalityPresetRepository,
+    PresetListRow,
+    PresetRow,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.repositories import (
     AgentStateRepository,
@@ -336,7 +341,7 @@ class _FakeProjectRepository:
 class _FakePersonalityPresetRepository:
     async def save(
         self,
-        name: str,
+        name: NotBlankStr,
         config_json: str,
         description: str,
         created_at: str,
@@ -344,13 +349,16 @@ class _FakePersonalityPresetRepository:
     ) -> None:
         pass
 
-    async def get(self, name: str) -> tuple[str, str, str, str] | None:
+    async def get(
+        self,
+        name: NotBlankStr,
+    ) -> PresetRow | None:
         return None
 
-    async def list_all(self) -> tuple[tuple[str, str, str, str, str], ...]:
+    async def list_all(self) -> tuple[PresetListRow, ...]:
         return ()
 
-    async def delete(self, name: str) -> bool:
+    async def delete(self, name: NotBlankStr) -> bool:
         return False
 
     async def count(self) -> int:
@@ -515,3 +523,9 @@ class TestProtocolCompliance:
 
     def test_fake_project_repo_is_project_repository(self) -> None:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
+
+    def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
+        assert isinstance(
+            _FakePersonalityPresetRepository(),
+            PersonalityPresetRepository,
+        )

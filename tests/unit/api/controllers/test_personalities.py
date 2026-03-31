@@ -45,7 +45,7 @@ class TestListPresets:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["pagination"]["total"] >= len(PERSONALITY_PRESETS)
+        assert body["pagination"]["total"] == len(PERSONALITY_PRESETS)
 
     def test_pagination_works(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/personalities/presets?offset=0&limit=5")
@@ -152,11 +152,12 @@ class TestCreatePreset:
 
     def test_create_duplicate_returns_409(self, test_client: TestClient[Any]) -> None:
         body = _make_valid_preset_body(name="dup_test")
-        test_client.post(
+        first_resp = test_client.post(
             "/api/v1/personalities/presets",
             json=body,
             headers=make_auth_headers("ceo"),
         )
+        assert first_resp.status_code == 201
         resp = test_client.post(
             "/api/v1/personalities/presets",
             json=body,

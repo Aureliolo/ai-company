@@ -116,6 +116,12 @@ class TestGet:
         with pytest.raises(NotFoundError):
             await service.get("nonexistent_preset")
 
+    async def test_get_blank_name_raises_not_found(
+        self, service: PersonalityPresetService
+    ) -> None:
+        with pytest.raises(NotFoundError):
+            await service.get("  ")
+
 
 @pytest.mark.unit
 class TestCreate:

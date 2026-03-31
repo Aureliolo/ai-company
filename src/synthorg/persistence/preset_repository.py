@@ -1,12 +1,31 @@
 """Repository protocol for custom personality preset persistence.
 
-Extracted into its own module because ``repositories.py`` is at the
-800-line file-size limit (same pattern as ``artifact_project_repos.py``).
+Separate module for the preset repository protocol, keeping persistence
+protocols modular (same pattern as ``artifact_project_repos.py``).
 """
 
-from typing import Protocol, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class PresetRow(NamedTuple):
+    """Single custom preset row returned by ``get``."""
+
+    config_json: str
+    description: str
+    created_at: str
+    updated_at: str
+
+
+class PresetListRow(NamedTuple):
+    """Custom preset row returned by ``list_all``."""
+
+    name: str
+    config_json: str
+    description: str
+    created_at: str
+    updated_at: str
 
 
 @runtime_checkable
@@ -35,39 +54,37 @@ class PersonalityPresetRepository(Protocol):
             updated_at: ISO 8601 last-update timestamp.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
     async def get(
         self,
         name: NotBlankStr,
-    ) -> tuple[str, str, str, str] | None:
+    ) -> PresetRow | None:
         """Retrieve a custom preset by name.
 
         Args:
             name: Preset identifier.
 
         Returns:
-            ``(config_json, description, created_at, updated_at)``
-            or ``None`` if not found.
+            A ``PresetRow`` or ``None`` if not found.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
     async def list_all(
         self,
-    ) -> tuple[tuple[str, str, str, str, str], ...]:
+    ) -> tuple[PresetListRow, ...]:
         """List all custom presets ordered by name.
 
         Returns:
-            Tuples of ``(name, config_json, description, created_at,
-            updated_at)``.
+            Tuple of ``PresetListRow`` named tuples.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
@@ -81,7 +98,7 @@ class PersonalityPresetRepository(Protocol):
             ``True`` if a row was deleted, ``False`` if not found.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
@@ -89,6 +106,6 @@ class PersonalityPresetRepository(Protocol):
         """Return the number of stored custom presets.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...

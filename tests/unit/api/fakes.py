@@ -30,6 +30,7 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -535,25 +536,32 @@ class FakePersonalityPresetRepository:
     """In-memory custom personality preset repository for tests."""
 
     def __init__(self) -> None:
-        self._presets: dict[str, tuple[str, str, str, str]] = {}
+        self._presets: dict[str, PresetRow] = {}
 
     async def save(
         self,
-        name: str,
+        name: NotBlankStr,
         config_json: str,
         description: str,
         created_at: str,
         updated_at: str,
     ) -> None:
-        self._presets[name] = (config_json, description, created_at, updated_at)
+        self._presets[name] = PresetRow(
+            config_json,
+            description,
+            created_at,
+            updated_at,
+        )
 
-    async def get(self, name: str) -> tuple[str, str, str, str] | None:
+    async def get(self, name: NotBlankStr) -> PresetRow | None:
         return self._presets.get(name)
 
-    async def list_all(self) -> tuple[tuple[str, str, str, str, str], ...]:
-        return tuple((name, *data) for name, data in sorted(self._presets.items()))
+    async def list_all(self) -> tuple[PresetListRow, ...]:
+        return tuple(
+            PresetListRow(name, *row) for name, row in sorted(self._presets.items())
+        )
 
-    async def delete(self, name: str) -> bool:
+    async def delete(self, name: NotBlankStr) -> bool:
         return self._presets.pop(name, None) is not None
 
     async def count(self) -> int:

@@ -31,13 +31,14 @@ _conflict = st.sampled_from(
 
 _valid_config = st.fixed_dictionaries(
     {
-        "traits": st.tuples(
+        "traits": st.lists(
             st.text(
                 alphabet=string.ascii_lowercase,
                 min_size=1,
                 max_size=10,
-            )
-        ),
+            ),
+            max_size=5,
+        ).map(tuple),
         "communication_style": st.text(
             alphabet=string.ascii_lowercase,
             min_size=1,
@@ -65,7 +66,7 @@ _valid_config = st.fixed_dictionaries(
 @pytest.mark.unit
 class TestPresetServiceProperties:
     @given(name=_valid_name, config=_valid_config)
-    @settings(max_examples=50)
+    @settings()
     async def test_create_get_round_trip(
         self,
         name: str,
@@ -88,7 +89,7 @@ class TestPresetServiceProperties:
         assert fetched.config == entry.config
 
     @given(name=_valid_name)
-    @settings(max_examples=50)
+    @settings()
     def test_name_normalization_idempotent(self, name: str) -> None:
         """Normalizing an already-normalized name is a no-op."""
         normalized = _normalize_preset_name(name)

@@ -81,14 +81,15 @@ class TestSQLitePersonalityPresetRepository:
             "my_preset",
             updated_json,
             "Updated",
-            "2026-03-31T00:00:00+00:00",
+            "2026-04-01T00:00:00+00:00",
             "2026-03-31T12:00:00+00:00",
         )
         result = await repo.get("my_preset")
         assert result is not None
-        cfg_json, description, _, updated_at = result
+        cfg_json, description, created_at, updated_at = result
         assert json.loads(cfg_json) == {"traits": ["updated"]}
         assert description == "Updated"
+        assert created_at == "2026-03-31T00:00:00+00:00"
         assert updated_at == "2026-03-31T12:00:00+00:00"
 
     async def test_list_all_returns_sorted(

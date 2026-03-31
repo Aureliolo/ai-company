@@ -86,7 +86,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config)
+  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
   budget/         # Cost tracking, budget enforcement, quota degradation, CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
@@ -96,12 +96,12 @@ src/synthorg/
   engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop, workspace/ (git worktree isolation, merge orchestration, semantic conflict detection)
   hr/             # Hiring, firing, onboarding, agent registry, performance tracking, activity timeline, activity event types, cost event redaction, career history, promotion/demotion
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
-  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
+  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project + preset repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
   providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
-  templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching, locale-aware name generation
+  templates/      # Pre-built company templates, personality presets, preset discovery/CRUD service, model requirements, tier-to-model matching, locale-aware name generation
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory, invocation tracking
 
 web/src/          # React 19 dashboard (see web/CLAUDE.md for full structure)
