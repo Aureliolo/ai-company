@@ -31,6 +31,14 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 
     [:octicons-arrow-right-24: Developer Setup](getting_started.md)
 
+-   :material-book-open-page-variant:{ .lg .middle } **Guides**
+
+    ---
+
+    In-depth guides for configuration, agents, budgets, security, deployment, and more.
+
+    [:octicons-arrow-right-24: Guides](guides/index.md)
+
 </div>
 
 ---

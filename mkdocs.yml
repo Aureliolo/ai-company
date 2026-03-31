@@ -92,6 +92,17 @@ nav:
   - Home: index.md
   - User Guide: user_guide.md
   - Developer Setup: getting_started.md
+  - Guides:
+      - guides/index.md
+      - Quickstart Tutorial: guides/quickstart.md
+      - Company Configuration: guides/company-config.md
+      - Agent Roles & Hierarchy: guides/agents.md
+      - Budget & Cost Control: guides/budget.md
+      - Security & Trust Policies: guides/security.md
+      - Tool Integration (MCP): guides/mcp-tools.md
+      - Deployment (Docker): guides/deployment.md
+      - Memory Configuration: guides/memory.md
+      - Contributing: guides/contributing.md
   - Design:
       - design/index.md
       - Agents: design/agents.md
