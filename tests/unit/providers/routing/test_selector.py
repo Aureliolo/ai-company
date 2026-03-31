@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.providers.routing.errors import ModelResolutionError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.selector import (
     CheapestSelector,
@@ -105,6 +106,19 @@ class TestQuotaAwareSelector:
         result = selector.select((CHEAP_A, EXPENSIVE_B, MID_C))
         assert result is MID_C
 
+    def test_empty_candidates_raises(self) -> None:
+        selector = QuotaAwareSelector()
+        with pytest.raises(ModelResolutionError, match="empty candidate list"):
+            selector.select(())
+
+    def test_equal_cost_tie_breaks_by_provider_name(self) -> None:
+        model_x = _model("provider-x", "test-x", 0.003, 0.015)
+        model_a = _model("provider-a", "test-a", 0.003, 0.015)
+        selector = QuotaAwareSelector()
+        # provider-a < provider-x alphabetically
+        result = selector.select((model_x, model_a))
+        assert result.provider_name == "provider-a"
+
 
 # ── CheapestSelector ────────────────────────────────────────────
 
@@ -124,12 +138,15 @@ class TestCheapestSelector:
         result = selector.select((MID_C,))
         assert result is MID_C
 
-    def test_equal_cost_deterministic(self) -> None:
+    def test_equal_cost_tie_breaks_by_provider_name(self) -> None:
         model_x = _model("provider-x", "test-x", 0.003, 0.015)
-        model_y = _model("provider-y", "test-y", 0.003, 0.015)
+        model_a = _model("provider-a", "test-a", 0.003, 0.015)
         selector = CheapestSelector()
-        # min() returns first equal element -- deterministic
-        result = selector.select((model_x, model_y))
-        assert result is model_x
-        result = selector.select((model_y, model_x))
-        assert result is model_y
+        # provider-a < provider-x alphabetically -- stable regardless of order
+        assert selector.select((model_x, model_a)).provider_name == "provider-a"
+        assert selector.select((model_a, model_x)).provider_name == "provider-a"
+
+    def test_empty_candidates_raises(self) -> None:
+        selector = CheapestSelector()
+        with pytest.raises(ModelResolutionError, match="empty candidate list"):
+            selector.select(())

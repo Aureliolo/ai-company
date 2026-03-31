@@ -146,6 +146,59 @@ class TestMultiProviderIndex:
         # Fastest first (500ms < 1000ms)
         assert models[0].provider_name == "test-provider-b"
 
+    def test_three_providers_same_model(self) -> None:
+        """Three providers for the same model all register correctly."""
+        providers = {
+            "test-provider-a": ProviderConfig(
+                driver="litellm",
+                api_key="sk-a",
+                models=(
+                    ProviderModelConfig(
+                        id="test-shared-001",
+                        alias="shared",
+                        cost_per_1k_input=0.010,
+                        cost_per_1k_output=0.050,
+                    ),
+                ),
+            ),
+            "test-provider-b": ProviderConfig(
+                driver="litellm",
+                api_key="sk-b",
+                models=(
+                    ProviderModelConfig(
+                        id="test-shared-001",
+                        alias="shared",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                    ),
+                ),
+            ),
+            "test-provider-c": ProviderConfig(
+                driver="litellm",
+                api_key="sk-c",
+                models=(
+                    ProviderModelConfig(
+                        id="test-shared-001",
+                        alias="shared",
+                        cost_per_1k_input=0.005,
+                        cost_per_1k_output=0.025,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        candidates = resolver.resolve_all("shared")
+        assert len(candidates) == 3
+        providers_seen = {c.provider_name for c in candidates}
+        assert providers_seen == {
+            "test-provider-a",
+            "test-provider-b",
+            "test-provider-c",
+        }
+        # Default selector picks cheapest (provider-b)
+        model = resolver.resolve("shared")
+        assert model.provider_name == "test-provider-b"
+
     def test_exact_duplicate_skipped(self) -> None:
         """Same provider, same model, same ref should not create duplicates."""
         providers = {
@@ -264,3 +317,7 @@ class TestMultiProviderImmutability:
         resolver = ModelResolver.from_config(_two_provider_config())
         with pytest.raises(TypeError):
             resolver._index["new"] = ()  # type: ignore[index]
+
+    def test_empty_tuple_in_index_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Empty candidate list"):
+            ModelResolver({"bad-ref": ()})

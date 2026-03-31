@@ -19,6 +19,7 @@ from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLVED,
     ROUTING_MULTI_PROVIDER_REGISTERED,
     ROUTING_RESOLVER_BUILT,
+    ROUTING_SELECTION_FAILED,
 )
 
 from .errors import ModelResolutionError
@@ -57,15 +58,24 @@ class ModelResolver:
         Args:
             index: Mapping of model ref to tuple of resolved models.
                 A frozen copy is made internally; the caller's dict
-                is not modified.
+                is not modified.  Every tuple must be non-empty.
             selector: Strategy for picking among multiple candidates.
                 Defaults to ``QuotaAwareSelector()`` (cheapest with
                 quota preference).
+
+        Raises:
+            ValueError: If any candidate tuple is empty.
         """
+        validated: dict[str, tuple[ResolvedModel, ...]] = {}
+        for k, v in index.items():
+            t = tuple(v)
+            if not t:
+                msg = f"Empty candidate list for ref {k!r}"
+                raise ValueError(msg)
+            validated[k] = t
+
         self._index: MappingProxyType[str, tuple[ResolvedModel, ...]] = (
-            MappingProxyType(
-                {k: tuple(v) for k, v in index.items()},
-            )
+            MappingProxyType(validated)
         )
         self._selector: ModelCandidateSelector = (
             selector if selector is not None else QuotaAwareSelector()
@@ -88,7 +98,13 @@ class ModelResolver:
         if existing_list is not None:
             for existing in existing_list:
                 if existing == resolved:
-                    return  # Exact duplicate, skip
+                    logger.debug(
+                        ROUTING_MULTI_PROVIDER_REGISTERED,
+                        ref=ref,
+                        provider=provider_name,
+                        reason="exact_duplicate_skipped",
+                    )
+                    return
             logger.info(
                 ROUTING_MULTI_PROVIDER_REGISTERED,
                 ref=ref,
@@ -165,7 +181,8 @@ class ModelResolver:
             The resolved model.
 
         Raises:
-            ModelResolutionError: If the ref is not found.
+            ModelResolutionError: If the ref is not found or the
+                selector fails.
         """
         candidates = self._index.get(ref)
         if candidates is None:
@@ -176,7 +193,23 @@ class ModelResolver:
             )
             msg = f"Model reference {ref!r} not found. Available: {sorted(self._index)}"
             raise ModelResolutionError(msg, context={"ref": ref})
-        model = self._selector.select(candidates)
+        try:
+            model = self._selector.select(candidates)
+        except ModelResolutionError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+            )
+            msg = (
+                f"Selector failed for {ref!r} with {len(candidates)} candidates: {exc}"
+            )
+            raise ModelResolutionError(msg, context={"ref": ref}) from exc
         logger.debug(
             ROUTING_MODEL_RESOLVED,
             ref=ref,
@@ -190,7 +223,7 @@ class ModelResolver:
         """Resolve a model ref without raising.
 
         Returns ``None`` instead of raising ``ModelResolutionError``
-        when *ref* is not found.
+        when *ref* is not found or the selector fails.
 
         Args:
             ref: Model alias or ID string.
@@ -205,7 +238,18 @@ class ModelResolver:
                 ref=ref,
             )
             return None
-        return self._selector.select(candidates)
+        try:
+            return self._selector.select(candidates)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+            )
+            return None
 
     def resolve_all(self, ref: str) -> tuple[ResolvedModel, ...]:
         """Return all provider variants for a model ref.

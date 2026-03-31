@@ -11,12 +11,19 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from synthorg.observability import get_logger
 from synthorg.observability.events.routing import ROUTING_CANDIDATE_SELECTED
 
+from .errors import ModelResolutionError
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from .models import ResolvedModel
 
 logger = get_logger(__name__)
+
+
+def _cost_key(m: ResolvedModel) -> tuple[float, str]:
+    """Sort key: cheapest first, then provider name for stable tie-breaking."""
+    return (m.total_cost_per_1k, m.provider_name)
 
 
 @runtime_checkable
@@ -35,6 +42,9 @@ class ModelCandidateSelector(Protocol):
 
         Returns:
             The selected model.
+
+        Raises:
+            ModelResolutionError: If candidates is empty.
         """
         ...
 
@@ -48,6 +58,9 @@ class QuotaAwareSelector:
 
     With an empty quota map (the default), all providers are assumed
     available and the selector degrades to cheapest-first.
+
+    The selector is immutable after construction -- reconstruct with
+    a fresh quota snapshot to reflect updated quotas.
 
     Args:
         provider_quota_available: Mapping of provider name to quota
@@ -69,9 +82,12 @@ class QuotaAwareSelector:
         candidates: tuple[ResolvedModel, ...],
     ) -> ResolvedModel:
         """Select the best candidate considering quota and cost."""
+        if not candidates:
+            msg = "Cannot select from empty candidate list"
+            raise ModelResolutionError(msg, context={"selector": "quota_aware"})
         with_quota = [c for c in candidates if self._has_quota(c.provider_name)]
         pool = with_quota or list(candidates)
-        chosen = min(pool, key=lambda m: m.total_cost_per_1k)
+        chosen = min(pool, key=_cost_key)
         if len(candidates) > 1:
             logger.debug(
                 ROUTING_CANDIDATE_SELECTED,
@@ -95,7 +111,10 @@ class CheapestSelector:
         candidates: tuple[ResolvedModel, ...],
     ) -> ResolvedModel:
         """Select the cheapest candidate by total cost per 1k tokens."""
-        chosen = min(candidates, key=lambda m: m.total_cost_per_1k)
+        if not candidates:
+            msg = "Cannot select from empty candidate list"
+            raise ModelResolutionError(msg, context={"selector": "cheapest"})
+        chosen = min(candidates, key=_cost_key)
         if len(candidates) > 1:
             logger.debug(
                 ROUTING_CANDIDATE_SELECTED,

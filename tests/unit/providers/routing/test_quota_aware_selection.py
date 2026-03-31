@@ -1,4 +1,4 @@
-"""Integration tests for quota-aware model selection.
+"""Tests for quota-aware model selection.
 
 Verifies the full flow: QuotaTracker -> peek_quota_available ->
 QuotaAwareSelector -> ModelResolver.

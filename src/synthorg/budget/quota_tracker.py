@@ -400,7 +400,9 @@ class QuotaTracker:
         result: dict[str, bool] = {}
 
         for provider_name, provider_usage in self._usage.items():
-            sub_config = self._subscriptions[provider_name]
+            sub_config = self._subscriptions.get(provider_name)
+            if sub_config is None:
+                continue
             quota_map = {q.window: q for q in sub_config.quotas}
             exhausted = False
 

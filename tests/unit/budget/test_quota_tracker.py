@@ -611,6 +611,21 @@ class TestPeekQuotaAvailable:
             result = tracker.peek_quota_available()
         assert result == {"provider-a": True, "provider-b": False}
 
+    async def test_multiple_windows_any_exhausted_means_unavailable(self) -> None:
+        """Provider with hourly + daily quotas is unavailable if either exhausted."""
+        sub = SubscriptionConfig(
+            quotas=(
+                _hour_quota(100),
+                _day_token_quota(500),
+            ),
+        )
+        with _patched_tracker_datetime():
+            tracker = QuotaTracker(subscriptions={"test-provider": sub})
+            # Hourly is fine, but daily tokens exhausted
+            await tracker.record_usage("test-provider", requests=1, tokens=501)
+            result = tracker.peek_quota_available()
+        assert result == {"test-provider": False}
+
     def test_empty_tracker(self) -> None:
         """Empty tracker returns empty dict."""
         tracker = QuotaTracker(subscriptions={})
