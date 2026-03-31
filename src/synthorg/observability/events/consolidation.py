@@ -29,6 +29,9 @@ RETENTION_CLEANUP_START: Final[str] = "consolidation.retention.start"
 RETENTION_CLEANUP_COMPLETE: Final[str] = "consolidation.retention.complete"
 RETENTION_CLEANUP_FAILED: Final[str] = "consolidation.retention.failed"
 RETENTION_DELETE_SKIPPED: Final[str] = "consolidation.retention.delete_skipped"
+RETENTION_AGENT_OVERRIDE_APPLIED: Final[str] = (
+    "consolidation.retention.agent_override_applied"
+)
 
 # ── Archival operations ──────────────────────────────────────────
 

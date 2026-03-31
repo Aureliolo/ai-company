@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from synthorg.core.agent import (
     AgentIdentity,
+    AgentRetentionRule,
     MemoryConfig,
     ModelConfig,
     PersonalityConfig,
@@ -21,6 +22,7 @@ from synthorg.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
+    MemoryCategory,
     MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
@@ -406,6 +408,122 @@ class TestMemoryConfig:
         """Verify factory produces a valid MemoryConfig."""
         m = MemoryConfigFactory.build()
         assert isinstance(m, MemoryConfig)
+
+    def test_retention_overrides_defaults_empty(self) -> None:
+        """Default retention_overrides is an empty tuple."""
+        m = MemoryConfig()
+        assert m.retention_overrides == ()
+
+    def test_retention_overrides_with_rules(self) -> None:
+        """Accept valid per-category retention overrides."""
+        m = MemoryConfig(
+            type=MemoryLevel.PERSISTENT,
+            retention_overrides=(
+                AgentRetentionRule(
+                    category=MemoryCategory.SEMANTIC,
+                    retention_days=365,
+                ),
+                AgentRetentionRule(
+                    category=MemoryCategory.EPISODIC,
+                    retention_days=180,
+                ),
+            ),
+        )
+        assert len(m.retention_overrides) == 2
+        assert m.retention_overrides[0].category is MemoryCategory.SEMANTIC
+        assert m.retention_overrides[0].retention_days == 365
+
+    def test_retention_overrides_duplicate_categories_rejected(self) -> None:
+        """Reject duplicate categories in retention_overrides."""
+        with pytest.raises(
+            ValidationError,
+            match="Duplicate retention override categories",
+        ):
+            MemoryConfig(
+                retention_overrides=(
+                    AgentRetentionRule(
+                        category=MemoryCategory.WORKING,
+                        retention_days=7,
+                    ),
+                    AgentRetentionRule(
+                        category=MemoryCategory.WORKING,
+                        retention_days=14,
+                    ),
+                ),
+            )
+
+    def test_retention_overrides_rejected_when_none_type(self) -> None:
+        """Reject retention_overrides when memory type is NONE."""
+        with pytest.raises(
+            ValidationError,
+            match="retention_overrides must be empty",
+        ):
+            MemoryConfig(
+                type=MemoryLevel.NONE,
+                retention_overrides=(
+                    AgentRetentionRule(
+                        category=MemoryCategory.SEMANTIC,
+                        retention_days=30,
+                    ),
+                ),
+            )
+
+    def test_retention_overrides_coexists_with_retention_days(self) -> None:
+        """Both retention_days and retention_overrides can be set."""
+        m = MemoryConfig(
+            type=MemoryLevel.PERSISTENT,
+            retention_days=90,
+            retention_overrides=(
+                AgentRetentionRule(
+                    category=MemoryCategory.SEMANTIC,
+                    retention_days=365,
+                ),
+            ),
+        )
+        assert m.retention_days == 90
+        assert len(m.retention_overrides) == 1
+
+
+# ── AgentRetentionRule ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAgentRetentionRule:
+    """Tests for AgentRetentionRule model."""
+
+    def test_valid_rule(self) -> None:
+        """Accept a valid category and retention_days."""
+        rule = AgentRetentionRule(
+            category=MemoryCategory.EPISODIC,
+            retention_days=30,
+        )
+        assert rule.category is MemoryCategory.EPISODIC
+        assert rule.retention_days == 30
+
+    def test_retention_days_zero_rejected(self) -> None:
+        """Reject retention_days of zero."""
+        with pytest.raises(ValidationError):
+            AgentRetentionRule(
+                category=MemoryCategory.WORKING,
+                retention_days=0,
+            )
+
+    def test_retention_days_negative_rejected(self) -> None:
+        """Reject negative retention_days."""
+        with pytest.raises(ValidationError):
+            AgentRetentionRule(
+                category=MemoryCategory.WORKING,
+                retention_days=-1,
+            )
+
+    def test_frozen(self) -> None:
+        """Ensure AgentRetentionRule is immutable."""
+        rule = AgentRetentionRule(
+            category=MemoryCategory.SEMANTIC,
+            retention_days=30,
+        )
+        with pytest.raises(ValidationError):
+            rule.retention_days = 60  # type: ignore[misc]
 
 
 # ── ToolPermissions ────────────────────────────────────────────────

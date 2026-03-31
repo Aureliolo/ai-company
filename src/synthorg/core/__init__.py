@@ -2,6 +2,7 @@
 
 from synthorg.core.agent import (
     AgentIdentity,
+    AgentRetentionRule,
     MemoryConfig,
     ModelConfig,
     PersonalityConfig,
@@ -80,6 +81,7 @@ __all__ = [
     "AcceptanceCriterion",
     "ActionType",
     "AgentIdentity",
+    "AgentRetentionRule",
     "AgentStatus",
     "ApprovalChain",
     "ApprovalItem",

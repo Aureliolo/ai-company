@@ -465,3 +465,68 @@ class TestArchivalModeAware:
         assert call_args.archival_mode == ArchivalMode.EXTRACTIVE
         assert len(result.archival_index) == 1
         assert result.archival_index[0].mode == ArchivalMode.EXTRACTIVE
+
+
+@pytest.mark.unit
+class TestCleanupRetentionOverrides:
+    """cleanup_retention forwards agent overrides to RetentionEnforcer."""
+
+    async def test_overrides_forwarded_to_enforcer(self) -> None:
+        """Agent override params reach cleanup_expired."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+        config = ConsolidationConfig(retention=RetentionConfig())
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+        )
+        overrides = {MemoryCategory.WORKING: 7}
+        deleted = await service.cleanup_retention(
+            _AGENT_ID,
+            agent_category_overrides=overrides,
+            agent_default_retention_days=60,
+        )
+        assert deleted == 0
+        # With agent_default_retention_days=60 and no company rules,
+        # all 5 categories should be checked
+        assert backend.retrieve.call_count == len(MemoryCategory)
+
+    async def test_no_overrides_backward_compatible(self) -> None:
+        """Calling without overrides works exactly as before."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+        config = ConsolidationConfig(retention=RetentionConfig())
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+        )
+        deleted = await service.cleanup_retention(_AGENT_ID)
+        assert deleted == 0
+        # No rules, no defaults -- no categories checked
+        backend.retrieve.assert_not_called()
+
+
+@pytest.mark.unit
+class TestRunMaintenanceOverrides:
+    """run_maintenance forwards agent overrides through cleanup."""
+
+    async def test_maintenance_forwards_overrides(self) -> None:
+        """run_maintenance passes agent overrides to cleanup_retention."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+        backend.count = AsyncMock(return_value=0)
+        config = ConsolidationConfig(retention=RetentionConfig())
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+        )
+        overrides = {MemoryCategory.EPISODIC: 180}
+        result = await service.run_maintenance(
+            _AGENT_ID,
+            agent_category_overrides=overrides,
+            agent_default_retention_days=30,
+        )
+        assert result.consolidated_count == 0
+        # With agent_default=30 and no company rules, all 5 categories
+        # should be checked (agent default fills all gaps)
+        assert backend.retrieve.call_count == len(MemoryCategory)

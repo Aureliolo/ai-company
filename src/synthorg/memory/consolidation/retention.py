@@ -1,9 +1,11 @@
 """Retention enforcer for memory lifecycle management.
 
 Deletes memories that have exceeded their per-category retention
-period.
+period.  Supports per-agent overrides that take priority over
+company-level defaults.
 """
 
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime, timedelta
 
 from synthorg.core.enums import MemoryCategory
@@ -13,6 +15,7 @@ from synthorg.memory.models import MemoryQuery
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
+    RETENTION_AGENT_OVERRIDE_APPLIED,
     RETENTION_CLEANUP_COMPLETE,
     RETENTION_CLEANUP_FAILED,
     RETENTION_CLEANUP_START,
@@ -68,10 +71,64 @@ class RetentionEnforcer:
                 result.append((category, config.default_retention_days))
         return tuple(result)
 
+    @staticmethod
+    def _resolve_categories(
+        base: tuple[tuple[MemoryCategory, int], ...],
+        agent_overrides: Mapping[MemoryCategory, int],
+        agent_default_days: int | None,
+        company_default_days: int | None,
+    ) -> tuple[tuple[MemoryCategory, int], ...]:
+        """Merge agent overrides with company-level retention config.
+
+        Resolution per category (highest priority first):
+
+        1. Agent per-category override
+        2. Company per-category rule (from *base*)
+        3. Agent global default (*agent_default_days*)
+        4. Company global default (*company_default_days*)
+        5. Skip (keep forever)
+
+        Args:
+            base: Pre-computed company (category, days) pairs.
+            agent_overrides: Agent per-category retention overrides.
+            agent_default_days: Agent-level default retention in days.
+            company_default_days: Company-level default retention in
+                days.
+
+        Returns:
+            Merged tuple of (category, days) pairs.
+        """
+        base_dict = dict(base)
+        result: list[tuple[MemoryCategory, int]] = []
+        for category in MemoryCategory:
+            # 1. Agent per-category override
+            agent_days = agent_overrides.get(category)
+            if agent_days is not None:
+                result.append((category, agent_days))
+                continue
+            # 2. Company per-category rule
+            company_days = base_dict.get(category)
+            if company_days is not None:
+                result.append((category, company_days))
+                continue
+            # 3. Agent global default
+            if agent_default_days is not None:
+                result.append((category, agent_default_days))
+                continue
+            # 4. Company global default
+            if company_default_days is not None:
+                result.append((category, company_default_days))
+                continue
+            # 5. No retention -- skip
+        return tuple(result)
+
     async def cleanup_expired(
         self,
         agent_id: NotBlankStr,
         now: datetime | None = None,
+        *,
+        agent_category_overrides: Mapping[MemoryCategory, int] | None = None,
+        agent_default_retention_days: int | None = None,
     ) -> int:
         """Delete memories that have exceeded their retention period.
 
@@ -82,9 +139,17 @@ class RetentionEnforcer:
         invocation.  Multiple calls may be needed for categories
         with a large backlog.
 
+        When *agent_category_overrides* or *agent_default_retention_days*
+        is provided, per-agent retention rules are merged with company
+        defaults using :meth:`_resolve_categories`.
+
         Args:
             agent_id: Agent whose memories to clean up.
             now: Current time (defaults to UTC now).
+            agent_category_overrides: Per-category retention overrides
+                for this agent (mapping of category to days).
+            agent_default_retention_days: Agent-level default retention
+                in days.
 
         Returns:
             Number of expired memories deleted.
@@ -92,10 +157,29 @@ class RetentionEnforcer:
         if now is None:
             now = datetime.now(UTC)
 
+        has_overrides = (
+            agent_category_overrides is not None
+            or agent_default_retention_days is not None
+        )
+        if has_overrides:
+            categories_to_check = self._resolve_categories(
+                self._categories_to_check,
+                agent_overrides=agent_category_overrides or {},
+                agent_default_days=agent_default_retention_days,
+                company_default_days=self._config.default_retention_days,
+            )
+            logger.info(
+                RETENTION_AGENT_OVERRIDE_APPLIED,
+                agent_id=agent_id,
+                overridden_count=len(categories_to_check),
+            )
+        else:
+            categories_to_check = self._categories_to_check
+
         logger.info(RETENTION_CLEANUP_START, agent_id=agent_id)
         total_deleted = 0
 
-        for category, retention_days in self._categories_to_check:
+        for category, retention_days in categories_to_check:
             try:
                 cutoff = now - timedelta(days=retention_days)
                 query = MemoryQuery(

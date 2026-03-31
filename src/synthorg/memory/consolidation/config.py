@@ -14,11 +14,19 @@ from synthorg.memory.consolidation.models import RetentionRule  # noqa: TC001
 
 
 class RetentionConfig(BaseModel):
-    """Per-category retention configuration.
+    """Per-category retention configuration (company-level defaults).
 
-    Retention rules apply uniformly across all agents.  Per-agent
-    retention overrides (e.g. longer retention for senior agents) are
-    not yet supported and are a known scope gap for a future iteration.
+    These rules apply as the baseline for all agents.  Individual agents
+    can override specific categories via
+    :attr:`~synthorg.core.agent.MemoryConfig.retention_overrides`.
+
+    Resolution order per category (highest priority first):
+
+    1. Agent per-category override
+    2. Company per-category rule (this config)
+    3. Agent global default (``MemoryConfig.retention_days``)
+    4. Company global default (``default_retention_days``)
+    5. No retention (keep forever)
 
     Attributes:
         rules: Per-category retention rules (unique categories).

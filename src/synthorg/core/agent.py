@@ -14,6 +14,7 @@ from synthorg.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
+    MemoryCategory,
     MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
@@ -179,12 +180,41 @@ class ModelConfig(BaseModel):
     )
 
 
+class AgentRetentionRule(BaseModel):
+    """Per-category retention override for an agent.
+
+    Structurally identical to
+    :class:`~synthorg.memory.consolidation.models.RetentionRule` but
+    defined in ``core`` to avoid a ``core -> memory`` import dependency.
+
+    Attributes:
+        category: Memory category this override applies to.
+        retention_days: Number of days to retain memories in this
+            category.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    category: MemoryCategory = Field(
+        description="Memory category this override applies to",
+    )
+    retention_days: int = Field(
+        ge=1,
+        description="Number of days to retain memories",
+    )
+
+
 class MemoryConfig(BaseModel):
     """Memory configuration for an agent.
 
     Attributes:
         type: Memory persistence type.
         retention_days: Days to retain memories (``None`` means forever).
+            Also serves as the agent-level global default for retention
+            when per-category overrides are not specified.
+        retention_overrides: Per-category retention overrides for this
+            agent.  These take priority over company-level per-category
+            rules during retention enforcement.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -197,6 +227,10 @@ class MemoryConfig(BaseModel):
         default=None,
         ge=1,
         description="Days to retain memories (None = forever)",
+    )
+    retention_overrides: tuple[AgentRetentionRule, ...] = Field(
+        default=(),
+        description="Per-category retention overrides for this agent",
     )
 
     @model_validator(mode="after")
@@ -212,6 +246,26 @@ class MemoryConfig(BaseModel):
                 retention_days=self.retention_days,
                 reason=msg,
             )
+            raise ValueError(msg)
+        if self.type is MemoryLevel.NONE and self.retention_overrides:
+            msg = "retention_overrides must be empty when memory type is 'none'"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryConfig",
+                field="retention_overrides",
+                memory_type=str(self.type),
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_override_categories(self) -> Self:
+        """Ensure each category appears at most once in overrides."""
+        categories = [rule.category for rule in self.retention_overrides]
+        if len(categories) != len(set(categories)):
+            dupes = sorted(c.value for c in categories if categories.count(c) > 1)
+            msg = f"Duplicate retention override categories: {dupes}"
             raise ValueError(msg)
         return self
 

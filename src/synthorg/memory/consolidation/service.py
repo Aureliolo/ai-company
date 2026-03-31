@@ -4,8 +4,10 @@ Orchestrates retention cleanup, consolidation, archival, and
 max-memories enforcement into a single maintenance entry point.
 """
 
+from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 
+from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from synthorg.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
@@ -192,34 +194,56 @@ class MemoryConsolidationService:
     async def cleanup_retention(
         self,
         agent_id: NotBlankStr,
+        *,
+        agent_category_overrides: (Mapping[MemoryCategory, int] | None) = None,
+        agent_default_retention_days: int | None = None,
     ) -> int:
         """Run retention cleanup for an agent.
 
         Args:
             agent_id: Agent whose expired memories to clean up.
+            agent_category_overrides: Per-category retention overrides
+                for this agent.
+            agent_default_retention_days: Agent-level default retention
+                in days.
 
         Returns:
             Number of expired memories deleted.
         """
-        return await self._retention.cleanup_expired(agent_id)
+        return await self._retention.cleanup_expired(
+            agent_id,
+            agent_category_overrides=agent_category_overrides,
+            agent_default_retention_days=agent_default_retention_days,
+        )
 
     async def run_maintenance(
         self,
         agent_id: NotBlankStr,
+        *,
+        agent_category_overrides: (Mapping[MemoryCategory, int] | None) = None,
+        agent_default_retention_days: int | None = None,
     ) -> ConsolidationResult:
         """Run full maintenance cycle for an agent.
 
-        Orchestrates: retention cleanup → consolidation → max enforcement.
+        Orchestrates: retention cleanup -> consolidation -> max enforcement.
 
         Args:
             agent_id: Agent to maintain.
+            agent_category_overrides: Per-category retention overrides
+                for this agent.
+            agent_default_retention_days: Agent-level default retention
+                in days.
 
         Returns:
             Consolidation result from the consolidation step.
         """
         logger.info(MAINTENANCE_START, agent_id=agent_id)
         try:
-            await self.cleanup_retention(agent_id)
+            await self.cleanup_retention(
+                agent_id,
+                agent_category_overrides=agent_category_overrides,
+                agent_default_retention_days=agent_default_retention_days,
+            )
             result = await self.run_consolidation(agent_id)
             await self.enforce_max_memories(agent_id)
         except Exception as exc:
