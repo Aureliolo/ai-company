@@ -559,23 +559,22 @@ function jsonCompletionSource(
     let braceDepth = 0
     let currentNamespace: string | null = null
 
-    // Walk backwards to determine context
+    // Walk backwards to determine context.
+    // braceDepth counts unmatched '{' seen while scanning backward.
+    // The first unmatched '{' is the innermost enclosing object.
     for (let i = pos - 1; i >= 0; i--) {
       const ch = text[i]
       if (ch === '{') {
         braceDepth++
         if (braceDepth === 1) {
-          // We're inside the root object -- suggest namespaces
-          break
-        }
-        if (braceDepth === 2) {
-          // We're inside a namespace object -- find which one
-          // Look backwards from this opening brace to find the key
+          // First enclosing '{' -- check if it belongs to a namespace
           const preceding = text.slice(0, i).trimEnd()
           const nsMatch = /"(\w+)"\s*:\s*$/.exec(preceding)
           if (nsMatch) {
+            // We're inside a namespace object (e.g. "api": { | })
             currentNamespace = nsMatch[1] ?? null
           }
+          // If no nsMatch, we're at the root object level
           break
         }
       } else if (ch === '}') {
@@ -613,7 +612,7 @@ function jsonCompletionSource(
     const partial = keyMatch[1] ?? ''
     const from = pos - partial.length
 
-    if (braceDepth >= 2 && currentNamespace) {
+    if (currentNamespace) {
       // Inside a namespace -- suggest setting keys
       const keyInfo = schema.keys.get(currentNamespace)
       if (!keyInfo) return null

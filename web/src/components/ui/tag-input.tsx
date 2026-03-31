@@ -114,6 +114,7 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
         onPaste={handlePaste}
         disabled={disabled}
         placeholder={value.length === 0 ? placeholder : undefined}
+        aria-label={placeholder ?? 'Tags input'}
         className="min-w-20 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
       />
     </div>

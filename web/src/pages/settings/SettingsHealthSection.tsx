@@ -25,7 +25,7 @@ export function NamespaceTabBar({
     (e: React.KeyboardEvent) => {
       const container = tablistRef.current
       if (!container) return
-      const tabs = Array.from(container.querySelectorAll<HTMLElement>('[role="tab"]'))
+      const tabs = Array.from(container.querySelectorAll<HTMLElement>('button'))
       const current = tabs.findIndex((t) => t === document.activeElement)
       if (current === -1) return
 
