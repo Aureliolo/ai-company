@@ -20,6 +20,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.project import Project
 from synthorg.core.task import Task
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 from synthorg.hr.enums import LifecycleEventType
@@ -410,14 +411,14 @@ class FakeArtifactRepository:
     async def save(self, artifact: Artifact) -> None:
         self._artifacts[artifact.id] = artifact
 
-    async def get(self, artifact_id: str) -> Artifact | None:
+    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return self._artifacts.get(artifact_id)
 
     async def list_artifacts(
         self,
         *,
-        task_id: str | None = None,
-        created_by: str | None = None,
+        task_id: NotBlankStr | None = None,
+        created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
     ) -> tuple[Artifact, ...]:
         result = list(self._artifacts.values())
@@ -429,7 +430,7 @@ class FakeArtifactRepository:
             result = [a for a in result if a.type == artifact_type]
         return tuple(result)
 
-    async def delete(self, artifact_id: str) -> bool:
+    async def delete(self, artifact_id: NotBlankStr) -> bool:
         return self._artifacts.pop(artifact_id, None) is not None
 
 
@@ -442,14 +443,14 @@ class FakeProjectRepository:
     async def save(self, project: Project) -> None:
         self._projects[project.id] = project
 
-    async def get(self, project_id: str) -> Project | None:
+    async def get(self, project_id: NotBlankStr) -> Project | None:
         return self._projects.get(project_id)
 
     async def list_projects(
         self,
         *,
         status: ProjectStatus | None = None,
-        lead: str | None = None,
+        lead: NotBlankStr | None = None,
     ) -> tuple[Project, ...]:
         result = list(self._projects.values())
         if status is not None:
@@ -458,7 +459,7 @@ class FakeProjectRepository:
             result = [p for p in result if p.lead == lead]
         return tuple(result)
 
-    async def delete(self, project_id: str) -> bool:
+    async def delete(self, project_id: NotBlankStr) -> bool:
         return self._projects.pop(project_id, None) is not None
 
 

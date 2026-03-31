@@ -155,8 +155,6 @@ class TestSQLiteArtifactRepository:
         self, repo: SQLiteArtifactRepository
     ) -> None:
         """created_at is NOT NULL and always timezone-aware on roundtrip."""
-        from datetime import UTC, datetime
-
         ts = datetime(2026, 3, 31, 12, 0, 0, tzinfo=UTC)
         artifact = Artifact(
             id="a-aware",

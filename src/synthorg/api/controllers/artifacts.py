@@ -19,7 +19,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+    PERSISTENCE_ARTIFACT_DELETED,
+    PERSISTENCE_ARTIFACT_SAVED,
+    PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+    PERSISTENCE_ARTIFACT_STORED,
 )
 from synthorg.persistence.errors import (
     ArtifactStorageFullError,
@@ -70,7 +74,7 @@ CreatedByFilter = Annotated[
 ]
 
 TypeFilter = Annotated[
-    str | None,
+    NotBlankStr | None,
     Parameter(
         required=False,
         query="type",
@@ -189,6 +193,7 @@ class ArtifactController(Controller):
         )
         repo = state.app_state.persistence.artifacts
         await repo.save(artifact)
+        logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
         return Response(
             content=ApiResponse[Artifact](data=artifact),
             status_code=201,
@@ -222,8 +227,16 @@ class ArtifactController(Controller):
                 ),
                 status_code=404,
             )
+        logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
         storage = state.app_state.artifact_storage
-        await storage.delete(artifact_id)
+        try:
+            await storage.delete(artifact_id)
+        except Exception as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
+                artifact_id=artifact_id,
+                error=str(exc),
+            )
         return Response(
             content=ApiResponse[None](data=None),
             status_code=200,
@@ -291,7 +304,13 @@ class ArtifactController(Controller):
         )
         try:
             await repo.save(updated)
-        except PersistenceError:
+        except PersistenceError as exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORED,
+                artifact_id=artifact_id,
+                error=str(exc),
+                note="metadata save failed, rolling back content",
+            )
             try:
                 await storage.delete(artifact_id)
             except Exception as cleanup_exc:
@@ -301,6 +320,11 @@ class ArtifactController(Controller):
                     error=str(cleanup_exc),
                 )
             raise
+        logger.info(
+            PERSISTENCE_ARTIFACT_STORED,
+            artifact_id=artifact_id,
+            size_bytes=size,
+        )
         return Response(
             content=ApiResponse[Artifact](data=updated),
             status_code=200,

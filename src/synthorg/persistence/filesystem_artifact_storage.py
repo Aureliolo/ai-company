@@ -6,6 +6,8 @@ Uses ``asyncio.to_thread()`` for blocking file I/O operations.
 
 import asyncio
 import contextlib
+import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -295,7 +297,16 @@ class FileSystemArtifactStorage:
             with open(fd, "wb") as f:  # noqa: PTH123 -- fd is an int, not a path
                 f.write(content)
                 f.flush()
+                os.fsync(f.fileno())
             tmp_path.replace(file_path)
+            # Fsync the directory to ensure the rename is durable.
+            # Not supported on Windows (directories can't be opened).
+            if sys.platform != "win32":
+                dir_fd = os.open(str(self._artifacts_dir), os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise

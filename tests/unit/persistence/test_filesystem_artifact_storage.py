@@ -143,3 +143,27 @@ class TestFileSystemArtifactStorage:
     ) -> None:
         with pytest.raises(ValueError, match="Invalid artifact_id"):
             await storage.exists("../../etc/shadow")
+
+    async def test_absolute_path_rejected_store(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.store("/etc/passwd", b"exploit")
+
+    async def test_absolute_path_rejected_retrieve(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.retrieve("/etc/passwd")
+
+    async def test_absolute_path_rejected_delete(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.delete("/etc/passwd")
+
+    async def test_absolute_path_rejected_exists(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.exists("/etc/passwd")
