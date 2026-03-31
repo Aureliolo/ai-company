@@ -30,7 +30,7 @@ class RotationConfig(BaseModel):
         backup_count: Number of rotated backup files to keep.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     strategy: RotationStrategy = Field(
         default=RotationStrategy.BUILTIN,
@@ -60,7 +60,7 @@ class SinkConfig(BaseModel):
         json_format: Whether to format output as JSON.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     sink_type: SinkType = Field(
         description="Log output destination type",
@@ -124,7 +124,7 @@ class LogConfig(BaseModel):
         log_dir: Directory for log files.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     root_level: LogLevel = Field(
         default=LogLevel.DEBUG,

@@ -15,7 +15,7 @@ class RoundRobinConfig(BaseModel):
         leader_summarizes: Whether the leader produces a final summary.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     max_turns_per_agent: int = Field(
         default=2,
@@ -43,7 +43,7 @@ class PositionPapersConfig(BaseModel):
             runtime; otherwise interpreted as a specific agent ID.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     max_tokens_per_position: int = Field(
         default=300,
@@ -66,7 +66,7 @@ class StructuredPhasesConfig(BaseModel):
             round.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     skip_discussion_if_no_conflicts: bool = Field(
         default=True,
@@ -94,7 +94,7 @@ class MeetingProtocolConfig(BaseModel):
         structured_phases: Structured-phases protocol settings.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     protocol: MeetingProtocolType = Field(
         default=MeetingProtocolType.ROUND_ROBIN,

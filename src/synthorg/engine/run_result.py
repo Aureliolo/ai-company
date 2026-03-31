@@ -31,7 +31,7 @@ class AgentRunResult(BaseModel):
             reserved for future taskless runs).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     execution_result: ExecutionResult = Field(
         description="Outcome from the execution loop",

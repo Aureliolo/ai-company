@@ -36,7 +36,7 @@ class DockerSandboxConfig(BaseModel):
         runtime: Optional container runtime (e.g. ``"runsc"`` for gVisor).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     image: NotBlankStr = Field(
         default="synthorg-sandbox:latest",

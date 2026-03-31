@@ -24,7 +24,7 @@ class Attachment(BaseModel):
         ref: Reference identifier (e.g. artifact ID, URL, file path).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     type: AttachmentType = Field(description="Kind of attachment")
     ref: NotBlankStr = Field(description="Reference identifier")
@@ -44,7 +44,7 @@ class MessageMetadata(BaseModel):
         extra: Immutable key-value pairs for arbitrary metadata (extension).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_id: NotBlankStr | None = Field(
         default=None,
@@ -105,7 +105,7 @@ class Message(BaseModel):
         metadata: Optional message metadata.
     """
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True, allow_inf_nan=False)
 
     id: UUID = Field(
         default_factory=uuid4,

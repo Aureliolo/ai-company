@@ -108,7 +108,7 @@ class RoutingDecision(BaseModel):
         fallbacks_tried: Model refs that were tried before the final choice.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     resolved_model: ResolvedModel = Field(description="The chosen model")
     strategy_used: NotBlankStr = Field(description="Strategy name")

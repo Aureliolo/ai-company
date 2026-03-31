@@ -54,7 +54,7 @@ class TurnRecord(BaseModel):
             metrics (productive, coordination, system).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     turn_number: int = Field(gt=0, description="1-indexed turn number")
     input_tokens: int = Field(ge=0, description="Input tokens this turn")
@@ -98,7 +98,7 @@ class ExecutionResult(BaseModel):
             system boundaries per project conventions.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     context: AgentContext = Field(description="Final agent context")
     termination_reason: TerminationReason = Field(

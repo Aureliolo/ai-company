@@ -22,7 +22,7 @@ class TeamBudget(BaseModel):
         budget_percent: Percent of department budget allocated to this team.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     team_name: NotBlankStr = Field(
         description="Team name",
@@ -47,7 +47,7 @@ class DepartmentBudget(BaseModel):
         teams: Team budget allocations within this department.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     department_name: NotBlankStr = Field(
         description="Department name",
@@ -103,7 +103,7 @@ class BudgetHierarchy(BaseModel):
         departments: Department budget allocations.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     total_monthly: float = Field(
         ge=0.0,

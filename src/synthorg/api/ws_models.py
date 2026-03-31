@@ -67,7 +67,7 @@ class WsEvent(BaseModel):
         payload: Event-specific data.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     event_type: WsEventType = Field(
         description="Event classification",

@@ -59,7 +59,7 @@ class AutoLoopRule(BaseModel):
             ``"plan_execute"``, ``"hybrid"``).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     complexity: Complexity = Field(description="Task complexity level")
     loop_type: NotBlankStr = Field(description="Loop type identifier")
@@ -108,7 +108,7 @@ class AutoLoopConfig(BaseModel):
             task's complexity.  Must be a known loop type.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     rules: tuple[AutoLoopRule, ...] = Field(
         default=DEFAULT_AUTO_LOOP_RULES,

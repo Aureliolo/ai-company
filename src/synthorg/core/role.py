@@ -20,7 +20,7 @@ class Skill(BaseModel):
         proficiency: Agent's proficiency in this skill.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Skill name")
     category: SkillCategory = Field(description="Skill category")
@@ -40,7 +40,7 @@ class Authority(BaseModel):
         budget_limit: Maximum spend per task in USD (base currency).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     can_approve: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -71,7 +71,7 @@ class SeniorityInfo(BaseModel):
         cost_tier: Cost tier identifier (built-in ``CostTier`` or user-defined string).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     level: SeniorityLevel = Field(description="Seniority level")
     authority_scope: NotBlankStr = Field(
@@ -98,7 +98,7 @@ class Role(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Role name")
     department: DepartmentName = Field(
@@ -142,7 +142,7 @@ class CustomRole(BaseModel):
         suggested_model: Suggested model tier.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Custom role name")
     department: DepartmentName | str = Field(

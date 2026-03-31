@@ -107,6 +107,7 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Config vs runtime split** | Adopted | Frozen models for config/identity; `model_copy(update=...)` for runtime state transitions (e.g., `TaskExecution`, `AgentContext`). |
 | **Derived fields** | Adopted | `@computed_field` instead of stored + validated redundant fields. |
 | **String validation** | Adopted | `NotBlankStr` type from `core.types` for all identifier/name fields, eliminating per-model validator boilerplate. |
+| **Numeric field safety** | Adopted | `allow_inf_nan=False` in all `ConfigDict` declarations to reject `NaN`/`Inf` in numeric fields at validation time. |
 | **Shared field groups** | Adopted | Common field sets extracted into base models (e.g., `_SpendingTotals`) to prevent duplication. |
 | **Event constants** | Adopted | Per-domain submodules under `observability/events/`. Direct imports: `from synthorg.observability.events.<domain> import CONSTANT`. |
 | **Parallel tool execution** | Adopted | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore and structured error collection. |

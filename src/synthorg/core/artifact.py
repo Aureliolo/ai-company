@@ -20,7 +20,7 @@ class ExpectedArtifact(BaseModel):
         path: File or directory path where the artifact should be produced.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     type: ArtifactType = Field(description="Type of artifact expected")
     path: NotBlankStr = Field(
@@ -44,7 +44,7 @@ class Artifact(BaseModel):
         created_at: Timestamp when the artifact was created.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(description="Unique artifact identifier")
     type: ArtifactType = Field(description="Artifact type")

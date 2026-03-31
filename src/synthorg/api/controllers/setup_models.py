@@ -57,7 +57,7 @@ class SetupStatusResponse(BaseModel):
         min_password_length: Backend-configured minimum password length.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     needs_admin: bool
     needs_setup: bool
@@ -79,7 +79,7 @@ class TemplateVariableResponse(BaseModel):
         required: Whether the user must supply a value.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
     description: str = ""
@@ -106,7 +106,7 @@ class TemplateInfoResponse(BaseModel):
         workflow: Workflow type (e.g. ``"agile_kanban"``, ``"kanban"``).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr
     display_name: NotBlankStr
@@ -153,7 +153,7 @@ class SetupCompanyRequest(BaseModel):
         template_name: Optional template to apply (None = blank company).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     company_name: NotBlankStr = Field(max_length=200)
     description: str | None = Field(default=None, max_length=1000)
@@ -174,7 +174,7 @@ class SetupAgentSummary(BaseModel):
         personality_preset: Personality preset name, if any.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
     role: NotBlankStr
@@ -199,7 +199,7 @@ class SetupCompanyResponse(BaseModel):
         agents: Agent summaries for the Review Org step.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     company_name: NotBlankStr
     description: str | None
@@ -228,7 +228,7 @@ class SetupAgentRequest(BaseModel):
         budget_limit_monthly: Optional monthly budget limit in base currency.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr = Field(max_length=200)
     role: NotBlankStr = Field(max_length=100)
@@ -265,7 +265,7 @@ class SetupAgentResponse(BaseModel):
         model_id: Model identifier.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
     role: NotBlankStr
@@ -282,7 +282,7 @@ class UpdateAgentModelRequest(BaseModel):
         model_id: Model identifier from that provider.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     model_provider: NotBlankStr = Field(max_length=100)
     model_id: NotBlankStr = Field(max_length=200)
@@ -295,7 +295,7 @@ class UpdateAgentNameRequest(BaseModel):
         name: New agent display name.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr = Field(max_length=200)
 
@@ -308,7 +308,7 @@ class UpdateAgentPersonalityRequest(BaseModel):
             ``PERSONALITY_PRESETS``).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     personality_preset: NotBlankStr = Field(max_length=100)
 
@@ -329,7 +329,7 @@ class PersonalityPresetInfoResponse(BaseModel):
         description: Human-readable description.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr
     description: str = ""
@@ -342,7 +342,7 @@ class PersonalityPresetsListResponse(BaseModel):
         presets: Preset summaries.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     presets: tuple[PersonalityPresetInfoResponse, ...]
 
@@ -355,7 +355,7 @@ class SetupAgentsListResponse(BaseModel):
         agent_count: Number of agents (computed from ``agents``).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agents: tuple[SetupAgentSummary, ...]
 
@@ -374,7 +374,7 @@ class SetupNameLocalesRequest(BaseModel):
             ``["__all__"]`` for all Latin-script locales.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     locales: list[NotBlankStr] = Field(min_length=1, max_length=100)
 
@@ -386,7 +386,7 @@ class SetupNameLocalesResponse(BaseModel):
         locales: Stored locale codes (``["__all__"]`` if worldwide).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     locales: list[NotBlankStr]
 
@@ -399,7 +399,7 @@ class AvailableLocalesResponse(BaseModel):
         display_names: Mapping of locale code to human-readable name.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     regions: dict[str, list[str]]
     display_names: dict[str, str]
@@ -412,6 +412,6 @@ class SetupCompleteResponse(BaseModel):
         setup_complete: Always True on success.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     setup_complete: Literal[True]

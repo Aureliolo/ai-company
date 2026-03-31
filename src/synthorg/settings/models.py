@@ -54,7 +54,7 @@ class SettingDefinition(BaseModel):
         yaml_path: Dotted path into ``RootConfig`` for YAML resolution.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     namespace: SettingNamespace = Field(description="Setting namespace")
     key: NotBlankStr = Field(description="Setting key within namespace")
@@ -221,7 +221,7 @@ class SettingValue(BaseModel):
         updated_at: ISO 8601 timestamp for DB-sourced values.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     namespace: SettingNamespace = Field(description="Setting namespace")
     key: NotBlankStr = Field(description="Setting key")
@@ -246,7 +246,7 @@ class SettingEntry(BaseModel):
         updated_at: ISO 8601 timestamp for DB-sourced values.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     definition: SettingDefinition = Field(description="Setting metadata")
     value: str = Field(description="Resolved value as string")

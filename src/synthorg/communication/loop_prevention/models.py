@@ -16,7 +16,7 @@ class GuardCheckOutcome(BaseModel):
         message: Human-readable detail (empty on success).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     passed: bool = Field(description="Whether the check passed")
     mechanism: NotBlankStr = Field(

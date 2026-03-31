@@ -25,7 +25,7 @@ class CorsConfig(BaseModel):
             allowed in cross-origin requests.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     allowed_origins: tuple[str, ...] = Field(
         default=("http://localhost:5173",),
@@ -81,7 +81,7 @@ class RateLimitConfig(BaseModel):
         exclude_paths: Paths excluded from rate limiting.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     max_requests: int = Field(
         default=100,
@@ -111,7 +111,7 @@ class ServerConfig(BaseModel):
         ws_ping_timeout: WebSocket pong timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     host: str = Field(
         default="127.0.0.1",
@@ -156,7 +156,7 @@ class ApiConfig(BaseModel):
         api_prefix: URL prefix for all API routes.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     cors: CorsConfig = Field(
         default_factory=CorsConfig,

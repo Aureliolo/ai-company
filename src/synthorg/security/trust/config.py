@@ -232,7 +232,7 @@ class TrustConfig(BaseModel):
         re_verification: Re-verification configuration (used by milestone strategy).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     strategy: TrustStrategyType = Field(
         default=TrustStrategyType.DISABLED,

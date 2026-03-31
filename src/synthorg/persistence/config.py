@@ -78,7 +78,7 @@ class PersistenceConfig(BaseModel):
             ``backend="sqlite"``).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"sqlite"})
 

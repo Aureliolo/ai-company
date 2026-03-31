@@ -114,7 +114,7 @@ class ProviderConfig(BaseModel):
         family: Provider family for cross-validation grouping.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     driver: NotBlankStr = Field(
         default="litellm",
@@ -279,7 +279,7 @@ class RoutingRuleConfig(BaseModel):
         fallback: Fallback model alias or ID.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     role_level: SeniorityLevel | None = Field(
         default=None,
@@ -323,7 +323,7 @@ class RoutingConfig(BaseModel):
         fallback_chain: Ordered fallback model aliases or IDs.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     strategy: NotBlankStr = Field(
         default="cost_aware",
@@ -360,7 +360,7 @@ class AgentConfig(BaseModel):
         authority: Raw authority config dict.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Agent display name")
     role: NotBlankStr = Field(description="Role name")
@@ -532,7 +532,7 @@ class RootConfig(BaseModel):
         backup: Backup and restore configuration.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     company_name: NotBlankStr = Field(
         description="Company name",

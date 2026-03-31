@@ -23,7 +23,7 @@ class SemanticAnalysisConfig(BaseModel):
         git_concurrency: Maximum concurrent git show calls.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     enabled: bool = Field(
         default=False,
@@ -98,7 +98,7 @@ class PlannerWorktreesConfig(BaseModel):
         cleanup_on_merge: Whether to remove worktree after merge.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     max_concurrent_worktrees: int = Field(
         default=8,
@@ -136,7 +136,7 @@ class WorkspaceIsolationConfig(BaseModel):
         planner_worktrees: Config for planner-worktrees strategy.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     strategy: NotBlankStr = Field(
         default="planner_worktrees",

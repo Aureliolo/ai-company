@@ -91,7 +91,7 @@ class SecurityVerdict(BaseModel):
             LLM evaluator based on ``VerdictReasonVisibility`` config.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     verdict: SecurityVerdictType
     reason: NotBlankStr
@@ -130,7 +130,7 @@ class SecurityContext(BaseModel):
             for cross-family model selection.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     tool_name: NotBlankStr
     tool_category: ToolCategory
@@ -184,7 +184,7 @@ class AuditEntry(BaseModel):
         approval_id: Set when verdict is escalate.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     timestamp: AwareDatetime
@@ -215,7 +215,7 @@ class OutputScanResult(BaseModel):
             withholding from scanner failure.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     has_sensitive_data: bool = False
     findings: tuple[NotBlankStr, ...] = ()

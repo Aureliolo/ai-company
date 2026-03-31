@@ -37,7 +37,7 @@ class TemplateVariable(BaseModel):
         required: Whether the user must provide this value.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Variable name")
     description: str = Field(default="", description="Human-readable description")
@@ -117,7 +117,7 @@ class TemplateAgentConfig(BaseModel):
             parent agent during inheritance.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     role: NotBlankStr = Field(description="Built-in role name")
     name: str = Field(default="", description="Agent name (may have Jinja2 vars)")
@@ -199,7 +199,7 @@ class TemplateDepartmentConfig(BaseModel):
         policies: Department operational policies.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Department name")
     budget_percent: float = Field(
@@ -253,7 +253,7 @@ class TemplateMetadata(BaseModel):
             exhibits.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Template display name")
     description: str = Field(default="", description="Template description")
@@ -321,7 +321,7 @@ class CompanyTemplate(BaseModel):
             standalone templates).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     metadata: TemplateMetadata = Field(description="Template metadata")
     variables: tuple[TemplateVariable, ...] = Field(

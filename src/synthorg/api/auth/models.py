@@ -29,7 +29,7 @@ class User(BaseModel):
         updated_at: Last modification timestamp.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     username: NotBlankStr
@@ -54,7 +54,7 @@ class ApiKey(BaseModel):
         revoked: Whether the key has been revoked.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     key_hash: NotBlankStr = Field(repr=False)
@@ -79,7 +79,7 @@ class AuthenticatedUser(BaseModel):
         must_change_password: Whether forced password change is pending.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     user_id: NotBlankStr
     username: NotBlankStr

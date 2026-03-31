@@ -182,7 +182,7 @@ class DnsValidationOk(BaseModel):
             for ``http.curloptResolve`` pinning).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     hostname: NotBlankStr
     port: int | None = Field(default=None, gt=0, le=65535)

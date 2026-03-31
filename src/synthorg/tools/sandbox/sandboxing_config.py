@@ -24,7 +24,7 @@ class SandboxingConfig(BaseModel):
         docker: Docker sandbox backend configuration.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     default_backend: _BackendName = "subprocess"
     overrides: dict[str, _BackendName] = Field(default_factory=dict)

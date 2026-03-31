@@ -41,7 +41,7 @@ class AgentSpending(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     total_cost_usd: float = Field(
@@ -68,7 +68,7 @@ class DailySummary(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     date: NotBlankStr = Field(description="ISO date (YYYY-MM-DD)")
     total_cost_usd: float = Field(
@@ -104,7 +104,7 @@ class PeriodSummary(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     total_cost_usd: float = Field(
         ge=0.0, description="Total cost in USD (base currency)"
@@ -151,7 +151,7 @@ class CostRecordListResponse(BaseModel):
         currency: ISO 4217 currency code.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     data: tuple[CostRecord, ...] = ()
     error: str | None = None

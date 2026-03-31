@@ -135,7 +135,7 @@ class SkillSet(BaseModel):
         secondary: Supporting skill names.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     primary: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -158,7 +158,7 @@ class ModelConfig(BaseModel):
         fallback_model: Optional fallback model identifier.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     provider: NotBlankStr = Field(description="LLM provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
@@ -187,7 +187,7 @@ class MemoryConfig(BaseModel):
         retention_days: Days to retain memories (``None`` means forever).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     type: MemoryLevel = Field(
         default=MemoryLevel.SESSION,
@@ -226,7 +226,7 @@ class ToolPermissions(BaseModel):
         denied: Explicitly denied tool names.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     access_level: ToolAccessLevel = Field(
         default=ToolAccessLevel.STANDARD,
@@ -286,7 +286,7 @@ class AgentIdentity(BaseModel):
         status: Current lifecycle status.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: UUID = Field(default_factory=uuid4, description="Unique agent identifier")
     name: NotBlankStr = Field(description="Agent display name")

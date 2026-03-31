@@ -30,7 +30,7 @@ class CoordinationEfficiency(BaseModel):
         turns_sas: Average turns for single-agent tasks.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     success_rate: float = Field(
         ge=0.0,
@@ -60,7 +60,7 @@ class CoordinationOverhead(BaseModel):
         turns_sas: Average turns for single-agent tasks.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     turns_mas: float = Field(gt=0, description="Avg turns (multi-agent)")
     turns_sas: float = Field(gt=0, description="Avg turns (single-agent)")
@@ -85,7 +85,7 @@ class ErrorAmplification(BaseModel):
         error_rate_sas: Single-agent error rate.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     error_rate_mas: float = Field(
         ge=0.0,
@@ -113,7 +113,7 @@ class MessageDensity(BaseModel):
         reasoning_turns: Number of reasoning turns.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     inter_agent_messages: int = Field(
         ge=0,
@@ -143,7 +143,7 @@ class RedundancyRate(BaseModel):
         sample_count: Number of similarity samples.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     value: float = Field(
         ge=0.0,
@@ -169,7 +169,7 @@ class CoordinationMetrics(BaseModel):
         redundancy_rate: Redundancy rate metric.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     efficiency: CoordinationEfficiency | None = Field(
         default=None,

@@ -49,7 +49,7 @@ class AuthConfig(BaseModel):
         exclude_paths: URL paths excluded from auth middleware.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     jwt_secret: str = Field(
         default="",

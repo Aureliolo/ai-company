@@ -38,7 +38,7 @@ class TriggerMeetingRequest(BaseModel):
         context: Optional context passed to participant resolver and agenda.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     event_name: NotBlankStr = Field(
         description="Event trigger name",
@@ -88,7 +88,7 @@ class MeetingResponse(MeetingRecord):
             minutes are present, ``None`` otherwise).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     token_usage_by_participant: dict[str, int] = Field(
         default_factory=dict,

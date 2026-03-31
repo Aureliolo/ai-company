@@ -61,7 +61,7 @@ class ReportingLine(BaseModel):
             the template system).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     subordinate: NotBlankStr = Field(description="Subordinate role name or identifier")
     supervisor: NotBlankStr = Field(description="Supervisor role name or identifier")
@@ -143,7 +143,7 @@ class ReviewRequirements(BaseModel):
         self_review_allowed: Whether an agent can review their own work.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     min_reviewers: int = Field(
         default=1,
@@ -169,7 +169,7 @@ class ApprovalChain(BaseModel):
         min_approvals: Minimum approvals needed (0 = all approvers required).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     action_type: NotBlankStr = Field(description="Action type for this chain")
     approvers: tuple[NotBlankStr, ...] = Field(description="Ordered approver names")
@@ -210,7 +210,7 @@ class DepartmentPolicies(BaseModel):
         approval_chains: Approval chains for various action types.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     review_requirements: ReviewRequirements = Field(
         default_factory=ReviewRequirements,
@@ -257,7 +257,7 @@ class WorkflowHandoff(BaseModel):
         artifacts: Artifacts passed during handoff.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     from_department: NotBlankStr = Field(description="Source department")
     to_department: NotBlankStr = Field(description="Target department")
@@ -288,7 +288,7 @@ class EscalationPath(BaseModel):
         priority_boost: Priority boost applied on escalation (0-3).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     from_department: NotBlankStr = Field(description="Source department")
     to_department: NotBlankStr = Field(description="Target department")
@@ -323,7 +323,7 @@ class Team(BaseModel):
         members: Team member agent names.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Team name")
     lead: NotBlankStr = Field(description="Team lead agent name")
@@ -371,7 +371,7 @@ class Department(BaseModel):
         policies: Department-level operational policies.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Department name")
     head: NotBlankStr | None = Field(
@@ -466,7 +466,7 @@ class CompanyConfig(BaseModel):
         tool_access_default: Default tool access for all agents.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     autonomy: AutonomyConfig = Field(
         default_factory=AutonomyConfig,
@@ -504,7 +504,7 @@ class HRRegistry(BaseModel):
         hiring_queue: Roles in the hiring pipeline (duplicates allowed).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     active_agents: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -552,7 +552,7 @@ class Company(BaseModel):
         escalation_paths: Cross-department escalation paths.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: UUID = Field(default_factory=uuid4, description="Company identifier")
     name: NotBlankStr = Field(description="Company name")

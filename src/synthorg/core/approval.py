@@ -41,7 +41,7 @@ class ApprovalItem(BaseModel):
         metadata: Additional key-value metadata.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     action_type: NotBlankStr

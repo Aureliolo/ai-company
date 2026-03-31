@@ -113,7 +113,7 @@ class PromotionApprovalDecision(BaseModel):
         reason: Explanation for the decision.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     auto_approve: bool = Field(description="Whether auto-approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
@@ -146,7 +146,7 @@ class PromotionRecord(BaseModel):
         new_model_id: New model ID (None if not changed).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
@@ -224,7 +224,7 @@ class PromotionRequest(BaseModel):
         approval_id: Linked approval item ID (for human approval).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),
