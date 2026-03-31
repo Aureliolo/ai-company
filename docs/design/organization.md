@@ -296,7 +296,7 @@ Personality presets come in two flavors:
 
 Custom preset names must match `^[a-z][a-z0-9_]*$` and cannot shadow built-in names. All custom presets are validated against `PersonalityConfig` before persistence. The API distinguishes origin via a `source: "builtin" | "custom"` field in responses.
 
-Discovery endpoints (`GET /presets`, `GET /presets/{name}`, `GET /schema`) are available to all authenticated users. CRUD endpoints require write access.
+Discovery endpoints (`GET /api/v1/personalities/presets`, `GET /api/v1/personalities/presets/{name}`, `GET /api/v1/personalities/schema`) are available to all authenticated users. CRUD endpoints require write access.
 
 ### Template Inheritance
 
