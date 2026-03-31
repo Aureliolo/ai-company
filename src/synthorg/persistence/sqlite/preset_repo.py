@@ -159,10 +159,11 @@ ON CONFLICT(name) DO UPDATE SET
             QueryError: If the database operation fails.
         """
         try:
-            cursor = await self._db.execute(
+            async with self._db.execute(
                 "DELETE FROM custom_presets WHERE name = ?",
                 (name,),
-            )
+            ) as cursor:
+                deleted = cursor.rowcount > 0
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to delete custom preset {name!r}"
@@ -172,7 +173,6 @@ ON CONFLICT(name) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        deleted = cursor.rowcount > 0
         logger.info(
             PRESET_CUSTOM_DELETED,
             preset_name=name,

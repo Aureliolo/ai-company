@@ -271,6 +271,11 @@ class PersonalityPresetService:
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "create")
 
+        # TOCTOU: get-then-save is not atomic. Under concurrent requests
+        # two creates may both pass and the second silently overwrites via
+        # the repo's upsert. Acceptable for MVP with low concurrency;
+        # consider transactional INSERT or locking if stricter semantics
+        # are needed (_repo.get, _repo.save).
         existing = await self._repo.get(NotBlankStr(key))
         if existing is not None:
             logger.warning(
@@ -329,6 +334,9 @@ class PersonalityPresetService:
         key = _normalize_preset_name(name)
         _check_not_builtin(key, "update")
 
+        # TOCTOU: get-then-save is not atomic. A concurrent delete could
+        # remove the preset between the check and save, causing a silent
+        # re-create via upsert. Same trade-off as create() above.
         existing = await self._repo.get(NotBlankStr(key))
         if existing is None:
             logger.warning(
