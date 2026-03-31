@@ -2,7 +2,9 @@ import { screen } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { Users } from 'lucide-react'
 import { SidebarNavItem } from '@/components/layout/SidebarNavItem'
+import { router } from '@/router/index'
 import { ROUTES } from '@/router/routes'
+import type { RouteObject } from 'react-router'
 import { renderWithRouter } from '../../test-utils'
 
 describe('SidebarNavItem', () => {
@@ -172,23 +174,25 @@ describe('SidebarNavItem', () => {
     })
 
     it('is not registered as a React Router route (served by nginx)', () => {
-      // ROUTES.DOCUMENTATION must not appear in any React Router <Route path>
-      // definition. If it did, React Router would intercept /docs/ navigation
-      // instead of letting it reach nginx. This test guards against someone
-      // accidentally adding a route for /docs/ in router/index.tsx.
-      const routerPaths = [
-        '/', '/login', '/setup', '/setup/:step',
-        'org', 'org/edit', 'tasks', 'tasks/:taskId',
-        'budget', 'budget/forecast', 'approvals',
-        'agents', 'agents/:agentName',
-        'messages', 'meetings', 'meetings/:meetingId',
-        'providers', 'providers/:providerName',
-        'settings', 'settings/:namespace', 'settings/observability/sinks',
-        '*',
-      ]
-      expect(routerPaths).not.toContain('/docs/')
-      expect(routerPaths).not.toContain('docs')
-      expect(routerPaths).not.toContain('docs/')
+      // Extract all path values from the actual router config recursively.
+      // If someone adds a /docs/ route to router/index.tsx, this test fails.
+      function extractPaths(routes: RouteObject[]): string[] {
+        const paths: string[] = []
+        for (const route of routes) {
+          if (route.path) paths.push(route.path)
+          if (route.children) paths.push(...extractPaths(route.children))
+        }
+        return paths
+      }
+
+      const allPaths = extractPaths(router.routes)
+      expect(allPaths).not.toContain('/docs/')
+      expect(allPaths).not.toContain('/docs')
+      expect(allPaths).not.toContain('docs')
+      expect(allPaths).not.toContain('docs/')
+      for (const path of allPaths) {
+        expect(path.startsWith('docs')).toBe(false)
+      }
     })
   })
 })

@@ -40,7 +40,9 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   )
 }
 
-const router = createBrowserRouter([
+/** Exported for test introspection (e.g. verifying /docs/ is not registered). */
+// eslint-disable-next-line react-refresh/only-export-components
+export const router = createBrowserRouter([
   // Public: Login
   {
     path: '/login',
