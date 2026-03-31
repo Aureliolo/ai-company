@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { apiSuccess } from './helpers'
+import { apiError, apiSuccess } from './helpers'
 import type { Artifact, PaginatedResponse, PaginationMeta } from '@/api/types'
 
 const mockArtifacts: Artifact[] = [
@@ -61,7 +61,7 @@ export const artifactsList = [
   http.get('/api/v1/artifacts/:id', ({ params }) => {
     const artifact = mockArtifacts.find((a) => a.id === params.id)
     if (!artifact) {
-      return HttpResponse.json(apiSuccess(null), { status: 404 })
+      return HttpResponse.json(apiError('Artifact not found'), { status: 404 })
     }
     return HttpResponse.json(apiSuccess(artifact))
   }),

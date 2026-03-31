@@ -20,7 +20,7 @@ export function ProjectGridView({ projects }: ProjectGridViewProps) {
   }
 
   return (
-    <StaggerGroup className="grid grid-cols-3 gap-grid-gap max-[1279px]:grid-cols-2 max-[767px]:grid-cols-1">
+    <StaggerGroup className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 xl:grid-cols-3">
       {projects.map((project) => (
         <StaggerItem key={project.id}>
           <ProjectCard project={project} />

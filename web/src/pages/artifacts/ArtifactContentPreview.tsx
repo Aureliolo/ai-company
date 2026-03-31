@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -33,6 +33,10 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   // Exclude SVG -- it is an XML document with JavaScript execution capability (XSS risk).
   const isImage = artifact.content_type?.startsWith('image/') && artifact.content_type !== 'image/svg+xml'
   const isText = contentPreview !== null
+
+  const handleDownload = useCallback(() => {
+    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
+  }, [artifact.id, artifact.path])
 
   // Load image as blob URL for image content types
   useEffect(() => {
@@ -70,10 +74,6 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
         />
       </SectionCard>
     )
-  }
-
-  function handleDownload() {
-    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
   }
 
   if (isText) {

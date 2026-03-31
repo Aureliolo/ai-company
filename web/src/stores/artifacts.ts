@@ -3,9 +3,14 @@ import { listArtifacts, getArtifact, getArtifactContentText, deleteArtifact as d
 import { getErrorMessage } from '@/utils/errors'
 import type { Artifact, ArtifactType, WsEvent } from '@/api/types'
 
-/** Content types eligible for inline text preview. */
+/** Content types eligible for inline text preview: text/*, application/json, and YAML. */
 function isPreviewableText(contentType: string): boolean {
-  return contentType.startsWith('text/') || contentType === 'application/json'
+  return (
+    contentType.startsWith('text/') ||
+    contentType === 'application/json' ||
+    contentType === 'application/yaml' ||
+    contentType === 'application/x-yaml'
+  )
 }
 
 interface ArtifactsState {
@@ -82,7 +87,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
 
       let preview: string | null = null
       const partialErrors: string[] = []
-      if (artifact.content_type && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
+      if (artifact.content_type && artifact.size_bytes != null && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
         try {
           preview = await getArtifactContentText(id)
         } catch (err) {

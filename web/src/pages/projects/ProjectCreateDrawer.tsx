@@ -45,8 +45,11 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
   async function handleSubmit() {
     const next: Partial<Record<keyof FormState, string>> = {}
     if (!form.name.trim()) next.name = 'Name is required'
-    if (form.budget && (Number.isNaN(Number(form.budget)) || Number(form.budget) < 0)) {
-      next.budget = 'Budget must be a positive number'
+    if (form.budget) {
+      const parsed = Number(form.budget)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        next.budget = 'Budget must be a non-negative finite number'
+      }
     }
     setErrors(next)
     if (Object.keys(next).length > 0) return
@@ -97,10 +100,10 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
           placeholder="Optional description"
         />
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-foreground">
+        <div role="group" aria-label="Team Members">
+          <span className="mb-1.5 block text-sm font-medium text-foreground">
             Team Members
-          </label>
+          </span>
           <TagInput
             value={form.team}
             onChange={(team) => updateField('team', team)}

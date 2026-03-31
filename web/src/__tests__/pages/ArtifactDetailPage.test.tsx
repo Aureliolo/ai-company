@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { UseArtifactDetailDataReturn } from '@/hooks/useArtifactDetailData'
@@ -78,5 +79,53 @@ describe('ArtifactDetailPage', () => {
   it('renders back button', () => {
     renderPage()
     expect(screen.getByText('Back to Artifacts')).toBeInTheDocument()
+  })
+
+  describe('property-based state transitions', () => {
+    it('shows skeleton only when loading with no artifact', () => {
+      fc.assert(
+        fc.property(fc.boolean(), fc.boolean(), (loading, hasArtifact) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            artifact: hasArtifact ? artifact : null,
+            loading,
+          }
+          const { unmount } = renderPage()
+          const hasSkeleton = screen.queryByTestId('artifact-detail-skeleton') !== null
+          unmount()
+          return hasSkeleton === (loading && !hasArtifact)
+        }),
+        { numRuns: 20 },
+      )
+    })
+
+    it('shows not-found only when no artifact and not loading', () => {
+      fc.assert(
+        fc.property(fc.boolean(), (loading) => {
+          hookReturn = { ...defaultHookReturn, artifact: null, loading }
+          const { unmount } = renderPage()
+          const hasNotFound = screen.queryByText('Artifact not found.') !== null
+          unmount()
+          return hasNotFound === !loading
+        }),
+        { numRuns: 10 },
+      )
+    })
+
+    it('shows error banner for any non-whitespace error string', () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 1 }).filter((s) => s.trim().length > 0),
+          (errorMsg) => {
+            hookReturn = { ...defaultHookReturn, error: errorMsg }
+            const { unmount } = renderPage()
+            const hasError = screen.queryByText(errorMsg) !== null
+            unmount()
+            return hasError
+          },
+        ),
+        { numRuns: 20 },
+      )
+    })
   })
 })

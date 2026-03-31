@@ -42,5 +42,8 @@ class TestChannels:
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()
         assert plugin is not None
+        # ChannelsPlugin exposes no public accessor for configuration;
+        # private attrs are used intentionally for security verification
+        # (arbitrary channels must be disabled, channels must match ALL_CHANNELS).
         assert plugin._arbitrary_channels_allowed is False
         assert set(plugin._channels) == set(ALL_CHANNELS)

@@ -10,6 +10,21 @@ interface ProjectTaskListProps {
   tasks: readonly Task[]
 }
 
+function ProjectTaskRow({ task }: { task: Task }) {
+  return (
+    <Link
+      to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(task.id))}
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/5"
+    >
+      <TaskStatusIndicator status={task.status} />
+      <span className="truncate text-sm text-foreground">{task.title}</span>
+      {task.assigned_to && (
+        <span className="ml-auto shrink-0 text-xs text-text-muted">{task.assigned_to}</span>
+      )}
+    </Link>
+  )
+}
+
 export function ProjectTaskList({ tasks }: ProjectTaskListProps) {
   if (tasks.length === 0) {
     return (
@@ -27,17 +42,7 @@ export function ProjectTaskList({ tasks }: ProjectTaskListProps) {
     <SectionCard title="Tasks" icon={CheckCircle2}>
       <div className="flex flex-col gap-1">
         {tasks.map((task) => (
-          <Link
-            key={task.id}
-            to={ROUTES.TASK_DETAIL.replace(':taskId', encodeURIComponent(task.id))}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/5"
-          >
-            <TaskStatusIndicator status={task.status} />
-            <span className="truncate text-sm text-foreground">{task.title}</span>
-            {task.assigned_to && (
-              <span className="ml-auto shrink-0 text-xs text-text-muted">{task.assigned_to}</span>
-            )}
-          </Link>
+          <ProjectTaskRow key={task.id} task={task} />
         ))}
       </div>
     </SectionCard>

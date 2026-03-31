@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import type { UseProjectDetailDataReturn } from '@/hooks/useProjectDetailData'
@@ -82,5 +83,53 @@ describe('ProjectDetailPage', () => {
   it('renders back button', () => {
     renderPage()
     expect(screen.getByText('Back to Projects')).toBeInTheDocument()
+  })
+
+  describe('property-based state transitions', () => {
+    it('shows skeleton only when loading with no project', () => {
+      fc.assert(
+        fc.property(fc.boolean(), fc.boolean(), (loading, hasProject) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            project: hasProject ? project : null,
+            loading,
+          }
+          const { unmount } = renderPage()
+          const hasSkeleton = screen.queryByTestId('project-detail-skeleton') !== null
+          unmount()
+          return hasSkeleton === (loading && !hasProject)
+        }),
+        { numRuns: 20 },
+      )
+    })
+
+    it('shows not-found only when no project and not loading', () => {
+      fc.assert(
+        fc.property(fc.boolean(), (loading) => {
+          hookReturn = { ...defaultHookReturn, project: null, loading }
+          const { unmount } = renderPage()
+          const hasNotFound = screen.queryByText('Project not found.') !== null
+          unmount()
+          return hasNotFound === !loading
+        }),
+        { numRuns: 10 },
+      )
+    })
+
+    it('shows error banner for any non-whitespace error string', () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 1 }).filter((s) => s.trim().length > 0),
+          (errorMsg) => {
+            hookReturn = { ...defaultHookReturn, error: errorMsg }
+            const { unmount } = renderPage()
+            const hasError = screen.queryByText(errorMsg) !== null
+            unmount()
+            return hasError
+          },
+        ),
+        { numRuns: 20 },
+      )
+    })
   })
 })

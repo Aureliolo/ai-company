@@ -10,6 +10,23 @@ interface ProjectTeamSectionProps {
   project: Project
 }
 
+function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }) {
+  return (
+    <Link
+      to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agentId))}
+      className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/5"
+    >
+      <Avatar name={agentId} />
+      <span className="text-sm text-foreground">{agentId}</span>
+      {isLead && (
+        <span className="ml-auto rounded-sm bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-accent">
+          Lead
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
   if (project.team.length === 0) {
     return (
@@ -27,19 +44,7 @@ export function ProjectTeamSection({ project }: ProjectTeamSectionProps) {
     <SectionCard title="Team" icon={Users}>
       <div className="flex flex-col gap-2">
         {project.team.map((agentId) => (
-          <Link
-            key={agentId}
-            to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agentId))}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/5"
-          >
-            <Avatar name={agentId} />
-            <span className="text-sm text-foreground">{agentId}</span>
-            {agentId === project.lead && (
-              <span className="ml-auto rounded-sm bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-accent">
-                Lead
-              </span>
-            )}
-          </Link>
+          <TeamMemberRow key={agentId} agentId={agentId} isLead={agentId === project.lead} />
         ))}
       </div>
     </SectionCard>

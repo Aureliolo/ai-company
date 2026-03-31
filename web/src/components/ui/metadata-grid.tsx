@@ -22,7 +22,7 @@ export function MetadataGrid({ items, columns = 3, className }: MetadataGridProp
         : 'grid-cols-3 max-[1023px]:grid-cols-2'
 
   return (
-    <div
+    <dl
       className={cn(
         'grid gap-grid-gap rounded-lg border border-border p-card text-sm',
         colClass,
@@ -31,14 +31,14 @@ export function MetadataGrid({ items, columns = 3, className }: MetadataGridProp
     >
       {items.map((item) => (
         <div key={item.label}>
-          <span className="block text-[10px] uppercase tracking-wide text-text-muted">
+          <dt className="text-[10px] uppercase tracking-wide text-text-muted">
             {item.label}
-          </span>
-          <span className={cn('text-foreground', item.valueClassName)}>
+          </dt>
+          <dd className={cn('text-foreground', item.valueClassName)}>
             {item.value}
-          </span>
+          </dd>
         </div>
       ))}
-    </div>
+    </dl>
   )
 }

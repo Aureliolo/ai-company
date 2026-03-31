@@ -1,5 +1,7 @@
+import fc from 'fast-check'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { makeArtifact } from '../helpers/factories'
+import type { WsEvent } from '@/api/types'
 
 vi.mock('@/api/endpoints/artifacts', () => ({
   listArtifacts: vi.fn(),
@@ -74,6 +76,19 @@ describe('useArtifactsStore', () => {
 
       expect(useArtifactsStore.getState().detailError).toBe('Not found')
     })
+
+    it('handles partial content preview failure gracefully', async () => {
+      const artifact = makeArtifact('artifact-001', { content_type: 'text/plain', size_bytes: 100 })
+      vi.mocked(getArtifact).mockResolvedValue(artifact)
+      vi.mocked(getArtifactContentText).mockRejectedValue(new Error('Content unavailable'))
+
+      await useArtifactsStore.getState().fetchArtifactDetail('artifact-001')
+
+      const state = useArtifactsStore.getState()
+      expect(state.selectedArtifact).toEqual(artifact)
+      expect(state.contentPreview).toBeNull()
+      expect(state.detailError).toMatch(/content preview/)
+    })
   })
 
   describe('deleteArtifact', () => {
@@ -102,24 +117,40 @@ describe('useArtifactsStore', () => {
   })
 
   describe('updateFromWsEvent', () => {
-    it('triggers fetchArtifacts', async () => {
+    it('triggers fetchArtifacts on WS event', async () => {
       vi.mocked(listArtifacts).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
 
-      useArtifactsStore.getState().updateFromWsEvent({} as never)
+      const event: WsEvent = {
+        event_type: 'artifact.created',
+        channel: 'artifacts',
+        timestamp: '2026-03-31T12:00:00Z',
+        payload: { artifact_id: 'artifact-new', task_id: 'task-001' },
+      }
+      useArtifactsStore.getState().updateFromWsEvent(event)
 
       expect(listArtifacts).toHaveBeenCalled()
     })
   })
 
   describe('filters', () => {
-    it('sets search query', () => {
-      useArtifactsStore.getState().setSearchQuery('test')
-      expect(useArtifactsStore.getState().searchQuery).toBe('test')
+    it('sets search query with arbitrary strings', () => {
+      fc.assert(
+        fc.property(fc.string(), (s) => {
+          useArtifactsStore.getState().setSearchQuery(s)
+          return useArtifactsStore.getState().searchQuery === s
+        }),
+      )
     })
 
     it('sets type filter', () => {
       useArtifactsStore.getState().setTypeFilter('code')
       expect(useArtifactsStore.getState().typeFilter).toBe('code')
+    })
+
+    it('sets type filter to null for clear', () => {
+      useArtifactsStore.getState().setTypeFilter('code')
+      useArtifactsStore.getState().setTypeFilter(null)
+      expect(useArtifactsStore.getState().typeFilter).toBeNull()
     })
   })
 

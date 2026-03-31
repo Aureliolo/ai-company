@@ -52,6 +52,29 @@ export const WithMonoValues: Story = {
   },
 }
 
+export const SingleItem: Story = {
+  args: {
+    items: [{ label: 'Status', value: 'Active' }],
+  },
+}
+
+export const ManyItems: Story = {
+  args: {
+    columns: 3,
+    items: [
+      { label: 'Type', value: 'Development' },
+      { label: 'Priority', value: 'High' },
+      { label: 'Status', value: 'Active' },
+      { label: 'Size', value: '1.2 MB', valueClassName: 'font-mono text-xs' },
+      { label: 'Created', value: 'Mar 31, 2026' },
+      { label: 'Updated', value: '2 hours ago' },
+      { label: 'Owner', value: 'agent-eng-001' },
+      { label: 'Cost', value: '$12.50', valueClassName: 'font-mono text-xs' },
+      { label: 'Duration', value: '2m 30s', valueClassName: 'font-mono text-xs' },
+    ],
+  },
+}
+
 export const Empty: Story = {
   args: { items: [] },
 }

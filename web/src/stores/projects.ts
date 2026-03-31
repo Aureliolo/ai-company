@@ -63,36 +63,32 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   fetchProjectDetail: async (id: string) => {
     _detailRequestId = id
     set({ detailLoading: true, detailError: null })
-    try {
-      const [projectResult, tasksResult] = await Promise.allSettled([
-        getProject(id),
-        listTasks({ project: id, limit: 50 }),
-      ])
 
-      if (_detailRequestId !== id) return
+    const [projectResult, tasksResult] = await Promise.allSettled([
+      getProject(id),
+      listTasks({ project: id, limit: 50 }),
+    ])
 
-      const project = projectResult.status === 'fulfilled' ? projectResult.value : null
-      if (!project) {
-        const reason = projectResult.status === 'rejected' ? projectResult.reason : null
-        set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Project not found') })
-        return
-      }
+    if (_detailRequestId !== id) return
 
-      const partialErrors: string[] = []
-      if (tasksResult.status === 'rejected') partialErrors.push(`tasks: ${getErrorMessage(tasksResult.reason)}`)
-
-      set({
-        selectedProject: project,
-        projectTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
-        detailLoading: false,
-        detailError: partialErrors.length > 0
-          ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
-          : null,
-      })
-    } catch (err) {
-      if (_detailRequestId !== id) return
-      set({ detailLoading: false, detailError: getErrorMessage(err) })
+    const project = projectResult.status === 'fulfilled' ? projectResult.value : null
+    if (!project) {
+      const reason = projectResult.status === 'rejected' ? projectResult.reason : null
+      set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Project not found') })
+      return
     }
+
+    const partialErrors: string[] = []
+    if (tasksResult.status === 'rejected') partialErrors.push(`tasks: ${getErrorMessage(tasksResult.reason)}`)
+
+    set({
+      selectedProject: project,
+      projectTasks: tasksResult.status === 'fulfilled' ? tasksResult.value.data : [],
+      detailLoading: false,
+      detailError: partialErrors.length > 0
+        ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
+        : null,
+    })
   },
 
   createProject: async (data: CreateProjectRequest) => {

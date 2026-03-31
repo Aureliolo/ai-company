@@ -1,5 +1,7 @@
+import { waitFor } from '@testing-library/react'
 import { useProjectsStore } from '@/stores/projects'
 import { makeProject, makeTask } from '../helpers/factories'
+import type { WsEvent } from '@/api/types'
 
 vi.mock('@/api/endpoints/projects', () => ({
   listProjects: vi.fn(),
@@ -118,12 +120,20 @@ describe('useProjectsStore', () => {
   })
 
   describe('updateFromWsEvent', () => {
-    it('triggers fetchProjects', async () => {
+    it('triggers fetchProjects on WS event', async () => {
       vi.mocked(listProjects).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
 
-      useProjectsStore.getState().updateFromWsEvent({} as never)
+      const event: WsEvent = {
+        event_type: 'project.created',
+        channel: 'projects',
+        timestamp: '2026-03-31T12:00:00Z',
+        payload: { project_id: 'proj-new', name: 'New' },
+      }
+      useProjectsStore.getState().updateFromWsEvent(event)
 
-      expect(listProjects).toHaveBeenCalled()
+      await waitFor(() => {
+        expect(listProjects).toHaveBeenCalled()
+      })
     })
   })
 

@@ -14,10 +14,13 @@ export async function downloadArtifactFile(artifactId: string, fallbackName: str
     const a = document.createElement('a')
     a.href = url
     a.download = fallbackName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    try {
+      document.body.appendChild(a)
+      a.click()
+    } finally {
+      if (a.parentNode) document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }
   } catch (err) {
     useToastStore.getState().add({
       variant: 'error',

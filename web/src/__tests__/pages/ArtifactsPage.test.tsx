@@ -1,3 +1,4 @@
+import fc from 'fast-check'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import type { UseArtifactsDataReturn } from '@/hooks/useArtifactsData'
@@ -82,5 +83,61 @@ describe('ArtifactsPage', () => {
     hookReturn = { ...defaultHookReturn, wsConnected: false }
     renderPage()
     expect(screen.getByText(/disconnected/i)).toBeInTheDocument()
+  })
+
+  describe('property-based invariants', () => {
+    it('never crashes regardless of state', () => {
+      fc.assert(
+        fc.property(fc.boolean(), fc.boolean(), (loading, hasError) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            loading,
+            error: hasError ? 'some error' : null,
+            totalArtifacts: loading ? 0 : 1,
+            artifacts: loading ? [] : [makeArtifact('a-1')],
+            filteredArtifacts: loading ? [] : [makeArtifact('a-1')],
+          }
+          const { unmount } = renderPage()
+          unmount()
+          return true
+        }),
+        { numRuns: 20 },
+      )
+    })
+
+    it('shows skeleton only when loading with no data', () => {
+      fc.assert(
+        fc.property(fc.boolean(), fc.nat({ max: 5 }), (loading, total) => {
+          hookReturn = {
+            ...defaultHookReturn,
+            loading,
+            totalArtifacts: total,
+            artifacts: total > 0 ? [makeArtifact('a-1')] : [],
+            filteredArtifacts: total > 0 ? [makeArtifact('a-1')] : [],
+          }
+          const { unmount } = renderPage()
+          const hasSkeleton = screen.queryByTestId('artifacts-skeleton') !== null
+          unmount()
+          return hasSkeleton === (loading && total === 0)
+        }),
+        { numRuns: 20 },
+      )
+    })
+
+    it('shows error alert when error is any non-whitespace string', () => {
+      fc.assert(
+        fc.property(
+          fc.string({ minLength: 1 }).filter((s) => s.trim().length > 0),
+          (errorMsg) => {
+            hookReturn = { ...defaultHookReturn, error: errorMsg }
+            const { unmount } = renderPage()
+            const hasAlert = screen.queryByRole('alert') !== null
+            unmount()
+            return hasAlert
+          },
+        ),
+        { numRuns: 20 },
+      )
+    })
   })
 })
