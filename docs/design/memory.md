@@ -429,7 +429,8 @@ class PersistenceBackend(Protocol):
     def messages(self) -> MessageRepository: ...
     # ... plus lifecycle_events, task_metrics, collaboration_metrics,
     #     parked_contexts, audit_entries, users, api_keys, checkpoints,
-    #     heartbeats, agent_states, settings, artifacts, projects
+    #     heartbeats, agent_states, settings, artifacts, projects,
+    #     custom_presets
 ```
 
 Each entity type has its own repository protocol:
@@ -490,6 +491,7 @@ persistence:
 | Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 | `Artifact` | `core/artifact.py` | `ArtifactRepository` | by task_id, by created_by, by artifact_type |
 | `Project` | `core/project.py` | `ProjectRepository` | by status, by lead |
+| Custom preset | `templates/preset_service.py` | `PersonalityPresetRepository` | by name |
 
 ### Schema Strategy
 

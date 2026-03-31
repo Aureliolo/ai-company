@@ -208,6 +208,7 @@ class TestEventConstants:
             "performance",
             "persistence",
             "personality",
+            "preset",
             "prompt",
             "provider",
             "quota",

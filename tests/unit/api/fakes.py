@@ -30,6 +30,7 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.persistence.preset_repository import PresetListRow, PresetRow
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 
@@ -531,12 +532,50 @@ class FakeAgentStateRepository:
         return self._states.pop(agent_id, None) is not None
 
 
+class FakePersonalityPresetRepository:
+    """In-memory custom personality preset repository for tests."""
+
+    def __init__(self) -> None:
+        self._presets: dict[str, PresetRow] = {}
+
+    async def save(
+        self,
+        name: NotBlankStr,
+        config_json: str,
+        description: str,
+        created_at: str,
+        updated_at: str,
+    ) -> None:
+        existing = self._presets.get(name)
+        self._presets[name] = PresetRow(
+            config_json,
+            description,
+            existing.created_at if existing else created_at,
+            updated_at,
+        )
+
+    async def get(self, name: NotBlankStr) -> PresetRow | None:
+        return self._presets.get(name)
+
+    async def list_all(self) -> tuple[PresetListRow, ...]:
+        return tuple(
+            PresetListRow(name, *row) for name, row in sorted(self._presets.items())
+        )
+
+    async def delete(self, name: NotBlankStr) -> bool:
+        return self._presets.pop(name, None) is not None
+
+    async def count(self) -> int:
+        return len(self._presets)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
     def __init__(self) -> None:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
+        self._custom_presets = FakePersonalityPresetRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -639,6 +678,10 @@ class FakePersistenceBackend:
     @property
     def settings(self) -> FakeSettingsRepository:
         return self._settings_repo
+
+    @property
+    def custom_presets(self) -> FakePersonalityPresetRepository:
+        return self._custom_presets
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
