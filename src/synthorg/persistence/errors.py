@@ -20,9 +20,9 @@ class MigrationError(PersistenceError):
 class RecordNotFoundError(PersistenceError):
     """Raised when a requested record does not exist.
 
-    Currently unused -- ``TaskRepository.get()`` returns ``None``
-    on miss, and other repositories use collection-returning queries.
-    Reserved for future strict-fetch methods (e.g. ``get_or_raise``).
+    Used by ``ArtifactStorageBackend.retrieve()`` when no content
+    exists for the given artifact ID.  Repository ``get()`` methods
+    return ``None`` on miss instead of raising.
     """
 
 
@@ -32,3 +32,11 @@ class DuplicateRecordError(PersistenceError):
 
 class QueryError(PersistenceError):
     """Raised when a query fails due to invalid parameters or backend issues."""
+
+
+class ArtifactTooLargeError(PersistenceError):
+    """Raised when a single artifact exceeds the maximum allowed size."""
+
+
+class ArtifactStorageFullError(PersistenceError):
+    """Raised when total artifact storage exceeds capacity."""

@@ -81,8 +81,14 @@ from synthorg.observability.events.api import (
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
 )
+from synthorg.persistence.artifact_storage import (
+    ArtifactStorageBackend,  # noqa: TC001
+)
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
+from synthorg.persistence.filesystem_artifact_storage import (
+    FileSystemArtifactStorage,
+)
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.health_prober import ProviderHealthProber  # noqa: TC001
@@ -491,6 +497,7 @@ def create_app(  # noqa: PLR0913
     provider_health_tracker: ProviderHealthTracker | None = None,
     tool_invocation_tracker: ToolInvocationTracker | None = None,
     delegation_record_store: DelegationRecordStore | None = None,
+    artifact_storage: ArtifactStorageBackend | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -516,6 +523,7 @@ def create_app(  # noqa: PLR0913
         provider_health_tracker: Provider health tracking service.
         tool_invocation_tracker: Tool invocation tracking service.
         delegation_record_store: Delegation record store.
+        artifact_storage: Artifact storage backend.
 
     Returns:
         Configured Litestar application.
@@ -569,6 +577,15 @@ def create_app(  # noqa: PLR0913
                 note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
                 db_name=Path(db_path).name,
             )
+            # Auto-wire artifact storage from the same data directory.
+            if artifact_storage is None:
+                artifact_storage = FileSystemArtifactStorage(
+                    data_dir=resolved_db_path.parent,
+                )
+                logger.info(
+                    API_APP_STARTUP,
+                    note="Auto-wired filesystem artifact storage",
+                )
 
     # ── Phase 1 auto-wire: services that don't need connected persistence ──
     phase1 = auto_wire_phase1(
@@ -626,6 +643,7 @@ def create_app(  # noqa: PLR0913
         provider_health_tracker=provider_health_tracker,
         tool_invocation_tracker=tool_invocation_tracker,
         delegation_record_store=delegation_record_store,
+        artifact_storage=artifact_storage,
         startup_time=time.monotonic(),
     )
 
@@ -704,7 +722,9 @@ def create_app(  # noqa: PLR0913
             backend="brotli",
             minimum_size=1000,
         ),
-        request_max_body_size=2_097_152,  # 2 MB
+        # Must be >= artifact API max payload (50 MB) so endpoint-level
+        # validation can enforce exact storage limits.
+        request_max_body_size=52_428_800,  # 50 MB
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,

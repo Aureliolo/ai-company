@@ -1100,12 +1100,12 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `GET /api/v1/agents/{name}/history` | Agent career history events |
 | `GET /api/v1/activities` | Org-wide activity feed (merges all agents, enum-validated type filtering, cost event redaction for read-only roles, degraded source reporting) |
 | `/api/v1/departments` | Department management |
-| `/api/v1/projects` | Project CRUD |
+| `/api/v1/projects` | Project listing, creation, and retrieval |
 | `/api/v1/tasks` | Task management |
 | `POST /api/v1/tasks/{task_id}/coordinate` | Trigger multi-agent coordination |
 | `/api/v1/messages` | Communication log |
 | `/api/v1/meetings` | Schedule, view meeting outputs |
-| `/api/v1/artifacts` | Browse produced artifacts (code, docs, etc.) |
+| `/api/v1/artifacts` | Artifact listing, creation, retrieval, deletion with binary content upload/download (code, docs, etc.) |
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | `GET /overview` (metrics summary with budget status, 7d spend sparkline, agent counts), `GET /trends?period=7d\|30d\|90d&metric=spend\|tasks_completed\|active_agents\|success_rate` (time-series bucketed metrics; hourly buckets for 7d, daily for 30d/90d; defaults: `period=7d`, `metric=spend`), `GET /forecast?horizon_days=1..90` (budget spend projection with daily projections and exhaustion estimate; default 14; 400 on out-of-range) |

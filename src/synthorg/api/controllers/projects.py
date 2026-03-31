@@ -1,67 +1,152 @@
-"""Project controller (stub -- no ProjectRepository yet)."""
+"""Project controller -- CRUD endpoints for project management."""
 
-from litestar import Controller, Response, get
+import uuid
+from typing import Annotated
+
+from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 
-from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.guards import require_read_access
+from synthorg.api.dto import (
+    ApiResponse,
+    CreateProjectRequest,
+    PaginatedResponse,
+)
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.core.enums import ProjectStatus
+from synthorg.core.project import Project
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
 
+ProjectStatusFilter = Annotated[
+    str | None,
+    Parameter(
+        required=False,
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter by project status",
+    ),
+]
+
+LeadFilter = Annotated[
+    NotBlankStr | None,
+    Parameter(
+        required=False,
+        max_length=QUERY_MAX_LENGTH,
+        description="Filter by project lead agent ID",
+    ),
+]
+
 
 class ProjectController(Controller):
-    """Stub controller for project management.
-
-    Projects are not yet persisted -- returns empty results.
-    Full CRUD will be added when a ``ProjectRepository`` exists.
-    """
+    """CRUD controller for project management."""
 
     path = "/projects"
     tags = ("projects",)
-    guards = [require_read_access]  # noqa: RUF012
 
-    @get()
+    @get(guards=[require_read_access])
     async def list_projects(
         self,
-        state: State,  # noqa: ARG002
+        state: State,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
-    ) -> PaginatedResponse[object]:
-        """List projects (empty -- no repository yet).
+        status: ProjectStatusFilter = None,
+        lead: LeadFilter = None,
+    ) -> PaginatedResponse[Project] | Response[ApiResponse[None]]:
+        """List projects with optional filters.
 
         Args:
             state: Application state.
             offset: Pagination offset.
             limit: Page size.
+            status: Filter by project status.
+            lead: Filter by project lead agent ID.
 
         Returns:
-            Empty paginated response.
+            Paginated list of projects, or 400 for invalid filters.
         """
-        empty: tuple[object, ...] = ()
-        page, meta = paginate(empty, offset=offset, limit=limit)
-        return PaginatedResponse(data=page, pagination=meta)
+        parsed_status: ProjectStatus | None = None
+        if status is not None:
+            try:
+                parsed_status = ProjectStatus(status)
+            except ValueError:
+                valid = ", ".join(e.value for e in ProjectStatus)
+                return Response(
+                    content=ApiResponse[None](
+                        error=(
+                            f"Invalid project status: {status!r}. Valid values: {valid}"
+                        ),
+                    ),
+                    status_code=400,
+                )
 
-    @get("/{project_id:str}")
+        repo = state.app_state.persistence.projects
+        projects = await repo.list_projects(
+            status=parsed_status,
+            lead=lead,
+        )
+        page, meta = paginate(projects, offset=offset, limit=limit)
+        return PaginatedResponse[Project](data=page, pagination=meta)
+
+    @get("/{project_id:str}", guards=[require_read_access])
     async def get_project(
         self,
-        state: State,  # noqa: ARG002
-        project_id: PathId,  # noqa: ARG002
-    ) -> Response[ApiResponse[None]]:
-        """Get a project by ID (stub → 501).
+        state: State,
+        project_id: PathId,
+    ) -> Response[ApiResponse[Project]]:
+        """Get a project by ID.
 
         Args:
             state: Application state.
             project_id: Project identifier.
 
         Returns:
-            Not implemented response.
+            The project, or 404 if not found.
         """
+        repo = state.app_state.persistence.projects
+        project = await repo.get(project_id)
+        if project is None:
+            return Response(
+                content=ApiResponse[Project](
+                    error=f"Project {project_id!r} not found",
+                ),
+                status_code=404,
+            )
         return Response(
-            content=ApiResponse[None](
-                error="Project persistence not implemented yet",
-            ),
-            status_code=501,
+            content=ApiResponse[Project](data=project),
+            status_code=200,
+        )
+
+    @post(guards=[require_write_access])
+    async def create_project(
+        self,
+        state: State,
+        data: CreateProjectRequest,
+    ) -> Response[ApiResponse[Project]]:
+        """Create a new project.
+
+        Args:
+            state: Application state.
+            data: Project creation payload.
+
+        Returns:
+            The created project with generated ID.
+        """
+        project = Project(
+            id=f"proj-{uuid.uuid4().hex[:12]}",
+            name=data.name,
+            description=data.description,
+            team=data.team,
+            lead=data.lead,
+            deadline=data.deadline,
+            budget=data.budget,
+        )
+        repo = state.app_state.persistence.projects
+        await repo.save(project)
+        return Response(
+            content=ApiResponse[Project](data=project),
+            status_code=201,
         )

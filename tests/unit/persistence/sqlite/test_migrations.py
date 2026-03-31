@@ -27,6 +27,8 @@ _EXPECTED_TABLES = {
     "checkpoints",
     "heartbeats",
     "agent_states",
+    "artifacts",
+    "projects",
 }
 
 _EXPECTED_INDEXES = {
@@ -62,6 +64,11 @@ _EXPECTED_INDEXES = {
     "idx_cp_task_turn",
     "idx_hb_last_heartbeat",
     "idx_as_status_activity",
+    "idx_artifacts_task_id",
+    "idx_artifacts_created_by",
+    "idx_artifacts_type",
+    "idx_projects_status",
+    "idx_projects_lead",
 }
 
 

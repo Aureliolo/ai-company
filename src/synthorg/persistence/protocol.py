@@ -15,12 +15,14 @@ from synthorg.hr.persistence_protocol import (
 from synthorg.persistence.repositories import (
     AgentStateRepository,  # noqa: TC001
     ApiKeyRepository,  # noqa: TC001
+    ArtifactRepository,  # noqa: TC001
     AuditRepository,  # noqa: TC001
     CheckpointRepository,  # noqa: TC001
     CostRecordRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
+    ProjectRepository,  # noqa: TC001
     SettingsRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
     UserRepository,  # noqa: TC001
@@ -52,6 +54,8 @@ class PersistenceBackend(Protocol):
         heartbeats: Repository for Heartbeat persistence.
         agent_states: Repository for AgentRuntimeState persistence.
         settings: Repository for namespaced settings persistence.
+        artifacts: Repository for Artifact persistence.
+        projects: Repository for Project persistence.
     """
 
     async def connect(self) -> None:
@@ -164,6 +168,16 @@ class PersistenceBackend(Protocol):
     @property
     def settings(self) -> SettingsRepository:
         """Repository for namespaced settings persistence."""
+        ...
+
+    @property
+    def artifacts(self) -> ArtifactRepository:
+        """Repository for Artifact persistence."""
+        ...
+
+    @property
+    def projects(self) -> ProjectRepository:
+        """Repository for Project persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

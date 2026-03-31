@@ -25,6 +25,9 @@ from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
+from synthorg.persistence.sqlite.artifact_repo import (
+    SQLiteArtifactRepository,
+)
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -42,6 +45,9 @@ from synthorg.persistence.sqlite.hr_repositories import (
 from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
+)
+from synthorg.persistence.sqlite.project_repo import (
+    SQLiteProjectRepository,
 )
 from synthorg.persistence.sqlite.repositories import (
     SQLiteCostRecordRepository,
@@ -77,6 +83,8 @@ class SQLitePersistenceBackend:
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
+        self._artifacts: SQLiteArtifactRepository | None = None
+        self._projects: SQLiteProjectRepository | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
@@ -95,6 +103,8 @@ class SQLitePersistenceBackend:
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
         self._db = None
+        self._artifacts = None
+        self._projects = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -163,6 +173,8 @@ class SQLitePersistenceBackend:
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101
+        self._artifacts = SQLiteArtifactRepository(self._db)
+        self._projects = SQLiteProjectRepository(self._db)
         self._tasks = SQLiteTaskRepository(self._db)
         self._cost_records = SQLiteCostRecordRepository(self._db)
         self._messages = SQLiteMessageRepository(self._db)
@@ -412,6 +424,24 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._settings, "settings")
+
+    @property
+    def artifacts(self) -> SQLiteArtifactRepository:
+        """Repository for Artifact persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._artifacts, "artifacts")
+
+    @property
+    def projects(self) -> SQLiteProjectRepository:
+        """Repository for Project persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._projects, "projects")
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

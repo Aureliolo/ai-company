@@ -12,7 +12,10 @@ from synthorg.api.auth.models import ApiKey, User  # noqa: TC001
 from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.core.enums import ApprovalRiskLevel, TaskStatus  # noqa: TC001
+from synthorg.core.enums import (
+    ApprovalRiskLevel,  # noqa: TC001
+    TaskStatus,  # noqa: TC001
+)
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.persistence_protocol import (
@@ -30,6 +33,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AgentStateRepository",
     "ApiKeyRepository",
+    "ArtifactRepository",
     "AuditRepository",
     "CheckpointRepository",
     "CollaborationMetricRepository",
@@ -38,6 +42,7 @@ __all__ = [
     "LifecycleEventRepository",
     "MessageRepository",
     "ParkedContextRepository",
+    "ProjectRepository",
     "SettingsRepository",
     "TaskMetricRepository",
     "TaskRepository",
@@ -784,3 +789,12 @@ class SettingsRepository(Protocol):
             PersistenceError: If the operation fails.
         """
         ...
+
+
+# ArtifactRepository and ProjectRepository live in a separate module
+# to keep this file under the 800-line limit.  Re-exported here for
+# backwards-compatible imports.
+from synthorg.persistence.artifact_project_repos import (  # noqa: E402, I001
+    ArtifactRepository as ArtifactRepository,  # noqa: PLC0414
+    ProjectRepository as ProjectRepository,  # noqa: PLC0414
+)

@@ -259,3 +259,38 @@ CREATE TABLE IF NOT EXISTS agent_states (
 
 CREATE INDEX IF NOT EXISTS idx_as_status_activity
     ON agent_states(status, last_activity_at DESC);
+
+-- ── Artifacts ────────────────────────────────────────────────
+-- No FK to tasks -- artifacts may outlive tasks (same rationale
+-- as heartbeats/checkpoints).
+CREATE TABLE IF NOT EXISTS artifacts (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    path TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    content_type TEXT NOT NULL DEFAULT '',
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_task_id ON artifacts(task_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_created_by ON artifacts(created_by);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(type);
+
+-- ── Projects ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    team TEXT NOT NULL DEFAULT '[]',
+    lead TEXT,
+    task_ids TEXT NOT NULL DEFAULT '[]',
+    deadline TEXT,
+    budget REAL NOT NULL DEFAULT 0.0 CHECK (budget >= 0.0),
+    status TEXT NOT NULL DEFAULT 'planning'
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_projects_lead ON projects(lead);
