@@ -104,8 +104,8 @@ class _PatchCtx:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: object,
-    ) -> bool | None:
-        return self._patcher.__exit__(exc_type, exc_val, exc_tb)  # type: ignore[arg-type]
+    ) -> None:
+        self._patcher.__exit__(exc_type, exc_val, exc_tb)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
