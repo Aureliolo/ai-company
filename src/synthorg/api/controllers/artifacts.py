@@ -20,6 +20,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_DELETED,
+    PERSISTENCE_ARTIFACT_SAVE_FAILED,
     PERSISTENCE_ARTIFACT_SAVED,
     PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
     PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
@@ -219,15 +220,17 @@ class ArtifactController(Controller):
             200 on success, 404 if not found.
         """
         repo = state.app_state.persistence.artifacts
-        deleted = await repo.delete(artifact_id)
-        if not deleted:
+        artifact = await repo.get(artifact_id)
+        if artifact is None:
             return Response(
                 content=ApiResponse[None](
                     error=f"Artifact {artifact_id!r} not found",
                 ),
                 status_code=404,
             )
-        logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
+        # Delete storage content first -- if this fails, metadata still
+        # exists so the inconsistency is detectable (vs. the reverse
+        # order where metadata is gone but orphaned blob is invisible).
         storage = state.app_state.artifact_storage
         try:
             await storage.delete(artifact_id)
@@ -237,6 +240,8 @@ class ArtifactController(Controller):
                 artifact_id=artifact_id,
                 error=str(exc),
             )
+        await repo.delete(artifact_id)
+        logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
         return Response(
             content=ApiResponse[None](data=None),
             status_code=200,
@@ -306,7 +311,7 @@ class ArtifactController(Controller):
             await repo.save(updated)
         except PersistenceError as exc:
             logger.warning(
-                PERSISTENCE_ARTIFACT_STORED,
+                PERSISTENCE_ARTIFACT_SAVE_FAILED,
                 artifact_id=artifact_id,
                 error=str(exc),
                 note="metadata save failed, rolling back content",

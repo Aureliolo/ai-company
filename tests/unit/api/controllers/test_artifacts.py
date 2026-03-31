@@ -149,7 +149,9 @@ class TestArtifactController:
         assert resp.status_code == 404
 
     def test_download_content(self, test_client: TestClient[Any]) -> None:
-        """Pre-populate storage directly to test download path."""
+        """Pre-populate storage via public API, then test download."""
+        import asyncio
+
         create_resp = test_client.post(
             "/api/v1/artifacts",
             json={
@@ -163,9 +165,8 @@ class TestArtifactController:
         )
         artifact_id = create_resp.json()["data"]["id"]
         payload = b"hello world"
-        # Pre-populate the fake storage dict to avoid multipart PUT.
         storage = test_client.app.state.app_state.artifact_storage
-        storage._store[artifact_id] = payload
+        asyncio.run(storage.store(artifact_id, payload))
         dl_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
         assert dl_resp.status_code == 200
         assert dl_resp.content == payload
