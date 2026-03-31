@@ -30,7 +30,7 @@ class AutonomyPreset(BaseModel):
             actions before they reach a human.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     level: AutonomyLevel = Field(description="Autonomy level")
     description: NotBlankStr = Field(description="Human-readable description")
@@ -128,7 +128,7 @@ class AutonomyConfig(BaseModel):
             Defaults to ``BUILTIN_PRESETS``.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     level: AutonomyLevel = Field(
         default=AutonomyLevel.SEMI,
@@ -165,7 +165,7 @@ class EffectiveAutonomy(BaseModel):
         security_agent: Whether the security agent reviews escalations.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     level: AutonomyLevel = Field(description="Resolved autonomy level")
     auto_approve_actions: frozenset[str] = Field(
@@ -203,7 +203,7 @@ class AutonomyOverride(BaseModel):
         requires_human_recovery: Whether a human must restore the level.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     original_level: AutonomyLevel = Field(description="Level before downgrade")

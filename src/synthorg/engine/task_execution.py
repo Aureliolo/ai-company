@@ -44,7 +44,7 @@ class StatusTransition(BaseModel):
         reason: Optional human-readable reason for the transition.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     from_status: TaskStatus = Field(description="Status before transition")
     to_status: TaskStatus = Field(description="Status after transition")
@@ -77,7 +77,7 @@ class TaskExecution(BaseModel):
         completed_at: When execution reached a terminal state.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task: Task = Field(description="Original frozen task definition")
     status: TaskStatus = Field(description="Current execution status")

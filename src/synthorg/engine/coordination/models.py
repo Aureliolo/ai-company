@@ -37,7 +37,7 @@ class CoordinationContext(BaseModel):
         config: Coordination configuration.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task: Task = Field(description="Parent task to coordinate")
     available_agents: tuple[AgentIdentity, ...] = Field(
@@ -71,7 +71,7 @@ class CoordinationPhaseResult(BaseModel):
         error: Error description if the phase failed.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     phase: NotBlankStr = Field(description="Phase name")
     success: bool = Field(description="Whether phase succeeded")
@@ -105,7 +105,7 @@ class CoordinationWave(BaseModel):
         execution_result: Result from ParallelExecutor, if executed.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     wave_index: int = Field(ge=0, description="Zero-based wave index")
     subtask_ids: tuple[NotBlankStr, ...] = Field(
@@ -141,7 +141,7 @@ class CoordinationResult(BaseModel):
         total_cost_usd: Total cost in USD (base currency) across all waves.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     parent_task_id: NotBlankStr = Field(description="Parent task ID")
     topology: CoordinationTopology = Field(

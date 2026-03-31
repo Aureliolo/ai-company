@@ -30,7 +30,7 @@ class HybridLoopConfig(BaseModel):
             ``False``, replanning only happens on step failure.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     planner_model: NotBlankStr | None = Field(
         default=None,

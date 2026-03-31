@@ -31,7 +31,7 @@ class AgentResponse(BaseModel):
         cost_usd: Estimated cost of the invocation.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent that responded")
     content: str = Field(description="Response content")
@@ -61,7 +61,7 @@ class MeetingAgendaItem(BaseModel):
         presenter_id: Agent who presents this item (optional).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     title: NotBlankStr = Field(description="Agenda topic title")
     description: str = Field(
@@ -83,7 +83,7 @@ class MeetingAgenda(BaseModel):
         items: Ordered agenda items.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     title: NotBlankStr = Field(description="Meeting title")
     context: str = Field(
@@ -109,7 +109,7 @@ class MeetingContribution(BaseModel):
         timestamp: When the contribution was recorded.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Contributing agent")
     content: str = Field(description="Contribution content")
@@ -137,7 +137,7 @@ class ActionItem(BaseModel):
         priority: Urgency of the action item.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     description: NotBlankStr = Field(description="What needs to be done")
     assignee_id: NotBlankStr | None = Field(
@@ -170,7 +170,7 @@ class MeetingMinutes(BaseModel):
         ended_at: When the meeting ended.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     meeting_id: NotBlankStr = Field(description="Unique meeting ID")
     protocol_type: MeetingProtocolType = Field(
@@ -281,7 +281,7 @@ class MeetingRecord(BaseModel):
         token_budget: Token budget that was allocated.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     meeting_id: NotBlankStr = Field(description="Unique meeting ID")
     meeting_type_name: NotBlankStr = Field(

@@ -26,7 +26,7 @@ class AutonomyLevelRequest(BaseModel):
         level: The requested autonomy level.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     level: AutonomyLevel = Field(description="Requested autonomy level")
 
@@ -40,7 +40,7 @@ class AutonomyLevelResponse(BaseModel):
         promotion_pending: Whether a promotion request is pending.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     level: AutonomyLevel = Field(description="Current autonomy level")

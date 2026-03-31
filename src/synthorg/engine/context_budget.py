@@ -39,7 +39,7 @@ class ContextBudgetIndicator(BaseModel):
         archived_blocks: Number of archived compaction blocks.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     fill_tokens: int = Field(ge=0, description="Current fill tokens")
     capacity_tokens: int | None = Field(

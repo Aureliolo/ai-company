@@ -39,7 +39,7 @@ class HealthStatus(BaseModel):
         uptime_seconds: Seconds since application startup.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     status: ServiceStatus = Field(description="Overall health status")
     persistence: bool | None = Field(

@@ -45,7 +45,7 @@ class RecoveryResult(BaseModel):
         resume_attempt: Current resume attempt number (0 when not resuming).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_execution: TaskExecution = Field(
         description="Execution state after recovery",

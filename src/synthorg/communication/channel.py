@@ -20,7 +20,7 @@ class Channel(BaseModel):
         subscribers: Agent IDs subscribed to this channel.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Channel name")
     type: ChannelType = Field(

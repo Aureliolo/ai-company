@@ -73,7 +73,7 @@ class SetupRequest(BaseModel):
         password: Admin password (min 12 chars).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -93,7 +93,7 @@ class LoginRequest(BaseModel):
         password: Login password.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -107,7 +107,7 @@ class ChangePasswordRequest(BaseModel):
         new_password: New password (min 12 chars).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     current_password: NotBlankStr = Field(max_length=128)
     new_password: NotBlankStr = Field(max_length=128)
@@ -131,7 +131,7 @@ class TokenResponse(BaseModel):
         must_change_password: Whether password change is required.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     token: NotBlankStr
     expires_in: int = Field(gt=0)
@@ -148,7 +148,7 @@ class UserInfoResponse(BaseModel):
         must_change_password: Whether password change is required.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     username: NotBlankStr
@@ -164,7 +164,7 @@ class WsTicketResponse(BaseModel):
         expires_in: Ticket lifetime in seconds.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     ticket: NotBlankStr
     expires_in: int = Field(gt=0)

@@ -34,7 +34,7 @@ class TrustState(BaseModel):
         milestone_progress: Milestone tracking data (milestone strategy).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     global_level: ToolAccessLevel = Field(
@@ -88,7 +88,7 @@ class TrustChangeRecord(BaseModel):
         details: Human-readable details.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(
         default_factory=lambda: NotBlankStr(str(uuid4())),

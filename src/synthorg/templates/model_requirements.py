@@ -41,7 +41,7 @@ class ModelRequirement(BaseModel):
         capabilities: Future-use capability tags (e.g. ``"reasoning"``).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     tier: ModelTier = Field(default="medium", description="Cost/capability tier")
     priority: ModelPriority = Field(

@@ -33,7 +33,7 @@ class AgentAssignment(BaseModel):
         resource_claims: File paths requiring exclusive access (unique).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     identity: AgentIdentity = Field(description="Agent to run")
     task: Task = Field(description="Task to execute")
@@ -99,7 +99,7 @@ class ParallelExecutionGroup(BaseModel):
         fail_fast: Cancel remaining assignments on first failure.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     group_id: NotBlankStr = Field(
         description="Unique group identifier",
@@ -151,7 +151,7 @@ class AgentOutcome(BaseModel):
             not execute. Mutually exclusive with ``result``.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_id: NotBlankStr = Field(description="Task identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")
@@ -202,7 +202,7 @@ class ParallelExecutionResult(BaseModel):
         total_duration_seconds: Wall-clock duration of the group.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     group_id: NotBlankStr = Field(description="Group identifier")
     outcomes: tuple[AgentOutcome, ...] = Field(
@@ -261,7 +261,7 @@ class ParallelProgress(BaseModel):
         failed: Number of failed completions.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     group_id: NotBlankStr = Field(description="Group identifier")
     total: int = Field(ge=0, description="Total assignments")

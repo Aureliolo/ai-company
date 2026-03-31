@@ -102,7 +102,7 @@ class LlmFallbackConfig(BaseModel):
             arguments in the LLM prompt.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = False
     model: NotBlankStr | None = None
@@ -127,7 +127,7 @@ class SecurityPolicyRule(BaseModel):
         enabled: Whether this rule is active.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr
     description: str = ""
@@ -177,7 +177,7 @@ class RuleEngineConfig(BaseModel):
             scanning always runs first.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     credential_patterns_enabled: bool = True
     data_leak_detection_enabled: bool = True
@@ -203,7 +203,7 @@ class SecurityConfig(BaseModel):
         custom_policies: User-defined policy rules.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = True
     rule_engine: RuleEngineConfig = Field(

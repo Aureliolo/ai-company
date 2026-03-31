@@ -61,7 +61,7 @@ class AgentContextSnapshot(BaseModel):
         message_count: Number of messages in the conversation.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     execution_id: NotBlankStr = Field(description="Unique execution identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")
@@ -125,7 +125,7 @@ class AgentContext(BaseModel):
             set when compaction has occurred.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     execution_id: NotBlankStr = Field(
         description="Unique execution run identifier",

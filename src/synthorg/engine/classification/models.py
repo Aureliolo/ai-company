@@ -44,7 +44,7 @@ class ErrorFinding(BaseModel):
             is the index into the turns tuple.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     category: ErrorCategory = Field(description="Error taxonomy category")
     severity: ErrorSeverity = Field(description="Severity level")
@@ -88,7 +88,7 @@ class ClassificationResult(BaseModel):
         classified_at: Timestamp when classification completed.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     execution_id: NotBlankStr = Field(description="Execution run identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")

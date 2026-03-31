@@ -85,7 +85,7 @@ class SystemPrompt(BaseModel):
         metadata: Agent identity metadata (agent_id, name, role, department, level).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     content: str = Field(description="Full rendered prompt text")
     template_version: str = Field(

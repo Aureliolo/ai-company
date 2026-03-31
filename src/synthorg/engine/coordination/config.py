@@ -17,7 +17,7 @@ class CoordinationConfig(BaseModel):
         base_branch: Git branch to use for workspace isolation.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     max_concurrency_per_wave: int | None = Field(
         default=None,

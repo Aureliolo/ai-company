@@ -24,7 +24,7 @@ class BudgetAlertConfig(BaseModel):
         hard_stop_at: Percentage of budget that triggers a hard stop.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     warn_at: int = Field(
         default=75,
@@ -78,7 +78,7 @@ class AutoDowngradeConfig(BaseModel):
             never mid-execution per the Operations design page).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(
         default=False,

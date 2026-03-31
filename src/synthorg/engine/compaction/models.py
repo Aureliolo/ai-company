@@ -19,7 +19,7 @@ class CompactionConfig(BaseModel):
             uncompressed after compaction.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     fill_threshold_percent: float = Field(
         default=80.0,
@@ -52,7 +52,7 @@ class CompressionMetadata(BaseModel):
         compactions_performed: Total number of compactions so far.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     compression_point: int = Field(
         ge=0,

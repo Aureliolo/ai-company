@@ -37,7 +37,7 @@ class ErrorTaxonomyConfig(BaseModel):
         categories: Error categories to track (must be unique).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(
         default=False,
@@ -112,7 +112,7 @@ class CoordinationMetricsConfig(BaseModel):
         orchestration_alerts: Orchestration overhead alert thresholds.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(
         default=False,

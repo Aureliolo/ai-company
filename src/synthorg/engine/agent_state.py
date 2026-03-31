@@ -31,7 +31,7 @@ class AgentRuntimeState(BaseModel):
         started_at: When the current execution started (``None`` when idle).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier (primary key)")
     execution_id: NotBlankStr | None = Field(

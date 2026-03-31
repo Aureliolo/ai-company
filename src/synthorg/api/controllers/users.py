@@ -48,7 +48,7 @@ _CEO_LOCK = asyncio.Lock()
 class CreateUserRequest(BaseModel):
     """Request body for creating a new user."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     username: NotBlankStr = Field(max_length=128)
     password: NotBlankStr = Field(max_length=128)
@@ -58,7 +58,7 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRoleRequest(BaseModel):
     """Request body for updating a user's role."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     role: HumanRole
 
@@ -66,7 +66,7 @@ class UpdateUserRoleRequest(BaseModel):
 class UserResponse(BaseModel):
     """Public user representation (no password hash)."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr
     username: NotBlankStr

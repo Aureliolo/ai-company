@@ -106,7 +106,11 @@ class HandlerRegistration(BaseModel):
         name: Human-readable label for debugging.
     """
 
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        frozen=True,
+        arbitrary_types_allowed=True,
+        allow_inf_nan=False,
+    )
 
     handler_id: NotBlankStr = Field(default_factory=lambda: str(uuid4()))
     handler: MessageHandler = Field(exclude=True)

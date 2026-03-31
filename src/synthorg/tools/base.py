@@ -44,7 +44,7 @@ class ToolExecutionResult(BaseModel):
         metadata: Optional structured data for programmatic consumers.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     content: str = Field(description="Tool output")
     is_error: bool = Field(default=False, description="Whether tool errored")

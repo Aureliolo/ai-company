@@ -14,7 +14,7 @@ class SandboxResult(BaseModel):
         success: Computed -- ``True`` when returncode is 0 and not timed out.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     stdout: str
     stderr: str

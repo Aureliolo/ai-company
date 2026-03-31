@@ -38,7 +38,7 @@ class ModelMatch(BaseModel):
         score: Match quality score (higher is better, 0-1 range).
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     agent_index: int = Field(ge=0)
     provider_name: NotBlankStr
