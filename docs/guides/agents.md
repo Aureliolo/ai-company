@@ -34,7 +34,11 @@ agents:
       tier: "medium"
       priority: "balanced"
       min_context: 50000
-    personality_preset: "pragmatic_builder"
+    personality:
+      openness: 0.5
+      conscientiousness: 0.85
+      decision_making: analytical
+      verbosity: balanced
     autonomy_level: semi  # override company-wide level
 ```
 
@@ -42,22 +46,24 @@ agents:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | *(auto-generated)* | Display name. Leave empty for Faker-generated names. |
+| `name` | string | *(required)* | Display name |
 | `role` | string | *(required)* | Role from the built-in catalog or `custom_roles` |
 | `department` | string | *(required)* | Department this agent belongs to |
 | `level` | SeniorityLevel | `mid` | Seniority level (see table below) |
-| `personality` | dict | `{}` | Raw personality config injected into the system prompt |
-| `personality_preset` | string | `null` | Named personality preset (see [Personality](#personality-presets)) |
-| `model` | string or dict | *(from routing)* | Model assignment -- string alias or structured config |
-| `merge_id` | string | `null` | Disambiguation ID for multiple agents with the same role |
+| `personality` | dict | `{}` | Personality config injected into the system prompt (see [Personality](#personality-configuration)) |
+| `model` | dict | `{}` | Model assignment -- structured config with tier, priority, min_context |
 | `memory` | dict | `{}` | Per-agent memory overrides |
 | `tools` | dict | `{}` | Tool access configuration |
 | `authority` | dict | `{}` | Delegation and approval authority |
 | `autonomy_level` | AutonomyLevel | `null` | Per-agent autonomy override |
 
+!!! tip "Template-only fields"
+
+    When using a **template** (e.g. `company_type: startup`), the template format supports additional fields: `personality_preset` (named preset resolved into a `personality` dict) and `merge_id` (disambiguation ID for multiple agents with the same role). These are resolved by the template engine before constructing the final config. Templates also auto-generate agent names via Faker when `name` is omitted.
+
 !!! note "Unique agent identity"
 
-    Agent names must be unique within the organization. Uniqueness is determined by the composite key of `(name, role, department, merge_id)`. Use `merge_id` when you need multiple agents with the same role in the same department.
+    Agent identity must be unique by the composite key `(name, role, department)`. When using templates with `merge_id`, the composite key extends to `(name, role, department, merge_id)`.
 
 ---
 
@@ -166,7 +172,7 @@ graph TD
 | `head_role` | string | *(required)* | Role of the department head |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor pairs |
 
-Use `subordinate_id` in reporting lines when you have multiple agents with the same role (matches the agent's `merge_id`).
+Use `subordinate_id` in reporting lines when you have multiple agents with the same role (matches the agent's `merge_id` when using templates).
 
 ---
 
@@ -203,22 +209,20 @@ Rather than configuring each dimension manually, use a named preset:
 |--------|-----------|
 | `visionary_leader` | High openness (0.85), directive decisions, authoritative communication |
 | `pragmatic_builder` | High conscientiousness (0.85), analytical decisions, concise communication |
-| `rapid_prototyper` | High openness (0.8), intuitive decisions, balanced communication |
+| `rapid_prototyper` | High openness (0.85), intuitive decisions, informal communication |
 | `eager_learner` | High openness (0.8), consultative decisions, enthusiastic communication |
 | `methodical_analyst` | Very high conscientiousness (0.9), analytical decisions, formal communication |
 | `creative_innovator` | Very high openness (0.95), intuitive decisions, verbose communication |
-| `strategic_planner` | High conscientiousness (0.8), consultative decisions, balanced communication |
-| `team_diplomat` | High agreeableness (0.85), consultative decisions, collaborative conflict approach |
+| `strategic_planner` | Moderate conscientiousness (0.7), consultative decisions, structured communication |
+| `team_diplomat` | Very high agreeableness (0.9), consultative decisions, collaborative conflict approach |
 
-Use `personality_preset` in the agent config:
+These are 8 of the 22 built-in presets. See the [library reference](../api/templates.md) for the complete preset catalog.
 
-```yaml
-agents:
-  - role: "CEO"
-    personality_preset: "visionary_leader"
-```
+!!! tip "Using presets"
 
-Or provide a full personality object for fine-grained control:
+    Personality presets are available when using **templates** (via `personality_preset` in the template agent config). In raw YAML config, use the `personality` dict directly with the resolved values.
+
+Provide a full personality object for fine-grained control:
 
 ```yaml
 agents:

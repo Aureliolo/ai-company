@@ -56,6 +56,7 @@ The top-level configuration object. Only `company_name` is required -- all other
 | `coordination` | CoordinationConfig | *(defaults)* | Multi-agent coordination |
 | `git_clone` | GitCloneConfig | *(defaults)* | Git workspace settings |
 | `backup` | BackupConfig | *(defaults)* | Backup/restore settings |
+| `coordination_metrics` | CoordinationMetricsConfig | *(defaults)* | Coordination metrics tracking |
 
 ---
 
@@ -119,7 +120,7 @@ LLM providers are configured under the `providers` key. Each entry is a named pr
 | Auth Type | Required Fields |
 |-----------|-----------------|
 | `api_key` | `api_key` |
-| `subscription` | `api_key` (as subscription token) |
+| `subscription` | `subscription_token`, `tos_accepted_at` |
 | `oauth` | OAuth-specific fields |
 | `custom_header` | `custom_header_name`, `custom_header_value` |
 | `none` | No credentials (e.g. local Ollama) |
@@ -134,7 +135,7 @@ Each provider lists its available models under the `models` key:
 | `alias` | string | `null` | Short alias for routing rules |
 | `cost_per_1k_input` | float | `0.0` | Cost per 1K input tokens (USD) |
 | `cost_per_1k_output` | float | `0.0` | Cost per 1K output tokens (USD) |
-| `max_context` | int | `128000` | Context window size in tokens |
+| `max_context` | int | `200000` | Context window size in tokens |
 | `estimated_latency_ms` | int | `null` | Estimated latency |
 
 ### Provider Examples
@@ -177,7 +178,8 @@ Each provider lists its available models under the `models` key:
     providers:
       my-subscription:
         auth_type: subscription
-        api_key: "sub-token-..."
+        subscription_token: "sub-token-..."
+        tos_accepted_at: "2026-01-15T00:00:00Z"
         base_url: "https://api.example.com/v1"
         subscription:
           monthly_quota: 1000000
@@ -242,18 +244,18 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | *(auto-generated)* | Agent display name |
+| `name` | string | *(required)* | Agent display name |
 | `role` | string | *(required)* | Role identifier |
 | `department` | string | *(required)* | Department name |
 | `level` | SeniorityLevel | `mid` | Seniority level |
 | `personality` | dict | `{}` | Personality configuration |
-| `model` | string or dict | *(from routing)* | Model assignment |
+| `model` | dict | `{}` | Model assignment (tier, priority, min_context) |
 | `memory` | dict | `{}` | Per-agent memory settings |
 | `tools` | dict | `{}` | Tool access configuration |
 | `authority` | dict | `{}` | Delegation and approval authority |
 | `autonomy_level` | AutonomyLevel | `null` | Per-agent autonomy override |
 
-Agent names must be unique (composite key of `name + role + department + merge_id`).
+Agent identity must be unique by the composite key `(name, role, department)`.
 
 ---
 
@@ -388,7 +390,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 | Rule | Description |
 |------|-------------|
-| Unique agent names | Agent composite key (name + role + department + merge_id) must be unique |
+| Unique agent names | Agent composite key (name + role + department) must be unique |
 | Unique department names | Department names must not repeat |
 | Routing model references | `preferred_model` and `fallback` in routing rules must reference existing model IDs or aliases |
 | Fallback chain references | `fallback_chain` entries must reference existing model IDs or aliases |
@@ -440,7 +442,10 @@ SynthOrg enforces the following cross-field validation rules at load time:
           tier: "large"
           priority: "quality"
           min_context: 100000
-        personality_preset: "visionary_leader"
+        personality:
+          openness: 0.85
+          conscientiousness: 0.6
+          decision_making: directive
       - role: "CTO"
         name: "Bob"
         level: c_suite
@@ -448,13 +453,21 @@ SynthOrg enforces the following cross-field validation rules at load time:
         model:
           tier: "large"
           priority: "quality"
-        personality_preset: "rapid_prototyper"
+        personality:
+          openness: 0.85
+          conscientiousness: 0.4
+          decision_making: intuitive
       - role: "Full-Stack Developer"
         name: "Charlie"
         level: senior
         department: "engineering"
-        model: "medium"
-        personality_preset: "pragmatic_builder"
+        model:
+          tier: "medium"
+          priority: "balanced"
+        personality:
+          openness: 0.5
+          conscientiousness: 0.85
+          decision_making: analytical
       - role: "Product Manager"
         name: "Diana"
         level: senior
@@ -462,7 +475,10 @@ SynthOrg enforces the following cross-field validation rules at load time:
         model:
           tier: "medium"
           priority: "speed"
-        personality_preset: "strategic_planner"
+        personality:
+          openness: 0.6
+          conscientiousness: 0.7
+          decision_making: consultative
 
     providers:
       cloud:

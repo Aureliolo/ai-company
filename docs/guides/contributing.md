@@ -60,6 +60,10 @@ SynthOrg uses [Conventional Commits](https://www.conventionalcommits.org/), enfo
 <optional body>
 ```
 
+!!! warning "Signed commits required"
+
+    All commits targeting `main` must be GPG or SSH signed (enforced by branch protection). Configure signing before your first PR: see [GitHub's signing commits guide](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
+
 **Examples:**
 
 ```text

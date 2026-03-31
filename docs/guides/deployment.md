@@ -63,7 +63,7 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 
 | Variable | Description |
 |----------|-------------|
-| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be >= 32 characters of URL-safe base64. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be >= 32 characters of URL-safe base64. Never commit to version control. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SYNTHORG_SETTINGS_KEY` | Fernet encryption key for sensitive settings at rest. Must be a valid Fernet key. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 
 ### Optional
