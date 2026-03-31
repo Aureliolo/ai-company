@@ -63,7 +63,7 @@ export function SidebarNavItem({
 
   if (external) {
     return (
-      <a href={to} title={collapsed ? label : undefined} className={baseClass}>
+      <a href={to} rel="noopener noreferrer" title={collapsed ? label : undefined} className={baseClass}>
         {content}
       </a>
     )

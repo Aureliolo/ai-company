@@ -96,4 +96,42 @@ describe('SidebarNavItem', () => {
       }),
     )
   })
+
+  describe('external prop', () => {
+    it('renders an anchor element instead of a router link', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+      )
+
+      const link = screen.getByRole('link', { name: /docs/i })
+      expect(link.tagName).toBe('A')
+      expect(link).toHaveAttribute('href', '/docs/')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    })
+
+    it('shows title tooltip when collapsed', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed external />,
+      )
+
+      expect(screen.getByTitle('Docs')).toBeInTheDocument()
+      expect(screen.queryByText('Docs')).not.toBeInTheDocument()
+    })
+
+    it('renders label when expanded', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+      )
+
+      expect(screen.getByText('Docs')).toBeInTheDocument()
+    })
+
+    it('renders badge on external link', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} badge={3} external />,
+      )
+
+      expect(screen.getByText('3')).toBeInTheDocument()
+    })
+  })
 })
