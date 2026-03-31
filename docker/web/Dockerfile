@@ -25,7 +25,7 @@ FROM python:3.14.3-slim@sha256:fb83750094b46fd6b8adaa80f66e2302ecbe45d513f6cece6
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 /uv /uvx /bin/
 
-RUN groupadd -r docsbuild && useradd -r -g docsbuild docsbuild \
+RUN groupadd -r --gid 1001 docsbuild && useradd -r --uid 1001 -g docsbuild docsbuild \
     && mkdir /app && chown docsbuild:docsbuild /app
 
 ENV UV_COMPILE_BYTECODE=1 \
@@ -37,13 +37,13 @@ WORKDIR /app
 # Install dependencies first (layer cache -- only invalidated on lock change)
 COPY --chown=docsbuild:docsbuild pyproject.toml uv.lock ./
 USER docsbuild
-RUN --mount=type=cache,target=/tmp/uv-cache \
+RUN --mount=type=cache,target=/tmp/uv-cache,uid=1001,gid=1001 \
     uv sync --frozen --group docs --no-dev --no-install-project
 
 # Install project (export_openapi.py imports synthorg.api.app)
 RUN touch README.md
 COPY --chown=docsbuild:docsbuild src/ src/
-RUN --mount=type=cache,target=/tmp/uv-cache \
+RUN --mount=type=cache,target=/tmp/uv-cache,uid=1001,gid=1001 \
     uv sync --frozen --group docs --no-dev
 
 # Build documentation
