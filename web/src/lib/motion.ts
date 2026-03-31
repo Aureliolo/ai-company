@@ -130,7 +130,7 @@ export const pageExit: Variants = {
   exit: {
     opacity: 0,
     x: -8,
-    transition: { type: "tween", duration: 0.15, ease: "easeIn" },
+    transition: tweenExitFast,
   },
 };
 

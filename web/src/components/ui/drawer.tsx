@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { springDefault, tweenDefault, tweenFast } from '@/lib/motion'
+import { springDefault, tweenExitFast, tweenFast } from '@/lib/motion'
 
 interface DrawerPropsBase {
   open: boolean
@@ -37,7 +37,7 @@ function getPanelVariants(side: 'left' | 'right') {
   return {
     hidden: { x: offscreen },
     visible: { x: 0, transition: springDefault },
-    exit: { x: offscreen, transition: tweenDefault },
+    exit: { x: offscreen, transition: tweenExitFast },
   }
 }
 
