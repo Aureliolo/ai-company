@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.2](https://github.com/Aureliolo/synthorg/compare/v0.5.1...v0.5.2) (2026-03-31)
+
+
+### Features
+
+* harden activity feed API ([#838](https://github.com/Aureliolo/synthorg/issues/838), [#839](https://github.com/Aureliolo/synthorg/issues/839), [#840](https://github.com/Aureliolo/synthorg/issues/840)) ([#937](https://github.com/Aureliolo/synthorg/issues/937)) ([c0234ad](https://github.com/Aureliolo/synthorg/commit/c0234ad10e1963e2939ca80656f05e38fc2dcbc1))
+* provider usage metrics, model capabilities, and active health probing ([#935](https://github.com/Aureliolo/synthorg/issues/935)) ([1434c9c](https://github.com/Aureliolo/synthorg/commit/1434c9ccea52b17ff7c7bd1f197d0f7c02765b80))
+* runtime sink configuration via SettingsService ([#934](https://github.com/Aureliolo/synthorg/issues/934)) ([16c3f23](https://github.com/Aureliolo/synthorg/commit/16c3f230e3bb0d37e46a5ec7932c5eab11990499))
+* Settings page comprehensive redesign ([#936](https://github.com/Aureliolo/synthorg/issues/936)) ([#939](https://github.com/Aureliolo/synthorg/issues/939)) ([6d9ac8b](https://github.com/Aureliolo/synthorg/commit/6d9ac8bc234c2ee64a7941fcc5caf33c2538b823))
+
+
+### Maintenance
+
+* bump astro from 6.1.1 to 6.1.2 in /site in the all group ([#940](https://github.com/Aureliolo/synthorg/issues/940)) ([ffa24f0](https://github.com/Aureliolo/synthorg/commit/ffa24f0807a478f0eefbfca5233a5dd8253fdd4a))
+* bump pygments from 2.19.2 to 2.20.0 ([#931](https://github.com/Aureliolo/synthorg/issues/931)) ([9993088](https://github.com/Aureliolo/synthorg/commit/9993088323fcb830f0197f498ebadbecff043655))
+* bump the all group with 2 updates ([#942](https://github.com/Aureliolo/synthorg/issues/942)) ([aea37f8](https://github.com/Aureliolo/synthorg/commit/aea37f8914a288856bc187f09518b42588f7b5d0))
+* bump typescript-eslint from 8.57.2 to 8.58.0 in /web in the all group ([#941](https://github.com/Aureliolo/synthorg/issues/941)) ([24f024c](https://github.com/Aureliolo/synthorg/commit/24f024cf744cbfb71e7051e29ee66bc953d6d807))
+* split CLAUDE.md into subdirectory files for cli/ and web/ ([#932](https://github.com/Aureliolo/synthorg/issues/932)) ([f5cfe07](https://github.com/Aureliolo/synthorg/commit/f5cfe0753a155ff7f4d397e955e37fe5de79f5d2))
+
 ## [0.5.1](https://github.com/Aureliolo/synthorg/compare/v0.5.0...v0.5.1) (2026-03-30)
 
 
