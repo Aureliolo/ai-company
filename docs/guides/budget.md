@@ -142,7 +142,7 @@ downgrade_map:
 
 - No self-downgrades (e.g. `["large", "large"]` is rejected)
 - No duplicate source aliases (each source can only appear once)
-- Aliases must reference models defined in your `providers` configuration
+- Aliases should reference model aliases or IDs defined in your `providers` configuration (unresolvable aliases are silently skipped at runtime)
 
 ---
 

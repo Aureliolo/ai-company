@@ -63,14 +63,14 @@ Run the interactive setup wizard:
 synthorg init
 ```
 
-The wizard will prompt you to:
+The wizard will prompt you to configure infrastructure settings:
 
-1. **Choose a setup mode** -- select **Quick Setup** for the fastest path.
-2. **Name your company** -- pick any name (e.g. "My First Org").
-3. **Add an LLM provider** -- enter your provider's API key. Local providers like Ollama are auto-detected.
-4. **Select a template** -- choose **Solo Builder** (the minimal 2-agent template).
+1. **Data directory** -- where SynthOrg stores its data (default: platform-appropriate path).
+2. **Backend API port** -- port for the REST/WebSocket API (default: 3001).
+3. **Web dashboard port** -- port for the web UI (default: 3000).
+4. **Enable agent code sandbox** -- optionally mount the Docker socket for sandboxed code execution.
 
-`synthorg init` generates the required secrets (`SYNTHORG_JWT_SECRET` and `SYNTHORG_SETTINGS_KEY`) and writes them to `docker/.env` automatically.
+`synthorg init` generates the required secrets (`SYNTHORG_JWT_SECRET` and `SYNTHORG_SETTINGS_KEY`) and writes the configuration automatically. Company setup (name, LLM provider, template) happens in the web dashboard after containers start (see [Step 4](#step-4-explore-the-dashboard)).
 
 ---
 
@@ -96,11 +96,15 @@ You should see both containers (`backend` and `web`) reporting healthy.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-On a fresh install, the **setup wizard** appears. If you used Quick Setup during `synthorg init`, the wizard completes automatically and the dashboard loads.
+On a fresh install, the **setup wizard** appears and walks you through company configuration:
 
-You will see:
+1. **Name your company** -- pick any name (e.g. "My First Org").
+2. **Add an LLM provider** -- enter your provider's API key. Local providers like Ollama are auto-detected.
+3. **Select a template** -- choose **Solo Builder** (the minimal 2-agent template).
 
-- **Agents** -- the CEO and Full-Stack Developer, each with their personality preset and model assignment
+Once the wizard completes, the dashboard loads and you will see:
+
+- **Agents** -- the CEO and Full-Stack Developer, each with their personality and model assignment
 - **Organization status** -- health indicators for your synthetic company
 - **Task board** -- currently empty, ready for your first task
 
