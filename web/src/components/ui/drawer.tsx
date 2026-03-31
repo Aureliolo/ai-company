@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { springDefault } from '@/lib/motion'
+import { springDefault, tweenDefault, tweenFast } from '@/lib/motion'
 
 interface DrawerPropsBase {
   open: boolean
@@ -37,7 +37,7 @@ function getPanelVariants(side: 'left' | 'right') {
   return {
     hidden: { x: offscreen },
     visible: { x: 0, transition: springDefault },
-    exit: { x: offscreen, transition: { duration: 0.2, ease: 'easeIn' as const } },
+    exit: { x: offscreen, transition: tweenDefault },
   }
 }
 
@@ -121,7 +121,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
             initial="hidden"
             animate="visible"
             exit="hidden"
-            transition={{ duration: 0.15 }}
+            transition={tweenFast}
             className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
             onClick={onClose}
             aria-hidden="true"

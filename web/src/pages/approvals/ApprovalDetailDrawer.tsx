@@ -4,7 +4,7 @@ import { AlertTriangle, Calendar, Check, Loader2, Shield, Tag, User, X, type Luc
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { springDefault, overlayBackdrop } from '@/lib/motion'
+import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { ApprovalTimeline } from './ApprovalTimeline'
 import {
   getApprovalStatusLabel,
@@ -30,7 +30,7 @@ export interface ApprovalDetailDrawerProps {
 const PANEL_VARIANTS = {
   initial: { x: '100%', opacity: 0 },
   animate: { x: 0, opacity: 1, transition: springDefault },
-  exit: { x: '100%', opacity: 0, transition: { duration: 0.15, ease: 'easeIn' as const } },
+  exit: { x: '100%', opacity: 0, transition: tweenExitFast },
 }
 
 const RISK_DOT_CLASSES: Record<string, string> = {
@@ -248,7 +248,7 @@ export function ApprovalDetailDrawer({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
               {/* Title */}
               <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
 

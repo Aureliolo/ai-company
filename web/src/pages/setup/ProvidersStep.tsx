@@ -159,7 +159,7 @@ export function ProvidersStep() {
 
       {/* Missing provider warnings */}
       {missingProviders.length > 0 && (
-        <div className="rounded-md border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           Agents need these providers: {missingProviders.join(', ')}
         </div>
       )}

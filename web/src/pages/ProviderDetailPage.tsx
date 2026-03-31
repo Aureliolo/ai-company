@@ -40,7 +40,7 @@ export default function ProviderDetailPage() {
   // Error state
   if (error && !provider) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-section-gap">
         <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>

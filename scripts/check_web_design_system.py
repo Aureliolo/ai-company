@@ -89,6 +89,24 @@ HARDCODED_FONT_RE = re.compile(
     """,
 )
 
+# Framer Motion inline transition durations (should use lib/motion presets)
+HARDCODED_FM_DURATION_RE = re.compile(
+    r"""(?x)
+    # Variant object exit/animate transitions: exit: { ..., transition: { duration: N } }
+    transition\s*:\s*\{[^}]*\bduration\s*:\s*[\d.]+
+    |
+    # Inline transition prop: transition={{ duration: N }}
+    transition\s*=\s*\{\s*\{[^}]*\bduration\s*:\s*[\d.]+
+    """,
+)
+
+# Files where inline Framer Motion durations are intentional
+_FM_DURATION_SKIP_FILES: set[str] = {
+    "motion.ts",
+    "useAnimationPreset.ts",
+    "ThemePreview.tsx",
+}
+
 # ── Files to skip ────────────────────────────────────────────────────
 _SKIP_PATHS: set[str] = {"design-tokens.css", "global.css"}
 _SKIP_DIRS: set[str] = {"__tests__", "node_modules", ".storybook"}
@@ -210,6 +228,45 @@ def check_hardcoded_fonts(
             for m in HARDCODED_FONT_RE.finditer(line)
             if not _is_in_comment_context(line, m.start())
         )
+
+    return warnings
+
+
+def check_hardcoded_framer_transitions(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded Framer Motion transition durations.
+
+    Components should use presets from ``lib/motion.ts`` (e.g.
+    ``tweenDefault``, ``tweenFast``, ``tweenExitFast``) or the
+    ``useAnimationPreset()`` hook instead of inline duration values.
+    """
+    if file_path.name in _FM_DURATION_SKIP_FILES:
+        return []
+    if ".stories." in file_path.name:
+        return []
+    if file_path.suffix not in {".tsx", ".ts"}:
+        return []
+
+    warnings: list[str] = []
+    rel_path = file_path.relative_to(project_root)
+
+    for line_num, line in enumerate(content.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith(_COMMENT_PREFIXES):
+            continue
+
+        for m in HARDCODED_FM_DURATION_RE.finditer(line):
+            if _is_in_comment_context(line, m.start()):
+                continue
+            warnings.append(
+                f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
+                f"-- use a preset from `@/lib/motion` or "
+                f"`useAnimationPreset()` hook.\n"
+                f"    {stripped}"
+            )
 
     return warnings
 
@@ -399,6 +456,9 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     all_warnings: list[str] = []
     all_warnings.extend(check_hardcoded_colors(content, file_path, project_root))
     all_warnings.extend(check_hardcoded_fonts(content, file_path, project_root))
+    all_warnings.extend(
+        check_hardcoded_framer_transitions(content, file_path, project_root),
+    )
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))

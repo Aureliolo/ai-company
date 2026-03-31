@@ -209,7 +209,7 @@ export function MiniOrgChart({ agents, className }: MiniOrgChartProps) {
   const rootY = 16
 
   return (
-    <div className={cn('overflow-x-auto rounded-lg border border-border bg-card p-4', className)}>
+    <div className={cn('overflow-x-auto rounded-lg border border-border bg-card p-card', className)}>
       <svg
         viewBox={`0 0 ${svgWidth} ${svgHeight}`}
         width="100%"

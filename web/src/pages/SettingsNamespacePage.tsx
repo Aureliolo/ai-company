@@ -72,7 +72,7 @@ export default function SettingsNamespacePage() {
 
   if (!validNamespace) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-section-gap">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
             <Link to={ROUTES.SETTINGS}><ArrowLeft className="size-4" /></Link>
@@ -91,7 +91,7 @@ export default function SettingsNamespacePage() {
   const displayName = NAMESPACE_DISPLAY_NAMES[ns]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="icon" aria-label="Back to settings">
@@ -106,7 +106,7 @@ export default function SettingsNamespacePage() {
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-danger/30 bg-danger/5',
-          'px-4 py-2 text-sm text-danger',
+          'p-card text-sm text-danger',
         )}>
           <AlertTriangle className="size-4 shrink-0" />
           {error}
@@ -117,7 +117,7 @@ export default function SettingsNamespacePage() {
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-warning/30 bg-warning/5',
-          'px-4 py-2 text-sm text-warning',
+          'p-card text-sm text-warning',
         )}>
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}

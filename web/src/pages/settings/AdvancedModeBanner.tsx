@@ -9,7 +9,7 @@ export function AdvancedModeBanner({ onDisable }: AdvancedModeBannerProps) {
   return (
     <div
       role="status"
-      className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning"
+      className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning"
     >
       <ShieldAlert className="size-4 shrink-0" aria-hidden />
       <span className="flex-1">

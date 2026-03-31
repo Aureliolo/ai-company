@@ -39,7 +39,7 @@ export function SetupAgentCard({
   )
 
   return (
-    <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
+    <div className="flex gap-3 rounded-lg border border-border bg-card p-card">
       <Avatar name={agent.name} size="md" />
       <div className="flex-1 space-y-2">
         {/* Name + randomize */}

@@ -2,7 +2,7 @@ import { Skeleton, SkeletonCard } from '@/components/ui/skeleton'
 
 export function MeetingDetailSkeleton() {
   return (
-    <div className="space-y-6" aria-label="Loading meeting detail">
+    <div className="space-y-section-gap" aria-label="Loading meeting detail">
       {/* Header */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">

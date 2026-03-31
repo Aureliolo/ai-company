@@ -2,7 +2,7 @@ import { Skeleton, SkeletonText } from '@/components/ui/skeleton'
 
 function MessageRowSkeleton() {
   return (
-    <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
+    <div className="flex gap-3 rounded-lg border border-border bg-card p-card">
       <Skeleton className="size-6 shrink-0 rounded-full" />
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">

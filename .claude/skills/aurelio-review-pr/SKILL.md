@@ -166,6 +166,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **security-reviewer** | Files in `src/synthorg/api/`, `src/synthorg/security/`, `src/synthorg/tools/`, `src/synthorg/config/`, `src/synthorg/persistence/`, `src/synthorg/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **design-token-audit** | Any `web_src` | `.claude/agents/design-token-audit.md` prompt (scans for density, animation, spacing token violations) |
 | **api-contract-drift** | Any file in `src/synthorg/api/` OR `web/src/api/` OR `src/synthorg/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **persistence-reviewer** | Any file in `src/synthorg/persistence/` | `everything-claude-code:database-reviewer` |
@@ -346,25 +347,29 @@ The frontend-reviewer agent checks React 19 + shadcn/ui dashboard code quality a
 7. Custom CSS that duplicates existing shadcn/ui components or Tailwind utilities (MEDIUM)
 8. Inline styles instead of Tailwind classes (MEDIUM)
 9. Hardcoded colors/spacing instead of design tokens (CSS variables) (MEDIUM)
+10. Hardcoded Framer Motion `transition: { duration: N }` instead of presets from `@/lib/motion` or `useAnimationPreset()` hook (MEDIUM)
+11. Card containers (`bg-card` + border) using hardcoded `p-3`/`p-4`/`px-N py-N` instead of `p-card` (MEDIUM)
+12. Page-level section gaps using `space-y-6`/`gap-4`/`gap-6` instead of `space-y-section-gap` or `gap-section-gap` (MEDIUM)
+13. Alert/notification banners using `px-4 py-2` instead of `p-card` (MEDIUM)
 
 **TypeScript (MAJOR):**
-10. `any` type usage -- should use proper types (MAJOR)
-11. Missing return types on custom hooks (MAJOR)
-12. Type assertions (`as`) that could be replaced with proper type guards (MEDIUM)
+14. `any` type usage -- should use proper types (MAJOR)
+15. Missing return types on custom hooks (MAJOR)
+16. Type assertions (`as`) that could be replaced with proper type guards (MEDIUM)
 
 **Custom hooks (MAJOR):**
-13. Reactive logic duplicated across components instead of extracted into a custom hook (MAJOR)
-14. Custom hooks with side effects not wrapped in `useEffect` (MAJOR)
-15. Missing cleanup in hooks (event listeners, intervals, subscriptions, abort controllers) (MAJOR)
+17. Reactive logic duplicated across components instead of extracted into a custom hook (MAJOR)
+18. Custom hooks with side effects not wrapped in `useEffect` (MAJOR)
+19. Missing cleanup in hooks (event listeners, intervals, subscriptions, abort controllers) (MAJOR)
 
 **Accessibility (MEDIUM):**
-16. Interactive elements missing `aria-label` or accessible text (MEDIUM)
-17. Missing keyboard navigation support for custom interactive components (MEDIUM)
-18. Color-only state indicators without text/icon alternatives (MINOR)
+20. Interactive elements missing `aria-label` or accessible text (MEDIUM)
+21. Missing keyboard navigation support for custom interactive components (MEDIUM)
+22. Color-only state indicators without text/icon alternatives (MINOR)
 
 **Backend type alignment (MAJOR):**
-19. Frontend types in `web/src/api/types.ts` that don't match backend Pydantic models -- field names, types, optionality (MAJOR)
-20. Hardcoded enum values instead of importing from a shared constants file (MEDIUM)
+23. Frontend types in `web/src/api/types.ts` that don't match backend Pydantic models -- field names, types, optionality (MAJOR)
+24. Hardcoded enum values instead of importing from a shared constants file (MEDIUM)
 
 ### API-contract-drift custom prompt
 

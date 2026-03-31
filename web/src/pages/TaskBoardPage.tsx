@@ -256,14 +256,14 @@ export default function TaskBoardPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

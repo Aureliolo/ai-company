@@ -87,7 +87,7 @@ export default function BudgetForecastPage() {
 
   if (loading && !overview) {
     return (
-      <div className="space-y-6" role="status" aria-live="polite" aria-label="Loading forecast">
+      <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading forecast">
         <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2">
           <SkeletonMetric />
           <SkeletonMetric />
@@ -101,7 +101,7 @@ export default function BudgetForecastPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex items-center gap-3">
         <Link
           to={ROUTES.BUDGET}
@@ -114,14 +114,14 @@ export default function BudgetForecastPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
       {!wsConnected && !loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

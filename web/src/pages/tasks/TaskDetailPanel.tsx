@@ -8,7 +8,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { TaskStatusIndicator } from '@/components/ui/task-status-indicator'
 import { PriorityBadge } from '@/components/ui/task-status-indicator'
 import { Avatar } from '@/components/ui/avatar'
-import { springDefault, overlayBackdrop } from '@/lib/motion'
+import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { formatDate, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
@@ -28,7 +28,7 @@ export interface TaskDetailPanelProps {
 const PANEL_VARIANTS = {
   initial: { x: '100%', opacity: 0 },
   animate: { x: 0, opacity: 1, transition: springDefault },
-  exit: { x: '100%', opacity: 0, transition: { duration: 0.15, ease: 'easeIn' as const } },
+  exit: { x: '100%', opacity: 0, transition: tweenExitFast },
 }
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
@@ -129,7 +129,7 @@ export function TaskDetailPanel({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="size-6 animate-spin text-text-muted" />

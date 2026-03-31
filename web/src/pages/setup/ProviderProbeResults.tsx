@@ -88,7 +88,7 @@ export function ProviderProbeResults({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-card">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-foreground">

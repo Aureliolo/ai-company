@@ -2,7 +2,7 @@ import { Skeleton, SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton
 
 export function AgentDetailSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       {/* Identity header */}
       <div className="flex items-start gap-4">
         <Skeleton className="size-10 rounded-full" />

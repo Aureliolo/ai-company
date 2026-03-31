@@ -83,21 +83,21 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Meetings</h1>
         <Button onClick={() => setTriggerOpen(true)}>Trigger Meeting</Button>
       </div>
 
       {error && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>
       )}
 
       {(wsSetupError || (wasConnectedRef.current && !wsConnected)) && !loading && (
-        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

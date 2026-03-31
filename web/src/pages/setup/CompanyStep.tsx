@@ -75,7 +75,7 @@ export function CompanyStep() {
       )}
 
       {/* Company details form */}
-      <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+      <div className="space-y-4 rounded-lg border border-border bg-card p-card">
         <InputField
           label="Company Name"
           required

@@ -43,7 +43,7 @@ export function TaskCard({ task, onSelect, isDragging, isOverlay, className, ref
       }}
       style={flashStyle}
       className={cn(
-        'cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors',
+        'cursor-pointer rounded-lg border border-border bg-card p-card transition-colors',
         'hover:border-border-bright hover:bg-card-hover hover:-translate-y-px hover:shadow-[0_4px_24px_var(--so-accent-8)]',
         FOCUS_RING,
         isDragging && 'scale-[1.02] opacity-50 shadow-lg',

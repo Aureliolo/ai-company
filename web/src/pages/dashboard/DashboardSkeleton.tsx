@@ -2,7 +2,7 @@ import { SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton'
 
 export function DashboardSkeleton() {
   return (
-    <div className="space-y-6" role="status" aria-live="polite" aria-label="Loading dashboard">
+    <div className="space-y-section-gap" role="status" aria-live="polite" aria-label="Loading dashboard">
       <div
         className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2"
         data-testid="skeleton-metrics-row"

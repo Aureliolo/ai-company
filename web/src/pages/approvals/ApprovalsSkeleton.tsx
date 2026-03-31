@@ -2,7 +2,7 @@ import { Skeleton, SkeletonCard, SkeletonMetric } from '@/components/ui/skeleton
 
 export function ApprovalsSkeleton() {
   return (
-    <div className="space-y-6" role="status" aria-label="Loading approvals">
+    <div className="space-y-section-gap" role="status" aria-label="Loading approvals">
       {/* Filter bar skeleton */}
       <div className="flex items-center gap-3">
         <Skeleton className="h-8 w-28 rounded-md" />
