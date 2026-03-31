@@ -17,6 +17,7 @@ from synthorg.observability.events.routing import (
 from .errors import RoutingError, UnknownStrategyError
 from .models import RoutingDecision, RoutingRequest  # noqa: TC001
 from .resolver import ModelResolver
+from .selector import ModelCandidateSelector  # noqa: TC001
 from .strategies import STRATEGY_MAP
 
 if TYPE_CHECKING:
@@ -44,18 +45,25 @@ class ModelRouter:
         self,
         routing_config: RoutingConfig,
         providers: dict[str, ProviderConfig],
+        *,
+        selector: ModelCandidateSelector | None = None,
     ) -> None:
         """Initialize the router.
 
         Args:
             routing_config: Routing configuration (strategy, rules, fallback).
             providers: Provider configurations keyed by provider name.
+            selector: Optional candidate selector for multi-provider
+                model resolution.  Defaults to ``QuotaAwareSelector()``.
 
         Raises:
             UnknownStrategyError: If the configured strategy is not recognized.
         """
         self._config = routing_config
-        self._resolver = ModelResolver.from_config(providers)
+        self._resolver = ModelResolver.from_config(
+            providers,
+            selector=selector,
+        )
 
         strategy_name = routing_config.strategy
         strategy = STRATEGY_MAP.get(strategy_name)

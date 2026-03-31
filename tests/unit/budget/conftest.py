@@ -360,11 +360,11 @@ def make_resolver(
                 cost_per_1k_output=0.002,
             ),
         ]
-    index: dict[str, ResolvedModel] = {}
+    index: dict[str, tuple[ResolvedModel, ...]] = {}
     for m in models:
-        index[m.model_id] = m
+        index[m.model_id] = (m,)
         if m.alias is not None:
-            index[m.alias] = m
+            index[m.alias] = (m,)
     return ModelResolver(index)
 
 

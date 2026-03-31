@@ -380,6 +380,45 @@ class QuotaTracker:
             result[provider_name] = await self.get_snapshot(provider_name)
         return result
 
+    def peek_quota_available(self) -> dict[str, bool]:
+        """Synchronous snapshot of per-provider quota availability.
+
+        Reads cached counters **without acquiring the lock**.  This is
+        safe on the single-threaded ``asyncio`` event loop (no
+        concurrent mutations during synchronous execution) and
+        acceptable for heuristic selection decisions where TOCTOU is
+        tolerated.
+
+        Providers without configured quotas are excluded from the
+        result (they are always allowed and do not need selection
+        guidance).
+
+        Returns:
+            Dict mapping provider name to availability status.
+        """
+        now = datetime.now(UTC)
+        result: dict[str, bool] = {}
+
+        for provider_name, provider_usage in self._usage.items():
+            sub_config = self._subscriptions[provider_name]
+            quota_map = {q.window: q for q in sub_config.quotas}
+            exhausted = False
+
+            for window_type, usage in provider_usage.items():
+                expected_start = window_start(window_type, now=now)
+                if expected_start != usage.window_start:
+                    continue  # Window rotated, counters are zero
+                quota = quota_map.get(window_type)
+                if quota is None:
+                    continue
+                if _is_window_exhausted(usage, quota, estimated_tokens=0):
+                    exhausted = True
+                    break
+
+            result[provider_name] = not exhausted
+
+        return result
+
 
 def _is_window_exhausted(
     usage: _WindowUsage,

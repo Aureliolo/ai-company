@@ -529,3 +529,89 @@ class TestInputValidation:
         tracker = QuotaTracker(subscriptions={})
         with pytest.raises(ValueError, match="non-negative"):
             await tracker.check_quota("p", estimated_tokens=-1)
+
+
+# ── peek_quota_available ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestPeekQuotaAvailable:
+    """Tests for synchronous quota availability snapshot."""
+
+    async def test_fresh_tracker_all_available(self) -> None:
+        """Freshly created tracker reports all providers as available."""
+        with _patched_tracker_datetime():
+            tracker = _make_tracker(
+                provider="test-provider",
+                quotas=(_hour_quota(100),),
+            )
+        result = tracker.peek_quota_available()
+        assert result == {"test-provider": True}
+
+    async def test_exhausted_provider_shows_unavailable(self) -> None:
+        """Provider at request limit shows as unavailable."""
+        with _patched_tracker_datetime():
+            tracker = _make_tracker(
+                provider="test-provider",
+                quotas=(_hour_quota(2),),
+            )
+            await tracker.record_usage("test-provider", requests=2)
+            result = tracker.peek_quota_available()
+        assert result == {"test-provider": False}
+
+    async def test_token_exhausted_shows_unavailable(self) -> None:
+        """Provider over token limit shows as unavailable."""
+        with _patched_tracker_datetime():
+            tracker = _make_tracker(
+                provider="test-provider",
+                quotas=(_day_token_quota(1000),),
+            )
+            await tracker.record_usage("test-provider", tokens=1001)
+            result = tracker.peek_quota_available()
+        assert result == {"test-provider": False}
+
+    async def test_provider_without_quotas_not_included(self) -> None:
+        """Providers with no quota limits are excluded from the result."""
+        sub = SubscriptionConfig()  # No quotas
+        tracker = QuotaTracker(subscriptions={"test-provider": sub})
+        result = tracker.peek_quota_available()
+        assert result == {}
+
+    async def test_rotated_window_shows_available(self) -> None:
+        """After window rotation, counters reset and provider is available."""
+        with _patched_tracker_datetime() as mock_dt:
+            tracker = _make_tracker(
+                provider="test-provider",
+                quotas=(_hour_quota(2),),
+            )
+            await tracker.record_usage("test-provider", requests=2)
+
+            # Advance time past the hour boundary
+            mock_dt.now.return_value = datetime(
+                2026,
+                3,
+                15,
+                15,
+                30,
+                0,
+                tzinfo=UTC,
+            )
+            result = tracker.peek_quota_available()
+        assert result == {"test-provider": True}
+
+    async def test_multiple_providers(self) -> None:
+        """Multiple providers with different quota states."""
+        sub_a = SubscriptionConfig(quotas=(_hour_quota(10),))
+        sub_b = SubscriptionConfig(quotas=(_hour_quota(2),))
+        with _patched_tracker_datetime():
+            tracker = QuotaTracker(
+                subscriptions={"provider-a": sub_a, "provider-b": sub_b},
+            )
+            await tracker.record_usage("provider-b", requests=2)
+            result = tracker.peek_quota_available()
+        assert result == {"provider-a": True, "provider-b": False}
+
+    def test_empty_tracker(self) -> None:
+        """Empty tracker returns empty dict."""
+        tracker = QuotaTracker(subscriptions={})
+        assert tracker.peek_quota_available() == {}

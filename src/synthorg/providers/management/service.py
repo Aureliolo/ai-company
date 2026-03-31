@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
     from synthorg.providers.routing.router import ModelRouter
+    from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.settings.service import SettingsService
 
@@ -688,11 +689,15 @@ class ProviderManagementService:
     def _build_router(
         self,
         providers: dict[str, ProviderConfig],
+        *,
+        selector: ModelCandidateSelector | None = None,
     ) -> ModelRouter:
         """Build a new ModelRouter from provider configs.
 
         Args:
             providers: Provider configurations.
+            selector: Optional candidate selector for multi-provider
+                model resolution.
 
         Returns:
             New ModelRouter instance.
@@ -704,4 +709,5 @@ class ProviderManagementService:
         return ModelRouter(
             routing_config=self._config.routing,
             providers=providers,
+            selector=selector,
         )
