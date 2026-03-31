@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -24,6 +24,8 @@ const NOOP = () => {}
 
 export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactContentPreviewProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const imageSrcRef = useRef<string | null>(null)
 
   const isImage = artifact.content_type?.startsWith('image/')
   const isText = contentPreview !== null
@@ -35,17 +37,23 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
     downloadArtifactContent(artifact.id)
       .then((blob) => {
         if (revoked) return
-        setImageSrc(URL.createObjectURL(blob))
+        const url = URL.createObjectURL(blob)
+        imageSrcRef.current = url
+        setImageSrc(url)
       })
-      .catch(() => {
-        // Best-effort image preview
+      .catch((err: unknown) => {
+        if (revoked) return
+        setImageError(getErrorMessage(err))
       })
     return () => {
       revoked = true
-      if (imageSrc) URL.revokeObjectURL(imageSrc)
+      setImageSrc(null)
+      setImageError(null)
+      if (imageSrcRef.current) {
+        URL.revokeObjectURL(imageSrcRef.current)
+        imageSrcRef.current = null
+      }
     }
-    // Only re-run when artifact changes
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [artifact.id, isImage, artifact.size_bytes])
 
   if (artifact.size_bytes === 0) {
@@ -88,6 +96,19 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
           onChange={NOOP}
           language={getLanguage(artifact.content_type)}
           readOnly
+        />
+      </SectionCard>
+    )
+  }
+
+  if (isImage && imageError) {
+    return (
+      <SectionCard title="Content Preview">
+        <EmptyState
+          icon={Eye}
+          title="Image preview failed to load"
+          description={imageError}
+          action={{ label: 'Download', onClick: handleDownload }}
         />
       </SectionCard>
     )

@@ -97,7 +97,12 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
 
   createProject: async (data: CreateProjectRequest) => {
     const project = await createProjectApi(data)
-    // Refresh the list after creation
+    // Optimistically add to local state for immediate UI update
+    set((state) => ({
+      projects: [project, ...state.projects],
+      totalProjects: state.totalProjects + 1,
+    }))
+    // Background refresh for consistency with server state
     useProjectsStore.getState().fetchProjects()
     return project
   },

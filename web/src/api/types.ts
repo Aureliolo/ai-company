@@ -1015,7 +1015,7 @@ export interface Artifact {
   description: string
   content_type: string
   size_bytes: number
-  created_at: string
+  created_at: string | null
 }
 
 export interface CreateArtifactRequest {
@@ -1053,7 +1053,7 @@ export interface CreateProjectRequest {
   name: string
   description?: string
   team?: string[]
-  lead?: string
+  lead?: string | null
   deadline?: string
   budget?: number
 }

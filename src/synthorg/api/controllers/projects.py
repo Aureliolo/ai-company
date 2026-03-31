@@ -23,6 +23,7 @@ from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
+from synthorg.observability.events.persistence import PERSISTENCE_PROJECT_SAVED
 
 logger = get_logger(__name__)
 
@@ -60,6 +61,7 @@ def _publish_project_event(
             API_WS_SEND_FAILED,
             event_type=event_type.value,
             note="Failed to publish project WS event",
+            exc_info=True,
         )
 
 
@@ -189,6 +191,7 @@ class ProjectController(Controller):
         )
         repo = state.app_state.persistence.projects
         await repo.save(project)
+        logger.info(PERSISTENCE_PROJECT_SAVED, project_id=project.id)
         _publish_project_event(
             request,
             WsEventType.PROJECT_CREATED,

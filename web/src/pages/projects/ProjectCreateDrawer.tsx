@@ -133,7 +133,7 @@ export function ProjectCreateDrawer({ open, onClose }: ProjectCreateDrawerProps)
         />
 
         {submitError && (
-          <div className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger">
+          <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             {submitError}
           </div>
         )}

@@ -72,6 +72,7 @@ def _publish_artifact_event(
             API_WS_SEND_FAILED,
             event_type=event_type.value,
             note="Failed to publish artifact WS event",
+            exc_info=True,
         )
 
 

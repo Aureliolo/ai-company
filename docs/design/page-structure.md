@@ -7,9 +7,9 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (20 controllers, 7 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (20 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
-**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs in v0.5.0. ProjectController and ArtifactController now have full persistence backends (v0.5.3, #612) but dashboard pages for them are deferred to v0.5.4 (#946).
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
 
 ---
 
@@ -44,7 +44,7 @@ Click agent nodes to open Agent Detail panel.
 
 Kanban view (default) and list view toggle. Filter by status, assignee, department. Task cards show title, assignee, status, priority. Click opens task detail with full context, state transition buttons, and "Coordinate" action (triggers multi-agent coordination via `/tasks/{id}/coordinate`).
 
-Project filter dropdown available -- project backend exists (v0.5.3, #612) but dashboard integration deferred to v0.5.4 (#946).
+Project filter dropdown available. Dedicated Projects page added in v0.5.4 (#946).
 
 **API endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PATCH /tasks/{id}`, `POST /tasks/{id}/transition`, `POST /tasks/{id}/cancel`, `DELETE /tasks/{id}`, `POST /tasks/{id}/coordinate`
 **WS channels**: `tasks`
@@ -200,6 +200,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 |
 +-- WORKSPACE (collapsible label)
 |   +-- Agents             [Users]               /agents
+|   +-- Projects           [FolderKanban]        /projects
+|   +-- Artifacts          [Package]             /artifacts
 |   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
 |   +-- Meetings           [Video]               /meetings
 |   +-- Providers          [Cpu]                 /providers
@@ -254,6 +256,10 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/approvals?selected=:id` | Approvals (detail) | Side panel overlay for approval detail |
 | `/agents` | Agents | Profile list |
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
+| `/projects` | Projects | List with search/filter |
+| `/projects/:projectId` | Project detail | Full page with team, tasks |
+| `/artifacts` | Artifacts | List with search/filter |
+| `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |
 | `/messages?channel=:name` | Messages (filtered) | Filtered by channel |
 | `/messages?channel=:name&type=:type` | Messages (filtered) | Filtered by message type |
@@ -298,6 +304,10 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Agents** (detail) | `agents`, `tasks` | Agent status and task changes for selected agent |
 | **Messages** | `messages` | New messages sent |
 | **Meetings** | `meetings` | Meeting started/completed/failed |
+| **Projects** (list) | `projects` | Project creation events |
+| **Projects** (detail) | `projects`, `tasks` | Project and task changes |
+| **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
+| **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
 | **Settings** | `system` | Restart-required notifications |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
@@ -374,8 +384,8 @@ Every backend controller has a home in the page structure. No orphans.
 | AutonomyController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CollaborationController | Agent Detail page (deferred -- not in v0.5.0 initial) |
 | CoordinationController | Task Board (task detail action) |
-| ProjectController | Backend ready (v0.5.3, #612); dashboard page deferred to v0.5.4 (#946) |
-| ArtifactController | Backend ready (v0.5.3, #612); dashboard page deferred to v0.5.4 (#946) |
+| ProjectController | Projects page (list, detail, create), Task Board (project filter) |
+| ArtifactController | Artifacts page (list, detail, content preview, download) |
 
 ---
 
@@ -393,7 +403,7 @@ How this page structure supports the 10 design principles from #762:
 | 6 | Keyboard-first | Cmd+K command palette. URL-addressable everything for bookmark/share. Arrow key nav in Task Board |
 | 7 | Typography carries information | Geist Mono for metrics/values/agent names. Geist Sans for labels/descriptions |
 | 8 | Prose alongside metrics | Agent detail: prose insights alongside performance metrics. Budget: cost context explanations |
-| 9 | Every pixel earns its place | No placeholder pages. Artifacts/Projects backends ready; dashboard pages deferred to v0.5.4 |
+| 9 | Every pixel earns its place | No placeholder pages. Every page maps to a live backend domain |
 | 10 | One component, one look | Consistent card/panel/badge patterns across all pages via shadcn/ui primitives |
 
 ---

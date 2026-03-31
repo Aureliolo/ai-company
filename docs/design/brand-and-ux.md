@@ -238,6 +238,9 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `LiveRegion` | `live-region.tsx` | `children`, `politeness?`, `debounceMs?`, `className?` | Debounced ARIA live region wrapper for real-time WS updates without overwhelming screen readers. Default: 500ms polite, 0ms assertive. |
 | `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none -- self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
 | `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |
+| `MetadataGrid` | `metadata-grid.tsx` | `items`, `columns?`, `className?` | Key-value metadata grid for detail pages with configurable 2/3/4 columns and density-aware spacing. |
+| `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colors (planning/active/on_hold/completed/cancelled). |
+| `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colors (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
 
 ### Utility Functions
 
@@ -269,6 +272,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `RISK_LEVEL_ORDER` | `utils/approvals.ts` | Numeric ordering map for risk levels (critical=0 through low=3). |
 | `DOT_COLOR_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "accent-dim"` to Tailwind background classes. |
 | `URGENCY_BADGE_CLASSES` | `utils/approvals.ts` | Maps `SemanticColor \| "text-secondary"` to Tailwind badge classes. |
+| `formatFileSize()` | `utils/format.ts` | Formats byte count to human-readable size string (e.g. "1.2 MB", "340 KB"). |
 
 ### Design System Hooks
 
@@ -297,6 +301,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `ApprovalRiskLevel` | `api/types` | `"low"`, `"medium"`, `"high"`, `"critical"` |
 | `UrgencyLevel` | `api/types` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
 | `ApprovalPageFilters` | `utils/approvals` | Filter shape: `status?`, `riskLevel?`, `actionType?`, `search?` |
+| `ProjectStatus` | `api/types` | `"planning"`, `"active"`, `"on_hold"`, `"completed"`, `"cancelled"` |
+| `ArtifactType` | `api/types` | `"code"`, `"tests"`, `"documentation"` |
 
 ### When to Create a New Shared Component
 

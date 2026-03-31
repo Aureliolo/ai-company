@@ -75,11 +75,12 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       if (_detailRequestId !== id) return
 
       let preview: string | null = null
+      const partialErrors: string[] = []
       if (artifact.content_type && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
         try {
           preview = await getArtifactContentText(id)
         } catch {
-          // Content preview is best-effort
+          partialErrors.push('content preview')
         }
       }
 
@@ -88,7 +89,9 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
         selectedArtifact: artifact,
         contentPreview: preview,
         detailLoading: false,
-        detailError: null,
+        detailError: partialErrors.length > 0
+          ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
+          : null,
       })
     } catch (err) {
       if (_detailRequestId !== id) return

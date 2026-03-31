@@ -5,8 +5,12 @@ import { formatLabel } from '@/utils/format'
 export function ArtifactFilters() {
   const searchQuery = useArtifactsStore((s) => s.searchQuery)
   const typeFilter = useArtifactsStore((s) => s.typeFilter)
+  const createdByFilter = useArtifactsStore((s) => s.createdByFilter)
+  const taskIdFilter = useArtifactsStore((s) => s.taskIdFilter)
   const setSearchQuery = useArtifactsStore((s) => s.setSearchQuery)
   const setTypeFilter = useArtifactsStore((s) => s.setTypeFilter)
+  const setCreatedByFilter = useArtifactsStore((s) => s.setCreatedByFilter)
+  const setTaskIdFilter = useArtifactsStore((s) => s.setTaskIdFilter)
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -39,6 +43,24 @@ export function ArtifactFilters() {
           <option key={t} value={t}>{formatLabel(t)}</option>
         ))}
       </select>
+
+      <input
+        type="text"
+        placeholder="Filter by agent..."
+        value={createdByFilter ?? ''}
+        onChange={(e) => setCreatedByFilter(e.target.value || null)}
+        className="h-9 w-40 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+        aria-label="Filter by creator agent"
+      />
+
+      <input
+        type="text"
+        placeholder="Filter by task..."
+        value={taskIdFilter ?? ''}
+        onChange={(e) => setTaskIdFilter(e.target.value || null)}
+        className="h-9 w-40 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+        aria-label="Filter by task ID"
+      />
     </div>
   )
 }
