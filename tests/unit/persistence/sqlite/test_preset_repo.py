@@ -173,38 +173,29 @@ def unmigrated_repo(
 class TestSQLitePersonalityPresetRepositoryErrors:
     """QueryError propagation when table does not exist."""
 
-    async def test_save_raises_query_error(
-        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    @pytest.mark.parametrize(
+        "method_call",
+        [
+            pytest.param(
+                lambda r: r.save(
+                    "x",
+                    "{}",
+                    "",
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                ),
+                id="save",
+            ),
+            pytest.param(lambda r: r.get("x"), id="get"),
+            pytest.param(lambda r: r.list_all(), id="list_all"),
+            pytest.param(lambda r: r.delete("x"), id="delete"),
+            pytest.param(lambda r: r.count(), id="count"),
+        ],
+    )
+    async def test_raises_query_error(
+        self,
+        unmigrated_repo: SQLitePersonalityPresetRepository,
+        method_call: object,
     ) -> None:
         with pytest.raises(QueryError):
-            await unmigrated_repo.save(
-                "x",
-                "{}",
-                "",
-                "2026-01-01T00:00:00+00:00",
-                "2026-01-01T00:00:00+00:00",
-            )
-
-    async def test_get_raises_query_error(
-        self, unmigrated_repo: SQLitePersonalityPresetRepository
-    ) -> None:
-        with pytest.raises(QueryError):
-            await unmigrated_repo.get("x")
-
-    async def test_list_all_raises_query_error(
-        self, unmigrated_repo: SQLitePersonalityPresetRepository
-    ) -> None:
-        with pytest.raises(QueryError):
-            await unmigrated_repo.list_all()
-
-    async def test_delete_raises_query_error(
-        self, unmigrated_repo: SQLitePersonalityPresetRepository
-    ) -> None:
-        with pytest.raises(QueryError):
-            await unmigrated_repo.delete("x")
-
-    async def test_count_raises_query_error(
-        self, unmigrated_repo: SQLitePersonalityPresetRepository
-    ) -> None:
-        with pytest.raises(QueryError):
-            await unmigrated_repo.count()
+            await method_call(unmigrated_repo)  # type: ignore[operator]

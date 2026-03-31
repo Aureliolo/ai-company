@@ -297,8 +297,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_lead ON projects(lead);
 
 -- ── Custom personality presets (user-defined) ────────────────
 CREATE TABLE IF NOT EXISTS custom_presets (
-    name TEXT PRIMARY KEY,
-    config_json TEXT NOT NULL,
+    name TEXT PRIMARY KEY CHECK(length(name) > 0),
+    config_json TEXT NOT NULL CHECK(length(config_json) > 0),
     description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

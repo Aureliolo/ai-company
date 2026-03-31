@@ -13,7 +13,7 @@ from synthorg.core.enums import (
     DecisionMakingStyle,
     RiskTolerance,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 
 
 class PresetSource(StrEnum):
@@ -33,7 +33,7 @@ class PresetSummaryResponse(BaseModel):
 
     name: NotBlankStr
     description: str = ""
-    traits: tuple[str, ...] = ()
+    traits: tuple[NotBlankStr, ...] = ()
     source: PresetSource
 
 
@@ -45,8 +45,8 @@ class PresetDetailResponse(BaseModel):
     name: NotBlankStr
     source: PresetSource
     description: str = ""
-    traits: tuple[str, ...] = ()
-    communication_style: str = "neutral"
+    traits: tuple[NotBlankStr, ...] = ()
+    communication_style: NotBlankStr = NotBlankStr("neutral")
     risk_tolerance: RiskTolerance = RiskTolerance.MEDIUM
     creativity: CreativityLevel = CreativityLevel.MEDIUM
     openness: float = Field(default=0.5, ge=0.0, le=1.0)

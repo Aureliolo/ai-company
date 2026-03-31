@@ -21,7 +21,7 @@ class PresetRow(NamedTuple):
 class PresetListRow(NamedTuple):
     """Custom preset row returned by ``list_all``."""
 
-    name: str
+    name: NotBlankStr
     config_json: str
     description: str
     created_at: str

@@ -546,10 +546,11 @@ class FakePersonalityPresetRepository:
         created_at: str,
         updated_at: str,
     ) -> None:
+        existing = self._presets.get(name)
         self._presets[name] = PresetRow(
             config_json,
             description,
-            created_at,
+            existing.created_at if existing else created_at,
             updated_at,
         )
 
