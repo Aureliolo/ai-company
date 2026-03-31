@@ -83,7 +83,7 @@ budget:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `warn_at` | int | `75` | Warning threshold (percentage of `total_monthly`) |
-| `critical_at` | int | `90` | Critical threshold -- consider model downgrade |
+| `critical_at` | int | `90` | Critical alert threshold |
 | `hard_stop_at` | int | `100` | Hard stop -- reject new tasks |
 
 **What happens at each level:**
@@ -92,7 +92,7 @@ budget:
 |-----------|--------|
 | Below `warn_at` | Normal operation |
 | `warn_at` reached | Warning alert emitted, budget status visible in dashboard |
-| `critical_at` reached | Critical alert, auto-downgrade triggers (if enabled) |
+| `critical_at` reached | Critical alert emitted. Auto-downgrade is independent -- it triggers at `auto_downgrade.threshold` (default 85%), not `critical_at`. |
 | `hard_stop_at` reached | New task assignment blocked, `BudgetExhaustedError` raised |
 
 !!! warning "Threshold ordering"
