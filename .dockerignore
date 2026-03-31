@@ -17,9 +17,10 @@ docker/
 # Tests
 tests/
 
-# Documentation
+# Documentation -- re-included for docs builder stage in web Dockerfile
 docs/
 *.md
+!docs/
 
 # Documentation build output (Zensical)
 _site/
@@ -61,6 +62,7 @@ coverage.xml
 
 # CI/build utility scripts (not needed in Docker builds)
 scripts/
+!scripts/export_openapi.py
 
 # CLI (Go binary, not needed in Docker builds)
 cli/

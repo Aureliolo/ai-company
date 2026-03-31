@@ -140,6 +140,13 @@ System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Env
 **API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (restart-required notifications)
 
+#### Documentation (`/docs/`)
+
+Served as static MkDocs HTML by nginx -- not a React page. The `/docs/` nginx location block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
+
+**API endpoints**: (none -- static HTML served by nginx)
+**WS channels**: (none)
+
 ### Standalone Pages
 
 Not in sidebar navigation.
@@ -196,6 +203,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 |   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
 |   +-- Meetings           [Video]               /meetings
 |   +-- Providers          [Cpu]                 /providers
+|   +-- Docs               [BookOpen]            /docs/  (external -- static HTML, not SPA)
 |   +-- Settings           [Settings]            /settings
 |
 +-- BOTTOM
@@ -259,6 +267,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
+| `/docs/` | Documentation | Static MkDocs HTML served by nginx (bypasses React Router) |
 | `*` | 404 Not Found | Catch-all |
 
 ### Route Guards

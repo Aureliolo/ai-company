@@ -1,0 +1,85 @@
+/* SynthOrg dashboard design-system overrides for MkDocs Material.
+   Maps --md-* variables to the dashboard's dark-theme tokens so that
+   embedded docs at /docs/ visually match the React web dashboard.
+
+   NOTE: Hex values here are intentional -- this file targets MkDocs
+   Material's --md-* CSS variables, which live outside the React app's
+   DOM tree and cannot reference --so-* design tokens. Values are
+   sourced from web/src/styles/design-tokens.css (single source of
+   truth). Update both files together when the palette changes. */
+
+:root,
+[data-md-color-scheme="slate"] {
+  /* Brand accent (#38bdf8 -- warm-ops blue) */
+  --md-primary-fg-color: #38bdf8;
+  --md-primary-fg-color--light: #0ea5e9;
+  --md-primary-fg-color--dark: #38bdf8;
+  --md-accent-fg-color: #38bdf8;
+  --md-accent-fg-color--transparent: rgba(56, 189, 248, 0.1);
+
+  /* Backgrounds */
+  --md-default-bg-color: #0a0a12;
+  --md-default-bg-color--light: #0f0f1a;
+  --md-default-bg-color--lighter: #13131f;
+  --md-default-bg-color--lightest: #181828;
+
+  /* Text */
+  --md-default-fg-color: #e2e8f0;
+  --md-default-fg-color--light: #94a3b8;
+  --md-default-fg-color--lighter: #64748b;
+  --md-default-fg-color--lightest: #475569;
+
+  /* Code blocks */
+  --md-code-bg-color: #13131f;
+  --md-code-fg-color: #e2e8f0;
+  --md-code-hl-color: rgba(56, 189, 248, 0.15);
+
+  /* Typography -- Geist with system fallback (fonts not loaded on docs pages) */
+  --md-text-font: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --md-code-font: "Geist Mono Variable", ui-monospace, monospace;
+
+  /* Footer */
+  --md-footer-bg-color: #0f0f1a;
+  --md-footer-bg-color--dark: #0a0a12;
+  --md-footer-fg-color: #94a3b8;
+  --md-footer-fg-color--light: #64748b;
+  --md-footer-fg-color--lighter: #475569;
+
+  /* Admonitions */
+  --md-admonition-bg-color: #13131f;
+
+  /* Typeset */
+  --md-typeset-color: #e2e8f0;
+  --md-typeset-a-color: #38bdf8;
+}
+
+/* Header */
+.md-header {
+  background: #0f0f1a;
+  border-bottom: 1px solid #1e1e2e;
+}
+
+/* Navigation sidebar */
+.md-sidebar {
+  background: #0f0f1a;
+}
+
+/* Search overlay */
+.md-search__overlay {
+  background: rgba(10, 10, 18, 0.9);
+}
+
+/* Borders */
+.md-nav,
+.md-sidebar,
+hr,
+.md-typeset table th,
+.md-typeset table td {
+  border-color: #1e1e2e;
+}
+
+/* Tabs bar */
+.md-tabs {
+  background: #0f0f1a;
+  border-bottom: 1px solid #1e1e2e;
+}

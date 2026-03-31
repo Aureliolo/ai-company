@@ -22,20 +22,10 @@ theme:
     - search.suggest
     - toc.follow
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: deep purple
-      accent: teal
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: deep purple
-      accent: teal
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    scheme: slate
+    primary: custom
+    accent: custom
+  font: false
   icon:
     repo: fontawesome/brands/github
 
@@ -145,6 +135,9 @@ nav:
       - Templates: api/templates.md
       - Persistence: api/persistence.md
       - Observability: api/observability.md
+
+extra_css:
+  - overrides/extra.css
 
 extra:
   homepage: /

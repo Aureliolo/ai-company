@@ -2,6 +2,9 @@ import { screen } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { Users } from 'lucide-react'
 import { SidebarNavItem } from '@/components/layout/SidebarNavItem'
+import { router } from '@/router/index'
+import { ROUTES } from '@/router/routes'
+import type { RouteObject } from 'react-router'
 import { renderWithRouter } from '../../test-utils'
 
 describe('SidebarNavItem', () => {
@@ -95,5 +98,101 @@ describe('SidebarNavItem', () => {
         unmount()
       }),
     )
+  })
+
+  describe('external prop', () => {
+    it('renders an anchor element instead of a router link', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+      )
+
+      const link = screen.getByRole('link', { name: /docs/i })
+      expect(link).toHaveAttribute('href', '/docs/')
+      expect(link).not.toHaveAttribute('rel')
+    })
+
+    it('shows title tooltip when collapsed', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed external />,
+      )
+
+      expect(screen.getByTitle('Docs')).toBeInTheDocument()
+      expect(screen.queryByText('Docs')).not.toBeInTheDocument()
+    })
+
+    it('renders label when expanded', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+      )
+
+      expect(screen.getByText('Docs')).toBeInTheDocument()
+    })
+
+    it('renders badge on external link', () => {
+      renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} badge={3} external />,
+      )
+
+      expect(screen.getByText('3')).toBeInTheDocument()
+    })
+
+    it('does not apply isActive styling', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+        { initialEntries: ['/docs/'] },
+      )
+
+      const link = container.querySelector('a')
+      // text-accent is only applied by NavLink's isActive callback -- external
+      // anchors should never have it regardless of the current route
+      expect(link?.className).not.toMatch(/text-accent/)
+    })
+
+    it('renders dot indicator when dotColor is provided', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} dotColor="bg-success" external />,
+      )
+
+      const dot = container.querySelector('.bg-success.rounded-full')
+      expect(dot).toBeInTheDocument()
+    })
+
+    it('does not pass end attribute to the anchor element', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} end external />,
+      )
+
+      const link = container.querySelector('a')
+      expect(link).not.toHaveAttribute('end')
+    })
+  })
+
+  describe('DOCUMENTATION route invariants', () => {
+    it('has a trailing slash (nginx location block requires it)', () => {
+      expect(ROUTES.DOCUMENTATION).toBe('/docs/')
+      expect(ROUTES.DOCUMENTATION.endsWith('/')).toBe(true)
+    })
+
+    it('is not registered as a React Router route (served by nginx)', () => {
+      // Extract all path values from the actual router config recursively.
+      // If someone adds a /docs/ route to router/index.tsx, this test fails.
+      function extractPaths(routes: RouteObject[]): string[] {
+        const paths: string[] = []
+        for (const route of routes) {
+          if (route.path) paths.push(route.path)
+          if (route.children) paths.push(...extractPaths(route.children))
+        }
+        return paths
+      }
+
+      const allPaths = extractPaths(router.routes)
+      expect(allPaths).not.toContain('/docs/')
+      expect(allPaths).not.toContain('/docs')
+      expect(allPaths).not.toContain('docs')
+      expect(allPaths).not.toContain('docs/')
+      for (const path of allPaths) {
+        expect(path.startsWith('docs')).toBe(false)
+      }
+    })
   })
 })
