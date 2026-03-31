@@ -722,7 +722,9 @@ def create_app(  # noqa: PLR0913
             backend="brotli",
             minimum_size=1000,
         ),
-        request_max_body_size=2_097_152,  # 2 MB
+        # Must be >= artifact API max payload (50 MB) so endpoint-level
+        # validation can enforce exact storage limits.
+        request_max_body_size=52_428_800,  # 50 MB
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,

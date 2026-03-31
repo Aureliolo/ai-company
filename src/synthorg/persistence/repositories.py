@@ -12,14 +12,10 @@ from synthorg.api.auth.models import ApiKey, User  # noqa: TC001
 from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.core.artifact import Artifact  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,  # noqa: TC001
-    ArtifactType,  # noqa: TC001
-    ProjectStatus,  # noqa: TC001
     TaskStatus,  # noqa: TC001
 )
-from synthorg.core.project import Project  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.persistence_protocol import (
@@ -795,131 +791,10 @@ class SettingsRepository(Protocol):
         ...
 
 
-@runtime_checkable
-class ArtifactRepository(Protocol):
-    """CRUD + query interface for Artifact persistence."""
-
-    async def save(self, artifact: Artifact) -> None:
-        """Persist an artifact (insert or update).
-
-        Args:
-            artifact: The artifact to persist.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
-        """Retrieve an artifact by its ID.
-
-        Args:
-            artifact_id: The artifact identifier.
-
-        Returns:
-            The artifact, or ``None`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def list_artifacts(
-        self,
-        *,
-        task_id: NotBlankStr | None = None,
-        created_by: NotBlankStr | None = None,
-        artifact_type: ArtifactType | None = None,
-    ) -> tuple[Artifact, ...]:
-        """List artifacts with optional filters.
-
-        Args:
-            task_id: Filter by originating task ID.
-            created_by: Filter by creator agent ID.
-            artifact_type: Filter by artifact type.
-
-        Returns:
-            Matching artifacts as a tuple.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def delete(self, artifact_id: NotBlankStr) -> bool:
-        """Delete an artifact by ID.
-
-        Args:
-            artifact_id: The artifact identifier.
-
-        Returns:
-            ``True`` if the artifact was deleted, ``False`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-
-@runtime_checkable
-class ProjectRepository(Protocol):
-    """CRUD + query interface for Project persistence."""
-
-    async def save(self, project: Project) -> None:
-        """Persist a project (insert or update).
-
-        Args:
-            project: The project to persist.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get(self, project_id: NotBlankStr) -> Project | None:
-        """Retrieve a project by its ID.
-
-        Args:
-            project_id: The project identifier.
-
-        Returns:
-            The project, or ``None`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def list_projects(
-        self,
-        *,
-        status: ProjectStatus | None = None,
-        lead: NotBlankStr | None = None,
-    ) -> tuple[Project, ...]:
-        """List projects with optional filters.
-
-        Args:
-            status: Filter by project status.
-            lead: Filter by project lead agent ID.
-
-        Returns:
-            Matching projects as a tuple.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def delete(self, project_id: NotBlankStr) -> bool:
-        """Delete a project by ID.
-
-        Args:
-            project_id: The project identifier.
-
-        Returns:
-            ``True`` if the project was deleted, ``False`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
+# ArtifactRepository and ProjectRepository live in a separate module
+# to keep this file under the 800-line limit.  Re-exported here for
+# backwards-compatible imports.
+from synthorg.persistence.artifact_project_repos import (  # noqa: E402, I001
+    ArtifactRepository as ArtifactRepository,  # noqa: PLC0414
+    ProjectRepository as ProjectRepository,  # noqa: PLC0414
+)

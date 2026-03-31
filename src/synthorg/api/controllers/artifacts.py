@@ -1,11 +1,10 @@
 """Artifact controller -- CRUD endpoints for artifact management."""
 
-import contextlib
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from litestar import Controller, Response, get, post, put
+from litestar import Controller, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, Parameter
@@ -13,30 +12,59 @@ from litestar.params import Body, Parameter
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+    PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+)
 from synthorg.persistence.errors import (
     ArtifactStorageFullError,
     ArtifactTooLargeError,
+    PersistenceError,
     RecordNotFoundError,
 )
 
 logger = get_logger(__name__)
 
+_SAFE_CONTENT_TYPES = frozenset(
+    {
+        "application/octet-stream",
+        "application/json",
+        "application/pdf",
+        "application/xml",
+        "application/zip",
+        "application/gzip",
+        "application/x-tar",
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/svg+xml",
+        "image/webp",
+        "text/plain",
+        "text/csv",
+        "text/xml",
+        "text/markdown",
+    }
+)
+
 TaskIdFilter = Annotated[
-    str | None,
+    NotBlankStr | None,
     Parameter(
         required=False,
+        max_length=QUERY_MAX_LENGTH,
         description="Filter by originating task ID",
     ),
 ]
 
 CreatedByFilter = Annotated[
-    str | None,
+    NotBlankStr | None,
     Parameter(
         required=False,
+        max_length=QUERY_MAX_LENGTH,
         description="Filter by creator agent ID",
     ),
 ]
@@ -46,6 +74,7 @@ TypeFilter = Annotated[
     Parameter(
         required=False,
         query="type",
+        max_length=QUERY_MAX_LENGTH,
         description="Filter by artifact type",
     ),
 ]
@@ -165,6 +194,41 @@ class ArtifactController(Controller):
             status_code=201,
         )
 
+    @delete(
+        "/{artifact_id:str}",
+        guards=[require_write_access],
+        status_code=200,
+    )
+    async def delete_artifact(
+        self,
+        state: State,
+        artifact_id: PathId,
+    ) -> Response[ApiResponse[None]]:
+        """Delete an artifact and its stored content.
+
+        Args:
+            state: Application state.
+            artifact_id: Artifact identifier.
+
+        Returns:
+            200 on success, 404 if not found.
+        """
+        repo = state.app_state.persistence.artifacts
+        deleted = await repo.delete(artifact_id)
+        if not deleted:
+            return Response(
+                content=ApiResponse[None](
+                    error=f"Artifact {artifact_id!r} not found",
+                ),
+                status_code=404,
+            )
+        storage = state.app_state.artifact_storage
+        await storage.delete(artifact_id)
+        return Response(
+            content=ApiResponse[None](data=None),
+            status_code=200,
+        )
+
     @put(
         "/{artifact_id:str}/content",
         guards=[require_write_access],
@@ -204,14 +268,18 @@ class ArtifactController(Controller):
         storage = state.app_state.artifact_storage
         try:
             size = await storage.store(artifact_id, data)
-        except ArtifactTooLargeError as exc:
+        except ArtifactTooLargeError:
             return Response(
-                content=ApiResponse[Artifact](error=str(exc)),
+                content=ApiResponse[Artifact](
+                    error="Artifact content is too large",
+                ),
                 status_code=413,
             )
-        except ArtifactStorageFullError as exc:
+        except ArtifactStorageFullError:
             return Response(
-                content=ApiResponse[Artifact](error=str(exc)),
+                content=ApiResponse[Artifact](
+                    error="Artifact storage is full",
+                ),
                 status_code=507,
             )
 
@@ -223,9 +291,15 @@ class ArtifactController(Controller):
         )
         try:
             await repo.save(updated)
-        except Exception:
-            with contextlib.suppress(Exception):
+        except PersistenceError:
+            try:
                 await storage.delete(artifact_id)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+                    artifact_id=artifact_id,
+                    error=str(cleanup_exc),
+                )
             raise
         return Response(
             content=ApiResponse[Artifact](data=updated),
@@ -241,7 +315,7 @@ class ArtifactController(Controller):
         self,
         state: State,
         artifact_id: PathId,
-    ) -> Response[bytes]:
+    ) -> Response:  # type: ignore[type-arg]
         """Download binary content for an artifact.
 
         Args:
@@ -249,29 +323,38 @@ class ArtifactController(Controller):
             artifact_id: Artifact identifier.
 
         Returns:
-            Binary content with appropriate content type.
+            Binary content with appropriate content type, or JSON
+            error on 404.
         """
         repo = state.app_state.persistence.artifacts
         artifact = await repo.get(artifact_id)
         if artifact is None:
             return Response(
-                content=b"",
+                content=ApiResponse[None](error="Artifact not found"),
                 status_code=404,
-                media_type="application/octet-stream",
+                media_type="application/json",
             )
 
         storage = state.app_state.artifact_storage
         try:
             content = await storage.retrieve(artifact_id)
         except RecordNotFoundError:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_CONTENT_MISSING,
+                artifact_id=artifact_id,
+            )
             return Response(
-                content=b"",
+                content=ApiResponse[None](error="Artifact content not found"),
                 status_code=404,
-                media_type="application/octet-stream",
+                media_type="application/json",
             )
 
+        raw_ct = artifact.content_type or "application/octet-stream"
+        fallback = "application/octet-stream"
+        safe_ct = raw_ct if raw_ct in _SAFE_CONTENT_TYPES else fallback
         return Response(
             content=content,
             status_code=200,
-            media_type=artifact.content_type or "application/octet-stream",
+            media_type=safe_ct,
+            headers={"Content-Disposition": "attachment"},
         )

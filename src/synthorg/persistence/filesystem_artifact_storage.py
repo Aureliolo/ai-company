@@ -5,7 +5,9 @@ Uses ``asyncio.to_thread()`` for blocking file I/O operations.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- used at runtime
+import contextlib
+import tempfile
+from pathlib import Path
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.persistence import (
@@ -38,7 +40,12 @@ class FileSystemArtifactStorage:
         data_dir: Root data directory (artifacts stored in a
             ``artifacts/`` subdirectory).
         max_artifact_bytes: Maximum size of a single artifact in bytes.
+            Must be positive.
         max_total_bytes: Maximum total storage across all artifacts.
+            Must be >= *max_artifact_bytes*.
+
+    Raises:
+        ValueError: If limit parameters are invalid.
     """
 
     def __init__(
@@ -48,10 +55,20 @@ class FileSystemArtifactStorage:
         max_artifact_bytes: int = _DEFAULT_MAX_ARTIFACT_BYTES,
         max_total_bytes: int = _DEFAULT_MAX_TOTAL_BYTES,
     ) -> None:
+        if max_artifact_bytes <= 0:
+            msg = f"max_artifact_bytes must be positive, got {max_artifact_bytes}"
+            raise ValueError(msg)
+        if max_total_bytes < max_artifact_bytes:
+            msg = (
+                f"max_total_bytes ({max_total_bytes}) must be "
+                f">= max_artifact_bytes ({max_artifact_bytes})"
+            )
+            raise ValueError(msg)
         self._artifacts_dir = data_dir / "artifacts"
         self._max_artifact_bytes = max_artifact_bytes
         self._max_total_bytes = max_total_bytes
         self._write_lock = asyncio.Lock()
+        self._cached_total: int | None = None
 
     @property
     def backend_name(self) -> str:
@@ -109,31 +126,12 @@ class FileSystemArtifactStorage:
             raise ArtifactTooLargeError(msg)
 
         async with self._write_lock:
-            current_total = await self.total_size()
-            existing_size = await asyncio.to_thread(
-                lambda: file_path.stat().st_size if file_path.exists() else 0
+            await self._check_capacity_and_write(
+                file_path,
+                artifact_id,
+                content,
+                size,
             )
-            new_total = current_total - existing_size + size
-            if new_total > self._max_total_bytes:
-                msg = (
-                    f"Storing artifact {artifact_id!r} ({size} bytes) "
-                    f"would exceed total limit of "
-                    f"{self._max_total_bytes} bytes "
-                    f"(current usage: {current_total} bytes)"
-                )
-                logger.warning(PERSISTENCE_ARTIFACT_STORE_FAILED, error=msg)
-                raise ArtifactStorageFullError(msg)
-
-            try:
-                await asyncio.to_thread(self._write_file, file_path, content)
-            except OSError as exc:
-                msg = f"Failed to store artifact {artifact_id!r}"
-                logger.exception(
-                    PERSISTENCE_ARTIFACT_STORE_FAILED,
-                    artifact_id=artifact_id,
-                    error=str(exc),
-                )
-                raise
 
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
@@ -141,6 +139,47 @@ class FileSystemArtifactStorage:
             size_bytes=size,
         )
         return size
+
+    async def _check_capacity_and_write(
+        self,
+        file_path: Path,
+        artifact_id: str,
+        content: bytes,
+        size: int,
+    ) -> None:
+        """Check capacity and write content (must be called under lock).
+
+        Args:
+            file_path: Resolved destination path.
+            artifact_id: Artifact identifier (for error messages).
+            content: Binary content to write.
+            size: Length of *content* in bytes.
+        """
+        current_total = await self.total_size()
+        existing_size = await asyncio.to_thread(self._stat_or_zero, file_path)
+        new_total = current_total - existing_size + size
+        if new_total > self._max_total_bytes:
+            msg = (
+                f"Storing artifact {artifact_id!r} ({size} bytes) "
+                f"would exceed total limit of "
+                f"{self._max_total_bytes} bytes "
+                f"(current usage: {current_total} bytes)"
+            )
+            logger.warning(PERSISTENCE_ARTIFACT_STORE_FAILED, error=msg)
+            raise ArtifactStorageFullError(msg)
+
+        try:
+            await asyncio.to_thread(self._write_file_atomic, file_path, content)
+        except OSError as exc:
+            msg = f"Failed to store artifact {artifact_id!r}"
+            logger.exception(
+                PERSISTENCE_ARTIFACT_STORE_FAILED,
+                artifact_id=artifact_id,
+                error=str(exc),
+            )
+            raise
+        # Update cached total incrementally.
+        self._cached_total = current_total - existing_size + size
 
     async def retrieve(self, artifact_id: str) -> bytes:
         """Retrieve artifact content from a file.
@@ -195,7 +234,10 @@ class FileSystemArtifactStorage:
         """
         file_path = self._safe_path(artifact_id)
         try:
-            deleted = await asyncio.to_thread(self._delete_file, file_path)
+            size, deleted = await asyncio.to_thread(
+                self._delete_file_with_size,
+                file_path,
+            )
         except OSError as exc:
             logger.exception(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
@@ -203,6 +245,8 @@ class FileSystemArtifactStorage:
                 error=str(exc),
             )
             raise
+        if deleted and self._cached_total is not None:
+            self._cached_total = max(0, self._cached_total - size)
         logger.info(
             PERSISTENCE_ARTIFACT_STORAGE_DELETED,
             artifact_id=artifact_id,
@@ -231,28 +275,56 @@ class FileSystemArtifactStorage:
         Returns:
             Total storage usage in bytes.
         """
-        return await asyncio.to_thread(self._compute_total_size)
+        if self._cached_total is not None:
+            return self._cached_total
+        total = await asyncio.to_thread(self._compute_total_size)
+        self._cached_total = total
+        return total
 
-    # ── Sync helpers (run via asyncio.to_thread) ──────────────────
+    # -- Sync helpers (run via asyncio.to_thread) ---------------------
 
-    def _write_file(self, file_path: Path, content: bytes) -> None:
-        """Write content to a file, creating the directory if needed."""
+    def _write_file_atomic(self, file_path: Path, content: bytes) -> None:
+        """Write content atomically via temp file + rename."""
         self._artifacts_dir.mkdir(parents=True, exist_ok=True)
-        file_path.write_bytes(content)
+        fd, tmp_path_str = tempfile.mkstemp(
+            dir=str(self._artifacts_dir),
+            suffix=".tmp",
+        )
+        tmp_path = Path(tmp_path_str)
+        try:
+            with open(fd, "wb") as f:  # noqa: PTH123 -- fd is an int, not a path
+                f.write(content)
+                f.flush()
+            tmp_path.replace(file_path)
+        except BaseException:
+            tmp_path.unlink(missing_ok=True)
+            raise
 
     @staticmethod
-    def _delete_file(file_path: Path) -> bool:
-        """Delete a file if it exists (race-safe)."""
+    def _delete_file_with_size(file_path: Path) -> tuple[int, bool]:
+        """Delete a file and return (size, deleted) tuple."""
         try:
+            size = file_path.stat().st_size
             file_path.unlink()
         except FileNotFoundError:
-            return False
-        return True
+            return 0, False
+        return size, True
+
+    @staticmethod
+    def _stat_or_zero(path: Path) -> int:
+        """Return file size or 0 if not found."""
+        try:
+            return path.stat().st_size
+        except FileNotFoundError:
+            return 0
 
     def _compute_total_size(self) -> int:
         """Sum file sizes in the artifacts directory."""
         if not self._artifacts_dir.exists():
             return 0
-        return sum(
-            f.stat().st_size for f in self._artifacts_dir.iterdir() if f.is_file()
-        )
+        total = 0
+        for f in self._artifacts_dir.iterdir():
+            if f.is_file() and not f.name.endswith(".tmp"):
+                with contextlib.suppress(OSError):
+                    total += f.stat().st_size
+        return total

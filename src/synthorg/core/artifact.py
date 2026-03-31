@@ -1,8 +1,6 @@
 """Artifact domain models for task outputs and expected deliverables."""
 
-from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import (
     ArtifactType,  # noqa: TC001 -- required at runtime by Pydantic
@@ -70,7 +68,7 @@ class Artifact(BaseModel):
         ge=0,
         description="Content size in bytes (zero when no content stored)",
     )
-    created_at: datetime | None = Field(
+    created_at: AwareDatetime | None = Field(
         default=None,
-        description="Timestamp when the artifact was created",
+        description="UTC timestamp when the artifact was created",
     )

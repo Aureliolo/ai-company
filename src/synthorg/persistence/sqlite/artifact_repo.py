@@ -25,6 +25,8 @@ from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
+_MAX_LIST_ROWS: int = 10_000
+
 
 def _row_to_artifact(row: aiosqlite.Row) -> Artifact:
     """Reconstruct an ``Artifact`` from a database row.
@@ -37,8 +39,13 @@ def _row_to_artifact(row: aiosqlite.Row) -> Artifact:
     """
     data = dict(row)
     data["type"] = ArtifactType(data["type"])
-    if data["created_at"] is not None:
-        data["created_at"] = datetime.fromisoformat(data["created_at"])
+    raw_ts = data["created_at"]
+    if raw_ts is not None:
+        parsed = datetime.fromisoformat(raw_ts)
+        # Ensure timezone-aware -- stored as UTC ISO string.
+        data["created_at"] = (
+            parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+        )
     return Artifact.model_validate(data)
 
 
@@ -186,7 +193,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY id"
+        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
 
         try:
             cursor = await self._db.execute(query, params)
@@ -197,7 +204,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             artifacts = tuple(_row_to_artifact(row) for row in rows)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, KeyError) as exc:
             msg = "Failed to deserialize artifacts"
             logger.exception(PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED, error=str(exc))
             raise QueryError(msg) from exc

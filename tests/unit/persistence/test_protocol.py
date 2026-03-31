@@ -298,19 +298,19 @@ class _FakeArtifactRepository:
     async def save(self, artifact: Artifact) -> None:
         pass
 
-    async def get(self, artifact_id: str) -> Artifact | None:
+    async def get(self, artifact_id: NotBlankStr) -> Artifact | None:
         return None
 
     async def list_artifacts(
         self,
         *,
-        task_id: str | None = None,
-        created_by: str | None = None,
+        task_id: NotBlankStr | None = None,
+        created_by: NotBlankStr | None = None,
         artifact_type: ArtifactType | None = None,
     ) -> tuple[Artifact, ...]:
         return ()
 
-    async def delete(self, artifact_id: str) -> bool:
+    async def delete(self, artifact_id: NotBlankStr) -> bool:
         return False
 
 
@@ -318,18 +318,18 @@ class _FakeProjectRepository:
     async def save(self, project: Project) -> None:
         pass
 
-    async def get(self, project_id: str) -> Project | None:
+    async def get(self, project_id: NotBlankStr) -> Project | None:
         return None
 
     async def list_projects(
         self,
         *,
         status: ProjectStatus | None = None,
-        lead: str | None = None,
+        lead: NotBlankStr | None = None,
     ) -> tuple[Project, ...]:
         return ()
 
-    async def delete(self, project_id: str) -> bool:
+    async def delete(self, project_id: NotBlankStr) -> bool:
         return False
 
 

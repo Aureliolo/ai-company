@@ -103,6 +103,15 @@ class TestArtifactController:
         assert body["pagination"]["total"] == 1
         assert body["data"][0]["task_id"] == "task-A"
 
+    def test_list_artifacts_filter_by_invalid_type(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.get("/api/v1/artifacts?type=bogus")
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["success"] is False
+        assert "Invalid artifact type" in body["error"]
+
     def test_oversized_artifact_id_rejected(self, test_client: TestClient[Any]) -> None:
         long_id = "x" * 129
         resp = test_client.get(
@@ -110,3 +119,83 @@ class TestArtifactController:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 400
+
+    def test_delete_artifact(self, test_client: TestClient[Any]) -> None:
+        create_resp = test_client.post(
+            "/api/v1/artifacts",
+            json={
+                "type": "code",
+                "path": "src/del.py",
+                "task_id": "task-del",
+                "created_by": "agent-1",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        artifact_id = create_resp.json()["data"]["id"]
+        del_resp = test_client.delete(
+            f"/api/v1/artifacts/{artifact_id}",
+            headers=make_auth_headers("ceo"),
+        )
+        assert del_resp.status_code == 200
+        # Confirm it's gone.
+        get_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}")
+        assert get_resp.status_code == 404
+
+    def test_delete_artifact_not_found(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.delete(
+            "/api/v1/artifacts/nonexistent",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+
+    def test_download_content(self, test_client: TestClient[Any]) -> None:
+        """Pre-populate storage directly to test download path."""
+        import asyncio
+
+        create_resp = test_client.post(
+            "/api/v1/artifacts",
+            json={
+                "type": "code",
+                "path": "src/dl.py",
+                "task_id": "task-dl",
+                "created_by": "agent-1",
+                "content_type": "text/plain",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        artifact_id = create_resp.json()["data"]["id"]
+        payload = b"hello world"
+        # Pre-populate storage to avoid multipart PUT.
+        storage = test_client.app.state.app_state.artifact_storage
+        asyncio.get_event_loop().run_until_complete(
+            storage.store(artifact_id, payload),
+        )
+        dl_resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
+        assert dl_resp.status_code == 200
+        assert dl_resp.content == payload
+        assert "attachment" in dl_resp.headers.get("content-disposition", "")
+
+    def test_download_content_not_found(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get("/api/v1/artifacts/nonexistent/content")
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+
+    def test_download_content_missing_bytes(self, test_client: TestClient[Any]) -> None:
+        """Artifact exists in DB but content not in storage."""
+        create_resp = test_client.post(
+            "/api/v1/artifacts",
+            json={
+                "type": "code",
+                "path": "src/ghost.py",
+                "task_id": "task-ghost",
+                "created_by": "agent-1",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        artifact_id = create_resp.json()["data"]["id"]
+        # Do not upload content -- storage has no bytes.
+        resp = test_client.get(f"/api/v1/artifacts/{artifact_id}/content")
+        assert resp.status_code == 404
+        body = resp.json()
+        assert "content not found" in body["error"].lower()

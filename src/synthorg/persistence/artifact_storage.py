@@ -4,9 +4,14 @@ Artifact metadata lives in the persistence backend (SQLite); artifact
 *content bytes* are handled by this pluggable storage backend.
 Follows the same protocol pattern as ``MemoryBackend`` and
 ``PersistenceBackend``.
+
+Listing artifacts is a metadata concern handled by
+``ArtifactRepository.list_artifacts()``, not the content storage layer.
 """
 
 from typing import Protocol, runtime_checkable
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 @runtime_checkable
@@ -25,7 +30,7 @@ class ArtifactStorageBackend(Protocol):
         """Human-readable backend identifier (e.g. ``"filesystem"``)."""
         ...
 
-    async def store(self, artifact_id: str, content: bytes) -> int:
+    async def store(self, artifact_id: NotBlankStr, content: bytes) -> int:
         """Store artifact content.
 
         Args:
@@ -43,7 +48,7 @@ class ArtifactStorageBackend(Protocol):
         """
         ...
 
-    async def retrieve(self, artifact_id: str) -> bytes:
+    async def retrieve(self, artifact_id: NotBlankStr) -> bytes:
         """Retrieve artifact content.
 
         Args:
@@ -57,7 +62,7 @@ class ArtifactStorageBackend(Protocol):
         """
         ...
 
-    async def delete(self, artifact_id: str) -> bool:
+    async def delete(self, artifact_id: NotBlankStr) -> bool:
         """Delete artifact content.
 
         Args:
@@ -68,7 +73,7 @@ class ArtifactStorageBackend(Protocol):
         """
         ...
 
-    async def exists(self, artifact_id: str) -> bool:
+    async def exists(self, artifact_id: NotBlankStr) -> bool:
         """Check whether content exists for an artifact.
 
         Args:

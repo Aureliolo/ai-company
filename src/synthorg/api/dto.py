@@ -260,23 +260,30 @@ class CreateProjectRequest(BaseModel):
 
     name: NotBlankStr = Field(max_length=256)
     description: str = Field(default="", max_length=4096)
-    team: tuple[NotBlankStr, ...] = ()
+    team: tuple[NotBlankStr, ...] = Field(default=(), max_length=50)
     lead: NotBlankStr | None = None
     deadline: str | None = None
     budget: float = Field(default=0.0, ge=0.0)
 
     @model_validator(mode="after")
-    def _validate_deadline_format(self) -> Self:
-        """Validate deadline is valid ISO 8601 if present."""
+    def _validate_request(self) -> Self:
+        """Validate deadline format and team uniqueness."""
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
                 raise ValueError(msg)
             try:
                 datetime.fromisoformat(self.deadline)
-            except ValueError:
+            except ValueError as exc:
                 msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from None
+                raise ValueError(msg) from exc
+        if len(self.team) != len(set(self.team)):
+            seen: dict[str, int] = {}
+            for member in self.team:
+                seen[member] = seen.get(member, 0) + 1
+            dupes = [k for k, v in seen.items() if v > 1]
+            msg = f"team contains duplicate members: {dupes}"
+            raise ValueError(msg)
         return self
 
 

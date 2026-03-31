@@ -25,6 +25,8 @@ from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
+_MAX_LIST_ROWS: int = 10_000
+
 
 def _row_to_project(row: aiosqlite.Row) -> Project:
     """Reconstruct a ``Project`` from a database row.
@@ -177,7 +179,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY id"
+        query += f" ORDER BY id LIMIT {_MAX_LIST_ROWS}"
 
         try:
             cursor = await self._db.execute(query, params)

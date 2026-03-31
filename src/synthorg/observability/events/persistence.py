@@ -228,6 +228,12 @@ PERSISTENCE_ARTIFACT_STORAGE_DELETED: Final[str] = (
 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED: Final[str] = (
     "persistence.artifact_storage.delete_failed"
 )
+PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED: Final[str] = (
+    "persistence.artifact_storage.rollback_failed"
+)
+PERSISTENCE_ARTIFACT_CONTENT_MISSING: Final[str] = (
+    "persistence.artifact_storage.content_missing"
+)
 
 # Project events
 PERSISTENCE_PROJECT_SAVED: Final[str] = "persistence.project.saved"

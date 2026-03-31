@@ -14,9 +14,10 @@ from synthorg.api.dto import (
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -25,14 +26,16 @@ ProjectStatusFilter = Annotated[
     str | None,
     Parameter(
         required=False,
+        max_length=QUERY_MAX_LENGTH,
         description="Filter by project status",
     ),
 ]
 
 LeadFilter = Annotated[
-    str | None,
+    NotBlankStr | None,
     Parameter(
         required=False,
+        max_length=QUERY_MAX_LENGTH,
         description="Filter by project lead agent ID",
     ),
 ]

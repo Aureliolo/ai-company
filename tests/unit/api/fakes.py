@@ -463,16 +463,32 @@ class FakeProjectRepository:
 
 
 class FakeArtifactStorage:
-    """In-memory artifact storage backend for tests."""
+    """In-memory artifact storage backend for tests.
+
+    Supports error injection: set ``raise_too_large`` or
+    ``raise_storage_full`` to ``True`` to simulate limit errors.
+    """
 
     def __init__(self) -> None:
         self._store: dict[str, bytes] = {}
+        self.raise_too_large: bool = False
+        self.raise_storage_full: bool = False
 
     @property
     def backend_name(self) -> str:
         return "fake"
 
     async def store(self, artifact_id: str, content: bytes) -> int:
+        if self.raise_too_large:
+            from synthorg.persistence.errors import ArtifactTooLargeError
+
+            msg = "too large"
+            raise ArtifactTooLargeError(msg)
+        if self.raise_storage_full:
+            from synthorg.persistence.errors import ArtifactStorageFullError
+
+            msg = "storage full"
+            raise ArtifactStorageFullError(msg)
         self._store[artifact_id] = content
         return len(content)
 

@@ -92,3 +92,25 @@ class TestProjectController:
         long_id = "x" * 129
         resp = test_client.get(f"/api/v1/projects/{long_id}")
         assert resp.status_code == 400
+
+    def test_list_projects_filter_by_invalid_status(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.get("/api/v1/projects?status=bogus")
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["success"] is False
+        assert "Invalid project status" in body["error"]
+
+    def test_create_project_with_duplicate_team(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/projects",
+            json={
+                "name": "Dupe Team",
+                "team": ["agent-1", "agent-1"],
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400

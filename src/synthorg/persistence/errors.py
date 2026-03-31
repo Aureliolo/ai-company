@@ -20,9 +20,9 @@ class MigrationError(PersistenceError):
 class RecordNotFoundError(PersistenceError):
     """Raised when a requested record does not exist.
 
-    Currently unused -- ``TaskRepository.get()`` returns ``None``
-    on miss, and other repositories use collection-returning queries.
-    Reserved for future strict-fetch methods (e.g. ``get_or_raise``).
+    Used by ``ArtifactStorageBackend.retrieve()`` when no content
+    exists for the given artifact ID.  Repository ``get()`` methods
+    return ``None`` on miss instead of raising.
     """
 
 

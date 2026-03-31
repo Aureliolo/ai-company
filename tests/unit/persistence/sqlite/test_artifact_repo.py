@@ -20,7 +20,7 @@ def _make_artifact(  # noqa: PLR0913
     description: str = "Login endpoint",
     content_type: str = "",
     size_bytes: int = 0,
-    created_at: datetime | None = None,
+    created_at: datetime = datetime(2026, 1, 1, tzinfo=UTC),
 ) -> Artifact:
     return Artifact(
         id=artifact_id,
@@ -151,18 +151,24 @@ class TestSQLiteArtifactRepository:
         assert fetched is not None
         assert fetched.created_at == now
 
-    async def test_created_at_none_roundtrip(
+    async def test_created_at_always_aware(
         self, repo: SQLiteArtifactRepository
     ) -> None:
+        """created_at is NOT NULL and always timezone-aware on roundtrip."""
+        from datetime import UTC, datetime
+
+        ts = datetime(2026, 3, 31, 12, 0, 0, tzinfo=UTC)
         artifact = Artifact(
-            id="a-none",
+            id="a-aware",
             type=ArtifactType.CODE,
             path="src/x.py",
             task_id="task-1",
             created_by="agent-1",
-            created_at=None,
+            created_at=ts,
         )
         await repo.save(artifact)
-        fetched = await repo.get("a-none")
+        fetched = await repo.get("a-aware")
         assert fetched is not None
-        assert fetched.created_at is None
+        assert fetched.created_at is not None
+        assert fetched.created_at.tzinfo is not None
+        assert fetched.created_at == ts
