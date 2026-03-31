@@ -11,6 +11,9 @@ from synthorg.memory.consolidation.config import RetentionConfig
 from synthorg.memory.consolidation.models import RetentionRule
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.observability.events.consolidation import (
+    RETENTION_AGENT_OVERRIDE_APPLIED,
+)
 
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
@@ -471,9 +474,7 @@ class TestRetentionEnforcerAgentOverrides:
                 agent_default_retention_days=30,
             )
         override_logs = [
-            log
-            for log in logs
-            if log.get("event") == "consolidation.retention.agent_override_applied"
+            log for log in logs if log.get("event") == RETENTION_AGENT_OVERRIDE_APPLIED
         ]
         assert len(override_logs) == 1
         assert override_logs[0]["agent_id"] == _AGENT_ID
