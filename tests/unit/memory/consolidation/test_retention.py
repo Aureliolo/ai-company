@@ -524,8 +524,13 @@ class TestRetentionEnforcerAgentOverrides:
         # the rest via agent default
         assert backend.retrieve.call_count == len(MemoryCategory)
         # Verify WORKING uses agent override (7 days), not company (30)
-        working_call = backend.retrieve.call_args_list[0]
-        query: MemoryQuery = working_call[0][1]
+        working_calls = [
+            call
+            for call in backend.retrieve.call_args_list
+            if MemoryCategory.WORKING in call[0][1].categories
+        ]
+        assert len(working_calls) == 1
+        query: MemoryQuery = working_calls[0][0][1]
         assert query.until == _NOW - timedelta(days=7)
 
 
