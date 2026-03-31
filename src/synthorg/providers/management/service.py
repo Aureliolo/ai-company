@@ -697,10 +697,19 @@ class ProviderManagementService:
         Args:
             providers: Provider configurations.
             selector: Optional candidate selector for multi-provider
-                model resolution.
+                model resolution.  Defaults to
+                ``QuotaAwareSelector()``.
 
         Returns:
             New ModelRouter instance.
+
+        Note:
+            The ``selector`` parameter is an extension point for
+            wiring quota-aware selection from ``QuotaTracker``.
+            Currently the sole caller (``_validate_and_persist``)
+            uses the default; callers may inject a pre-built
+            ``QuotaAwareSelector(provider_quota_available=...)``
+            when quota integration is wired at the service layer.
         """
         from synthorg.providers.routing.router import (  # noqa: PLC0415
             ModelRouter,

@@ -6,48 +6,20 @@ from unittest.mock import MagicMock
 import pytest
 
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.providers.routing.errors import ModelResolutionError
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.providers.routing.router import ModelRouter
 from synthorg.providers.routing.selector import (
     CheapestSelector,
     QuotaAwareSelector,
 )
 
+from .conftest import two_provider_config as _two_provider_config
+
 pytestmark = pytest.mark.unit
 
 # ── Helpers ──────────────────────────────────────────────────────
-
-
-def _two_provider_config() -> dict[str, ProviderConfig]:
-    """Two providers serving the same model ID with different costs."""
-    return {
-        "test-provider-a": ProviderConfig(
-            driver="litellm",
-            api_key="sk-test-a",
-            models=(
-                ProviderModelConfig(
-                    id="test-shared-001",
-                    alias="shared",
-                    cost_per_1k_input=0.010,
-                    cost_per_1k_output=0.050,
-                    estimated_latency_ms=1000,
-                ),
-            ),
-        ),
-        "test-provider-b": ProviderConfig(
-            driver="litellm",
-            api_key="sk-test-b",
-            models=(
-                ProviderModelConfig(
-                    id="test-shared-001",
-                    alias="shared",
-                    cost_per_1k_input=0.001,
-                    cost_per_1k_output=0.005,
-                    estimated_latency_ms=500,
-                ),
-            ),
-        ),
-    }
 
 
 def _mixed_provider_config() -> dict[str, ProviderConfig]:
@@ -248,6 +220,12 @@ class TestMultiProviderWithSelector:
         result = resolver.resolve("shared")
 
         mock_selector.select.assert_called_once()
+        candidates = mock_selector.select.call_args[0][0]
+        assert len(candidates) == 2
+        assert {c.provider_name for c in candidates} == {
+            "test-provider-a",
+            "test-provider-b",
+        }
         assert result is expected
 
     def test_resolve_safe_uses_selector(self) -> None:
@@ -266,7 +244,9 @@ class TestMultiProviderWithSelector:
         )
         result = resolver.resolve_safe("shared")
 
-        mock_selector.select.assert_called()
+        mock_selector.select.assert_called_once()
+        candidates = mock_selector.select.call_args[0][0]
+        assert len(candidates) == 2
         assert result is expected
 
     def test_cheapest_selector_picks_cheapest(self) -> None:
@@ -321,3 +301,99 @@ class TestMultiProviderImmutability:
     def test_empty_tuple_in_index_rejected(self) -> None:
         with pytest.raises(ValueError, match="Empty candidate list"):
             ModelResolver({"bad-ref": ()})
+
+
+# ── TestSelectorErrorWrapping ────────────────────────────────────
+
+
+class TestSelectorErrorWrapping:
+    """Tests for exception handling when selectors fail."""
+
+    def test_resolve_wraps_arbitrary_selector_exception(self) -> None:
+        """resolve() wraps unexpected selector errors as ModelResolutionError."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = RuntimeError("boom")
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        with pytest.raises(ModelResolutionError, match="boom"):
+            resolver.resolve("shared")
+
+    def test_resolve_safe_returns_none_on_selector_exception(self) -> None:
+        """resolve_safe() returns None when selector raises unexpectedly."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = RuntimeError("boom")
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        assert resolver.resolve_safe("shared") is None
+
+    def test_resolve_propagates_memory_error(self) -> None:
+        """MemoryError from selector propagates unchanged."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = MemoryError
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        with pytest.raises(MemoryError):
+            resolver.resolve("shared")
+
+    def test_resolve_safe_propagates_memory_error(self) -> None:
+        """MemoryError from selector propagates even in resolve_safe."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = MemoryError
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        with pytest.raises(MemoryError):
+            resolver.resolve_safe("shared")
+
+    def test_resolve_reraises_model_resolution_error(self) -> None:
+        """ModelResolutionError from selector re-raises directly."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = ModelResolutionError(
+            "empty",
+            context={"selector": "test"},
+        )
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        with pytest.raises(ModelResolutionError, match="empty"):
+            resolver.resolve("shared")
+
+    def test_resolve_safe_returns_none_on_resolution_error(self) -> None:
+        """resolve_safe() returns None on ModelResolutionError from selector."""
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = ModelResolutionError(
+            "empty",
+            context={"selector": "test"},
+        )
+        resolver = ModelResolver.from_config(
+            _two_provider_config(),
+            selector=mock_selector,
+        )
+        assert resolver.resolve_safe("shared") is None
+
+
+# ── TestRouterSelectorPassthrough ────────────────────────────────
+
+
+class TestRouterSelectorPassthrough:
+    """Tests that ModelRouter correctly passes selector to ModelResolver."""
+
+    def test_router_passes_selector_to_resolver(self) -> None:
+        """Selector injected into ModelRouter reaches the resolver."""
+        from synthorg.config.schema import RoutingConfig
+
+        selector = CheapestSelector()
+        router = ModelRouter(
+            routing_config=RoutingConfig(),
+            providers=_two_provider_config(),
+            selector=selector,
+        )
+        assert router._resolver.selector is selector

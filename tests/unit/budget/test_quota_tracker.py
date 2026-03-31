@@ -538,14 +538,14 @@ class TestInputValidation:
 class TestPeekQuotaAvailable:
     """Tests for synchronous quota availability snapshot."""
 
-    async def test_fresh_tracker_all_available(self) -> None:
+    def test_fresh_tracker_all_available(self) -> None:
         """Freshly created tracker reports all providers as available."""
         with _patched_tracker_datetime():
             tracker = _make_tracker(
                 provider="test-provider",
                 quotas=(_hour_quota(100),),
             )
-        result = tracker.peek_quota_available()
+            result = tracker.peek_quota_available()
         assert result == {"test-provider": True}
 
     async def test_exhausted_provider_shows_unavailable(self) -> None:

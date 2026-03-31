@@ -195,7 +195,7 @@ class TestResolverCollisionDetection:
         }
         resolver = ModelResolver.from_config(providers)
         model = resolver.resolve("shared-alias")
-        assert model is not None
+        assert model.model_id in {"test-model-a", "test-model-b"}
         all_variants = resolver.resolve_all("shared-alias")
         assert len(all_variants) == 2
         providers_seen = {m.provider_name for m in all_variants}

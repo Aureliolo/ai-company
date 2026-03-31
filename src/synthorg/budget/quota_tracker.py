@@ -384,10 +384,12 @@ class QuotaTracker:
         """Synchronous snapshot of per-provider quota availability.
 
         Reads cached counters **without acquiring the lock**.  This is
-        safe on the single-threaded ``asyncio`` event loop (no
-        concurrent mutations during synchronous execution) and
-        acceptable for heuristic selection decisions where TOCTOU is
-        tolerated.
+        safe when called synchronously from the ``asyncio`` event loop
+        thread (no concurrent mutations during synchronous execution)
+        and acceptable for heuristic selection decisions where TOCTOU
+        is tolerated.  Do **not** call from a thread-pool executor or
+        from outside the event loop -- that would race with
+        ``record_usage``.
 
         Providers without configured quotas are excluded from the
         result (they are always allowed and do not need selection
@@ -409,7 +411,7 @@ class QuotaTracker:
             for window_type, usage in provider_usage.items():
                 expected_start = window_start(window_type, now=now)
                 if expected_start != usage.window_start:
-                    continue  # Window rotated, counters are zero
+                    continue  # Window rotated -- treat as zero usage
                 quota = quota_map.get(window_type)
                 if quota is None:
                     continue

@@ -26,15 +26,15 @@ _NOW = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
 def _patched_tracker_datetime() -> Generator[MagicMock]:
     with patch("synthorg.budget.quota_tracker.datetime") as mock_dt:
         mock_dt.now.return_value = _NOW
-        mock_dt.side_effect = datetime
         yield mock_dt
 
 
 def _two_provider_config() -> dict[str, ProviderConfig]:
+    """Two providers: expensive and cheap, same model, different costs."""
     return {
         "provider-expensive": ProviderConfig(
             driver="litellm",
-            api_key="sk-a",
+            api_key="sk-test-a",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",
@@ -46,7 +46,7 @@ def _two_provider_config() -> dict[str, ProviderConfig]:
         ),
         "provider-cheap": ProviderConfig(
             driver="litellm",
-            api_key="sk-b",
+            api_key="sk-test-b",
             models=(
                 ProviderModelConfig(
                     id="test-shared-001",

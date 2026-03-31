@@ -81,12 +81,31 @@ class QuotaAwareSelector:
         self,
         candidates: tuple[ResolvedModel, ...],
     ) -> ResolvedModel:
-        """Select the best candidate considering quota and cost."""
+        """Select the best candidate considering quota and cost.
+
+        Args:
+            candidates: Non-empty tuple of resolved models.
+
+        Returns:
+            Provider with available quota and lowest cost; if no
+            provider has quota, returns the globally cheapest
+            candidate.
+
+        Raises:
+            ModelResolutionError: If candidates is empty.
+        """
         if not candidates:
             msg = "Cannot select from empty candidate list"
             raise ModelResolutionError(msg, context={"selector": "quota_aware"})
         with_quota = [c for c in candidates if self._has_quota(c.provider_name)]
-        pool = with_quota or list(candidates)
+        if not with_quota and len(candidates) > 1 and self._quota:
+            logger.warning(
+                ROUTING_CANDIDATE_SELECTED,
+                reason="all_providers_quota_exhausted",
+                candidate_count=len(candidates),
+                selector="quota_aware",
+            )
+        pool: tuple[ResolvedModel, ...] | list[ResolvedModel] = with_quota or candidates
         chosen = min(pool, key=_cost_key)
         if len(candidates) > 1:
             logger.debug(
@@ -104,7 +123,12 @@ class QuotaAwareSelector:
 
 
 class CheapestSelector:
-    """Always pick the cheapest candidate regardless of quota."""
+    """Always pick the cheapest candidate regardless of quota.
+
+    Stateless selector that ignores quota availability and selects
+    purely by ``total_cost_per_1k``.  Use when quota enforcement is
+    handled externally or when cost minimisation is the sole concern.
+    """
 
     def select(
         self,

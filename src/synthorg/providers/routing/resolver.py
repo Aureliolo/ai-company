@@ -3,7 +3,8 @@
 Indexes every model ID and alias to one or more ``ResolvedModel``
 instances (multi-provider support).  When multiple providers serve
 the same model, a ``ModelCandidateSelector`` picks the best
-candidate at resolution time.
+candidate at resolution time.  Use ``resolve_all()`` to retrieve
+all provider variants for a ref without triggering selection.
 
 Typically built via the ``from_config`` classmethod from
 ``dict[str, ProviderConfig]``.  Uses ``MappingProxyType`` to guarantee
@@ -60,8 +61,8 @@ class ModelResolver:
                 A frozen copy is made internally; the caller's dict
                 is not modified.  Every tuple must be non-empty.
             selector: Strategy for picking among multiple candidates.
-                Defaults to ``QuotaAwareSelector()`` (cheapest with
-                quota preference).
+                Defaults to ``QuotaAwareSelector()`` (prefers providers
+                with available quota, then cheapest).
 
         Raises:
             ValueError: If any candidate tuple is empty.
@@ -93,7 +94,7 @@ class ModelResolver:
         resolved: ResolvedModel,
         provider_name: str,
     ) -> None:
-        """Register a model ref, appending on multi-provider collision."""
+        """Register a model ref; appends on distinct overlap, skips exact duplicates."""
         existing_list = index.get(ref)
         if existing_list is not None:
             for existing in existing_list:
@@ -186,16 +187,24 @@ class ModelResolver:
         """
         candidates = self._index.get(ref)
         if candidates is None:
+            available = sorted(self._index)
             logger.warning(
                 ROUTING_MODEL_RESOLUTION_FAILED,
                 ref=ref,
-                available=sorted(self._index),
+                available=available,
             )
-            msg = f"Model reference {ref!r} not found. Available: {sorted(self._index)}"
+            msg = f"Model reference {ref!r} not found. Available: {available}"
             raise ModelResolutionError(msg, context={"ref": ref})
         try:
             model = self._selector.select(candidates)
-        except ModelResolutionError:
+        except ModelResolutionError as exc:
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+                error=str(exc),
+            )
             raise
         except MemoryError, RecursionError:
             raise
@@ -242,12 +251,25 @@ class ModelResolver:
             return self._selector.select(candidates)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except ModelResolutionError as exc:
+            logger.debug(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,
                 candidate_count=len(candidates),
                 selector=type(self._selector).__name__,
+                error=str(exc),
+                reason="selector_raised_resolution_error",
+            )
+            return None
+        except Exception as exc:
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+                error=str(exc),
+                reason="unexpected_selector_error",
+                exc_info=True,
             )
             return None
 

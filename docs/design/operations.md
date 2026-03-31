@@ -167,6 +167,29 @@ routing:
     - "ollama"
 ```
 
+#### Multi-Provider Model Resolution
+
+When multiple providers register the same model ID or alias, the `ModelResolver`
+stores all variants as a candidate tuple rather than raising a collision error.
+At resolution time, a `ModelCandidateSelector` picks the best candidate from the
+tuple.
+
+Two built-in selectors are provided:
+
+| Selector | Behavior |
+|----------|----------|
+| `QuotaAwareSelector` (default) | Prefer providers with available quota, then cheapest among those; falls back to cheapest overall when all providers are exhausted |
+| `CheapestSelector` | Always pick the cheapest candidate by total cost per 1k tokens, ignoring quota state |
+
+The selector is injected into `ModelResolver` (and transitively into `ModelRouter`)
+at construction time.  `QuotaAwareSelector` is constructed with a snapshot from
+`QuotaTracker.peek_quota_available()`, which returns a synchronous `dict[str, bool]`
+of per-provider quota availability.
+
+All routing strategies (`smart`, `cost_aware`, `fastest`, etc.) and the fallback chain
+automatically use the injected selector when resolving model references, so multi-provider
+selection is transparent to the strategy layer.
+
 ---
 
 ## Budget and Cost Management
@@ -311,6 +334,12 @@ providers:
       strategy: "queue"
       queue_max_wait_seconds: 300
 ```
+
+`QuotaTracker` also exposes a synchronous `peek_quota_available()` method that returns
+a `dict[str, bool]` snapshot of per-provider quota availability.  This is used by the
+`QuotaAwareSelector` at routing time to prefer providers with remaining quota.  The
+method reads cached counters without acquiring the async lock (safe on the single-threaded
+asyncio event loop) and tolerates TOCTOU for heuristic selection decisions.
 
 Degradation is resolved during pre-flight checks (`BudgetEnforcer.check_can_execute`),
 which returns a `PreFlightResult` carrying the effective provider and degradation details.
