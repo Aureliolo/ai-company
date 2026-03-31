@@ -96,7 +96,7 @@ src/synthorg/
   engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop, workspace/ (git worktree isolation, merge orchestration, semantic conflict detection)
   hr/             # Hiring, firing, onboarding, agent registry, performance tracking, activity timeline, activity event types, cost event redaction, career history, promotion/demotion
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
-  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user repositories
+  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
   providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/

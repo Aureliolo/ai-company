@@ -7,6 +7,8 @@ directly.
 
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.errors import (
+    ArtifactStorageFullError,
+    ArtifactTooLargeError,
     DuplicateRecordError,
     MigrationError,
     PersistenceConnectionError,
@@ -30,6 +32,8 @@ from synthorg.persistence.repositories import (
 __all__ = [
     "AgentStateRepository",
     "ArtifactRepository",
+    "ArtifactStorageFullError",
+    "ArtifactTooLargeError",
     "AuditRepository",
     "CostRecordRepository",
     "DuplicateRecordError",

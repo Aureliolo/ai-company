@@ -1,7 +1,7 @@
 """SQLite repository implementation for Artifact."""
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -90,7 +90,7 @@ ON CONFLICT(id) DO UPDATE SET
                     artifact.content_type,
                     artifact.size_bytes,
                     (
-                        artifact.created_at.isoformat()
+                        artifact.created_at.astimezone(UTC).isoformat()
                         if artifact.created_at is not None
                         else None
                     ),
@@ -139,7 +139,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             artifact = _row_to_artifact(row)
-        except (ValueError, ValidationError) as exc:
+        except (ValueError, ValidationError, KeyError) as exc:
             msg = f"Failed to deserialize artifact {artifact_id!r}"
             logger.exception(
                 PERSISTENCE_ARTIFACT_DESERIALIZE_FAILED,
@@ -186,6 +186,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id"
 
         try:
             cursor = await self._db.execute(query, params)

@@ -1,5 +1,6 @@
 """Artifact controller -- CRUD endpoints for artifact management."""
 
+import contextlib
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
@@ -65,7 +66,7 @@ class ArtifactController(Controller):
         task_id: TaskIdFilter = None,
         created_by: CreatedByFilter = None,
         type: TypeFilter = None,  # noqa: A002
-    ) -> PaginatedResponse[Artifact]:
+    ) -> PaginatedResponse[Artifact] | Response[ApiResponse[None]]:
         """List artifacts with optional filters.
 
         Args:
@@ -77,11 +78,22 @@ class ArtifactController(Controller):
             type: Filter by artifact type.
 
         Returns:
-            Paginated list of artifacts.
+            Paginated list of artifacts, or 400 for invalid filters.
         """
         parsed_type: ArtifactType | None = None
         if type is not None:
-            parsed_type = ArtifactType(type)
+            try:
+                parsed_type = ArtifactType(type)
+            except ValueError:
+                valid = ", ".join(e.value for e in ArtifactType)
+                return Response(
+                    content=ApiResponse[None](
+                        error=(
+                            f"Invalid artifact type: {type!r}. Valid values: {valid}"
+                        ),
+                    ),
+                    status_code=400,
+                )
 
         repo = state.app_state.persistence.artifacts
         artifacts = await repo.list_artifacts(
@@ -206,10 +218,15 @@ class ArtifactController(Controller):
         updated = artifact.model_copy(
             update={
                 "size_bytes": size,
-                "content_type": artifact.content_type or "application/octet-stream",
+                "content_type": (artifact.content_type or "application/octet-stream"),
             },
         )
-        await repo.save(updated)
+        try:
+            await repo.save(updated)
+        except Exception:
+            with contextlib.suppress(Exception):
+                await storage.delete(artifact_id)
+            raise
         return Response(
             content=ApiResponse[Artifact](data=updated),
             status_code=200,

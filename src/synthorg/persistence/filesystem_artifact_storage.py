@@ -51,14 +51,38 @@ class FileSystemArtifactStorage:
         self._artifacts_dir = data_dir / "artifacts"
         self._max_artifact_bytes = max_artifact_bytes
         self._max_total_bytes = max_total_bytes
+        self._write_lock = asyncio.Lock()
 
     @property
     def backend_name(self) -> str:
         """Human-readable backend identifier."""
         return "filesystem"
 
+    def _safe_path(self, artifact_id: str) -> Path:
+        """Resolve an artifact path and validate it stays within bounds.
+
+        Args:
+            artifact_id: Unique artifact identifier.
+
+        Returns:
+            Resolved file path within the artifacts directory.
+
+        Raises:
+            ValueError: If the resolved path escapes the artifacts
+                directory (path traversal attempt).
+        """
+        resolved = (self._artifacts_dir / artifact_id).resolve()
+        artifacts_resolved = self._artifacts_dir.resolve()
+        if not resolved.is_relative_to(artifacts_resolved):
+            msg = f"Invalid artifact_id: {artifact_id!r}"
+            raise ValueError(msg)
+        return resolved
+
     async def store(self, artifact_id: str, content: bytes) -> int:
         """Store artifact content to a file.
+
+        Uses an asyncio lock to prevent TOCTOU races between the
+        capacity check and the actual write.
 
         Args:
             artifact_id: Unique artifact identifier.
@@ -72,7 +96,9 @@ class FileSystemArtifactStorage:
                 size limit.
             ArtifactStorageFullError: If storing would exceed the total
                 storage capacity.
+            ValueError: If *artifact_id* contains path traversal.
         """
+        file_path = self._safe_path(artifact_id)
         size = len(content)
         if size > self._max_artifact_bytes:
             msg = (
@@ -82,32 +108,33 @@ class FileSystemArtifactStorage:
             logger.warning(PERSISTENCE_ARTIFACT_STORE_FAILED, error=msg)
             raise ArtifactTooLargeError(msg)
 
-        current_total = await self.total_size()
-        # Subtract existing size if overwriting
-        existing_path = self._artifacts_dir / artifact_id
-        existing_size = await asyncio.to_thread(
-            lambda: existing_path.stat().st_size if existing_path.exists() else 0
-        )
-        new_total = current_total - existing_size + size
-        if new_total > self._max_total_bytes:
-            msg = (
-                f"Storing artifact {artifact_id!r} ({size} bytes) would "
-                f"exceed total limit of {self._max_total_bytes} bytes "
-                f"(current usage: {current_total} bytes)"
+        async with self._write_lock:
+            current_total = await self.total_size()
+            existing_size = await asyncio.to_thread(
+                lambda: file_path.stat().st_size if file_path.exists() else 0
             )
-            logger.warning(PERSISTENCE_ARTIFACT_STORE_FAILED, error=msg)
-            raise ArtifactStorageFullError(msg)
+            new_total = current_total - existing_size + size
+            if new_total > self._max_total_bytes:
+                msg = (
+                    f"Storing artifact {artifact_id!r} ({size} bytes) "
+                    f"would exceed total limit of "
+                    f"{self._max_total_bytes} bytes "
+                    f"(current usage: {current_total} bytes)"
+                )
+                logger.warning(PERSISTENCE_ARTIFACT_STORE_FAILED, error=msg)
+                raise ArtifactStorageFullError(msg)
 
-        try:
-            await asyncio.to_thread(self._write_file, artifact_id, content)
-        except OSError as exc:
-            msg = f"Failed to store artifact {artifact_id!r}"
-            logger.exception(
-                PERSISTENCE_ARTIFACT_STORE_FAILED,
-                artifact_id=artifact_id,
-                error=str(exc),
-            )
-            raise
+            try:
+                await asyncio.to_thread(self._write_file, file_path, content)
+            except OSError as exc:
+                msg = f"Failed to store artifact {artifact_id!r}"
+                logger.exception(
+                    PERSISTENCE_ARTIFACT_STORE_FAILED,
+                    artifact_id=artifact_id,
+                    error=str(exc),
+                )
+                raise
+
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
@@ -126,10 +153,11 @@ class FileSystemArtifactStorage:
 
         Raises:
             RecordNotFoundError: If no content exists for the given ID.
+            ValueError: If *artifact_id* contains path traversal.
         """
-        file_path = self._artifacts_dir / artifact_id
+        file_path = self._safe_path(artifact_id)
         try:
-            content = await asyncio.to_thread(self._read_file, file_path)
+            content = await asyncio.to_thread(file_path.read_bytes)
         except FileNotFoundError:
             msg = f"Artifact content not found: {artifact_id!r}"
             logger.warning(
@@ -138,6 +166,14 @@ class FileSystemArtifactStorage:
                 error=msg,
             )
             raise RecordNotFoundError(msg) from None
+        except OSError as exc:
+            msg = f"Failed to retrieve artifact {artifact_id!r}"
+            logger.exception(
+                PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
+                artifact_id=artifact_id,
+                error=str(exc),
+            )
+            raise
         logger.debug(
             PERSISTENCE_ARTIFACT_RETRIEVED,
             artifact_id=artifact_id,
@@ -153,8 +189,11 @@ class FileSystemArtifactStorage:
 
         Returns:
             ``True`` if content was deleted, ``False`` if not found.
+
+        Raises:
+            ValueError: If *artifact_id* contains path traversal.
         """
-        file_path = self._artifacts_dir / artifact_id
+        file_path = self._safe_path(artifact_id)
         try:
             deleted = await asyncio.to_thread(self._delete_file, file_path)
         except OSError as exc:
@@ -179,8 +218,11 @@ class FileSystemArtifactStorage:
 
         Returns:
             ``True`` if content exists.
+
+        Raises:
+            ValueError: If *artifact_id* contains path traversal.
         """
-        file_path = self._artifacts_dir / artifact_id
+        file_path = self._safe_path(artifact_id)
         return await asyncio.to_thread(file_path.exists)
 
     async def total_size(self) -> int:
@@ -193,24 +235,19 @@ class FileSystemArtifactStorage:
 
     # ── Sync helpers (run via asyncio.to_thread) ──────────────────
 
-    def _write_file(self, artifact_id: str, content: bytes) -> None:
+    def _write_file(self, file_path: Path, content: bytes) -> None:
         """Write content to a file, creating the directory if needed."""
         self._artifacts_dir.mkdir(parents=True, exist_ok=True)
-        file_path = self._artifacts_dir / artifact_id
         file_path.write_bytes(content)
 
     @staticmethod
-    def _read_file(file_path: Path) -> bytes:
-        """Read content from a file."""
-        return file_path.read_bytes()
-
-    @staticmethod
     def _delete_file(file_path: Path) -> bool:
-        """Delete a file if it exists."""
-        if file_path.exists():
+        """Delete a file if it exists (race-safe)."""
+        try:
             file_path.unlink()
-            return True
-        return False
+        except FileNotFoundError:
+            return False
+        return True
 
     def _compute_total_size(self) -> int:
         """Sum file sizes in the artifacts directory."""

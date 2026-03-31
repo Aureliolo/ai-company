@@ -119,3 +119,27 @@ class TestFileSystemArtifactStorage:
     async def test_total_size_empty(self, storage: FileSystemArtifactStorage) -> None:
         total = await storage.total_size()
         assert total == 0
+
+    async def test_path_traversal_rejected_store(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.store("../../../etc/passwd", b"exploit")
+
+    async def test_path_traversal_rejected_retrieve(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.retrieve("../../secret")
+
+    async def test_path_traversal_rejected_delete(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.delete("../outside")
+
+    async def test_path_traversal_rejected_exists(
+        self, storage: FileSystemArtifactStorage
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid artifact_id"):
+            await storage.exists("../../etc/shadow")

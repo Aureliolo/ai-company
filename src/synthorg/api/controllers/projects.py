@@ -7,7 +7,11 @@ from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
-from synthorg.api.dto import ApiResponse, CreateProjectRequest, PaginatedResponse
+from synthorg.api.dto import (
+    ApiResponse,
+    CreateProjectRequest,
+    PaginatedResponse,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import PathId  # noqa: TC001
@@ -48,7 +52,7 @@ class ProjectController(Controller):
         limit: PaginationLimit = 50,
         status: ProjectStatusFilter = None,
         lead: LeadFilter = None,
-    ) -> PaginatedResponse[Project]:
+    ) -> PaginatedResponse[Project] | Response[ApiResponse[None]]:
         """List projects with optional filters.
 
         Args:
@@ -59,11 +63,22 @@ class ProjectController(Controller):
             lead: Filter by project lead agent ID.
 
         Returns:
-            Paginated list of projects.
+            Paginated list of projects, or 400 for invalid filters.
         """
         parsed_status: ProjectStatus | None = None
         if status is not None:
-            parsed_status = ProjectStatus(status)
+            try:
+                parsed_status = ProjectStatus(status)
+            except ValueError:
+                valid = ", ".join(e.value for e in ProjectStatus)
+                return Response(
+                    content=ApiResponse[None](
+                        error=(
+                            f"Invalid project status: {status!r}. Valid values: {valid}"
+                        ),
+                    ),
+                    status_code=400,
+                )
 
         repo = state.app_state.persistence.projects
         projects = await repo.list_projects(

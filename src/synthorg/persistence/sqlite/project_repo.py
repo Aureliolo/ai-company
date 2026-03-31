@@ -135,7 +135,7 @@ ON CONFLICT(id) DO UPDATE SET
             return None
         try:
             project = _row_to_project(row)
-        except (ValueError, ValidationError, json.JSONDecodeError) as exc:
+        except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
             msg = f"Failed to deserialize project {project_id!r}"
             logger.exception(
                 PERSISTENCE_PROJECT_DESERIALIZE_FAILED,
@@ -177,6 +177,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id"
 
         try:
             cursor = await self._db.execute(query, params)
@@ -187,7 +188,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         try:
             projects = tuple(_row_to_project(row) for row in rows)
-        except (ValueError, ValidationError, json.JSONDecodeError) as exc:
+        except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
             msg = "Failed to deserialize projects"
             logger.exception(PERSISTENCE_PROJECT_DESERIALIZE_FAILED, error=str(exc))
             raise QueryError(msg) from exc
