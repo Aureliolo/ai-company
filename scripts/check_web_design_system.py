@@ -263,16 +263,16 @@ def check_hardcoded_framer_transitions(
     # Strip block comments so the regex doesn't match inside /* ... */.
     stripped = _BLOCK_COMMENT_RE.sub(lambda m: "\n" * m.group().count("\n"), content)
 
-    # Run regex on full content so multiline transition objects are caught.
+    # Run regex on stripped content so multiline transition objects are caught.
     for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
-        # Compute the line number from the match offset.
-        line_num = content[: m.start()].count("\n") + 1
+        # Compute line number and column from *stripped* offsets (newline
+        # counts are preserved by the block-comment replacement).
+        line_num = stripped[: m.start()].count("\n") + 1
+        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
         line_text = lines[line_num - 1].strip()
         if line_text.startswith(_COMMENT_PREFIXES):
             continue
-        if _is_in_comment_context(
-            lines[line_num - 1], m.start() - content.rfind("\n", 0, m.start()) - 1
-        ):
+        if _is_in_comment_context(lines[line_num - 1], col):
             continue
         warnings.append(
             f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
