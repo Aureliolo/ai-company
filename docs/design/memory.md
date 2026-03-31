@@ -322,7 +322,7 @@ models in `memory/consolidation/config.py`:
 | Config | Purpose |
 |--------|---------|
 | `ConsolidationConfig` | Top-level: `max_memories_per_agent` limit, nested `retention` and `archival` sub-configs |
-| `RetentionConfig` | Per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback |
+| `RetentionConfig` | Company-level per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback; agents can override via `MemoryConfig.retention_overrides` |
 | `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore`, nested `DualModeConfig` |
 | `DualModeConfig` | Density-aware dual-mode archival: threshold, summarization model, anchor/fact limits |
 

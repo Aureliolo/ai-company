@@ -266,6 +266,13 @@ class MemoryConfig(BaseModel):
         if len(categories) != len(set(categories)):
             dupes = sorted(c.value for c in categories if categories.count(c) > 1)
             msg = f"Duplicate retention override categories: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryConfig",
+                field="retention_overrides",
+                duplicates=dupes,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 

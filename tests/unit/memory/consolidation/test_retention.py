@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.config import RetentionConfig
@@ -286,30 +287,43 @@ class TestResolveCategories:
         - WORKING: agent per-category (7) beats company per-category (30)
         - EPISODIC: company per-category (90) beats agent default (60)
         - SEMANTIC: agent per-category (365) -- no company rule
-        - PROCEDURAL: agent default (60) -- no rules
-        - SOCIAL: company default (45) -- no rules, no agent default for it
+        - PROCEDURAL: agent default (60) -- no rules, no company rule
+        - SOCIAL: agent default (60) -- no rules, agent default > co default
         """
-        base = (
+        # Only explicit company per-category rules (not company default)
+        explicit_rules = (
             (MemoryCategory.WORKING, 30),
             (MemoryCategory.EPISODIC, 90),
-            (MemoryCategory.SOCIAL, 45),
         )
         agent_overrides: dict[MemoryCategory, int] = {
             MemoryCategory.WORKING: 7,
             MemoryCategory.SEMANTIC: 365,
         }
         result = RetentionEnforcer._resolve_categories(
-            base,
+            explicit_rules,
             agent_overrides=agent_overrides,
             agent_default_days=60,
             company_default_days=45,
         )
         result_dict = dict(result)
-        assert result_dict[MemoryCategory.WORKING] == 7  # agent rule
-        assert result_dict[MemoryCategory.EPISODIC] == 90  # company rule
-        assert result_dict[MemoryCategory.SEMANTIC] == 365  # agent rule
-        assert result_dict[MemoryCategory.PROCEDURAL] == 60  # agent default
-        assert result_dict[MemoryCategory.SOCIAL] == 45  # company rule
+        assert result_dict[MemoryCategory.WORKING] == 7  # 1. agent rule
+        assert result_dict[MemoryCategory.EPISODIC] == 90  # 2. company rule
+        assert result_dict[MemoryCategory.SEMANTIC] == 365  # 1. agent rule
+        assert result_dict[MemoryCategory.PROCEDURAL] == 60  # 3. agent default
+        assert result_dict[MemoryCategory.SOCIAL] == 60  # 3. agent default
+
+    def test_company_default_used_when_agent_default_absent(self) -> None:
+        """Priority 4 (company default) used when no agent default."""
+        explicit_rules = ((MemoryCategory.WORKING, 30),)
+        result = RetentionEnforcer._resolve_categories(
+            explicit_rules,
+            agent_overrides={},
+            agent_default_days=None,
+            company_default_days=45,
+        )
+        result_dict = dict(result)
+        assert result_dict[MemoryCategory.WORKING] == 30  # 2. company rule
+        assert result_dict[MemoryCategory.SOCIAL] == 45  # 4. company default
 
     def test_empty_everything_returns_empty(self) -> None:
         """No rules, no defaults -- returns empty tuple."""
@@ -402,3 +416,85 @@ class TestRetentionEnforcerAgentOverrides:
             agent_default_retention_days=60,
         )
         assert backend.retrieve.call_count == len(MemoryCategory)
+
+    async def test_agent_default_cutoff_correctness(self) -> None:
+        """Agent default_retention_days produces correct cutoff dates."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+
+        config = RetentionConfig()
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+
+        await enforcer.cleanup_expired(
+            _AGENT_ID,
+            now=_NOW,
+            agent_default_retention_days=60,
+        )
+        # Verify each query uses the agent default cutoff
+        expected_cutoff = _NOW - timedelta(days=60)
+        for call in backend.retrieve.call_args_list:
+            query: MemoryQuery = call[0][1]
+            assert query.until == expected_cutoff
+
+    async def test_agent_default_beats_company_default(self) -> None:
+        """Agent default overrides company default for non-rule categories."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+
+        # Company has default_retention_days=30 (no explicit rules)
+        config = RetentionConfig(default_retention_days=30)
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+
+        # Agent default is 90 -- should override company default
+        await enforcer.cleanup_expired(
+            _AGENT_ID,
+            now=_NOW,
+            agent_default_retention_days=90,
+        )
+        expected_cutoff = _NOW - timedelta(days=90)
+        for call in backend.retrieve.call_args_list:
+            query: MemoryQuery = call[0][1]
+            assert query.until == expected_cutoff
+
+    async def test_override_log_event_fires(self) -> None:
+        """RETENTION_AGENT_OVERRIDE_APPLIED log event fires with overrides."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+
+        config = RetentionConfig()
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+
+        with structlog.testing.capture_logs() as logs:
+            await enforcer.cleanup_expired(
+                _AGENT_ID,
+                now=_NOW,
+                agent_default_retention_days=30,
+            )
+        override_logs = [
+            log
+            for log in logs
+            if log.get("event") == "consolidation.retention.agent_override_applied"
+        ]
+        assert len(override_logs) == 1
+        assert override_logs[0]["agent_id"] == _AGENT_ID
+        assert override_logs[0]["resolved_category_count"] == len(
+            MemoryCategory,
+        )
+
+
+@pytest.mark.unit
+class TestRetentionRuleParity:
+    """Ensure AgentRetentionRule and RetentionRule stay in sync."""
+
+    def test_field_parity(self) -> None:
+        """Both models must have the same field names and types."""
+        from synthorg.core.agent import AgentRetentionRule
+        from synthorg.memory.consolidation.models import RetentionRule
+
+        agent_fields = AgentRetentionRule.model_fields
+        retention_fields = RetentionRule.model_fields
+        assert set(agent_fields) == set(retention_fields)
+        for name in agent_fields:
+            assert agent_fields[name].annotation == retention_fields[name].annotation, (
+                f"Field {name!r} type mismatch"
+            )

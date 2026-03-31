@@ -45,6 +45,9 @@ class RetentionEnforcer:
         self._config = config
         self._backend = backend
         self._categories_to_check = self._build_categories_to_check(config)
+        self._explicit_rules = tuple(
+            (rule.category, rule.retention_days) for rule in config.rules
+        )
 
     @staticmethod
     def _build_categories_to_check(
@@ -73,7 +76,7 @@ class RetentionEnforcer:
 
     @staticmethod
     def _resolve_categories(
-        base: tuple[tuple[MemoryCategory, int], ...],
+        explicit_rules: tuple[tuple[MemoryCategory, int], ...],
         agent_overrides: Mapping[MemoryCategory, int],
         agent_default_days: int | None,
         company_default_days: int | None,
@@ -83,13 +86,15 @@ class RetentionEnforcer:
         Resolution per category (highest priority first):
 
         1. Agent per-category override
-        2. Company per-category rule (from *base*)
+        2. Company per-category rule (from *explicit_rules*)
         3. Agent global default (*agent_default_days*)
         4. Company global default (*company_default_days*)
         5. Skip (keep forever)
 
         Args:
-            base: Pre-computed company (category, days) pairs.
+            explicit_rules: Explicit company per-category rules only
+                (must NOT include categories filled by the company
+                global default).
             agent_overrides: Agent per-category retention overrides.
             agent_default_days: Agent-level default retention in days.
             company_default_days: Company-level default retention in
@@ -98,7 +103,7 @@ class RetentionEnforcer:
         Returns:
             Merged tuple of (category, days) pairs.
         """
-        base_dict = dict(base)
+        rules_dict = dict(explicit_rules)
         result: list[tuple[MemoryCategory, int]] = []
         for category in MemoryCategory:
             # 1. Agent per-category override
@@ -107,7 +112,7 @@ class RetentionEnforcer:
                 result.append((category, agent_days))
                 continue
             # 2. Company per-category rule
-            company_days = base_dict.get(category)
+            company_days = rules_dict.get(category)
             if company_days is not None:
                 result.append((category, company_days))
                 continue
@@ -121,6 +126,41 @@ class RetentionEnforcer:
                 continue
             # 5. No retention -- skip
         return tuple(result)
+
+    def _resolve_for_agent(
+        self,
+        agent_id: NotBlankStr,
+        agent_category_overrides: Mapping[MemoryCategory, int] | None,
+        agent_default_retention_days: int | None,
+    ) -> tuple[tuple[MemoryCategory, int], ...]:
+        """Resolve effective categories considering agent overrides.
+
+        Args:
+            agent_id: Agent identifier (for logging).
+            agent_category_overrides: Per-category overrides.
+            agent_default_retention_days: Agent-level default.
+
+        Returns:
+            Resolved (category, days) pairs.
+        """
+        has_overrides = (
+            agent_category_overrides is not None
+            or agent_default_retention_days is not None
+        )
+        if not has_overrides:
+            return self._categories_to_check
+        categories = self._resolve_categories(
+            self._explicit_rules,
+            agent_overrides=agent_category_overrides or {},
+            agent_default_days=agent_default_retention_days,
+            company_default_days=self._config.default_retention_days,
+        )
+        logger.info(
+            RETENTION_AGENT_OVERRIDE_APPLIED,
+            agent_id=agent_id,
+            resolved_category_count=len(categories),
+        )
+        return categories
 
     async def cleanup_expired(
         self,
@@ -157,24 +197,11 @@ class RetentionEnforcer:
         if now is None:
             now = datetime.now(UTC)
 
-        has_overrides = (
-            agent_category_overrides is not None
-            or agent_default_retention_days is not None
+        categories_to_check = self._resolve_for_agent(
+            agent_id,
+            agent_category_overrides,
+            agent_default_retention_days,
         )
-        if has_overrides:
-            categories_to_check = self._resolve_categories(
-                self._categories_to_check,
-                agent_overrides=agent_category_overrides or {},
-                agent_default_days=agent_default_retention_days,
-                company_default_days=self._config.default_retention_days,
-            )
-            logger.info(
-                RETENTION_AGENT_OVERRIDE_APPLIED,
-                agent_id=agent_id,
-                overridden_count=len(categories_to_check),
-            )
-        else:
-            categories_to_check = self._categories_to_check
 
         logger.info(RETENTION_CLEANUP_START, agent_id=agent_id)
         total_deleted = 0
