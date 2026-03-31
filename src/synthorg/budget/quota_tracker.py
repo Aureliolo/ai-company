@@ -74,6 +74,7 @@ class QuotaTracker:
             dict(subscriptions),
         )
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._usage: dict[str, dict[QuotaWindow, _WindowUsage]] = {}
 
         # Initialize usage tracking for providers with quotas
@@ -93,6 +94,37 @@ class QuotaTracker:
             provider_count=len(self._subscriptions),
             tracked_providers=sorted(self._usage),
         )
+
+    def _capture_loop(self) -> None:
+        """Lazily store the owning event loop on first async call."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
+    def _assert_loop_safe(self) -> None:
+        """Verify the caller is on the tracker's owning event loop.
+
+        Raises:
+            RuntimeError: If called from a different loop or from
+                outside any event loop after async methods have run.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running event loop.  If _loop is set, async methods
+            # have been used and the caller is likely in a thread.
+            if self._loop is not None:
+                msg = (
+                    "peek_quota_available must be called from the "
+                    "tracker's owning event loop, not from a thread"
+                )
+                raise RuntimeError(msg) from None
+        else:
+            if self._loop is not None and current_loop is not self._loop:
+                msg = (
+                    "peek_quota_available must be called from the "
+                    "tracker's owning event loop"
+                )
+                raise RuntimeError(msg)
 
     async def record_usage(
         self,
@@ -144,6 +176,7 @@ class QuotaTracker:
             )
             return
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             provider_usage = self._usage[provider_name]
@@ -228,6 +261,7 @@ class QuotaTracker:
         sub_config = self._subscriptions[provider_name]
         quota_map = {q.window: q for q in sub_config.quotas}
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             provider_usage = self._usage[provider_name]
@@ -317,6 +351,7 @@ class QuotaTracker:
         sub_config = self._subscriptions[provider_name]
         quota_map = {q.window: q for q in sub_config.quotas}
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             snapshots: list[QuotaSnapshot] = []
@@ -397,7 +432,14 @@ class QuotaTracker:
 
         Returns:
             Dict mapping provider name to availability status.
+
+        Raises:
+            RuntimeError: If called from a different event loop than
+                the one used by this tracker's async methods, or from
+                outside an event loop when async methods have already
+                been called (indicating a thread-pool executor context).
         """
+        self._assert_loop_safe()
         now = datetime.now(UTC)
         result: dict[str, bool] = {}
 

@@ -362,9 +362,11 @@ def make_resolver(
         ]
     index: dict[str, tuple[ResolvedModel, ...]] = {}
     for m in models:
-        index[m.model_id] = (m,)
+        existing = index.get(m.model_id, ())
+        index[m.model_id] = (*existing, m)
         if m.alias is not None:
-            index[m.alias] = (m,)
+            existing_alias = index.get(m.alias, ())
+            index[m.alias] = (*existing_alias, m)
     return ModelResolver(index)
 
 
