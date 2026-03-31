@@ -72,6 +72,7 @@ export default function AppLayout() {
       { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
       { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
       { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
+      // Full-page navigation -- /docs/ is static HTML served by nginx, not an SPA route
       { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: () => { window.location.href = ROUTES.DOCUMENTATION }, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
       { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
     ],

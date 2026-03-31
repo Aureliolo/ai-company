@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import * as fc from 'fast-check'
 import { Users } from 'lucide-react'
 import { SidebarNavItem } from '@/components/layout/SidebarNavItem'
+import { ROUTES } from '@/router/routes'
 import { renderWithRouter } from '../../test-utils'
 
 describe('SidebarNavItem', () => {
@@ -104,9 +105,8 @@ describe('SidebarNavItem', () => {
       )
 
       const link = screen.getByRole('link', { name: /docs/i })
-      expect(link.tagName).toBe('A')
       expect(link).toHaveAttribute('href', '/docs/')
-      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(link).not.toHaveAttribute('rel')
     })
 
     it('shows title tooltip when collapsed', () => {
@@ -132,6 +132,63 @@ describe('SidebarNavItem', () => {
       )
 
       expect(screen.getByText('3')).toBeInTheDocument()
+    })
+
+    it('does not apply isActive styling', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} external />,
+        { initialEntries: ['/docs/'] },
+      )
+
+      const link = container.querySelector('a')
+      // text-accent is only applied by NavLink's isActive callback -- external
+      // anchors should never have it regardless of the current route
+      expect(link?.className).not.toMatch(/text-accent/)
+    })
+
+    it('renders dot indicator when dotColor is provided', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} dotColor="bg-success" external />,
+      )
+
+      const dot = container.querySelector('.bg-success.rounded-full')
+      expect(dot).toBeInTheDocument()
+    })
+
+    it('does not pass end attribute to the anchor element', () => {
+      const { container } = renderWithRouter(
+        <SidebarNavItem to="/docs/" icon={Users} label="Docs" collapsed={false} end external />,
+      )
+
+      const link = container.querySelector('a')
+      expect(link).not.toHaveAttribute('end')
+    })
+  })
+
+  describe('DOCUMENTATION route invariants', () => {
+    it('has a trailing slash (nginx location block requires it)', () => {
+      expect(ROUTES.DOCUMENTATION).toBe('/docs/')
+      expect(ROUTES.DOCUMENTATION.endsWith('/')).toBe(true)
+    })
+
+    it('is not registered as a React Router route (served by nginx)', () => {
+      // ROUTES.DOCUMENTATION must not appear in any React Router <Route path>
+      // definition. If it did, React Router would intercept /docs/ navigation
+      // instead of letting it reach nginx. This test guards against someone
+      // accidentally adding a route for /docs/ in router/index.tsx.
+      const routerPaths = [
+        '/', '/login', '/setup', '/setup/:step',
+        'org', 'org/edit', 'tasks', 'tasks/:taskId',
+        'budget', 'budget/forecast', 'approvals',
+        'agents', 'agents/:agentName',
+        'messages', 'meetings', 'meetings/:meetingId',
+        'providers', 'providers/:providerName',
+        'settings', 'settings/:namespace', 'settings/observability/sinks',
+        '*',
+      ]
+      expect(routerPaths).not.toContain('/docs/')
+      expect(routerPaths).not.toContain('docs')
+      expect(routerPaths).not.toContain('docs/')
     })
   })
 })

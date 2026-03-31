@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# SynthOrg Web -- Multi-stage build: Node builder → nginx runtime
+# SynthOrg Web -- Multi-stage build: Node builder + docs builder -> nginx runtime
 # CIS hardening applied via compose.yml (no-new-privileges, drop caps, etc.)
 # =============================================================================
 
@@ -20,31 +20,36 @@ COPY --chown=build:build web/ ./
 RUN npm run build \
     && find /app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) -size +256c -exec gzip -9 -k {} \;
 
-# Stage 2: Build MkDocs documentation
+# Stage 2: Build MkDocs documentation (non-root for defense-in-depth)
 FROM python:3.14.3-slim@sha256:fb83750094b46fd6b8adaa80f66e2302ecbe45d513f6cece637a841e1025b4ca AS docs-builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 /uv /uvx /bin/
 
+RUN groupadd -r docsbuild && useradd -r -g docsbuild docsbuild \
+    && mkdir /app && chown docsbuild:docsbuild /app
+
 ENV UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/tmp/uv-cache
 
 WORKDIR /app
 
 # Install dependencies first (layer cache -- only invalidated on lock change)
-COPY pyproject.toml uv.lock ./
-RUN --mount=type=cache,target=/root/.cache/uv \
+COPY --chown=docsbuild:docsbuild pyproject.toml uv.lock ./
+USER docsbuild
+RUN --mount=type=cache,target=/tmp/uv-cache \
     uv sync --frozen --group docs --no-dev --no-install-project
 
 # Install project (export_openapi.py imports synthorg.api.app)
 RUN touch README.md
-COPY src/ src/
-RUN --mount=type=cache,target=/root/.cache/uv \
+COPY --chown=docsbuild:docsbuild src/ src/
+RUN --mount=type=cache,target=/tmp/uv-cache \
     uv sync --frozen --group docs --no-dev
 
 # Build documentation
-COPY docs/ docs/
-COPY mkdocs.yml ./
-COPY scripts/export_openapi.py scripts/
+COPY --chown=docsbuild:docsbuild docs/ docs/
+COPY --chown=docsbuild:docsbuild mkdocs.yml ./
+COPY --chown=docsbuild:docsbuild scripts/export_openapi.py scripts/
 RUN uv run python scripts/export_openapi.py \
     && uv run zensical build
 
