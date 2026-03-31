@@ -181,6 +181,16 @@ export default function SettingsPage() {
           return next
         })
 
+        // Count restart-required settings among successful saves
+        const restartCount = [...changes.keys()].filter((ck) => {
+          if (failedKeys.has(ck)) return false
+          const entry = entries.find(
+            (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+          )
+          return entry?.definition.restart_required === true
+        }).length
+        if (restartCount > 0) setRestartBannerCount(restartCount)
+
         if (failedKeys.size === 0) {
           useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
         } else {
@@ -196,7 +206,7 @@ export default function SettingsPage() {
         return new Set(changes.keys())
       }
     },
-    [updateSetting, setDirtyValues],
+    [updateSetting, setDirtyValues, entries],
   )
 
   const pruneAdvancedDrafts = useCallback(() => {

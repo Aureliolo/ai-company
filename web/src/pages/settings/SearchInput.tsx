@@ -68,11 +68,11 @@ export function SearchInput({ value, onChange, className, ref, resultCount }: Se
         placeholder="Search settings..."
         className={cn(
           'h-9 w-full rounded-md border border-border bg-surface pl-9 text-sm text-foreground outline-none placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent',
-          local && resultCount !== undefined ? 'pr-20' : 'pr-8',
+          local === value && resultCount !== undefined ? 'pr-20' : 'pr-8',
         )}
         aria-label="Search settings"
       />
-      {local && resultCount !== undefined && (
+      {local === value && resultCount !== undefined && (
         <span
           className="absolute right-8 top-1/2 -translate-y-1/2 text-micro text-text-muted"
           role="status"

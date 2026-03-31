@@ -48,15 +48,13 @@ export function NamespaceTabBar({
     <div
       ref={tablistRef}
       className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5"
-      role="tablist"
-      aria-label="Setting namespaces"
+      role="toolbar"
+      aria-label="Setting namespace filter"
       onKeyDown={handleKeyDown}
     >
       <button
         type="button"
-        role="tab"
-        aria-selected={activeNamespace === null}
-        tabIndex={activeNamespace === null ? 0 : -1}
+        aria-pressed={activeNamespace === null}
         onClick={() => onSelect(null)}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200',
@@ -74,9 +72,7 @@ export function NamespaceTabBar({
           <button
             key={ns}
             type="button"
-            role="tab"
-            aria-selected={activeNamespace === ns}
-            tabIndex={activeNamespace === ns ? 0 : -1}
+            aria-pressed={activeNamespace === ns}
             onClick={() => onSelect(ns)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-all duration-200',

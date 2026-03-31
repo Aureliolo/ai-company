@@ -183,7 +183,7 @@ describe('LoginPage', () => {
     expect(mockLogin).not.toHaveBeenCalled()
   })
 
-  it('admin creation validates password match', { timeout: 15000 }, async () => {
+  it('admin creation validates password match', async () => {
     mockGetSetupStatus.mockResolvedValue(setupStatusResponse({ needs_admin: true }))
     const user = userEvent.setup()
 

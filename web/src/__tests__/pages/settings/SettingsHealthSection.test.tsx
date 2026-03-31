@@ -34,7 +34,7 @@ describe('NamespaceTabBar', () => {
         namespaceCounts={counts}
       />,
     )
-    expect(screen.getByText('All').closest('button')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('All').closest('button')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('highlights active namespace tab', () => {
@@ -46,8 +46,8 @@ describe('NamespaceTabBar', () => {
         namespaceCounts={counts}
       />,
     )
-    expect(screen.getByText('Memory').closest('button')).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('All').closest('button')).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByText('Memory').closest('button')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('All').closest('button')).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('calls onSelect when a tab is clicked', async () => {
