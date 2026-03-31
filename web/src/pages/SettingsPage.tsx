@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Link } from 'react-router'
 import {
   AlertTriangle,
   Brain,
@@ -19,8 +21,10 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { useSettingsStore } from '@/stores/settings'
+import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { useSettingsData } from '@/hooks/useSettingsData'
 import { useSettingsDirtyState } from '@/hooks/useSettingsDirtyState'
+import { useSettingsKeyboard } from '@/hooks/useSettingsKeyboard'
 import {
   HIDDEN_SETTINGS,
   NAMESPACE_DISPLAY_NAMES,
@@ -32,6 +36,8 @@ import { AdvancedModeBanner } from './settings/AdvancedModeBanner'
 import { CodeEditorPanel } from './settings/CodeEditorPanel'
 import { FloatingSaveBar } from './settings/FloatingSaveBar'
 import { NamespaceSection } from './settings/NamespaceSection'
+import { NamespaceTabBar } from './settings/SettingsHealthSection'
+import { RestartBanner } from './settings/RestartBanner'
 import { SearchInput } from './settings/SearchInput'
 import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
@@ -63,6 +69,7 @@ export default function SettingsPage() {
   } = useSettingsData()
 
   const storeSavingKeys = useSettingsStore((s) => s.savingKeys)
+  const anim = useAnimationPreset()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [advancedMode, setAdvancedMode] = useState(
@@ -72,14 +79,59 @@ export default function SettingsPage() {
   const [showAdvancedWarning, setShowAdvancedWarning] = useState(false)
   const [codeDirty, setCodeDirty] = useState(false)
   const [showCodeDiscardWarning, setShowCodeDiscardWarning] = useState(false)
+  const [restartBannerCount, setRestartBannerCount] = useState(0)
+  const [activeNamespace, setActiveNamespace] = useState<SettingNamespace | null>(null)
+  const searchRef = useRef<{ focus: () => void }>(null)
+  const prevEntriesRef = useRef<Map<string, string>>(new Map())
+
+  // Track which settings changed externally (WS/poll) for flash animation
+  const changedKeys = useMemo(() => {
+    const changed = new Set<string>()
+    const prev = prevEntriesRef.current
+    for (const e of entries) {
+      const ck = `${e.definition.namespace}/${e.definition.key}`
+      const prevVal = prev.get(ck)
+      if (prevVal !== undefined && prevVal !== e.value) {
+        changed.add(ck)
+      }
+    }
+    return changed
+  }, [entries])
+
+  // Update ref after render commits (not inside useMemo to respect concurrent rendering)
+  useEffect(() => {
+    const next = new Map<string, string>()
+    for (const e of entries) {
+      next.set(`${e.definition.namespace}/${e.definition.key}`, e.value)
+    }
+    prevEntriesRef.current = next
+  }, [entries])
 
   const {
     dirtyValues,
     setDirtyValues,
     handleValueChange,
     handleDiscard,
-    handleSave,
+    handleSave: baseSave,
   } = useSettingsDirtyState(entries, updateSetting)
+
+  const handleSave = useCallback(async () => {
+    // Count restart-required settings being saved
+    const restartCount = [...dirtyValues.keys()].filter((ck) => {
+      const entry = entries.find(
+        (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+      )
+      return entry?.definition.restart_required === true
+    }).length
+    await baseSave()
+    if (restartCount > 0) setRestartBannerCount(restartCount)
+  }, [baseSave, dirtyValues, entries])
+
+  useSettingsKeyboard({
+    onSave: handleSave,
+    onSearchFocus: () => searchRef.current?.focus(),
+    canSave: dirtyValues.size > 0 && !saving,
+  })
 
   // Filter entries: exclude hidden, filter by level, filter by search
   const filteredByNamespace = useMemo(() => {
@@ -100,6 +152,16 @@ export default function SettingsPage() {
     return result
   }, [entries, advancedMode, searchQuery])
 
+  const namespaceCounts = useMemo(
+    () => new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0])),
+    [filteredByNamespace],
+  )
+
+  // Derive effective namespace -- clear selection if filtering removed all its entries
+  const effectiveNamespace = activeNamespace && (namespaceCounts.get(activeNamespace) ?? 0) > 0
+    ? activeNamespace
+    : null
+
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(entries, dirtyValues),
     [entries, dirtyValues],
@@ -119,6 +181,16 @@ export default function SettingsPage() {
           return next
         })
 
+        // Count restart-required settings among successful saves
+        const restartCount = [...changes.keys()].filter((ck) => {
+          if (failedKeys.has(ck)) return false
+          const entry = entries.find(
+            (e) => `${e.definition.namespace}/${e.definition.key}` === ck,
+          )
+          return entry?.definition.restart_required === true
+        }).length
+        if (restartCount > 0) setRestartBannerCount(restartCount)
+
         if (failedKeys.size === 0) {
           useToastStore.getState().add({ variant: 'success', title: 'Settings saved' })
         } else {
@@ -134,7 +206,7 @@ export default function SettingsPage() {
         return new Set(changes.keys())
       }
     },
-    [updateSetting, setDirtyValues],
+    [updateSetting, setDirtyValues, entries],
   )
 
   const pruneAdvancedDrafts = useCallback(() => {
@@ -196,7 +268,13 @@ export default function SettingsPage() {
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         <div className="flex items-center gap-4">
           {viewMode !== 'code' && (
-            <SearchInput value={searchQuery} onChange={setSearchQuery} className="w-64" />
+            <SearchInput
+              ref={searchRef}
+              value={searchQuery}
+              onChange={setSearchQuery}
+              className="w-64"
+              resultCount={searchQuery ? [...filteredByNamespace.values()].reduce((sum, arr) => sum + arr.length, 0) : undefined}
+            />
           )}
           <ToggleField
             label="Code"
@@ -217,11 +295,13 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <RestartBanner count={restartBannerCount} onDismiss={() => setRestartBannerCount(0)} />
+
       {error && (
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-danger/30 bg-danger/5',
-          'px-4 py-2 text-sm text-danger',
+          'p-card text-sm text-danger',
         )}>
           <AlertTriangle className="size-4 shrink-0" />
           {error}
@@ -232,7 +312,7 @@ export default function SettingsPage() {
         <div className={cn(
           'flex items-center gap-2 rounded-lg',
           'border border-warning/30 bg-warning/5',
-          'px-4 py-2 text-sm text-warning',
+          'p-card text-sm text-warning',
         )}>
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
@@ -255,6 +335,14 @@ export default function SettingsPage() {
         </ErrorBoundary>
       ) : (
         <>
+          <NamespaceTabBar
+            namespaces={NAMESPACE_ORDER}
+            activeNamespace={effectiveNamespace}
+            onSelect={setActiveNamespace}
+            namespaceCounts={namespaceCounts}
+            namespaceIcons={NAMESPACE_ICONS}
+          />
+
           {filteredByNamespace.size === 0 && (
             <EmptyState
               icon={Settings}
@@ -267,8 +355,19 @@ export default function SettingsPage() {
             />
           )}
 
-          <StaggerGroup className="space-y-4">
-            {NAMESPACE_ORDER.filter((ns) => filteredByNamespace.has(ns)).map((ns) => (
+          <AnimatePresence mode="wait">
+          <motion.div
+            key={effectiveNamespace ?? 'all'}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={anim.tween}
+          >
+          <StaggerGroup className="space-y-[var(--spacing-section-gap)]">
+            {NAMESPACE_ORDER
+              .filter((ns) => filteredByNamespace.has(ns))
+              .filter((ns) => effectiveNamespace === null || ns === effectiveNamespace)
+              .map((ns) => (
               <StaggerItem key={ns}>
                 <ErrorBoundary level="section">
                   <NamespaceSection
@@ -279,12 +378,36 @@ export default function SettingsPage() {
                     onValueChange={handleValueChange}
                     savingKeys={storeSavingKeys}
                     controllerDisabledMap={controllerDisabledMap}
-                    forceOpen={searchQuery.length > 0}
+                    forceOpen={effectiveNamespace !== null || searchQuery.length > 0}
+                    hideHeader={effectiveNamespace !== null}
+                    changedKeys={changedKeys}
+                    highlightQuery={searchQuery}
+                    footerAction={ns === 'observability' ? (
+                      <Link
+                        to="/settings/observability/sinks"
+                        className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <span className="text-sm font-medium text-foreground">Log Sinks</span>
+                          <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
+                        </div>
+                        <div className="w-56 shrink-0">
+                          <span
+                            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
+                            aria-hidden
+                          >
+                            Open
+                          </span>
+                        </div>
+                      </Link>
+                    ) : undefined}
                   />
                 </ErrorBoundary>
               </StaggerItem>
             ))}
           </StaggerGroup>
+          </motion.div>
+          </AnimatePresence>
 
           <FloatingSaveBar
             dirtyCount={dirtyValues.size}

@@ -21,6 +21,18 @@ export interface CodeMirrorEditorProps {
   'aria-label'?: string
   /** Additional CSS class on the outer container. */
   className?: string
+  /**
+   * Extra CodeMirror extensions appended after the built-in ones.
+   * Useful for adding diff gutters, linters, or autocomplete from
+   * the consuming page without modifying this shared component.
+   */
+  extensions?: Extension[]
+  /**
+   * Callback providing the EditorView instance after mount.
+   * Useful for dispatching state effects (e.g. diff updates)
+   * from the parent component.
+   */
+  onViewReady?: (view: EditorView) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +119,8 @@ function getLanguageExtension(lang: 'json' | 'yaml'): Extension {
   return lang === 'json' ? json() : yaml()
 }
 
+const DEFAULT_EXTENSIONS: Extension[] = []
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -118,15 +132,21 @@ export function CodeMirrorEditor({
   readOnly = false,
   'aria-label': ariaLabel,
   className,
+  extensions: extraExtensions = DEFAULT_EXTENSIONS,
+  onViewReady,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const languageCompartmentRef = useRef(new Compartment())
   const readOnlyCompartmentRef = useRef(new Compartment())
+  const extraExtensionsCompartmentRef = useRef(new Compartment())
 
   // Keep callbacks in refs to avoid recreating extensions
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+
+  const onViewReadyRef = useRef(onViewReady)
+  onViewReadyRef.current = onViewReady
 
   // Track whether a programmatic update is in progress
   const isProgrammaticRef = useRef(false)
@@ -152,6 +172,7 @@ export function CodeMirrorEditor({
         syntaxHighlighting(highlightStyle),
         languageCompartmentRef.current.of(getLanguageExtension(language)),
         readOnlyCompartmentRef.current.of(EditorState.readOnly.of(readOnly)),
+        extraExtensionsCompartmentRef.current.of(extraExtensions),
         EditorView.lineWrapping,
         darkTheme,
         updateListener,
@@ -164,12 +185,13 @@ export function CodeMirrorEditor({
     })
 
     viewRef.current = view
+    onViewReadyRef.current?.(view)
 
     return () => {
       view.destroy()
       viewRef.current = null
     }
-    // Only run on mount -- value/language/readOnly synced via separate effects
+    // Only run on mount -- value/language/readOnly/extensions synced via separate effects
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 
@@ -214,6 +236,18 @@ export function CodeMirrorEditor({
       ),
     })
   }, [readOnly])
+
+  // Reconfigure extra extensions when they change
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+
+    view.dispatch({
+      effects: extraExtensionsCompartmentRef.current.reconfigure(
+        extraExtensions,
+      ),
+    })
+  }, [extraExtensions])
 
   return (
     <div

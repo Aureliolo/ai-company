@@ -1,18 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const DEBOUNCE_MS = 200
 
+export interface SearchInputHandle {
+  focus: () => void
+}
+
 export interface SearchInputProps {
   value: string
   onChange: (query: string) => void
   className?: string
+  ref?: React.Ref<SearchInputHandle>
+  resultCount?: number
 }
 
-export function SearchInput({ value, onChange, className }: SearchInputProps) {
+export function SearchInput({ value, onChange, className, ref, resultCount }: SearchInputProps) {
   const [local, setLocal] = useState(value)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+  }))
 
   // Sync external value changes (e.g. clearing from parent)
   const prevValueRef = useRef(value)
@@ -50,13 +61,26 @@ export function SearchInput({ value, onChange, className }: SearchInputProps) {
     <div className={cn('relative', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
       <input
+        ref={inputRef}
         type="text"
         value={local}
         onChange={handleChange}
         placeholder="Search settings..."
-        className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-8 text-sm text-foreground outline-none placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent"
+        className={cn(
+          'h-9 w-full rounded-md border border-border bg-surface pl-9 text-sm text-foreground outline-none placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent',
+          local === value && resultCount !== undefined ? 'pr-20' : 'pr-8',
+        )}
         aria-label="Search settings"
       />
+      {local === value && resultCount !== undefined && (
+        <span
+          className="absolute right-8 top-1/2 -translate-y-1/2 text-micro text-text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          {resultCount} {resultCount === 1 ? 'result' : 'results'}
+        </span>
+      )}
       {local && (
         <button
           type="button"

@@ -13,6 +13,7 @@ from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
+from synthorg.providers.health_prober import ProviderHealthProber
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -400,3 +401,50 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
             API_APP_SHUTDOWN,
             "Failed to disconnect persistence",
         )
+
+
+async def _maybe_start_health_prober(
+    app_state: AppState,
+) -> ProviderHealthProber | None:
+    """Start the health prober if provider tracking is available.
+
+    Non-fatal: logs and returns None on failure so the application
+    continues serving requests without health probing.
+
+    Args:
+        app_state: Application state.  Requires
+            ``provider_health_tracker`` and ``config_resolver``;
+            optionally uses ``provider_management`` for SSRF policy.
+
+    Returns:
+        The started prober instance, or None if preconditions are
+        not met or startup fails.
+    """
+    if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
+        logger.debug(
+            API_APP_STARTUP,
+            note="Health prober skipped: tracker or resolver not available",
+        )
+        return None
+    try:
+        policy_loader = (
+            app_state.provider_management.get_discovery_policy
+            if app_state.has_provider_management
+            else None
+        )
+        prober = ProviderHealthProber(
+            health_tracker=app_state.provider_health_tracker,
+            config_resolver=app_state.config_resolver,
+            discovery_policy_loader=policy_loader,
+        )
+        await prober.start()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="Health prober startup failed (non-fatal)",
+            exc_info=True,
+        )
+        return None
+    return prober

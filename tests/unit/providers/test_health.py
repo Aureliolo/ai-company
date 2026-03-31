@@ -158,11 +158,13 @@ class TestProviderHealthTracker:
         now = datetime.now(UTC)
         # 2 errors out of 10 calls = 20% error rate
         for i in range(10):
+            ok = i >= 2
             await tracker.record(
                 _make_record(
                     timestamp=now - timedelta(minutes=i),
-                    success=i >= 2,
+                    success=ok,
                     response_time_ms=100.0,
+                    error_message=None if ok else "test error",
                 ),
             )
         summary = await tracker.get_summary("test-provider", now=now)
@@ -176,11 +178,13 @@ class TestProviderHealthTracker:
         now = datetime.now(UTC)
         # 5 errors out of 10 calls = 50% error rate
         for i in range(10):
+            ok = i >= 5
             await tracker.record(
                 _make_record(
                     timestamp=now - timedelta(minutes=i),
-                    success=i >= 5,
+                    success=ok,
                     response_time_ms=100.0,
+                    error_message=None if ok else "test error",
                 ),
             )
         summary = await tracker.get_summary("test-provider", now=now)
@@ -214,6 +218,7 @@ class TestProviderHealthTracker:
             _make_record(
                 timestamp=now - timedelta(hours=25),
                 success=False,
+                error_message="old failure",
             ),
         )
         # Recent record (1h ago) -- should be included
@@ -247,6 +252,7 @@ class TestProviderHealthTracker:
                 timestamp=now,
                 success=False,
                 response_time_ms=500.0,
+                error_message="provider error",
             ),
         )
         summary_a = await tracker.get_summary("provider-a", now=now)
@@ -370,6 +376,7 @@ class TestGetAllSummaries:
                 provider_name="provider-b",
                 timestamp=now,
                 success=False,
+                error_message="provider error",
             ),
         )
         result = await tracker.get_all_summaries(now=now)
@@ -384,6 +391,7 @@ class TestGetAllSummaries:
             _make_record(
                 timestamp=now - timedelta(hours=25),
                 success=False,
+                error_message="old failure",
             ),
         )
         result = await tracker.get_all_summaries(now=now)
@@ -434,10 +442,12 @@ class TestRecordErrorConsistency:
         ):
             _make_record(success=True, error_message="oops")
 
-    def test_failure_without_error_message_allowed(self) -> None:
-        record = _make_record(success=False, error_message=None)
-        assert record.success is False
-        assert record.error_message is None
+    def test_failure_without_error_message_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="error_message must be provided when success is False",
+        ):
+            _make_record(success=False, error_message=None)
 
     def test_failure_with_error_message_allowed(self) -> None:
         record = _make_record(success=False, error_message="timeout")

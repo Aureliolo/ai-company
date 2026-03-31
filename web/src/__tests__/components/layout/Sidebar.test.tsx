@@ -336,7 +336,7 @@ describe('Sidebar', () => {
 
     // Property: navigating to any different static route while overlay is open triggers exactly one close
     const staticRoutes = Object.values(ROUTES).filter((r) => !r.includes(':') && r !== '/')
-    it('close-on-navigate fires exactly once for any static route (property)', async () => {
+    it('close-on-navigate fires exactly once for any static route (property)', { timeout: 15000 }, async () => {
       await fc.assert(
         fc.asyncProperty(fc.constantFrom(...staticRoutes), async (route) => {
           const onOverlayClose = vi.fn()

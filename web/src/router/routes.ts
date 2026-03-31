@@ -25,6 +25,7 @@ export const ROUTES = {
   PROVIDER_DETAIL: '/providers/:providerName',
   SETTINGS: '/settings',
   SETTINGS_NAMESPACE: '/settings/:namespace',
+  SETTINGS_SINKS: '/settings/observability/sinks',
 } as const
 
 /** Routes accessible without authentication. */

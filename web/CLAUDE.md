@@ -25,12 +25,12 @@ npm --prefix web run storybook:build       # Storybook production build
 web/src/
   api/            # Axios client, endpoint modules (19 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar, status bar); feature dirs added as pages are built
-  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, communication edges)
+  hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges)
   lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants, auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, providers, theme, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, sinks, providers, theme, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
@@ -78,6 +78,7 @@ web/src/
 | `LiveRegion` | `@/components/ui/live-region` | Debounced ARIA live region wrapper (`polite`/`assertive`) for real-time WS updates without overwhelming screen readers |
 | `MobileUnsupportedOverlay` | `@/components/ui/mobile-unsupported` | Full-screen overlay at `<768px` viewports directing users to desktop or CLI; self-manages visibility via `useBreakpoint` |
 | `LazyCodeMirrorEditor` | `@/components/ui/lazy-code-mirror-editor` | Suspense-wrapped lazy-loaded `CodeMirrorEditor` (drop-in replacement, defers ~200KB+ CodeMirror bundle) |
+| `TagInput` | `@/components/ui/tag-input` | Chip-style multi-value input with add/remove, keyboard support (Enter to add, Backspace to remove), paste splitting |
 
 ### Design Token Rules
 

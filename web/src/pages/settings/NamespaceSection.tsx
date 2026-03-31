@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SettingEntry } from '@/api/types'
+import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
@@ -11,6 +13,8 @@ interface NamespaceSettingRowProps {
   onValueChange: (ck: string, v: string) => void
   savingKeys: ReadonlySet<string>
   controllerDisabledMap: ReadonlyMap<string, boolean>
+  changedKeys?: ReadonlySet<string>
+  highlightQuery?: string
 }
 
 function NamespaceSettingRow({
@@ -19,6 +23,8 @@ function NamespaceSettingRow({
   onValueChange,
   savingKeys,
   controllerDisabledMap,
+  changedKeys,
+  highlightQuery,
 }: NamespaceSettingRowProps) {
   const ck = `${entry.definition.namespace}/${entry.definition.key}`
   return (
@@ -29,6 +35,8 @@ function NamespaceSettingRow({
         onChange={(value) => onValueChange(ck, value)}
         saving={savingKeys.has(ck)}
         controllerDisabled={controllerDisabledMap.get(ck)}
+        flash={changedKeys?.has(ck)}
+        highlightQuery={highlightQuery}
       />
     </ErrorBoundary>
   )
@@ -45,6 +53,14 @@ export interface NamespaceSectionProps {
   controllerDisabledMap: ReadonlyMap<string, boolean>
   /** Whether the section is forced open (e.g. during search). */
   forceOpen?: boolean
+  /** Set of composite keys that changed externally (flash animation). */
+  changedKeys?: ReadonlySet<string>
+  /** Hide the collapsible header (when tab bar serves as the header). */
+  hideHeader?: boolean
+  /** Search query to highlight in setting rows. */
+  highlightQuery?: string
+  /** Optional footer content rendered at the bottom of the section. */
+  footerAction?: React.ReactNode
 }
 
 function groupByGroup(entries: SettingEntry[]): Map<string, SettingEntry[]> {
@@ -70,61 +86,116 @@ export function NamespaceSection({
   savingKeys,
   controllerDisabledMap,
   forceOpen,
+  changedKeys,
+  hideHeader,
+  highlightQuery,
+  footerAction,
 }: NamespaceSectionProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const isOpen = forceOpen || !collapsed
+  const isOpen = hideHeader || forceOpen || !collapsed
+  const anim = useAnimationPreset()
   const groups = groupByGroup(entries)
   const contentId = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}-content`
 
+  function renderRow(entry: SettingEntry) {
+    return (
+      <NamespaceSettingRow
+        entry={entry}
+        dirtyValues={dirtyValues}
+        onValueChange={onValueChange}
+        savingKeys={savingKeys}
+        controllerDisabledMap={controllerDisabledMap}
+        changedKeys={changedKeys}
+        highlightQuery={highlightQuery}
+      />
+    )
+  }
+
+  function renderGroups() {
+    return [...groups.entries()].map(([group, groupEntries]) => (
+      <div key={group} className={groups.size > 1 ? 'py-2' : undefined}>
+        {groups.size > 1 && (
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
+            {group}
+          </h3>
+        )}
+        <div className="space-y-1">
+          {hideHeader
+            ? groupEntries.map((entry) => (
+              <div key={`${entry.definition.namespace}/${entry.definition.key}`}>
+                {renderRow(entry)}
+              </div>
+            ))
+            : groupEntries.map((entry, i) => (
+              <motion.div
+                key={`${entry.definition.namespace}/${entry.definition.key}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * anim.staggerDelay, ...anim.tween }}
+              >
+                {renderRow(entry)}
+              </motion.div>
+            ))
+          }
+        </div>
+      </div>
+    ))
+  }
+
   return (
     <section className="rounded-lg border border-border bg-card">
-      <button
-        type="button"
-        onClick={() => { if (!forceOpen) setCollapsed((v) => !v) }}
-        className={cn(
-          'flex w-full items-center gap-3 px-4 py-3',
-          'text-left transition-colors hover:bg-card-hover',
-        )}
-        aria-expanded={isOpen}
-        aria-controls={contentId}
-      >
-        <span className="text-text-secondary">{icon}</span>
-        <h2 className="text-sm font-semibold text-foreground">{displayName}</h2>
-        <span className="ml-1 text-xs text-text-muted">({entries.length})</span>
-        <ChevronDown
-          className={cn(
-            'ml-auto size-4 text-text-muted transition-transform duration-200',
-            isOpen && 'rotate-180',
-          )}
-          aria-hidden
-        />
-      </button>
+      {!hideHeader && (
+        <h2 className="text-sm font-semibold text-foreground">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            disabled={forceOpen}
+            className={cn(
+              'flex w-full items-center gap-3 p-card',
+              'text-left transition-colors',
+              !forceOpen && 'hover:bg-card-hover',
+            )}
+            aria-expanded={isOpen}
+            aria-controls={contentId}
+          >
+            <span className="text-text-secondary">{icon}</span>
+            <span>{displayName}</span>
+          <span className="ml-1 text-xs text-text-muted">({entries.length})</span>
+          <ChevronDown
+            className={cn(
+              'ml-auto size-4 text-text-muted transition-transform duration-200',
+              isOpen && 'rotate-180',
+            )}
+            aria-hidden
+          />
+        </button>
+        </h2>
+      )}
 
-      {isOpen && (
-        <div id={contentId} className="border-t border-border px-4 py-2">
-          {[...groups.entries()].map(([group, groupEntries]) => (
-            <div key={group} className="py-2">
-              {groups.size > 1 && (
-                <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
-                  {group}
-                </h3>
-              )}
-              <div className="space-y-1">
-                {groupEntries.map((entry) => (
-                  <NamespaceSettingRow
-                    key={`${entry.definition.namespace}/${entry.definition.key}`}
-                    entry={entry}
-                    dirtyValues={dirtyValues}
-                    onValueChange={onValueChange}
-                    savingKeys={savingKeys}
-                    controllerDisabledMap={controllerDisabledMap}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+      {isOpen && hideHeader && (
+        <div id={contentId} className="p-card">
+          {renderGroups()}
+          {footerAction && <div className="pt-1">{footerAction}</div>}
         </div>
       )}
+
+      <AnimatePresence initial={false}>
+        {isOpen && !hideHeader && (
+          <motion.div
+            id={contentId}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={anim.spring}
+            className="overflow-hidden border-t border-border"
+          >
+            <div className="p-card">
+              {renderGroups()}
+              {footerAction && <div className="pt-1">{footerAction}</div>}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   )
 }

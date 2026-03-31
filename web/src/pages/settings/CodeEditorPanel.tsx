@@ -1,9 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import YAML from 'js-yaml'
+import type { EditorView } from '@codemirror/view'
+import { Columns2, FileCode } from 'lucide-react'
 import type { SettingEntry } from '@/api/types'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { CodeMirrorEditor, type CodeMirrorEditorProps } from '@/components/ui/code-mirror-editor'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import {
+  diffGutterExtension,
+  dispatchDiff,
+  settingsLinterExtension,
+  settingsAutocompleteExtension,
+} from './editor-extensions'
 
 const MAX_EDITOR_BYTES = 65_536
 
@@ -21,12 +30,23 @@ const FORMAT_OPTIONS = [
   { value: 'yaml' as const, label: 'YAML' },
 ]
 
-function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, string>> {
-  const obj: Record<string, Record<string, string>> = {}
+function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, unknown>> {
+  const obj: Record<string, Record<string, unknown>> = {}
   for (const entry of entries) {
     const ns = entry.definition.namespace
     if (!obj[ns]) obj[ns] = {}
-    obj[ns][entry.definition.key] = entry.value
+    // Parse JSON-type values so they embed as real objects/arrays
+    // instead of escaped string representations (e.g. "[\"http://...\"]")
+    if (entry.definition.type === 'json') {
+      try {
+        obj[ns][entry.definition.key] = JSON.parse(entry.value)
+      } catch (err) {
+        console.warn(`[settings] Failed to parse JSON for ${ns}/${entry.definition.key}:`, err)
+        obj[ns][entry.definition.key] = entry.value
+      }
+    } else {
+      obj[ns][entry.definition.key] = entry.value
+    }
   }
   return obj
 }
@@ -43,7 +63,7 @@ type ParsedSettings = Record<string, Record<string, unknown>>
 
 /** Find keys present in original but absent in parsed. */
 function detectRemovedKeys(
-  original: Record<string, Record<string, string>>,
+  original: Record<string, Record<string, unknown>>,
   parsed: ParsedSettings,
 ): string[] {
   const removed: string[] = []
@@ -65,7 +85,7 @@ function detectRemovedKeys(
 /** Validate and diff parsed settings against original. */
 function buildChanges(
   parsed: ParsedSettings,
-  original: Record<string, Record<string, string>>,
+  original: Record<string, Record<string, unknown>>,
   entryLookup: ReadonlyMap<string, SettingEntry>,
 ): {
   changes: Map<string, string>
@@ -84,7 +104,10 @@ function buildChanges(
       if (entry.source === 'env') { envKeys.push(ck); continue }
       const strValue = typeof value === 'string'
         ? value : JSON.stringify(value)
-      if (origNs[key] !== strValue) {
+      const origValue = origNs[key]
+      const origStr = typeof origValue === 'string'
+        ? origValue : JSON.stringify(origValue)
+      if (origStr !== strValue) {
         changes.set(ck, strValue)
       }
     }
@@ -100,6 +123,8 @@ function parseText(text: string, format: CodeFormat): ParsedSettings {
 
   const raw: unknown = format === 'json'
     ? JSON.parse(text)
+    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp tags
+    // that could execute arbitrary code. Do not change to DEFAULT_SCHEMA.
     : YAML.load(text, { schema: YAML.CORE_SCHEMA })
 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -165,8 +190,8 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
             setText(YAML.dump(parsed, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false }))
           }
           setParseError(null)
-        } catch {
-          setParseError(`Cannot convert to ${newFormat.toUpperCase()}: fix syntax errors first`)
+        } catch (err) {
+          setParseError(err instanceof Error ? err.message : `Cannot convert to ${newFormat.toUpperCase()}`)
         }
       }
     },
@@ -232,23 +257,140 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
     setParseError(null)
   }, [entries, format, updateDirty])
 
+  const [splitView, setSplitView] = useState(false)
+  const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
+
+  // ── Editor extensions (diff gutter, linter, autocomplete) ──────
+
+  // Stable refs so extension closures always see current values
+  const formatRef = useRef(format)
+  formatRef.current = format
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
+
+  // Diff gutter extension -- only active in split-view on the edited pane
+  const diffGutter = useMemo(() => diffGutterExtension(), [])
+
+  // Linter extension -- debounced syntax + schema validation
+  const linterExt = useMemo(
+    () =>
+      settingsLinterExtension(
+        () => formatRef.current,
+        () => entriesRef.current,
+      ),
+    [],
+  )
+
+  // Autocomplete extension -- namespace/key/enum-value suggestions
+  const autocompleteExt = useMemo(
+    () =>
+      settingsAutocompleteExtension(
+        () => formatRef.current,
+        () => entriesRef.current,
+      ),
+    [],
+  )
+
+  // Extensions array for the edited pane (stable when splitView toggles)
+  const editedExtensions = useMemo(
+    () => (splitView ? [diffGutter, linterExt, autocompleteExt] : [linterExt, autocompleteExt]),
+    [splitView, diffGutter, linterExt, autocompleteExt],
+  )
+
+  // Keep a ref to the edited pane's EditorView for dispatching diff updates
+  const editedViewRef = useRef<EditorView | null>(null)
+
+  const handleEditedViewReady = useCallback((view: EditorView) => {
+    editedViewRef.current = view
+  }, [])
+
+  // Update diff markers whenever the server text or edited text changes
+  useEffect(() => {
+    const view = editedViewRef.current
+    if (!view || !splitView) return
+    dispatchDiff(view, serverText, text)
+  }, [splitView, serverText, text])
+
+  // Compute diff summary
+  const diffSummary = useMemo(() => {
+    if (!dirty) return null
+    const serverLines = serverText.split('\n')
+    const editedLines = text.split('\n')
+    let changed = 0
+    let added = 0
+    let removed = 0
+    const maxLen = Math.max(serverLines.length, editedLines.length)
+    for (let i = 0; i < maxLen; i++) {
+      const s = serverLines[i]
+      const e = editedLines[i]
+      if (s === undefined) added++
+      else if (e === undefined) removed++
+      else if (s !== e) changed++
+    }
+    if (changed === 0 && added === 0 && removed === 0) return null
+    const parts: string[] = []
+    if (changed > 0) parts.push(`${changed} changed`)
+    if (added > 0) parts.push(`${added} added`)
+    if (removed > 0) parts.push(`${removed} removed`)
+    return parts.join(', ')
+  }, [dirty, serverText, text])
+
   return (
     <div className="space-y-3">
-      <SegmentedControl<CodeFormat>
-        label="Editor format"
-        options={FORMAT_OPTIONS}
-        value={format}
-        onChange={handleFormatChange}
-        disabled={saving}
-      />
+      <div className="flex items-center gap-3">
+        <SegmentedControl<CodeFormat>
+          label="Editor format"
+          options={FORMAT_OPTIONS}
+          value={format}
+          onChange={handleFormatChange}
+          disabled={saving}
+        />
+        <button
+          type="button"
+          onClick={() => setSplitView((v) => !v)}
+          className={cn(
+            'rounded-md p-1.5 transition-colors',
+            splitView ? 'bg-accent/10 text-accent' : 'text-text-muted hover:text-foreground',
+          )}
+          title={splitView ? 'Single pane' : 'Split pane (diff)'}
+          aria-label={splitView ? 'Single pane' : 'Split pane (diff)'}
+          aria-pressed={splitView}
+        >
+          {splitView ? <FileCode className="size-4" /> : <Columns2 className="size-4" />}
+        </button>
+        {diffSummary && (
+          <span className="text-xs text-text-muted">{diffSummary}</span>
+        )}
+      </div>
 
-      <CodeMirrorEditor
-        value={text}
-        onChange={handleChange}
-        language={format}
-        readOnly={saving}
-        aria-label={`${format.toUpperCase()} editor`}
-      />
+      <div className={cn('gap-3', splitView ? 'grid grid-cols-1 md:grid-cols-2' : 'grid grid-cols-1')}>
+        {splitView && (
+          <div className="space-y-1">
+            <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Current</span>
+            <CodeMirrorEditor
+              value={serverText}
+              onChange={() => {}}
+              language={format}
+              readOnly
+              aria-label={`Current ${format.toUpperCase()} (read-only)`}
+            />
+          </div>
+        )}
+        <div className="space-y-1">
+          {splitView && (
+            <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Edited</span>
+          )}
+          <CodeMirrorEditor
+            value={text}
+            onChange={handleChange}
+            language={format}
+            readOnly={saving}
+            aria-label={`${format.toUpperCase()} editor`}
+            extensions={editedExtensions}
+            onViewReady={handleEditedViewReady}
+          />
+        </div>
+      </div>
 
       {parseError && (
         <p className="text-xs text-danger" role="alert">{parseError}</p>

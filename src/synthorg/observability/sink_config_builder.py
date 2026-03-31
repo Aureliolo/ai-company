@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, cast
 
-from synthorg.observability import get_logger
 from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
@@ -31,17 +30,15 @@ from synthorg.observability.config import (
 )
 from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
-logger = get_logger(__name__)
-
-_CONSOLE_ID: str = "__console__"
+CONSOLE_SINK_ID: str = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
-_DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
+DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
     s.file_path for s in DEFAULT_SINKS if s.file_path is not None
 )
 
 # Valid sink identifiers for overrides.
-_VALID_OVERRIDE_KEYS: frozenset[str] = _DEFAULT_FILE_PATHS | {_CONSOLE_ID}
+_VALID_OVERRIDE_KEYS: frozenset[str] = DEFAULT_FILE_PATHS | {CONSOLE_SINK_ID}
 
 _LEVEL_MAP: dict[str, LogLevel] = {level.value.lower(): level for level in LogLevel}
 
@@ -273,7 +270,7 @@ def _apply_override(
             field_name=f"sink_overrides[{identifier!r}].enabled",
         )
         if not enabled:
-            if identifier == _CONSOLE_ID:
+            if identifier == CONSOLE_SINK_ID:
                 msg = (
                     "Cannot disable the console sink -- at least one output must remain"
                 )
@@ -323,7 +320,7 @@ def _build_custom_sink(
             f"got {raw_path!r}"
         )
         raise ValueError(msg)
-    file_path = raw_path
+    normalized_path = raw_path.strip()
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
 
     json_format = True
@@ -343,7 +340,7 @@ def _build_custom_sink(
     return SinkConfig(
         sink_type=SinkType.FILE,
         level=level,
-        file_path=file_path,
+        file_path=normalized_path,
         rotation=rotation,
         json_format=json_format,
     )
@@ -396,7 +393,7 @@ def _merge_default_sinks(
     for sink in DEFAULT_SINKS:
         identifier = cast(
             "str",
-            _CONSOLE_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
+            CONSOLE_SINK_ID if sink.sink_type == SinkType.CONSOLE else sink.file_path,
         )
         override = overrides.get(identifier)
         if override is not None:
@@ -413,7 +410,7 @@ def _process_custom_entries(
     merged: list[SinkConfig],
 ) -> MappingProxyType[str, tuple[str, ...]]:
     """Build custom sinks, append to *merged*, return routing overrides."""
-    used_paths = _DEFAULT_FILE_PATHS  # reserved even if disabled
+    used_paths = DEFAULT_FILE_PATHS  # reserved even if disabled
     custom_paths: set[str] = set()
     routing_overrides: dict[str, tuple[str, ...]] = {}
 

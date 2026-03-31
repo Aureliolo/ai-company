@@ -1,5 +1,5 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, SettingDefinition, SettingEntry, SettingNamespace, UpdateSettingRequest } from '../types'
+import type { ApiResponse, SettingDefinition, SettingEntry, SettingNamespace, SinkInfo, TestSinkResult, UpdateSettingRequest } from '../types'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
   const response = await apiClient.get<ApiResponse<SettingDefinition[]>>('/settings/_schema')
@@ -42,4 +42,20 @@ export async function resetSetting(namespace: SettingNamespace, key: string): Pr
     `/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
   )
   unwrapVoid(response)
+}
+
+export async function listSinks(): Promise<SinkInfo[]> {
+  const response = await apiClient.get<ApiResponse<SinkInfo[]>>('/settings/observability/sinks')
+  return unwrap(response)
+}
+
+export async function testSinkConfig(data: {
+  sink_overrides: string
+  custom_sinks: string
+}): Promise<TestSinkResult> {
+  const response = await apiClient.post<ApiResponse<TestSinkResult>>(
+    '/settings/observability/sinks/_test',
+    data,
+  )
+  return unwrap(response)
 }

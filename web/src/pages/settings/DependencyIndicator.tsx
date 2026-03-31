@@ -1,4 +1,4 @@
-import { Link2 } from 'lucide-react'
+import { GitBranch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface DependencyIndicatorProps {
@@ -14,13 +14,17 @@ export function DependencyIndicator({ dependents, className }: DependencyIndicat
 
   return (
     <span
-      className={cn('inline-flex items-center text-text-muted', className)}
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-micro font-medium bg-accent/5 text-text-muted',
+        className,
+      )}
       title={tooltip}
       tabIndex={0}
       role="note"
       aria-label={tooltip}
     >
-      <Link2 className="size-3" aria-hidden />
+      <GitBranch className="size-2.5" aria-hidden />
+      Controls {dependents.length}
     </span>
   )
 }
