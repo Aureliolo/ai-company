@@ -230,7 +230,7 @@ export default function TaskBoardPage() {
     : KANBAN_COLUMNS.filter((col) => col.id !== 'terminal')
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-section-gap">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Task Board</h1>
         <div className="flex items-center gap-4">

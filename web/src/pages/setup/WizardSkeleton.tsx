@@ -3,7 +3,7 @@ import { Skeleton, SkeletonCard, SkeletonText } from '@/components/ui/skeleton'
 export function WizardSkeleton() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-start bg-background pt-16">
-      <div className="w-full max-w-4xl space-y-8 px-4">
+      <div className="w-full max-w-4xl space-y-section-gap px-4">
         {/* Progress bar skeleton */}
         <div className="flex items-center justify-center gap-4">
           {Array.from({ length: 7 }, (_, i) => (

@@ -114,6 +114,9 @@ _SKIP_PATHS: set[str] = {"design-tokens.css", "global.css"}
 _SKIP_DIRS: set[str] = {"__tests__", "node_modules", ".storybook"}
 _COMMENT_PREFIXES = ("//", "/*", "*")
 
+# Regex to strip block comments (/* ... */) so full-content regex scans skip them.
+_BLOCK_COMMENT_RE = re.compile(r"/\*[\s\S]*?\*/")
+
 
 def _normalize_hex(h: str) -> str:
     """Normalize hex color to lowercase 6-digit form, stripping alpha."""
@@ -257,8 +260,11 @@ def check_hardcoded_framer_transitions(
     rel_path = file_path.relative_to(project_root)
     lines = content.splitlines()
 
+    # Strip block comments so the regex doesn't match inside /* ... */.
+    stripped = _BLOCK_COMMENT_RE.sub(lambda m: "\n" * m.group().count("\n"), content)
+
     # Run regex on full content so multiline transition objects are caught.
-    for m in HARDCODED_FM_DURATION_RE.finditer(content):
+    for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
         # Compute the line number from the match offset.
         line_num = content[: m.start()].count("\n") + 1
         line_text = lines[line_num - 1].strip()
