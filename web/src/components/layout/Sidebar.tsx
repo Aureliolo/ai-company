@@ -6,11 +6,13 @@ import {
   Command,
   Cpu,
   DollarSign,
+  FolderKanban,
   GitBranch,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -219,6 +221,8 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         )}
         <div className="flex flex-col gap-1">
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.ARTIFACTS} icon={Package} label="Artifacts" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MESSAGES} icon={MessageSquare} label="Messages" collapsed={collapsed} badge={0} />
           <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROVIDERS} icon={Cpu} label="Providers" collapsed={collapsed} />

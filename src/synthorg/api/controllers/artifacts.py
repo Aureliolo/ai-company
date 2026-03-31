@@ -2,21 +2,24 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from litestar import Controller, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, Parameter
 
+from synthorg.api.channels import CHANNEL_ARTIFACTS, get_channels_plugin
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_WS_SEND_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_DELETED,
@@ -33,7 +36,47 @@ from synthorg.persistence.errors import (
     RecordNotFoundError,
 )
 
+if TYPE_CHECKING:
+    from litestar import Request
+
 logger = get_logger(__name__)
+
+
+def _publish_artifact_event(
+    request: Request[Any, Any, Any],
+    event_type: WsEventType,
+    payload: dict[str, object],
+) -> None:
+    """Best-effort publish an artifact event to the artifacts channel."""
+    channels_plugin = get_channels_plugin(request)
+    if channels_plugin is None:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            note="ChannelsPlugin not available, dropping artifact WS event",
+            event_type=event_type.value,
+        )
+        return
+
+    event = WsEvent(
+        event_type=event_type,
+        channel=CHANNEL_ARTIFACTS,
+        timestamp=datetime.now(UTC),
+        payload=payload,
+    )
+    try:
+        channels_plugin.publish(
+            event.model_dump_json(),
+            channels=[CHANNEL_ARTIFACTS],
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            event_type=event_type.value,
+            note="Failed to publish artifact WS event",
+        )
+
 
 _SAFE_CONTENT_TYPES = frozenset(
     {
@@ -170,12 +213,14 @@ class ArtifactController(Controller):
     @post(guards=[require_write_access])
     async def create_artifact(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         data: CreateArtifactRequest,
     ) -> Response[ApiResponse[Artifact]]:
         """Create a new artifact.
 
         Args:
+            request: The incoming request.
             state: Application state.
             data: Artifact creation payload.
 
@@ -195,6 +240,16 @@ class ArtifactController(Controller):
         repo = state.app_state.persistence.artifacts
         await repo.save(artifact)
         logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
+        _publish_artifact_event(
+            request,
+            WsEventType.ARTIFACT_CREATED,
+            {
+                "artifact_id": artifact.id,
+                "task_id": artifact.task_id,
+                "created_by": artifact.created_by,
+                "type": artifact.type.value,
+            },
+        )
         return Response(
             content=ApiResponse[Artifact](data=artifact),
             status_code=201,
@@ -207,12 +262,14 @@ class ArtifactController(Controller):
     )
     async def delete_artifact(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         artifact_id: PathId,
     ) -> Response[ApiResponse[None]]:
         """Delete an artifact and its stored content.
 
         Args:
+            request: The incoming request.
             state: Application state.
             artifact_id: Artifact identifier.
 
@@ -242,6 +299,11 @@ class ArtifactController(Controller):
             )
         await repo.delete(artifact_id)
         logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
+        _publish_artifact_event(
+            request,
+            WsEventType.ARTIFACT_DELETED,
+            {"artifact_id": artifact_id, "task_id": artifact.task_id},
+        )
         return Response(
             content=ApiResponse[None](data=None),
             status_code=200,
@@ -254,6 +316,7 @@ class ArtifactController(Controller):
     )
     async def upload_content(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         artifact_id: PathId,
         data: Annotated[
@@ -266,6 +329,7 @@ class ArtifactController(Controller):
         Validates size limits before storing.
 
         Args:
+            request: The incoming request.
             state: Application state.
             artifact_id: Artifact identifier.
             data: Binary content.
@@ -329,6 +393,15 @@ class ArtifactController(Controller):
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
             size_bytes=size,
+        )
+        _publish_artifact_event(
+            request,
+            WsEventType.ARTIFACT_CONTENT_UPLOADED,
+            {
+                "artifact_id": artifact_id,
+                "size_bytes": size,
+                "content_type": updated.content_type,
+            },
         )
         return Response(
             content=ApiResponse[Artifact](data=updated),

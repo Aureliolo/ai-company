@@ -1,0 +1,82 @@
+import { render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import type { UseArtifactDetailDataReturn } from '@/hooks/useArtifactDetailData'
+import { makeArtifact } from '../helpers/factories'
+
+/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+vi.mock('@/pages/artifacts/ArtifactDetailSkeleton', () => ({
+  ArtifactDetailSkeleton: () => <div data-testid="artifact-detail-skeleton" />,
+}))
+vi.mock('@/pages/artifacts/ArtifactMetadata', () => ({
+  ArtifactMetadata: () => <div data-testid="artifact-metadata" />,
+}))
+vi.mock('@/pages/artifacts/ArtifactContentPreview', () => ({
+  ArtifactContentPreview: () => <div data-testid="artifact-content-preview" />,
+}))
+/* eslint-enable @eslint-react/component-hook-factories */
+
+const artifact = makeArtifact('artifact-001')
+
+const defaultHookReturn: UseArtifactDetailDataReturn = {
+  artifact,
+  contentPreview: null,
+  loading: false,
+  error: null,
+  wsConnected: true,
+  wsSetupError: null,
+}
+
+let hookReturn = { ...defaultHookReturn }
+
+const getDetailData = vi.fn(() => hookReturn)
+vi.mock('@/hooks/useArtifactDetailData', () => {
+  const hookName = 'useArtifactDetailData'
+  return { [hookName]: () => getDetailData() }
+})
+
+import ArtifactDetailPage from '@/pages/ArtifactDetailPage'
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={['/artifacts/artifact-001']}>
+      <Routes>
+        <Route path="/artifacts/:artifactId" element={<ArtifactDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('ArtifactDetailPage', () => {
+  beforeEach(() => {
+    hookReturn = { ...defaultHookReturn }
+  })
+
+  it('renders loading skeleton when loading with no artifact', () => {
+    hookReturn = { ...defaultHookReturn, artifact: null, loading: true }
+    renderPage()
+    expect(screen.getByTestId('artifact-detail-skeleton')).toBeInTheDocument()
+  })
+
+  it('renders not found when no artifact and not loading', () => {
+    hookReturn = { ...defaultHookReturn, artifact: null }
+    renderPage()
+    expect(screen.getByText('Artifact not found.')).toBeInTheDocument()
+  })
+
+  it('renders metadata and content preview when artifact loaded', () => {
+    renderPage()
+    expect(screen.getByTestId('artifact-metadata')).toBeInTheDocument()
+    expect(screen.getByTestId('artifact-content-preview')).toBeInTheDocument()
+  })
+
+  it('shows error banner when error is set', () => {
+    hookReturn = { ...defaultHookReturn, error: 'Failed to load' }
+    renderPage()
+    expect(screen.getByText('Failed to load')).toBeInTheDocument()
+  })
+
+  it('renders back button', () => {
+    renderPage()
+    expect(screen.getByText('Back to Artifacts')).toBeInTheDocument()
+  })
+})

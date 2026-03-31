@@ -16,6 +16,8 @@ CHANNEL_MESSAGES: Final[str] = "messages"
 CHANNEL_SYSTEM: Final[str] = "system"
 CHANNEL_APPROVALS: Final[str] = "approvals"
 CHANNEL_MEETINGS: Final[str] = "meetings"
+CHANNEL_ARTIFACTS: Final[str] = "artifacts"
+CHANNEL_PROJECTS: Final[str] = "projects"
 
 ALL_CHANNELS: tuple[str, ...] = (
     CHANNEL_TASKS,
@@ -25,6 +27,8 @@ ALL_CHANNELS: tuple[str, ...] = (
     CHANNEL_SYSTEM,
     CHANNEL_APPROVALS,
     CHANNEL_MEETINGS,
+    CHANNEL_ARTIFACTS,
+    CHANNEL_PROJECTS,
 )
 
 

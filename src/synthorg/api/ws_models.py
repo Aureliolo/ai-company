@@ -53,6 +53,13 @@ class WsEventType(StrEnum):
     MEETING_COMPLETED = "meeting.completed"
     MEETING_FAILED = "meeting.failed"
 
+    ARTIFACT_CREATED = "artifact.created"
+    ARTIFACT_DELETED = "artifact.deleted"
+    ARTIFACT_CONTENT_UPLOADED = "artifact.content_uploaded"
+
+    PROJECT_CREATED = "project.created"
+    PROJECT_STATUS_CHANGED = "project.status_changed"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

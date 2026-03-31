@@ -1,0 +1,136 @@
+import { useProjectsStore } from '@/stores/projects'
+import { makeProject, makeTask } from '../helpers/factories'
+
+vi.mock('@/api/endpoints/projects', () => ({
+  listProjects: vi.fn(),
+  getProject: vi.fn(),
+  createProject: vi.fn(),
+}))
+
+vi.mock('@/api/endpoints/tasks', () => ({
+  listTasks: vi.fn(),
+}))
+
+const { listProjects, getProject, createProject } =
+  await import('@/api/endpoints/projects')
+const { listTasks } = await import('@/api/endpoints/tasks')
+
+describe('useProjectsStore', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({
+      projects: [],
+      totalProjects: 0,
+      listLoading: false,
+      listError: null,
+      searchQuery: '',
+      statusFilter: null,
+      leadFilter: null,
+      selectedProject: null,
+      projectTasks: [],
+      detailLoading: false,
+      detailError: null,
+    })
+    vi.clearAllMocks()
+  })
+
+  describe('fetchProjects', () => {
+    it('populates projects on success', async () => {
+      const project = makeProject('proj-001')
+      vi.mocked(listProjects).mockResolvedValue({ data: [project], total: 1, offset: 0, limit: 200 })
+
+      await useProjectsStore.getState().fetchProjects()
+
+      const state = useProjectsStore.getState()
+      expect(state.projects).toEqual([project])
+      expect(state.totalProjects).toBe(1)
+      expect(state.listLoading).toBe(false)
+    })
+
+    it('sets error on failure', async () => {
+      vi.mocked(listProjects).mockRejectedValue(new Error('Network error'))
+
+      await useProjectsStore.getState().fetchProjects()
+
+      expect(useProjectsStore.getState().listError).toBe('Network error')
+    })
+  })
+
+  describe('fetchProjectDetail', () => {
+    it('populates selected project and tasks', async () => {
+      const project = makeProject('proj-001')
+      const task = makeTask('task-001')
+      vi.mocked(getProject).mockResolvedValue(project)
+      vi.mocked(listTasks).mockResolvedValue({ data: [task], total: 1, offset: 0, limit: 50 })
+
+      await useProjectsStore.getState().fetchProjectDetail('proj-001')
+
+      const state = useProjectsStore.getState()
+      expect(state.selectedProject).toEqual(project)
+      expect(state.projectTasks).toEqual([task])
+    })
+
+    it('sets error when project not found', async () => {
+      vi.mocked(getProject).mockRejectedValue(new Error('Not found'))
+      vi.mocked(listTasks).mockRejectedValue(new Error('Not found'))
+
+      await useProjectsStore.getState().fetchProjectDetail('missing')
+
+      expect(useProjectsStore.getState().detailError).toBe('Not found')
+    })
+
+    it('handles partial task failure gracefully', async () => {
+      const project = makeProject('proj-001')
+      vi.mocked(getProject).mockResolvedValue(project)
+      vi.mocked(listTasks).mockRejectedValue(new Error('task fetch failed'))
+
+      await useProjectsStore.getState().fetchProjectDetail('proj-001')
+
+      const state = useProjectsStore.getState()
+      expect(state.selectedProject).toEqual(project)
+      expect(state.projectTasks).toEqual([])
+      expect(state.detailError).toMatch(/tasks/)
+    })
+  })
+
+  describe('createProject', () => {
+    it('calls API and refreshes list', async () => {
+      const project = makeProject('proj-new')
+      vi.mocked(createProject).mockResolvedValue(project)
+      vi.mocked(listProjects).mockResolvedValue({ data: [project], total: 1, offset: 0, limit: 200 })
+
+      const result = await useProjectsStore.getState().createProject({ name: 'New Project' })
+
+      expect(result).toEqual(project)
+      expect(createProject).toHaveBeenCalledWith({ name: 'New Project' })
+    })
+  })
+
+  describe('filters', () => {
+    it('sets search query', () => {
+      useProjectsStore.getState().setSearchQuery('test')
+      expect(useProjectsStore.getState().searchQuery).toBe('test')
+    })
+
+    it('sets status filter', () => {
+      useProjectsStore.getState().setStatusFilter('active')
+      expect(useProjectsStore.getState().statusFilter).toBe('active')
+    })
+  })
+
+  describe('clearDetail', () => {
+    it('clears detail state', () => {
+      useProjectsStore.setState({
+        selectedProject: makeProject('proj-001'),
+        projectTasks: [makeTask('task-001')],
+        detailError: 'old error',
+      })
+
+      useProjectsStore.getState().clearDetail()
+
+      const state = useProjectsStore.getState()
+      expect(state.selectedProject).toBeNull()
+      expect(state.projectTasks).toEqual([])
+      expect(state.detailError).toBeNull()
+    })
+  })
+})

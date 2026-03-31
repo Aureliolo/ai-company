@@ -1,0 +1,46 @@
+import { Link } from 'react-router'
+import { Users } from 'lucide-react'
+import { ROUTES } from '@/router/routes'
+import { ProjectStatusBadge } from '@/components/ui/project-status-badge'
+import { StatPill } from '@/components/ui/stat-pill'
+import { formatCurrency, formatRelativeTime } from '@/utils/format'
+import type { Project } from '@/api/types'
+
+interface ProjectCardProps {
+  project: Project
+}
+
+export function ProjectCard({ project }: ProjectCardProps) {
+  return (
+    <Link
+      to={ROUTES.PROJECT_DETAIL.replace(':projectId', encodeURIComponent(project.id))}
+      className="block rounded-lg border border-border bg-card p-card transition-shadow hover:shadow-[var(--so-shadow-card-hover)]"
+    >
+      <div className="mb-2 flex items-center gap-2">
+        <span className="truncate text-sm font-semibold text-foreground">{project.name}</span>
+        <ProjectStatusBadge status={project.status} showLabel />
+      </div>
+
+      {project.description && (
+        <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">{project.description}</p>
+      )}
+
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <StatPill label="Tasks" value={project.task_ids.length} />
+        {project.budget > 0 && (
+          <StatPill label="Budget" value={formatCurrency(project.budget)} />
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-text-muted">
+        <span className="flex items-center gap-1">
+          <Users className="size-3" />
+          {project.team.length} member{project.team.length !== 1 ? 's' : ''}
+        </span>
+        {project.deadline && (
+          <span>Due {formatRelativeTime(project.deadline)}</span>
+        )}
+      </div>
+    </Link>
+  )
+}

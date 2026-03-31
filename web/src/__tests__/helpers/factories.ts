@@ -3,6 +3,7 @@ import type {
   AgentConfig,
   AgentPerformanceSummary,
   ApprovalResponse,
+  Artifact,
   CareerEvent,
   Channel,
   CompanyConfig,
@@ -10,6 +11,7 @@ import type {
   DepartmentHealth,
   MeetingResponse,
   Message,
+  Project,
   Task,
 } from '@/api/types'
 
@@ -264,6 +266,36 @@ export function makePerformanceSummary(
     trend_direction: 'stable',
     windows: [],
     trends: [],
+    ...overrides,
+  }
+}
+
+export function makeArtifact(id: string, overrides?: Partial<Artifact>): Artifact {
+  return {
+    id,
+    type: 'code',
+    path: `src/output/${id}.py`,
+    task_id: 'task-001',
+    created_by: 'agent-eng',
+    description: `Artifact ${id}`,
+    content_type: 'text/plain',
+    size_bytes: 1024,
+    created_at: '2026-03-30T12:00:00Z',
+    ...overrides,
+  }
+}
+
+export function makeProject(id: string, overrides?: Partial<Project>): Project {
+  return {
+    id,
+    name: `Project ${id}`,
+    description: `Description for ${id}`,
+    team: ['agent-eng', 'agent-qa'],
+    lead: 'agent-eng',
+    task_ids: ['task-001', 'task-002'],
+    deadline: '2026-06-01T00:00:00Z',
+    budget: 500,
+    status: 'active',
     ...overrides,
   }
 }

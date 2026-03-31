@@ -1,12 +1,14 @@
 """Project controller -- CRUD endpoints for project management."""
 
 import uuid
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Annotated, Any
 
 from litestar import Controller, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
+from synthorg.api.channels import CHANNEL_PROJECTS, get_channels_plugin
 from synthorg.api.dto import (
     ApiResponse,
     CreateProjectRequest,
@@ -15,12 +17,54 @@ from synthorg.api.dto import (
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
+from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_WS_SEND_FAILED
+
+if TYPE_CHECKING:
+    from litestar import Request
 
 logger = get_logger(__name__)
+
+
+def _publish_project_event(
+    request: Request[Any, Any, Any],
+    event_type: WsEventType,
+    payload: dict[str, object],
+) -> None:
+    """Best-effort publish a project event to the projects channel."""
+    channels_plugin = get_channels_plugin(request)
+    if channels_plugin is None:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            note="ChannelsPlugin not available, dropping project WS event",
+            event_type=event_type.value,
+        )
+        return
+
+    event = WsEvent(
+        event_type=event_type,
+        channel=CHANNEL_PROJECTS,
+        timestamp=datetime.now(UTC),
+        payload=payload,
+    )
+    try:
+        channels_plugin.publish(
+            event.model_dump_json(),
+            channels=[CHANNEL_PROJECTS],
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            event_type=event_type.value,
+            note="Failed to publish project WS event",
+        )
+
 
 ProjectStatusFilter = Annotated[
     str | None,
@@ -123,12 +167,14 @@ class ProjectController(Controller):
     @post(guards=[require_write_access])
     async def create_project(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         data: CreateProjectRequest,
     ) -> Response[ApiResponse[Project]]:
         """Create a new project.
 
         Args:
+            request: The incoming request.
             state: Application state.
             data: Project creation payload.
 
@@ -146,6 +192,16 @@ class ProjectController(Controller):
         )
         repo = state.app_state.persistence.projects
         await repo.save(project)
+        _publish_project_event(
+            request,
+            WsEventType.PROJECT_CREATED,
+            {
+                "project_id": project.id,
+                "name": project.name,
+                "status": project.status.value,
+                "lead": project.lead or "",
+            },
+        )
         return Response(
             content=ApiResponse[Project](data=project),
             status_code=201,

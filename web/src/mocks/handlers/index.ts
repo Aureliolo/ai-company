@@ -20,3 +20,5 @@
 export { apiError, apiSuccess } from './helpers'
 export { setupStatusComplete, setupStatusNeedsAdmin } from './setup'
 export { authLoginSuccess, authSetupSuccess } from './auth'
+export { artifactsList } from './artifacts'
+export { projectsList } from './projects'

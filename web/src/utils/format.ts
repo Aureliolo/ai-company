@@ -104,6 +104,18 @@ export function formatUptime(seconds: number): string {
 }
 
 /**
+ * Format a byte count to a human-readable size string (e.g. "1.2 MB").
+ */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '--'
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** exponent
+  return exponent === 0 ? `${bytes} B` : `${value.toFixed(1)} ${units[exponent]}`
+}
+
+/**
  * Capitalize and format a snake_case or kebab-case string for display.
  */
 export function formatLabel(value: string): string {
