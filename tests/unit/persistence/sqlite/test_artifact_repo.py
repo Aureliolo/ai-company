@@ -31,7 +31,7 @@ def _make_artifact(  # noqa: PLR0913
         description=description,
         content_type=content_type,
         size_bytes=size_bytes,
-        created_at=created_at or datetime.now(UTC),
+        created_at=created_at,
     )
 
 
