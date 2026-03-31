@@ -260,25 +260,22 @@ def check_hardcoded_framer_transitions(
     rel_path = file_path.relative_to(project_root)
     lines = content.splitlines()
 
-    # Strip block comments so the regex doesn't match inside /* ... */.
-    stripped = _BLOCK_COMMENT_RE.sub(lambda m: "\n" * m.group().count("\n"), content)
+    # Mask block comments with spaces (preserve newlines) so the regex
+    # won't match inside /* ... */ while keeping offsets aligned with content.
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
 
-    # Run regex on stripped content so multiline transition objects are caught.
+    # Run regex on masked content so multiline transition objects are caught.
     for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
-        # Line number from stripped (newline count preserved by replacement).
         line_num = stripped[: m.start()].count("\n") + 1
+        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
         original_line = lines[line_num - 1]
         line_text = original_line.strip()
         if line_text.startswith(_COMMENT_PREFIXES):
             continue
-        # Map column back to the original line by finding the matched text,
-        # since block-comment removal can shift offsets within the line.
-        match_snippet = m.group()[:20]
-        orig_col = original_line.find(match_snippet)
-        if orig_col < 0:
-            # Fallback: compute from stripped offsets.
-            orig_col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
-        if _is_in_comment_context(original_line, orig_col):
+        if _is_in_comment_context(original_line, col):
             continue
         warnings.append(
             f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
