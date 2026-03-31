@@ -107,7 +107,7 @@ export function SkeletonTable({
         <div
           key={rowIdx}
           data-skeleton-row=""
-          className="flex gap-4 rounded-md border border-border bg-card px-4 py-3"
+          className="flex gap-4 rounded-md border border-border bg-card p-card"
         >
           {Array.from({ length: columns }, (_, colIdx) => (
             <Skeleton

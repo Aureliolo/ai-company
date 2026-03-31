@@ -15,7 +15,7 @@ export function WizardSkeleton() {
         </div>
 
         {/* Content skeleton */}
-        <div className="space-y-6">
+        <div className="space-y-section-gap">
           <Skeleton className="h-6 w-48" />
           <SkeletonText lines={2} />
           <SkeletonCard />

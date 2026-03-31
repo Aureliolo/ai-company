@@ -41,7 +41,7 @@ export default function ProviderDetailPage() {
   if (error && !provider) {
     return (
       <div className="flex flex-col gap-section-gap">
-        <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
           {error}
         </div>
       </div>
@@ -63,7 +63,7 @@ export default function ProviderDetailPage() {
     <div className="flex flex-col gap-section-gap">
       {/* Partial error banner */}
       {error && (
-        <div className="rounded-md bg-warning/10 px-4 py-3 text-sm text-warning">
+        <div className="rounded-md bg-warning/10 p-card text-sm text-warning">
           {error}
         </div>
       )}

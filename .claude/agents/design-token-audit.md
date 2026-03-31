@@ -13,7 +13,7 @@ You are a design system compliance reviewer for the SynthOrg web dashboard. The 
 
 ## What to Check
 
-For each changed `web/src/**/*.tsx` file in the diff, check for these violations:
+For each changed `web/src/**/*.{tsx,ts}` file in the diff, check for these violations:
 
 ### 1. Framer Motion transitions (MEDIUM)
 

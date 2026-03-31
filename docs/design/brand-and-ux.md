@@ -92,6 +92,8 @@ Density is an **independent user preference**, not tied to theme colors.
 | Medium | `p-[14px]` | `gap-4` (16px) | `gap-4` (16px) | `text-2xl` | `text-xs` | Slightly tighter than balanced |
 | Sparse | `p-5` (20px) | `gap-6` (24px) | `gap-6` (24px) | `text-3xl` | `text-sm` | Presentation mode, low information density tasks |
 
+> **Token usage**: Components must use density-aware token classes (`p-card`, `gap-section-gap`, `gap-grid-gap`) instead of the raw Tailwind utilities shown above. The raw values are what each token resolves to at each density level.
+
 ### How to Add a New Density Level
 
 Create a new `ThemeDensity` object with padding, gap, and font size values. Register it in the density index. Components read density from the theme context -- no component changes needed.

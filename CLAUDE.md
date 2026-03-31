@@ -113,7 +113,7 @@ site/             # Astro landing page (synthorg.io)
 
 See `web/CLAUDE.md` for the full component inventory, design token rules, and post-training references (TS6, Storybook 10). Key rules:
 - **ALWAYS reuse** existing components from `web/src/components/ui/` before creating new ones
-- **NEVER hardcode** hex colors, font-family, or pixel spacing -- use design tokens
+- **NEVER hardcode** hex colors, font-family, pixel spacing, or Framer Motion transitions -- use design tokens and `@/lib/motion` presets
 - A PostToolUse hook (`scripts/check_web_design_system.py`) enforces these rules on every Edit/Write to `web/src/`
 
 ## Shell Usage

@@ -453,25 +453,25 @@ function OrgChartInner() {
   return (
     <div className="flex h-full flex-col">
       {error && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
       )}
       {commError && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
           Communication data unavailable: {commError}
         </div>
       )}
       {commTruncated && !commError && (
-        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
           Communication graph shows partial data (message limit reached)
         </div>
       )}
       {!wsConnected && wsSetupError && (
-        <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning">
+        <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-xs text-warning">
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
           Real-time updates unavailable: {wsSetupError}
         </div>
@@ -566,7 +566,7 @@ function OrgChartInner() {
 
 export default function OrgChartPage() {
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full flex-col gap-section-gap">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Org Chart</h1>
         <Button asChild variant="outline" size="sm">

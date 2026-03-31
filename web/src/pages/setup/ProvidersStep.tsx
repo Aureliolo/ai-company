@@ -138,7 +138,7 @@ export function ProvidersStep() {
   const missingProviders = [...neededProviders].filter((p) => !providers[p])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Set Up Providers</h2>
         <p className="text-sm text-muted-foreground">
@@ -148,7 +148,7 @@ export function ProvidersStep() {
 
       {providersError && (
         <div className="space-y-2">
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             {providersError}
           </div>
           <Button variant="outline" size="sm" onClick={() => void fetchProviders()}>
@@ -169,7 +169,7 @@ export function ProvidersStep() {
         <Skeleton className="h-32 rounded-lg" />
       ) : presetsError && presets.length === 0 ? (
         <div className="space-y-2">
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             Failed to load provider presets: {presetsError}
           </div>
           <Button variant="outline" size="sm" onClick={() => void fetchPresets()}>

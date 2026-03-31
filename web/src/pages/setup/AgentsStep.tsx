@@ -101,7 +101,7 @@ export function AgentsStep() {
   if (agents.length === 0 && agentsError) {
     return (
       <div className="space-y-4">
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           {agentsError}
         </div>
         <Button variant="outline" size="sm" onClick={() => void fetchAgents()}>
@@ -122,7 +122,7 @@ export function AgentsStep() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Customize Your Agents</h2>
         <p className="text-sm text-muted-foreground">
@@ -131,14 +131,14 @@ export function AgentsStep() {
       </div>
 
       {agentsError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           {agentsError}
         </div>
       )}
 
       {personalityPresetsError && (
         <div className="space-y-2">
-          <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning">
+          <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
             Failed to load personality presets. Agents can still be configured without them.
           </div>
           <Button

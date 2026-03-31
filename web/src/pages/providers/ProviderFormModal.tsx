@@ -269,10 +269,10 @@ export function ProviderFormModal({
             </div>
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-section-gap">
                 {/* Presets error banner */}
                 {presetsError && (
-                  <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
+                  <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
                     Failed to load provider presets: {presetsError}
                   </div>
                 )}

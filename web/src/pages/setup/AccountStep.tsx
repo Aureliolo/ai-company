@@ -65,7 +65,7 @@ export function AccountStep() {
   }, [username, password, confirmPassword, minPasswordLength, authSetup, setAccountCreated, markStepComplete])
 
   return (
-    <div className="mx-auto max-w-md space-y-6">
+    <div className="mx-auto max-w-md space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Create Admin Account</h2>
         <p className="text-sm text-muted-foreground">
@@ -119,7 +119,7 @@ export function AccountStep() {
         />
 
         {error && (
-          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+          <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             {error}
           </div>
         )}

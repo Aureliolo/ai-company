@@ -349,27 +349,28 @@ The frontend-reviewer agent checks React 19 + shadcn/ui dashboard code quality a
 9. Hardcoded colors/spacing instead of design tokens (CSS variables) (MEDIUM)
 10. Hardcoded Framer Motion `transition: { duration: N }` instead of presets from `@/lib/motion` or `useAnimationPreset()` hook (MEDIUM)
 11. Card containers (`bg-card` + border) using hardcoded `p-3`/`p-4`/`px-N py-N` instead of `p-card` (MEDIUM)
-12. Page-level section gaps using `space-y-6`/`gap-4`/`gap-6` instead of `space-y-section-gap` or `gap-section-gap` (MEDIUM)
-13. Alert/notification banners using `px-4 py-2` instead of `p-card` (MEDIUM)
+12. Page-level section gaps using `space-y-6`/`gap-6` instead of `space-y-section-gap` or `gap-section-gap` (MEDIUM)
+13. Grid layouts using `gap-3`/`gap-4`/`gap-6` instead of `gap-grid-gap` (MEDIUM)
+14. Alert/notification banners using `px-4 py-2` instead of `p-card` (MEDIUM)
 
 **TypeScript (MAJOR):**
-14. `any` type usage -- should use proper types (MAJOR)
-15. Missing return types on custom hooks (MAJOR)
-16. Type assertions (`as`) that could be replaced with proper type guards (MEDIUM)
+15. `any` type usage -- should use proper types (MAJOR)
+16. Missing return types on custom hooks (MAJOR)
+17. Type assertions (`as`) that could be replaced with proper type guards (MEDIUM)
 
 **Custom hooks (MAJOR):**
-17. Reactive logic duplicated across components instead of extracted into a custom hook (MAJOR)
-18. Custom hooks with side effects not wrapped in `useEffect` (MAJOR)
-19. Missing cleanup in hooks (event listeners, intervals, subscriptions, abort controllers) (MAJOR)
+18. Reactive logic duplicated across components instead of extracted into a custom hook (MAJOR)
+19. Custom hooks with side effects not wrapped in `useEffect` (MAJOR)
+20. Missing cleanup in hooks (event listeners, intervals, subscriptions, abort controllers) (MAJOR)
 
 **Accessibility (MEDIUM):**
-20. Interactive elements missing `aria-label` or accessible text (MEDIUM)
-21. Missing keyboard navigation support for custom interactive components (MEDIUM)
-22. Color-only state indicators without text/icon alternatives (MINOR)
+21. Interactive elements missing `aria-label` or accessible text (MEDIUM)
+22. Missing keyboard navigation support for custom interactive components (MEDIUM)
+23. Color-only state indicators without text/icon alternatives (MINOR)
 
 **Backend type alignment (MAJOR):**
-23. Frontend types in `web/src/api/types.ts` that don't match backend Pydantic models -- field names, types, optionality (MAJOR)
-24. Hardcoded enum values instead of importing from a shared constants file (MEDIUM)
+24. Frontend types in `web/src/api/types.ts` that don't match backend Pydantic models -- field names, types, optionality (MAJOR)
+25. Hardcoded enum values instead of importing from a shared constants file (MEDIUM)
 
 ### API-contract-drift custom prompt
 

@@ -89,7 +89,8 @@ HARDCODED_FONT_RE = re.compile(
     """,
 )
 
-# Framer Motion inline transition durations (should use lib/motion presets)
+# Framer Motion inline transition durations (should use lib/motion presets).
+# Uses re.DOTALL so [^}]* spans newlines in multiline transition objects.
 HARDCODED_FM_DURATION_RE = re.compile(
     r"""(?x)
     # Variant object exit/animate transitions: exit: { ..., transition: { duration: N } }
@@ -98,6 +99,7 @@ HARDCODED_FM_DURATION_RE = re.compile(
     # Inline transition prop: transition={{ duration: N }}
     transition\s*=\s*\{\s*\{[^}]*\bduration\s*:\s*[\d.]+
     """,
+    re.DOTALL,
 )
 
 # Files where inline Framer Motion durations are intentional
@@ -252,21 +254,25 @@ def check_hardcoded_framer_transitions(
 
     warnings: list[str] = []
     rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
 
-    for line_num, line in enumerate(content.splitlines(), 1):
-        stripped = line.strip()
-        if stripped.startswith(_COMMENT_PREFIXES):
+    # Run regex on full content so multiline transition objects are caught.
+    for m in HARDCODED_FM_DURATION_RE.finditer(content):
+        # Compute the line number from the match offset.
+        line_num = content[: m.start()].count("\n") + 1
+        line_text = lines[line_num - 1].strip()
+        if line_text.startswith(_COMMENT_PREFIXES):
             continue
-
-        for m in HARDCODED_FM_DURATION_RE.finditer(line):
-            if _is_in_comment_context(line, m.start()):
-                continue
-            warnings.append(
-                f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
-                f"-- use a preset from `@/lib/motion` or "
-                f"`useAnimationPreset()` hook.\n"
-                f"    {stripped}"
-            )
+        if _is_in_comment_context(
+            lines[line_num - 1], m.start() - content.rfind("\n", 0, m.start()) - 1
+        ):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
+            f"-- use a preset from `@/lib/motion` or "
+            f"`useAnimationPreset()` hook.\n"
+            f"    {line_text}"
+        )
 
     return warnings
 

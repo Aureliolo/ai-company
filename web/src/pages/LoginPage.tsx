@@ -177,7 +177,7 @@ export default function LoginPage() {
               {error && (
                 <div
                   role="alert"
-                  className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger"
+                  className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger"
                 >
                   {error}
                 </div>
@@ -187,7 +187,7 @@ export default function LoginPage() {
               {locked && isLoginMode && !error && (
                 <div
                   role="alert"
-                  className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-warning"
+                  className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning"
                 >
                   Too many failed attempts. Please wait before trying again.
                 </div>

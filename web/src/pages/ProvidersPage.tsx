@@ -31,7 +31,7 @@ export default function ProvidersPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-md bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div className="rounded-md bg-danger/10 p-card text-sm text-danger">
           {error}
         </div>
       )}

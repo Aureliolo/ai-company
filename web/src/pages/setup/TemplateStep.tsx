@@ -247,7 +247,7 @@ export function TemplateStep() {
 
   if (templatesLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-section-gap">
         <Skeleton className="h-6 w-48" />
         <div className="grid grid-cols-3 gap-grid-gap">
           {Array.from({ length: 6 }, (_, i) => (

@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import { springDefault } from '@/lib/motion'
 import { AlertTriangle, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -20,7 +21,7 @@ export function RestartBanner({ count, onDismiss }: RestartBannerProps) {
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          transition={springDefault}
           className="flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/5 p-card"
           role="alert"
         >
