@@ -63,7 +63,7 @@ agents:
 
 !!! note "Unique agent identity"
 
-    Agent identity must be unique by the composite key `(name, role, department)`. When using templates with `merge_id`, the composite key extends to `(name, role, department, merge_id)`.
+    Agent names must be unique within the organization. For template inheritance, agent matching is keyed by `(role, department, merge_id)`. Use `merge_id` to disambiguate multiple agents sharing the same `(role, department)` pair.
 
 ---
 

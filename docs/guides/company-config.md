@@ -255,7 +255,7 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 | `authority` | dict | `{}` | Delegation and approval authority |
 | `autonomy_level` | AutonomyLevel | `null` | Per-agent autonomy override |
 
-Agent identity must be unique by the composite key `(name, role, department)`.
+Agent names must be unique within the organization.
 
 ---
 
@@ -390,7 +390,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 | Rule | Description |
 |------|-------------|
-| Unique agent names | Agent composite key (name + role + department) must be unique |
+| Unique agent names | Agent names must be unique across the organization |
 | Unique department names | Department names must not repeat |
 | Routing model references | `preferred_model` and `fallback` in routing rules must reference existing model IDs or aliases |
 | Fallback chain references | `fallback_chain` entries must reference existing model IDs or aliases |
