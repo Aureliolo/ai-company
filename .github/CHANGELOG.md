@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.3](https://github.com/Aureliolo/synthorg/compare/v0.5.2...v0.5.3) (2026-03-31)
+
+
+### Features
+
+* implement artifact and project persistence ([#947](https://github.com/Aureliolo/synthorg/issues/947)) ([6dea87a](https://github.com/Aureliolo/synthorg/commit/6dea87a8325be35d68b225f6c6a9dc587a4e7a11))
+
+
+### Maintenance
+
+* add allow_inf_nan=False to all remaining ConfigDict declarations ([#943](https://github.com/Aureliolo/synthorg/issues/943)) ([cd7bbca](https://github.com/Aureliolo/synthorg/commit/cd7bbca14039d66b47611ed583f7ab25649f1db6))
+* audit full web dashboard for hardcoded design token violations ([#944](https://github.com/Aureliolo/synthorg/issues/944)) ([a1322cd](https://github.com/Aureliolo/synthorg/commit/a1322cd6f64a4e3ec1a30da586de2e26c87073ff))
+
 ## [0.5.2](https://github.com/Aureliolo/synthorg/compare/v0.5.1...v0.5.2) (2026-03-31)
 
 
