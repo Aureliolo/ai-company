@@ -22,6 +22,7 @@ from synthorg.persistence.repositories import (
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
+    PersonalityPresetRepository,  # noqa: TC001
     ProjectRepository,  # noqa: TC001
     SettingsRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
@@ -56,6 +57,7 @@ class PersistenceBackend(Protocol):
         settings: Repository for namespaced settings persistence.
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
+        custom_presets: Repository for custom personality preset persistence.
     """
 
     async def connect(self) -> None:
@@ -178,6 +180,11 @@ class PersistenceBackend(Protocol):
     @property
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
+        ...
+
+    @property
+    def custom_presets(self) -> PersonalityPresetRepository:
+        """Repository for custom personality preset persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

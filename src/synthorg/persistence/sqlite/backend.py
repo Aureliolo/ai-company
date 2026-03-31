@@ -46,6 +46,9 @@ from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
+from synthorg.persistence.sqlite.preset_repo import (
+    SQLitePersonalityPresetRepository,
+)
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
@@ -99,6 +102,7 @@ class SQLitePersistenceBackend:
         self._heartbeats: SQLiteHeartbeatRepository | None = None
         self._agent_states: SQLiteAgentStateRepository | None = None
         self._settings: SQLiteSettingsRepository | None = None
+        self._custom_presets: SQLitePersonalityPresetRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -119,6 +123,7 @@ class SQLitePersistenceBackend:
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
+        self._custom_presets = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -189,6 +194,7 @@ class SQLitePersistenceBackend:
         self._heartbeats = SQLiteHeartbeatRepository(self._db)
         self._agent_states = SQLiteAgentStateRepository(self._db)
         self._settings = SQLiteSettingsRepository(self._db)
+        self._custom_presets = SQLitePersonalityPresetRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -442,6 +448,15 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def custom_presets(self) -> SQLitePersonalityPresetRepository:
+        """Repository for custom personality preset persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._custom_presets, "custom_presets")
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

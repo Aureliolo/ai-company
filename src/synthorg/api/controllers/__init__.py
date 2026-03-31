@@ -18,6 +18,9 @@ from synthorg.api.controllers.departments import DepartmentController
 from synthorg.api.controllers.health import HealthController
 from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.messages import MessageController
+from synthorg.api.controllers.personalities import (
+    PersonalityPresetController,
+)
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
 from synthorg.api.controllers.settings import SettingsController
@@ -51,6 +54,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     SettingsController,
     SetupController,
     SetupPersonalityController,
+    PersonalityPresetController,
     BackupController,
     UserController,
 )
@@ -74,6 +78,7 @@ __all__ = [
     "HealthController",
     "MeetingController",
     "MessageController",
+    "PersonalityPresetController",
     "ProjectController",
     "ProviderController",
     "SettingsController",

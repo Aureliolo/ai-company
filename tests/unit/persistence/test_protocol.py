@@ -333,6 +333,30 @@ class _FakeProjectRepository:
         return False
 
 
+class _FakePersonalityPresetRepository:
+    async def save(
+        self,
+        name: str,
+        config_json: str,
+        description: str,
+        created_at: str,
+        updated_at: str,
+    ) -> None:
+        pass
+
+    async def get(self, name: str) -> tuple[str, str, str, str] | None:
+        return None
+
+    async def list_all(self) -> tuple[tuple[str, str, str, str, str], ...]:
+        return ()
+
+    async def delete(self, name: str) -> bool:
+        return False
+
+    async def count(self) -> int:
+        return 0
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -417,6 +441,10 @@ class _FakeBackend:
     @property
     def projects(self) -> _FakeProjectRepository:
         return _FakeProjectRepository()
+
+    @property
+    def custom_presets(self) -> _FakePersonalityPresetRepository:
+        return _FakePersonalityPresetRepository()
 
     async def get_setting(self, key: str) -> str | None:
         return None

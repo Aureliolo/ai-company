@@ -531,12 +531,42 @@ class FakeAgentStateRepository:
         return self._states.pop(agent_id, None) is not None
 
 
+class FakePersonalityPresetRepository:
+    """In-memory custom personality preset repository for tests."""
+
+    def __init__(self) -> None:
+        self._presets: dict[str, tuple[str, str, str, str]] = {}
+
+    async def save(
+        self,
+        name: str,
+        config_json: str,
+        description: str,
+        created_at: str,
+        updated_at: str,
+    ) -> None:
+        self._presets[name] = (config_json, description, created_at, updated_at)
+
+    async def get(self, name: str) -> tuple[str, str, str, str] | None:
+        return self._presets.get(name)
+
+    async def list_all(self) -> tuple[tuple[str, str, str, str, str], ...]:
+        return tuple((name, *data) for name, data in sorted(self._presets.items()))
+
+    async def delete(self, name: str) -> bool:
+        return self._presets.pop(name, None) is not None
+
+    async def count(self) -> int:
+        return len(self._presets)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
     def __init__(self) -> None:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
+        self._custom_presets = FakePersonalityPresetRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -639,6 +669,10 @@ class FakePersistenceBackend:
     @property
     def settings(self) -> FakeSettingsRepository:
         return self._settings_repo
+
+    @property
+    def custom_presets(self) -> FakePersonalityPresetRepository:
+        return self._custom_presets
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
