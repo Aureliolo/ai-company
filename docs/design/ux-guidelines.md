@@ -383,12 +383,13 @@ All animation values are defined in `web/src/lib/motion.ts` and imported as cons
 | `tweenDefault` | `{ type: "tween", duration: 0.2, ease: [0.4, 0, 0.2, 1] }` | Hover states, color changes, opacity |
 | `tweenSlow` | `{ type: "tween", duration: 0.4, ease: [0.4, 0, 0.2, 1] }` | Page transitions, large layout shifts |
 | `tweenFast` | `{ type: "tween", duration: 0.15, ease: "easeOut" }` | Micro-interactions, button press |
+| `tweenExitFast` | `{ type: "tween", duration: 0.15, ease: "easeIn" }` | Panel/drawer exit, collapse animations |
 
 ### 4.2 Page Transitions
 
 | Property | Value |
 |----------|-------|
-| Exit | Opacity 1 -> 0, x: 0 -> -8px, duration 150ms, easeIn |
+| Exit | Opacity 1 -> 0, x: 0 -> -8px, `tweenExitFast` |
 | Enter | Opacity 0 -> 1, x: 8px -> 0, duration 200ms, `tweenDefault` |
 | Direction | Content slides in the direction of navigation (deeper = right, back = left) |
 

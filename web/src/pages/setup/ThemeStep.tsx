@@ -91,7 +91,7 @@ export function ThemeStep() {
   }, [markStepComplete])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Personalize Your Experience</h2>
         <p className="text-sm text-muted-foreground">
@@ -99,9 +99,9 @@ export function ThemeStep() {
         </p>
       </div>
 
-      <div className="grid grid-cols-[45%_1fr] gap-6 max-[1023px]:grid-cols-1">
+      <div className="grid grid-cols-[45%_1fr] gap-grid-gap max-[1023px]:grid-cols-1">
         {/* Options (left) */}
-        <div className="space-y-6">
+        <div className="space-y-section-gap">
           <OptionGroup
             label="Color Palette"
             settingKey="palette"

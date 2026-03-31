@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { springGentle } from '@/lib/motion'
+import { springGentle, tweenFast } from '@/lib/motion'
 import { MessageBubble } from './MessageBubble'
 import type { Message } from '@/api/types'
 
@@ -69,7 +69,7 @@ export function MessageThread({
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1, transition: springGentle }}
-            exit={{ height: 0, opacity: 0, transition: { duration: 0.15 } }}
+            exit={{ height: 0, opacity: 0, transition: tweenFast }}
             className="overflow-hidden"
           >
             <div className="ml-5 border-l-2 border-accent/30 pl-3">

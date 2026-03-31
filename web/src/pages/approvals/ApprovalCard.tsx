@@ -66,7 +66,7 @@ export function ApprovalCard({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card p-4 transition-all duration-200',
+        'rounded-lg border bg-card p-card transition-all duration-200',
         selected ? 'border-bright ring-1 ring-accent/20' : 'border-border',
         isPending && 'hover:bg-card-hover hover:-translate-y-px hover:shadow-md',
         !isPending && 'opacity-70',

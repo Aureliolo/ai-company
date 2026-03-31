@@ -110,14 +110,14 @@ export default function TaskDetailPage() {
   const availableTransitions = getAvailableTransitions(task.status)
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-section-gap">
       <Button variant="ghost" size="sm" onClick={() => navigate(ROUTES.TASKS)}>
         <ArrowLeft className="mr-1 size-4" />
         Back to Board
       </Button>
 
       {wsSetupError && (
-        <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-2 text-sm text-warning">
+        <div className="rounded-md border border-warning/30 bg-warning/10 p-card text-sm text-warning">
           Real-time updates unavailable: {wsSetupError}
         </div>
       )}
@@ -200,7 +200,7 @@ export default function TaskDetailPage() {
           </div>
 
           {/* Metadata */}
-          <div className="grid grid-cols-3 gap-4 rounded-lg border border-border p-4 text-sm">
+          <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card text-sm">
             <div><span className="block text-[10px] text-text-muted">Type</span><span className="text-foreground">{getTaskTypeLabel(task.type)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Complexity</span><span className="capitalize text-foreground">{task.estimated_complexity}</span></div>
             <div><span className="block text-[10px] text-text-muted">Project</span><span className="text-foreground">{task.project}</span></div>

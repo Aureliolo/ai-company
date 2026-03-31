@@ -179,7 +179,7 @@ export function DepartmentsTab({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex justify-end">
         <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />

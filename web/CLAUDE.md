@@ -110,6 +110,7 @@ When a new shared component is needed (not covered by the inventory above):
 A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on every Edit/Write to `web/src/` files. It catches:
 - Hardcoded hex colors and rgba values
 - Hardcoded font-family declarations
+- Hardcoded Framer Motion transition durations (should use `@/lib/motion` presets)
 - New components without Storybook stories
 - Duplicate patterns that should use existing shared components
 - Complex `.map()` blocks that should be extracted

@@ -35,7 +35,7 @@ export function MeetingContributions({ contributions, className }: MeetingContri
 
   return (
     <SectionCard title="Contributions" icon={MessageSquare} className={className}>
-      <div className="space-y-6">
+      <div className="space-y-section-gap">
         {groups.map((group) => (
           <div key={`${group.phase}-${group.items[0]?.turn_number ?? 0}-${group.items.length}`}>
             <div className="mb-3 flex items-center gap-2">

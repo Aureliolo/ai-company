@@ -66,7 +66,7 @@ export function SkeletonCard({
   className,
 }: SkeletonCardProps) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-4 space-y-3', className)}>
+    <div className={cn('rounded-lg border border-border bg-card p-card space-y-3', className)}>
       {header && (
         <div className="flex items-center gap-3" data-skeleton-header="">
           <Skeleton shimmer={shimmer} className="size-5 rounded" />
@@ -80,7 +80,7 @@ export function SkeletonCard({
 
 export function SkeletonMetric({ shimmer, className }: SkeletonProps) {
   return (
-    <div className={cn('rounded-lg border border-border bg-card p-4 space-y-3', className)}>
+    <div className={cn('rounded-lg border border-border bg-card p-card space-y-3', className)}>
       <Skeleton shimmer={shimmer} className="h-3 w-20 rounded" data-testid="skeleton-label" />
       <Skeleton shimmer={shimmer} className="h-7 w-16 rounded" data-testid="skeleton-value" />
       <Skeleton shimmer={shimmer} className="h-0.5 w-full rounded" data-testid="skeleton-progress" />
@@ -107,7 +107,7 @@ export function SkeletonTable({
         <div
           key={rowIdx}
           data-skeleton-row=""
-          className="flex gap-4 rounded-md border border-border bg-card px-4 py-3"
+          className="flex gap-4 rounded-md border border-border bg-card p-card"
         >
           {Array.from({ length: columns }, (_, colIdx) => (
             <Skeleton

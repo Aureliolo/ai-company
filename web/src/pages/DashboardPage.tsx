@@ -28,11 +28,11 @@ export default function DashboardPage() {
   const metricCards = overview ? computeMetricCards(overview, budgetConfig) : []
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <h1 className="text-lg font-semibold text-foreground">Overview</h1>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error}
         </div>

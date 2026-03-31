@@ -82,6 +82,13 @@ export const tweenFast: Transition = {
   ease: "easeOut",
 };
 
+/** Fast exit tween: panel/drawer exit, collapse animations (easeIn accelerates out of view). */
+export const tweenExitFast: Transition = {
+  type: "tween",
+  duration: 0.15,
+  ease: "easeIn",
+};
+
 // ---------------------------------------------------------------------------
 // Card entrance variants
 // ---------------------------------------------------------------------------
@@ -123,7 +130,7 @@ export const pageExit: Variants = {
   exit: {
     opacity: 0,
     x: -8,
-    transition: { type: "tween", duration: 0.15, ease: "easeIn" },
+    transition: tweenExitFast,
   },
 };
 

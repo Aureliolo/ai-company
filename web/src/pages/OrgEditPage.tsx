@@ -98,14 +98,14 @@ export default function OrgEditPage() {
 
   if (!loading && !config) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-section-gap">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="icon" aria-label="Back to Org Chart">
             <Link to={ROUTES.ORG}><ArrowLeft className="size-4" /></Link>
           </Button>
           <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
         </div>
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {error ?? 'Failed to load organization data.'}
         </div>
@@ -114,7 +114,7 @@ export default function OrgEditPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -132,7 +132,7 @@ export default function OrgEditPage() {
 
       {/* Error banner */}
       {(error || saveError) && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           <AlertTriangle className="size-4 shrink-0" />
           {saveError || error}
         </div>
@@ -140,7 +140,7 @@ export default function OrgEditPage() {
 
       {/* WS disconnect warning */}
       {!wsConnected && !loading && (
-        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2 text-sm text-warning">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-card text-sm text-warning">
           <WifiOff className="size-4 shrink-0" />
           {wsSetupError ?? 'Real-time updates disconnected. Data may be stale.'}
         </div>

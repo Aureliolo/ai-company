@@ -7,7 +7,7 @@ import {
 export function BudgetSkeleton() {
   return (
     <div
-      className="space-y-6"
+      className="space-y-section-gap"
       role="status"
       aria-live="polite"
       aria-label="Loading budget"

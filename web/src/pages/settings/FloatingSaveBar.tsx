@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { springDefault } from '@/lib/motion'
 import { Loader2, Save, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -29,7 +30,7 @@ export function FloatingSaveBar({
             initial={{ y: 80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            transition={springDefault}
             className="sticky bottom-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-border bg-surface p-card shadow-[var(--so-shadow-card-hover)]"
             aria-live="polite"
           >

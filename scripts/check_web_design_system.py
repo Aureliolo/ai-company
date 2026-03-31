@@ -89,10 +89,33 @@ HARDCODED_FONT_RE = re.compile(
     """,
 )
 
+# Framer Motion inline transition durations (should use lib/motion presets).
+# Uses re.DOTALL so [^}]* spans newlines in multiline transition objects.
+HARDCODED_FM_DURATION_RE = re.compile(
+    r"""(?x)
+    # Variant object exit/animate transitions: exit: { ..., transition: { duration: N } }
+    transition\s*:\s*\{[^}]*\bduration\s*:\s*[\d.]+
+    |
+    # Inline transition prop: transition={{ duration: N }}
+    transition\s*=\s*\{\s*\{[^}]*\bduration\s*:\s*[\d.]+
+    """,
+    re.DOTALL,
+)
+
+# Files where inline Framer Motion durations are intentional (relative paths).
+_FM_DURATION_SKIP_PATHS: set[str] = {
+    "web/src/lib/motion.ts",
+    "web/src/hooks/useAnimationPreset.ts",
+    "web/src/pages/settings/ThemePreview.tsx",
+}
+
 # ── Files to skip ────────────────────────────────────────────────────
 _SKIP_PATHS: set[str] = {"design-tokens.css", "global.css"}
 _SKIP_DIRS: set[str] = {"__tests__", "node_modules", ".storybook"}
 _COMMENT_PREFIXES = ("//", "/*", "*")
+
+# Regex to strip block comments (/* ... */) so full-content regex scans skip them.
+_BLOCK_COMMENT_RE = re.compile(r"/\*[\s\S]*?\*/")
 
 
 def _normalize_hex(h: str) -> str:
@@ -209,6 +232,56 @@ def check_hardcoded_fonts(
             f"    {stripped}"
             for m in HARDCODED_FONT_RE.finditer(line)
             if not _is_in_comment_context(line, m.start())
+        )
+
+    return warnings
+
+
+def check_hardcoded_framer_transitions(
+    content: str,
+    file_path: Path,
+    project_root: Path,
+) -> list[str]:
+    """Find hardcoded Framer Motion transition durations.
+
+    Components should use presets from ``lib/motion.ts`` (e.g.
+    ``tweenDefault``, ``tweenFast``, ``tweenExitFast``) or the
+    ``useAnimationPreset()`` hook instead of inline duration values.
+    """
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _FM_DURATION_SKIP_PATHS:
+        return []
+    if ".stories." in file_path.name:
+        return []
+    if file_path.suffix not in {".tsx", ".ts"}:
+        return []
+
+    warnings: list[str] = []
+    rel_path = file_path.relative_to(project_root)
+    lines = content.splitlines()
+
+    # Mask block comments with spaces (preserve newlines) so the regex
+    # won't match inside /* ... */ while keeping offsets aligned with content.
+    stripped = _BLOCK_COMMENT_RE.sub(
+        lambda cm: "".join(" " if c != "\n" else "\n" for c in cm.group()),
+        content,
+    )
+
+    # Run regex on masked content so multiline transition objects are caught.
+    for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
+        line_num = stripped[: m.start()].count("\n") + 1
+        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
+        original_line = lines[line_num - 1]
+        line_text = original_line.strip()
+        if line_text.startswith(_COMMENT_PREFIXES):
+            continue
+        if _is_in_comment_context(original_line, col):
+            continue
+        warnings.append(
+            f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
+            f"-- use a preset from `@/lib/motion` or "
+            f"`useAnimationPreset()` hook.\n"
+            f"    {line_text}"
         )
 
     return warnings
@@ -399,6 +472,9 @@ def check_file(file_path: Path, project_root: Path) -> list[str]:
     all_warnings: list[str] = []
     all_warnings.extend(check_hardcoded_colors(content, file_path, project_root))
     all_warnings.extend(check_hardcoded_fonts(content, file_path, project_root))
+    all_warnings.extend(
+        check_hardcoded_framer_transitions(content, file_path, project_root),
+    )
     all_warnings.extend(check_missing_story(file_path, project_root))
     all_warnings.extend(check_duplicate_patterns(content, file_path, project_root))
     all_warnings.extend(propose_shared_components(content, file_path, project_root))

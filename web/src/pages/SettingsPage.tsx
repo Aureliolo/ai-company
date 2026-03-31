@@ -263,7 +263,7 @@ export default function SettingsPage() {
     })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-lg font-semibold text-foreground">Settings</h1>
         <div className="flex items-center gap-4">

@@ -18,7 +18,7 @@ function ColumnSkeleton({ cards }: { cards: number }) {
 
 export function TaskBoardSkeleton() {
   return (
-    <div className="space-y-6" role="status" aria-label="Loading task board">
+    <div className="space-y-section-gap" role="status" aria-label="Loading task board">
       {/* Filter bar skeleton */}
       <div className="flex items-center gap-3">
         <Skeleton className="h-8 w-32 rounded-md" />

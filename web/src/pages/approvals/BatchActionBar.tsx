@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { Check, X as XIcon, Minus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { springDefault } from '@/lib/motion'
+import { springDefault, tweenExitFast } from '@/lib/motion'
 
 export interface BatchActionBarProps {
   selectedCount: number
@@ -14,7 +14,7 @@ export interface BatchActionBarProps {
 const BAR_VARIANTS = {
   initial: { y: '100%', opacity: 0 },
   animate: { y: 0, opacity: 1, transition: springDefault },
-  exit: { y: '100%', opacity: 0, transition: { duration: 0.15, ease: 'easeIn' as const } },
+  exit: { y: '100%', opacity: 0, transition: tweenExitFast },
 }
 
 export function BatchActionBar({

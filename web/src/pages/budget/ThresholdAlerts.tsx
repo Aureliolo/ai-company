@@ -30,7 +30,7 @@ export function ThresholdAlerts({ zone, budgetConfig, overview }: ThresholdAlert
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-lg border px-4 py-3 text-sm',
+        'flex items-center gap-2 rounded-lg border p-card text-sm',
         isAmber && 'border-warning/30 bg-warning/5 text-warning',
         isDanger && 'border-danger/30 bg-danger/5 text-danger',
       )}

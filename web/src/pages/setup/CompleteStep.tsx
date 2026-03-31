@@ -43,7 +43,7 @@ export function CompleteStep() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Review & Complete</h2>
         <p className="text-sm text-muted-foreground">
@@ -63,7 +63,7 @@ export function CompleteStep() {
       />
 
       {completionError && (
-        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
           {completionError}
         </div>
       )}

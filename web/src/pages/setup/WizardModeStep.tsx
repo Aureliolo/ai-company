@@ -88,7 +88,7 @@ export function WizardModeStep() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 max-[639px]:grid-cols-1">
+      <div className="grid grid-cols-2 gap-grid-gap max-[639px]:grid-cols-1">
         <ModeOption
           icon={Sparkles}
           title="Guided Setup"

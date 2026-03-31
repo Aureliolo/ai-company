@@ -62,7 +62,7 @@ export default function SettingsSinksPage() {
   }, [saveSink])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       <div className="flex items-center gap-grid-gap">
         <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
           <ArrowLeft className="mr-1.5 size-3.5" aria-hidden />

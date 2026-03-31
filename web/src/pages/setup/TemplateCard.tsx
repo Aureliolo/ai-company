@@ -50,7 +50,7 @@ export function TemplateCard({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors',
+        'flex flex-col gap-3 rounded-lg border bg-card p-card transition-colors',
         selected ? 'border-accent shadow-[0_0_12px_color-mix(in_srgb,var(--so-accent)_15%,transparent)]' : 'border-border',
         'hover:bg-card-hover',
       )}

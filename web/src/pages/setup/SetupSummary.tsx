@@ -38,7 +38,7 @@ export function SetupSummary({
   currency,
 }: SetupSummaryProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-section-gap">
       {/* Company details */}
       <SectionCard title="Company Details" icon={Building2}>
         <div className="space-y-2">
