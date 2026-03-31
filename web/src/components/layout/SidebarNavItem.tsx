@@ -10,6 +10,8 @@ interface SidebarNavItemProps {
   badge?: number
   dotColor?: string
   end?: boolean
+  /** Render as a plain `<a href>` instead of a React Router NavLink. */
+  external?: boolean
 }
 
 export function SidebarNavItem({
@@ -20,21 +22,16 @@ export function SidebarNavItem({
   badge,
   dotColor,
   end,
+  external,
 }: SidebarNavItemProps) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      title={collapsed ? label : undefined}
-      className={({ isActive }) =>
-        cn(
-          'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-          'text-text-secondary hover:bg-card-hover hover:text-foreground',
-          isActive && 'bg-card text-accent',
-          collapsed && 'justify-center px-0',
-        )
-      }
-    >
+  const baseClass = cn(
+    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+    'text-text-secondary hover:bg-card-hover hover:text-foreground',
+    collapsed && 'justify-center px-0',
+  )
+
+  const content = (
+    <>
       <Icon className="size-5 shrink-0" aria-hidden="true" />
       {!collapsed && (
         <>
@@ -61,6 +58,27 @@ export function SidebarNavItem({
           )}
         </>
       )}
+    </>
+  )
+
+  if (external) {
+    return (
+      <a href={to} title={collapsed ? label : undefined} className={baseClass}>
+        {content}
+      </a>
+    )
+  }
+
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      title={collapsed ? label : undefined}
+      className={({ isActive }) =>
+        cn(baseClass, isActive && 'bg-card text-accent')
+      }
+    >
+      {content}
     </NavLink>
   )
 }

@@ -26,6 +26,7 @@ export const ROUTES = {
   SETTINGS: '/settings',
   SETTINGS_NAMESPACE: '/settings/:namespace',
   SETTINGS_SINKS: '/settings/observability/sinks',
+  DOCUMENTATION: '/docs/',
 } as const
 
 /** Routes accessible without authentication. */
