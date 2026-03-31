@@ -265,14 +265,20 @@ def check_hardcoded_framer_transitions(
 
     # Run regex on stripped content so multiline transition objects are caught.
     for m in HARDCODED_FM_DURATION_RE.finditer(stripped):
-        # Compute line number and column from *stripped* offsets (newline
-        # counts are preserved by the block-comment replacement).
+        # Line number from stripped (newline count preserved by replacement).
         line_num = stripped[: m.start()].count("\n") + 1
-        col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
-        line_text = lines[line_num - 1].strip()
+        original_line = lines[line_num - 1]
+        line_text = original_line.strip()
         if line_text.startswith(_COMMENT_PREFIXES):
             continue
-        if _is_in_comment_context(lines[line_num - 1], col):
+        # Map column back to the original line by finding the matched text,
+        # since block-comment removal can shift offsets within the line.
+        match_snippet = m.group()[:20]
+        orig_col = original_line.find(match_snippet)
+        if orig_col < 0:
+            # Fallback: compute from stripped offsets.
+            orig_col = m.start() - stripped.rfind("\n", 0, m.start()) - 1
+        if _is_in_comment_context(original_line, orig_col):
             continue
         warnings.append(
             f"  {rel_path}:{line_num}: Hardcoded Framer Motion duration "
