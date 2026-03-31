@@ -73,7 +73,7 @@ export function AccountStep() {
         </p>
       </div>
 
-      <div className="space-y-4 rounded-lg border border-border bg-card p-6">
+      <div className="space-y-4 rounded-lg border border-border bg-card p-card">
         <InputField
           label="Username"
           required

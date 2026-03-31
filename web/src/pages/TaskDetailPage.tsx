@@ -200,7 +200,7 @@ export default function TaskDetailPage() {
           </div>
 
           {/* Metadata */}
-          <div className="grid grid-cols-3 gap-4 rounded-lg border border-border p-card text-sm">
+          <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card text-sm">
             <div><span className="block text-[10px] text-text-muted">Type</span><span className="text-foreground">{getTaskTypeLabel(task.type)}</span></div>
             <div><span className="block text-[10px] text-text-muted">Complexity</span><span className="capitalize text-foreground">{task.estimated_complexity}</span></div>
             <div><span className="block text-[10px] text-text-muted">Project</span><span className="text-foreground">{task.project}</span></div>

@@ -279,7 +279,7 @@ export function TemplateStep() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-section-gap">
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Choose a Template</h2>
         <p className="text-sm text-muted-foreground">

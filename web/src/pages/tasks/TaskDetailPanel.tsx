@@ -219,7 +219,7 @@ export function TaskDetailPanel({
               </div>
 
               {/* Metadata grid */}
-              <div className="grid grid-cols-2 gap-4 rounded-lg border border-border p-card">
+              <div className="grid grid-cols-2 gap-grid-gap rounded-lg border border-border p-card">
                 <MetaField icon={Tag} label="Type" value={getTaskTypeLabel(task.type)} />
                 <MetaField icon={Layers} label="Complexity" value={task.estimated_complexity} />
                 <MetaField icon={Calendar} label="Created" value={formatDate(task.created_at)} />

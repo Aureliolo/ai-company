@@ -102,11 +102,11 @@ HARDCODED_FM_DURATION_RE = re.compile(
     re.DOTALL,
 )
 
-# Files where inline Framer Motion durations are intentional
-_FM_DURATION_SKIP_FILES: set[str] = {
-    "motion.ts",
-    "useAnimationPreset.ts",
-    "ThemePreview.tsx",
+# Files where inline Framer Motion durations are intentional (relative paths).
+_FM_DURATION_SKIP_PATHS: set[str] = {
+    "web/src/lib/motion.ts",
+    "web/src/hooks/useAnimationPreset.ts",
+    "web/src/pages/settings/ThemePreview.tsx",
 }
 
 # ── Files to skip ────────────────────────────────────────────────────
@@ -245,7 +245,8 @@ def check_hardcoded_framer_transitions(
     ``tweenDefault``, ``tweenFast``, ``tweenExitFast``) or the
     ``useAnimationPreset()`` hook instead of inline duration values.
     """
-    if file_path.name in _FM_DURATION_SKIP_FILES:
+    rel_str = file_path.relative_to(project_root).as_posix()
+    if rel_str in _FM_DURATION_SKIP_PATHS:
         return []
     if ".stories." in file_path.name:
         return []
