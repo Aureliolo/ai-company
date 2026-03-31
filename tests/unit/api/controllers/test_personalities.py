@@ -150,6 +150,20 @@ class TestCreatePreset:
         )
         assert resp.status_code == 400
 
+    def test_create_duplicate_returns_409(self, test_client: TestClient[Any]) -> None:
+        body = _make_valid_preset_body(name="dup_test")
+        test_client.post(
+            "/api/v1/personalities/presets",
+            json=body,
+            headers=make_auth_headers("ceo"),
+        )
+        resp = test_client.post(
+            "/api/v1/personalities/presets",
+            json=body,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409
+
     def test_observer_cannot_create(self, test_client: TestClient[Any]) -> None:
         body = _make_valid_preset_body()
         resp = test_client.post(
@@ -222,6 +236,39 @@ class TestUpdatePreset:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+    def test_observer_cannot_update(self, test_client: TestClient[Any]) -> None:
+        body = _make_valid_preset_body(name="obs_update_test")
+        test_client.post(
+            "/api/v1/personalities/presets",
+            json=body,
+            headers=make_auth_headers("ceo"),
+        )
+        update_body = {k: v for k, v in body.items() if k != "name"}
+        resp = test_client.put(
+            "/api/v1/personalities/presets/obs_update_test",
+            json=update_body,
+            headers=make_auth_headers("observer"),
+        )
+        assert resp.status_code == 403
+
+    def test_update_with_invalid_config_returns_400(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        body = _make_valid_preset_body(name="invalid_update")
+        test_client.post(
+            "/api/v1/personalities/presets",
+            json=body,
+            headers=make_auth_headers("ceo"),
+        )
+        update_body = {k: v for k, v in body.items() if k != "name"}
+        update_body["openness"] = 2.0
+        resp = test_client.put(
+            "/api/v1/personalities/presets/invalid_update",
+            json=update_body,
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
 
 
 @pytest.mark.unit

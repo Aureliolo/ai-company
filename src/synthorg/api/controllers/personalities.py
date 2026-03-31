@@ -20,13 +20,10 @@ from synthorg.api.pagination import (
     paginate,
 )
 from synthorg.api.path_params import PathName  # noqa: TC001
-from synthorg.observability import get_logger
 from synthorg.templates.preset_service import (
     PersonalityPresetService,
     PresetEntry,
 )
-
-logger = get_logger(__name__)
 
 
 def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:

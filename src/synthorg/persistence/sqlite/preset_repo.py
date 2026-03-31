@@ -21,8 +21,6 @@ from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
-_MAX_LIST_ROWS: int = 10_000
-
 
 class SQLitePersonalityPresetRepository:
     """SQLite-backed custom personality preset repository.
@@ -136,8 +134,8 @@ ON CONFLICT(name) DO UPDATE SET
         """
         try:
             cursor = await self._db.execute(
-                "SELECT name, config_json, description, created_at, "  # noqa: S608
-                f"updated_at FROM custom_presets ORDER BY name LIMIT {_MAX_LIST_ROWS}",
+                "SELECT name, config_json, description, created_at, "
+                "updated_at FROM custom_presets ORDER BY name LIMIT 10000",
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

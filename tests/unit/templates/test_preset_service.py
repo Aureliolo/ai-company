@@ -206,6 +206,15 @@ class TestUpdate:
         with pytest.raises(NotFoundError):
             await service.update("nonexistent", config)
 
+    async def test_update_rejects_invalid_config(
+        self, service: PersonalityPresetService
+    ) -> None:
+        config = _make_valid_config()
+        await service.create("update_invalid", config)
+        config["openness"] = 2.0
+        with pytest.raises(ApiValidationError):
+            await service.update("update_invalid", config)
+
 
 @pytest.mark.unit
 class TestDelete:

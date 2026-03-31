@@ -12,6 +12,9 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
 )
+from synthorg.persistence.preset_repository import (
+    PersonalityPresetRepository,  # noqa: TC001
+)
 from synthorg.persistence.repositories import (
     AgentStateRepository,  # noqa: TC001
     ApiKeyRepository,  # noqa: TC001
@@ -22,7 +25,6 @@ from synthorg.persistence.repositories import (
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
-    PersonalityPresetRepository,  # noqa: TC001
     ProjectRepository,  # noqa: TC001
     SettingsRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001

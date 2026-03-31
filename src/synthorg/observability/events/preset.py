@@ -14,3 +14,11 @@ PRESET_CUSTOM_FETCH_FAILED: Final[str] = "preset.custom.fetch_failed"
 PRESET_CUSTOM_LIST_FAILED: Final[str] = "preset.custom.list_failed"
 PRESET_CUSTOM_DELETE_FAILED: Final[str] = "preset.custom.delete_failed"
 PRESET_CUSTOM_COUNT_FAILED: Final[str] = "preset.custom.count_failed"
+
+# Service-layer events
+PRESET_CREATED: Final[str] = "preset.created"
+PRESET_UPDATED: Final[str] = "preset.updated"
+PRESET_DELETED: Final[str] = "preset.deleted"
+PRESET_NOT_FOUND: Final[str] = "preset.not_found"
+PRESET_CONFLICT: Final[str] = "preset.conflict"
+PRESET_VALIDATION_FAILED: Final[str] = "preset.validation_failed"

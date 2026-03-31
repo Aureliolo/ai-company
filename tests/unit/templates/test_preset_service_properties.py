@@ -3,7 +3,7 @@
 import string
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from synthorg.templates.preset_service import (
@@ -72,11 +72,9 @@ class TestPresetServiceProperties:
         config: dict[str, object],
     ) -> None:
         """Any valid config round-trips through create/get."""
-        # Skip names that collide with builtins
         from synthorg.templates.presets import PERSONALITY_PRESETS
 
-        if name in PERSONALITY_PRESETS:
-            return
+        assume(name not in PERSONALITY_PRESETS)
 
         repo = FakePersonalityPresetRepository()
         service = PersonalityPresetService(repository=repo)

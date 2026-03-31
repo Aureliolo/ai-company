@@ -798,6 +798,3 @@ from synthorg.persistence.artifact_project_repos import (  # noqa: E402, I001
     ArtifactRepository as ArtifactRepository,  # noqa: PLC0414
     ProjectRepository as ProjectRepository,  # noqa: PLC0414
 )
-from synthorg.persistence.preset_repository import (  # noqa: E402
-    PersonalityPresetRepository as PersonalityPresetRepository,  # noqa: PLC0414
-)

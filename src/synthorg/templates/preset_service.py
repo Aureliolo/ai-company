@@ -11,10 +11,22 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.core.agent import PersonalityConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
+from synthorg.observability.events.preset import (
+    PRESET_CONFLICT,
+    PRESET_CREATED,
+    PRESET_DELETED,
+    PRESET_NOT_FOUND,
+    PRESET_UPDATED,
+    PRESET_VALIDATION_FAILED,
+)
 from synthorg.persistence.preset_repository import (
     PersonalityPresetRepository,  # noqa: TC001
 )
@@ -71,9 +83,20 @@ def _normalize_preset_name(raw: str) -> str:
     """
     name = raw.strip().lower()
     if not name:
+        logger.warning(
+            PRESET_VALIDATION_FAILED,
+            raw_name=raw,
+            reason="blank",
+        )
         msg = "Preset name must not be blank"
         raise ApiValidationError(msg)
     if not _NAME_PATTERN.match(name):
+        logger.warning(
+            PRESET_VALIDATION_FAILED,
+            raw_name=raw,
+            normalized=name,
+            reason="invalid_format",
+        )
         msg = (
             f"Invalid preset name {name!r}. "
             "Must match [a-z][a-z0-9_]* (lowercase, underscores only)."
@@ -82,7 +105,9 @@ def _normalize_preset_name(raw: str) -> str:
     return name
 
 
-def _validate_personality_config(config: dict[str, Any]) -> PersonalityConfig:
+def _validate_personality_config(
+    config: dict[str, Any],
+) -> PersonalityConfig:
     """Validate a config dict against PersonalityConfig.
 
     Args:
@@ -97,6 +122,11 @@ def _validate_personality_config(config: dict[str, Any]) -> PersonalityConfig:
     try:
         return PersonalityConfig(**config)
     except ValidationError as exc:
+        logger.warning(
+            PRESET_VALIDATION_FAILED,
+            reason="invalid_config",
+            error=str(exc),
+        )
         msg = f"Invalid personality configuration: {exc}"
         raise ApiValidationError(msg) from exc
 
@@ -119,11 +149,9 @@ class PersonalityPresetService:
         """
         entries: dict[str, PresetEntry] = {}
 
-        # Builtins first
         for name, preset in PERSONALITY_PRESETS.items():
             entries[name] = _builtin_to_entry(name, dict(preset))
 
-        # Custom presets overlay (names cannot collide with builtins)
         for (
             name,
             config_json,
@@ -157,9 +185,12 @@ class PersonalityPresetService:
             NotFoundError: If no preset with this name exists.
         """
         key = name.strip().lower()
+        if not key:
+            logger.warning(PRESET_NOT_FOUND, preset_name=name, reason="blank")
+            msg = f"Personality preset {name!r} not found"
+            raise NotFoundError(msg)
 
-        # Check custom first
-        row = await self._repo.get(NotBlankStr(key) if key else NotBlankStr("_"))
+        row = await self._repo.get(NotBlankStr(key))
         if row is not None:
             config_json, description, created_at, updated_at = row
             return PresetEntry(
@@ -171,10 +202,10 @@ class PersonalityPresetService:
                 updated_at=updated_at,
             )
 
-        # Check builtins
         if key in PERSONALITY_PRESETS:
             return _builtin_to_entry(key, dict(PERSONALITY_PRESETS[key]))
 
+        logger.warning(PRESET_NOT_FOUND, preset_name=key)
         msg = f"Personality preset {name!r} not found"
         raise NotFoundError(msg)
 
@@ -199,15 +230,24 @@ class PersonalityPresetService:
         key = _normalize_preset_name(name)
 
         if key in PERSONALITY_PRESETS:
+            logger.warning(
+                PRESET_CONFLICT,
+                preset_name=key,
+                reason="shadows_builtin",
+            )
             msg = (
                 f"Cannot create custom preset {key!r}: "
                 "name conflicts with a builtin preset"
             )
             raise ConflictError(msg)
 
-        # Check if custom preset already exists
         existing = await self._repo.get(NotBlankStr(key))
         if existing is not None:
+            logger.warning(
+                PRESET_CONFLICT,
+                preset_name=key,
+                reason="already_exists",
+            )
             msg = f"Custom preset {key!r} already exists"
             raise ConflictError(msg)
 
@@ -217,6 +257,7 @@ class PersonalityPresetService:
         now = datetime.now(UTC).isoformat()
 
         await self._repo.save(NotBlankStr(key), config_json, description, now, now)
+        logger.info(PRESET_CREATED, preset_name=key)
 
         return PresetEntry(
             name=NotBlankStr(key),
@@ -244,16 +285,26 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
-            ApiValidationError: If config is invalid.
+            ApiValidationError: If name or config is invalid.
         """
-        key = name.strip().lower()
+        key = _normalize_preset_name(name)
 
         if key in PERSONALITY_PRESETS:
+            logger.warning(
+                PRESET_CONFLICT,
+                preset_name=key,
+                reason="update_builtin",
+            )
             msg = f"Cannot update builtin preset {key!r}"
             raise ConflictError(msg)
 
         existing = await self._repo.get(NotBlankStr(key))
         if existing is None:
+            logger.warning(
+                PRESET_NOT_FOUND,
+                preset_name=key,
+                operation="update",
+            )
             msg = f"Custom preset {name!r} not found"
             raise NotFoundError(msg)
 
@@ -264,8 +315,13 @@ class PersonalityPresetService:
         now = datetime.now(UTC).isoformat()
 
         await self._repo.save(
-            NotBlankStr(key), config_json, description, created_at, now
+            NotBlankStr(key),
+            config_json,
+            description,
+            created_at,
+            now,
         )
+        logger.info(PRESET_UPDATED, preset_name=key)
 
         return PresetEntry(
             name=NotBlankStr(key),
@@ -285,17 +341,30 @@ class PersonalityPresetService:
         Raises:
             ConflictError: If name is a builtin preset.
             NotFoundError: If no custom preset with this name exists.
+            ApiValidationError: If name format is invalid.
         """
-        key = name.strip().lower()
+        key = _normalize_preset_name(name)
 
         if key in PERSONALITY_PRESETS:
+            logger.warning(
+                PRESET_CONFLICT,
+                preset_name=key,
+                reason="delete_builtin",
+            )
             msg = f"Cannot delete builtin preset {key!r}"
             raise ConflictError(msg)
 
         deleted = await self._repo.delete(NotBlankStr(key))
         if not deleted:
+            logger.warning(
+                PRESET_NOT_FOUND,
+                preset_name=key,
+                operation="delete",
+            )
             msg = f"Custom preset {name!r} not found"
             raise NotFoundError(msg)
+
+        logger.info(PRESET_DELETED, preset_name=key)
 
     @staticmethod
     def get_schema() -> dict[str, Any]:

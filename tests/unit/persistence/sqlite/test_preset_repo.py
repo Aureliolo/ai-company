@@ -5,6 +5,7 @@ import json
 import aiosqlite
 import pytest
 
+from synthorg.persistence.errors import QueryError
 from synthorg.persistence.sqlite.preset_repo import (
     SQLitePersonalityPresetRepository,
 )
@@ -158,3 +159,51 @@ class TestSQLitePersonalityPresetRepository:
             "2026-03-31T00:00:00+00:00",
         )
         assert await repo.count() == 2
+
+
+@pytest.fixture
+def unmigrated_repo(
+    memory_db: aiosqlite.Connection,
+) -> SQLitePersonalityPresetRepository:
+    return SQLitePersonalityPresetRepository(memory_db)
+
+
+@pytest.mark.unit
+class TestSQLitePersonalityPresetRepositoryErrors:
+    """QueryError propagation when table does not exist."""
+
+    async def test_save_raises_query_error(
+        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        with pytest.raises(QueryError):
+            await unmigrated_repo.save(
+                "x",
+                "{}",
+                "",
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            )
+
+    async def test_get_raises_query_error(
+        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        with pytest.raises(QueryError):
+            await unmigrated_repo.get("x")
+
+    async def test_list_all_raises_query_error(
+        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        with pytest.raises(QueryError):
+            await unmigrated_repo.list_all()
+
+    async def test_delete_raises_query_error(
+        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        with pytest.raises(QueryError):
+            await unmigrated_repo.delete("x")
+
+    async def test_count_raises_query_error(
+        self, unmigrated_repo: SQLitePersonalityPresetRepository
+    ) -> None:
+        with pytest.raises(QueryError):
+            await unmigrated_repo.count()
