@@ -18,15 +18,18 @@ from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.repositories import (
     AgentStateRepository,
+    ArtifactRepository,
     AuditRepository,
     CostRecordRepository,
     MessageRepository,
     ParkedContextRepository,
+    ProjectRepository,
     TaskRepository,
 )
 
 __all__ = [
     "AgentStateRepository",
+    "ArtifactRepository",
     "AuditRepository",
     "CostRecordRepository",
     "DuplicateRecordError",
@@ -37,6 +40,7 @@ __all__ = [
     "PersistenceConfig",
     "PersistenceConnectionError",
     "PersistenceError",
+    "ProjectRepository",
     "QueryError",
     "RecordNotFoundError",
     "SQLiteConfig",

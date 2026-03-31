@@ -37,6 +37,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 from tests.unit.api.fakes import (
+    FakeArtifactStorage,
     FakeMessageBus,
     FakePersistenceBackend,
 )
@@ -274,6 +275,7 @@ def test_client(  # noqa: PLR0913
         provider_health_tracker=provider_health_tracker,
         tool_invocation_tracker=tool_invocation_tracker,
         delegation_record_store=delegation_record_store,
+        artifact_storage=FakeArtifactStorage(),
     )
     with TestClient(app) as client:
         # Default: CEO token (most tests need write access)

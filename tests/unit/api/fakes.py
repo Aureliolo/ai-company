@@ -10,11 +10,15 @@ from synthorg.api.guards import HumanRole
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
+from synthorg.core.artifact import Artifact
 from synthorg.core.enums import (
     ApprovalRiskLevel,
+    ArtifactType,
     ExecutionStatus,
+    ProjectStatus,
     TaskStatus,
 )
+from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
@@ -397,6 +401,99 @@ class FakeHeartbeatRepository:
         return self._heartbeats.pop(execution_id, None) is not None
 
 
+class FakeArtifactRepository:
+    """In-memory artifact repository for tests."""
+
+    def __init__(self) -> None:
+        self._artifacts: dict[str, Artifact] = {}
+
+    async def save(self, artifact: Artifact) -> None:
+        self._artifacts[artifact.id] = artifact
+
+    async def get(self, artifact_id: str) -> Artifact | None:
+        return self._artifacts.get(artifact_id)
+
+    async def list_artifacts(
+        self,
+        *,
+        task_id: str | None = None,
+        created_by: str | None = None,
+        artifact_type: ArtifactType | None = None,
+    ) -> tuple[Artifact, ...]:
+        result = list(self._artifacts.values())
+        if task_id is not None:
+            result = [a for a in result if a.task_id == task_id]
+        if created_by is not None:
+            result = [a for a in result if a.created_by == created_by]
+        if artifact_type is not None:
+            result = [a for a in result if a.type == artifact_type]
+        return tuple(result)
+
+    async def delete(self, artifact_id: str) -> bool:
+        return self._artifacts.pop(artifact_id, None) is not None
+
+
+class FakeProjectRepository:
+    """In-memory project repository for tests."""
+
+    def __init__(self) -> None:
+        self._projects: dict[str, Project] = {}
+
+    async def save(self, project: Project) -> None:
+        self._projects[project.id] = project
+
+    async def get(self, project_id: str) -> Project | None:
+        return self._projects.get(project_id)
+
+    async def list_projects(
+        self,
+        *,
+        status: ProjectStatus | None = None,
+        lead: str | None = None,
+    ) -> tuple[Project, ...]:
+        result = list(self._projects.values())
+        if status is not None:
+            result = [p for p in result if p.status == status]
+        if lead is not None:
+            result = [p for p in result if p.lead == lead]
+        return tuple(result)
+
+    async def delete(self, project_id: str) -> bool:
+        return self._projects.pop(project_id, None) is not None
+
+
+class FakeArtifactStorage:
+    """In-memory artifact storage backend for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, bytes] = {}
+
+    @property
+    def backend_name(self) -> str:
+        return "fake"
+
+    async def store(self, artifact_id: str, content: bytes) -> int:
+        self._store[artifact_id] = content
+        return len(content)
+
+    async def retrieve(self, artifact_id: str) -> bytes:
+        if artifact_id not in self._store:
+            from synthorg.persistence.errors import RecordNotFoundError
+
+            msg = f"Artifact content not found: {artifact_id!r}"
+            raise RecordNotFoundError(msg)
+        return self._store[artifact_id]
+
+    async def delete(self, artifact_id: str) -> bool:
+        return self._store.pop(artifact_id, None) is not None
+
+    async def exists(self, artifact_id: str) -> bool:
+        return artifact_id in self._store
+
+    async def total_size(self) -> int:
+        return sum(len(v) for v in self._store.values())
+
+
 class FakeAgentStateRepository:
     """In-memory agent state repository for tests."""
 
@@ -421,6 +518,8 @@ class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
     def __init__(self) -> None:
+        self._artifacts = FakeArtifactRepository()
+        self._projects = FakeProjectRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -459,6 +558,14 @@ class FakePersistenceBackend:
     @property
     def backend_name(self) -> str:
         return "fake"
+
+    @property
+    def artifacts(self) -> FakeArtifactRepository:
+        return self._artifacts
+
+    @property
+    def projects(self) -> FakeProjectRepository:
+        return self._projects
 
     @property
     def tasks(self) -> FakeTaskRepository:

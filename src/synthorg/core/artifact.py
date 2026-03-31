@@ -61,6 +61,15 @@ class Artifact(BaseModel):
         default="",
         description="Human-readable description of the artifact",
     )
+    content_type: str = Field(
+        default="",
+        description="MIME content type (empty when no content stored)",
+    )
+    size_bytes: int = Field(
+        default=0,
+        ge=0,
+        description="Content size in bytes (zero when no content stored)",
+    )
     created_at: datetime | None = Field(
         default=None,
         description="Timestamp when the artifact was created",

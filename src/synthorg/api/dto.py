@@ -5,6 +5,7 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
+from datetime import datetime
 from typing import Self
 
 from pydantic import (
@@ -20,6 +21,7 @@ from synthorg.api.errors import ErrorCategory, ErrorCode  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.enums import (
     ApprovalRiskLevel,
+    ArtifactType,
     Complexity,
     Priority,
     TaskStatus,
@@ -212,6 +214,70 @@ class PaginatedResponse[T](BaseModel):
     def success(self) -> bool:
         """Whether the request succeeded (derived from ``error``)."""
         return self.error is None
+
+
+# ── Artifact request DTOs ──────────────────────────────────────
+
+
+class CreateArtifactRequest(BaseModel):
+    """Payload for creating a new artifact.
+
+    Attributes:
+        type: Artifact type (code, tests, documentation).
+        path: Logical file/directory path of the artifact.
+        task_id: ID of the originating task.
+        created_by: Agent ID of the creator.
+        description: Human-readable description.
+        content_type: MIME content type (empty if no content stored).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    type: ArtifactType
+    path: NotBlankStr = Field(max_length=1024)
+    task_id: NotBlankStr
+    created_by: NotBlankStr
+    description: str = Field(default="", max_length=4096)
+    content_type: str = Field(default="", max_length=256)
+
+
+# ── Project request DTOs ──────────────────────────────────────
+
+
+class CreateProjectRequest(BaseModel):
+    """Payload for creating a new project.
+
+    Attributes:
+        name: Project display name.
+        description: Detailed project description.
+        team: Agent IDs assigned to the project.
+        lead: Agent ID of the project lead.
+        deadline: Optional deadline (ISO 8601 string).
+        budget: Total budget in base currency.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(max_length=256)
+    description: str = Field(default="", max_length=4096)
+    team: tuple[NotBlankStr, ...] = ()
+    lead: NotBlankStr | None = None
+    deadline: str | None = None
+    budget: float = Field(default=0.0, ge=0.0)
+
+    @model_validator(mode="after")
+    def _validate_deadline_format(self) -> Self:
+        """Validate deadline is valid ISO 8601 if present."""
+        if self.deadline is not None:
+            if not self.deadline.strip():
+                msg = "deadline must not be whitespace-only"
+                raise ValueError(msg)
+            try:
+                datetime.fromisoformat(self.deadline)
+            except ValueError:
+                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
+                raise ValueError(msg) from None
+        return self
 
 
 # ── Task request DTOs ───────────────────────────────────────────
@@ -521,7 +587,9 @@ __all__ = [
     "CoordinationPhaseResponse",
     "CoordinationResultResponse",
     "CreateApprovalRequest",
+    "CreateArtifactRequest",
     "CreateFromPresetRequest",
+    "CreateProjectRequest",
     "CreateProviderRequest",
     "CreateTaskRequest",
     "DiscoverModelsResponse",

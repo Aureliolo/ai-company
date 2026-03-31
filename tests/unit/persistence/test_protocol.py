@@ -15,12 +15,14 @@ from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.repositories import (
     AgentStateRepository,
     ApiKeyRepository,
+    ArtifactRepository,
     AuditRepository,
     CheckpointRepository,
     CostRecordRepository,
     HeartbeatRepository,
     MessageRepository,
     ParkedContextRepository,
+    ProjectRepository,
     SettingsRepository,
     TaskRepository,
     UserRepository,
@@ -32,7 +34,14 @@ if TYPE_CHECKING:
     from synthorg.api.auth.models import ApiKey, User
     from synthorg.budget.cost_record import CostRecord
     from synthorg.communication.message import Message
-    from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
+    from synthorg.core.artifact import Artifact
+    from synthorg.core.enums import (
+        ApprovalRiskLevel,
+        ArtifactType,
+        ProjectStatus,
+        TaskStatus,
+    )
+    from synthorg.core.project import Project
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
@@ -285,6 +294,45 @@ class _FakeSettingsRepository:
         return 0
 
 
+class _FakeArtifactRepository:
+    async def save(self, artifact: Artifact) -> None:
+        pass
+
+    async def get(self, artifact_id: str) -> Artifact | None:
+        return None
+
+    async def list_artifacts(
+        self,
+        *,
+        task_id: str | None = None,
+        created_by: str | None = None,
+        artifact_type: ArtifactType | None = None,
+    ) -> tuple[Artifact, ...]:
+        return ()
+
+    async def delete(self, artifact_id: str) -> bool:
+        return False
+
+
+class _FakeProjectRepository:
+    async def save(self, project: Project) -> None:
+        pass
+
+    async def get(self, project_id: str) -> Project | None:
+        return None
+
+    async def list_projects(
+        self,
+        *,
+        status: ProjectStatus | None = None,
+        lead: str | None = None,
+    ) -> tuple[Project, ...]:
+        return ()
+
+    async def delete(self, project_id: str) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -362,6 +410,14 @@ class _FakeBackend:
     def settings(self) -> _FakeSettingsRepository:
         return _FakeSettingsRepository()
 
+    @property
+    def artifacts(self) -> _FakeArtifactRepository:
+        return _FakeArtifactRepository()
+
+    @property
+    def projects(self) -> _FakeProjectRepository:
+        return _FakeProjectRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -425,3 +481,9 @@ class TestProtocolCompliance:
 
     def test_fake_settings_repo_is_settings_repository(self) -> None:
         assert isinstance(_FakeSettingsRepository(), SettingsRepository)
+
+    def test_fake_artifact_repo_is_artifact_repository(self) -> None:
+        assert isinstance(_FakeArtifactRepository(), ArtifactRepository)
+
+    def test_fake_project_repo_is_project_repository(self) -> None:
+        assert isinstance(_FakeProjectRepository(), ProjectRepository)

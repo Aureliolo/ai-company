@@ -29,6 +29,9 @@ from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
+from synthorg.persistence.artifact_storage import (
+    ArtifactStorageBackend,  # noqa: TC001
+)
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
 from synthorg.providers.management.service import (
@@ -65,6 +68,7 @@ class AppState:
         "_agent_registry",
         "_approval_gate",
         "_approval_timeout_scheduler",
+        "_artifact_storage",
         "_auth_service",
         "_backup_service",
         "_config_resolver",
@@ -112,11 +116,13 @@ class AppState:
         provider_health_tracker: ProviderHealthTracker | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         delegation_record_store: DelegationRecordStore | None = None,
+        artifact_storage: ArtifactStorageBackend | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
         self.approval_store = approval_store
         self._approval_gate = approval_gate
+        self._artifact_storage = artifact_storage
         self._backup_service: BackupService | None = None
         self._persistence = persistence
         self._message_bus = message_bus
@@ -179,6 +185,16 @@ class AppState:
     def persistence(self) -> PersistenceBackend:
         """Return persistence backend or raise 503."""
         return self._require_service(self._persistence, "persistence")
+
+    @property
+    def has_artifact_storage(self) -> bool:
+        """Check whether the artifact storage backend is configured."""
+        return self._artifact_storage is not None
+
+    @property
+    def artifact_storage(self) -> ArtifactStorageBackend:
+        """Return artifact storage backend or raise 503."""
+        return self._require_service(self._artifact_storage, "artifact_storage")
 
     @property
     def has_message_bus(self) -> bool:

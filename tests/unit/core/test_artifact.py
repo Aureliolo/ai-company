@@ -84,7 +84,33 @@ class TestArtifact:
             created_by="sarah_chen",
         )
         assert artifact.description == ""
+        assert artifact.content_type == ""
+        assert artifact.size_bytes == 0
         assert artifact.created_at is None
+
+    def test_content_fields(self) -> None:
+        artifact = Artifact(
+            id="artifact-003",
+            type=ArtifactType.CODE,
+            path="src/main.py",
+            task_id="task-1",
+            created_by="agent-1",
+            content_type="text/x-python",
+            size_bytes=4096,
+        )
+        assert artifact.content_type == "text/x-python"
+        assert artifact.size_bytes == 4096
+
+    def test_negative_size_bytes_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Artifact(
+                id="artifact-1",
+                type=ArtifactType.CODE,
+                path="src/file.py",
+                task_id="task-1",
+                created_by="agent-1",
+                size_bytes=-1,
+            )
 
     def test_whitespace_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
@@ -186,10 +212,14 @@ class TestArtifact:
             task_id="task-123",
             created_by="agent-1",
             description="Auth tests",
+            content_type="application/zip",
+            size_bytes=2048,
             created_at=now,
         )
         json_str = artifact.model_dump_json()
         restored = Artifact.model_validate_json(json_str)
         assert restored.id == artifact.id
         assert restored.type is artifact.type
+        assert restored.content_type == "application/zip"
+        assert restored.size_bytes == 2048
         assert restored.created_at == artifact.created_at
