@@ -57,7 +57,7 @@ class UpdateSettingRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    value: str = Field(max_length=8192, description="New value as string")
+    value: str = Field(max_length=65536, description="New value as string")
 
 
 class TestSinkConfigRequest(BaseModel):

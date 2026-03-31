@@ -13,6 +13,7 @@ export function useSettingsKeyboard({
 }: UseSettingsKeyboardOptions): void {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.repeat) return
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
 

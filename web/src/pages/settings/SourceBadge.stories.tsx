@@ -22,7 +22,7 @@ export const AllSources: Story = {
       <SourceBadge source="db" />
       <SourceBadge source="env" />
       <SourceBadge source="yaml" />
-      {/* default renders nothing */}
+      {/* default and yaml render nothing */}
       <SourceBadge source="default" />
     </div>
   ),

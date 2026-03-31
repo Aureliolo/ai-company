@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -383,9 +382,12 @@ export default function SettingsPage() {
                           <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
                         </div>
                         <div className="w-56 shrink-0">
-                          <Button variant="outline" tabIndex={-1} className="w-full justify-center">
+                          <span
+                            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
+                            aria-hidden
+                          >
                             Open
-                          </Button>
+                          </span>
                         </div>
                       </Link>
                     ) : undefined}

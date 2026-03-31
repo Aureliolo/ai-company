@@ -148,10 +148,12 @@ export function NamespaceSection({
         <h2 className="text-sm font-semibold text-foreground">
           <button
             type="button"
-            onClick={() => { if (!forceOpen) setCollapsed((v) => !v) }}
+            onClick={() => setCollapsed((v) => !v)}
+            disabled={forceOpen}
             className={cn(
               'flex w-full items-center gap-3 p-card',
-              'text-left transition-colors hover:bg-card-hover',
+              'text-left transition-colors',
+              !forceOpen && 'hover:bg-card-hover',
             )}
             aria-expanded={isOpen}
             aria-controls={contentId}

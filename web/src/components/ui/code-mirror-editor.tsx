@@ -119,6 +119,8 @@ function getLanguageExtension(lang: 'json' | 'yaml'): Extension {
   return lang === 'json' ? json() : yaml()
 }
 
+const DEFAULT_EXTENSIONS: Extension[] = []
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ export function CodeMirrorEditor({
   readOnly = false,
   'aria-label': ariaLabel,
   className,
-  extensions: extraExtensions = [],
+  extensions: extraExtensions = DEFAULT_EXTENSIONS,
   onViewReady,
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)

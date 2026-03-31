@@ -16,6 +16,9 @@ function buildOverrideForSink(sink: SinkInfo): Record<string, unknown> {
   if (sink.rotation) {
     override.rotation = { strategy: sink.rotation.strategy, max_bytes: sink.rotation.max_bytes, backup_count: sink.rotation.backup_count }
   }
+  if (sink.routing_prefixes.length > 0) {
+    override.routing_prefixes = [...sink.routing_prefixes]
+  }
   return override
 }
 
@@ -39,9 +42,16 @@ export const useSinksStore = create<SinksState>((set, get) => ({
     set({ error: null })
     try {
       if (sink.is_default) {
-        const overrides: Record<string, unknown> = {}
-        overrides[sink.identifier] = buildOverrideForSink(sink)
-        await updateSetting('observability', 'sink_overrides', { value: JSON.stringify(overrides) })
+        // Merge with existing overrides instead of replacing all
+        let existingOverrides: Record<string, unknown> = {}
+        const settings = await getNamespaceSettings('observability')
+        const overrideEntry = settings.find((s) => s.definition.key === 'sink_overrides')
+        if (overrideEntry?.value) {
+          const parsed: unknown = JSON.parse(overrideEntry.value)
+          if (parsed && typeof parsed === 'object') existingOverrides = parsed as Record<string, unknown>
+        }
+        existingOverrides[sink.identifier] = buildOverrideForSink(sink)
+        await updateSetting('observability', 'sink_overrides', { value: JSON.stringify(existingOverrides) })
       } else {
         const custom: Record<string, unknown> = { file_path: sink.identifier, ...buildOverrideForSink(sink) }
         if (sink.routing_prefixes.length > 0) {
@@ -49,14 +59,12 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         }
         // Merge with existing custom sinks instead of overwriting
         let existing: Record<string, unknown>[] = []
-        try {
-          const settings = await getNamespaceSettings('observability')
-          const entry = settings.find((s) => s.definition.key === 'custom_sinks')
-          if (entry?.value) {
-            const parsed: unknown = JSON.parse(entry.value)
-            if (Array.isArray(parsed)) existing = parsed as Record<string, unknown>[]
-          }
-        } catch { /* proceed with empty */ }
+        const customSettings = await getNamespaceSettings('observability')
+        const customEntry = customSettings.find((s) => s.definition.key === 'custom_sinks')
+        if (customEntry?.value) {
+          const parsed: unknown = JSON.parse(customEntry.value)
+          if (Array.isArray(parsed)) existing = parsed as Record<string, unknown>[]
+        }
         const merged = existing.filter((s) => s.file_path !== sink.identifier)
         merged.push(custom)
         await updateSetting('observability', 'custom_sinks', { value: JSON.stringify(merged) })

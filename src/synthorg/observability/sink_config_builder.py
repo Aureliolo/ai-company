@@ -320,6 +320,7 @@ def _build_custom_sink(
             f"got {raw_path!r}"
         )
         raise ValueError(msg)
+    normalized_path = raw_path.strip()
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
 
     json_format = True
@@ -339,7 +340,7 @@ def _build_custom_sink(
     return SinkConfig(
         sink_type=SinkType.FILE,
         level=level,
-        file_path=raw_path,
+        file_path=normalized_path,
         rotation=rotation,
         json_format=json_format,
     )
