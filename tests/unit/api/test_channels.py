@@ -42,3 +42,5 @@ class TestChannels:
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()
         assert plugin is not None
+        assert plugin._arbitrary_channels_allowed is False
+        assert set(plugin._channels) == set(ALL_CHANNELS)

@@ -79,7 +79,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       }
 
       const partialErrors: string[] = []
-      if (tasksResult.status === 'rejected') partialErrors.push('tasks')
+      if (tasksResult.status === 'rejected') partialErrors.push(`tasks: ${getErrorMessage(tasksResult.reason)}`)
 
       set({
         selectedProject: project,
@@ -102,8 +102,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       projects: [project, ...state.projects],
       totalProjects: state.totalProjects + 1,
     }))
-    // Background refresh for consistency with server state
-    useProjectsStore.getState().fetchProjects()
+    // Polling and WS events will reconcile with server state.
     return project
   },
 

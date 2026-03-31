@@ -39,6 +39,9 @@ class Artifact(BaseModel):
         task_id: ID of the task that produced this artifact.
         created_by: Agent ID of the creator.
         description: Human-readable description of the artifact.
+        content_type: MIME content type (empty when no content stored).
+        size_bytes: Content size in bytes (zero when no content stored).
+        project_id: ID of the project this artifact belongs to.
         created_at: Timestamp when the artifact was created.
     """
 
@@ -58,6 +61,10 @@ class Artifact(BaseModel):
     description: str = Field(
         default="",
         description="Human-readable description of the artifact",
+    )
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="ID of the project this artifact belongs to",
     )
     content_type: str = Field(
         default="",

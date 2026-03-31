@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (20 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (22 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
 
@@ -85,6 +85,45 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 **API endpoints**: `GET /agents`, `GET /agents/{name}`, `GET /agents/{name}/performance`, `GET /agents/{name}/activity`, `GET /agents/{name}/history`
 **WS channels**: `agents`, `tasks` (detail page)
+
+#### Projects (`/projects`)
+
+Project list with card grid, search, and status filter. "Create Project" button opens a slide-in drawer with name, description, team (tag input), lead, deadline, and budget fields. Each card shows status badge, description, task count, budget, team size, and deadline.
+
+Detail page (`/projects/{projectId}`) shows project header with status badge and key metrics, team section with avatar grid and lead badge, and a linked task list with status indicators.
+
+**Features**:
+
+- **Card grid**: responsive 3/2/1 column layout with hover effects, stagger animation
+- **Search**: client-side filtering by name, description, and ID
+- **Status filter**: dropdown filtering by project status (planning, active, on_hold, completed, cancelled)
+- **Create drawer**: 6-field form with validation, optimistic state update
+- **Team section**: avatar grid with links to agent detail pages, lead badge
+- **Task list**: linked tasks with status indicators and assignee display
+
+**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`
+**WS channels**: `projects`, `tasks`
+
+#### Artifacts (`/artifacts`)
+
+Artifact list with card grid, search, and filters for type, content type, agent, task, and project. Each card shows path, type badge, content type badge, file size, creation time, and creator.
+
+Detail page (`/artifacts/{artifactId}`) shows metadata grid (type, size, content type, path, task, creator, project), inline content preview (text via CodeMirror with syntax highlighting, images as blob URLs), download button, and delete with confirmation dialog.
+
+**Features**:
+
+- **Card grid**: responsive 3/2/1 column layout with hover effects, stagger animation
+- **Search**: client-side filtering by path, description, and ID
+- **Type filter**: dropdown for artifact type (code, tests, documentation)
+- **Content type filter**: dropdown for MIME type prefix (text, image, JSON, PDF, application)
+- **Agent/task/project filters**: text inputs for filtering by creator, task ID, and project ID
+- **Content preview**: text content in CodeMirror (JSON/YAML syntax highlighting), image content as inline preview, other types show "Preview not available" with download action
+- **File size display**: human-readable size on cards and detail page, "No content" for 0 bytes
+- **Download**: blob download with filename derived from artifact path
+- **Delete**: confirmation dialog, toast notification, redirect to list
+
+**API endpoints**: `GET /artifacts`, `GET /artifacts/{id}`, `POST /artifacts`, `DELETE /artifacts/{id}`, `GET /artifacts/{id}/content`, `PUT /artifacts/{id}/content`
+**WS channels**: `artifacts`
 
 #### Messages (`/messages`)
 

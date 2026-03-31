@@ -278,6 +278,7 @@ export function makeArtifact(id: string, overrides?: Partial<Artifact>): Artifac
     task_id: 'task-001',
     created_by: 'agent-eng',
     description: `Artifact ${id}`,
+    project_id: null,
     content_type: 'text/plain',
     size_bytes: 1024,
     created_at: '2026-03-30T12:00:00Z',

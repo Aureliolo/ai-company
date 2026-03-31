@@ -93,15 +93,37 @@ describe('useProjectsStore', () => {
   })
 
   describe('createProject', () => {
-    it('calls API and refreshes list', async () => {
+    it('calls API and optimistically adds to state', async () => {
       const project = makeProject('proj-new')
       vi.mocked(createProject).mockResolvedValue(project)
-      vi.mocked(listProjects).mockResolvedValue({ data: [project], total: 1, offset: 0, limit: 200 })
 
       const result = await useProjectsStore.getState().createProject({ name: 'New Project' })
 
       expect(result).toEqual(project)
       expect(createProject).toHaveBeenCalledWith({ name: 'New Project' })
+
+      const state = useProjectsStore.getState()
+      expect(state.projects).toContainEqual(project)
+      expect(state.totalProjects).toBe(1)
+    })
+
+    it('propagates error without modifying state', async () => {
+      vi.mocked(createProject).mockRejectedValue(new Error('Create failed'))
+
+      await expect(useProjectsStore.getState().createProject({ name: 'Fail' })).rejects.toThrow('Create failed')
+
+      expect(useProjectsStore.getState().projects).toEqual([])
+      expect(useProjectsStore.getState().totalProjects).toBe(0)
+    })
+  })
+
+  describe('updateFromWsEvent', () => {
+    it('triggers fetchProjects', async () => {
+      vi.mocked(listProjects).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+
+      useProjectsStore.getState().updateFromWsEvent({} as never)
+
+      expect(listProjects).toHaveBeenCalled()
     })
   })
 

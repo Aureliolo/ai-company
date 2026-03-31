@@ -229,6 +229,7 @@ class CreateArtifactRequest(BaseModel):
         created_by: Agent ID of the creator.
         description: Human-readable description.
         content_type: MIME content type (empty if no content stored).
+        project_id: Optional project ID to link the artifact to.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -239,6 +240,7 @@ class CreateArtifactRequest(BaseModel):
     created_by: NotBlankStr
     description: str = Field(default="", max_length=4096)
     content_type: str = Field(default="", max_length=256)
+    project_id: NotBlankStr | None = None
 
 
 # ── Project request DTOs ──────────────────────────────────────

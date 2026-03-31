@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { downloadArtifactContent } from '@/api/endpoints/artifacts'
-import { useToastStore } from '@/stores/toast'
+import { downloadArtifactFile } from '@/utils/download'
 import { getErrorMessage } from '@/utils/errors'
 import type { Artifact } from '@/api/types'
 
@@ -14,9 +15,11 @@ interface ArtifactContentPreviewProps {
 }
 
 function getLanguage(contentType: string): 'json' | 'yaml' {
-  if (contentType === 'application/json') return 'json'
-  if (contentType === 'application/x-yaml' || contentType === 'text/yaml') return 'yaml'
-  // Default to JSON for syntax highlighting even for plain text
+  const lower = contentType.toLowerCase()
+  if (lower === 'application/json') return 'json'
+  if (lower === 'application/x-yaml' || lower === 'text/yaml') return 'yaml'
+  // Falls back to JSON mode for non-JSON/non-YAML text types.
+  // Plain text may show minor syntax coloring.
   return 'json'
 }
 
@@ -27,7 +30,8 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   const [imageError, setImageError] = useState<string | null>(null)
   const imageSrcRef = useRef<string | null>(null)
 
-  const isImage = artifact.content_type?.startsWith('image/')
+  // Exclude SVG -- it is an XML document with JavaScript execution capability (XSS risk).
+  const isImage = artifact.content_type?.startsWith('image/') && artifact.content_type !== 'image/svg+xml'
   const isText = contentPreview !== null
 
   // Load image as blob URL for image content types
@@ -68,24 +72,8 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
     )
   }
 
-  async function handleDownload() {
-    try {
-      const blob = await downloadArtifactContent(artifact.id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = artifact.path.split('/').pop() ?? artifact.id
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Download failed',
-        description: getErrorMessage(err),
-      })
-    }
+  function handleDownload() {
+    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
   }
 
   if (isText) {
@@ -110,6 +98,14 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
           description={imageError}
           action={{ label: 'Download', onClick: handleDownload }}
         />
+      </SectionCard>
+    )
+  }
+
+  if (isImage && !imageSrc && !imageError) {
+    return (
+      <SectionCard title="Content Preview">
+        <Skeleton className="h-48 w-full rounded-md" />
       </SectionCard>
     )
   }

@@ -20,6 +20,8 @@ interface ArtifactsState {
   typeFilter: ArtifactType | null
   createdByFilter: string | null
   taskIdFilter: string | null
+  contentTypeFilter: string | null
+  projectIdFilter: string | null
 
   // Detail page
   selectedArtifact: Artifact | null
@@ -35,6 +37,8 @@ interface ArtifactsState {
   setTypeFilter: (t: ArtifactType | null) => void
   setCreatedByFilter: (c: string | null) => void
   setTaskIdFilter: (t: string | null) => void
+  setContentTypeFilter: (ct: string | null) => void
+  setProjectIdFilter: (p: string | null) => void
   clearDetail: () => void
   updateFromWsEvent: (event: WsEvent) => void
 }
@@ -51,6 +55,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   typeFilter: null,
   createdByFilter: null,
   taskIdFilter: null,
+  contentTypeFilter: null,
+  projectIdFilter: null,
 
   selectedArtifact: null,
   contentPreview: null,
@@ -79,8 +85,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
       if (artifact.content_type && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
         try {
           preview = await getArtifactContentText(id)
-        } catch {
-          partialErrors.push('content preview')
+        } catch (err) {
+          partialErrors.push(`content preview: ${getErrorMessage(err)}`)
         }
       }
 
@@ -111,6 +117,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   setTypeFilter: (t) => set({ typeFilter: t }),
   setCreatedByFilter: (c) => set({ createdByFilter: c }),
   setTaskIdFilter: (t) => set({ taskIdFilter: t }),
+  setContentTypeFilter: (ct) => set({ contentTypeFilter: ct }),
+  setProjectIdFilter: (p) => set({ projectIdFilter: p }),
 
   clearDetail: () => {
     _detailRequestId = ''

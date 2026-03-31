@@ -25,7 +25,7 @@ class Project(BaseModel):
         lead: Agent ID of the project lead.
         task_ids: IDs of tasks belonging to this project.
         deadline: Optional deadline (ISO 8601 string or ``None``).
-        budget: Total budget for the project in USD (base currency).
+        budget: Total budget in base currency (configurable, defaults to EUR).
         status: Current project status.
     """
 
@@ -56,7 +56,7 @@ class Project(BaseModel):
     budget: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total budget for the project in USD (base currency)",
+        description="Total budget in base currency (configurable, defaults to EUR)",
     )
     status: ProjectStatus = Field(
         default=ProjectStatus.PLANNING,

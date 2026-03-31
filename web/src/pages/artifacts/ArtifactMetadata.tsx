@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useArtifactsStore } from '@/stores/artifacts'
 import { useToastStore } from '@/stores/toast'
-import { downloadArtifactContent } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
+import { downloadArtifactFile } from '@/utils/download'
 import { formatFileSize, formatDate, formatLabel } from '@/utils/format'
 import { ROUTES } from '@/router/routes'
 import type { Artifact } from '@/api/types'
@@ -38,24 +38,8 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
     { label: 'Created', value: formatDate(artifact.created_at) },
   ]
 
-  async function handleDownload() {
-    try {
-      const blob = await downloadArtifactContent(artifact.id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = artifact.path.split('/').pop() ?? artifact.id
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Download failed',
-        description: getErrorMessage(err),
-      })
-    }
+  function handleDownload() {
+    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
   }
 
   async function handleDelete() {

@@ -1,4 +1,4 @@
-"""Artifact controller -- CRUD endpoints for artifact management."""
+"""Artifact controller -- endpoints for artifact management, storage, and retrieval."""
 
 import uuid
 from datetime import UTC, datetime
@@ -9,17 +9,16 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, Parameter
 
-from synthorg.api.channels import CHANNEL_ARTIFACTS, get_channels_plugin
+from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
 from synthorg.core.enums import ArtifactType
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_WS_SEND_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
     PERSISTENCE_ARTIFACT_DELETED,
@@ -39,43 +38,6 @@ from synthorg.persistence.errors import (
 logger = get_logger(__name__)
 
 
-def _publish_artifact_event(
-    request: Request[Any, Any, Any],
-    event_type: WsEventType,
-    payload: dict[str, object],
-) -> None:
-    """Best-effort publish an artifact event to the artifacts channel."""
-    channels_plugin = get_channels_plugin(request)
-    if channels_plugin is None:
-        logger.warning(
-            API_WS_SEND_FAILED,
-            note="ChannelsPlugin not available, dropping artifact WS event",
-            event_type=event_type.value,
-        )
-        return
-
-    event = WsEvent(
-        event_type=event_type,
-        channel=CHANNEL_ARTIFACTS,
-        timestamp=datetime.now(UTC),
-        payload=payload,
-    )
-    try:
-        channels_plugin.publish(
-            event.model_dump_json(),
-            channels=[CHANNEL_ARTIFACTS],
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            API_WS_SEND_FAILED,
-            event_type=event_type.value,
-            note="Failed to publish artifact WS event",
-            exc_info=True,
-        )
-
-
 _SAFE_CONTENT_TYPES = frozenset(
     {
         "application/octet-stream",
@@ -88,7 +50,8 @@ _SAFE_CONTENT_TYPES = frozenset(
         "image/png",
         "image/jpeg",
         "image/gif",
-        "image/svg+xml",
+        # image/svg+xml intentionally excluded -- SVG is an XML document
+        # with full JavaScript execution capability (XSS risk).
         "image/webp",
         "text/plain",
         "text/csv",
@@ -126,8 +89,45 @@ TypeFilter = Annotated[
 ]
 
 
+async def _save_metadata_with_rollback(
+    repo: Any,
+    storage: Any,
+    artifact_id: str,
+    updated: Artifact,
+) -> None:
+    """Save updated artifact metadata, rolling back storage on failure.
+
+    Args:
+        repo: Artifact persistence repository.
+        storage: Artifact content storage backend.
+        artifact_id: Artifact identifier.
+        updated: Updated artifact model.
+
+    Raises:
+        PersistenceError: If the metadata save fails (after rollback attempt).
+    """
+    try:
+        await repo.save(updated)
+    except PersistenceError as exc:
+        logger.warning(
+            PERSISTENCE_ARTIFACT_SAVE_FAILED,
+            artifact_id=artifact_id,
+            error=str(exc),
+            note="metadata save failed, rolling back content",
+        )
+        try:
+            await storage.delete(artifact_id)
+        except Exception as cleanup_exc:
+            logger.warning(
+                PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
+                artifact_id=artifact_id,
+                error=str(cleanup_exc),
+            )
+        raise
+
+
 class ArtifactController(Controller):
-    """CRUD controller for artifact management."""
+    """Controller for artifact listing, creation, deletion, and content storage."""
 
     path = "/artifacts"
     tags = ("artifacts",)
@@ -233,14 +233,16 @@ class ArtifactController(Controller):
             created_by=data.created_by,
             description=data.description,
             content_type=data.content_type,
+            project_id=data.project_id,
             created_at=datetime.now(UTC),
         )
         repo = state.app_state.persistence.artifacts
         await repo.save(artifact)
         logger.info(PERSISTENCE_ARTIFACT_SAVED, artifact_id=artifact.id)
-        _publish_artifact_event(
+        publish_ws_event(
             request,
             WsEventType.ARTIFACT_CREATED,
+            CHANNEL_ARTIFACTS,
             {
                 "artifact_id": artifact.id,
                 "task_id": artifact.task_id,
@@ -297,9 +299,10 @@ class ArtifactController(Controller):
             )
         await repo.delete(artifact_id)
         logger.info(PERSISTENCE_ARTIFACT_DELETED, artifact_id=artifact_id)
-        _publish_artifact_event(
+        publish_ws_event(
             request,
             WsEventType.ARTIFACT_DELETED,
+            CHANNEL_ARTIFACTS,
             {"artifact_id": artifact_id, "task_id": artifact.task_id},
         )
         return Response(
@@ -369,32 +372,16 @@ class ArtifactController(Controller):
                 "content_type": (artifact.content_type or "application/octet-stream"),
             },
         )
-        try:
-            await repo.save(updated)
-        except PersistenceError as exc:
-            logger.warning(
-                PERSISTENCE_ARTIFACT_SAVE_FAILED,
-                artifact_id=artifact_id,
-                error=str(exc),
-                note="metadata save failed, rolling back content",
-            )
-            try:
-                await storage.delete(artifact_id)
-            except Exception as cleanup_exc:
-                logger.warning(
-                    PERSISTENCE_ARTIFACT_STORAGE_ROLLBACK_FAILED,
-                    artifact_id=artifact_id,
-                    error=str(cleanup_exc),
-                )
-            raise
+        await _save_metadata_with_rollback(repo, storage, artifact_id, updated)
         logger.info(
             PERSISTENCE_ARTIFACT_STORED,
             artifact_id=artifact_id,
             size_bytes=size,
         )
-        _publish_artifact_event(
+        publish_ws_event(
             request,
             WsEventType.ARTIFACT_CONTENT_UPLOADED,
+            CHANNEL_ARTIFACTS,
             {
                 "artifact_id": artifact_id,
                 "size_bytes": size,

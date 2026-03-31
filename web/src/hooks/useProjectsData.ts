@@ -39,7 +39,7 @@ export function useProjectsData(): UseProjectsDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable (memoized by usePolling)
   }, [])
 
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)

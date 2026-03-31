@@ -27,6 +27,8 @@ export function useArtifactsData(): UseArtifactsDataReturn {
   const typeFilter = useArtifactsStore((s) => s.typeFilter)
   const createdByFilter = useArtifactsStore((s) => s.createdByFilter)
   const taskIdFilter = useArtifactsStore((s) => s.taskIdFilter)
+  const contentTypeFilter = useArtifactsStore((s) => s.contentTypeFilter)
+  const projectIdFilter = useArtifactsStore((s) => s.projectIdFilter)
 
   useEffect(() => {
     useArtifactsStore.getState().fetchArtifacts()
@@ -40,7 +42,7 @@ export function useArtifactsData(): UseArtifactsDataReturn {
   useEffect(() => {
     polling.start()
     return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- polling object is stable (memoized by usePolling)
   }, [])
 
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,8 +80,10 @@ export function useArtifactsData(): UseArtifactsDataReturn {
     if (typeFilter) result = result.filter((a) => a.type === typeFilter)
     if (createdByFilter) result = result.filter((a) => a.created_by === createdByFilter)
     if (taskIdFilter) result = result.filter((a) => a.task_id === taskIdFilter)
+    if (contentTypeFilter) result = result.filter((a) => a.content_type.startsWith(contentTypeFilter))
+    if (projectIdFilter) result = result.filter((a) => a.project_id === projectIdFilter)
     return result
-  }, [artifacts, searchQuery, typeFilter, createdByFilter, taskIdFilter])
+  }, [artifacts, searchQuery, typeFilter, createdByFilter, taskIdFilter, contentTypeFilter, projectIdFilter])
 
   return { artifacts, filteredArtifacts, totalArtifacts, loading, error, wsConnected, wsSetupError }
 }

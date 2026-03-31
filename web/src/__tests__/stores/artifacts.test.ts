@@ -22,6 +22,8 @@ describe('useArtifactsStore', () => {
       typeFilter: null,
       createdByFilter: null,
       taskIdFilter: null,
+      contentTypeFilter: null,
+      projectIdFilter: null,
       selectedArtifact: null,
       contentPreview: null,
       detailLoading: false,
@@ -85,6 +87,27 @@ describe('useArtifactsStore', () => {
 
       expect(useArtifactsStore.getState().artifacts).toEqual([a2])
       expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
+    })
+
+    it('propagates error without modifying list', async () => {
+      const a1 = makeArtifact('artifact-001')
+      useArtifactsStore.setState({ artifacts: [a1], totalArtifacts: 1 })
+      vi.mocked(deleteArtifact).mockRejectedValue(new Error('Delete failed'))
+
+      await expect(useArtifactsStore.getState().deleteArtifact('artifact-001')).rejects.toThrow('Delete failed')
+
+      expect(useArtifactsStore.getState().artifacts).toEqual([a1])
+      expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
+    })
+  })
+
+  describe('updateFromWsEvent', () => {
+    it('triggers fetchArtifacts', async () => {
+      vi.mocked(listArtifacts).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+
+      useArtifactsStore.getState().updateFromWsEvent({} as never)
+
+      expect(listArtifacts).toHaveBeenCalled()
     })
   })
 
