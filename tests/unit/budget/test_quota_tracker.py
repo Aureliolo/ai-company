@@ -570,6 +570,17 @@ class TestPeekQuotaAvailable:
             result = tracker.peek_quota_available()
         assert result == {"test-provider": False}
 
+    async def test_token_exact_cap_shows_unavailable(self) -> None:
+        """Provider at exactly the token limit shows as unavailable (zero headroom)."""
+        with _patched_tracker_datetime():
+            tracker = _make_tracker(
+                provider="test-provider",
+                quotas=(_day_token_quota(1000),),
+            )
+            await tracker.record_usage("test-provider", tokens=1000)
+            result = tracker.peek_quota_available()
+        assert result == {"test-provider": False}
+
     async def test_provider_without_quotas_not_included(self) -> None:
         """Providers with no quota limits are excluded from the result."""
         sub = SubscriptionConfig()  # No quotas

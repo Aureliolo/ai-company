@@ -28,6 +28,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
     QUOTA_CHECK_DENIED,
+    QUOTA_LOOP_AFFINITY_VIOLATED,
     QUOTA_SNAPSHOT_QUERIED,
     QUOTA_TRACKER_CREATED,
     QUOTA_USAGE_RECORDED,
@@ -113,6 +114,12 @@ class QuotaTracker:
             # No running event loop.  If _loop is set, async methods
             # have been used and the caller is likely in a thread.
             if self._loop is not None:
+                logger.warning(
+                    QUOTA_LOOP_AFFINITY_VIOLATED,
+                    owning_loop=repr(self._loop),
+                    current_loop=None,
+                    reason="no_running_loop_after_async_usage",
+                )
                 msg = (
                     "peek_quota_available must be called from the "
                     "tracker's owning event loop, not from a thread"
@@ -120,6 +127,12 @@ class QuotaTracker:
                 raise RuntimeError(msg) from None
         else:
             if self._loop is not None and current_loop is not self._loop:
+                logger.error(
+                    QUOTA_LOOP_AFFINITY_VIOLATED,
+                    owning_loop=repr(self._loop),
+                    current_loop=repr(current_loop),
+                    reason="wrong_event_loop",
+                )
                 msg = (
                     "peek_quota_available must be called from the "
                     "tracker's owning event loop"
@@ -457,7 +470,9 @@ class QuotaTracker:
                 quota = quota_map.get(window_type)
                 if quota is None:
                     continue
-                if _is_window_exhausted(usage, quota, estimated_tokens=0):
+                # Use estimated_tokens=1 so providers at exactly the
+                # token cap are treated as exhausted (zero headroom).
+                if _is_window_exhausted(usage, quota, estimated_tokens=1):
                     exhausted = True
                     break
 
