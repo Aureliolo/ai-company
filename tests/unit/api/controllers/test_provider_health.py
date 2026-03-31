@@ -282,7 +282,7 @@ class TestProviderHealthUsageEnrichment:
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["total_tokens_24h"] == 6500  # 3000+1000+2000+500
-            assert data["total_cost_24h"] == 0.40
+            assert data["total_cost_24h"] == pytest.approx(0.40, abs=1e-9)
 
     async def test_health_excludes_other_provider_costs(
         self,

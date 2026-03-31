@@ -1379,10 +1379,12 @@ export interface SinkRotation {
   backup_count: number
 }
 
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL'
+
 export interface SinkInfo {
   identifier: string
   sink_type: 'console' | 'file'
-  level: string
+  level: LogLevel
   json_format: boolean
   rotation: SinkRotation | null
   is_default: boolean

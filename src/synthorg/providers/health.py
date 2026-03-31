@@ -64,7 +64,7 @@ class ProviderHealthRecord(BaseModel):
         ge=0.0,
         description="Response time in milliseconds",
     )
-    error_message: str | None = Field(
+    error_message: NotBlankStr | None = Field(
         default=None,
         max_length=1024,
         description="Error description when success is False",
@@ -137,6 +137,14 @@ class ProviderHealthSummary(BaseModel):
         description="Total cost in the last 24h",
     )
 
+    @model_validator(mode="after")
+    def _validate_zero_calls_consistency(self) -> Self:
+        """Ensure zero calls implies no average response time."""
+        if self.calls_last_24h == 0 and self.avg_response_time_ms is not None:
+            msg = "avg_response_time_ms must be None when calls_last_24h is 0"
+            raise ValueError(msg)
+        return self
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def health_status(self) -> ProviderHealthStatus:
@@ -158,7 +166,15 @@ def _derive_health_status(error_rate: float) -> ProviderHealthStatus:
 def _aggregate_records(
     records: list[ProviderHealthRecord],
 ) -> ProviderHealthSummary:
-    """Aggregate a list of health records into a summary."""
+    """Aggregate a non-empty list of health records into a summary.
+
+    Args:
+        records: Non-empty list of health records (ZeroDivisionError
+            if empty -- callers must pre-check).
+
+    Returns:
+        Aggregated health summary.
+    """
     total = len(records)
     errors = sum(1 for r in records if not r.success)
     error_rate = round(errors / total * 100, 2)
@@ -312,6 +328,9 @@ class ProviderHealthTracker:
         Args:
             now: Reference time for auto-prune cutoff.  Defaults to
                 current UTC time.
+
+        Returns:
+            Immutable tuple of all current health records.
         """
         async with self._lock:
             if len(self._records) > self._auto_prune_threshold:

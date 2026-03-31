@@ -7,7 +7,7 @@ function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {
     identifier: 'synthorg.log',
     sink_type: 'file',
-    level: 'info',
+    level: 'INFO',
     json_format: true,
     rotation: { strategy: 'rotating', max_bytes: 10_485_760, backup_count: 5 },
     is_default: true,
@@ -28,8 +28,8 @@ describe('SinkCard', () => {
   })
 
   it('renders level badge', () => {
-    render(<SinkCard sink={makeSink({ level: 'warning' })} onEdit={vi.fn()} />)
-    expect(screen.getByText('warning')).toBeInTheDocument()
+    render(<SinkCard sink={makeSink({ level: 'WARNING' })} onEdit={vi.fn()} />)
+    expect(screen.getByText('WARNING')).toBeInTheDocument()
   })
 
   it('renders format as JSON', () => {

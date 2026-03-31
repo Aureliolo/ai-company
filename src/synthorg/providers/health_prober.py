@@ -231,7 +231,34 @@ class ProviderHealthProber:
         if eligible:
             async with asyncio.TaskGroup() as tg:
                 for name, config in eligible:
-                    tg.create_task(self._probe_one(name, config))
+                    tg.create_task(self._safe_probe_one(name, config))
+
+    async def _safe_probe_one(
+        self,
+        name: str,
+        config: ProviderConfig,
+    ) -> None:
+        """Probe a single provider, isolating failures from peers.
+
+        Wraps ``_probe_one`` so that an unexpected error (e.g.
+        Pydantic validation failure in record construction) does
+        not cancel sibling probes in the ``TaskGroup``.
+
+        Args:
+            name: Provider name.
+            config: Provider configuration.
+        """
+        try:
+            await self._probe_one(name, config)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PROVIDER_HEALTH_PROBE_FAILED,
+                provider=name,
+                error="Unexpected error during probe",
+                exc_info=True,
+            )
 
     async def _probe_one(
         self,
@@ -247,8 +274,7 @@ class ProviderHealthProber:
         # base_url is guaranteed non-None: _probe_all filters out
         # providers without it before calling _probe_one.
         url = _build_ping_url(config.base_url, config.litellm_provider)  # type: ignore[arg-type]
-        raw_auth = config.auth_type
-        auth_type = raw_auth.value if hasattr(raw_auth, "value") else str(raw_auth)
+        auth_type = str(config.auth_type)
         headers = _build_auth_headers(auth_type, config.api_key)
 
         logger.debug(PROVIDER_HEALTH_PROBE_STARTED, provider=name)

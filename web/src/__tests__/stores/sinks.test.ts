@@ -12,7 +12,7 @@ function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
   return {
     identifier: '__console__',
     sink_type: 'console',
-    level: 'info',
+    level: 'INFO',
     json_format: false,
     rotation: null,
     is_default: true,

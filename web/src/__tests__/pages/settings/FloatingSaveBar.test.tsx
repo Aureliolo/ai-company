@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingSaveBar } from '@/pages/settings/FloatingSaveBar'
 
@@ -56,8 +56,9 @@ describe('FloatingSaveBar', () => {
 
     // Open discard dialog
     await user.click(screen.getByRole('button', { name: /discard/i }))
-    // Confirm discard in the ConfirmDialog (confirmLabel is "Discard")
-    await user.click(screen.getByRole('button', { name: /^discard$/i }))
+    // Confirm discard in the ConfirmDialog (scope to dialog to avoid ambiguity)
+    const dialog = screen.getByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /^discard$/i }))
     expect(onDiscard).toHaveBeenCalledOnce()
   })
 

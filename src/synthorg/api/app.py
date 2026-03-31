@@ -41,7 +41,12 @@ from synthorg.api.channels import (
 from synthorg.api.controllers import ALL_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
-from synthorg.api.lifecycle import _safe_shutdown, _safe_startup, _try_stop
+from synthorg.api.lifecycle import (
+    _maybe_start_health_prober,
+    _safe_shutdown,
+    _safe_startup,
+    _try_stop,
+)
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
@@ -80,7 +85,7 @@ from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
-from synthorg.providers.health_prober import ProviderHealthProber
+from synthorg.providers.health_prober import ProviderHealthProber  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
@@ -263,34 +268,6 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
             error="Agent bootstrap failed at startup (non-fatal)",
             exc_info=True,
         )
-
-
-async def _maybe_start_health_prober(
-    app_state: AppState,
-) -> ProviderHealthProber | None:
-    """Start the health prober if provider tracking is available.
-
-    Args:
-        app_state: Application state with tracker and resolver.
-
-    Returns:
-        The started prober instance, or None if preconditions are
-        not met.
-    """
-    if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
-        return None
-    policy_loader = (
-        app_state.provider_management.get_discovery_policy
-        if app_state.has_provider_management
-        else None
-    )
-    prober = ProviderHealthProber(
-        health_tracker=app_state.provider_health_tracker,
-        config_resolver=app_state.config_resolver,
-        discovery_policy_loader=policy_loader,
-    )
-    await prober.start()
-    return prober
 
 
 def _build_lifecycle(  # noqa: PLR0913, C901

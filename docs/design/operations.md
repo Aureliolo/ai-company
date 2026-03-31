@@ -1184,7 +1184,7 @@ For the full page list, navigation hierarchy, URL routing map, and WebSocket cha
 
 **Secondary navigation** (sidebar, collapsible "Workspace" section):
 
-- **Agents** (`/agents`): Agent profile cards/table. Click opens Agent Detail slide-in panel with tabs: Overview, Performance (collaboration score), Access (autonomy level), Activity (tasks, spending)
+- **Agents** (`/agents`): Agent profile cards/table. Click navigates to Agent Detail page (`/agents/{agentName}`) -- single scrollable page with identity header, prose insights, performance metrics, tool badges, career timeline, task history, and activity log
 - **Messages** (`/messages`): Channel-filtered agent-to-agent communication feed for investigating delegation chains and coordination
 - **Meetings** (`/meetings`): Meeting history, transcripts, outcomes. Trigger meeting action
 - **Providers** (`/providers`): LLM provider CRUD, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`). Provider routing settings alongside CRUD cards

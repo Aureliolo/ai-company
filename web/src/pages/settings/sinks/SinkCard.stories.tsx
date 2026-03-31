@@ -14,7 +14,7 @@ type Story = StoryObj<typeof SinkCard>
 const consoleSink: SinkInfo = {
   identifier: '__console__',
   sink_type: 'console',
-  level: 'info',
+  level: 'INFO',
   json_format: false,
   rotation: null,
   is_default: true,
@@ -25,7 +25,7 @@ const consoleSink: SinkInfo = {
 const fileSink: SinkInfo = {
   identifier: 'synthorg.log',
   sink_type: 'file',
-  level: 'info',
+  level: 'INFO',
   json_format: true,
   rotation: { strategy: 'builtin', max_bytes: 10485760, backup_count: 5 },
   is_default: true,
@@ -36,7 +36,7 @@ const fileSink: SinkInfo = {
 const customSink: SinkInfo = {
   identifier: 'custom/audit.log',
   sink_type: 'file',
-  level: 'warning',
+  level: 'WARNING',
   json_format: true,
   rotation: { strategy: 'builtin', max_bytes: 5242880, backup_count: 3 },
   is_default: false,
@@ -47,7 +47,7 @@ const customSink: SinkInfo = {
 const disabledSink: SinkInfo = {
   ...fileSink,
   identifier: 'debug.log',
-  level: 'debug',
+  level: 'DEBUG',
   enabled: false,
 }
 

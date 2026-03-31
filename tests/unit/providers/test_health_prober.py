@@ -104,8 +104,8 @@ class _PatchCtx:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: object,
-    ) -> None:
-        self._patcher.__exit__(exc_type, exc_val, exc_tb)  # type: ignore[arg-type]
+    ) -> bool | None:
+        return self._patcher.__exit__(exc_type, exc_val, exc_tb)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
@@ -332,6 +332,7 @@ class TestProberLifecycle:
     async def test_run_loop_continues_on_probe_error(self) -> None:
         """The loop catches exceptions from _probe_all and continues."""
         call_count = 0
+        done_event = asyncio.Event()
         tracker = ProviderHealthTracker()
         config_resolver = MagicMock()
         config_resolver.get_provider_configs = AsyncMock(return_value={})
@@ -348,7 +349,8 @@ class TestProberLifecycle:
             if call_count == 1:
                 msg = "test error"
                 raise RuntimeError(msg)
-            # Second call: set stop event to end the loop
+            # Second call: signal completion and stop the loop
+            done_event.set()
             prober._stop_event.set()
             return {}
 
@@ -357,8 +359,8 @@ class TestProberLifecycle:
         )
 
         await prober.start()
-        # Wait for the loop to process both calls (interval = 1s)
-        await asyncio.sleep(2.5)
+        # Wait for the second call deterministically (no timing)
+        await asyncio.wait_for(done_event.wait(), timeout=10)
         await prober.stop()
 
         assert call_count >= 2  # First call failed, loop continued

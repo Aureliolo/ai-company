@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { SinkInfo, TestSinkResult } from '@/api/types'
+import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
@@ -8,17 +8,16 @@ import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
 
 const LOG_LEVELS = [
-  { value: 'debug', label: 'Debug' },
-  { value: 'info', label: 'Info' },
-  { value: 'warning', label: 'Warning' },
-  { value: 'error', label: 'Error' },
-  { value: 'critical', label: 'Critical' },
+  { value: 'DEBUG', label: 'Debug' },
+  { value: 'INFO', label: 'Info' },
+  { value: 'WARNING', label: 'Warning' },
+  { value: 'ERROR', label: 'Error' },
+  { value: 'CRITICAL', label: 'Critical' },
 ]
 
 const ROTATION_STRATEGIES = [
   { value: 'builtin', label: 'Built-in' },
-  { value: 'systemd', label: 'Systemd' },
-  { value: 'logrotate', label: 'Logrotate' },
+  { value: 'external', label: 'External' },
   { value: 'none', label: 'None' },
 ]
 
@@ -34,7 +33,7 @@ export interface SinkFormDrawerProps {
 export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: SinkFormDrawerProps) {
   // State initialized from sink prop. Parent uses key={sink?.identifier} to remount on sink change.
   const [filePath, setFilePath] = useState(sink?.identifier === '__console__' ? '' : (sink?.identifier ?? ''))
-  const [level, setLevel] = useState(sink?.level ?? 'info')
+  const [level, setLevel] = useState<LogLevel>(sink?.level ?? 'INFO')
   const [enabled, setEnabled] = useState(sink?.enabled ?? true)
   const [jsonFormat, setJsonFormat] = useState(sink?.json_format ?? false)
   const [rotationStrategy, setRotationStrategy] = useState(sink?.rotation?.strategy ?? 'builtin')
@@ -73,6 +72,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
       file_path: path,
       level,
       json_format: jsonFormat,
+      enabled,
     }
     if (rotationStrategy !== 'none') {
       customSink.rotation = {
@@ -148,7 +148,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
               label="Level"
               options={LOG_LEVELS}
               value={level}
-              onChange={setLevel}
+              onChange={(v) => setLevel(v as LogLevel)}
             />
           </div>
           <ToggleField

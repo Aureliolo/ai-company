@@ -74,9 +74,10 @@ export function SettingRow({
       className={cn(
         'grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card max-[639px]:grid-cols-1',
         'transition-all duration-200 hover:bg-card-hover hover:-translate-y-px',
-        controllerDisabled && 'pointer-events-none opacity-50',
+        controllerDisabled && 'pointer-events-none opacity-50 cursor-not-allowed',
       )}
       style={flashStyle}
+      title={controllerDisabled ? 'Enable the parent setting to configure this option' : undefined}
     >
       {/* Left: label, description, badges */}
       <div className="min-w-0 space-y-1">

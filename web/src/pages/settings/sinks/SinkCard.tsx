@@ -9,11 +9,11 @@ export interface SinkCardProps {
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  debug: 'bg-text-secondary/10 text-text-secondary',
-  info: 'bg-accent/10 text-accent',
-  warning: 'bg-warning/10 text-warning',
-  error: 'bg-danger/10 text-danger',
-  critical: 'bg-danger/10 text-danger',
+  DEBUG: 'bg-text-secondary/10 text-text-secondary',
+  INFO: 'bg-accent/10 text-accent',
+  WARNING: 'bg-warning/10 text-warning',
+  ERROR: 'bg-danger/10 text-danger',
+  CRITICAL: 'bg-danger/10 text-danger',
 }
 
 export function SinkCard({ sink, onEdit }: SinkCardProps) {

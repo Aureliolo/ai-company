@@ -14,7 +14,7 @@ import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
 
 export default function SettingsSinksPage() {
   const navigate = useNavigate()
-  const { sinks, loading, error, fetchSinks, testConfig } = useSinksStore()
+  const { sinks, loading, error, fetchSinks, saveSink, testConfig } = useSinksStore()
   const [editSink, setEditSink] = useState<SinkInfo | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)
@@ -53,11 +53,12 @@ export default function SettingsSinksPage() {
     setIsNewSink(false)
   }, [])
 
-  const handleSave = useCallback(() => {
-    // TODO: Persist via settings API (updateSetting for sink_overrides/custom_sinks)
-    // For now, just refresh to pick up any changes
-    fetchSinks()
-  }, [fetchSinks])
+  const handleSave = useCallback(async (sink: SinkInfo) => {
+    await saveSink(sink)
+    setDrawerOpen(false)
+    setEditSink(null)
+    setIsNewSink(false)
+  }, [saveSink])
 
   return (
     <div className="space-y-6">

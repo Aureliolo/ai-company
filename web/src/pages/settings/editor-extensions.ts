@@ -49,27 +49,53 @@ export function computeLineDiff(
   const serverLines = serverText.split('\n')
   const editedLines = editedText.split('\n')
   const diffs: LineDiff[] = []
-  const maxLen = Math.max(serverLines.length, editedLines.length)
 
-  for (let i = 0; i < maxLen; i++) {
-    const s = serverLines[i]
-    const e = editedLines[i]
-    if (s === undefined) {
-      // Line exists only in edited -- added
-      diffs.push({ line: i + 1, kind: 'added' })
-    } else if (e === undefined) {
-      // Line exists only in server -- removed
-      // Show at the last edited line (clamped)
-      diffs.push({
-        line: Math.min(i + 1, editedLines.length),
-        kind: 'removed',
-      })
-    } else if (s !== e) {
-      diffs.push({ line: i + 1, kind: 'changed' })
+  // LCS-based diff: find longest common subsequence to identify
+  // true additions, removals, and changes (handles insertions/deletions
+  // at any position without cascading false "changed" markers).
+  const n = serverLines.length
+  const m = editedLines.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i]![j] = serverLines[i - 1] === editedLines[j - 1]
+        ? dp[i - 1]![j - 1]! + 1
+        : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
     }
   }
 
-  return diffs
+  // Backtrack to classify each line
+  let si = n
+  let ei = m
+  const serverMatched = new Set<number>()
+  const editedMatched = new Set<number>()
+  while (si > 0 && ei > 0) {
+    if (serverLines[si - 1] === editedLines[ei - 1]) {
+      serverMatched.add(si - 1)
+      editedMatched.add(ei - 1)
+      si--
+      ei--
+    } else if (dp[si - 1]![ei]! >= dp[si]![ei - 1]!) {
+      si--
+    } else {
+      ei--
+    }
+  }
+
+  // Unmatched edited lines are additions
+  for (let j = 0; j < m; j++) {
+    if (!editedMatched.has(j)) {
+      diffs.push({ line: j + 1, kind: 'added' })
+    }
+  }
+  // Unmatched server lines are removals (shown at nearest edited position)
+  for (let i = 0; i < n; i++) {
+    if (!serverMatched.has(i)) {
+      diffs.push({ line: Math.min(i + 1, m), kind: 'removed' })
+    }
+  }
+
+  return diffs.sort((a, b) => a.line - b.line)
 }
 
 // Gutter markers using design-token CSS variables
@@ -222,13 +248,31 @@ function findJsonKeyPosition(
   namespace: string,
   key?: string,
 ): { from: number; to: number } | null {
-  // Search for the key pattern: "keyName":
-  const searchKey = key ?? namespace
+  if (!key) {
+    // Searching for a namespace -- first occurrence is fine
+    // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
+    const pattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:`)
+    const match = pattern.exec(text)
+    if (match) {
+      return { from: match.index, to: match.index + namespace.length + 2 }
+    }
+    return null
+  }
+  // Searching for a key within a namespace -- find the namespace first,
+  // then search for the key within its scope to avoid false matches
+  // in other namespaces with the same key name.
   // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
-  const pattern = new RegExp(`"${escapeRegex(searchKey)}"\\s*:`)
-  const match = pattern.exec(text)
-  if (match) {
-    return { from: match.index, to: match.index + searchKey.length + 2 }
+  const nsPattern = new RegExp(`"${escapeRegex(namespace)}"\\s*:\\s*\\{`)
+  const nsMatch = nsPattern.exec(text)
+  const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
+  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
+  const keyPattern = new RegExp(`"${escapeRegex(key)}"\\s*:`)
+  keyPattern.lastIndex = 0
+  const sub = text.slice(searchFrom)
+  const keyMatch = keyPattern.exec(sub)
+  if (keyMatch) {
+    const offset = searchFrom + keyMatch.index
+    return { from: offset, to: offset + key.length + 2 }
   }
   return null
 }
@@ -242,14 +286,29 @@ function findYamlKeyPosition(
   namespace: string,
   key?: string,
 ): { from: number; to: number } | null {
-  const searchKey = key ?? namespace
-  // YAML keys at indentation level: "keyName:"
+  if (!key) {
+    // Searching for a namespace (top-level, no indentation)
+    // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
+    const pattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
+    const match = pattern.exec(text)
+    if (match) {
+      return { from: match.index, to: match.index + namespace.length }
+    }
+    return null
+  }
+  // Searching for a key within a namespace -- find the namespace line first,
+  // then search for the indented key after it.
   // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
-  const pattern = new RegExp(`^(\\s*)${escapeRegex(searchKey)}\\s*:`, 'm')
-  const match = pattern.exec(text)
-  if (match) {
-    const offset = match.index + (match[1]?.length ?? 0)
-    return { from: offset, to: offset + searchKey.length }
+  const nsPattern = new RegExp(`^${escapeRegex(namespace)}\\s*:`, 'm')
+  const nsMatch = nsPattern.exec(text)
+  const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
+  const sub = text.slice(searchFrom)
+  // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
+  const keyPattern = new RegExp(`^(\\s+)${escapeRegex(key)}\\s*:`, 'm')
+  const keyMatch = keyPattern.exec(sub)
+  if (keyMatch) {
+    const offset = searchFrom + keyMatch.index + (keyMatch[1]?.length ?? 0)
+    return { from: offset, to: offset + key.length }
   }
   return null
 }

@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, cast
 
-from synthorg.observability import get_logger
 from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
@@ -30,8 +29,6 @@ from synthorg.observability.config import (
     SinkConfig,
 )
 from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
-
-logger = get_logger(__name__)
 
 CONSOLE_SINK_ID: str = "__console__"
 
@@ -323,7 +320,6 @@ def _build_custom_sink(
             f"got {raw_path!r}"
         )
         raise ValueError(msg)
-    file_path = raw_path
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
 
     json_format = True
@@ -343,7 +339,7 @@ def _build_custom_sink(
     return SinkConfig(
         sink_type=SinkType.FILE,
         level=level,
-        file_path=file_path,
+        file_path=raw_path,
         rotation=rotation,
         json_format=json_format,
     )

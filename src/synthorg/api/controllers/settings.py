@@ -23,7 +23,7 @@ from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.settings import (
     SETTINGS_ENCRYPTION_ERROR,
-    SETTINGS_FETCH_FAILED,
+    SETTINGS_NOT_FOUND,
     SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
 )
 from synthorg.observability.sink_config_builder import (
@@ -452,12 +452,21 @@ async def _get_setting_or_default(
         val = await svc.get(SettingNamespace.OBSERVABILITY, key)
     except SettingNotFoundError:
         logger.debug(
-            SETTINGS_FETCH_FAILED,
+            SETTINGS_NOT_FOUND,
             namespace=SettingNamespace.OBSERVABILITY.value,
             key=key,
         )
         return fallback
-    return str(val.value)
+    except Exception:
+        logger.warning(
+            SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
+            namespace=SettingNamespace.OBSERVABILITY.value,
+            key=key,
+            error="Failed to resolve observability setting",
+            exc_info=True,
+        )
+        return fallback
+    return val.value
 
 
 def _parse_root_level(raw: str) -> LogLevel:
@@ -473,8 +482,7 @@ def _parse_root_level(raw: str) -> LogLevel:
         return LogLevel(raw.upper())
     except ValueError:
         logger.warning(
-            SETTINGS_FETCH_FAILED,
-            namespace=SettingNamespace.OBSERVABILITY.value,
+            SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             key="root_log_level",
             error=f"Invalid log level {raw!r}, defaulting to DEBUG",
         )
@@ -549,10 +557,10 @@ def _defaults_only_sinks() -> list[dict[str, Any]]:
 
 
 def _sanitize_error(raw: str) -> str:
-    """Strip trailing validation hints from a sink builder error.
+    """Strip validation hint suffixes from a sink builder error.
 
-    Truncates error messages before valid-key/valid-value
-    enumeration suffixes to avoid leaking internal config details.
+    Truncates error messages at the first valid-key/valid-value
+    enumeration suffix to avoid leaking internal config details.
 
     Args:
         raw: Raw error message from the sink config builder.
@@ -560,4 +568,5 @@ def _sanitize_error(raw: str) -> str:
     Returns:
         Sanitized error string safe for API responses.
     """
-    return raw.split(". Valid keys:", maxsplit=1)[0].split(". Valid: ", maxsplit=1)[0]
+    result = raw.split(". Valid keys:", maxsplit=1)[0].split(". Valid: ", maxsplit=1)[0]
+    return result or "Validation failed"
