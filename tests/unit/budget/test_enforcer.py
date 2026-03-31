@@ -100,7 +100,9 @@ def _make_task(
 def _make_resolver(
     models: dict[str, ResolvedModel] | None = None,
 ) -> ModelResolver:
-    index = models or {}
+    if models is None:
+        return ModelResolver({})
+    index: dict[str, tuple[ResolvedModel, ...]] = {k: (v,) for k, v in models.items()}
     return ModelResolver(index)
 
 

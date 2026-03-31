@@ -85,6 +85,38 @@ LARGE_MODEL = ProviderModelConfig(
 )
 
 
+def two_provider_config() -> dict[str, ProviderConfig]:
+    """Two providers serving the same model ID with different costs."""
+    return {
+        "test-provider-a": ProviderConfig(
+            driver="litellm",
+            api_key="sk-test-a",
+            models=(
+                ProviderModelConfig(
+                    id="test-shared-001",
+                    alias="shared",
+                    cost_per_1k_input=0.010,
+                    cost_per_1k_output=0.050,
+                    estimated_latency_ms=1000,
+                ),
+            ),
+        ),
+        "test-provider-b": ProviderConfig(
+            driver="litellm",
+            api_key="sk-test-b",
+            models=(
+                ProviderModelConfig(
+                    id="test-shared-001",
+                    alias="shared",
+                    cost_per_1k_input=0.001,
+                    cost_per_1k_output=0.005,
+                    estimated_latency_ms=500,
+                ),
+            ),
+        ),
+    }
+
+
 @pytest.fixture
 def three_model_provider() -> dict[str, ProviderConfig]:
     """Provider config with small, medium, large."""

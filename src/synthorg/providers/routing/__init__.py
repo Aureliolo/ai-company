@@ -13,6 +13,11 @@ from .errors import (
 from .models import ResolvedModel, RoutingDecision, RoutingRequest
 from .resolver import ModelResolver
 from .router import ModelRouter
+from .selector import (
+    CheapestSelector,
+    ModelCandidateSelector,
+    QuotaAwareSelector,
+)
 from .strategies import (
     STRATEGY_MAP,
     STRATEGY_NAME_CHEAPEST,
@@ -37,13 +42,16 @@ __all__ = [
     "STRATEGY_NAME_MANUAL",
     "STRATEGY_NAME_ROLE_BASED",
     "STRATEGY_NAME_SMART",
+    "CheapestSelector",
     "CostAwareStrategy",
     "FastestStrategy",
     "ManualStrategy",
+    "ModelCandidateSelector",
     "ModelResolutionError",
     "ModelResolver",
     "ModelRouter",
     "NoAvailableModelError",
+    "QuotaAwareSelector",
     "ResolvedModel",
     "RoleBasedStrategy",
     "RoutingDecision",

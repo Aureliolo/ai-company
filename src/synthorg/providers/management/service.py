@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.config.schema import RootConfig
     from synthorg.providers.routing.router import ModelRouter
+    from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.settings.service import SettingsService
 
@@ -688,14 +689,27 @@ class ProviderManagementService:
     def _build_router(
         self,
         providers: dict[str, ProviderConfig],
+        *,
+        selector: ModelCandidateSelector | None = None,
     ) -> ModelRouter:
         """Build a new ModelRouter from provider configs.
 
         Args:
             providers: Provider configurations.
+            selector: Optional candidate selector for multi-provider
+                model resolution.  Defaults to
+                ``QuotaAwareSelector()``.
 
         Returns:
             New ModelRouter instance.
+
+        Note:
+            The ``selector`` parameter is an extension point for
+            wiring quota-aware selection from ``QuotaTracker``.
+            Currently the sole caller (``_validate_and_persist``)
+            uses the default; callers may inject a pre-built
+            ``QuotaAwareSelector(provider_quota_available=...)``
+            when quota integration is wired at the service layer.
         """
         from synthorg.providers.routing.router import (  # noqa: PLC0415
             ModelRouter,
@@ -704,4 +718,5 @@ class ProviderManagementService:
         return ModelRouter(
             routing_config=self._config.routing,
             providers=providers,
+            selector=selector,
         )

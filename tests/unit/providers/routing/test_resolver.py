@@ -169,8 +169,8 @@ class TestResolverSortByLatency:
 
 
 class TestResolverCollisionDetection:
-    def test_duplicate_ref_different_models_raises(self) -> None:
-        """Two providers with same alias but different models should raise."""
+    def test_duplicate_ref_different_models_appends(self) -> None:
+        """Two providers with same alias register both candidates."""
         providers = {
             "test-provider-a": ProviderConfig(
                 models=(
@@ -193,8 +193,16 @@ class TestResolverCollisionDetection:
                 ),
             ),
         }
-        with pytest.raises(ModelResolutionError, match="Duplicate model reference"):
-            ModelResolver.from_config(providers)
+        resolver = ModelResolver.from_config(providers)
+        model = resolver.resolve("shared-alias")
+        assert model.model_id in {"test-model-a", "test-model-b"}
+        # Verify determinism: repeated calls must return the same result
+        for _ in range(5):
+            assert resolver.resolve("shared-alias").model_id == model.model_id
+        all_variants = resolver.resolve_all("shared-alias")
+        assert len(all_variants) == 2
+        providers_seen = {m.provider_name for m in all_variants}
+        assert providers_seen == {"test-provider-a", "test-provider-b"}
 
 
 class TestResolverImmutability:

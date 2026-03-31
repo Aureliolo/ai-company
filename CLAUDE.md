@@ -88,7 +88,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 src/synthorg/
   api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
-  budget/         # Cost tracking, budget enforcement, quota degradation, CFO optimization, trend analysis, budget forecasting, configurable currency formatting
+  budget/         # Cost tracking, budget enforcement, quota degradation (including synchronous peek for routing-time selector hints), CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
   communication/  # Message bus, dispatcher, channels, delegation, conflict resolution, meeting/
   config/         # YAML company config loading and validation
@@ -98,7 +98,7 @@ src/synthorg/
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
   persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project + preset repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
-  providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing
+  providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing, routing/ (strategy-based model routing, multi-provider resolution with ModelCandidateSelector protocol, QuotaAwareSelector, CheapestSelector)
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
   templates/      # Pre-built company templates, personality presets, preset discovery/CRUD service, model requirements, tier-to-model matching, locale-aware name generation
@@ -140,7 +140,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 - **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code (exception: `observability/setup.py` and `observability/sinks.py` may use stdlib `logging` and `print(..., file=sys.stderr)` for bootstrap and handler-cleanup code that runs before or during logging system configuration)
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`, `SETUP_COMPLETED` from `events.setup`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
+- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`, `SETUP_COMPLETED` from `events.setup`, `ROUTING_CANDIDATE_SELECTED` from `events.routing`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` -- never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO

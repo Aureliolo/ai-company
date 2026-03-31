@@ -28,6 +28,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
     QUOTA_CHECK_DENIED,
+    QUOTA_LOOP_AFFINITY_VIOLATED,
     QUOTA_SNAPSHOT_QUERIED,
     QUOTA_TRACKER_CREATED,
     QUOTA_USAGE_RECORDED,
@@ -74,6 +75,7 @@ class QuotaTracker:
             dict(subscriptions),
         )
         self._lock = asyncio.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._usage: dict[str, dict[QuotaWindow, _WindowUsage]] = {}
 
         # Initialize usage tracking for providers with quotas
@@ -93,6 +95,49 @@ class QuotaTracker:
             provider_count=len(self._subscriptions),
             tracked_providers=sorted(self._usage),
         )
+
+    def _capture_loop(self) -> None:
+        """Lazily store the owning event loop on first async call."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+
+    def _assert_loop_safe(self) -> None:
+        """Verify the caller is on the tracker's owning event loop.
+
+        Raises:
+            RuntimeError: If called from a different loop or from
+                outside any event loop after async methods have run.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running event loop.  If _loop is set, async methods
+            # have been used and the caller is likely in a thread.
+            if self._loop is not None:
+                logger.warning(
+                    QUOTA_LOOP_AFFINITY_VIOLATED,
+                    owning_loop=repr(self._loop),
+                    current_loop=None,
+                    reason="no_running_loop_after_async_usage",
+                )
+                msg = (
+                    "peek_quota_available must be called from the "
+                    "tracker's owning event loop, not from a thread"
+                )
+                raise RuntimeError(msg) from None
+        else:
+            if self._loop is not None and current_loop is not self._loop:
+                logger.error(
+                    QUOTA_LOOP_AFFINITY_VIOLATED,
+                    owning_loop=repr(self._loop),
+                    current_loop=repr(current_loop),
+                    reason="wrong_event_loop",
+                )
+                msg = (
+                    "peek_quota_available must be called from the "
+                    "tracker's owning event loop"
+                )
+                raise RuntimeError(msg)
 
     async def record_usage(
         self,
@@ -144,6 +189,7 @@ class QuotaTracker:
             )
             return
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             provider_usage = self._usage[provider_name]
@@ -228,6 +274,7 @@ class QuotaTracker:
         sub_config = self._subscriptions[provider_name]
         quota_map = {q.window: q for q in sub_config.quotas}
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             provider_usage = self._usage[provider_name]
@@ -317,6 +364,7 @@ class QuotaTracker:
         sub_config = self._subscriptions[provider_name]
         quota_map = {q.window: q for q in sub_config.quotas}
 
+        self._capture_loop()
         async with self._lock:
             now = datetime.now(UTC)
             snapshots: list[QuotaSnapshot] = []
@@ -378,6 +426,58 @@ class QuotaTracker:
         result: dict[str, tuple[QuotaSnapshot, ...]] = {}
         for provider_name in self._usage:
             result[provider_name] = await self.get_snapshot(provider_name)
+        return result
+
+    def peek_quota_available(self) -> dict[str, bool]:
+        """Synchronous snapshot of per-provider quota availability.
+
+        Reads cached counters **without acquiring the lock**.  This is
+        safe when called synchronously from the ``asyncio`` event loop
+        thread (no concurrent mutations during synchronous execution)
+        and acceptable for heuristic selection decisions where TOCTOU
+        is tolerated.  Do **not** call from a thread-pool executor or
+        from outside the event loop -- that would race with
+        ``record_usage``.
+
+        Providers without configured quotas are excluded from the
+        result (they are always allowed and do not need selection
+        guidance).
+
+        Returns:
+            Dict mapping provider name to availability status.
+
+        Raises:
+            RuntimeError: If called from a different event loop than
+                the one used by this tracker's async methods, or from
+                outside an event loop when async methods have already
+                been called (indicating a thread-pool executor context).
+        """
+        self._assert_loop_safe()
+        now = datetime.now(UTC)
+        result: dict[str, bool] = {}
+
+        for provider_name, provider_usage in self._usage.items():
+            sub_config = self._subscriptions.get(provider_name)
+            if sub_config is None:
+                continue
+            quota_map = {q.window: q for q in sub_config.quotas}
+            exhausted = False
+
+            for window_type, usage in provider_usage.items():
+                expected_start = window_start(window_type, now=now)
+                if expected_start != usage.window_start:
+                    continue  # Window rotated -- treat as zero usage
+                quota = quota_map.get(window_type)
+                if quota is None:
+                    continue
+                # Use estimated_tokens=1 so providers at exactly the
+                # token cap are treated as exhausted (zero headroom).
+                if _is_window_exhausted(usage, quota, estimated_tokens=1):
+                    exhausted = True
+                    break
+
+            result[provider_name] = not exhausted
+
         return result
 
 

@@ -1,7 +1,12 @@
 """Model resolver -- maps aliases and model IDs to ``ResolvedModel``.
 
-Indexes every model ID and alias to a ``ResolvedModel``.  Typically
-built via the ``from_config`` classmethod from
+Indexes every model ID and alias to one or more ``ResolvedModel``
+instances (multi-provider support).  When multiple providers serve
+the same model, a ``ModelCandidateSelector`` picks the best
+candidate at resolution time.  Use ``resolve_all()`` to retrieve
+all provider variants for a ref without triggering selection.
+
+Typically built via the ``from_config`` classmethod from
 ``dict[str, ProviderConfig]``.  Uses ``MappingProxyType`` to guarantee
 immutability after construction.
 """
@@ -13,11 +18,14 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
     ROUTING_MODEL_RESOLVED,
+    ROUTING_MULTI_PROVIDER_REGISTERED,
     ROUTING_RESOLVER_BUILT,
+    ROUTING_SELECTION_FAILED,
 )
 
 from .errors import ModelResolutionError
 from .models import ResolvedModel
+from .selector import ModelCandidateSelector, QuotaAwareSelector
 
 if TYPE_CHECKING:
     from synthorg.config.schema import ProviderConfig
@@ -29,7 +37,9 @@ class ModelResolver:
     """Resolves model aliases and IDs to ``ResolvedModel`` instances.
 
     Built from the providers section of the company config.  Each model
-    ID and alias is indexed for O(1) lookup.
+    ID and alias is indexed for O(1) lookup.  When multiple providers
+    register the same ref, the injected ``selector`` picks the best
+    candidate.
 
     Examples:
         Build from config::
@@ -40,66 +50,90 @@ class ModelResolver:
 
     def __init__(
         self,
-        index: dict[str, ResolvedModel],
+        index: dict[str, tuple[ResolvedModel, ...]],
+        *,
+        selector: ModelCandidateSelector | None = None,
     ) -> None:
-        """Initialize with a pre-built ref -> model index.
+        """Initialize with a pre-built ref -> candidates index.
 
         Args:
-            index: Mapping of model ref to resolved model.  A frozen
-                copy is made internally; the caller's dict is not
-                modified.
+            index: Mapping of model ref to tuple of resolved models.
+                A frozen copy is made internally; the caller's dict
+                is not modified.  Every tuple must be non-empty.
+            selector: Strategy for picking among multiple candidates.
+                Defaults to ``QuotaAwareSelector()`` (prefers providers
+                with available quota, then cheapest).
+
+        Raises:
+            ValueError: If any candidate tuple is empty.
         """
-        self._index: MappingProxyType[str, ResolvedModel] = MappingProxyType(
-            dict(index),
+        validated: dict[str, tuple[ResolvedModel, ...]] = {}
+        for k, v in index.items():
+            t = tuple(v)
+            if not t:
+                msg = f"Empty candidate list for ref {k!r}"
+                raise ValueError(msg)
+            validated[k] = t
+
+        self._index: MappingProxyType[str, tuple[ResolvedModel, ...]] = (
+            MappingProxyType(validated)
         )
+        self._selector: ModelCandidateSelector = (
+            selector if selector is not None else QuotaAwareSelector()
+        )
+
+    @property
+    def selector(self) -> ModelCandidateSelector:
+        """The active candidate selector."""
+        return self._selector
 
     @staticmethod
     def _index_ref(
-        index: dict[str, ResolvedModel],
+        index: dict[str, list[ResolvedModel]],
         ref: str,
         resolved: ResolvedModel,
         provider_name: str,
     ) -> None:
-        """Register a model ref, raising on collision."""
-        existing = index.get(ref)
-        if existing is not None and existing != resolved:
-            logger.error(
-                ROUTING_MODEL_RESOLUTION_FAILED,
+        """Register a model ref; appends on distinct overlap, skips exact duplicates."""
+        existing_list = index.get(ref)
+        if existing_list is not None:
+            for existing in existing_list:
+                if existing == resolved:
+                    logger.debug(
+                        ROUTING_MULTI_PROVIDER_REGISTERED,
+                        ref=ref,
+                        provider=provider_name,
+                        reason="exact_duplicate_skipped",
+                    )
+                    return
+            logger.info(
+                ROUTING_MULTI_PROVIDER_REGISTERED,
                 ref=ref,
-                existing_provider=existing.provider_name,
-                existing_model_id=existing.model_id,
+                existing_providers=[e.provider_name for e in existing_list],
                 new_provider=provider_name,
                 new_model_id=resolved.model_id,
             )
-            msg = (
-                f"Duplicate model reference {ref!r}: "
-                f"{existing.provider_name}/{existing.model_id} "
-                f"vs {provider_name}/{resolved.model_id}"
-            )
-            raise ModelResolutionError(
-                msg,
-                context={
-                    "ref": ref,
-                    "existing_provider": existing.provider_name,
-                    "new_provider": provider_name,
-                },
-            )
-        index[ref] = resolved
+            existing_list.append(resolved)
+        else:
+            index[ref] = [resolved]
 
     @classmethod
     def from_config(
         cls,
         providers: dict[str, ProviderConfig],
+        *,
+        selector: ModelCandidateSelector | None = None,
     ) -> ModelResolver:
         """Build a resolver from a provider config dict.
 
         Args:
             providers: Provider config dict (key = provider name).
+            selector: Optional candidate selector override.
 
         Returns:
             A new ``ModelResolver`` with all models indexed.
         """
-        index: dict[str, ResolvedModel] = {}
+        index: dict[str, list[ResolvedModel]] = {}
 
         for provider_name, provider_config in providers.items():
             for model_config in provider_config.models:
@@ -117,16 +151,29 @@ class ModelResolver:
                         continue
                     cls._index_ref(index, ref, resolved, provider_name)
 
+        tuple_index = {k: tuple(v) for k, v in index.items()}
+        multi_refs = [k for k, v in tuple_index.items() if len(v) > 1]
+
         logger.info(
             ROUTING_RESOLVER_BUILT,
-            model_count=len({m.model_id for m in index.values()}),
-            ref_count=len(index),
+            model_count=len(
+                {
+                    (m.provider_name, m.model_id)
+                    for candidates in tuple_index.values()
+                    for m in candidates
+                },
+            ),
+            ref_count=len(tuple_index),
             providers=sorted(providers),
+            multi_provider_refs=multi_refs,
         )
-        return cls(index)
+        return cls(tuple_index, selector=selector)
 
     def resolve(self, ref: str) -> ResolvedModel:
         """Resolve a model alias or ID to a ``ResolvedModel``.
+
+        When multiple providers serve the same model, the selector
+        picks the best candidate.
 
         Args:
             ref: Model alias or ID string.
@@ -135,22 +182,49 @@ class ModelResolver:
             The resolved model.
 
         Raises:
-            ModelResolutionError: If the ref is not found.
+            ModelResolutionError: If the ref is not found or the
+                selector fails.
         """
-        model = self._index.get(ref)
-        if model is None:
+        candidates = self._index.get(ref)
+        if candidates is None:
+            available = sorted(self._index)
             logger.warning(
                 ROUTING_MODEL_RESOLUTION_FAILED,
                 ref=ref,
-                available=sorted(self._index),
+                available=available,
             )
-            msg = f"Model reference {ref!r} not found. Available: {sorted(self._index)}"
+            msg = f"Model reference {ref!r} not found. Available: {available}"
             raise ModelResolutionError(msg, context={"ref": ref})
+        try:
+            model = self._selector.select(candidates)
+        except ModelResolutionError as exc:
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+                error=str(exc),
+            )
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+            )
+            msg = (
+                f"Selector failed for {ref!r} with {len(candidates)} candidates: {exc}"
+            )
+            raise ModelResolutionError(msg, context={"ref": ref}) from exc
         logger.debug(
             ROUTING_MODEL_RESOLVED,
             ref=ref,
             provider=model.provider_name,
             model_id=model.model_id,
+            candidate_count=len(candidates),
         )
         return model
 
@@ -158,7 +232,7 @@ class ModelResolver:
         """Resolve a model ref without raising.
 
         Returns ``None`` instead of raising ``ModelResolutionError``
-        when *ref* is not found.
+        when *ref* is not found or the selector fails.
 
         Args:
             ref: Model alias or ID string.
@@ -166,18 +240,65 @@ class ModelResolver:
         Returns:
             The resolved model, or ``None`` if not found.
         """
-        model = self._index.get(ref)
-        if model is None:
+        candidates = self._index.get(ref)
+        if candidates is None:
             logger.debug(
                 ROUTING_MODEL_RESOLUTION_FAILED,
                 ref=ref,
             )
-        return model
+            return None
+        try:
+            return self._selector.select(candidates)
+        except MemoryError, RecursionError:
+            raise
+        except ModelResolutionError as exc:
+            logger.debug(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+                error=str(exc),
+                reason="selector_raised_resolution_error",
+            )
+            return None
+        except Exception as exc:
+            logger.warning(
+                ROUTING_SELECTION_FAILED,
+                ref=ref,
+                candidate_count=len(candidates),
+                selector=type(self._selector).__name__,
+                error=str(exc),
+                reason="unexpected_selector_error",
+                exc_info=True,
+            )
+            return None
+
+    def resolve_all(self, ref: str) -> tuple[ResolvedModel, ...]:
+        """Return all provider variants for a model ref.
+
+        Args:
+            ref: Model alias or ID string.
+
+        Returns:
+            Tuple of all candidates, or empty tuple if not found.
+        """
+        return self._index.get(ref, ())
 
     def all_models(self) -> tuple[ResolvedModel, ...]:
-        """Return deduplicated tuple of all resolved models."""
-        unique = {m.model_id: m for m in self._index.values()}
-        return tuple(unique.values())
+        """Return all resolved models including multi-provider variants.
+
+        Deduplication is by ``(provider_name, model_id)`` pair, so the
+        same model from different providers appears as separate entries.
+        """
+        seen: set[tuple[str, str]] = set()
+        result: list[ResolvedModel] = []
+        for candidates in self._index.values():
+            for m in candidates:
+                key = (m.provider_name, m.model_id)
+                if key not in seen:
+                    seen.add(key)
+                    result.append(m)
+        return tuple(result)
 
     def all_models_sorted_by_cost(self) -> tuple[ResolvedModel, ...]:
         """Return models sorted by total cost (ascending).
