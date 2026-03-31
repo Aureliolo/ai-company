@@ -15,9 +15,10 @@ import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
 export default function SettingsSinksPage() {
   const navigate = useNavigate()
   const { sinks, loading, error, fetchSinks, saveSink, testConfig } = useSinksStore()
-  const [editSink, setEditSink] = useState<SinkInfo | null>(null)
+  const [editSinkId, setEditSinkId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)
+  const editSink = editSinkId ? sinks.find((s) => s.identifier === editSinkId) ?? null : null
 
   useEffect(() => {
     fetchSinks()
@@ -36,27 +37,27 @@ export default function SettingsSinksPage() {
   })
 
   const handleEdit = useCallback((sink: SinkInfo) => {
-    setEditSink(sink)
+    setEditSinkId(sink.identifier)
     setIsNewSink(false)
     setDrawerOpen(true)
   }, [])
 
   const handleAddNew = useCallback(() => {
-    setEditSink(null)
+    setEditSinkId(null)
     setIsNewSink(true)
     setDrawerOpen(true)
   }, [])
 
   const handleCloseDrawer = useCallback(() => {
     setDrawerOpen(false)
-    setEditSink(null)
+    setEditSinkId(null)
     setIsNewSink(false)
   }, [])
 
   const handleSave = useCallback(async (sink: SinkInfo) => {
     await saveSink(sink)
     setDrawerOpen(false)
-    setEditSink(null)
+    setEditSinkId(null)
     setIsNewSink(false)
   }, [saveSink])
 

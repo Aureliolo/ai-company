@@ -30,7 +30,7 @@ export function FloatingSaveBar({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            className="sticky bottom-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-border bg-surface p-card shadow-lg"
+            className="sticky bottom-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-lg border border-border bg-surface p-card shadow-[var(--so-shadow-card-hover)]"
             aria-live="polite"
           >
             <span className="text-sm text-text-secondary">

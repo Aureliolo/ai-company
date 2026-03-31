@@ -41,5 +41,8 @@ export const NamespaceSelected: Story = {
     namespaces,
     activeNamespace: 'budget',
     namespaceCounts: counts,
+    onSelect: (ns: string | null) => {
+      console.log('Selected namespace:', ns)
+    },
   },
 }

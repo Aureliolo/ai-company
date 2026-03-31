@@ -158,6 +158,11 @@ export default function SettingsPage() {
     [filteredByNamespace],
   )
 
+  // Derive effective namespace -- clear selection if filtering removed all its entries
+  const effectiveNamespace = activeNamespace && (namespaceCounts.get(activeNamespace) ?? 0) > 0
+    ? activeNamespace
+    : null
+
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(entries, dirtyValues),
     [entries, dirtyValues],
@@ -323,7 +328,7 @@ export default function SettingsPage() {
         <>
           <NamespaceTabBar
             namespaces={NAMESPACE_ORDER}
-            activeNamespace={activeNamespace}
+            activeNamespace={effectiveNamespace}
             onSelect={setActiveNamespace}
             namespaceCounts={namespaceCounts}
             namespaceIcons={NAMESPACE_ICONS}
@@ -343,7 +348,7 @@ export default function SettingsPage() {
 
           <AnimatePresence mode="wait">
           <motion.div
-            key={activeNamespace ?? 'all'}
+            key={effectiveNamespace ?? 'all'}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -352,7 +357,7 @@ export default function SettingsPage() {
           <StaggerGroup className="space-y-[var(--spacing-section-gap)]">
             {NAMESPACE_ORDER
               .filter((ns) => filteredByNamespace.has(ns))
-              .filter((ns) => activeNamespace === null || ns === activeNamespace)
+              .filter((ns) => effectiveNamespace === null || ns === effectiveNamespace)
               .map((ns) => (
               <StaggerItem key={ns}>
                 <ErrorBoundary level="section">
@@ -364,8 +369,8 @@ export default function SettingsPage() {
                     onValueChange={handleValueChange}
                     savingKeys={storeSavingKeys}
                     controllerDisabledMap={controllerDisabledMap}
-                    forceOpen={activeNamespace !== null || searchQuery.length > 0}
-                    hideHeader={activeNamespace !== null}
+                    forceOpen={effectiveNamespace !== null || searchQuery.length > 0}
+                    hideHeader={effectiveNamespace !== null}
                     changedKeys={changedKeys}
                     highlightQuery={searchQuery}
                     footerAction={ns === 'observability' ? (

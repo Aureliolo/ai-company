@@ -16,7 +16,7 @@ export function useSettingsKeyboard({
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
 
-      if (e.key === 's') {
+      if (e.key.toLowerCase() === 's') {
         e.preventDefault()
         if (canSave) onSave()
       } else if (e.key === '/') {

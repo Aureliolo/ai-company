@@ -1374,7 +1374,7 @@ export interface UpdateSettingRequest {
 // ── Sink configuration ──────────────────────────────────────
 
 export interface SinkRotation {
-  strategy: string
+  strategy: 'builtin' | 'external'
   max_bytes: number
   backup_count: number
 }

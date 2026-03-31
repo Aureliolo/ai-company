@@ -14,6 +14,7 @@ export interface SettingFieldProps {
 }
 
 function parseArrayItems(value: string): string[] {
+  if (!value.trim()) return []
   try {
     const parsed: unknown = JSON.parse(value)
     if (Array.isArray(parsed)) {
@@ -23,7 +24,7 @@ function parseArrayItems(value: string): string[] {
   } catch (err) {
     console.warn('[settings] parseArrayItems: not valid JSON, displaying raw value', err)
   }
-  return value ? [value] : []
+  return [value]
 }
 
 /** Array setting rendered as tag/chip input. */

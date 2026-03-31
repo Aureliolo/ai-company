@@ -9,7 +9,7 @@ function makeSink(overrides: Partial<SinkInfo> = {}): SinkInfo {
     sink_type: 'file',
     level: 'INFO',
     json_format: true,
-    rotation: { strategy: 'rotating', max_bytes: 10_485_760, backup_count: 5 },
+    rotation: { strategy: 'builtin', max_bytes: 10_485_760, backup_count: 5 },
     is_default: true,
     enabled: true,
     routing_prefixes: [],
@@ -71,7 +71,7 @@ describe('SinkCard', () => {
   it('renders rotation display', () => {
     render(
       <SinkCard
-        sink={makeSink({ rotation: { strategy: 'rotating', max_bytes: 10_485_760, backup_count: 5 } })}
+        sink={makeSink({ rotation: { strategy: 'builtin', max_bytes: 10_485_760, backup_count: 5 } })}
         onEdit={vi.fn()}
       />,
     )

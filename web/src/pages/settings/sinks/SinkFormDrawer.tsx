@@ -36,7 +36,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
   const [level, setLevel] = useState<LogLevel>(sink?.level ?? 'INFO')
   const [enabled, setEnabled] = useState(sink?.enabled ?? true)
   const [jsonFormat, setJsonFormat] = useState(sink?.json_format ?? false)
-  const [rotationStrategy, setRotationStrategy] = useState(sink?.rotation?.strategy ?? 'builtin')
+  const [rotationStrategy, setRotationStrategy] = useState<'builtin' | 'external' | 'none'>(sink?.rotation?.strategy ?? 'none')
   const [maxBytes, setMaxBytes] = useState(String(sink?.rotation?.max_bytes ?? 10485760))
   const [backupCount, setBackupCount] = useState(String(sink?.rotation?.backup_count ?? 5))
   const [routingPrefixes, setRoutingPrefixes] = useState<string[]>(sink?.routing_prefixes ? [...sink.routing_prefixes] : [])
@@ -74,11 +74,11 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
       json_format: jsonFormat,
       enabled,
     }
-    if (rotationStrategy !== 'none') {
+    if (!isConsole && rotationStrategy !== 'none') {
       customSink.rotation = {
         strategy: rotationStrategy,
-        max_bytes: Number(maxBytes),
-        backup_count: Number(backupCount),
+        max_bytes: Number(maxBytes) || 10_485_760,
+        backup_count: Number(backupCount) || 5,
       }
     }
     if (routingPrefixes.length > 0) {
@@ -110,10 +110,12 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
       return
     }
     const identifier = isConsole ? '__console__' : (isNew ? filePath.trim() : sink!.identifier)
-    const rotation = rotationStrategy === 'none' ? null : {
-      strategy: rotationStrategy,
-      max_bytes: Number(maxBytes),
-      backup_count: Number(backupCount),
+    const parsedMaxBytes = Number(maxBytes)
+    const parsedBackupCount = Number(backupCount)
+    const rotation = rotationStrategy === 'none' || isConsole ? null : {
+      strategy: rotationStrategy as 'builtin' | 'external',
+      max_bytes: Number.isFinite(parsedMaxBytes) && parsedMaxBytes > 0 ? parsedMaxBytes : 10_485_760,
+      backup_count: Number.isFinite(parsedBackupCount) && parsedBackupCount >= 0 ? parsedBackupCount : 5,
     }
     onSave({
       identifier,
@@ -170,7 +172,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
               label="Rotation strategy"
               options={ROTATION_STRATEGIES}
               value={rotationStrategy}
-              onChange={setRotationStrategy}
+              onChange={(v) => setRotationStrategy(v as 'builtin' | 'external' | 'none')}
             />
             {rotationStrategy !== 'none' && (
               <div className="grid grid-cols-2 gap-3">

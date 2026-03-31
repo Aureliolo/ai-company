@@ -12,7 +12,7 @@ type Story = StoryObj<typeof meta>
 
 export const Database: Story = { args: { source: 'db' } }
 export const Environment: Story = { args: { source: 'env' } }
-export const ConfigFile: Story = { args: { source: 'yaml' } }
+export const YamlRendersNull: Story = { args: { source: 'yaml' } }
 export const DefaultRendersNull: Story = { args: { source: 'default' } }
 
 export const AllSources: Story = {

@@ -145,18 +145,19 @@ export function NamespaceSection({
   return (
     <section className="rounded-lg border border-border bg-card">
       {!hideHeader && (
-        <button
-          type="button"
-          onClick={() => { if (!forceOpen) setCollapsed((v) => !v) }}
-          className={cn(
-            'flex w-full items-center gap-3 p-card',
-            'text-left transition-colors hover:bg-card-hover',
-          )}
-          aria-expanded={isOpen}
-          aria-controls={contentId}
-        >
-          <span className="text-text-secondary">{icon}</span>
-          <h2 className="text-sm font-semibold text-foreground">{displayName}</h2>
+        <h2 className="text-sm font-semibold text-foreground">
+          <button
+            type="button"
+            onClick={() => { if (!forceOpen) setCollapsed((v) => !v) }}
+            className={cn(
+              'flex w-full items-center gap-3 p-card',
+              'text-left transition-colors hover:bg-card-hover',
+            )}
+            aria-expanded={isOpen}
+            aria-controls={contentId}
+          >
+            <span className="text-text-secondary">{icon}</span>
+            <span>{displayName}</span>
           <span className="ml-1 text-xs text-text-muted">({entries.length})</span>
           <ChevronDown
             className={cn(
@@ -166,6 +167,7 @@ export function NamespaceSection({
             aria-hidden
           />
         </button>
+        </h2>
       )}
 
       {isOpen && hideHeader && (

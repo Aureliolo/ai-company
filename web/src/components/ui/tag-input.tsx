@@ -16,8 +16,15 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
 
   const addItems = useCallback(
     (items: string[]) => {
-      const trimmed = items.map((s) => s.trim()).filter(Boolean)
-      const unique = trimmed.filter((item) => !value.includes(item))
+      const seen = new Set(value)
+      const unique: string[] = []
+      for (const raw of items) {
+        const item = raw.trim()
+        if (item && !seen.has(item)) {
+          seen.add(item)
+          unique.push(item)
+        }
+      }
       if (unique.length > 0) {
         onChange([...value, ...unique])
       }
@@ -69,8 +76,8 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
         className,
       )}
       onClick={() => inputRef.current?.focus()}
-      role="listbox"
-      aria-label="Tag list"
+      role="group"
+      aria-label={placeholder ?? 'Tags'}
     >
       {value.map((item, i) => {
         // Stable key: value + occurrence index for duplicates
@@ -80,8 +87,6 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
           <span
             key={stableKey}
             className="inline-flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent"
-            role="option"
-            aria-selected
           >
             {item}
             {!disabled && (
@@ -109,7 +114,7 @@ export function TagInput({ value, onChange, disabled, placeholder, className }: 
         onPaste={handlePaste}
         disabled={disabled}
         placeholder={value.length === 0 ? placeholder : undefined}
-        className="min-w-[80px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
+        className="min-w-20 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-text-muted"
       />
     </div>
   )

@@ -87,7 +87,7 @@
 
 /*
  * Density axis -- controls card padding, section gaps, grid gaps.
- * Switch density by adding .density-dense or .density-sparse to <html>.
+ * Switch density by adding .density-dense, .density-medium, or .density-sparse to <html>.
  * Default (balanced) applies via :root.
  *
  * Density levels from brand-and-ux.md:

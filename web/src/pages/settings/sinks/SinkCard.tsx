@@ -51,23 +51,23 @@ export function SinkCard({ sink, onEdit }: SinkCardProps) {
 
       <div className="border-t border-border p-card space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium uppercase', levelColor)}>
+          <span className={cn('rounded px-1.5 py-0.5 text-micro font-medium uppercase', levelColor)}>
             {sink.level}
           </span>
-          <span className="text-[10px] text-text-muted">
+          <span className="text-micro text-text-muted">
             {sink.json_format ? 'JSON' : 'Text'}
           </span>
           {sink.is_default && (
-            <span className="text-[10px] text-text-muted">Default</span>
+            <span className="text-micro text-text-muted">Default</span>
           )}
         </div>
         {sink.rotation && (
-          <p className="text-[10px] text-text-muted">
+          <p className="text-micro text-text-muted">
             Rotation: {(sink.rotation.max_bytes / 1024 / 1024).toFixed(0)} MB x {sink.rotation.backup_count}
           </p>
         )}
         {sink.routing_prefixes.length > 0 && (
-          <p className="truncate text-[10px] text-text-muted" title={sink.routing_prefixes.join(', ')}>
+          <p className="truncate text-micro text-text-muted" title={sink.routing_prefixes.join(', ')}>
             Routes: {sink.routing_prefixes.join(', ')}
           </p>
         )}

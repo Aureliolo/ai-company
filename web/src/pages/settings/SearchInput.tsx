@@ -70,8 +70,12 @@ export function SearchInput({ value, onChange, className, ref, resultCount }: Se
         aria-label="Search settings"
       />
       {local && resultCount !== undefined && (
-        <span className="absolute right-8 top-1/2 -translate-y-1/2 text-[10px] text-text-muted">
-          {resultCount}
+        <span
+          className="absolute right-8 top-1/2 -translate-y-1/2 text-[10px] text-text-muted"
+          role="status"
+          aria-live="polite"
+        >
+          {resultCount} {resultCount === 1 ? 'result' : 'results'}
         </span>
       )}
       {local && (

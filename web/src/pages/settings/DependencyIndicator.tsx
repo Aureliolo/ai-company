@@ -15,7 +15,7 @@ export function DependencyIndicator({ dependents, className }: DependencyIndicat
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent/5 text-text-muted',
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-micro font-medium bg-accent/5 text-text-muted',
         className,
       )}
       title={tooltip}

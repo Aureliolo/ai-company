@@ -26,7 +26,7 @@ describe('RestartBanner', () => {
     expect(onDismiss).toHaveBeenCalledOnce()
   })
 
-  it('has warning role for accessibility', () => {
+  it('has alert role for accessibility', () => {
     render(<RestartBanner count={1} onDismiss={() => {}} />)
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })

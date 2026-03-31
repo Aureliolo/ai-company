@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { SinkInfo, TestSinkResult } from '@/api/types'
-import { listSinks, testSinkConfig, updateSetting } from '@/api/endpoints/settings'
+import { getNamespaceSettings, listSinks, testSinkConfig, updateSetting } from '@/api/endpoints/settings'
 
 interface SinksState {
   sinks: SinkInfo[]
@@ -47,7 +47,19 @@ export const useSinksStore = create<SinksState>((set, get) => ({
         if (sink.routing_prefixes.length > 0) {
           custom.routing_prefixes = [...sink.routing_prefixes]
         }
-        await updateSetting('observability', 'custom_sinks', { value: JSON.stringify([custom]) })
+        // Merge with existing custom sinks instead of overwriting
+        let existing: Record<string, unknown>[] = []
+        try {
+          const settings = await getNamespaceSettings('observability')
+          const entry = settings.find((s) => s.definition.key === 'custom_sinks')
+          if (entry?.value) {
+            const parsed: unknown = JSON.parse(entry.value)
+            if (Array.isArray(parsed)) existing = parsed as Record<string, unknown>[]
+          }
+        } catch { /* proceed with empty */ }
+        const merged = existing.filter((s) => s.file_path !== sink.identifier)
+        merged.push(custom)
+        await updateSetting('observability', 'custom_sinks', { value: JSON.stringify(merged) })
       }
       await get().fetchSinks()
     } catch (err) {
