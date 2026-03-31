@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
-from litestar import Controller, Response, get, post
+from litestar import Controller, Request, Response, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 
@@ -23,9 +23,6 @@ from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_WS_SEND_FAILED
-
-if TYPE_CHECKING:
-    from litestar import Request
 
 logger = get_logger(__name__)
 

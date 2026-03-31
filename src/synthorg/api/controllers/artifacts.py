@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
-from litestar import Controller, Response, delete, get, post, put
+from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
 from litestar.params import Body, Parameter
@@ -35,9 +35,6 @@ from synthorg.persistence.errors import (
     PersistenceError,
     RecordNotFoundError,
 )
-
-if TYPE_CHECKING:
-    from litestar import Request
 
 logger = get_logger(__name__)
 
