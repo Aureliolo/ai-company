@@ -118,7 +118,8 @@ Personality is split into two tiers:
         capabilities: []
       memory:
         type: "persistent"       # persistent, project, session, none
-        retention_days: null     # null = forever
+        retention_days: null     # null = forever; also agent-level global default
+        retention_overrides: []  # per-category overrides, e.g. [{category: "semantic", retention_days: 365}]
       tools:
         access_level: "standard" # sandboxed | restricted | standard | elevated | custom
         allowed:

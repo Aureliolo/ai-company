@@ -235,7 +235,7 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retention_consistency(self) -> Self:
-        """Ensure retention_days is None when memory type is MemoryLevel.NONE."""
+        """Ensure retention fields are unset when memory type is NONE."""
         if self.type is MemoryLevel.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
             logger.warning(
@@ -264,7 +264,13 @@ class MemoryConfig(BaseModel):
         """Ensure each category appears at most once in overrides."""
         categories = [rule.category for rule in self.retention_overrides]
         if len(categories) != len(set(categories)):
-            dupes = sorted(c.value for c in categories if categories.count(c) > 1)
+            seen: set[MemoryCategory] = set()
+            dupe_values: set[str] = set()
+            for c in categories:
+                if c in seen:
+                    dupe_values.add(c.value)
+                seen.add(c)
+            dupes = sorted(dupe_values)
             msg = f"Duplicate retention override categories: {dupes}"
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

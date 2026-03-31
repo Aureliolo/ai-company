@@ -45,6 +45,9 @@ class RetentionEnforcer:
         self._config = config
         self._backend = backend
         self._categories_to_check = self._build_categories_to_check(config)
+        # Explicit per-category rules ONLY (not default-filled entries).
+        # _resolve_categories depends on this distinction -- do not
+        # include categories filled by the company global default here.
         self._explicit_rules = tuple(
             (rule.category, rule.retention_days) for rule in config.rules
         )
@@ -89,7 +92,7 @@ class RetentionEnforcer:
         2. Company per-category rule (from *explicit_rules*)
         3. Agent global default (*agent_default_days*)
         4. Company global default (*company_default_days*)
-        5. Skip (keep forever)
+        5. Keep forever (no expiry)
 
         Args:
             explicit_rules: Explicit company per-category rules only
@@ -103,6 +106,13 @@ class RetentionEnforcer:
         Returns:
             Merged tuple of (category, days) pairs.
         """
+        for days in agent_overrides.values():
+            if days < 1:
+                msg = f"Agent override retention_days must be >= 1, got {days}"
+                raise ValueError(msg)
+        if agent_default_days is not None and agent_default_days < 1:
+            msg = f"agent_default_days must be >= 1, got {agent_default_days}"
+            raise ValueError(msg)
         rules_dict = dict(explicit_rules)
         result: list[tuple[MemoryCategory, int]] = []
         for category in MemoryCategory:
@@ -124,7 +134,7 @@ class RetentionEnforcer:
             if company_default_days is not None:
                 result.append((category, company_default_days))
                 continue
-            # 5. No retention -- skip
+            # 5. Keep forever (no expiry) -- skip
         return tuple(result)
 
     def _resolve_for_agent(
@@ -143,9 +153,8 @@ class RetentionEnforcer:
         Returns:
             Resolved (category, days) pairs.
         """
-        has_overrides = (
-            agent_category_overrides is not None
-            or agent_default_retention_days is not None
+        has_overrides = bool(agent_category_overrides) or (
+            agent_default_retention_days is not None
         )
         if not has_overrides:
             return self._categories_to_check
@@ -181,7 +190,8 @@ class RetentionEnforcer:
 
         When *agent_category_overrides* or *agent_default_retention_days*
         is provided, per-agent retention rules are merged with company
-        defaults using :meth:`_resolve_categories`.
+        defaults using the internal resolution chain
+        (``_resolve_categories``).
 
         Args:
             agent_id: Agent whose memories to clean up.

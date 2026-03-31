@@ -481,6 +481,53 @@ class TestRetentionEnforcerAgentOverrides:
             MemoryCategory,
         )
 
+    async def test_fast_path_returns_precomputed_categories(self) -> None:
+        """Without overrides, _resolve_for_agent returns cached tuple."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+
+        config = RetentionConfig(
+            rules=(
+                RetentionRule(
+                    category=MemoryCategory.WORKING,
+                    retention_days=30,
+                ),
+            ),
+        )
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+
+        resolved = enforcer._resolve_for_agent(_AGENT_ID, None, None)
+        assert resolved is enforcer._categories_to_check
+
+    async def test_cleanup_with_both_overrides_simultaneously(self) -> None:
+        """Both agent_category_overrides and agent_default combined."""
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=())
+
+        config = RetentionConfig(
+            rules=(
+                RetentionRule(
+                    category=MemoryCategory.WORKING,
+                    retention_days=30,
+                ),
+            ),
+        )
+        enforcer = RetentionEnforcer(config=config, backend=backend)
+
+        await enforcer.cleanup_expired(
+            _AGENT_ID,
+            now=_NOW,
+            agent_category_overrides={MemoryCategory.WORKING: 7},
+            agent_default_retention_days=60,
+        )
+        # All categories checked: WORKING via agent override,
+        # the rest via agent default
+        assert backend.retrieve.call_count == len(MemoryCategory)
+        # Verify WORKING uses agent override (7 days), not company (30)
+        working_call = backend.retrieve.call_args_list[0]
+        query: MemoryQuery = working_call[0][1]
+        assert query.until == _NOW - timedelta(days=7)
+
 
 @pytest.mark.unit
 class TestRetentionRuleParity:

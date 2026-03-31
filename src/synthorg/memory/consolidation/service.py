@@ -195,7 +195,7 @@ class MemoryConsolidationService:
         self,
         agent_id: NotBlankStr,
         *,
-        agent_category_overrides: (Mapping[MemoryCategory, int] | None) = None,
+        agent_category_overrides: Mapping[MemoryCategory, int] | None = None,
         agent_default_retention_days: int | None = None,
     ) -> int:
         """Run retention cleanup for an agent.
@@ -220,7 +220,7 @@ class MemoryConsolidationService:
         self,
         agent_id: NotBlankStr,
         *,
-        agent_category_overrides: (Mapping[MemoryCategory, int] | None) = None,
+        agent_category_overrides: Mapping[MemoryCategory, int] | None = None,
         agent_default_retention_days: int | None = None,
     ) -> ConsolidationResult:
         """Run full maintenance cycle for an agent.

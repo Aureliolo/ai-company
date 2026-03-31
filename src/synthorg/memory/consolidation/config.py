@@ -8,9 +8,13 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import ConsolidationInterval
+from synthorg.core.enums import ConsolidationInterval, MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.models import RetentionRule  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 
 class RetentionConfig(BaseModel):
@@ -26,7 +30,7 @@ class RetentionConfig(BaseModel):
     2. Company per-category rule (this config)
     3. Agent global default (``MemoryConfig.retention_days``)
     4. Company global default (``default_retention_days``)
-    5. No retention (keep forever)
+    5. Keep forever (no expiry)
 
     Attributes:
         rules: Per-category retention rules (unique categories).
@@ -51,8 +55,21 @@ class RetentionConfig(BaseModel):
         """Ensure each category appears at most once in rules."""
         categories = [rule.category for rule in self.rules]
         if len(categories) != len(set(categories)):
-            dupes = sorted(c.value for c in categories if categories.count(c) > 1)
-            msg = f"Duplicate retention categories: {dupes}"
+            seen: set[MemoryCategory] = set()
+            dupes: set[str] = set()
+            for c in categories:
+                if c in seen:
+                    dupes.add(c.value)
+                seen.add(c)
+            sorted_dupes = sorted(dupes)
+            msg = f"Duplicate retention categories: {sorted_dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RetentionConfig",
+                field="rules",
+                duplicates=sorted_dupes,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -117,6 +134,13 @@ class DualModeConfig(BaseModel):
         """Require a summarization model when dual-mode is enabled."""
         if self.enabled and self.summarization_model is None:
             msg = "summarization_model must be non-blank when dual-mode is enabled"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="DualModeConfig",
+                field="summarization_model",
+                enabled=self.enabled,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 

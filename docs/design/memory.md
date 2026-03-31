@@ -354,12 +354,19 @@ call `ArchivalStore.restore(agent_id, entry_id)` directly by ID, bypassing seman
 | `ArchivalModeAssignment` | Maps a removed entry ID to its archival mode (set by strategy) |
 | `ArchivalIndexEntry` | Maps original entry ID to archival store ID (built by service) |
 
-!!! abstract "Per-Agent Retention Overrides"
+#### Per-Agent Retention Overrides
 
-    Individual agents can override company-level retention rules via
-    `MemoryConfig.retention_overrides` (per-category) and `MemoryConfig.retention_days`
-    (agent-level default).  Resolution order per category: agent per-category rule >
-    company per-category rule > agent global default > company global default > keep forever.
+Individual agents can override company-level retention rules via
+`MemoryConfig.retention_overrides` (per-category) and
+`MemoryConfig.retention_days` (agent-level default).
+
+Resolution order per category:
+
+1. Agent per-category rule
+2. Company per-category rule
+3. Agent global default
+4. Company global default
+5. Keep forever (no expiry)
 
 ---
 
