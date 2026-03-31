@@ -287,6 +287,17 @@ Templates support **Jinja2-style variables** (`{{ variable | default(value) }}`)
 user-customizable values, and **personality presets** for reusable agent personality
 configurations.
 
+### Personality Presets
+
+Personality presets come in two flavors:
+
+- **Built-in presets** ship with the codebase (`templates/presets.py`) and are read-only.
+- **Custom presets** are user-defined via the REST API (`POST /api/v1/personalities/presets`), persisted to the database, and managed through full CRUD operations.
+
+Custom preset names must match `^[a-z][a-z0-9_]*$` and cannot shadow built-in names. All custom presets are validated against `PersonalityConfig` before persistence. The API distinguishes origin via a `source: "builtin" | "custom"` field in responses.
+
+Discovery endpoints (`GET /api/v1/personalities/presets`, `GET /api/v1/personalities/presets/{name}`, `GET /api/v1/personalities/schema`) are available to all authenticated users. CRUD endpoints require write access.
+
 ### Template Inheritance
 
 Templates can extend other templates using `extends`:

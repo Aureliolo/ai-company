@@ -12,6 +12,9 @@ from synthorg.hr.persistence_protocol import (
     LifecycleEventRepository,  # noqa: TC001
     TaskMetricRepository,  # noqa: TC001
 )
+from synthorg.persistence.preset_repository import (
+    PersonalityPresetRepository,  # noqa: TC001
+)
 from synthorg.persistence.repositories import (
     AgentStateRepository,  # noqa: TC001
     ApiKeyRepository,  # noqa: TC001
@@ -56,6 +59,7 @@ class PersistenceBackend(Protocol):
         settings: Repository for namespaced settings persistence.
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
+        custom_presets: Repository for custom personality preset persistence.
     """
 
     async def connect(self) -> None:
@@ -178,6 +182,11 @@ class PersistenceBackend(Protocol):
     @property
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
+        ...
+
+    @property
+    def custom_presets(self) -> PersonalityPresetRepository:
+        """Repository for custom personality preset persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

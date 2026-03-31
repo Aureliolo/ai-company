@@ -29,6 +29,7 @@ _EXPECTED_TABLES = {
     "agent_states",
     "artifacts",
     "projects",
+    "custom_presets",
 }
 
 _EXPECTED_INDEXES = {
