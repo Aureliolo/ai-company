@@ -1,0 +1,126 @@
+---
+const heroFeatures = [
+  {
+    icon: "&#9881;",
+    title: "Orchestration Engine",
+    headline: "Six routing strategies. Three execution loops. One engine.",
+    description:
+      "Agents bid for tasks via auction, get assigned by role, or get load-balanced. The engine decomposes work into DAGs, resolves conflicts, and recovers from crashes automatically.",
+    differentiator:
+      "Sequential, parallel, Kanban, and Agile sprint workflows built in.",
+    href: "/docs/design/engine/",
+    color: "violet",
+  },
+  {
+    icon: "&#128274;",
+    title: "Governance & Security",
+    headline: "Every action classified, audited, and gated.",
+    description:
+      "Hybrid SecOps: rule engine fast-path for ~95% of actions in sub-millisecond, plus LLM evaluator for uncertain cases. Five autonomy tiers. 25+ classified action types. Budget enforcement at every layer.",
+    differentiator:
+      "Progressive trust -- privileges never auto-granted, auto-downgrade on violations.",
+    href: "/docs/security/",
+    color: "teal",
+  },
+  {
+    icon: "&#129504;",
+    title: "Agent Identity",
+    headline: "Agents with personalities, careers, and performance reviews.",
+    description:
+      "Big Five personality dimensions drive team compatibility. Eight seniority levels from Intern to C-Suite. Three-tier quality scoring. Hiring, promotions, and firing with full memory archival.",
+    differentiator:
+      "Not interchangeable workers -- agents have identity and growth.",
+    href: "/docs/design/agents/",
+    color: "violet",
+  },
+  {
+    icon: "&#128451;",
+    title: "Memory & Knowledge",
+    headline: "Five memory types. Knowledge that outlasts any agent.",
+    description:
+      "Working, episodic, semantic, procedural, and social memory. Hybrid prompt and retrieval injection. Memories survive offboarding and transfer to successors automatically.",
+    differentiator:
+      "Organizational knowledge persists across the entire agent lifecycle.",
+    href: "/docs/design/memory/",
+    color: "teal",
+  },
+];
+
+const compactFeatures = [
+  {
+    title: "100+ LLM Providers",
+    description:
+      "11 built-in presets, hot-reload management, quota-aware routing, automatic fallback chains.",
+    href: "/docs/design/providers/",
+  },
+  {
+    title: "Pluggable Architecture",
+    description:
+      "10+ protocol interfaces -- swap memory, persistence, routing, sandboxing, and more via config.",
+    href: "/docs/architecture/",
+  },
+  {
+    title: "Real-Time Dashboard",
+    description:
+      "Org chart, task board, budget gauges, agent detail, activity feeds -- all live.",
+    href: "/docs/",
+  },
+  {
+    title: "Cost Transparency",
+    description:
+      "Per-token tracking, coordination overhead metrics, hierarchical budget cascades, CFO optimization.",
+    href: "/docs/design/budget/",
+  },
+  {
+    title: "Tool Sandboxing",
+    description:
+      "Subprocess or Docker isolation per tool category. Explicit network controls. MCP protocol support.",
+    href: "/docs/design/tools/",
+  },
+  {
+    title: "Templates & Presets",
+    description:
+      "9 org archetypes from Solo Builder to Enterprise. Personality presets. Locale-aware name generation.",
+    href: "/docs/design/organization/",
+  },
+];
+---
+
+<!-- Hero feature cards -->
+<div class="grid md:grid-cols-2 gap-6 mb-8">
+  {heroFeatures.map((f) => {
+    const borderColor = f.color === "violet"
+      ? "border-violet-500/20 hover:border-violet-500/40"
+      : "border-teal-500/20 hover:border-teal-500/40";
+    const iconBg = f.color === "violet" ? "bg-violet-600/20" : "bg-teal-600/20";
+    const iconColor = f.color === "violet" ? "text-violet-400" : "text-teal-400";
+    const diffColor = f.color === "violet" ? "text-violet-400/80" : "text-teal-400/80";
+    return (
+      <a
+        href={f.href}
+        class={`block bg-[#0F1219] rounded-xl p-8 border ${borderColor} transition-colors no-underline text-white group`}
+      >
+        <div class={`w-12 h-12 rounded-lg ${iconBg} flex items-center justify-center ${iconColor} mb-4 text-xl`}>
+          <Fragment set:html={f.icon} />
+        </div>
+        <h3 class="text-xl font-semibold mb-1">{f.title}</h3>
+        <p class={`text-sm ${iconColor} font-medium mb-3`}>{f.headline}</p>
+        <p class="text-gray-400 text-sm mb-3">{f.description}</p>
+        <p class={`text-xs ${diffColor} italic`}>{f.differentiator}</p>
+      </a>
+    );
+  })}
+</div>
+
+<!-- Compact feature grid -->
+<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {compactFeatures.map((f) => (
+    <a
+      href={f.href}
+      class="block bg-[#1a1f2e]/50 rounded-lg p-5 border border-white/5 hover:border-white/15 transition-colors no-underline text-white"
+    >
+      <p class="font-semibold text-sm mb-1">{f.title}</p>
+      <p class="text-xs text-gray-400">{f.description}</p>
+    </a>
+  ))}
+</div>

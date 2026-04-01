@@ -1,0 +1,346 @@
+---
+// Scroll-Synced Split Panel -- 4-step "How It Works" with sticky visualization
+---
+
+<section id="how-it-works" class="py-16 px-6">
+  <div class="max-w-6xl mx-auto">
+    <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">See How It Works</h2>
+    <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+      From YAML config to a running organization in four steps.
+    </p>
+
+    <div class="md:grid md:grid-cols-2 md:gap-12">
+      <!-- Left: scrollable code steps -->
+      <div class="space-y-0">
+        <!-- Step 1: Define -->
+        <div class="scroll-step min-h-[60vh] flex items-center" data-step="0">
+          <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
+            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-3 text-sm text-gray-400 font-mono">company.yaml</span>
+              </div>
+              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">company</span>:
+  <span class="text-teal-400">name</span>: "Acme AI Lab"
+  <span class="text-teal-400">template</span>: "startup"
+
+<span class="text-violet-400">agents</span>:
+  - <span class="text-teal-400">name</span>: "CTO"
+    <span class="text-teal-400">role</span>: tech_lead
+    <span class="text-teal-400">model</span>: large
+    <span class="text-teal-400">personality</span>:
+      <span class="text-teal-400">openness</span>: 0.8
+      <span class="text-teal-400">conscientiousness</span>: 0.9
+    <span class="text-teal-400">budget</span>:
+      <span class="text-teal-400">max_daily_usd</span>: 50.00
+
+  - <span class="text-teal-400">name</span>: "Engineer"
+    <span class="text-teal-400">role</span>: developer
+    <span class="text-teal-400">model</span>: medium
+    <span class="text-teal-400">reports_to</span>: "CTO"
+    <span class="text-teal-400">tools</span>:
+      - file_system
+      - git
+      - code_runner</code></pre>
+            </div>
+            <p class="mt-4 text-sm text-gray-500 italic">9 templates or fully custom. Agents have roles, personalities, budgets, and tools.</p>
+          </div>
+        </div>
+
+        <!-- Step 2: Launch -->
+        <div class="scroll-step min-h-[60vh] flex items-center" data-step="1">
+          <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
+            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-3 text-sm text-gray-400 font-mono">terminal</span>
+              </div>
+              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-teal-400">$</span> synthorg run company.yaml
+
+<span class="text-gray-500">[INFO]</span>  Company "Acme AI Lab" initialized
+<span class="text-gray-500">[INFO]</span>  Hired CTO (tech_lead, large model)
+<span class="text-gray-500">[INFO]</span>  Hired Engineer (developer, medium model)
+<span class="text-violet-400">[TASK]</span>  #1 created: "Build auth module"
+<span class="text-violet-400">[TASK]</span>  #1 assigned to CTO (role-based routing)
+<span class="text-teal-400">[ENGINE]</span> CTO decomposed #1 into 3 subtasks
+<span class="text-teal-400">[ENGINE]</span> #1a delegated to Engineer</code></pre>
+            </div>
+            <p class="mt-4 text-sm text-gray-500 italic">DAG-based decomposition. 6 routing strategies. Conflict resolution built in.</p>
+          </div>
+        </div>
+
+        <!-- Step 3: Collaborate -->
+        <div class="scroll-step min-h-[60vh] flex items-center" data-step="2">
+          <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
+            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-3 text-sm text-gray-400 font-mono">logs</span>
+              </div>
+              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-teal-400">[COMMS]</span>  Engineer -> CTO: "Need API spec for auth"
+<span class="text-teal-400">[COMMS]</span>  CTO -> Engineer: "Use OAuth2 + JWT"
+<span class="text-violet-400">[TASK]</span>  #1a status: in_progress -> in_review
+<span class="text-teal-400">[COMMS]</span>  CTO reviewing Engineer's implementation
+<span class="text-green-400">[DONE]</span>  #1a approved by CTO (quality: 92%)
+<span class="text-violet-400">[TASK]</span>  #1b assigned to Engineer
+<span class="text-teal-400">[COMMS]</span>  Meeting: sprint review (round-robin)</code></pre>
+            </div>
+            <p class="mt-4 text-sm text-gray-500 italic">Event-driven message bus. Meeting protocols. Hierarchical delegation.</p>
+          </div>
+        </div>
+
+        <!-- Step 4: Observe -->
+        <div class="scroll-step min-h-[60vh] flex items-center" data-step="3">
+          <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
+            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-3 text-sm text-gray-400 font-mono">dashboard</span>
+              </div>
+              <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Tasks completed</span>:     12
+<span class="text-violet-400">Total cost</span>:          EUR 3.47
+<span class="text-violet-400">Coordination overhead</span>: 18% <span class="text-green-400">(healthy)</span>
+<span class="text-violet-400">Budget remaining</span>:    EUR 46.53 / 50.00
+
+<span class="text-teal-400">Agent Performance</span>:
+  CTO       quality: 94%  tasks: 5  cost: EUR 2.10
+  Engineer  quality: 91%  tasks: 7  cost: EUR 1.37</code></pre>
+            </div>
+            <p class="mt-4 text-sm text-gray-500 italic">Per-token cost tracking. Coordination overhead metrics. Performance scoring.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: sticky visualization -->
+      <div class="hidden md:block">
+        <div class="sticky top-[20vh]">
+          <div class="bg-[#0F1219] rounded-xl border border-white/10 p-8 min-h-[400px] flex items-center justify-center">
+            <svg
+              id="sync-viz"
+              viewBox="0 0 400 350"
+              class="w-full max-w-[400px]"
+              aria-hidden="true"
+            >
+              <!-- Step labels -->
+              <text id="viz-label" x="200" y="20" text-anchor="middle" fill="#94a3b8" font-size="12" font-family="'JetBrains Mono', monospace" class="transition-all duration-500">
+                Define Your Organization
+              </text>
+
+              <!-- Department groups -->
+              <rect id="dept-eng" x="100" y="170" width="200" height="140" rx="8" fill="none" stroke="#a78bfa" stroke-opacity="0.15" stroke-width="1" class="transition-all duration-700" opacity="0" />
+              <text x="115" y="190" fill="#a78bfa" font-size="9" font-family="Inter, sans-serif" opacity="0" class="dept-label transition-all duration-700">Engineering</text>
+
+              <!-- Agent nodes -->
+              <!-- CTO -->
+              <g id="node-cto" class="transition-all duration-700" opacity="0">
+                <rect x="155" y="40" width="90" height="44" rx="8" fill="#1a1f2e" stroke="#a78bfa" stroke-width="1.5" />
+                <text x="200" y="58" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600" font-family="Inter, sans-serif">CTO</text>
+                <text x="200" y="73" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="Inter, sans-serif">tech_lead</text>
+                <circle id="status-cto" cx="235" cy="50" r="4" fill="#94a3b8" class="transition-all duration-500" />
+              </g>
+
+              <!-- Engineer -->
+              <g id="node-eng" class="transition-all duration-700" opacity="0">
+                <rect x="60" y="210" width="100" height="44" rx="8" fill="#1a1f2e" stroke="#a78bfa" stroke-width="1" />
+                <text x="110" y="228" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600" font-family="Inter, sans-serif">Engineer</text>
+                <text x="110" y="243" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="Inter, sans-serif">developer</text>
+                <circle id="status-eng" cx="150" cy="220" r="4" fill="#94a3b8" class="transition-all duration-500" />
+              </g>
+
+              <!-- QA -->
+              <g id="node-qa" class="transition-all duration-700" opacity="0">
+                <rect x="240" y="210" width="100" height="44" rx="8" fill="#1a1f2e" stroke="#2dd4bf" stroke-width="1" />
+                <text x="290" y="228" text-anchor="middle" fill="#e2e8f0" font-size="11" font-weight="600" font-family="Inter, sans-serif">QA</text>
+                <text x="290" y="243" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="Inter, sans-serif">reviewer</text>
+                <circle id="status-qa" cx="330" cy="220" r="4" fill="#94a3b8" class="transition-all duration-500" />
+              </g>
+
+              <!-- Hierarchy edges -->
+              <line id="edge-cto-eng" x1="200" y1="84" x2="110" y2="210" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="4 4" class="transition-all duration-700" opacity="0" />
+              <line id="edge-cto-qa" x1="200" y1="84" x2="290" y2="210" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="4 4" class="transition-all duration-700" opacity="0" />
+
+              <!-- Communication edge (animated) -->
+              <line id="edge-comm" x1="160" y1="232" x2="240" y2="232" stroke="#2dd4bf" stroke-width="1.5" stroke-opacity="0" stroke-dasharray="6 3" class="transition-all duration-700">
+                <animate attributeName="stroke-dashoffset" from="0" to="-18" dur="1.5s" repeatCount="indefinite" />
+              </line>
+
+              <!-- Task flow arrow (step 2) -->
+              <line id="edge-task" x1="200" y1="84" x2="110" y2="210" stroke="#a78bfa" stroke-width="2" stroke-opacity="0" class="transition-all duration-700">
+                <animate attributeName="stroke-dashoffset" from="0" to="-12" dur="1s" repeatCount="indefinite" />
+              </line>
+
+              <!-- Metric counters (step 4) -->
+              <g id="metrics-group" opacity="0" class="transition-all duration-700">
+                <rect x="50" y="290" width="300" height="45" rx="6" fill="#1a1f2e" stroke="#2dd4bf" stroke-width="0.5" stroke-opacity="0.3" />
+                <text x="75" y="310" fill="#a78bfa" font-size="9" font-family="'JetBrains Mono', monospace">Tasks: 12</text>
+                <text x="170" y="310" fill="#10b981" font-size="9" font-family="'JetBrains Mono', monospace">Cost: EUR 3.47</text>
+                <text x="280" y="310" fill="#2dd4bf" font-size="9" font-family="'JetBrains Mono', monospace">18% coord</text>
+                <rect x="75" y="320" width="80" height="4" rx="2" fill="#a78bfa" opacity="0.3" />
+                <rect x="75" y="320" width="56" height="4" rx="2" fill="#a78bfa" />
+                <rect x="190" y="320" width="80" height="4" rx="2" fill="#10b981" opacity="0.3" />
+                <rect x="190" y="320" width="28" height="4" rx="2" fill="#10b981" />
+              </g>
+            </svg>
+          </div>
+
+          <!-- Step indicators -->
+          <div class="flex justify-center gap-2 mt-4">
+            <span class="step-dot w-2 h-2 rounded-full bg-white/20 transition-colors duration-300" data-dot="0"></span>
+            <span class="step-dot w-2 h-2 rounded-full bg-white/20 transition-colors duration-300" data-dot="1"></span>
+            <span class="step-dot w-2 h-2 rounded-full bg-white/20 transition-colors duration-300" data-dot="2"></span>
+            <span class="step-dot w-2 h-2 rounded-full bg-white/20 transition-colors duration-300" data-dot="3"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const steps = document.querySelectorAll<HTMLDivElement>(".scroll-step");
+  const dots = document.querySelectorAll<HTMLSpanElement>(".step-dot");
+
+  const labels = [
+    "Define Your Organization",
+    "The Engine Orchestrates",
+    "Agents Collaborate",
+    "Observe Everything",
+  ];
+
+  // SVG elements
+  const vizLabel = document.getElementById("viz-label");
+  const nodeCto = document.getElementById("node-cto");
+  const nodeEng = document.getElementById("node-eng");
+  const nodeQa = document.getElementById("node-qa");
+  const edgeCtoEng = document.getElementById("edge-cto-eng");
+  const edgeCtoQa = document.getElementById("edge-cto-qa");
+  const edgeComm = document.getElementById("edge-comm");
+  const edgeTask = document.getElementById("edge-task");
+  const deptEng = document.getElementById("dept-eng");
+  const deptLabel = document.querySelector(".dept-label");
+  const statusCto = document.getElementById("status-cto");
+  const statusEng = document.getElementById("status-eng");
+  const statusQa = document.getElementById("status-qa");
+  const metricsGroup = document.getElementById("metrics-group");
+
+  let currentStep = -1;
+
+  function setStep(step: number): void {
+    if (step === currentStep) return;
+    currentStep = step;
+
+    // Update code step highlighting
+    steps.forEach((s, i) => {
+      const inner = s.firstElementChild as HTMLElement;
+      const codeBox = inner?.querySelector(".bg-\\[\\#1a1f2e\\]") as HTMLElement;
+      if (i === step) {
+        inner.classList.remove("opacity-40", "scale-[0.98]");
+        inner.classList.add("opacity-100", "scale-100");
+        if (codeBox) {
+          codeBox.classList.remove("border-l-transparent");
+          codeBox.classList.add("border-l-violet-500/40");
+        }
+      } else {
+        inner.classList.add("opacity-40", "scale-[0.98]");
+        inner.classList.remove("opacity-100", "scale-100");
+        if (codeBox) {
+          codeBox.classList.add("border-l-transparent");
+          codeBox.classList.remove("border-l-violet-500/40");
+        }
+      }
+    });
+
+    // Update dots
+    dots.forEach((d, i) => {
+      if (i === step) {
+        d.classList.remove("bg-white/20");
+        d.classList.add("bg-violet-400");
+      } else {
+        d.classList.add("bg-white/20");
+        d.classList.remove("bg-violet-400");
+      }
+    });
+
+    // Update visualization label
+    if (vizLabel) vizLabel.textContent = labels[step] || "";
+
+    // Step-specific visualization states
+    const show = (el: Element | null) => el?.setAttribute("opacity", "1");
+    const hide = (el: Element | null) => el?.setAttribute("opacity", "0");
+    const setFill = (el: Element | null, color: string) => el?.setAttribute("fill", color);
+
+    // Reset all
+    [nodeCto, nodeEng, nodeQa, edgeCtoEng, edgeCtoQa, deptEng, deptLabel as Element].forEach(hide);
+    edgeComm?.setAttribute("stroke-opacity", "0");
+    edgeTask?.setAttribute("stroke-opacity", "0");
+    hide(metricsGroup);
+    setFill(statusCto, "#94a3b8");
+    setFill(statusEng, "#94a3b8");
+    setFill(statusQa, "#94a3b8");
+
+    if (step >= 0) {
+      // Step 1+: Show nodes
+      show(nodeCto);
+      show(nodeEng);
+      show(nodeQa);
+      show(deptEng);
+      show(deptLabel as Element);
+    }
+
+    if (step >= 1) {
+      // Step 2+: Show hierarchy + task flow
+      show(edgeCtoEng);
+      show(edgeCtoQa);
+      edgeTask?.setAttribute("stroke-opacity", "0.5");
+      edgeTask?.setAttribute("stroke-dasharray", "6 3");
+      setFill(statusCto, "#a78bfa"); // active
+      setFill(statusEng, "#2dd4bf"); // working
+    }
+
+    if (step >= 2) {
+      // Step 3+: Communication edges
+      edgeComm?.setAttribute("stroke-opacity", "0.6");
+      setFill(statusEng, "#10b981"); // done
+      setFill(statusQa, "#f59e0b"); // reviewing
+    }
+
+    if (step >= 3) {
+      // Step 4: Metrics
+      show(metricsGroup);
+      setFill(statusCto, "#10b981");
+      setFill(statusEng, "#10b981");
+      setFill(statusQa, "#10b981");
+      edgeTask?.setAttribute("stroke-opacity", "0");
+    }
+  }
+
+  // IntersectionObserver for scroll sync
+  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const step = parseInt((entry.target as HTMLElement).dataset.step || "0", 10);
+          setStep(step);
+        }
+      }
+    },
+    {
+      rootMargin: "-40% 0px -40% 0px",
+      threshold: 0,
+    }
+  );
+
+  steps.forEach((step) => observer.observe(step));
+
+  // Start with step 0 visible
+  setStep(0);
+</script>
