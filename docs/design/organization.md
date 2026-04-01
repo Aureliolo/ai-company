@@ -350,7 +350,7 @@ is detected via chain tracking and raises `TemplateInheritanceError`.
 
 **Built-in inheritance tree:**
 
-```
+```text
 solo_founder (base: 2 agents)
   -> startup (extends solo_founder: 5 agents)
      -> dev_shop (extends startup: 8 agents)
