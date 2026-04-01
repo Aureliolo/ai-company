@@ -119,7 +119,13 @@
         if (n.y > h + 10) n.y = -10;
       }
 
-      // Draw edges
+      drawEdges();
+      drawNodes();
+
+      requestAnimationFrame(draw);
+    }
+
+    function drawEdges(): void {
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const dx = nodes[i].x - nodes[j].x;
@@ -136,8 +142,9 @@
           }
         }
       }
+    }
 
-      // Draw nodes
+    function drawNodes(): void {
       for (const n of nodes) {
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
@@ -146,8 +153,6 @@
         ctx.fill();
         ctx.globalAlpha = 1;
       }
-
-      requestAnimationFrame(draw);
     }
 
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -178,34 +183,8 @@
 
     function drawStaticFrame(): void {
       ctx.clearRect(0, 0, w, h);
-
-      // Draw edges
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x;
-          const dy = nodes[i].y - nodes[j].y;
-          const distSq = dx * dx + dy * dy;
-          if (distSq < MAX_DIST_SQ) {
-            const alpha = (1 - Math.sqrt(distSq) / MAX_DIST) * 0.15;
-            ctx.beginPath();
-            ctx.moveTo(nodes[i].x, nodes[i].y);
-            ctx.lineTo(nodes[j].x, nodes[j].y);
-            ctx.strokeStyle = `rgba(167, 139, 250, ${alpha})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Draw nodes
-      for (const n of nodes) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-        ctx.fillStyle = n.color;
-        ctx.globalAlpha = n.opacity;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
+      drawEdges();
+      drawNodes();
     }
 
     // Mouse tracking
