@@ -4,6 +4,7 @@ Internal module -- should not be imported outside the ``templates``
 package.
 """
 
+import copy
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -66,7 +67,7 @@ def resolve_agent_personality(
             )
             raise TemplateRenderError(msg)
         _validate_inline_personality(inline_personality, name)
-        return dict(inline_personality)
+        return copy.deepcopy(inline_personality)
     if preset_name:
         # Normalize once for both the lookup and the custom-source check.
         key = preset_name.strip().lower()
