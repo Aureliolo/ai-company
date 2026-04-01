@@ -14,8 +14,9 @@ const activities = [
 ];
 
 export default function AgentDetailMini({ tick }: Props) {
-  const tasksCompleted = 47 + Math.floor(tick / 4);
-  const costToday = (12.4 + tick * 0.03).toFixed(2);
+  const cycle = tick % 20;
+  const tasksCompleted = 47 + Math.floor(cycle / 4);
+  const costToday = (12.4 + cycle * 0.15).toFixed(2);
 
   return (
     <div className="w-full px-2">
