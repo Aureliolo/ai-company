@@ -445,6 +445,18 @@ class TestBuiltinWorkflowConfigs:
         tested = {row[0] for row in self._EXPECTED_TYPES}
         assert tested == set(BUILTIN_TEMPLATES)
 
+    def test_builtin_registry_matches_filesystem(self) -> None:
+        """BUILTIN_TEMPLATES must list every .yaml in the builtins dir."""
+        from importlib import resources
+
+        builtins_dir = resources.files("synthorg.templates.builtins")
+        on_disk = {
+            p.name.removesuffix(".yaml")
+            for p in builtins_dir.iterdir()
+            if str(p).endswith(".yaml")
+        }
+        assert set(BUILTIN_TEMPLATES) == on_disk
+
     @pytest.mark.parametrize(
         ("name", "expected_type"),
         _EXPECTED_TYPES,
@@ -461,12 +473,25 @@ class TestBuiltinWorkflowConfigs:
         ids=list(BUILTIN_TEMPLATES),
     )
     def test_workflow_config_valid(self, name: str) -> None:
-        """Every builtin must explicitly declare workflow_config."""
+        """Every builtin must declare workflow_config with no unknown keys."""
+        import structlog
+
+        from synthorg.observability.events.template import (
+            TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
+        )
+
         loaded = load_template(name)
-        config = render_template(loaded)
-        assert isinstance(config.workflow, WorkflowConfig)
         # Builtins must explicitly declare workflow_config, not rely on defaults.
         assert loaded.template.workflow_config, f"{name}: missing workflow_config"
+        with structlog.testing.capture_logs() as cap:
+            config = render_template(loaded)
+        assert isinstance(config.workflow, WorkflowConfig)
+        unknown_warnings = [
+            e for e in cap if e.get("event") == TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY
+        ]
+        assert not unknown_warnings, (
+            f"{name}: unknown workflow_config keys: {unknown_warnings}"
+        )
 
     @pytest.mark.parametrize(
         "name",
@@ -514,3 +539,34 @@ class TestBuiltinWorkflowConfigs:
         loaded = load_template(name)
         config = render_template(loaded)
         assert config.workflow.kanban.enforce_wip is True
+
+    # (name, expected_in_progress_wip, expected_sprint_days)
+    _EXPECTED_DEFAULTS: ClassVar[list[tuple[str, int, int]]] = [
+        ("solo_founder", 3, 14),
+        ("startup", 3, 7),
+        ("dev_shop", 2, 14),
+        ("product_team", 3, 14),
+        ("agency", 3, 14),
+        ("research_lab", 3, 14),
+        ("full_company", 5, 14),
+        ("consultancy", 2, 14),
+        ("data_team", 3, 14),
+    ]
+
+    @pytest.mark.parametrize(
+        ("name", "expected_wip", "expected_sprint_days"),
+        _EXPECTED_DEFAULTS,
+        ids=[row[0] for row in _EXPECTED_DEFAULTS],
+    )
+    def test_builtin_default_values(
+        self,
+        name: str,
+        expected_wip: int,
+        expected_sprint_days: int,
+    ) -> None:
+        """Builtin templates must render with their documented default values."""
+        loaded = load_template(name)
+        config = render_template(loaded)
+        limits = {wl.column: wl.limit for wl in config.workflow.kanban.wip_limits}
+        assert limits[KanbanColumn.IN_PROGRESS] == expected_wip
+        assert config.workflow.sprint.duration_days == expected_sprint_days
