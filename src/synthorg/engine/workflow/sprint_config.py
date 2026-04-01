@@ -47,6 +47,7 @@ class SprintCeremonyConfig(BaseModel):
 
     name: NotBlankStr = Field(
         description="Ceremony identifier",
+        pattern=r"^[a-z0-9_-]+$",
     )
     protocol: MeetingProtocolType = Field(
         description="Meeting protocol type",

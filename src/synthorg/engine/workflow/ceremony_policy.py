@@ -44,6 +44,14 @@ class CeremonyStrategyType(StrEnum):
     MILESTONE_DRIVEN = "milestone_driven"
 
 
+# -- Trigger constants (shared between scheduler and strategies) -------------
+
+TRIGGER_SPRINT_START: str = "sprint_start"
+TRIGGER_SPRINT_END: str = "sprint_end"
+TRIGGER_SPRINT_MIDPOINT: str = "sprint_midpoint"
+TRIGGER_EVERY_N: str = "every_n_completions"
+TRIGGER_SPRINT_PERCENTAGE: str = "sprint_percentage"
+
 # -- Defaults ----------------------------------------------------------------
 
 _DEFAULT_STRATEGY: CeremonyStrategyType = CeremonyStrategyType.TASK_DRIVEN
@@ -203,11 +211,11 @@ def resolve_ceremony_policy(
     return resolved
 
 
-def _resolve_field(
+def _resolve_field[T](
     layers: list[CeremonyPolicyConfig],
     field_name: str,
-    default: Any,
-) -> Any:
+    default: T,
+) -> T:
     """Resolve a single field from layers (most specific last).
 
     Iterates from the last layer (most specific) to the first,
@@ -216,5 +224,5 @@ def _resolve_field(
     for layer in reversed(layers):
         value = getattr(layer, field_name)
         if value is not None:
-            return value
+            return value  # type: ignore[no-any-return]
     return default

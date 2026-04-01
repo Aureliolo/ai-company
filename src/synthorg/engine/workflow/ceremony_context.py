@@ -3,13 +3,25 @@
 Provides the ``CeremonyEvalContext`` frozen dataclass that bundles all
 information a ``CeremonySchedulingStrategy`` might need to evaluate
 whether a ceremony should fire or a sprint should auto-transition.
+
+Uses a frozen dataclass (not Pydantic) for performance -- this type
+is created on every task-completion event.
 """
 
+import copy
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import (
+    SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
+)
+
 if TYPE_CHECKING:
     from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,11 +33,12 @@ class CeremonyEvalContext:
 
     Attributes:
         completions_since_last_trigger: Task completions since this
-            ceremony's trigger last fired.
+            ceremony's trigger last fired.  Set to 0 in global
+            (non-ceremony-specific) contexts.
         total_completions_this_sprint: Total task completions in the
             current sprint.
         total_tasks_in_sprint: Total tasks in the sprint backlog.
-        elapsed_seconds: Wall-clock seconds since sprint activation.
+        elapsed_seconds: Monotonic seconds since sprint activation.
         budget_consumed_fraction: Budget consumed as a fraction of
             total (0.0--1.0).  ``0.0`` when budget tracking is not
             active.
@@ -54,31 +67,94 @@ class CeremonyEvalContext:
     story_points_committed: float
 
     def __post_init__(self) -> None:
-        """Validate field constraints."""
-        if self.completions_since_last_trigger < 0:
-            msg = "completions_since_last_trigger must be >= 0"
+        """Validate field constraints and normalize collections."""
+        # Defensively copy incoming tuples to enforce immutability.
+        object.__setattr__(
+            self,
+            "velocity_history",
+            tuple(copy.deepcopy(self.velocity_history)),
+        )
+        object.__setattr__(
+            self,
+            "external_events",
+            tuple(self.external_events),
+        )
+
+        # Validate all fields.
+        self._check_non_negative_int(
+            "completions_since_last_trigger",
+            self.completions_since_last_trigger,
+        )
+        self._check_non_negative_int(
+            "total_completions_this_sprint",
+            self.total_completions_this_sprint,
+        )
+        self._check_non_negative_int(
+            "total_tasks_in_sprint",
+            self.total_tasks_in_sprint,
+        )
+        self._check_non_negative_float(
+            "elapsed_seconds",
+            self.elapsed_seconds,
+        )
+        self._check_fraction(
+            "budget_consumed_fraction",
+            self.budget_consumed_fraction,
+        )
+        self._check_non_negative_float(
+            "budget_remaining",
+            self.budget_remaining,
+        )
+        self._check_fraction(
+            "sprint_percentage_complete",
+            self.sprint_percentage_complete,
+        )
+        self._check_non_negative_float(
+            "story_points_completed",
+            self.story_points_completed,
+        )
+        self._check_non_negative_float(
+            "story_points_committed",
+            self.story_points_committed,
+        )
+
+    @staticmethod
+    def _check_non_negative_int(name: str, value: int) -> None:
+        if value < 0:
+            msg = f"{name} must be >= 0"
+            logger.warning(
+                SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
+                field=name,
+                value=value,
+            )
             raise ValueError(msg)
-        if self.total_completions_this_sprint < 0:
-            msg = "total_completions_this_sprint must be >= 0"
+
+    @staticmethod
+    def _check_non_negative_float(name: str, value: float) -> None:
+        if math.isnan(value) or math.isinf(value) or value < 0.0:
+            msg = f"{name} must be >= 0.0 and finite"
+            logger.warning(
+                SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
+                field=name,
+                value=value,
+            )
             raise ValueError(msg)
-        if self.total_tasks_in_sprint < 0:
-            msg = "total_tasks_in_sprint must be >= 0"
+
+    @staticmethod
+    def _check_fraction(name: str, value: float) -> None:
+        if math.isnan(value) or math.isinf(value):
+            msg = f"{name} must be finite"
+            logger.warning(
+                SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
+                field=name,
+                value=value,
+            )
             raise ValueError(msg)
-        if self.elapsed_seconds < 0.0:
-            msg = "elapsed_seconds must be >= 0.0"
-            raise ValueError(msg)
-        if not 0.0 <= self.budget_consumed_fraction <= 1.0:
-            msg = "budget_consumed_fraction must be in [0.0, 1.0]"
-            raise ValueError(msg)
-        if self.budget_remaining < 0.0:
-            msg = "budget_remaining must be >= 0.0"
-            raise ValueError(msg)
-        if not 0.0 <= self.sprint_percentage_complete <= 1.0:
-            msg = "sprint_percentage_complete must be in [0.0, 1.0]"
-            raise ValueError(msg)
-        if self.story_points_completed < 0.0:
-            msg = "story_points_completed must be >= 0.0"
-            raise ValueError(msg)
-        if self.story_points_committed < 0.0:
-            msg = "story_points_committed must be >= 0.0"
+        if not 0.0 <= value <= 1.0:
+            msg = f"{name} must be in [0.0, 1.0]"
+            logger.warning(
+                SPRINT_CEREMONY_EVAL_CONTEXT_INVALID,
+                field=name,
+                value=value,
+            )
             raise ValueError(msg)

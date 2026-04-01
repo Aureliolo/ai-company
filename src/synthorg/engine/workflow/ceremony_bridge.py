@@ -86,6 +86,7 @@ def ceremony_to_meeting_type(
         ceremony=ceremony.name,
         sprint_id=sprint_id,
         has_frequency=ceremony.frequency is not None,
-        has_trigger=ceremony.policy_override is not None,
+        has_trigger=meeting_type.trigger is not None,
+        has_policy_override=ceremony.policy_override is not None,
     )
     return meeting_type

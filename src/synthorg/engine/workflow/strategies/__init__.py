@@ -1,7 +1,8 @@
 """Ceremony scheduling strategy implementations.
 
 Each module provides a concrete ``CeremonySchedulingStrategy``
-implementation for one of the eight scheduling paradigms.
+implementation.  The task-driven strategy is the initial reference
+implementation; additional strategies are added as needed.
 """
 
 from synthorg.engine.workflow.strategies.task_driven import (

@@ -1,5 +1,7 @@
 """Tests for sprint velocity tracking."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -97,40 +99,29 @@ class TestVelocityRecord:
         assert record.budget_consumed == 25.50
 
     @pytest.mark.unit
-    def test_negative_task_completion_count_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("task_completion_count", -1),
+            ("wall_clock_seconds", -1.0),
+            ("budget_consumed", -0.01),
+        ],
+    )
+    def test_negative_optional_fields_rejected(
+        self,
+        field: str,
+        value: int | float,
+    ) -> None:
+        kwargs: dict[str, Any] = {
+            "sprint_id": "sprint-1",
+            "sprint_number": 1,
+            "story_points_committed": 50.0,
+            "story_points_completed": 42.0,
+            "duration_days": 14,
+            field: value,
+        }
         with pytest.raises(ValueError, match="greater than or equal"):
-            VelocityRecord(
-                sprint_id="sprint-1",
-                sprint_number=1,
-                story_points_committed=50.0,
-                story_points_completed=42.0,
-                duration_days=14,
-                task_completion_count=-1,
-            )
-
-    @pytest.mark.unit
-    def test_negative_wall_clock_rejected(self) -> None:
-        with pytest.raises(ValueError, match="greater than or equal"):
-            VelocityRecord(
-                sprint_id="sprint-1",
-                sprint_number=1,
-                story_points_committed=50.0,
-                story_points_completed=42.0,
-                duration_days=14,
-                wall_clock_seconds=-1.0,
-            )
-
-    @pytest.mark.unit
-    def test_negative_budget_consumed_rejected(self) -> None:
-        with pytest.raises(ValueError, match="greater than or equal"):
-            VelocityRecord(
-                sprint_id="sprint-1",
-                sprint_number=1,
-                story_points_committed=50.0,
-                story_points_completed=42.0,
-                duration_days=14,
-                budget_consumed=-0.01,
-            )
+            VelocityRecord(**kwargs)
 
 
 # ── record_velocity ────────────────────────────────────────────

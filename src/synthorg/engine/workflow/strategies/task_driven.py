@@ -7,7 +7,14 @@ implementation for the ``CeremonySchedulingStrategy`` protocol.
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
+from synthorg.engine.workflow.ceremony_policy import (
+    TRIGGER_EVERY_N,
+    TRIGGER_SPRINT_END,
+    TRIGGER_SPRINT_MIDPOINT,
+    TRIGGER_SPRINT_PERCENTAGE,
+    TRIGGER_SPRINT_START,
+    CeremonyStrategyType,
+)
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
@@ -32,13 +39,6 @@ _KEY_EVERY_N = "every_n_completions"
 _KEY_SPRINT_PERCENTAGE = "sprint_percentage"
 _KEY_TRIGGER = "trigger"
 
-# Trigger type values.
-_TRIGGER_SPRINT_START = "sprint_start"
-_TRIGGER_SPRINT_END = "sprint_end"
-_TRIGGER_SPRINT_MIDPOINT = "sprint_midpoint"
-_TRIGGER_EVERY_N = "every_n_completions"
-_TRIGGER_SPRINT_PERCENTAGE = "sprint_percentage"
-
 _MIDPOINT_THRESHOLD: float = 0.5
 _DEFAULT_EVERY_N: int = 5
 _DEFAULT_SPRINT_PCT: float = 50.0
@@ -47,12 +47,16 @@ _DEFAULT_TRANSITION_THRESHOLD: float = 1.0
 
 _VALID_TRIGGERS: frozenset[str] = frozenset(
     {
-        _TRIGGER_SPRINT_START,
-        _TRIGGER_SPRINT_END,
-        _TRIGGER_SPRINT_MIDPOINT,
-        _TRIGGER_EVERY_N,
-        _TRIGGER_SPRINT_PERCENTAGE,
+        TRIGGER_SPRINT_START,
+        TRIGGER_SPRINT_END,
+        TRIGGER_SPRINT_MIDPOINT,
+        TRIGGER_EVERY_N,
+        TRIGGER_SPRINT_PERCENTAGE,
     }
+)
+
+_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
+    {_KEY_TRIGGER, _KEY_EVERY_N, _KEY_SPRINT_PERCENTAGE}
 )
 
 
@@ -151,7 +155,7 @@ class TaskDrivenStrategy:
             return SprintStatus.IN_REVIEW
         return None
 
-    # -- Lifecycle hooks (all no-ops for stateless strategy) -----------------
+    # -- Lifecycle hooks (all no-ops for stateless strategy) -----------
 
     async def on_sprint_activated(
         self,
@@ -222,6 +226,11 @@ class TaskDrivenStrategy:
         Raises:
             ValueError: If the config contains invalid keys or values.
         """
+        unknown = set(config) - _KNOWN_CONFIG_KEYS
+        if unknown:
+            msg = f"Unknown config keys: {sorted(unknown)}"
+            raise ValueError(msg)
+
         trigger = config.get(_KEY_TRIGGER)
         if trigger is not None and trigger not in _VALID_TRIGGERS:
             msg = (
@@ -246,7 +255,7 @@ class TaskDrivenStrategy:
             )
             raise ValueError(msg)
 
-    # -- Internal helpers ----------------------------------------------------
+    # -- Internal helpers ----------------------------------------------
 
     @staticmethod
     def _get_ceremony_config(
@@ -267,25 +276,31 @@ class TaskDrivenStrategy:
         has_tasks = context.total_tasks_in_sprint > 0
         pct = context.sprint_percentage_complete
 
-        if trigger == _TRIGGER_SPRINT_START:
+        if trigger == TRIGGER_SPRINT_START:
             # Handled as one-shot by the scheduler, not per-task.
             return False
 
-        if trigger == _TRIGGER_SPRINT_END:
+        if trigger == TRIGGER_SPRINT_END:
             return has_tasks and pct >= _DEFAULT_TRANSITION_THRESHOLD
 
-        if trigger == _TRIGGER_SPRINT_MIDPOINT:
+        if trigger == TRIGGER_SPRINT_MIDPOINT:
             return has_tasks and pct >= _MIDPOINT_THRESHOLD
 
-        if trigger == _TRIGGER_EVERY_N:
+        if trigger == TRIGGER_EVERY_N:
             n: int = config.get(_KEY_EVERY_N, _DEFAULT_EVERY_N)
             return context.completions_since_last_trigger >= n
 
-        if trigger == _TRIGGER_SPRINT_PERCENTAGE:
+        if trigger == TRIGGER_SPRINT_PERCENTAGE:
             threshold: float = config.get(
                 _KEY_SPRINT_PERCENTAGE,
                 _DEFAULT_SPRINT_PCT,
             )
             return has_tasks and pct >= (threshold / _MAX_SPRINT_PCT)
 
+        logger.warning(
+            SPRINT_CEREMONY_SKIPPED,
+            trigger=trigger,
+            reason="unrecognized_trigger",
+            valid_triggers=sorted(_VALID_TRIGGERS),
+        )
         return False

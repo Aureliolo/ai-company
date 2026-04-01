@@ -10,6 +10,9 @@ from synthorg.engine.workflow.velocity_types import (
     VelocityMetrics,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import (
+    VELOCITY_TASK_DRIVEN_NO_TASK_COUNT,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,9 +29,9 @@ class TaskDrivenVelocityCalculator:
 
     Primary unit: ``pts/task``.
 
-    When ``task_completion_count`` is not available on a
-    ``VelocityRecord``, falls back to zero with a secondary
-    ``pts_per_sprint`` metric.
+    When ``task_completion_count`` is not available,
+    ``primary_value`` is 0.0 (cannot normalize) but
+    ``pts_per_sprint`` is included as a secondary metric.
     """
 
     __slots__ = ()
@@ -45,17 +48,10 @@ class TaskDrivenVelocityCalculator:
         task_count = record.task_completion_count
         if task_count is None:
             logger.debug(
-                "velocity.task_driven.no_task_count",
+                VELOCITY_TASK_DRIVEN_NO_TASK_COUNT,
                 sprint_id=record.sprint_id,
             )
-            return VelocityMetrics(
-                primary_value=0.0,
-                primary_unit=_UNIT,
-                secondary={
-                    "pts_per_sprint": record.story_points_completed,
-                },
-            )
-        if task_count == 0:
+        if not task_count:
             return VelocityMetrics(
                 primary_value=0.0,
                 primary_unit=_UNIT,

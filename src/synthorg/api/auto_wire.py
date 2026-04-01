@@ -291,6 +291,7 @@ def auto_wire_meetings(
     ceremony_scheduler = CeremonyScheduler(
         meeting_scheduler=meeting_scheduler,
     )
+    logger.info(API_SERVICE_AUTO_WIRED, service="ceremony_scheduler")
 
     return MeetingWireResult(
         meeting_orchestrator=meeting_orchestrator,

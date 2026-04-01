@@ -127,8 +127,8 @@ class TestCeremonySchedulerActivation:
             TaskDrivenStrategy(),
         )
         mock_ms.trigger_event.assert_called_once()
-        call_args = mock_ms.trigger_event.call_args
-        assert "ceremony.planning.sprint-1" in str(call_args)
+        args, _ = mock_ms.trigger_event.call_args
+        assert args[0] == "ceremony.planning.sprint-1"
 
     @pytest.mark.unit
     async def test_double_activate_deactivates_first(self) -> None:
@@ -168,8 +168,8 @@ class TestCeremonySchedulerTaskCompletion:
                 3.0,
             )
 
-        # The every_n_completions=3 ceremony should have fired.
-        assert mock_ms.trigger_event.call_count >= 1
+        # The every_n_completions=3 ceremony should have fired exactly once.
+        assert mock_ms.trigger_event.call_count == 1
 
     @pytest.mark.unit
     async def test_auto_transitions_sprint(self) -> None:
@@ -237,7 +237,7 @@ class TestCeremonySchedulerTaskCompletion:
         sprint = _make_sprint(task_count=4, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
         after_midpoint_count = mock_ms.trigger_event.call_count
-        assert after_midpoint_count > initial_count
+        assert after_midpoint_count == initial_count + 1
 
         # Complete task 3 (75%) -- should NOT fire midpoint again.
         sprint = _make_sprint(task_count=4, completed_count=3)
@@ -263,7 +263,7 @@ class TestCeremonySchedulerTaskCompletion:
         # Complete task 2 (100%) -- should fire sprint_end.
         sprint = _make_sprint(task_count=2, completed_count=2)
         await scheduler.on_task_completed(sprint, "task-1", 3.0)
-        assert mock_ms.trigger_event.call_count > count_before
+        assert mock_ms.trigger_event.call_count == count_before + 1
 
     @pytest.mark.unit
     async def test_trigger_event_error_is_logged_and_swallowed(self) -> None:
@@ -317,7 +317,12 @@ class TestCeremonySchedulerTaskCompletion:
 
     @pytest.mark.unit
     async def test_one_shot_not_marked_on_trigger_failure(self) -> None:
-        """One-shot ceremonies must not be marked fired on failure."""
+        """One-shot ceremonies must not be marked fired on failure.
+
+        We verify by making trigger_event fail, then succeed on a
+        second attempt -- the ceremony should fire again (proving it
+        was not marked as fired).
+        """
         mock_ms = _make_mock_meeting_scheduler()
         mock_ms.trigger_event = AsyncMock(
             side_effect=RuntimeError("boom"),
@@ -327,12 +332,46 @@ class TestCeremonySchedulerTaskCompletion:
         config = _make_config(ceremonies=(ceremony,))
         strategy = TaskDrivenStrategy()
 
-        sprint = _make_sprint(task_count=1, completed_count=0)
+        sprint = _make_sprint(task_count=2, completed_count=0)
         await scheduler.activate_sprint(sprint, config, strategy)
 
-        # Complete the only task -- sprint_end should trigger but fail.
-        sprint = _make_sprint(task_count=1, completed_count=1)
+        # Complete both tasks -- sprint_end should trigger but fail.
+        sprint = _make_sprint(task_count=2, completed_count=1)
         await scheduler.on_task_completed(sprint, "task-0", 3.0)
+        sprint = _make_sprint(task_count=2, completed_count=2)
+        await scheduler.on_task_completed(sprint, "task-1", 3.0)
+        # Now make trigger_event succeed and send another completion.
+        mock_ms.trigger_event = AsyncMock(return_value=())
+        sprint = _make_sprint(task_count=2, completed_count=2)
+        await scheduler.on_task_completed(sprint, "task-1", 3.0)
 
-        # The one-shot should NOT be marked as fired.
-        assert "retro" not in scheduler._fired_once_triggers
+        # The one-shot should fire again since it was not marked.
+        assert mock_ms.trigger_event.call_count > 0
+
+    @pytest.mark.unit
+    async def test_activation_failure_cleans_up(self) -> None:
+        """If strategy hook fails, scheduler deactivates."""
+        mock_ms = _make_mock_meeting_scheduler()
+
+        class FailingStrategy(TaskDrivenStrategy):
+            async def on_sprint_activated(
+                self,
+                sprint: Sprint,
+                config: SprintConfig,
+            ) -> None:
+                msg = "activation hook failed"
+                raise RuntimeError(msg)
+
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        sprint = _make_sprint()
+        config = _make_config()
+
+        with pytest.raises(RuntimeError, match="activation hook"):
+            await scheduler.activate_sprint(
+                sprint,
+                config,
+                FailingStrategy(),
+            )
+
+        assert scheduler.running is False
+        assert scheduler.active_sprint is None

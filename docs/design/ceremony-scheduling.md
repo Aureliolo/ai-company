@@ -52,9 +52,10 @@ level.
 
 **Key decisions:**
 
-- **Templates can mix strategies.** The 3-level config resolution (project /
-  department / per-ceremony) allows different ceremonies to use different
-  strategies within a single template.
+- **Templates can configure strategies at multiple levels.** The 3-level config
+  resolution (project / department / per-ceremony) feeds into strategy
+  selection, but the effective ``CeremonySchedulingStrategy`` is resolved and
+  locked per sprint.
 - **Each strategy defines its own velocity unit.** There is no forced
   normalization to points/sprint. Each strategy ships a default
   `VelocityCalculator` (e.g. task-driven uses `pts/task`, calendar uses
@@ -108,15 +109,23 @@ terminal status, not on a timer. Natural fit for agent speed.
 sprint:
   ceremony_policy:
     strategy: task_driven
-    strategy_config:
-      standup_every_n: 5
   ceremonies:
     - name: sprint_planning
       # fires on sprint_start (one-shot)
+      policy_override:
+        strategy_config:
+          trigger: sprint_start
     - name: standup
       # fires every 5 task completions
+      policy_override:
+        strategy_config:
+          trigger: every_n_completions
+          every_n_completions: 5
     - name: retrospective
       # fires on sprint_end (all tasks done)
+      policy_override:
+        strategy_config:
+          trigger: sprint_end
 ```
 
 **Auto-transition**: ACTIVE to IN_REVIEW when task completion count reaches
@@ -319,8 +328,9 @@ sprint:
 
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
-**Best for**: phased delivery, release-oriented workflows, open source
+**Best for**: phased delivery, release-oriented workflows, open-source
 projects with async contributors.
+
 
 ---
 
@@ -431,15 +441,15 @@ class VelocityCalculator(Protocol):
     def primary_unit(self) -> str: ...
 ```
 
-**Shipped implementations:**
+**Shipped and planned implementations:**
 
 | Calculator | Primary unit | Strategy default for |
 |------------|-------------|---------------------|
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
-| `CalendarVelocityCalculator` | `pts/day` | calendar |
-| `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
-| `BudgetVelocityCalculator` | `pts/EUR` | budget_driven |
-| `PointsPerSprintVelocityCalculator` | `pts/sprint` | external_trigger |
+| `CalendarVelocityCalculator` (planned) | `pts/day` | calendar |
+| `MultiDimensionalVelocityCalculator` (planned) | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
+| `BudgetVelocityCalculator` (planned) | `pts/EUR` | budget_driven |
+| `PointsPerSprintVelocityCalculator` (planned) | `pts/sprint` | external_trigger |
 
 ---
 
@@ -457,7 +467,7 @@ class CeremonyPolicyConfig(BaseModel):
     strategy_config: Mapping[str, Any] | None = None
     velocity_calculator: VelocityCalcType | None = None
     auto_transition: bool | None = None
-    transition_threshold: float | None = None   # 0.0-1.0
+    transition_threshold: float | None = None   # (0.0, 1.0]
 ```
 
 ### 3-Level Resolution
@@ -540,6 +550,7 @@ class CeremonyScheduler:
     async def activate_sprint(
         self, sprint: Sprint, config: SprintConfig,
         strategy: CeremonySchedulingStrategy,
+        *, velocity_history: tuple[VelocityRecord, ...] = (),
     ) -> None: ...
 
     async def deactivate_sprint(self) -> None: ...
@@ -573,9 +584,9 @@ Pure functions convert `SprintCeremonyConfig` into `MeetingTypeConfig`:
 | `story_points_committed` | `float` | Points planned |
 | `story_points_completed` | `float` | Points delivered |
 | `duration_days` | `int` | Sprint duration in calendar days |
-| `task_completion_count` | `int | None` | Tasks completed (new) |
-| `wall_clock_seconds` | `float | None` | Real elapsed time (new) |
-| `budget_consumed` | `float | None` | Cost consumed (new) |
+| `task_completion_count` | `int \| None` | Tasks completed (new) |
+| `wall_clock_seconds` | `float \| None` | Real elapsed time (new) |
+| `budget_consumed` | `float \| None` | Cost consumed (new) |
 
 Strategies populate what applies. `None` fields indicate the dimension is
 not tracked by the active strategy.

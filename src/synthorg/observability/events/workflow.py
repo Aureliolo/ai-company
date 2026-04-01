@@ -85,4 +85,20 @@ SPRINT_CEREMONY_POLICY_RESOLVED: str = "workflow.sprint.ceremony_policy_resolved
 """3-level ceremony policy resolution completed."""
 
 SPRINT_CEREMONY_STRATEGY_CHANGED: str = "workflow.sprint.ceremony_strategy_changed"
-"""Ceremony scheduling strategy changed between sprints."""
+"""Ceremony scheduling strategy changed between sprints.  Reserved for #978."""
+
+SPRINT_CEREMONY_SCHEDULER_START_FAILED: str = (
+    "workflow.sprint.ceremony_scheduler_start_failed"
+)
+"""CeremonyScheduler activation failed (cleanup executed)."""
+
+SPRINT_CEREMONY_TRIGGER_FAILED: str = "workflow.sprint.ceremony_trigger_failed"
+"""Ceremony trigger_event call failed (swallowed)."""
+
+SPRINT_CEREMONY_EVAL_CONTEXT_INVALID: str = (
+    "workflow.sprint.ceremony_eval_context_invalid"
+)
+"""CeremonyEvalContext field validation failed."""
+
+VELOCITY_TASK_DRIVEN_NO_TASK_COUNT: str = "workflow.velocity.task_driven_no_task_count"
+"""VelocityRecord has no task_completion_count for task-driven calculation."""
