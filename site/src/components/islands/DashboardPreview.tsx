@@ -44,7 +44,8 @@ export default function DashboardPreview() {
   }, []);
 
   const selectTab = useCallback((i: number) => {
-    setActiveTab(i);
+    const clamped = Math.max(0, Math.min(i, pages.length - 1));
+    setActiveTab(clamped);
     setPageKey((k) => k + 1);
     setIsPaused(true);
   }, []);

@@ -85,13 +85,6 @@ export default function OrgChartMini({ tick }: Props) {
                 strokeWidth={isActive ? "1.5" : "0.8"}
                 strokeOpacity={isActive ? "1" : "0.4"}
               />
-              {/* Status dot */}
-              <circle
-                cx={a.x + 32}
-                cy={a.y + 5}
-                r="3"
-                fill={isActive ? "#10b981" : "#94a3b8"}
-              />
               <text x={a.x} y={a.y + 12} textAnchor="middle" fill="var(--dp-text-primary)" fontSize="12" fontWeight="600" fontFamily="var(--dp-font-sans)">
                 {a.name}
               </text>
@@ -102,9 +95,6 @@ export default function OrgChartMini({ tick }: Props) {
           );
         })}
       </svg>
-      <div className="absolute bottom-3 right-4 text-xs px-3 py-1 rounded-full border" style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}>
-        4 seniority levels -- Mid to C-Suite
-      </div>
     </div>
   );
 }

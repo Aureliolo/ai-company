@@ -70,7 +70,7 @@ export default function BudgetMini({ tick }: Props) {
             { label: "Forecast", value: `EUR ${forecast}`, color: forecastColor },
           ].map((m) => (
             <div key={m.label} className="rounded p-1.5" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
-              <div className="text-[7px]" style={{ color: "var(--dp-text-muted)" }}>
+              <div className="text-[9px]" style={{ color: "var(--dp-text-muted)" }}>
                 {m.label}
               </div>
               <div className="text-xs font-semibold" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
@@ -108,8 +108,8 @@ export default function BudgetMini({ tick }: Props) {
         {/* Mini sparkline */}
         <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--dp-border)" }}>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[7px]" style={{ color: "var(--dp-text-muted)" }}>7-day trend</span>
-            <span className="text-[7px]" style={{ color: "var(--dp-success)" }}>-3.2%</span>
+            <span className="text-[9px]" style={{ color: "var(--dp-text-muted)" }}>7-day trend</span>
+            <span className="text-[9px]" style={{ color: "var(--dp-success)" }}>-3.2%</span>
           </div>
           <svg viewBox="0 0 200 24" className="w-full h-5" aria-hidden="true">
             <defs>

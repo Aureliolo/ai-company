@@ -208,9 +208,26 @@
     });
     if (canvas.parentElement) ro.observe(canvas.parentElement);
 
+    // Pause animation when canvas is off-screen (saves CPU/battery)
+    let wasAnimating = false;
+    const visObserver = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (wasAnimating && !animating && !prefersReduced.matches) {
+          animating = true;
+          lastFrame = performance.now();
+          requestAnimationFrame(draw);
+        }
+      } else if (animating) {
+        wasAnimating = true;
+        animating = false;
+      }
+    }, { threshold: 0 });
+    visObserver.observe(canvas);
+
     // Cleanup on Astro view transitions
     document.addEventListener("astro:before-swap", () => {
       ro.disconnect();
+      visObserver.disconnect();
       clearTimeout(resizeTimer);
       animating = false;
       prefersReduced.removeEventListener("change", onMotionChange);
