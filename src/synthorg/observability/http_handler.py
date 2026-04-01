@@ -5,7 +5,6 @@ arrays to a configurable URL using a background daemon thread.
 Uses ``urllib.request`` (stdlib) to avoid external dependencies.
 """
 
-import json
 import logging
 import queue
 import sys
@@ -104,10 +103,15 @@ class HttpBatchHandler(logging.Handler):
                 break
 
         with self._pending_lock:
-            self._pending_count = max(0, self._pending_count - len(records))
+            self._pending_count = max(
+                0,
+                self._pending_count - len(records),
+            )
 
-        if records:
-            self._post_batch(records)
+        for start in range(0, len(records), self._batch_size):
+            batch = records[start : start + self._batch_size]
+            if batch:
+                self._post_batch(batch)
 
     def _post_batch(self, records: list[logging.LogRecord]) -> None:
         """POST a batch of records as a JSON array with retries."""
@@ -121,7 +125,7 @@ class HttpBatchHandler(logging.Handler):
         if not entries:
             return
 
-        body = json.dumps(entries).encode("utf-8")
+        body = f"[{','.join(entries)}]".encode()
         request = urllib.request.Request(  # noqa: S310
             self._url,
             data=body,
@@ -134,10 +138,11 @@ class HttpBatchHandler(logging.Handler):
         last_error: Exception | None = None
         for attempt in range(1 + self._max_retries):
             try:
-                urllib.request.urlopen(  # noqa: S310
+                with urllib.request.urlopen(  # noqa: S310
                     request,
                     timeout=self._timeout,
-                )
+                ):
+                    pass  # Response body not needed
             except Exception as exc:
                 last_error = exc
                 if attempt < self._max_retries:
@@ -147,7 +152,8 @@ class HttpBatchHandler(logging.Handler):
 
         # All retries exhausted -- drop the batch with a warning
         if last_error is not None:
-            self._dropped_count += len(entries)
+            with self._pending_lock:
+                self._dropped_count += len(entries)
             print(  # noqa: T201
                 f"WARNING: HTTP log shipping failed after "
                 f"{1 + self._max_retries} attempts to {self._url}: "

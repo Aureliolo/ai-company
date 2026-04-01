@@ -1,9 +1,9 @@
 """Tests for syslog handler builder."""
 
+import json
 import logging
 import logging.handlers
 import socket
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import patch
 
@@ -23,15 +23,6 @@ from synthorg.observability.syslog_handler import (
     PROTOCOL_MAP,
     build_syslog_handler,
 )
-
-
-@pytest.fixture
-def handler_cleanup() -> Iterator[list[logging.Handler]]:
-    """Collect handlers and close them after the test."""
-    handlers: list[logging.Handler] = []
-    yield handlers
-    for h in handlers:
-        h.close()
 
 
 def _syslog_sink(**overrides: Any) -> SinkConfig:
@@ -175,17 +166,36 @@ class TestSyslogHandlerEmit:
         handler = build_syslog_handler(sink, foreign_pre_chain=pre_chain)
         handler_cleanup.append(handler)
 
-        # Patch the socket to capture sent data
-        with patch.object(handler, "emit", wraps=handler.emit) as mock_emit:
-            record = logging.LogRecord(
-                name="test.logger",
-                level=logging.INFO,
-                pathname="",
-                lineno=0,
-                msg="hello syslog",
-                args=(),
-                exc_info=None,
-            )
-            # Should not raise
-            handler.emit(record)
-            mock_emit.assert_called_once()
+        record = logging.LogRecord(
+            name="test.logger",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello syslog",
+            args=(),
+            exc_info=None,
+        )
+        formatted = handler.format(record)
+        parsed = json.loads(formatted)
+        assert isinstance(parsed, dict)
+        assert "event" in parsed
+
+    def test_empty_host_raises(self) -> None:
+        """build_syslog_handler rejects empty syslog_host."""
+        sink = _syslog_sink()
+        # Bypass SinkConfig validation to force empty host
+        object.__setattr__(sink, "syslog_host", "")
+        with pytest.raises(ValueError, match="non-empty syslog_host"):
+            build_syslog_handler(sink, foreign_pre_chain=[])
+
+    def test_connection_failure_raises_runtime_error(self) -> None:
+        """TCP connection failure is wrapped in RuntimeError."""
+        sink = _syslog_sink(syslog_protocol=SyslogProtocol.TCP)
+        with (
+            patch(
+                "logging.handlers.SysLogHandler.__init__",
+                side_effect=OSError("Connection refused"),
+            ),
+            pytest.raises(RuntimeError, match="Failed to connect"),
+        ):
+            build_syslog_handler(sink, foreign_pre_chain=[])

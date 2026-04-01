@@ -2,7 +2,6 @@
 
 import gzip
 import logging
-from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,15 +14,6 @@ from synthorg.observability.sinks import (
     _CompressingRotatingFileHandler,
     _FlushingRotatingFileHandler,
 )
-
-
-@pytest.fixture
-def handler_cleanup() -> Iterator[list[logging.Handler]]:
-    """Collect handlers and close them after the test."""
-    handlers: list[logging.Handler] = []
-    yield handlers
-    for h in handlers:
-        h.close()
 
 
 @pytest.mark.unit
@@ -61,6 +51,37 @@ class TestCompressingRotatingFileHandler:
         assert len(gz_files) > 0
         # The plain .log.1 should NOT exist (replaced by .gz)
         assert not (tmp_path / "app.log.1").exists()
+
+    def test_backup_count_honored(
+        self,
+        tmp_path: Path,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        log_file = tmp_path / "app.log"
+        backup_count = 2
+        handler = _CompressingRotatingFileHandler(
+            filename=str(log_file),
+            maxBytes=200,
+            backupCount=backup_count,
+            compress=True,
+        )
+        handler_cleanup.append(handler)
+
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="x" * 100,
+            args=(),
+            exc_info=None,
+        )
+        # Emit enough to trigger several rotations
+        for _ in range(30):
+            handler.emit(record)
+
+        gz_files = list(tmp_path.glob("*.gz"))
+        assert len(gz_files) <= backup_count
 
     def test_compress_false_skips_compression(
         self,
@@ -229,10 +250,9 @@ class TestBuildFileHandlerCompression:
         assert isinstance(handler, _FlushingRotatingFileHandler)
         assert not isinstance(handler, _CompressingRotatingFileHandler)
 
-    def test_external_rotation_ignores_compress(
+    def test_external_rotation_with_compress_raises(
         self,
         tmp_path: Path,
-        handler_cleanup: list[logging.Handler],
     ) -> None:
         sink = SinkConfig(
             sink_type=SinkType.FILE,
@@ -242,7 +262,5 @@ class TestBuildFileHandlerCompression:
                 compress_rotated=True,
             ),
         )
-        handler = _build_file_handler(sink, tmp_path)
-        handler_cleanup.append(handler)
-        # External rotation does not use compressing handler
-        assert not isinstance(handler, _CompressingRotatingFileHandler)
+        with pytest.raises(ValueError, match="compress_rotated"):
+            _build_file_handler(sink, tmp_path)

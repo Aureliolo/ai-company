@@ -12,16 +12,18 @@ The two JSON inputs come from ``SettingsService`` settings:
   (``__console__`` for the console sink, file path for file sinks).
   Each value is an object with optional fields: ``enabled``, ``level``,
   ``json_format``, ``rotation``.
-- ``custom_sinks``: JSON array of objects, each describing a new FILE
-  sink with ``file_path`` (required) and optional ``level``,
-  ``json_format``, ``rotation``, ``routing_prefixes``.
+- ``custom_sinks``: JSON array of objects, each describing a new sink
+  (file, syslog, or http).  File sinks require ``file_path``; syslog
+  sinks require ``syslog_host``; HTTP sinks require ``http_url``.
+  All types accept optional ``level``.
 """
 
 import json
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any, Final, cast
 
+from synthorg.observability import get_logger
 from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
@@ -36,7 +38,9 @@ from synthorg.observability.enums import (
     SyslogProtocol,
 )
 
-CONSOLE_SINK_ID: str = "__console__"
+logger = get_logger(__name__)
+
+CONSOLE_SINK_ID: Final[str] = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
 DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
@@ -67,7 +71,6 @@ _CUSTOM_SYSLOG_SINK_FIELDS: frozenset[str] = frozenset(
         "syslog_facility",
         "syslog_protocol",
         "level",
-        "json_format",
     },
 )
 _CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
@@ -80,7 +83,6 @@ _CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
         "http_timeout_seconds",
         "http_max_retries",
         "level",
-        "json_format",
     },
 )
 # Union for initial parsing (field validation deferred to type-specific check)
@@ -96,8 +98,8 @@ _VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
 _SYSLOG_FACILITY_MAP: dict[str, SyslogFacility] = {f.value: f for f in SyslogFacility}
 _SYSLOG_PROTOCOL_MAP: dict[str, SyslogProtocol] = {p.value: p for p in SyslogProtocol}
 
-_MAX_CUSTOM_SINKS: int = 20
-_MAX_ROUTING_PREFIXES: int = 50
+_MAX_CUSTOM_SINKS: Final[int] = 20
+_MAX_ROUTING_PREFIXES: Final[int] = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -460,11 +462,31 @@ def _parse_enum_field(
 def _parse_common_sink_fields(
     entry: dict[str, Any],
     index: int,
+    *,
+    sink_type: str = "file",
 ) -> tuple[LogLevel, bool]:
-    """Extract level and json_format from a custom sink entry."""
+    """Extract level and json_format from a custom sink entry.
+
+    Args:
+        entry: The custom sink entry dict.
+        index: Index within the custom_sinks array.
+        sink_type: The sink type string (file, syslog, http).
+
+    Returns:
+        Tuple of (level, json_format).
+
+    Raises:
+        ValueError: If json_format is set for syslog/http sinks.
+    """
     level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
     json_format = True
     if "json_format" in entry:
+        if sink_type in ("syslog", "http"):
+            msg = (
+                f"json_format is not supported for "
+                f"{sink_type} sinks (custom_sinks[{index}])"
+            )
+            raise ValueError(msg)
         json_format = _parse_bool(
             entry["json_format"],
             field_name=f"custom_sinks[{index}].json_format",
@@ -492,28 +514,17 @@ def _parse_number_field(
 ) -> float:
     """Parse a numeric field (int or float, rejects booleans)."""
     val = entry[key]
-    if not isinstance(val, (int, float)) or isinstance(val, bool):
+    if not isinstance(val, int | float) or isinstance(val, bool):
         msg = f"{context}.{key} must be a number"
         raise ValueError(msg)
     return float(val)
 
 
-def _build_custom_syslog_sink(
+def _parse_syslog_optional_fields(
     entry: dict[str, Any],
-    index: int,
-) -> SinkConfig:
-    """Build a SYSLOG SinkConfig from a custom sink entry."""
-    ctx = f"custom_sinks[{index}]"
-    if "syslog_host" not in entry:
-        msg = f"{ctx} is missing required field 'syslog_host' for syslog sink"
-        raise ValueError(msg)
-
-    raw_host = entry["syslog_host"]
-    if not isinstance(raw_host, str) or not raw_host.strip():
-        msg = f"{ctx}.syslog_host must be a non-empty string"
-        raise ValueError(msg)
-
-    level, json_format = _parse_common_sink_fields(entry, index)
+    ctx: str,
+) -> tuple[int, SyslogFacility, SyslogProtocol]:
+    """Parse optional syslog fields from a custom sink entry."""
     port = (
         _parse_int_field(entry, "syslog_port", ctx) if "syslog_port" in entry else 514
     )
@@ -539,6 +550,33 @@ def _build_custom_syslog_sink(
         if "syslog_protocol" in entry
         else SyslogProtocol.UDP
     )
+    return port, facility, protocol
+
+
+def _build_custom_syslog_sink(
+    entry: dict[str, Any],
+    index: int,
+) -> SinkConfig:
+    """Build a SYSLOG SinkConfig from a custom sink entry."""
+    ctx = f"custom_sinks[{index}]"
+    if "syslog_host" not in entry:
+        msg = f"{ctx} is missing required field 'syslog_host' for syslog sink"
+        raise ValueError(msg)
+
+    raw_host = entry["syslog_host"]
+    if not isinstance(raw_host, str) or not raw_host.strip():
+        msg = f"{ctx}.syslog_host must be a non-empty string"
+        raise ValueError(msg)
+
+    level, _json_format = _parse_common_sink_fields(
+        entry,
+        index,
+        sink_type="syslog",
+    )
+    port, facility, protocol = _parse_syslog_optional_fields(
+        entry,
+        ctx,
+    )
 
     return SinkConfig(
         sink_type=SinkType.SYSLOG,
@@ -547,7 +585,6 @@ def _build_custom_syslog_sink(
         syslog_port=port,
         syslog_facility=facility,
         syslog_protocol=protocol,
-        json_format=json_format,
     )
 
 
@@ -595,12 +632,15 @@ def _build_custom_http_sink(
         msg = f"{ctx}.http_url must be a non-empty string"
         raise ValueError(msg)
 
-    level, json_format = _parse_common_sink_fields(entry, index)
+    level, _json_format = _parse_common_sink_fields(
+        entry,
+        index,
+        sink_type="http",
+    )
     kwargs: dict[str, Any] = {
         "sink_type": SinkType.HTTP,
         "level": level,
         "http_url": raw_url.strip(),
-        "json_format": json_format,
     }
 
     for int_key in ("http_batch_size", "http_max_retries"):

@@ -42,8 +42,8 @@ _r.register(
             "Per-sink overrides keyed by sink identifier "
             "(__console__ or file path). Each value is an object with "
             "optional fields: enabled (bool), level (string), "
-            "json_format (bool), rotation (object with max_bytes, "
-            "backup_count, strategy)"
+            "json_format (bool), rotation (object with strategy, "
+            "max_bytes, backup_count, compress_rotated)"
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,

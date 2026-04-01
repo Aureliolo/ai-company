@@ -2,8 +2,8 @@
 
 import json
 import logging
-import time
-from collections.abc import Iterator
+import threading
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,13 +26,11 @@ def _make_record(msg: str = "test message") -> logging.LogRecord:
     )
 
 
-@pytest.fixture
-def handler_cleanup() -> Iterator[list[logging.Handler]]:
-    """Collect handlers and close them after the test."""
-    handlers: list[logging.Handler] = []
-    yield handlers
-    for h in handlers:
-        h.close()
+class _JsonFormatter(logging.Formatter):
+    """Minimal JSON formatter for test handlers."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps({"event": record.getMessage()})
 
 
 def _make_handler(
@@ -50,7 +48,7 @@ def _make_handler(
         timeout=timeout,
         max_retries=max_retries,
     )
-    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.setFormatter(_JsonFormatter())
     return handler
 
 
@@ -68,7 +66,7 @@ class TestHttpBatchHandler:
         with patch("urllib.request.urlopen"):
             handler.emit(_make_record())
         # Record is queued (not yet flushed since batch_size=5)
-        assert handler._queue.qsize() >= 0  # Just verify no crash
+        assert handler._queue.qsize() >= 1
 
     def test_batch_flushed_on_batch_size(
         self,
@@ -76,14 +74,20 @@ class TestHttpBatchHandler:
     ) -> None:
         handler = _make_handler(batch_size=3)
         handler_cleanup.append(handler)
+        flushed = threading.Event()
 
-        with patch("urllib.request.urlopen") as mock_urlopen:
+        def _mock_urlopen(*args: Any, **kwargs: Any) -> MagicMock:
+            flushed.set()
+            return MagicMock()
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=_mock_urlopen,
+        ) as mock_urlopen:
             for _ in range(3):
                 handler.emit(_make_record())
-            # Give the flusher thread time to process
-            time.sleep(0.5)
+            assert flushed.wait(timeout=2.0), "Flusher did not fire"
 
-        # Should have been called at least once with a batch
         assert mock_urlopen.call_count >= 1
 
     def test_flush_on_close(
@@ -110,11 +114,11 @@ class TestHttpBatchHandler:
             handler.emit(_make_record("json-test"))
             handler.close()
 
-        if mock_urlopen.call_count > 0:
-            request = mock_urlopen.call_args[0][0]
-            body = json.loads(request.data.decode("utf-8"))
-            assert isinstance(body, list)
-            assert len(body) >= 1
+        assert mock_urlopen.call_count >= 1
+        request = mock_urlopen.call_args[0][0]
+        body = json.loads(request.data.decode("utf-8"))
+        assert isinstance(body, list)
+        assert len(body) >= 1
 
     def test_timeout_applied(
         self,
@@ -126,9 +130,9 @@ class TestHttpBatchHandler:
             handler.emit(_make_record())
             handler.close()
 
-        if mock_urlopen.call_count > 0:
-            call_kwargs = mock_urlopen.call_args
-            assert call_kwargs[1].get("timeout") == 7.5
+        assert mock_urlopen.call_count >= 1
+        call_kwargs = mock_urlopen.call_args
+        assert call_kwargs[1].get("timeout") == 7.5
 
     def test_custom_headers_applied(
         self,
@@ -147,10 +151,10 @@ class TestHttpBatchHandler:
             handler.emit(_make_record())
             handler.close()
 
-        if mock_urlopen.call_count > 0:
-            request = mock_urlopen.call_args[0][0]
-            assert request.get_header("Authorization") == "Bearer test-token"
-            assert request.get_header("Content-type") == "application/json"
+        assert mock_urlopen.call_count >= 1
+        request = mock_urlopen.call_args[0][0]
+        assert request.get_header("Authorization") == "Bearer test-token"
+        assert request.get_header("Content-type") == "application/json"
 
     def test_retry_on_failure(
         self,
@@ -204,6 +208,19 @@ class TestHttpBatchHandler:
         # No records emitted, no HTTP call
         assert mock_urlopen.call_count == 0
 
+    def test_max_retries_tracks_dropped_count(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100, max_retries=0)
+
+        error = OSError("connection refused")
+        with patch("urllib.request.urlopen", side_effect=error):
+            handler.emit(_make_record())
+            handler.close()
+
+        assert handler._dropped_count >= 1
+
 
 @pytest.mark.unit
 class TestBuildHttpHandler:
@@ -245,3 +262,14 @@ class TestBuildHttpHandler:
         handler = build_http_handler(sink, foreign_pre_chain=[])
         handler_cleanup.append(handler)
         assert isinstance(handler.formatter, ProcessorFormatter)
+
+    def test_missing_url_raises(self) -> None:
+        """build_http_handler rejects empty http_url."""
+        sink = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://placeholder.example.com",
+        )
+        # Bypass SinkConfig validation to force empty url
+        object.__setattr__(sink, "http_url", "")
+        with pytest.raises(ValueError, match="non-empty http_url"):
+            build_http_handler(sink, foreign_pre_chain=[])

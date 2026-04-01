@@ -66,7 +66,7 @@ logging:
 
 ### Receiver Configuration (rsyslog)
 
-```
+```conf
 # /etc/rsyslog.d/50-synthorg.conf
 module(load="imudp")
 input(type="imudp" port="514")
@@ -83,7 +83,7 @@ if $syslogfacility-text == 'local0' then {
 
 ### Receiver Configuration (syslog-ng)
 
-```
+```conf
 source s_synthorg { udp(port(514)); };
 destination d_synthorg { file("/var/log/synthorg/app.log"); };
 filter f_synthorg { facility(local0); };
@@ -110,7 +110,7 @@ to an HTTP endpoint.  A background thread handles batching, flushing, and retrie
 [
   {
     "sink_type": "http",
-    "http_url": "https://loki.internal:3100/loki/api/v1/push",
+    "http_url": "https://logs.example.com/ingest",
     "http_headers": [["Authorization", "Bearer <token>"]],
     "http_batch_size": 100,
     "http_flush_interval_seconds": 5.0,
@@ -127,7 +127,7 @@ to an HTTP endpoint.  A background thread handles batching, flushing, and retrie
 logging:
   custom_sinks:
     - sink_type: http
-      http_url: https://loki.internal:3100/loki/api/v1/push
+      http_url: https://logs.example.com/ingest
       http_headers:
         - ["Authorization", "Bearer <token>"]
       http_batch_size: 100
@@ -151,25 +151,11 @@ logging:
 
 ### Endpoint Examples
 
-**Grafana Loki** (push API):
-
-```json
-{
-  "sink_type": "http",
-  "http_url": "http://loki:3100/loki/api/v1/push",
-  "http_batch_size": 50
-}
-```
-
-**Elasticsearch** (bulk API):
-
-```json
-{
-  "sink_type": "http",
-  "http_url": "https://elastic:9200/synthorg-logs/_bulk",
-  "http_headers": [["Authorization", "Basic <base64>"]]
-}
-```
+The HTTP sink ships raw JSON arrays of structured log objects.
+Vendor-specific endpoints (e.g., Loki push API, Elasticsearch bulk API)
+typically expect a different wire format. Use a generic JSON-accepting
+collector (Vector, Fluentd HTTP input, or a lightweight proxy) to
+transform the array into the vendor-specific format.
 
 **Generic JSON endpoint** (any receiver accepting JSON arrays):
 
@@ -206,19 +192,20 @@ sink writes colored text to stderr, which Docker captures with the configured dr
 In `docker/compose.yml`, replace the default `json-file` driver:
 
 ```yaml
+# Fluentd driver:
 x-logging: &logging
   driver: fluentd
   options:
     fluentd-address: "fluentd:24224"
     tag: "synthorg.{{.Name}}"
 
-# Or for syslog:
-x-logging: &logging
-  driver: syslog
-  options:
-    syslog-address: "udp://syslog.internal:514"
-    syslog-facility: "local0"
-    tag: "synthorg"
+# Or for syslog (replace the block above):
+# x-logging: &logging
+#   driver: syslog
+#   options:
+#     syslog-address: "udp://syslog.internal:514"
+#     syslog-facility: "local0"
+#     tag: "synthorg"
 ```
 
 ### Combining with App-Level Shipping

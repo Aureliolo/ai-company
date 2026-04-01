@@ -1,4 +1,12 @@
-"""Shipping event constants for log aggregation and shipping."""
+"""Shipping event constants for log aggregation and shipping.
+
+These constants define the event taxonomy for log shipping operations.
+They are intended for use by higher-level orchestration code and
+monitoring consumers.  The handler internals (``http_handler.py``,
+``syslog_handler.py``) use ``print(..., file=sys.stderr)`` for
+bootstrap-safe error reporting as permitted by the logging exceptions
+in CLAUDE.md.
+"""
 
 from typing import Final
 

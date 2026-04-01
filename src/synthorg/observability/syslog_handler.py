@@ -59,11 +59,21 @@ def build_syslog_handler(
     if not sink.syslog_host:
         msg = "SYSLOG sink requires a non-empty syslog_host"
         raise ValueError(msg)
-    handler = logging.handlers.SysLogHandler(
-        address=(sink.syslog_host, sink.syslog_port),
-        facility=FACILITY_MAP[sink.syslog_facility],
-        socktype=socket.SocketKind(PROTOCOL_MAP[sink.syslog_protocol]),
-    )
+    try:
+        handler = logging.handlers.SysLogHandler(
+            address=(sink.syslog_host, sink.syslog_port),
+            facility=FACILITY_MAP[sink.syslog_facility],
+            socktype=socket.SocketKind(
+                PROTOCOL_MAP[sink.syslog_protocol],
+            ),
+        )
+    except OSError as exc:
+        msg = (
+            f"Failed to connect to syslog endpoint "
+            f"{sink.syslog_host}:{sink.syslog_port} "
+            f"({sink.syslog_protocol.value.upper()}): {exc}"
+        )
+        raise RuntimeError(msg) from exc
     handler.setLevel(sink.level.value)
 
     renderer: Any = structlog.processors.JSONRenderer()

@@ -5,7 +5,6 @@ into fully configured :class:`logging.Handler` objects with the
 appropriate structlog :class:`~structlog.stdlib.ProcessorFormatter`.
 """
 
-import contextlib
 import gzip
 import logging
 import logging.handlers
@@ -86,18 +85,20 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                 print(  # noqa: T201
                     f"WARNING: Compressed rotation failed for "
                     f"{self.baseFilename}: {exc}; "
-                    "falling back to uncompressed rotation",
+                    "uncompressed backup retained",
                     file=sys.stderr,
                     flush=True,
                 )
-                super().doRollover()
-                return
 
         if not self.delay:
             self.stream = self._open()
 
     def _shift_gz_backups(self) -> None:
         """Shift existing .gz backups (highest index first)."""
+        # Remove the oldest before shifting to make room
+        oldest = StdPath(f"{self.baseFilename}.{self.backupCount}.gz")
+        if oldest.exists():
+            oldest.unlink()
         for i in range(self.backupCount - 1, 0, -1):
             src = StdPath(f"{self.baseFilename}.{i}.gz")
             dst = StdPath(f"{self.baseFilename}.{i + 1}.gz")
@@ -105,13 +106,6 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                 if dst.exists():
                     dst.unlink()
                 src.rename(dst)
-
-        # Remove the oldest if it exceeds backupCount
-        oldest = StdPath(
-            f"{self.baseFilename}.{self.backupCount}.gz",
-        )
-        if oldest.exists():
-            oldest.unlink()
 
     def _rotate_current_log(self) -> str:
         """Rotate the current log to .1 and return the path."""
@@ -130,9 +124,9 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
         tmp_gz = StdPath(f"{path}.gz.tmp")
         gz = StdPath(f"{path}.gz")
         try:
-            data = src.read_bytes()
-            with gzip.open(tmp_gz, "wb") as f:
-                f.write(data)
+            with src.open("rb") as src_f, gzip.open(tmp_gz, "wb") as gz_f:
+                while chunk := src_f.read(1024 * 1024):
+                    gz_f.write(chunk)
             tmp_gz.rename(gz)
             src.unlink()
         except OSError as exc:
@@ -141,9 +135,16 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
                 file=sys.stderr,
                 flush=True,
             )
-            with contextlib.suppress(OSError):
+            try:
                 if tmp_gz.exists():
                     tmp_gz.unlink()
+            except OSError as cleanup_exc:
+                print(  # noqa: T201
+                    f"WARNING: Failed to clean up temp file {tmp_gz}: {cleanup_exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            raise
 
 
 class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
@@ -280,6 +281,9 @@ def _build_file_handler(
                 maxBytes=rotation.max_bytes,
                 backupCount=rotation.backup_count,
             )
+        if rotation.compress_rotated:
+            msg = "compress_rotated is only supported with RotationStrategy.BUILTIN"
+            raise ValueError(msg)
         return _FlushingWatchedFileHandler(filename=str(file_path))
     except OSError as exc:
         msg = (
@@ -315,6 +319,22 @@ def _build_formatter(
     )
 
 
+def _attach_formatter_and_routing(
+    handler: logging.Handler,
+    sink: SinkConfig,
+    foreign_pre_chain: list[Any],
+    routing: Mapping[str, tuple[str, ...]],
+) -> None:
+    """Set formatter and optional routing filter on a handler."""
+    handler.setLevel(sink.level.value)
+    handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
+    if sink.file_path is not None and sink.file_path in routing:
+        name_filter = _LoggerNameFilter(
+            include_prefixes=routing[sink.file_path],
+        )
+        handler.addFilter(name_filter)
+
+
 def build_handler(
     sink: SinkConfig,
     log_dir: Path,
@@ -328,6 +348,9 @@ def build_handler(
     ``stderr`` is created.  For ``FILE`` sinks see
     :func:`_build_file_handler`.  For ``SYSLOG`` and ``HTTP`` sinks,
     dedicated handler builders are used.
+
+    Note: SYSLOG and HTTP sinks are built and returned by dedicated
+    handler modules; they do not participate in logger-name routing.
 
     Args:
         sink: The sink configuration describing the handler to build.
@@ -364,13 +387,10 @@ def build_handler(
             msg = f"Unsupported sink type: {sink.sink_type}"  # type: ignore[unreachable]
             raise ValueError(msg)
 
-    handler.setLevel(sink.level.value)
-    handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
-
-    if sink.file_path is not None and sink.file_path in effective_routing:
-        name_filter = _LoggerNameFilter(
-            include_prefixes=effective_routing[sink.file_path],
-        )
-        handler.addFilter(name_filter)
-
+    _attach_formatter_and_routing(
+        handler,
+        sink,
+        foreign_pre_chain,
+        effective_routing,
+    )
     return handler

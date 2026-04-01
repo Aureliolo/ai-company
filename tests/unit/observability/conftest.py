@@ -1,5 +1,6 @@
 """Test fixtures and factories for observability tests."""
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -10,7 +11,13 @@ import structlog
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from synthorg.observability.config import LogConfig, RotationConfig, SinkConfig
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+    SyslogFacility,
+    SyslogProtocol,
+)
 from tests.conftest import clear_logging_state
 
 # -- Factories --------------------------------------------------------------
@@ -31,8 +38,15 @@ class SinkConfigFactory(ModelFactory[SinkConfig]):
     rotation = None
     json_format = False
     syslog_host = None
+    syslog_port = 514
+    syslog_facility = SyslogFacility.USER
+    syslog_protocol = SyslogProtocol.UDP
     http_url = None
     http_headers = ()
+    http_batch_size = 100
+    http_flush_interval_seconds = 5.0
+    http_timeout_seconds = 10.0
+    http_max_retries = 3
 
 
 class LogConfigFactory(ModelFactory[LogConfig]):
@@ -59,6 +73,15 @@ def _reset_logging() -> Iterator[None]:
     clear_logging_state()
     yield
     clear_logging_state()
+
+
+@pytest.fixture
+def handler_cleanup() -> Iterator[list[logging.Handler]]:
+    """Collect handlers and close them after the test."""
+    handlers: list[logging.Handler] = []
+    yield handlers
+    for h in handlers:
+        h.close()
 
 
 @pytest.fixture

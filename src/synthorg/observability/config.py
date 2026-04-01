@@ -11,7 +11,7 @@ configuration.  All models are immutable and validated on construction.
 
 from collections import Counter
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +24,13 @@ from synthorg.observability.enums import (
     SyslogProtocol,
 )
 
+# Default values for cross-type field rejection checks
+_DEFAULT_SYSLOG_PORT: Final[int] = 514
+_DEFAULT_HTTP_BATCH_SIZE: Final[int] = 100
+_DEFAULT_HTTP_FLUSH_INTERVAL: Final[float] = 5.0
+_DEFAULT_HTTP_TIMEOUT: Final[float] = 10.0
+_DEFAULT_HTTP_MAX_RETRIES: Final[int] = 3
+
 
 class RotationConfig(BaseModel):
     """Log file rotation configuration.
@@ -34,6 +41,8 @@ class RotationConfig(BaseModel):
             Only used when ``strategy`` is
             :attr:`RotationStrategy.BUILTIN`.
         backup_count: Number of rotated backup files to keep.
+        compress_rotated: Whether to gzip-compress rotated backup
+            files.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -211,6 +220,15 @@ class SinkConfig(BaseModel):
         if self.syslog_host is not None:
             msg = f"syslog_host must be None for {sink_label} sinks"
             raise ValueError(msg)
+        if self.syslog_port != _DEFAULT_SYSLOG_PORT:
+            msg = f"syslog_port must be default (514) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.syslog_facility != SyslogFacility.USER:
+            msg = f"syslog_facility must be default (USER) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.syslog_protocol != SyslogProtocol.UDP:
+            msg = f"syslog_protocol must be default (UDP) for {sink_label} sinks"
+            raise ValueError(msg)
 
     def _validate_http_fields(self) -> None:
         if self.http_url is None:
@@ -228,6 +246,24 @@ class SinkConfig(BaseModel):
     def _reject_http_fields(self, sink_label: str) -> None:
         if self.http_url is not None:
             msg = f"http_url must be None for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_headers != ():
+            msg = f"http_headers must be empty for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_batch_size != _DEFAULT_HTTP_BATCH_SIZE:
+            msg = f"http_batch_size must be default (100) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_flush_interval_seconds != _DEFAULT_HTTP_FLUSH_INTERVAL:
+            msg = (
+                "http_flush_interval_seconds must be default (5.0) "
+                f"for {sink_label} sinks"
+            )
+            raise ValueError(msg)
+        if self.http_timeout_seconds != _DEFAULT_HTTP_TIMEOUT:
+            msg = f"http_timeout_seconds must be default (10.0) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_max_retries != _DEFAULT_HTTP_MAX_RETRIES:
+            msg = f"http_max_retries must be default (3) for {sink_label} sinks"
             raise ValueError(msg)
 
 

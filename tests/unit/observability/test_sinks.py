@@ -15,11 +15,11 @@ from synthorg.observability.sinks import (
     _build_file_handler,
     _FlushingRotatingFileHandler,
     _FlushingWatchedFileHandler,
+    _LoggerNameFilter,
     build_handler,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -27,15 +27,6 @@ def _foreign_pre_chain() -> list[structlog.types.Processor]:
     return [
         structlog.stdlib.add_log_level,
     ]
-
-
-@pytest.fixture
-def handler_cleanup() -> Iterator[list[logging.Handler]]:
-    """Collect handlers and close them after the test."""
-    handlers: list[logging.Handler] = []
-    yield handlers
-    for h in handlers:
-        h.close()
 
 
 @pytest.mark.unit
@@ -408,3 +399,83 @@ class TestFlushAfterEmit:
             handler.emit(record)
 
         mock_handle_error.assert_called_once_with(record)
+
+
+@pytest.mark.unit
+class TestBuildHandlerSyslogHttpDispatch:
+    """Tests for SYSLOG/HTTP dispatch in build_handler."""
+
+    def test_syslog_dispatches_to_syslog_builder(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="localhost",
+        )
+        with patch(
+            "synthorg.observability.syslog_handler.build_syslog_handler",
+        ) as mock_build:
+            mock_build.return_value = logging.StreamHandler()
+            handler = build_handler(
+                sink,
+                tmp_path,
+                _foreign_pre_chain(),
+            )
+            handler_cleanup.append(handler)
+            mock_build.assert_called_once()
+
+    def test_http_dispatches_to_http_builder(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+        )
+        with patch(
+            "synthorg.observability.http_handler.build_http_handler",
+        ) as mock_build:
+            mock_build.return_value = logging.StreamHandler()
+            handler = build_handler(
+                sink,
+                tmp_path,
+                _foreign_pre_chain(),
+            )
+            handler_cleanup.append(handler)
+            mock_build.assert_called_once()
+
+
+@pytest.mark.unit
+class TestLoggerNameFilterValidation:
+    """Tests for _LoggerNameFilter input validation."""
+
+    def test_blank_include_prefix_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            _LoggerNameFilter(include_prefixes=("",))
+
+    def test_whitespace_include_prefix_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            _LoggerNameFilter(include_prefixes=("   ",))
+
+    def test_blank_exclude_prefix_raises(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            _LoggerNameFilter(exclude_prefixes=("",))
+
+
+@pytest.mark.unit
+class TestCompressRotatedExternalRaises:
+    """compress_rotated with EXTERNAL strategy raises ValueError."""
+
+    def test_compress_rotated_external_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="app.log",
+            rotation=RotationConfig(
+                strategy=RotationStrategy.EXTERNAL,
+                compress_rotated=True,
+            ),
+        )
+        with pytest.raises(ValueError, match="compress_rotated"):
+            _build_file_handler(sink, tmp_path)

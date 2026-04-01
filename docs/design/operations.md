@@ -1386,7 +1386,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-55 domain-specific event constant modules under `observability/events/` (one per subsystem:
+56 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
