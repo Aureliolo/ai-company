@@ -11,12 +11,25 @@ configuration.  All models are immutable and validated on construction.
 
 from collections import Counter
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+    SyslogFacility,
+    SyslogProtocol,
+)
+
+# Default values for cross-type field rejection checks
+_DEFAULT_SYSLOG_PORT: Final[int] = 514
+_DEFAULT_HTTP_BATCH_SIZE: Final[int] = 100
+_DEFAULT_HTTP_FLUSH_INTERVAL: Final[float] = 5.0
+_DEFAULT_HTTP_TIMEOUT: Final[float] = 10.0
+_DEFAULT_HTTP_MAX_RETRIES: Final[int] = 3
 
 
 class RotationConfig(BaseModel):
@@ -28,9 +41,19 @@ class RotationConfig(BaseModel):
             Only used when ``strategy`` is
             :attr:`RotationStrategy.BUILTIN`.
         backup_count: Number of rotated backup files to keep.
+        compress_rotated: Whether to gzip-compress rotated backup
+            files.  Only supported with builtin rotation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _reject_compress_with_external(self) -> Self:
+        """Reject compress_rotated with non-builtin strategy."""
+        if self.compress_rotated and self.strategy != RotationStrategy.BUILTIN:
+            msg = "compress_rotated is only supported with builtin rotation strategy"
+            raise ValueError(msg)
+        return self
 
     strategy: RotationStrategy = Field(
         default=RotationStrategy.BUILTIN,
@@ -46,18 +69,31 @@ class RotationConfig(BaseModel):
         ge=0,
         description="Number of rotated backup files to keep",
     )
+    compress_rotated: bool = Field(
+        default=False,
+        description="Gzip-compress rotated backup files",
+    )
 
 
 class SinkConfig(BaseModel):
     """Configuration for a single log output destination.
 
     Attributes:
-        sink_type: Where to send log output (console or file).
+        sink_type: Where to send log output.
         level: Minimum log level for this sink.
         file_path: Relative path for FILE sinks (within ``log_dir``).
-            Must be ``None`` for CONSOLE sinks, required for FILE sinks.
         rotation: Rotation settings for FILE sinks.
         json_format: Whether to format output as JSON.
+        syslog_host: Hostname for SYSLOG sinks.
+        syslog_port: Port for SYSLOG sinks.
+        syslog_facility: Syslog facility code.
+        syslog_protocol: Transport protocol (TCP or UDP).
+        http_url: Endpoint URL for HTTP sinks.
+        http_headers: Extra HTTP headers as ``(name, value)`` pairs.
+        http_batch_size: Records per HTTP POST batch.
+        http_flush_interval_seconds: Seconds between automatic flushes.
+        http_timeout_seconds: HTTP request timeout.
+        http_max_retries: Retry count on HTTP failure.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -69,6 +105,7 @@ class SinkConfig(BaseModel):
         default=LogLevel.INFO,
         description="Minimum log level for this sink",
     )
+    # FILE fields
     file_path: str | None = Field(
         default=None,
         description="Relative path for FILE sinks (within log_dir)",
@@ -81,36 +118,178 @@ class SinkConfig(BaseModel):
         default=True,
         description="Whether to format output as JSON",
     )
+    # SYSLOG fields
+    syslog_host: str | None = Field(
+        default=None,
+        description="Hostname for SYSLOG sinks",
+    )
+    syslog_port: int = Field(
+        default=514,
+        gt=0,
+        le=65535,
+        description="Port for SYSLOG sinks",
+    )
+    syslog_facility: SyslogFacility = Field(
+        default=SyslogFacility.USER,
+        description="Syslog facility code",
+    )
+    syslog_protocol: SyslogProtocol = Field(
+        default=SyslogProtocol.UDP,
+        description="Transport protocol (TCP or UDP)",
+    )
+    # HTTP fields
+    http_url: str | None = Field(
+        default=None,
+        description="Endpoint URL for HTTP sinks",
+    )
+    http_headers: tuple[tuple[str, str], ...] = Field(
+        default=(),
+        description="Extra HTTP headers as (name, value) pairs",
+    )
+    http_batch_size: int = Field(
+        default=100,
+        gt=0,
+        description="Records per HTTP POST batch",
+    )
+    http_flush_interval_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds between automatic flushes",
+    )
+    http_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description="HTTP request timeout in seconds",
+    )
+    http_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description="Retry count on HTTP failure",
+    )
 
     @model_validator(mode="after")
-    def _validate_file_sink_requires_path(self) -> Self:
-        """Ensure FILE sinks have a non-blank, safe ``file_path``."""
-        if self.sink_type == SinkType.FILE:
-            if self.file_path is None:
-                msg = "file_path is required for FILE sinks"
-                raise ValueError(msg)
-            if not self.file_path.strip():
-                msg = "file_path must not be empty or whitespace-only"
-                raise ValueError(msg)
-            path = PurePath(self.file_path)
-            if (
-                path.is_absolute()
-                or PurePosixPath(self.file_path).is_absolute()
-                or PureWindowsPath(self.file_path).is_absolute()
-            ):
-                msg = f"file_path must be relative: {self.file_path}"
-                raise ValueError(msg)
-            if ".." in path.parts:
-                msg = f"file_path must not contain '..' components: {self.file_path}"
-                raise ValueError(msg)
-        else:
-            if self.file_path is not None:
-                msg = "file_path must be None for CONSOLE sinks"
-                raise ValueError(msg)
-            if self.rotation is not None:
-                msg = "rotation must be None for CONSOLE sinks"
-                raise ValueError(msg)
+    def _validate_sink_type_fields(self) -> Self:
+        """Enforce required/rejected fields per sink type."""
+        match self.sink_type:
+            case SinkType.FILE:
+                self._validate_file_fields()
+            case SinkType.CONSOLE:
+                self._reject_file_fields("CONSOLE")
+                self._reject_syslog_fields("CONSOLE")
+                self._reject_http_fields("CONSOLE")
+            case SinkType.SYSLOG:
+                self._reject_file_fields("SYSLOG")
+                self._validate_syslog_fields()
+                self._reject_http_fields("SYSLOG")
+                self._require_json_format("SYSLOG")
+            case SinkType.HTTP:
+                self._reject_file_fields("HTTP")
+                self._reject_syslog_fields("HTTP")
+                self._validate_http_fields()
+                self._require_json_format("HTTP")
         return self
+
+    def _validate_file_fields(self) -> None:
+        if self.file_path is None:
+            msg = "file_path is required for FILE sinks"
+            raise ValueError(msg)
+        if not self.file_path.strip():
+            msg = "file_path must not be empty or whitespace-only"
+            raise ValueError(msg)
+        path = PurePath(self.file_path)
+        if (
+            path.is_absolute()
+            or PurePosixPath(self.file_path).is_absolute()
+            or PureWindowsPath(self.file_path).is_absolute()
+        ):
+            msg = f"file_path must be relative: {self.file_path}"
+            raise ValueError(msg)
+        if ".." in path.parts:
+            msg = f"file_path must not contain '..' components: {self.file_path}"
+            raise ValueError(msg)
+        self._reject_syslog_fields("FILE")
+        self._reject_http_fields("FILE")
+
+    def _reject_file_fields(self, sink_label: str) -> None:
+        if self.file_path is not None:
+            msg = f"file_path must be None for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.rotation is not None:
+            msg = f"rotation must be None for {sink_label} sinks"
+            raise ValueError(msg)
+
+    def _validate_syslog_fields(self) -> None:
+        if self.syslog_host is None:
+            msg = "syslog_host is required for SYSLOG sinks"
+            raise ValueError(msg)
+        if not self.syslog_host.strip():
+            msg = "syslog_host must not be blank"
+            raise ValueError(msg)
+
+    def _reject_syslog_fields(self, sink_label: str) -> None:
+        if self.syslog_host is not None:
+            msg = f"syslog_host must be None for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.syslog_port != _DEFAULT_SYSLOG_PORT:
+            msg = f"syslog_port must be default (514) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.syslog_facility != SyslogFacility.USER:
+            msg = f"syslog_facility must be default (USER) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.syslog_protocol != SyslogProtocol.UDP:
+            msg = f"syslog_protocol must be default (UDP) for {sink_label} sinks"
+            raise ValueError(msg)
+
+    def _validate_http_fields(self) -> None:
+        if self.http_url is None:
+            msg = "http_url is required for HTTP sinks"
+            raise ValueError(msg)
+        if not self.http_url.strip():
+            msg = "http_url must not be blank"
+            raise ValueError(msg)
+        if not (
+            self.http_url.startswith("http://") or self.http_url.startswith("https://")
+        ):
+            msg = "http_url must start with http:// or https://"
+            raise ValueError(msg)
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(self.http_url)
+        if not parsed.hostname:
+            msg = "http_url must include a host"
+            raise ValueError(msg)
+        for i, (name, _value) in enumerate(self.http_headers):
+            if not name or not name.strip():
+                msg = f"http_headers[{i}] has an empty header name"
+                raise ValueError(msg)
+
+    def _reject_http_fields(self, sink_label: str) -> None:
+        if self.http_url is not None:
+            msg = f"http_url must be None for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_headers != ():
+            msg = f"http_headers must be empty for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_batch_size != _DEFAULT_HTTP_BATCH_SIZE:
+            msg = f"http_batch_size must be default (100) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_flush_interval_seconds != _DEFAULT_HTTP_FLUSH_INTERVAL:
+            msg = (
+                "http_flush_interval_seconds must be default (5.0) "
+                f"for {sink_label} sinks"
+            )
+            raise ValueError(msg)
+        if self.http_timeout_seconds != _DEFAULT_HTTP_TIMEOUT:
+            msg = f"http_timeout_seconds must be default (10.0) for {sink_label} sinks"
+            raise ValueError(msg)
+        if self.http_max_retries != _DEFAULT_HTTP_MAX_RETRIES:
+            msg = f"http_max_retries must be default (3) for {sink_label} sinks"
+            raise ValueError(msg)
+
+    def _require_json_format(self, sink_label: str) -> None:
+        if not self.json_format:
+            msg = f"json_format must be True for {sink_label} sinks (always JSON)"
+            raise ValueError(msg)
 
 
 class LogConfig(BaseModel):
@@ -177,6 +356,36 @@ class LogConfig(BaseModel):
         dupes = sorted(p for p, c in counts.items() if c > 1)
         if dupes:
             msg = f"Duplicate file paths across sinks: {dupes}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_no_duplicate_syslog_endpoints(self) -> Self:
+        """Ensure no duplicate syslog ``(host, port)`` pairs."""
+        endpoints = [
+            (s.syslog_host.strip() if s.syslog_host else "", s.syslog_port)
+            for s in self.sinks
+            if s.sink_type == SinkType.SYSLOG
+        ]
+        counts = Counter(endpoints)
+        dupes = sorted(f"{h}:{p}" for (h, p), c in counts.items() if c > 1)
+        if dupes:
+            msg = f"Duplicate syslog endpoints: {dupes}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_no_duplicate_http_urls(self) -> Self:
+        """Ensure no duplicate HTTP URLs."""
+        urls = [
+            s.http_url
+            for s in self.sinks
+            if s.sink_type == SinkType.HTTP and s.http_url is not None
+        ]
+        counts = Counter(urls)
+        dupes = sorted(u for u, c in counts.items() if c > 1)
+        if dupes:
+            msg = f"Duplicate HTTP URLs: {dupes}"
             raise ValueError(msg)
         return self
 

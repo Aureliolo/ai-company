@@ -35,7 +35,44 @@ class SinkType(StrEnum):
     Attributes:
         CONSOLE: Write to stderr via ``StreamHandler``.
         FILE: Write to a log file with optional rotation.
+        SYSLOG: Ship structured JSON to a syslog endpoint.
+        HTTP: POST JSON log batches to an HTTP endpoint.
     """
 
     CONSOLE = "console"
     FILE = "file"
+    SYSLOG = "syslog"
+    HTTP = "http"
+
+
+class SyslogFacility(StrEnum):
+    """Syslog facility codes.
+
+    Maps to ``logging.handlers.SysLogHandler.LOG_*`` constants.
+    """
+
+    USER = "user"
+    LOCAL0 = "local0"
+    LOCAL1 = "local1"
+    LOCAL2 = "local2"
+    LOCAL3 = "local3"
+    LOCAL4 = "local4"
+    LOCAL5 = "local5"
+    LOCAL6 = "local6"
+    LOCAL7 = "local7"
+    DAEMON = "daemon"
+    SYSLOG = "syslog"
+    AUTH = "auth"
+    KERN = "kern"
+
+
+class SyslogProtocol(StrEnum):
+    """Syslog transport protocol.
+
+    Attributes:
+        TCP: Reliable delivery via ``socket.SOCK_STREAM``.
+        UDP: Lightweight delivery via ``socket.SOCK_DGRAM``.
+    """
+
+    TCP = "tcp"
+    UDP = "udp"

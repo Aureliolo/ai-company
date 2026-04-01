@@ -1310,6 +1310,22 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 | `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |
 | `backup.log` | File | INFO | JSON | `synthorg.backup.*` | Backup/restore lifecycle |
 
+In addition to the 11 default sinks, two shipping sink types are available for centralized
+log aggregation:
+
+| Sink Type | Transport | Format | Description |
+|-----------|-----------|--------|-------------|
+| Syslog | UDP or TCP to a configurable endpoint | JSON | Ship structured logs to rsyslog, syslog-ng, or Graylog |
+| HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to any JSON-accepting endpoint |
+
+The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
+(e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
+collector/proxy (Promtail, Logstash, Vector, etc.) to translate the payload.
+
+Shipping sinks are catch-all (no logger name routing) and are configured at runtime via the
+`custom_sinks` setting or YAML. See the [Centralized Logging](../guides/centralized-logging.md)
+guide for configuration examples and deployment patterns.
+
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
 
@@ -1324,10 +1340,16 @@ processor because `ConsoleRenderer` handles exception rendering natively.
 - **Local dev**: `logs/` relative to working directory (default)
 - **Override**: `SYNTHORG_LOG_DIR` env var
 
-### Rotation
+### Rotation and Compression
 
 File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alternative:
 `WatchedFileHandler` for external logrotate (`rotation.strategy: external` in config).
+
+Rotated backup files can be automatically gzip-compressed by setting `compress_rotated: true`
+in the rotation config. Compressed backups are stored as `.log.N.gz` instead of `.log.N`,
+typically achieving 5--10x size reduction for structured JSON logs. Compression is off by
+default for backward compatibility. `compress_rotated` is only supported with the builtin
+rotation strategy; it is rejected when `rotation.strategy` is set to `external`.
 
 ### Sensitive Field Redaction
 
@@ -1369,7 +1391,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-54 domain-specific event constant modules under `observability/events/` (one per subsystem:
+56 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
@@ -1437,10 +1459,14 @@ Four observability settings are runtime-editable via `SettingsService`:
 - `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
   console sink, file path for file sinks). Each value is an object with optional fields:
   `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
-  `backup_count`, `strategy`). The console sink cannot be disabled (`enabled: false` is rejected).
-- `custom_sinks` (JSON) -- additional file sinks as a JSON array. Each entry requires `file_path`
-  and optionally: `level` (default info), `json_format` (default true), `rotation` (object),
-  `routing_prefixes` (array of logger name prefix strings for targeted routing).
+  `backup_count`, `strategy`, `compress_rotated` (builtin-only)). The console sink cannot be disabled
+  (`enabled: false` is rejected).
+- `custom_sinks` (JSON) -- additional sinks as a JSON array. Each entry may specify `sink_type`
+  (`file`, `syslog`, `http`; defaults to `file`). File sinks require `file_path` and accept
+  `level`, `json_format`, `rotation`, `routing_prefixes`. Syslog sinks require `syslog_host`
+  and accept `syslog_port`, `syslog_facility`, `syslog_protocol`, `level`. HTTP sinks require
+  `http_url` and accept `http_headers`, `http_batch_size`, `http_flush_interval_seconds`,
+  `http_timeout_seconds`, `http_max_retries`, `level`.
 
 Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
 

@@ -12,25 +12,39 @@ The two JSON inputs come from ``SettingsService`` settings:
   (``__console__`` for the console sink, file path for file sinks).
   Each value is an object with optional fields: ``enabled``, ``level``,
   ``json_format``, ``rotation``.
-- ``custom_sinks``: JSON array of objects, each describing a new FILE
-  sink with ``file_path`` (required) and optional ``level``,
-  ``json_format``, ``rotation``, ``routing_prefixes``.
+- ``custom_sinks``: JSON array of objects, each describing a new sink
+  (file, syslog, or http).  File sinks require ``file_path``; syslog
+  sinks require ``syslog_host``; HTTP sinks require ``http_url``.
+  All types accept optional ``level``.
 """
 
 import json
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, cast
+from typing import Any, Final, cast
 
+from synthorg.observability import get_logger
+from synthorg.observability._shipping_sink_parsers import (
+    build_custom_http_sink as _build_custom_http_sink_impl,
+)
+from synthorg.observability._shipping_sink_parsers import (
+    build_custom_syslog_sink as _build_custom_syslog_sink_impl,
+)
 from synthorg.observability.config import (
     DEFAULT_SINKS,
     LogConfig,
     RotationConfig,
     SinkConfig,
 )
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+)
 
-CONSOLE_SINK_ID: str = "__console__"
+logger = get_logger(__name__)
+
+CONSOLE_SINK_ID: Final[str] = "__console__"
 
 # Set of file paths belonging to DEFAULT_SINKS (reserved, even if disabled).
 DEFAULT_FILE_PATHS: frozenset[str] = frozenset(
@@ -50,15 +64,43 @@ _STRATEGY_MAP: dict[str, RotationStrategy] = {
 _OVERRIDE_FIELDS: frozenset[str] = frozenset(
     {"enabled", "level", "json_format", "rotation"},
 )
-_CUSTOM_SINK_FIELDS: frozenset[str] = frozenset(
-    {"file_path", "level", "json_format", "rotation", "routing_prefixes"},
+_CUSTOM_FILE_SINK_FIELDS: frozenset[str] = frozenset(
+    {"sink_type", "file_path", "level", "json_format", "rotation", "routing_prefixes"},
+)
+_CUSTOM_SYSLOG_SINK_FIELDS: frozenset[str] = frozenset(
+    {
+        "sink_type",
+        "syslog_host",
+        "syslog_port",
+        "syslog_facility",
+        "syslog_protocol",
+        "level",
+    },
+)
+_CUSTOM_HTTP_SINK_FIELDS: frozenset[str] = frozenset(
+    {
+        "sink_type",
+        "http_url",
+        "http_headers",
+        "http_batch_size",
+        "http_flush_interval_seconds",
+        "http_timeout_seconds",
+        "http_max_retries",
+        "level",
+    },
+)
+# Union for initial parsing (field validation deferred to type-specific check)
+_CUSTOM_SINK_FIELDS: frozenset[str] = (
+    _CUSTOM_FILE_SINK_FIELDS | _CUSTOM_SYSLOG_SINK_FIELDS | _CUSTOM_HTTP_SINK_FIELDS
 )
 _ROTATION_FIELDS: frozenset[str] = frozenset(
-    {"strategy", "max_bytes", "backup_count"},
+    {"strategy", "max_bytes", "backup_count", "compress_rotated"},
 )
-
-_MAX_CUSTOM_SINKS: int = 20
-_MAX_ROUTING_PREFIXES: int = 50
+_VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
+    {"file", "syslog", "http"},
+)
+_MAX_CUSTOM_SINKS: Final[int] = 20
+_MAX_ROUTING_PREFIXES: Final[int] = 50
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,11 +215,9 @@ def _parse_custom_sinks(raw: str) -> list[dict[str, Any]]:
         if not isinstance(entry, dict):
             msg = f"custom_sinks[{i}] must be a JSON object, got {type(entry).__name__}"
             raise ValueError(msg)
-        _reject_unknown_fields(
-            entry,
-            _CUSTOM_SINK_FIELDS,
-            f"custom_sinks[{i}]",
-        )
+        # Field validation is deferred to the type-specific builder
+        # in _build_custom_sink, which calls _reject_unknown_fields
+        # with the correct field set for the sink type.
     return data
 
 
@@ -244,7 +284,18 @@ def _parse_rotation_override(
             raise ValueError(msg)
         updates["backup_count"] = val
 
-    return base.model_copy(update=updates) if updates else base
+    if "compress_rotated" in raw:
+        updates["compress_rotated"] = _parse_bool(
+            raw["compress_rotated"],
+            field_name="rotation.compress_rotated",
+        )
+
+    if not updates:
+        return base
+    merged = {**base.model_dump(), **updates}
+    # model_validate enforces compress_rotated + strategy check via
+    # RotationConfig._reject_compress_with_external.
+    return RotationConfig.model_validate(merged)
 
 
 # -- Override application ------------------------------------------
@@ -294,7 +345,10 @@ def _apply_override(
             sink.rotation,
         )
 
-    return sink.model_copy(update=updates) if updates else sink
+    if not updates:
+        return sink
+    merged = {**sink.model_dump(), **updates}
+    return SinkConfig.model_validate(merged)
 
 
 # -- Custom sink construction --------------------------------------
@@ -306,9 +360,57 @@ def _build_custom_sink(
 ) -> SinkConfig:
     """Construct a SinkConfig from a custom sink definition dict.
 
+    Dispatches to type-specific builders based on ``sink_type`` field.
+    Defaults to ``"file"`` when ``sink_type`` is omitted.
+
     Raises:
-        ValueError: If ``file_path`` is missing or fields are invalid.
+        ValueError: If required fields are missing or invalid.
     """
+    raw_type = entry.get("sink_type", "file")
+    if not isinstance(raw_type, str):
+        msg = f"custom_sinks[{index}].sink_type must be a string"
+        raise ValueError(msg)
+    sink_type_str = raw_type.lower()
+    if sink_type_str not in _VALID_CUSTOM_SINK_TYPES:
+        valid = ", ".join(sorted(_VALID_CUSTOM_SINK_TYPES))
+        msg = (
+            f"custom_sinks[{index}].sink_type {raw_type!r} is invalid. "
+            f"Valid types: {valid}"
+        )
+        raise ValueError(msg)
+
+    match sink_type_str:
+        case "file":
+            _reject_unknown_fields(
+                entry,
+                _CUSTOM_FILE_SINK_FIELDS,
+                f"custom_sinks[{index}]",
+            )
+            return _build_custom_file_sink(entry, index)
+        case "syslog":
+            _reject_unknown_fields(
+                entry,
+                _CUSTOM_SYSLOG_SINK_FIELDS,
+                f"custom_sinks[{index}]",
+            )
+            return _build_custom_syslog_sink(entry, index)
+        case "http":
+            _reject_unknown_fields(
+                entry,
+                _CUSTOM_HTTP_SINK_FIELDS,
+                f"custom_sinks[{index}]",
+            )
+            return _build_custom_http_sink(entry, index)
+        case _:  # pragma: no cover
+            msg = f"Unhandled sink_type: {sink_type_str}"
+            raise ValueError(msg)
+
+
+def _build_custom_file_sink(
+    entry: dict[str, Any],
+    index: int,
+) -> SinkConfig:
+    """Build a FILE SinkConfig from a custom sink entry."""
     if "file_path" not in entry:
         msg = f"custom_sinks[{index}] is missing required field 'file_path'"
         raise ValueError(msg)
@@ -343,6 +445,115 @@ def _build_custom_sink(
         file_path=normalized_path,
         rotation=rotation,
         json_format=json_format,
+    )
+
+
+def _parse_enum_field(
+    entry: dict[str, Any],
+    key: str,
+    mapping: dict[str, Any],
+    label: str,
+    context: str,
+) -> Any:
+    """Parse a string field as an enum via a lookup map."""
+    raw = entry[key]
+    if not isinstance(raw, str):
+        msg = f"{context}.{key} must be a string"
+        raise ValueError(msg)
+    parsed = mapping.get(raw.lower())
+    if parsed is None:
+        valid = ", ".join(sorted(mapping))
+        msg = f"Invalid {label} {raw!r}. Valid: {valid}"
+        raise ValueError(msg)
+    return parsed
+
+
+def _parse_common_sink_fields(
+    entry: dict[str, Any],
+    index: int,
+    *,
+    sink_type: str = "file",
+) -> tuple[LogLevel, bool]:
+    """Extract level and json_format from a custom sink entry.
+
+    Args:
+        entry: The custom sink entry dict.
+        index: Index within the custom_sinks array.
+        sink_type: The sink type string (file, syslog, http).
+
+    Returns:
+        Tuple of (level, json_format).
+
+    Raises:
+        ValueError: If json_format is set for syslog/http sinks.
+    """
+    level = _parse_level(entry["level"]) if "level" in entry else LogLevel.INFO
+    json_format = True
+    if "json_format" in entry:
+        if sink_type in ("syslog", "http"):
+            msg = (
+                f"json_format is not supported for "
+                f"{sink_type} sinks (custom_sinks[{index}])"
+            )
+            raise ValueError(msg)
+        json_format = _parse_bool(
+            entry["json_format"],
+            field_name=f"custom_sinks[{index}].json_format",
+        )
+    return level, json_format
+
+
+def _parse_int_field(
+    entry: dict[str, Any],
+    key: str,
+    context: str,
+) -> int:
+    """Parse a strict integer field (rejects booleans)."""
+    val = entry[key]
+    if not isinstance(val, int) or isinstance(val, bool):
+        msg = f"{context}.{key} must be an integer"
+        raise ValueError(msg)
+    return val
+
+
+def _parse_number_field(
+    entry: dict[str, Any],
+    key: str,
+    context: str,
+) -> float:
+    """Parse a numeric field (int or float, rejects booleans)."""
+    val = entry[key]
+    if not isinstance(val, int | float) or isinstance(val, bool):
+        msg = f"{context}.{key} must be a number"
+        raise ValueError(msg)
+    return float(val)
+
+
+def _build_custom_syslog_sink(
+    entry: dict[str, Any],
+    index: int,
+) -> SinkConfig:
+    """Build a SYSLOG SinkConfig from a custom sink entry."""
+    return _build_custom_syslog_sink_impl(
+        entry,
+        index,
+        parse_common=_parse_common_sink_fields,
+        parse_int=_parse_int_field,
+        parse_enum=_parse_enum_field,
+    )
+
+
+def _build_custom_http_sink(
+    entry: dict[str, Any],
+    index: int,
+) -> SinkConfig:
+    """Build an HTTP SinkConfig from a custom sink entry."""
+    return _build_custom_http_sink_impl(
+        entry,
+        index,
+        parse_common=_parse_common_sink_fields,
+        parse_int=_parse_int_field,
+        parse_number=_parse_number_field,
     )
 
 
@@ -416,27 +627,32 @@ def _process_custom_entries(
 
     for i, entry in enumerate(custom_entries):
         sink = _build_custom_sink(entry, i)
-        path = cast("str", sink.file_path)
 
-        if path in used_paths:
-            msg = (
-                f"custom_sinks[{i}] file_path {path!r} conflicts "
-                "with a default sink (reserved even if disabled)"
-            )
-            raise ValueError(msg)
-        if path in custom_paths:
-            msg = (
-                f"custom_sinks[{i}] file_path {path!r} is duplicated "
-                "within custom_sinks"
-            )
-            raise ValueError(msg)
+        # FILE sinks need path uniqueness and routing
+        if sink.sink_type == SinkType.FILE:
+            path = cast("str", sink.file_path)
 
-        custom_paths.add(path)
+            if path in used_paths:
+                msg = (
+                    f"custom_sinks[{i}] file_path {path!r} conflicts "
+                    "with a default sink (reserved even if disabled)"
+                )
+                raise ValueError(msg)
+            if path in custom_paths:
+                msg = (
+                    f"custom_sinks[{i}] file_path {path!r} is duplicated "
+                    "within custom_sinks"
+                )
+                raise ValueError(msg)
+
+            custom_paths.add(path)
+
+            prefixes = _extract_routing(entry, path)
+            if prefixes is not None:
+                routing_overrides[path] = prefixes
+
+        # SYSLOG/HTTP sinks are catch-all (no routing, no file_path)
         merged.append(sink)
-
-        prefixes = _extract_routing(entry, path)
-        if prefixes is not None:
-            routing_overrides[path] = prefixes
 
     return MappingProxyType(routing_overrides)
 

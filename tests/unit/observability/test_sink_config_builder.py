@@ -544,3 +544,249 @@ class TestLimits:
         )
         with pytest.raises(ValueError, match=r"exceeds maximum"):
             _build(custom=custom)
+
+
+# -- Custom SYSLOG sinks ------------------------------------------
+
+
+@pytest.mark.unit
+class TestCustomSyslogSinks:
+    """Custom sinks with sink_type='syslog'."""
+
+    def test_syslog_sink_created(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "loghost.example.com",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        assert len(result.config.sinks) == _DEFAULTS_COUNT + 1
+        syslog_sink = result.config.sinks[-1]
+        assert syslog_sink.sink_type == SinkType.SYSLOG
+        assert syslog_sink.syslog_host == "loghost.example.com"
+        assert syslog_sink.syslog_port == 514
+
+    def test_syslog_custom_settings(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "10.0.0.1",
+                    "syslog_port": 1514,
+                    "syslog_facility": "local3",
+                    "syslog_protocol": "tcp",
+                    "level": "error",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        syslog_sink = result.config.sinks[-1]
+        assert syslog_sink.syslog_port == 1514
+        assert syslog_sink.syslog_facility.value == "local3"
+        assert syslog_sink.syslog_protocol.value == "tcp"
+        assert syslog_sink.level == LogLevel.ERROR
+
+    def test_syslog_requires_host(self) -> None:
+        custom = json.dumps([{"sink_type": "syslog"}])
+        with pytest.raises(ValueError, match="syslog_host"):
+            _build(custom=custom)
+
+    def test_syslog_no_routing(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "localhost",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        assert len(result.routing_overrides) == 0
+
+    def test_syslog_unknown_field_rejected(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "localhost",
+                    "bad_field": True,
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="Unknown fields"):
+            _build(custom=custom)
+
+    def test_syslog_invalid_facility_rejected(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "localhost",
+                    "syslog_facility": "invalid",
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="facility"):
+            _build(custom=custom)
+
+    def test_syslog_invalid_protocol_rejected(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "localhost",
+                    "syslog_protocol": "quic",
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="protocol"):
+            _build(custom=custom)
+
+
+# -- Custom HTTP sinks ---------------------------------------------
+
+
+@pytest.mark.unit
+class TestCustomHttpSinks:
+    """Custom sinks with sink_type='http'."""
+
+    def test_http_sink_created(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "http",
+                    "http_url": "https://logs.example.com/ingest",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        assert len(result.config.sinks) == _DEFAULTS_COUNT + 1
+        http_sink = result.config.sinks[-1]
+        assert http_sink.sink_type == SinkType.HTTP
+        assert http_sink.http_url == "https://logs.example.com/ingest"
+        assert http_sink.http_batch_size == 100
+
+    def test_http_custom_settings(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "http",
+                    "http_url": "http://example-collector:3100/push",
+                    "http_batch_size": 50,
+                    "http_flush_interval_seconds": 2.0,
+                    "http_timeout_seconds": 30.0,
+                    "http_max_retries": 5,
+                    "http_headers": [["Authorization", "Bearer tok"]],
+                    "level": "warning",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        http_sink = result.config.sinks[-1]
+        assert http_sink.http_batch_size == 50
+        assert http_sink.http_flush_interval_seconds == 2.0
+        assert http_sink.http_timeout_seconds == 30.0
+        assert http_sink.http_max_retries == 5
+        assert http_sink.http_headers == (("Authorization", "Bearer tok"),)
+        assert http_sink.level == LogLevel.WARNING
+
+    def test_http_requires_url(self) -> None:
+        custom = json.dumps([{"sink_type": "http"}])
+        with pytest.raises(ValueError, match="http_url"):
+            _build(custom=custom)
+
+    def test_http_rejects_non_http_scheme(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "http",
+                    "http_url": "ftp://example.com",
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="http_url must start with"):
+            _build(custom=custom)
+
+    def test_http_no_routing(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "http",
+                    "http_url": "https://example.com/logs",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        assert len(result.routing_overrides) == 0
+
+    def test_http_unknown_field_rejected(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "http",
+                    "http_url": "https://example.com",
+                    "bad_field": True,
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="Unknown fields"):
+            _build(custom=custom)
+
+
+# -- Custom sink type dispatch -------------------------------------
+
+
+@pytest.mark.unit
+class TestCustomSinkTypeDispatch:
+    """The sink_type field controls which builder path is used."""
+
+    def test_default_omitted_remains_file(self) -> None:
+        custom = json.dumps([{"file_path": "extra.log"}])
+        result = _build(custom=custom)
+        assert result.config.sinks[-1].sink_type == SinkType.FILE
+
+    def test_explicit_file_type(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "file",
+                    "file_path": "extra.log",
+                }
+            ]
+        )
+        result = _build(custom=custom)
+        assert result.config.sinks[-1].sink_type == SinkType.FILE
+
+    def test_unknown_sink_type_rejected(self) -> None:
+        custom = json.dumps(
+            [
+                {
+                    "sink_type": "kafka",
+                    "endpoint": "broker:9092",
+                }
+            ]
+        )
+        with pytest.raises(ValueError, match="sink_type"):
+            _build(custom=custom)
+
+    def test_mixed_types(self) -> None:
+        custom = json.dumps(
+            [
+                {"file_path": "extra.log"},
+                {
+                    "sink_type": "syslog",
+                    "syslog_host": "loghost",
+                },
+                {
+                    "sink_type": "http",
+                    "http_url": "https://example.com/logs",
+                },
+            ]
+        )
+        result = _build(custom=custom)
+        assert len(result.config.sinks) == _DEFAULTS_COUNT + 3
+        types = [s.sink_type for s in result.config.sinks[-3:]]
+        assert types == [SinkType.FILE, SinkType.SYSLOG, SinkType.HTTP]

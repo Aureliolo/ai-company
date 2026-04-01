@@ -29,7 +29,13 @@ from synthorg.observability.correlation import (
     with_correlation,
     with_correlation_async,
 )
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+    SyslogFacility,
+    SyslogProtocol,
+)
 from synthorg.observability.processors import sanitize_sensitive_fields
 from synthorg.observability.setup import configure_logging
 
@@ -41,6 +47,8 @@ __all__ = [
     "RotationStrategy",
     "SinkConfig",
     "SinkType",
+    "SyslogFacility",
+    "SyslogProtocol",
     "bind_correlation_id",
     "clear_correlation_ids",
     "configure_logging",
