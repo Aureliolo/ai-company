@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 DEFAULT_MERGE_DEPARTMENT = "engineering"
 
 _STRIP_KEYS: frozenset[str] = frozenset({"merge_id", "_remove"})
+_DEPT_STRIP_KEYS: frozenset[str] = frozenset({"_remove"})
 
 
 @dataclass
@@ -47,8 +48,8 @@ def merge_template_configs(
     - ``config`` (dict): deep-merged; child keys override parent.
     - ``agents`` (list): merged by ``(role, department, merge_id)`` key.
     - ``departments`` (list): merged by ``name`` (case-insensitive).
-    - ``workflow_handoffs``, ``escalation_paths``: child replaces
-      entirely if present.
+    - ``workflow``, ``workflow_handoffs``, ``escalation_paths``: child
+      replaces entirely if present; otherwise inherited from parent.
 
     Args:
         parent: Rendered parent config dict (post-Jinja2, pre-defaults).
@@ -263,7 +264,9 @@ def _merge_departments(
                 seen_names.add(name)
             else:
                 # Override: use child version, strip _remove if present.
-                clean = {k: v for k, v in child_dept.items() if k != "_remove"}
+                clean = {
+                    k: v for k, v in child_dept.items() if k not in _DEPT_STRIP_KEYS
+                }
                 result.append(clean)
                 seen_names.add(name)
         else:
@@ -271,6 +274,22 @@ def _merge_departments(
             seen_names.add(name)
 
     # Append unmatched child depts + nameless children.
+    _append_unmatched_child_depts(child_by_name, seen_names, result)
+    result.extend(copy.deepcopy(nameless_child))
+
+    return result
+
+
+def _append_unmatched_child_depts(
+    child_by_name: dict[str, dict[str, Any]],
+    seen_names: set[str],
+    result: list[dict[str, Any]],
+) -> None:
+    """Append child departments that didn't match any parent.
+
+    Raises:
+        TemplateInheritanceError: If a child ``_remove`` has no parent.
+    """
     for name, child_dept in child_by_name.items():
         if name not in seen_names:
             if child_dept.get("_remove"):
@@ -284,11 +303,8 @@ def _merge_departments(
                     department=name,
                 )
                 raise TemplateInheritanceError(msg)
-            clean = {k: v for k, v in child_dept.items() if k != "_remove"}
+            clean = {k: v for k, v in child_dept.items() if k not in _DEPT_STRIP_KEYS}
             result.append(clean)
-    result.extend(copy.deepcopy(nameless_child))
-
-    return result
 
 
 def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:

@@ -232,6 +232,7 @@ class TestTemplateDepartmentConfig:
         assert d.remove is True
 
     def test_remove_defaults_false(self) -> None:
+        """``remove`` defaults to ``False`` when not supplied."""
         d = TemplateDepartmentConfig(name="engineering")
         assert d.remove is False
 

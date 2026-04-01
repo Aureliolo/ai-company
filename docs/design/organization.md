@@ -373,8 +373,12 @@ Scalars (`company_name`, `company_type`)
     declare its full ``workflow_config`` if it needs one; the parent's
     ``workflow_config`` is not carried forward.
 
-`workflow_handoffs` and `escalation_paths`
-:   Child replaces entirely if present.
+`workflow`, `workflow_handoffs`, and `escalation_paths`
+:   Child replaces entirely if present; otherwise inherited from parent.
+
+After merging, agent names are deduplicated: if parent and child auto-generation
+produces the same name, later occurrences receive a numeric suffix (e.g.,
+``"Kenji Matsuda 2"``).
 
 ---
 

@@ -10,6 +10,7 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import CompanyType
+from synthorg.templates._inheritance import collect_parent_variables
 from synthorg.templates.errors import TemplateInheritanceError, TemplateRenderError
 from synthorg.templates.loader import load_template, load_template_file
 from synthorg.templates.merge import (
@@ -17,7 +18,7 @@ from synthorg.templates.merge import (
     _merge_departments,
     merge_template_configs,
 )
-from synthorg.templates.renderer import _collect_parent_variables, render_template
+from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -329,7 +330,7 @@ class TestCollectParentVariables:
             agents=(TemplateAgentConfig(role="Backend Developer"),),
         )
         child_vars = {"x": "child_x", "z": "child_z"}
-        result = _collect_parent_variables(parent, child_vars)
+        result = collect_parent_variables(parent, child_vars)
         assert result["x"] == "child_x"
         assert result["y"] == "parent_y"
         assert result["z"] == "child_z"
@@ -341,7 +342,7 @@ class TestCollectParentVariables:
             variables=(TemplateVariable(name="a", default="default_a"),),
             agents=(TemplateAgentConfig(role="Backend Developer"),),
         )
-        result = _collect_parent_variables(parent, {})
+        result = collect_parent_variables(parent, {})
         assert result["a"] == "default_a"
 
     def test_required_parent_var_without_child_value(self) -> None:
@@ -351,7 +352,7 @@ class TestCollectParentVariables:
             variables=(TemplateVariable(name="req", required=True),),
             agents=(TemplateAgentConfig(role="Backend Developer"),),
         )
-        result = _collect_parent_variables(parent, {})
+        result = collect_parent_variables(parent, {})
         assert "req" not in result
 
 

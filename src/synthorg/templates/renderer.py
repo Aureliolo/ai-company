@@ -25,10 +25,6 @@ from synthorg.config.utils import deep_merge, to_float
 from synthorg.core.enums import WorkflowType
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
-    TEMPLATE_INHERIT_CIRCULAR,
-    TEMPLATE_INHERIT_DEPTH_EXCEEDED,
-    TEMPLATE_INHERIT_RESOLVE_START,
-    TEMPLATE_INHERIT_RESOLVE_SUCCESS,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -37,16 +33,16 @@ from synthorg.observability.events.template import (
     TEMPLATE_RENDER_YAML_ERROR,
     TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
 )
+from synthorg.templates._inheritance import (
+    resolve_inheritance,
+)
 from synthorg.templates._preset_resolution import resolve_agent_personality
 from synthorg.templates._render_helpers import (
     build_departments,
     validate_as_root_config,
 )
-from synthorg.templates.errors import (
-    TemplateInheritanceError,
-    TemplateRenderError,
-)
-from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
+from synthorg.templates.errors import TemplateRenderError
+from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT
 from synthorg.templates.presets import generate_auto_name
 
 # Placeholder provider name resolved by the engine at startup.
@@ -54,9 +50,6 @@ _DEFAULT_PROVIDER = "default"
 
 # Default department when not specified in template agent config.
 _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
-
-# Maximum inheritance chain depth.
-_MAX_INHERITANCE_DEPTH = 10
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -174,183 +167,15 @@ def _render_to_dict(
         return child_config
 
     # Resolve inheritance chain.
-    return _resolve_inheritance(
+    return resolve_inheritance(
         child_config=child_config,
         loaded=loaded,
         vars_dict=vars_dict,
         locales=locales,
         _chain=_chain,
         custom_presets=custom_presets,
+        render_to_dict_fn=_render_to_dict,
     )
-
-
-def _resolve_inheritance(
-    *,
-    child_config: dict[str, Any],
-    loaded: LoadedTemplate,
-    vars_dict: dict[str, Any],
-    locales: list[str] | None = None,
-    _chain: frozenset[str],
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Resolve template inheritance for a child config.
-
-    Loads and renders the parent, detects circular dependencies and
-    depth violations, then merges parent + child.
-
-    Args:
-        child_config: Already-rendered child config dict.
-        loaded: The child's :class:`LoadedTemplate`.
-        vars_dict: Child's resolved variables.
-        locales: Faker locale codes for auto-name generation.
-        _chain: Already-visited parent names for circular detection.
-        custom_presets: Optional custom preset mapping.
-
-    Returns:
-        Merged config dict (parent + child).
-
-    Raises:
-        TemplateInheritanceError: On circular chains or depth overflow.
-    """
-    # Guaranteed by _render_to_dict caller.
-    assert loaded.template.extends is not None  # noqa: S101
-    parent_name: str = loaded.template.extends
-    child_id = loaded.source_name
-
-    logger.info(
-        TEMPLATE_INHERIT_RESOLVE_START,
-        child=child_id,
-        parent=parent_name,
-    )
-
-    _validate_inheritance_chain(child_id, parent_name, _chain)
-
-    merged = _render_and_merge_parent(
-        parent_name,
-        child_config,
-        vars_dict,
-        _chain,
-        locales=locales,
-        custom_presets=custom_presets,
-    )
-
-    # Deduplicate agent names that may collide across parent/child
-    # expansion passes (each pass auto-generates names independently).
-    _deduplicate_merged_agent_names(merged)
-
-    logger.info(
-        TEMPLATE_INHERIT_RESOLVE_SUCCESS,
-        child=child_id,
-        parent=parent_name,
-    )
-    return merged
-
-
-def _validate_inheritance_chain(
-    child_id: str,
-    parent_name: str,
-    _chain: frozenset[str],
-) -> None:
-    """Check for circular inheritance and depth overflow."""
-    if parent_name in _chain:
-        logger.error(
-            TEMPLATE_INHERIT_CIRCULAR,
-            child=child_id,
-            parent=parent_name,
-            chain=sorted(_chain),
-        )
-        msg = (
-            f"Circular template inheritance: {child_id!r} extends "
-            f"{parent_name!r}, which is already in the inheritance chain"
-        )
-        raise TemplateInheritanceError(msg)
-
-    if len(_chain) >= _MAX_INHERITANCE_DEPTH:
-        logger.error(
-            TEMPLATE_INHERIT_DEPTH_EXCEEDED,
-            child=child_id,
-            depth=len(_chain),
-            max_depth=_MAX_INHERITANCE_DEPTH,
-        )
-        msg = (
-            f"Template inheritance depth exceeded ({len(_chain)} >= "
-            f"{_MAX_INHERITANCE_DEPTH}): {child_id!r}"
-        )
-        raise TemplateInheritanceError(msg)
-
-
-def _render_and_merge_parent(
-    parent_name: str,
-    child_config: dict[str, Any],
-    vars_dict: dict[str, Any],
-    _chain: frozenset[str],
-    *,
-    locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Load, render, and merge a parent template with a child config."""
-    from synthorg.templates.loader import load_template  # noqa: PLC0415
-
-    parent_loaded = load_template(parent_name)
-    parent_vars = _collect_parent_variables(
-        parent_loaded.template,
-        vars_dict,
-    )
-    parent_config = _render_to_dict(
-        parent_loaded,
-        parent_vars,
-        locales=locales,
-        _chain=_chain | {parent_name},
-        custom_presets=custom_presets,
-        _as_parent=True,
-    )
-    return merge_template_configs(parent_config, child_config)
-
-
-def _deduplicate_merged_agent_names(merged: dict[str, Any]) -> None:
-    """Ensure agent names are unique after merging parent + child.
-
-    Parent and child agent names are auto-generated independently, so
-    collisions can occur.  This mirrors the per-pass deduplication in
-    ``_expand_single_agent`` but operates on the post-merge agent list.
-    """
-    agents = merged.get("agents")
-    if not agents:
-        return
-    used: set[str] = set()
-    for agent in agents:
-        name = agent.get("name", "")
-        if name in used:
-            base = name
-            counter = 2
-            while name in used:
-                name = f"{base} {counter}"
-                counter += 1
-            agent["name"] = name
-        used.add(name)
-
-
-def _collect_parent_variables(
-    parent_template: CompanyTemplate,
-    child_vars: dict[str, Any],
-) -> dict[str, Any]:
-    """Collect variables for a parent template.
-
-    Child's resolved variables serve as defaults for the parent.
-    Parent's own defaults fill gaps.
-
-    Args:
-        parent_template: The parent template.
-        child_vars: Child's resolved variables.
-
-    Returns:
-        Variable dict for parent rendering.
-    """
-    result: dict[str, Any] = dict(child_vars)
-    for var in parent_template.variables:
-        if var.name not in result and var.default is not None:
-            result[var.name] = var.default
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -683,7 +508,7 @@ def _expand_agents(
     has_extends: bool,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    preserve_merge_ids: bool | None = None,
+    preserve_merge_ids: bool = False,
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
@@ -692,13 +517,12 @@ def _expand_agents(
         has_extends: Whether the template uses inheritance.
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping.
-        preserve_merge_ids: Force ``merge_id`` preservation.  When
-            ``None`` (default), follows ``has_extends``.
+        preserve_merge_ids: Preserve ``merge_id`` on expanded agents.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
     """
-    keep_merge = preserve_merge_ids if preserve_merge_ids is not None else has_extends
+    keep_merge = preserve_merge_ids or has_extends
     used_names: set[str] = set()
     expanded: list[dict[str, Any]] = []
     for idx, agent in enumerate(raw_agents):
@@ -724,7 +548,7 @@ def _expand_single_agent(  # noqa: PLR0913
     has_extends: bool,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    preserve_merge_id: bool | None = None,
+    preserve_merge_id: bool = False,
 ) -> dict[str, Any]:
     """Expand a single template agent dict.
 
@@ -740,8 +564,7 @@ def _expand_single_agent(  # noqa: PLR0913
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping for resolving
             user-defined presets.
-        preserve_merge_id: Force ``merge_id`` preservation.  When
-            ``None`` (default), follows ``has_extends``.
+        preserve_merge_id: Preserve ``merge_id`` on the expanded agent.
     """
     role = agent.get("role")
     if not role:
@@ -795,7 +618,7 @@ def _expand_single_agent(  # noqa: PLR0913
 
     # Preserve merge_id when inheritance is active or when rendering
     # as a parent (so child templates can target agents by merge_id).
-    keep_merge = preserve_merge_id if preserve_merge_id is not None else has_extends
+    keep_merge = preserve_merge_id or has_extends
     merge_id = str(agent.get("merge_id", "")).strip()
     if keep_merge and merge_id:
         agent_dict["merge_id"] = merge_id
