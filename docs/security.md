@@ -95,10 +95,10 @@ recommended mitigation path.
 
 #### What is permitted
 
-`style-src 'unsafe-inline'` (or `style-src-attr 'unsafe-inline'` when using CSP Level 3
-directive splitting) allows any inline `style` attribute on DOM elements. It also permits
-`<style>` elements without nonces, though the nonce infrastructure can lock down the latter
-independently.
+Under CSP Level 2, `style-src 'unsafe-inline'` allows all inline styles -- both `style`
+attributes on DOM elements and `<style>` elements without nonces. With CSP Level 3 directive
+splitting, `style-src-attr 'unsafe-inline'` permits only inline `style` attributes while
+`style-src-elem` controls `<style>` elements separately (e.g. via nonces or hashes).
 
 #### Why this is required
 
@@ -126,7 +126,8 @@ Inline `style` attribute injection is **not a practical XSS vector**:
 
 - Unlike `<script>` or `<style>` elements, a `style` attribute **cannot execute JavaScript**
 - Data exfiltration via `style` attributes is limited to single-element visual manipulation
-  (no CSS selectors, no `url()` loading, no `@import`)
+  (no CSS selectors and no `@import`; `url(...)` loading is possible but constrained by
+  relevant CSP fetch directives such as `img-src` and `font-src`)
 - The primary theoretical risk is UI redress/clickjacking via
   `position: fixed; z-index: 99999`, which is already mitigated by `X-Frame-Options: DENY`
 - The higher-risk vector (`<style>` element injection for CSS-based data exfiltration via
@@ -142,8 +143,8 @@ Inline `style` attribute injection is **not a practical XSS vector**:
 | 2024-09 | CSS export approach PR closed by maintainer (backlog triage, [PR #3131](https://github.com/radix-ui/primitives/pull/3131)) |
 | 2024-10 | Maintainer said "near the top of my todo list" |
 | 2025-04 | Community asked for update -- no response |
-| 2025-07 | Community asked again -- no response |
-| 2026-01 | Community asked again -- no response |
+| 2025-07 | Community followed up -- no response |
+| 2026-01 | Community re-opened inquiry -- no response |
 | 2026-02 | [Discussion #3130](https://github.com/radix-ui/primitives/discussions/3130) **closed** -- author pointed to Base UI as the successor with CSP support |
 
 Open issues with no maintainer engagement:
@@ -152,7 +153,7 @@ Open issues with no maintainer engagement:
 
 #### Base UI migration assessment
 
-[Base UI 1.0](https://base-ui.com) (released February 2026, currently v1.3.0) offers first-class
+[Base UI 1.0](https://base-ui.com) (released December 2025, currently v1.3.0) offers first-class
 CSP support via [`CSPProvider`](https://base-ui.com/react/utils/csp-provider) with context-based
 nonce propagation. However, migrating is **prohibitively large**:
 
@@ -184,8 +185,14 @@ directives in `web/security-headers.conf`:
 - `style-src-attr 'unsafe-inline'` -- permits inline `style` attributes (low-risk, required
   by Radix)
 
-Browser support: `style-src-elem` and `style-src-attr` are supported in Chrome 75+, Firefox
-105+, Safari 15.4+, Edge 79+.
+Browser support for CSP Level 3 directive splitting:
+
+- `style-src-elem`: Chrome 75+, Firefox 108+, Safari 15.4+ (partial, full at 26.2+), Edge 79+
+- `style-src-attr`: Chrome 75+, Edge 79+. **Not supported** in Firefox
+  ([bug 1529338](https://bugzilla.mozilla.org/show_bug.cgi?id=1529338)) or Safari
+
+When `style-src-attr` is unsupported, browsers fall back to `style-src`, so the directive
+splitting is backwards-compatible -- unsupported browsers continue using `style-src` rules.
 
 **Phase 3 -- Re-evaluate quarterly:**
 Check upstream Radix issues ([#3063](https://github.com/radix-ui/primitives/issues/3063),

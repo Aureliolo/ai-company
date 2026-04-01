@@ -208,13 +208,13 @@ single GPU.
 - Save fine-tuned model checkpoint to configured path
 - Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or
   local model path)
-- On next backend initialization, the fine-tuned model is automatically used
+- On next backend initialization, the fine-tuned model can be used by pointing configuration to the checkpoint
 
 ### Integration Design
 
 Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
 (see [Memory Design Spec](../design/memory.md#embedding-model-selection))
-stores the configuration, and the backend checks for a checkpoint at initialization:
+stores the configuration. Planned initialization behavior (not yet implemented in the Mem0 adapter):
 
 1. If `fine_tune.enabled` and checkpoint exists at `fine_tune.checkpoint_path`: use fine-tuned model
 2. If `fine_tune.enabled` but no checkpoint: log warning, use base model

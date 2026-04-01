@@ -23,20 +23,20 @@ logger = get_logger(__name__)
 class EmbeddingFineTuneConfig(BaseModel):
     """Optional domain-specific embedding fine-tuning configuration.
 
-    When ``enabled`` is ``True``, the memory backend will look for a
-    fine-tuned model checkpoint at ``checkpoint_path`` during
-    initialization.  If found, the fine-tuned model overrides the
-    base ``Mem0EmbedderConfig.model``.  If not found, the base model
-    is used with a logged warning.
-
-    Fine-tuning itself runs offline via a separate pipeline (CLI
-    command or scheduled task), not during backend initialization.
-    See ``docs/reference/embedding-evaluation.md`` for the full
-    pipeline design.
-
     Note: checkpoint lookup is not yet implemented in the Mem0
     adapter -- this config prepares the data model for the
     fine-tuning pipeline.
+
+    When checkpoint lookup is implemented, the memory backend will
+    look for a fine-tuned model checkpoint at ``checkpoint_path``
+    during initialization.  If found, the fine-tuned model will
+    override the base ``Mem0EmbedderConfig.model``.  If not found,
+    the base model will be used with a logged warning.
+
+    Fine-tuning itself runs offline via a separate pipeline, not
+    during backend initialization.  See
+    ``docs/reference/embedding-evaluation.md`` for the full
+    pipeline design.
 
     Attributes:
         enabled: Whether fine-tuning checkpoint lookup is active.
@@ -44,8 +44,10 @@ class EmbeddingFineTuneConfig(BaseModel):
             Required when ``enabled`` is ``True``.
         base_model: Identifier of the base model that was fine-tuned.
             Required when ``enabled`` is ``True``.
-        training_data_dir: Directory containing training data for the
-            fine-tuning pipeline.
+        training_data_dir: Directory containing training data for
+            the offline fine-tuning pipeline.  Not required when
+            ``enabled`` is ``True`` -- only consumed by the
+            training step, not by checkpoint lookup.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -71,7 +73,7 @@ class EmbeddingFineTuneConfig(BaseModel):
     def _validate_required_when_enabled(self) -> Self:
         """Require checkpoint_path and base_model when fine-tuning is enabled."""
         if self.enabled and self.checkpoint_path is None:
-            msg = "checkpoint_path must be non-blank when fine-tuning is enabled"
+            msg = "checkpoint_path must be set when fine-tuning is enabled"
             logger.warning(
                 MEMORY_BACKEND_CONFIG_INVALID,
                 model="EmbeddingFineTuneConfig",
@@ -81,7 +83,7 @@ class EmbeddingFineTuneConfig(BaseModel):
             )
             raise ValueError(msg)
         if self.enabled and self.base_model is None:
-            msg = "base_model must be non-blank when fine-tuning is enabled"
+            msg = "base_model must be set when fine-tuning is enabled"
             logger.warning(
                 MEMORY_BACKEND_CONFIG_INVALID,
                 model="EmbeddingFineTuneConfig",
@@ -90,6 +92,44 @@ class EmbeddingFineTuneConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _reject_path_traversal(self) -> Self:
+        """Reject parent-directory traversal and Windows paths.
+
+        Consistent with ``Mem0BackendConfig._reject_traversal``.
+        """
+        for field_name in ("checkpoint_path", "training_data_dir"):
+            val = getattr(self, field_name)
+            if val is None:
+                continue
+            parts = PureWindowsPath(val).parts + PurePosixPath(val).parts
+            if ".." in parts:
+                msg = f"{field_name} must not contain parent-directory traversal (..)"
+                logger.warning(
+                    MEMORY_BACKEND_CONFIG_INVALID,
+                    model="EmbeddingFineTuneConfig",
+                    field=field_name,
+                    value=val,
+                    reason=msg,
+                )
+                raise ValueError(msg)
+            if "\\" in val or (
+                len(val) >= 2 and val[1] == ":"  # noqa: PLR2004
+            ):
+                msg = (
+                    f"{field_name} must be a POSIX path (no backslashes "
+                    "or drive letters) -- targets Linux containers"
+                )
+                logger.warning(
+                    MEMORY_BACKEND_CONFIG_INVALID,
+                    model="EmbeddingFineTuneConfig",
+                    field=field_name,
+                    value=val,
+                    reason=msg,
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -107,8 +147,9 @@ class Mem0EmbedderConfig(BaseModel):
         provider: Embedding provider name (Mem0 SDK identifier).
         model: Embedding model identifier (Mem0 SDK identifier).
         dims: Embedding vector dimensions.
-        fine_tune: Optional fine-tuning configuration (disabled by
-            default).
+        fine_tune: Optional fine-tuning configuration (``None`` by
+            default; when provided, disabled unless ``enabled`` is
+            ``True``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -126,8 +167,26 @@ class Mem0EmbedderConfig(BaseModel):
     )
     fine_tune: EmbeddingFineTuneConfig | None = Field(
         default=None,
-        description="Optional fine-tuning configuration (disabled by default)",
+        description="Optional fine-tuning configuration (None by default)",
     )
+
+    @model_validator(mode="after")
+    def _reject_unimplemented_fine_tune(self) -> Self:
+        """Reject fine_tune.enabled until checkpoint lookup is implemented."""
+        if self.fine_tune is not None and self.fine_tune.enabled:
+            msg = (
+                "fine_tune.enabled is not yet supported: checkpoint "
+                "override is not implemented in the Mem0 adapter"
+            )
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                model="Mem0EmbedderConfig",
+                field="fine_tune.enabled",
+                enabled=True,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class Mem0BackendConfig(BaseModel):

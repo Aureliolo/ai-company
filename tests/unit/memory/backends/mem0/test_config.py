@@ -4,12 +4,29 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.memory.backends.mem0.config import (
+    EmbeddingFineTuneConfig,
     Mem0BackendConfig,
     Mem0EmbedderConfig,
     build_config_from_company_config,
     build_mem0_config_dict,
 )
 from synthorg.memory.config import CompanyMemoryConfig, MemoryStorageConfig
+
+
+def _fine_tune(
+    *,
+    enabled: bool = True,
+    checkpoint_path: str | None = "/models/fine-tuned/checkpoint",
+    base_model: str | None = "test-embedding-001",
+    training_data_dir: str | None = None,
+) -> EmbeddingFineTuneConfig:
+    """Build a test fine-tune config with valid defaults."""
+    return EmbeddingFineTuneConfig(
+        enabled=enabled,
+        checkpoint_path=checkpoint_path,
+        base_model=base_model,
+        training_data_dir=training_data_dir,
+    )
 
 
 def _embedder(
@@ -20,6 +37,96 @@ def _embedder(
 ) -> Mem0EmbedderConfig:
     """Build a test embedder config with vendor-agnostic defaults."""
     return Mem0EmbedderConfig(provider=provider, model=model, dims=dims)
+
+
+@pytest.mark.unit
+class TestEmbeddingFineTuneConfig:
+    def test_defaults_disabled(self) -> None:
+        config = EmbeddingFineTuneConfig()
+        assert config.enabled is False
+        assert config.checkpoint_path is None
+        assert config.base_model is None
+        assert config.training_data_dir is None
+
+    def test_enabled_with_required_fields(self) -> None:
+        config = _fine_tune()
+        assert config.enabled is True
+        assert config.checkpoint_path == "/models/fine-tuned/checkpoint"
+        assert config.base_model == "test-embedding-001"
+
+    def test_enabled_requires_checkpoint_path(self) -> None:
+        with pytest.raises(ValidationError, match="checkpoint_path"):
+            _fine_tune(checkpoint_path=None)
+
+    def test_enabled_requires_base_model(self) -> None:
+        with pytest.raises(ValidationError, match="base_model"):
+            _fine_tune(base_model=None)
+
+    def test_frozen(self) -> None:
+        config = EmbeddingFineTuneConfig()
+        with pytest.raises(ValidationError):
+            config.enabled = True  # type: ignore[misc]
+
+    @pytest.mark.parametrize(
+        "field",
+        ["checkpoint_path", "base_model", "training_data_dir"],
+    )
+    def test_rejects_blank_strings(self, field: str) -> None:
+        with pytest.raises(ValidationError):
+            EmbeddingFineTuneConfig(**{field: "   "})  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("checkpoint_path", "/models/../escape"),
+            ("training_data_dir", "/data/../escape"),
+            ("checkpoint_path", "C:\\models\\checkpoint"),
+            ("training_data_dir", "D:\\data\\train"),
+        ],
+        ids=[
+            "checkpoint-traversal",
+            "training-traversal",
+            "checkpoint-windows",
+            "training-windows",
+        ],
+    )
+    def test_rejects_unsafe_paths(self, field: str, value: str) -> None:
+        with pytest.raises(ValidationError):
+            EmbeddingFineTuneConfig(**{field: value})  # type: ignore[arg-type]
+
+    def test_training_data_dir_optional_when_enabled(self) -> None:
+        """training_data_dir is intentionally not required when enabled."""
+        config = _fine_tune(training_data_dir=None)
+        assert config.training_data_dir is None
+
+
+@pytest.mark.unit
+class TestMem0EmbedderConfigFineTune:
+    def test_fine_tune_default_none(self) -> None:
+        config = _embedder()
+        assert config.fine_tune is None
+
+    def test_accepts_disabled_fine_tune(self) -> None:
+        config = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+            fine_tune=EmbeddingFineTuneConfig(),
+        )
+        assert config.fine_tune is not None
+        assert config.fine_tune.enabled is False
+
+    def test_rejects_enabled_fine_tune(self) -> None:
+        """fine_tune.enabled=True is not yet supported."""
+        with pytest.raises(ValidationError, match="not yet supported"):
+            Mem0EmbedderConfig(
+                provider="test-provider",
+                model="test-embedding-001",
+                fine_tune=EmbeddingFineTuneConfig(
+                    enabled=True,
+                    checkpoint_path="/models/checkpoint",
+                    base_model="test-embedding-001",
+                ),
+            )
 
 
 @pytest.mark.unit
