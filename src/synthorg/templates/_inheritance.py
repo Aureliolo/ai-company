@@ -11,6 +11,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
     TEMPLATE_INHERIT_DEPTH_EXCEEDED,
+    TEMPLATE_INHERIT_MERGE_ERROR,
     TEMPLATE_INHERIT_RESOLVE_START,
     TEMPLATE_INHERIT_RESOLVE_SUCCESS,
 )
@@ -79,6 +80,11 @@ def resolve_inheritance(  # noqa: PLR0913
         msg = (
             f"resolve_inheritance called for {loaded.source_name!r} "
             "but template has no 'extends' -- caller contract violated"
+        )
+        logger.error(
+            TEMPLATE_INHERIT_MERGE_ERROR,
+            action="resolve_no_extends",
+            template=loaded.source_name,
         )
         raise TemplateInheritanceError(msg)
     parent_name: str = loaded.template.extends
