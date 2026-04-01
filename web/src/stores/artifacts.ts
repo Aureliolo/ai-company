@@ -50,7 +50,11 @@ interface ArtifactsState {
 
 let _detailRequestToken = 0
 /** True when a newer detail request has superseded this one. */
-function isStaleRequest(token: number): boolean { return _detailRequestToken !== token }
+function isStaleDetailRequest(token: number): boolean { return _detailRequestToken !== token }
+
+let _listRequestToken = 0
+/** True when a newer list request has superseded this one. */
+function isStaleListRequest(token: number): boolean { return _listRequestToken !== token }
 
 export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   artifacts: [],
@@ -71,11 +75,14 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   detailError: null,
 
   fetchArtifacts: async () => {
+    const token = ++_listRequestToken
     set({ listLoading: true, listError: null })
     try {
       const result = await listArtifacts({ limit: 200 })
+      if (isStaleListRequest(token)) return
       set({ artifacts: result.data, totalArtifacts: result.total, listLoading: false })
     } catch (err) {
+      if (isStaleListRequest(token)) return
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },
@@ -85,41 +92,40 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     set({ detailLoading: true, detailError: null, selectedArtifact: null, contentPreview: null })
     try {
       const artifact = await getArtifact(id)
-      if (isStaleRequest(token)) return
+      if (isStaleDetailRequest(token)) return
 
-      let preview: string | null = null
-      const partialErrors: string[] = []
+      // Show metadata immediately so the detail page renders while preview loads.
+      set({ selectedArtifact: artifact, detailLoading: false })
+
+      // Fetch content preview in the background if applicable.
       if (artifact.content_type && artifact.size_bytes != null && artifact.size_bytes > 0 && isPreviewableText(artifact.content_type)) {
         try {
-          preview = await getArtifactContentText(id)
+          const preview = await getArtifactContentText(id)
+          if (isStaleDetailRequest(token)) return
+          set({ contentPreview: preview })
         } catch (err) {
-          partialErrors.push(`content preview: ${getErrorMessage(err)}`)
+          if (isStaleDetailRequest(token)) return
+          set({ detailError: `Some data failed to load: content preview: ${getErrorMessage(err)}. Displayed data may be incomplete.` })
         }
       }
-
-      if (isStaleRequest(token)) return
-      set({
-        selectedArtifact: artifact,
-        contentPreview: preview,
-        detailLoading: false,
-        detailError: partialErrors.length > 0
-          ? `Some data failed to load: ${partialErrors.join(', ')}. Displayed data may be incomplete.`
-          : null,
-      })
     } catch (err) {
-      if (isStaleRequest(token)) return
+      if (isStaleDetailRequest(token)) return
       set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
     }
   },
 
   deleteArtifact: async (id: string) => {
     await deleteArtifactApi(id)
-    set((state) => ({
-      artifacts: state.artifacts.filter((a) => a.id !== id),
-      totalArtifacts: Math.max(0, state.totalArtifacts - 1),
-      selectedArtifact: state.selectedArtifact?.id === id ? null : state.selectedArtifact,
-      contentPreview: state.selectedArtifact?.id === id ? null : state.contentPreview,
-    }))
+    set((state) => {
+      const isSelected = state.selectedArtifact?.id === id
+      return {
+        artifacts: state.artifacts.filter((a) => a.id !== id),
+        totalArtifacts: Math.max(0, state.totalArtifacts - 1),
+        selectedArtifact: isSelected ? null : state.selectedArtifact,
+        contentPreview: isSelected ? null : state.contentPreview,
+        detailError: isSelected ? null : state.detailError,
+      }
+    })
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

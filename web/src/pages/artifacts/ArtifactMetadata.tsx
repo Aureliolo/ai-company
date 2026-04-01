@@ -34,12 +34,13 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
     },
     { label: 'Path', value: artifact.path, valueClassName: 'font-mono text-xs break-all' },
     { label: 'Task', value: artifact.task_id, valueClassName: 'font-mono text-xs' },
+    { label: 'Project', value: artifact.project_id ?? '--', valueClassName: 'font-mono text-xs' },
     { label: 'Created By', value: artifact.created_by },
     { label: 'Created', value: formatDate(artifact.created_at) },
   ]
 
   function handleDownload() {
-    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
+    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }
 
   async function handleDelete() {

@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { apiSuccess } from './helpers'
+import { apiError, apiSuccess } from './helpers'
 import type { PaginatedResponse, PaginationMeta, Project } from '@/api/types'
 
 const mockProjects: Project[] = [
@@ -47,7 +47,7 @@ export const projectsList = [
   http.get('/api/v1/projects/:id', ({ params }) => {
     const project = mockProjects.find((p) => p.id === params.id)
     if (!project) {
-      return HttpResponse.json(apiSuccess(null), { status: 404 })
+      return HttpResponse.json(apiError('Project not found'), { status: 404 })
     }
     return HttpResponse.json(apiSuccess(project))
   }),

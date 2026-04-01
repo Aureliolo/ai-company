@@ -105,10 +105,11 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     // Optimistically add to local state for immediate UI update.
     // Filter by ID first to prevent duplicates if a concurrent fetch already added it.
     set((state) => {
+      const exists = state.projects.some((p) => p.id === project.id)
       const filtered = state.projects.filter((p) => p.id !== project.id)
       return {
         projects: [project, ...filtered],
-        totalProjects: filtered.length + 1,
+        totalProjects: exists ? state.totalProjects : state.totalProjects + 1,
       }
     })
     // Polling and WS events will reconcile with server state.

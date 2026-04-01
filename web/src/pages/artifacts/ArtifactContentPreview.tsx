@@ -17,7 +17,7 @@ interface ArtifactContentPreviewProps {
 function getLanguage(contentType: string): 'json' | 'yaml' {
   const lower = contentType.toLowerCase()
   if (lower === 'application/json') return 'json'
-  if (lower === 'application/x-yaml' || lower === 'text/yaml') return 'yaml'
+  if (lower === 'application/yaml' || lower === 'application/x-yaml' || lower === 'text/yaml') return 'yaml'
   // Falls back to JSON mode for non-JSON/non-YAML text types.
   // Plain text may show minor syntax coloring.
   return 'json'
@@ -35,7 +35,7 @@ export function ArtifactContentPreview({ artifact, contentPreview }: ArtifactCon
   const isText = contentPreview !== null
 
   const handleDownload = useCallback(() => {
-    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() ?? artifact.id)
+    downloadArtifactFile(artifact.id, artifact.path.split('/').pop() || artifact.id)
   }, [artifact.id, artifact.path])
 
   // Load image as blob URL for image content types
