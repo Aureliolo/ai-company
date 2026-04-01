@@ -10,7 +10,7 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import CompanyType
-from synthorg.templates.errors import TemplateInheritanceError
+from synthorg.templates.errors import TemplateInheritanceError, TemplateRenderError
 from synthorg.templates.loader import load_template, load_template_file
 from synthorg.templates.merge import (
     _merge_agents,
@@ -29,7 +29,10 @@ from .conftest import (
     CHILD_EXTENDS_STARTUP_YAML,
     CHILD_OVERRIDE_AGENT_YAML,
     CHILD_REMOVE_AGENT_YAML,
+    CHILD_REMOVE_DEPARTMENT_YAML,
+    CHILD_REMOVE_NONEXISTENT_DEPT_YAML,
     CIRCULAR_SELF_YAML,
+    DEPT_REMOVE_WITHOUT_EXTENDS_YAML,
 )
 
 # ── TestMergeAgents ──────────────────────────────────────────────
@@ -130,6 +133,96 @@ class TestMergeDepartments:
         result = _merge_departments(parent, child)
         assert len(result) == 2
         assert result[1]["name"] == "marketing"
+
+    def test_remove_matching_parent_department(self) -> None:
+        """Child _remove: true removes matching parent department."""
+        parent = [
+            {"name": "executive", "budget_percent": 40},
+            {"name": "engineering", "budget_percent": 60},
+        ]
+        child = [{"name": "executive", "_remove": True}]
+        result = _merge_departments(parent, child)
+        assert len(result) == 1
+        assert result[0]["name"] == "engineering"
+
+    def test_remove_nonexistent_department_raises(self) -> None:
+        """_remove for dept not in parent raises TemplateInheritanceError."""
+        parent = [{"name": "engineering"}]
+        child = [{"name": "marketing", "_remove": True}]
+        with pytest.raises(
+            TemplateInheritanceError,
+            match="no matching parent",
+        ):
+            _merge_departments(parent, child)
+
+    def test_remove_stripped_from_output(self) -> None:
+        """_remove key is not in output for non-remove departments."""
+        parent = [{"name": "engineering", "budget_percent": 60}]
+        child = [
+            {"name": "engineering", "budget_percent": 80, "_remove": False},
+        ]
+        result = _merge_departments(parent, child)
+        assert "_remove" not in result[0]
+        assert result[0]["budget_percent"] == 80
+
+    def test_remove_case_insensitive(self) -> None:
+        """Department _remove matches case-insensitively."""
+        parent = [{"name": "Executive"}, {"name": "engineering"}]
+        child = [{"name": "executive", "_remove": True}]
+        result = _merge_departments(parent, child)
+        assert len(result) == 1
+        assert result[0]["name"] == "engineering"
+
+
+# ── TestDepartmentRemoveIntegration ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestDepartmentRemoveIntegration:
+    def test_department_remove_via_extends(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Child removes parent department through full render pipeline."""
+        child_path = tmp_path / "remove_dept.yaml"
+        child_path.write_text(
+            CHILD_REMOVE_DEPARTMENT_YAML,
+            encoding="utf-8",
+        )
+        loaded = load_template_file(child_path)
+        config = render_template(loaded)
+        assert isinstance(config, RootConfig)
+        dept_names = [d.name for d in config.departments]
+        assert "executive" not in dept_names
+        assert "engineering" in dept_names
+
+    def test_department_remove_nonexistent_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Removing a dept not in parent raises through full pipeline."""
+        child_path = tmp_path / "remove_missing.yaml"
+        child_path.write_text(
+            CHILD_REMOVE_NONEXISTENT_DEPT_YAML,
+            encoding="utf-8",
+        )
+        loaded = load_template_file(child_path)
+        with pytest.raises(TemplateInheritanceError, match="no matching parent"):
+            render_template(loaded)
+
+    def test_department_remove_without_extends_raises(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Department _remove without extends raises TemplateRenderError."""
+        child_path = tmp_path / "no_extends_remove.yaml"
+        child_path.write_text(
+            DEPT_REMOVE_WITHOUT_EXTENDS_YAML,
+            encoding="utf-8",
+        )
+        loaded = load_template_file(child_path)
+        with pytest.raises(TemplateRenderError, match="_remove"):
+            render_template(loaded)
 
 
 # ── TestMergeTemplateConfigs ─────────────────────────────────────

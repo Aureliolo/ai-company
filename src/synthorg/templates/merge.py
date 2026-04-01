@@ -90,7 +90,7 @@ def merge_template_configs(
         result["departments"] = _merge_departments(parent_depts, child_depts)
 
     # Replace-if-present fields (deep-copied to prevent reference sharing).
-    for key in ("workflow_handoffs", "escalation_paths"):
+    for key in ("workflow", "workflow_handoffs", "escalation_paths"):
         if key in child and child[key] is not None:
             result[key] = copy.deepcopy(child[key])
         elif key in parent:
@@ -217,6 +217,7 @@ def _merge_departments(
     """Merge department lists by name (case-insensitive).
 
     Child dept with matching name replaces parent entirely.
+    Child dept with ``_remove: true`` removes the matching parent.
     Unmatched child depts are appended.
 
     Args:
@@ -225,6 +226,9 @@ def _merge_departments(
 
     Returns:
         Merged department list.
+
+    Raises:
+        TemplateInheritanceError: If ``_remove`` has no matching parent.
     """
     # Build child overrides index (skip nameless departments).
     child_by_name: dict[str, dict[str, Any]] = {}
@@ -240,7 +244,7 @@ def _merge_departments(
             continue
         child_by_name[name] = copy.deepcopy(child_dept)
 
-    # Walk parent depts: apply child override if it exists.
+    # Walk parent depts: apply child override/removal if it exists.
     result: list[dict[str, Any]] = []
     seen_names: set[str] = set()
     for dept in parent_depts:
@@ -253,8 +257,15 @@ def _merge_departments(
             result.append(copy.deepcopy(dept))
             continue
         if name in child_by_name:
-            result.append(child_by_name[name])
-            seen_names.add(name)
+            child_dept = child_by_name[name]
+            if child_dept.get("_remove"):
+                # Remove: skip this parent department entirely.
+                seen_names.add(name)
+            else:
+                # Override: use child version, strip _remove if present.
+                clean = {k: v for k, v in child_dept.items() if k != "_remove"}
+                result.append(clean)
+                seen_names.add(name)
         else:
             result.append(copy.deepcopy(dept))
             seen_names.add(name)
@@ -262,7 +273,19 @@ def _merge_departments(
     # Append unmatched child depts + nameless children.
     for name, child_dept in child_by_name.items():
         if name not in seen_names:
-            result.append(child_dept)
+            if child_dept.get("_remove"):
+                msg = (
+                    f"Cannot remove department {name!r}: "
+                    "no matching parent department found"
+                )
+                logger.error(
+                    TEMPLATE_INHERIT_MERGE_ERROR,
+                    action="department_remove_failed",
+                    department=name,
+                )
+                raise TemplateInheritanceError(msg)
+            clean = {k: v for k, v in child_dept.items() if k != "_remove"}
+            result.append(clean)
     result.extend(copy.deepcopy(nameless_child))
 
     return result

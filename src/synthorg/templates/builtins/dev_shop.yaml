@@ -18,6 +18,7 @@ template:
     - "pipeline"
     - "reviewer"
     - "tool_wrapper"
+  extends: "startup"
 
   variables:
     - name: "company_name"
@@ -39,10 +40,14 @@ template:
   company:
     type: "dev_shop"
     budget_monthly: {{ budget | default(75.0) }}
-    autonomy:
-      level: "semi"
 
   departments:
+    # Remove inherited executive and product departments
+    - name: "executive"
+      _remove: true
+    - name: "product"
+      _remove: true
+    # Override inherited engineering department
     - name: "engineering"
       budget_percent: 70
       head_role: "Software Architect"
@@ -61,6 +66,7 @@ template:
         - subordinate: "Backend Developer"
           subordinate_id: "backend-senior-2"
           supervisor: "Software Architect"
+    # New departments
     - name: "quality_assurance"
       budget_percent: 20
       head_role: "QA Lead"
@@ -77,6 +83,23 @@ template:
       head_role: "DevOps/SRE Engineer"
 
   agents:
+    # Remove all inherited agents from startup chain
+    - role: "CEO"
+      department: "executive"
+      _remove: true
+    - role: "CTO"
+      department: "executive"
+      _remove: true
+    - role: "Full-Stack Developer"
+      department: "engineering"
+      _remove: true
+    - role: "Full-Stack Developer"
+      department: "engineering"
+      _remove: true
+    - role: "Product Manager"
+      department: "product"
+      _remove: true
+    # New engineering squad agents
     - role: "Software Architect"
       name: ""
       level: "principal"
@@ -137,9 +160,6 @@ template:
       model: "medium"
       personality_preset: "disciplined_executor"
       department: "engineering"
-
-  workflow: "agile_kanban"
-  communication: "hybrid"
 
   workflow_config:
     kanban:

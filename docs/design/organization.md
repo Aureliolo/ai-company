@@ -366,6 +366,7 @@ Scalars (`company_name`, `company_type`)
 `departments` list
 :   Merged by department `name` (case-insensitive). A child department with the same `name`
     replaces the parent entry entirely; departments with new names are appended.
+    A child department with `_remove: true` removes the matching parent department.
 
 `workflow_config` dict
 :   Not merged during inheritance.  A child template that uses ``extends`` must

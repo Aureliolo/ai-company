@@ -134,6 +134,7 @@ template:
 
   agents:
     - role: "Full-Stack Developer"
+      merge_id: "fullstack-senior"
       name: "Override Dev Lead"
       level: "lead"
       model: "large"
@@ -155,6 +156,7 @@ template:
 
   agents:
     - role: "Full-Stack Developer"
+      merge_id: "fullstack-senior"
       department: "engineering"
       _remove: true
     - role: "Backend Developer"
@@ -223,3 +225,64 @@ def tmp_template_file(tmp_path: Path) -> TemplateFileFactory:
         return path
 
     return _create
+
+
+CHILD_REMOVE_DEPARTMENT_YAML = """\
+template:
+  name: "Remove Dept Child"
+  description: "Removes a parent department"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 20
+  extends: "solo_founder"
+
+  company:
+    type: "solo_founder"
+
+  departments:
+    - name: "executive"
+      _remove: true
+
+  agents:
+    - role: "CEO"
+      department: "executive"
+      _remove: true
+"""
+
+CHILD_REMOVE_NONEXISTENT_DEPT_YAML = """\
+template:
+  name: "Remove Missing Dept"
+  description: "Removes a dept not in parent"
+  version: "1.0.0"
+  min_agents: 1
+  max_agents: 20
+  extends: "solo_founder"
+
+  company:
+    type: "solo_founder"
+
+  departments:
+    - name: "marketing"
+      _remove: true
+"""
+
+DEPT_REMOVE_WITHOUT_EXTENDS_YAML = """\
+template:
+  name: "No Extends Dept Remove"
+  description: "Uses _remove without extends"
+  version: "1.0.0"
+
+  company:
+    type: "custom"
+
+  departments:
+    - name: "engineering"
+      _remove: true
+
+  agents:
+    - role: "Backend Developer"
+      name: "Test Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+"""

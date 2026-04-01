@@ -224,6 +224,17 @@ class TestTemplateDepartmentConfig:
         with pytest.raises(ValidationError):
             TemplateDepartmentConfig(name="")
 
+    def test_remove_alias(self) -> None:
+        """_remove alias maps to remove field."""
+        d = TemplateDepartmentConfig.model_validate(
+            {"name": "executive", "_remove": True},
+        )
+        assert d.remove is True
+
+    def test_remove_defaults_false(self) -> None:
+        d = TemplateDepartmentConfig(name="engineering")
+        assert d.remove is False
+
     def test_head_merge_id_default_none(self) -> None:
         d = TemplateDepartmentConfig(name="eng")
         assert d.head_merge_id is None

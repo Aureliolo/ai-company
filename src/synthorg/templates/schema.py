@@ -224,6 +224,11 @@ class TemplateDepartmentConfig(BaseModel):
         default=None,
         description="Department operational policies",
     )
+    remove: bool = Field(
+        default=False,
+        alias="_remove",
+        description="Merge directive: remove matching parent department",
+    )
 
     @model_validator(mode="after")
     def _validate_head_merge_id_requires_head_role(self) -> Self:

@@ -127,6 +127,7 @@ def _render_to_dict(
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    _as_parent: bool = False,
 ) -> dict[str, Any]:
     """Render a template to a config dict, resolving inheritance.
 
@@ -137,6 +138,10 @@ def _render_to_dict(
         _chain: Set of already-seen template identifiers for circular
             detection (internal use).
         custom_presets: Optional custom preset mapping.
+        _as_parent: When ``True``, preserve ``merge_id`` on agents
+            even if this template has no ``extends``.  Used when
+            rendering a parent template whose agents may be targeted
+            by a child's ``merge_id``-based overrides.
 
     Returns:
         Config dict suitable for merging with defaults.
@@ -161,6 +166,7 @@ def _render_to_dict(
         vars_dict,
         locales=locales,
         custom_presets=custom_presets,
+        _preserve_merge_ids=_as_parent,
     )
 
     # If no inheritance, return child config directly.
@@ -227,6 +233,11 @@ def _resolve_inheritance(
         locales=locales,
         custom_presets=custom_presets,
     )
+
+    # Deduplicate agent names that may collide across parent/child
+    # expansion passes (each pass auto-generates names independently).
+    _deduplicate_merged_agent_names(merged)
+
     logger.info(
         TEMPLATE_INHERIT_RESOLVE_SUCCESS,
         child=child_id,
@@ -291,8 +302,32 @@ def _render_and_merge_parent(
         locales=locales,
         _chain=_chain | {parent_name},
         custom_presets=custom_presets,
+        _as_parent=True,
     )
     return merge_template_configs(parent_config, child_config)
+
+
+def _deduplicate_merged_agent_names(merged: dict[str, Any]) -> None:
+    """Ensure agent names are unique after merging parent + child.
+
+    Parent and child agent names are auto-generated independently, so
+    collisions can occur.  This mirrors the per-pass deduplication in
+    ``_expand_single_agent`` but operates on the post-merge agent list.
+    """
+    agents = merged.get("agents")
+    if not agents:
+        return
+    used: set[str] = set()
+    for agent in agents:
+        name = agent.get("name", "")
+        if name in used:
+            base = name
+            counter = 2
+            while name in used:
+                name = f"{base} {counter}"
+                counter += 1
+            agent["name"] = name
+        used.add(name)
 
 
 def _collect_parent_variables(
@@ -490,6 +525,7 @@ def _build_config_dict(
     *,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    _preserve_merge_ids: bool = False,
 ) -> dict[str, Any]:
     """Build a RootConfig-compatible dict from rendered template data.
 
@@ -499,6 +535,9 @@ def _build_config_dict(
         variables: Collected variables.
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping.
+        _preserve_merge_ids: Force ``merge_id`` preservation even when
+            the template itself has no ``extends``.  Used for parent
+            rendering.
 
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
@@ -517,13 +556,18 @@ def _build_config_dict(
     )
 
     has_extends = template.extends is not None
+    preserve_merge = has_extends or _preserve_merge_ids
     agents = _expand_agents(
         _validate_list(rendered_data, "agents"),
         has_extends=has_extends,
         locales=locales,
         custom_presets=custom_presets,
+        preserve_merge_ids=preserve_merge,
     )
-    departments = build_departments(_validate_list(rendered_data, "departments"))
+    departments = build_departments(
+        _validate_list(rendered_data, "departments"),
+        has_extends=has_extends,
+    )
 
     autonomy, budget_monthly = _extract_numeric_config(company, template)
 
@@ -639,6 +683,7 @@ def _expand_agents(
     has_extends: bool,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    preserve_merge_ids: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
@@ -647,10 +692,13 @@ def _expand_agents(
         has_extends: Whether the template uses inheritance.
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping.
+        preserve_merge_ids: Force ``merge_id`` preservation.  When
+            ``None`` (default), follows ``has_extends``.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
     """
+    keep_merge = preserve_merge_ids if preserve_merge_ids is not None else has_extends
     used_names: set[str] = set()
     expanded: list[dict[str, Any]] = []
     for idx, agent in enumerate(raw_agents):
@@ -662,6 +710,7 @@ def _expand_agents(
                 has_extends=has_extends,
                 locales=locales,
                 custom_presets=custom_presets,
+                preserve_merge_id=keep_merge,
             ),
         )
     return expanded
@@ -675,6 +724,7 @@ def _expand_single_agent(  # noqa: PLR0913
     has_extends: bool,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    preserve_merge_id: bool | None = None,
 ) -> dict[str, Any]:
     """Expand a single template agent dict.
 
@@ -690,6 +740,8 @@ def _expand_single_agent(  # noqa: PLR0913
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping for resolving
             user-defined presets.
+        preserve_merge_id: Force ``merge_id`` preservation.  When
+            ``None`` (default), follows ``has_extends``.
     """
     role = agent.get("role")
     if not role:
@@ -741,10 +793,11 @@ def _expand_single_agent(  # noqa: PLR0913
             raise TemplateRenderError(msg)
         agent_dict["_remove"] = True
 
-    # Preserve merge_id only when inheritance is active -- standalone
-    # templates have no merge step to strip it later.
+    # Preserve merge_id when inheritance is active or when rendering
+    # as a parent (so child templates can target agents by merge_id).
+    keep_merge = preserve_merge_id if preserve_merge_id is not None else has_extends
     merge_id = str(agent.get("merge_id", "")).strip()
-    if has_extends and merge_id:
+    if keep_merge and merge_id:
         agent_dict["merge_id"] = merge_id
 
     return agent_dict

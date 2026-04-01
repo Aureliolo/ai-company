@@ -127,17 +127,21 @@ def _validate_optional_fields(
 
 def build_departments(
     raw_depts: list[Any],
+    *,
+    has_extends: bool = False,
 ) -> list[dict[str, Any]]:
     """Build RootConfig-compatible department dicts.
 
     Args:
         raw_depts: List of department dicts from rendered YAML.
+        has_extends: Whether the template uses inheritance.
 
     Returns:
         List of dicts suitable for ``Department`` construction.
 
     Raises:
-        TemplateRenderError: If a department entry is invalid.
+        TemplateRenderError: If a department entry is invalid or
+            ``_remove`` is used without ``extends``.
     """
     departments: list[dict[str, Any]] = []
     for idx, dept in enumerate(raw_depts):
@@ -150,6 +154,22 @@ def build_departments(
                 got=type(dept).__name__,
             )
             raise TemplateRenderError(msg)
+
+        if dept.get("_remove"):
+            dept_name = dept.get("name", "")
+            if not has_extends:
+                msg = (
+                    f"Department {dept_name!r} uses '_remove' but the "
+                    "template has no 'extends' -- directive has no effect"
+                )
+                logger.warning(
+                    TEMPLATE_RENDER_VARIABLE_ERROR,
+                    department=dept_name,
+                    field="_remove",
+                )
+                raise TemplateRenderError(msg)
+            departments.append({"name": dept_name, "_remove": True})
+            continue
 
         budget_pct = _parse_budget(dept)
         head_role, head_id = _resolve_head(dept)

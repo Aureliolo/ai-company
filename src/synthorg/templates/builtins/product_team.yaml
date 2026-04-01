@@ -19,6 +19,7 @@ template:
     - "inversion"
     - "pipeline"
     - "reviewer"
+  extends: "startup"
 
   variables:
     - name: "company_name"
@@ -40,10 +41,14 @@ template:
   company:
     type: "product_team"
     budget_monthly: {{ budget | default(80.0) }}
-    autonomy:
-      level: "semi"
+
+  communication: "meeting_based"
 
   departments:
+    # Remove inherited executive department
+    - name: "executive"
+      _remove: true
+    # Override inherited departments
     - name: "product"
       budget_percent: 25
       head_role: "Product Manager"
@@ -65,6 +70,7 @@ template:
         - subordinate: "Full-Stack Developer"
           supervisor: "Backend Developer"
           supervisor_id: "backend-senior"
+    # New departments
     - name: "design"
       budget_percent: 15
       head_role: "UX Designer"
@@ -87,26 +93,26 @@ template:
       head_role: "Data Analyst"
 
   agents:
-    - role: "Product Manager"
+    # Remove inherited executive agents
+    - role: "CEO"
+      department: "executive"
+      _remove: true
+    - role: "CTO"
+      department: "executive"
+      _remove: true
+    # Override first Full-Stack Developer (positional): change personality
+    - role: "Full-Stack Developer"
       name: ""
       level: "senior"
-      model:
-        tier: "medium"
-        priority: "speed"
-      personality_preset: "strategic_planner"
-      department: "product"
-    - role: "UX Designer"
-      name: ""
-      level: "mid"
       model: "medium"
-      personality_preset: "user_advocate"
-      department: "design"
-    - role: "UX Researcher"
-      name: ""
-      level: "mid"
-      model: "medium"
-      personality_preset: "methodical_analyst"
-      department: "design"
+      personality_preset: "communication_bridge"
+      department: "engineering"
+    # Remove second Full-Stack Developer (positional)
+    - role: "Full-Stack Developer"
+      department: "engineering"
+      _remove: true
+    # Product Manager inherited unchanged from startup
+    # New agents
     - role: "Backend Developer"
       name: ""
       merge_id: "backend-senior"
@@ -131,12 +137,18 @@ template:
         priority: "cost"
       personality_preset: "creative_innovator"
       department: "engineering"
-    - role: "Full-Stack Developer"
+    - role: "UX Designer"
       name: ""
-      level: "senior"
+      level: "mid"
       model: "medium"
-      personality_preset: "communication_bridge"
-      department: "engineering"
+      personality_preset: "user_advocate"
+      department: "design"
+    - role: "UX Researcher"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "methodical_analyst"
+      department: "design"
     - role: "QA Engineer"
       name: ""
       level: "mid"
@@ -155,9 +167,6 @@ template:
       model: "medium"
       personality_preset: "data_driven_optimizer"
       department: "data_analytics"
-
-  workflow: "agile_kanban"
-  communication: "meeting_based"
 
   workflow_config:
     kanban:

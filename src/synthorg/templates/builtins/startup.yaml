@@ -19,6 +19,7 @@ template:
     - "tool_wrapper"
     - "generator"
     - "pipeline"
+  extends: "solo_founder"
 
   variables:
     - name: "company_name"
@@ -65,15 +66,15 @@ template:
       head_role: "Product Manager"
 
   agents:
-    - role: "CEO"
+    # Override parent's Full-Stack Developer: change personality
+    - role: "Full-Stack Developer"
       name: ""
-      level: "c_suite"
-      model:
-        tier: "large"
-        priority: "quality"
-        min_context: 100000
-      personality_preset: "visionary_leader"
-      department: "executive"
+      merge_id: "fullstack-senior"
+      level: "senior"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+    # New agents
     - role: "CTO"
       name: ""
       level: "c_suite"
@@ -83,13 +84,6 @@ template:
         min_context: 100000
       personality_preset: "rapid_prototyper"
       department: "executive"
-    - role: "Full-Stack Developer"
-      name: ""
-      merge_id: "fullstack-senior"
-      level: "senior"
-      model: "medium"
-      personality_preset: "pragmatic_builder"
-      department: "engineering"
     - role: "Full-Stack Developer"
       name: ""
       merge_id: "fullstack-mid"
