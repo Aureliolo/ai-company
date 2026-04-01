@@ -116,6 +116,8 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
     })
   },
 
+  // Event payload ignored -- all events trigger a full refetch.
+  // Incremental updates are not worth the complexity given 30s polling.
   updateFromWsEvent: () => {
     useProjectsStore.getState().fetchProjects()
   },

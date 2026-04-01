@@ -8,7 +8,7 @@ export function ProjectsSkeleton() {
         <Skeleton className="h-8 w-36" />
       </div>
       <Skeleton className="h-10 w-full" />
-      <div className="grid grid-cols-3 gap-grid-gap max-[1279px]:grid-cols-2 max-[767px]:grid-cols-1">
+      <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 6 }, (_, i) => (
           <SkeletonCard key={i} />
         ))}

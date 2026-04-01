@@ -16,7 +16,7 @@ export function ProjectHeader({ project }: ProjectHeaderProps) {
     },
     {
       label: 'Budget',
-      value: project.budget > 0 ? formatCurrency(project.budget) : '--',
+      value: project.budget != null ? formatCurrency(project.budget) : '--',
       valueClassName: 'font-mono text-xs',
     },
     {

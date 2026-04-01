@@ -5,7 +5,7 @@ export function ProjectDetailSkeleton() {
     <div className="space-y-section-gap">
       <Skeleton className="h-8 w-32" />
       <SkeletonCard className="h-48" />
-      <div className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
+      <div className="grid grid-cols-1 gap-grid-gap lg:grid-cols-2">
         <SkeletonCard className="h-40" />
         <SkeletonCard className="h-40" />
       </div>

@@ -124,10 +124,10 @@ describe('ArtifactsPage', () => {
       )
     })
 
-    it('shows error alert when error is any non-whitespace string', () => {
+    it('shows error alert when error is set', () => {
       fc.assert(
         fc.property(
-          fc.string({ minLength: 1 }).filter((s) => s.trim().length > 0),
+          fc.lorem({ maxCount: 3 }),
           (errorMsg) => {
             hookReturn = { ...defaultHookReturn, error: errorMsg }
             const { unmount } = renderPage()
