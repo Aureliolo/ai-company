@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class EmbeddingFineTuneConfig(BaseModel):
     """Optional domain-specific embedding fine-tuning configuration.
 
-    When ``enabled`` is ``True``, the memory backend looks for a
+    When ``enabled`` is ``True``, the memory backend will look for a
     fine-tuned model checkpoint at ``checkpoint_path`` during
     initialization.  If found, the fine-tuned model overrides the
     base ``Mem0EmbedderConfig.model``.  If not found, the base model
@@ -31,13 +31,19 @@ class EmbeddingFineTuneConfig(BaseModel):
 
     Fine-tuning itself runs offline via a separate pipeline (CLI
     command or scheduled task), not during backend initialization.
-    See the `Embedding Evaluation <docs/reference/embedding-evaluation.md>`_
-    reference page for the full pipeline design.
+    See ``docs/reference/embedding-evaluation.md`` for the full
+    pipeline design.
+
+    Note: checkpoint lookup is not yet implemented in the Mem0
+    adapter -- this config prepares the data model for the
+    fine-tuning pipeline.
 
     Attributes:
         enabled: Whether fine-tuning checkpoint lookup is active.
         checkpoint_path: Path to the fine-tuned model checkpoint.
+            Required when ``enabled`` is ``True``.
         base_model: Identifier of the base model that was fine-tuned.
+            Required when ``enabled`` is ``True``.
         training_data_dir: Directory containing training data for the
             fine-tuning pipeline.
     """
@@ -60,6 +66,31 @@ class EmbeddingFineTuneConfig(BaseModel):
         default=None,
         description=("Directory containing training data for the fine-tuning pipeline"),
     )
+
+    @model_validator(mode="after")
+    def _validate_required_when_enabled(self) -> Self:
+        """Require checkpoint_path and base_model when fine-tuning is enabled."""
+        if self.enabled and self.checkpoint_path is None:
+            msg = "checkpoint_path must be non-blank when fine-tuning is enabled"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                model="EmbeddingFineTuneConfig",
+                field="checkpoint_path",
+                enabled=self.enabled,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.enabled and self.base_model is None:
+            msg = "base_model must be non-blank when fine-tuning is enabled"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                model="EmbeddingFineTuneConfig",
+                field="base_model",
+                enabled=self.enabled,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class Mem0EmbedderConfig(BaseModel):

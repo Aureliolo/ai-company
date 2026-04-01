@@ -213,7 +213,7 @@ single GPU.
 ### Integration Design
 
 Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
-(see [Memory Design Spec](../design/memory.md#research-direction-domain-specific-embedding-fine-tuning))
+(see [Memory Design Spec](../design/memory.md#embedding-model-selection))
 stores the configuration, and the backend checks for a checkpoint at initialization:
 
 1. If `fine_tune.enabled` and checkpoint exists at `fine_tune.checkpoint_path`: use fine-tuned model

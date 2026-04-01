@@ -139,7 +139,7 @@ Inline `style` attribute injection is **not a practical XSS vector**:
 | Date | Event |
 |------|-------|
 | 2024-02 | Nonce prop merged for ScrollArea/Select only ([PR #2728](https://github.com/radix-ui/primitives/pull/2728)) |
-| 2024-09 | CSS export approach PR rejected by maintainer ([PR #3131](https://github.com/radix-ui/primitives/pull/3131)) |
+| 2024-09 | CSS export approach PR closed by maintainer (backlog triage, [PR #3131](https://github.com/radix-ui/primitives/pull/3131)) |
 | 2024-10 | Maintainer said "near the top of my todo list" |
 | 2025-04 | Community asked for update -- no response |
 | 2025-07 | Community asked again -- no response |
@@ -147,7 +147,6 @@ Inline `style` attribute injection is **not a practical XSS vector**:
 | 2026-02 | [Discussion #3130](https://github.com/radix-ui/primitives/discussions/3130) **closed** -- author pointed to Base UI as the successor with CSP support |
 
 Open issues with no maintainer engagement:
-[#2057](https://github.com/radix-ui/primitives/issues/2057),
 [#3063](https://github.com/radix-ui/primitives/issues/3063),
 [#3117](https://github.com/radix-ui/primitives/issues/3117).
 
@@ -189,8 +188,8 @@ Browser support: `style-src-elem` and `style-src-attr` are supported in Chrome 7
 105+, Safari 15.4+, Edge 79+.
 
 **Phase 3 -- Re-evaluate quarterly:**
-Check upstream Radix issues ([#2057](https://github.com/radix-ui/primitives/issues/2057),
-[#3063](https://github.com/radix-ui/primitives/issues/3063)) for movement. If Radix ships
+Check upstream Radix issues ([#3063](https://github.com/radix-ui/primitives/issues/3063),
+[#3117](https://github.com/radix-ui/primitives/issues/3117)) for movement. If Radix ships
 nonce support for inline styles, or if Base UI reaches feature parity with the dashboard's
 Radix usage, remove `style-src-attr 'unsafe-inline'`.
 
