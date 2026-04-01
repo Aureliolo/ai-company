@@ -537,4 +537,4 @@ class TestCompanyTemplate:
     ) -> None:
         t = CompanyTemplate(**make_template_dict())
         with pytest.raises(ValidationError):
-            t.workflow = "scrum"  # type: ignore[misc]
+            t.workflow = "scrum"  # type: ignore[assignment,misc]
