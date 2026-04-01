@@ -1,0 +1,114 @@
+---
+const useCases = [
+  {
+    title: "AI Dev Team",
+    description:
+      "CTO + Engineers + QA. Autonomous software development with code review, testing, and deployment pipelines.",
+    features: [
+      "DAG-based task decomposition",
+      "Git tools + code sandbox",
+      "Three-tier quality scoring",
+    ],
+    color: "violet",
+  },
+  {
+    title: "Research Organization",
+    description:
+      "Director + Analysts + Reviewers. Literature review, data analysis, and collaborative report generation.",
+    features: [
+      "Memory retrieval pipeline",
+      "Hybrid search (dense + BM25)",
+      "Automated consolidation",
+    ],
+    color: "teal",
+  },
+  {
+    title: "Content Pipeline",
+    description:
+      "Editor + Writers + Fact-checkers. Content creation with editorial oversight, review cycles, and quality control.",
+    features: [
+      "Meeting-based coordination",
+      "Conflict resolution protocols",
+      "Approval gate workflows",
+    ],
+    color: "violet",
+  },
+  {
+    title: "Customer Support",
+    description:
+      "Manager + Agents + Escalation. Tiered handling with knowledge sharing and automatic performance tracking.",
+    features: [
+      "Hierarchical delegation",
+      "Shared knowledge base",
+      "Performance scoring",
+    ],
+    color: "teal",
+  },
+  {
+    title: "Security Operations",
+    description:
+      "SecOps lead + Analysts + Incident responders. Automated scanning, threat assessment, and coordinated response.",
+    features: [
+      "Progressive trust levels",
+      "Persistent audit trails",
+      "Sandboxed tool execution",
+    ],
+    color: "violet",
+  },
+  {
+    title: "Data Analytics",
+    description:
+      "Lead Analyst + Data Engineers + Visualization specialists. End-to-end analysis pipelines with budget tracking.",
+    features: [
+      "Multi-project support",
+      "Automated reporting",
+      "Per-token cost tracking",
+    ],
+    color: "teal",
+  },
+];
+---
+
+<div
+  class="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-4 -mx-6 px-6
+         scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20
+         lg:grid lg:grid-cols-3 lg:overflow-x-visible lg:snap-none lg:pb-0 lg:mx-0 lg:px-0"
+  role="region"
+  aria-label="Use case examples"
+  tabindex="0"
+>
+  {useCases.map((uc) => {
+    const borderColor = uc.color === "violet" ? "border-violet-500/20 hover:border-violet-500/40" : "border-teal-500/20 hover:border-teal-500/40";
+    const titleColor = uc.color === "violet" ? "text-violet-400" : "text-teal-400";
+    const dotColor = uc.color === "violet" ? "bg-violet-400" : "bg-teal-400";
+    return (
+      <div class={`min-w-[300px] flex-shrink-0 snap-center bg-[#0F1219] rounded-xl p-6 border ${borderColor} transition-colors lg:min-w-0 lg:flex-shrink`}>
+        <p class={`${titleColor} font-semibold mb-2`}>{uc.title}</p>
+        <p class="text-sm text-gray-400 mb-4">{uc.description}</p>
+        <ul class="text-xs text-gray-500 space-y-1">
+          {uc.features.map((f) => (
+            <li class="flex items-center gap-2">
+              <span class={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`}></span>
+              {f}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  })}
+</div>
+
+<style>
+  /* Gradient fade hints for scroll on mobile */
+  @media (max-width: 1023px) {
+    [role="region"] {
+      mask-image: linear-gradient(
+        to right,
+        transparent,
+        black 24px,
+        black calc(100% - 24px),
+        transparent
+      );
+    }
+  }
+</style>

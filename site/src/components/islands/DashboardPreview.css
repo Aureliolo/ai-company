@@ -1,0 +1,106 @@
+.dashboard-preview {
+  --dp-accent: #38bdf8;
+  --dp-success: #10b981;
+  --dp-warning: #f59e0b;
+  --dp-danger: #ef4444;
+  --dp-bg-base: #0a0a12;
+  --dp-bg-surface: #0f0f1a;
+  --dp-bg-card: #13131f;
+  --dp-bg-card-hover: #181828;
+  --dp-text-primary: #e2e8f0;
+  --dp-text-secondary: #94a3b8;
+  --dp-text-muted: #8b95a5;
+  --dp-border: #1e1e2e;
+  --dp-border-bright: #2a2a3e;
+  --dp-font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --dp-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--dp-font-sans);
+  color: var(--dp-text-primary);
+}
+
+/* Page transition */
+.dp-page-enter {
+  animation: dp-slide-in 400ms ease-in-out;
+}
+
+@keyframes dp-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Counter tick animation */
+.dp-counter-tick {
+  animation: dp-tick 300ms ease-out;
+}
+
+@keyframes dp-tick {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+    color: var(--dp-accent);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* Pulse animation for active status */
+.dp-pulse {
+  animation: dp-pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes dp-pulse-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0);
+  }
+}
+
+/* Activity line scroll */
+.dp-activity-scroll {
+  animation: dp-scroll-up 8s linear infinite;
+}
+
+@keyframes dp-scroll-up {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50%);
+  }
+}
+
+/* Gauge fill animation */
+.dp-gauge-fill {
+  transition: stroke-dashoffset 1s ease-in-out;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .dp-page-enter {
+    animation: none;
+  }
+  .dp-counter-tick {
+    animation: none;
+  }
+  .dp-pulse {
+    animation: none;
+  }
+  .dp-activity-scroll {
+    animation: none;
+  }
+  .dp-gauge-fill {
+    transition: none;
+  }
+}

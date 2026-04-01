@@ -1,0 +1,232 @@
+---
+// Particle Network -- Canvas-based hero background animation
+// Renders interconnected agent nodes drifting with subtle edges
+---
+
+<div class="absolute inset-0 overflow-hidden">
+  <canvas
+    id="particle-network"
+    class="absolute inset-0 w-full h-full"
+    aria-hidden="true"
+    role="presentation"
+  ></canvas>
+  <!-- Gradient overlay for text readability -->
+  <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219]/80 via-[#1a1025]/60 to-[#0F1219]/90"></div>
+</div>
+
+<script>
+  const canvas = document.getElementById("particle-network") as HTMLCanvasElement;
+  if (canvas) {
+    const ctx = canvas.getContext("2d")!;
+    const COLORS = ["#a78bfa", "#2dd4bf"]; // violet-400, teal-400
+    const MAX_DIST = 150;
+    const MAX_DIST_SQ = MAX_DIST * MAX_DIST;
+    const TARGET_FPS = 30;
+    const FRAME_INTERVAL = 1000 / TARGET_FPS;
+
+    interface Node {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+      opacity: number;
+      color: string;
+    }
+
+    let nodes: Node[] = [];
+    let w = 0;
+    let h = 0;
+    let mouseX = -1000;
+    let mouseY = -1000;
+    let animating = false;
+    let lastFrame = 0;
+
+    function getNodeCount(): number {
+      return Math.min(60, Math.max(20, Math.floor((w * h) / 25000)));
+    }
+
+    function createNode(): Node {
+      return {
+        x: Math.random() * w,
+        y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        radius: 2 + Math.random() * 2,
+        opacity: 0.3 + Math.random() * 0.4,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      };
+    }
+
+    function resize(): void {
+      const rect = canvas.parentElement!.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = rect.width;
+      h = rect.height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const target = getNodeCount();
+      while (nodes.length < target) nodes.push(createNode());
+      while (nodes.length > target) nodes.pop();
+    }
+
+    function draw(now: number): void {
+      if (!animating) return;
+
+      const delta = now - lastFrame;
+      if (delta < FRAME_INTERVAL) {
+        requestAnimationFrame(draw);
+        return;
+      }
+      lastFrame = now - (delta % FRAME_INTERVAL);
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Update positions
+      for (const n of nodes) {
+        // Mouse repulsion
+        const dx = n.x - mouseX;
+        const dy = n.y - mouseY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < 40000 && distSq > 0) {
+          const force = 0.5 / Math.sqrt(distSq);
+          n.vx += dx * force;
+          n.vy += dy * force;
+        }
+
+        // Dampen velocity
+        n.vx *= 0.99;
+        n.vy *= 0.99;
+
+        // Clamp speed
+        const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
+        if (speed > 0.6) {
+          n.vx = (n.vx / speed) * 0.6;
+          n.vy = (n.vy / speed) * 0.6;
+        }
+
+        n.x += n.vx;
+        n.y += n.vy;
+
+        // Wrap around
+        if (n.x < -10) n.x = w + 10;
+        if (n.x > w + 10) n.x = -10;
+        if (n.y < -10) n.y = h + 10;
+        if (n.y > h + 10) n.y = -10;
+      }
+
+      // Draw edges
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < MAX_DIST_SQ) {
+            const alpha = (1 - Math.sqrt(distSq) / MAX_DIST) * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = `rgba(167, 139, 250, ${alpha})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.globalAlpha = n.opacity;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function start(): void {
+      resize();
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+      if (prefersReduced.matches) {
+        // Static single frame
+        drawStaticFrame();
+      } else {
+        animating = true;
+        lastFrame = performance.now();
+        requestAnimationFrame(draw);
+      }
+
+      // Listen for preference changes
+      prefersReduced.addEventListener("change", (e) => {
+        if (e.matches) {
+          animating = false;
+          drawStaticFrame();
+        } else {
+          animating = true;
+          lastFrame = performance.now();
+          requestAnimationFrame(draw);
+        }
+      });
+    }
+
+    function drawStaticFrame(): void {
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw edges
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[i].x - nodes[j].x;
+          const dy = nodes[i].y - nodes[j].y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < MAX_DIST_SQ) {
+            const alpha = (1 - Math.sqrt(distSq) / MAX_DIST) * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.strokeStyle = `rgba(167, 139, 250, ${alpha})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+        ctx.fillStyle = n.color;
+        ctx.globalAlpha = n.opacity;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Mouse tracking
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = e.clientX - rect.left;
+      mouseY = e.clientY - rect.top;
+    });
+    canvas.addEventListener("mouseleave", () => {
+      mouseX = -1000;
+      mouseY = -1000;
+    });
+
+    // Resize handling
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 200);
+    });
+    ro.observe(canvas.parentElement!);
+
+    start();
+  }
+</script>

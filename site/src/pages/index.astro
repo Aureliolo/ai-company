@@ -1,6 +1,12 @@
 ---
 import Base from "../layouts/Base.astro";
 import ContactForm from "../components/ContactForm.astro";
+import UseCaseCards from "../components/UseCaseCards.astro";
+import FeatureShowcase from "../components/FeatureShowcase.astro";
+import ExpandableArchitecture from "../components/ExpandableArchitecture.astro";
+import ParticleNetwork from "../components/ParticleNetwork.astro";
+import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
+import DashboardPreview from "../components/islands/DashboardPreview";
 
 const description = "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company";
 ---
@@ -10,8 +16,7 @@ const description = "Framework for building synthetic organizations -- autonomou
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
   <section class="relative min-h-[85vh] flex items-center justify-center px-6">
-    <!-- TODO: Animated particle network background (Canvas island) -->
-    <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219] via-[#1a1025] to-[#0F1219]"></div>
+    <ParticleNetwork />
 
     <div class="relative z-10 max-w-4xl mx-auto text-center">
       <!-- Eyebrow -->
@@ -29,8 +34,9 @@ const description = "Framework for building synthetic organizations -- autonomou
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        SynthOrg is a Python framework for building synthetic organizations --
-        autonomous AI agents with roles, budgets, memory, and governance. Source-available under BSL 1.1.
+        A Python framework for building synthetic organizations -- autonomous AI agents
+        with real roles, personalities, budgets, memory, and enterprise-grade governance.
+        Define a company in YAML. Watch it run.
       </p>
 
       <!-- CTAs -->
@@ -75,7 +81,7 @@ const description = "Framework for building synthetic organizations -- autonomou
   <!-- PROOF STRIP -->
   <!-- ============================================================ -->
   <section class="py-8 border-y border-white/10">
-    <div class="max-w-5xl mx-auto flex flex-wrap justify-center gap-8 text-sm text-gray-400">
+    <div class="max-w-5xl mx-auto flex flex-wrap justify-center gap-x-8 gap-y-3 text-sm text-gray-400">
       <span class="flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-violet-400"></span> Type-Safe
       </span>
@@ -88,118 +94,30 @@ const description = "Framework for building synthetic organizations -- autonomou
       <span class="flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-teal-400"></span> Provider-Agnostic
       </span>
+      <span class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-violet-400"></span> 100+ LLM Providers
+      </span>
+      <span class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-teal-400"></span> Enterprise Security
+      </span>
     </div>
   </section>
 
   <!-- ============================================================ -->
-  <!-- HOW IT WORKS -- Split Panel -->
+  <!-- HOW IT WORKS -- Scroll-Synced Split Panel -->
   <!-- ============================================================ -->
-  <section id="how-it-works" class="py-16 px-6">
-    <div class="max-w-6xl mx-auto">
-      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">See How It Works</h2>
-
-      <div class="grid md:grid-cols-2 gap-12 items-start">
-        <!-- Code side -->
-        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-            <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
-            <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
-            <span class="ml-3 text-sm text-gray-400 font-mono">company.yaml</span>
-          </div>
-          <pre class="text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto"><code><span class="text-violet-400">company</span>:
-  <span class="text-teal-400">name</span>: "Acme AI Lab"
-
-<span class="text-violet-400">agents</span>:
-  - <span class="text-teal-400">name</span>: "CTO"
-    <span class="text-teal-400">role</span>: tech_lead
-    <span class="text-teal-400">model</span>: large
-    <span class="text-teal-400">budget</span>:
-      <span class="text-teal-400">max_daily_usd</span>: 50.00
-
-  - <span class="text-teal-400">name</span>: "Engineer"
-    <span class="text-teal-400">role</span>: developer
-    <span class="text-teal-400">model</span>: medium
-    <span class="text-teal-400">reports_to</span>: "CTO"
-    <span class="text-teal-400">tools</span>:
-      - file_system
-      - git
-      - code_runner</code></pre>
-        </div>
-
-        <!-- Description side -->
-        <!-- TODO: Replace with animated agent visualization (Vue/React island) -->
-        <div class="space-y-8">
-          <div class="flex gap-4">
-            <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 font-bold shrink-0">1</div>
-            <div>
-              <h3 class="font-semibold text-lg mb-1">Pick a template or define your own</h3>
-              <p class="text-gray-400">Choose a pre-built org template, or describe agents, roles, hierarchy, budgets, and tools through the dashboard.</p>
-            </div>
-          </div>
-          <div class="flex gap-4">
-            <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 font-bold shrink-0">2</div>
-            <div>
-              <h3 class="font-semibold text-lg mb-1">The engine orchestrates</h3>
-              <p class="text-gray-400">Tasks are decomposed, routed to agents, and executed with conflict resolution and budget checks.</p>
-            </div>
-          </div>
-          <div class="flex gap-4">
-            <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 font-bold shrink-0">3</div>
-            <div>
-              <h3 class="font-semibold text-lg mb-1">Observe and control</h3>
-              <p class="text-gray-400">Structured logs, cost tracking, security audit trails, and performance metrics -- all built in.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <ScrollSyncPanel />
 
   <!-- ============================================================ -->
-  <!-- CORE PILLARS (transition to lighter) -->
+  <!-- FEATURE SHOWCASE (transition to lighter) -->
   <!-- ============================================================ -->
   <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1f2e]">
     <div class="max-w-6xl mx-auto">
-      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Core Pillars</h2>
-
-      <div class="grid md:grid-cols-3 gap-8">
-        <!-- Orchestration -->
-        <a href="/docs/design/engine/" class="block bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors no-underline text-white">
-          <div class="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 mb-4 text-xl">&#9881;</div>
-          <h3 class="text-xl font-semibold mb-3">Orchestration</h3>
-          <p class="text-gray-400 mb-4">Define agents with roles, models, and tools. The engine handles task decomposition, routing, conflict resolution, and collaboration.</p>
-          <ul class="text-sm text-gray-400 space-y-1">
-            <li>3 execution loops (ReAct, Plan-and-Execute, Hybrid)</li>
-            <li>DAG-based task decomposition</li>
-            <li>5 routing strategies</li>
-          </ul>
-        </a>
-
-        <!-- Governance -->
-        <a href="/docs/security/" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
-          <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128274;</div>
-          <h3 class="text-xl font-semibold mb-3">Governance</h3>
-          <p class="text-gray-400 mb-4">Built-in security, budget enforcement, and progressive trust. The SecOps agent and fail-closed rule engine protect every action.</p>
-          <ul class="text-sm text-gray-400 space-y-1">
-            <li>4 trust strategies</li>
-            <li>Per-agent budget limits + auto-downgrade</li>
-            <li>Approval timeout policies</li>
-          </ul>
-        </a>
-
-        <!-- Memory -->
-        <a href="/docs/design/memory/" class="block bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors no-underline text-white">
-          <div class="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 mb-4 text-xl">&#129504;</div>
-          <h3 class="text-xl font-semibold mb-3">Memory</h3>
-          <p class="text-gray-400 mb-4">Per-agent and shared organizational memory. Retrieval pipeline with ranking, filtering, and context injection. Consolidation and archival.</p>
-          <ul class="text-sm text-gray-400 space-y-1">
-            <li>Pluggable memory backends</li>
-            <li>Shared org knowledge base</li>
-            <li>Automatic memory consolidation</li>
-          </ul>
-        </a>
-      </div>
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">What Makes SynthOrg Different</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-12">
+        Not just agent orchestration -- a complete organizational system with HR, governance, personality-driven teams, and enterprise-grade cost controls.
+      </p>
+      <FeatureShowcase />
     </div>
   </section>
 
@@ -211,25 +129,7 @@ const description = "Framework for building synthetic organizations -- autonomou
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
       <p class="text-gray-400 mb-12">Modular, protocol-driven. Every component is pluggable.</p>
 
-      <!-- TODO: Make this expandable (Vue/React island) -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <a href="/docs/design/organization/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
-          <p class="font-semibold text-violet-400">Config</p>
-          <p class="text-xs text-gray-400 mt-1">YAML schema, loader, validation</p>
-        </a>
-        <a href="/docs/design/engine/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
-          <p class="font-semibold text-violet-400">Engine</p>
-          <p class="text-xs text-gray-400 mt-1">Loops, decomposition, routing</p>
-        </a>
-        <a href="/docs/design/agents/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
-          <p class="font-semibold text-violet-400">Agents</p>
-          <p class="text-xs text-gray-400 mt-1">HR, comms, tools, memory</p>
-        </a>
-        <a href="/docs/architecture/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
-          <p class="font-semibold text-violet-400">Infra</p>
-          <p class="text-xs text-gray-400 mt-1">Providers, persistence, observability</p>
-        </a>
-      </div>
+      <ExpandableArchitecture />
 
       <a href="/docs/architecture/" class="inline-block mt-8 text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400 transition-colors">
         Explore full architecture &rarr;
@@ -253,11 +153,11 @@ const description = "Framework for building synthetic organizations -- autonomou
         <a href="/docs/security/#application-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128737;</div>
           <h3 class="text-xl font-semibold mb-3">Runtime Protection</h3>
-          <p class="text-gray-400 mb-4">Every tool invocation passes through a fail-closed rule engine before execution. Five detectors scan for credentials, path traversal, destructive operations, and data leaks.</p>
+          <p class="text-gray-400 mb-4">Hybrid SecOps: rule engine fast-path handles ~95% of actions in sub-millisecond, with an LLM evaluator for uncertain edge cases. 25+ classified action types, five autonomy tiers.</p>
           <ul class="text-sm text-gray-400 space-y-1">
-            <li>SecOps agent with fail-closed rule engine</li>
+            <li>Fail-closed rule engine + LLM fallback evaluator</li>
+            <li>5 autonomy tiers with progressive trust</li>
             <li>Output scanning with redaction policies</li>
-            <li>Progressive trust &amp; approval workflows</li>
             <li>Persistent audit trail for every decision</li>
           </ul>
         </a>
@@ -279,7 +179,7 @@ const description = "Framework for building synthetic organizations -- autonomou
         <a href="/docs/security/#cicd-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#9889;</div>
           <h3 class="text-xl font-semibold mb-3">Continuous Security</h3>
-          <p class="text-gray-400 mb-4">Eight security scanners run across the development lifecycle. Secret detection, SAST, DAST, dependency auditing, license compliance, and supply chain scoring.</p>
+          <p class="text-gray-400 mb-4">Eight security scanners run across the full development lifecycle -- from first commit to production deployment. Secret detection, SAST, DAST, dependency auditing, license compliance, and supply chain scoring.</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>gitleaks, CodeQL, ZAP DAST, zizmor</li>
             <li>pip-audit + npm audit + Socket.dev</li>
@@ -304,24 +204,20 @@ const description = "Framework for building synthetic organizations -- autonomou
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Use Cases</h2>
 
-      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors">
-          <p class="text-violet-400 font-semibold mb-2">AI Dev Team</p>
-          <p class="text-sm text-gray-400">CTO + Engineers + QA. Autonomous software development with code review and testing.</p>
-        </div>
-        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors">
-          <p class="text-violet-400 font-semibold mb-2">Research Org</p>
-          <p class="text-sm text-gray-400">Director + Analysts + Reviewers. Literature review, data analysis, and report generation.</p>
-        </div>
-        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors">
-          <p class="text-violet-400 font-semibold mb-2">Content Pipeline</p>
-          <p class="text-sm text-gray-400">Editor + Writers + Fact-checkers. Content creation with editorial oversight and quality control.</p>
-        </div>
-        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors">
-          <p class="text-violet-400 font-semibold mb-2">Support Org</p>
-          <p class="text-sm text-gray-400">Manager + Agents + Escalation. Customer support with tiered handling and knowledge sharing.</p>
-        </div>
-      </div>
+      <UseCaseCards />
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- DASHBOARD PREVIEW -->
+  <!-- ============================================================ -->
+  <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
+    <div class="max-w-5xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-4">See the Dashboard</h2>
+      <p class="text-gray-400 mb-12 max-w-2xl mx-auto">
+        Monitor agents, tasks, budgets, and communications in real time -- all from a single dashboard.
+      </p>
+      <DashboardPreview client:visible />
     </div>
   </section>
 
