@@ -34,7 +34,7 @@ export default function AgentDetailMini({ tick }: Props) {
             </span>
             <span
               className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-              style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--dp-success)" }}
+              style={{ background: "color-mix(in srgb, var(--dp-success) 15%, transparent)", color: "var(--dp-success)" }}
             >
               Active
             </span>
