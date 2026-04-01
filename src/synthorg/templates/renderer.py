@@ -788,6 +788,9 @@ def _resolve_agent_personality(
         _validate_inline_personality(inline_personality, name)
         return dict(inline_personality)
     if preset_name:
+        # Normalize once for both the lookup and the custom-source check.
+        key = preset_name.strip().lower()
+        is_custom = custom_presets is not None and key in custom_presets
         try:
             result = get_personality_preset(
                 preset_name,
@@ -798,11 +801,10 @@ def _resolve_agent_personality(
                 TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
                 agent=name,
                 preset=preset_name,
+                exc_info=True,
             )
             return None
-        # Log when a custom preset is resolved for traceability.
-        key = preset_name.strip().lower()
-        if custom_presets is not None and key in custom_presets:
+        if is_custom:
             logger.debug(
                 TEMPLATE_PRESET_RESOLVED_CUSTOM,
                 agent=name,
@@ -831,7 +833,7 @@ def validate_preset_references(
     """
     from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
 
-    warnings: list[str] = []
+    issues: list[str] = []
     for agent_cfg in template.agents:
         preset = agent_cfg.personality_preset
         if preset is None:
@@ -841,10 +843,10 @@ def validate_preset_references(
             continue
         if key in PERSONALITY_PRESETS:
             continue
-        warnings.append(
+        issues.append(
             f"Agent {agent_cfg.role!r} references unknown personality preset {preset!r}"
         )
-    return tuple(warnings)
+    return tuple(issues)
 
 
 def _validate_inline_personality(

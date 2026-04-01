@@ -90,10 +90,18 @@ class SetupPersonalityController(Controller):
             custom_presets = await fetch_custom_presets_map(
                 app_state.persistence.custom_presets,
             )
-            personality_dict = get_personality_preset(
-                data.personality_preset,
-                custom_presets=custom_presets,
-            )
+            try:
+                personality_dict = get_personality_preset(
+                    data.personality_preset,
+                    custom_presets=custom_presets,
+                )
+            except KeyError:
+                from synthorg.api.errors import (  # noqa: PLC0415
+                    ApiValidationError,
+                )
+
+                msg = f"Unknown personality preset {data.personality_preset!r}"
+                raise ApiValidationError(msg) from None
             updated_agent = {
                 **agents[agent_index],
                 "personality_preset": data.personality_preset,

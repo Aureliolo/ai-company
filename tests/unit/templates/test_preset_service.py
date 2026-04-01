@@ -302,3 +302,47 @@ class TestFetchCustomPresetsMap:
         assert len(result) == 2
         assert "preset_a" in result
         assert "preset_b" in result
+
+    async def test_corrupt_json_skipped(
+        self,
+        repo: FakePersonalityPresetRepository,
+    ) -> None:
+        """Corrupt JSON row is skipped, other presets still returned."""
+        from synthorg.templates.preset_service import fetch_custom_presets_map
+
+        config = _make_valid_config()
+        await repo.save(
+            name="good_preset",
+            config_json=json.dumps(config),
+            description="good",
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+        await repo.save(
+            name="corrupt_preset",
+            config_json="{not valid json",
+            description="corrupt",
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+        result = await fetch_custom_presets_map(repo)
+        assert "good_preset" in result
+        assert "corrupt_preset" not in result
+
+    async def test_keys_are_lowercased(
+        self,
+        repo: FakePersonalityPresetRepository,
+    ) -> None:
+        """Returned keys are lowercased regardless of stored case."""
+        from synthorg.templates.preset_service import fetch_custom_presets_map
+
+        config = _make_valid_config()
+        await repo.save(
+            name="My_Preset",
+            config_json=json.dumps(config),
+            description="test",
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+        result = await fetch_custom_presets_map(repo)
+        assert "my_preset" in result

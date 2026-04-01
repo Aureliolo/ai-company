@@ -252,10 +252,14 @@ def build_agent_config(
     """
     from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
 
-    personality_dict = get_personality_preset(
-        data.personality_preset,
-        custom_presets=custom_presets,
-    )
+    try:
+        personality_dict = get_personality_preset(
+            data.personality_preset,
+            custom_presets=custom_presets,
+        )
+    except KeyError:
+        msg = f"Unknown personality preset {data.personality_preset!r}"
+        raise ApiValidationError(msg) from None
     agent_config: dict[str, Any] = {
         "name": data.name,
         "role": data.role,

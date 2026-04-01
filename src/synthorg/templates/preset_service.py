@@ -419,6 +419,9 @@ async def fetch_custom_presets_map(
     result as ``custom_presets`` to :func:`render_template` or
     :func:`expand_template_agents`.
 
+    Rows with corrupt JSON are logged and skipped -- a single bad
+    row does not prevent the remaining presets from loading.
+
     Args:
         repo: Personality preset repository.
 
@@ -426,4 +429,15 @@ async def fetch_custom_presets_map(
         Mapping of lowercased preset names to personality config dicts.
     """
     rows = await repo.list_all()
-    return {str(row.name): json.loads(row.config_json) for row in rows}
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.name).strip().lower()
+        try:
+            result[key] = json.loads(row.config_json)
+        except json.JSONDecodeError:
+            logger.exception(
+                PRESET_VALIDATION_FAILED,
+                preset_name=row.name,
+                reason="corrupt_json_in_fetch_map",
+            )
+    return result
