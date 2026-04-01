@@ -129,8 +129,8 @@ class TestExpandTemplateAgentsCustomPresets:
         assert agents[0]["personality"]["communication_style"] == "custom"
         assert agents[0]["personality_preset"] == "my_custom"
 
-    def test_unknown_preset_falls_back_to_default(self) -> None:
-        """Unknown custom preset falls back to pragmatic_builder."""
+    def test_unknown_preset_falls_back_to_pragmatic_builder(self) -> None:
+        """Unknown preset falls back to pragmatic_builder in setup path."""
         template = _make_template(
             [{"role": "Dev", "personality_preset": "nonexistent"}]
         )

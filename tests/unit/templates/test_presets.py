@@ -133,8 +133,13 @@ class TestGetPersonalityPreset:
         assert a == b
         assert a is not b
 
-    def test_custom_preset_overrides_builtin(self) -> None:
-        """Custom preset with same name as builtin takes precedence."""
+    def test_custom_preset_overrides_builtin_defense_in_depth(self) -> None:
+        """Custom preset with same name as builtin takes precedence.
+
+        The CRUD service prevents creating custom presets that shadow
+        builtins, but the lookup function is resilient to corrupt or
+        legacy DB data by giving custom presets higher precedence.
+        """
         custom = {
             "visionary_leader": {
                 "traits": ("overridden",),

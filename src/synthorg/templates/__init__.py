@@ -8,6 +8,7 @@ Public API
     list_templates
     list_builtin_templates
     render_template
+    validate_preset_references
     CompanyTemplate
     LoadedTemplate
     ModelMatch

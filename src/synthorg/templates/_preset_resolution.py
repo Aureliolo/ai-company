@@ -33,9 +33,11 @@ def resolve_agent_personality(
 ) -> dict[str, Any] | None:
     """Resolve personality from inline config or named preset.
 
-    Custom presets are checked first, then builtins.  When a named
-    preset is not found in either source, a warning is logged and
-    ``None`` is returned (the agent proceeds without a personality).
+    Inline personality config takes highest precedence.  For named
+    presets, custom presets are checked first, then builtins.  When a
+    named preset is not found in either source, a warning is logged
+    and ``None`` is returned (the agent proceeds without a
+    personality).
 
     Args:
         agent: Raw agent dict from rendered YAML.
@@ -80,7 +82,6 @@ def resolve_agent_personality(
                 TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
                 agent=name,
                 preset=preset_name,
-                exc_info=True,
             )
             return None
         if is_custom:

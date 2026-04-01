@@ -5,6 +5,7 @@ and behavioral enums, plus internationally diverse auto-name generation
 backed by the Faker library.
 """
 
+import copy
 import functools
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -430,10 +431,12 @@ def get_personality_preset(
     """
     key = name.strip().lower()
     if custom_presets is not None and key in custom_presets:
-        return dict(custom_presets[key])
+        return copy.deepcopy(custom_presets[key])
     if key in PERSONALITY_PRESETS:
         return dict(PERSONALITY_PRESETS[key])
     available = sorted(PERSONALITY_PRESETS)
+    if custom_presets:
+        available = sorted({*available, *custom_presets})
     msg = f"Unknown personality preset {name!r}. Available: {available}"
     logger.warning(
         TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
@@ -474,7 +477,8 @@ def validate_preset_references(
 
     Args:
         template: Parsed template to validate.
-        custom_presets: Optional custom preset mapping.
+        custom_presets: Optional custom preset mapping.  Keys must
+            be lowercased.
 
     Returns:
         Tuple of warning strings (empty when all presets are known).

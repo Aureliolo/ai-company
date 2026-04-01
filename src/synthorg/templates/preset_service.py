@@ -433,11 +433,20 @@ async def fetch_custom_presets_map(
     for row in rows:
         key = str(row.name).strip().lower()
         try:
-            result[key] = json.loads(row.config_json)
+            decoded = json.loads(row.config_json)
         except json.JSONDecodeError:
             logger.exception(
                 PRESET_VALIDATION_FAILED,
                 preset_name=row.name,
                 reason="corrupt_json_in_fetch_map",
             )
+            continue
+        if not isinstance(decoded, dict):
+            logger.error(
+                PRESET_VALIDATION_FAILED,
+                preset_name=row.name,
+                reason="non_object_config_in_fetch_map",
+            )
+            continue
+        result[key] = decoded
     return result

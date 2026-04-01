@@ -14,6 +14,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_CORRUPTED,
     SETUP_AGENTS_READ_FALLBACK,
     SETUP_MODEL_NOT_FOUND,
+    SETUP_PRESET_NOT_FOUND,
     SETUP_PROVIDER_NOT_FOUND,
     SETUP_TEMPLATE_INVALID,
 )
@@ -60,6 +61,10 @@ def expand_template_agents(
         List of agent config dicts with ``tier`` metadata and, when
         the template uses structured model requirements, a
         ``model_requirement`` dict for downstream matching.
+
+    Raises:
+        ValidationError: If a structured model requirement dict
+            contains invalid fields.
     """
     from synthorg.templates.presets import (  # noqa: PLC0415
         generate_auto_name,
@@ -249,6 +254,10 @@ def build_agent_config(
 
     Returns:
         Agent configuration dict suitable for JSON serialization.
+
+    Raises:
+        ApiValidationError: If the personality preset name is not
+            found in either custom or builtin presets.
     """
     from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
 
@@ -258,6 +267,10 @@ def build_agent_config(
             custom_presets=custom_presets,
         )
     except KeyError:
+        logger.warning(
+            SETUP_PRESET_NOT_FOUND,
+            preset=data.personality_preset,
+        )
         msg = f"Unknown personality preset {data.personality_preset!r}"
         raise ApiValidationError(msg) from None
     agent_config: dict[str, Any] = {

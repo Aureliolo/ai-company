@@ -234,6 +234,8 @@ template:
         loaded = load_template_file(path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
+        agent = config.agents[0]
+        assert agent.personality is None or agent.personality == {}
 
     def test_builtin_preset_still_works_with_custom_presets(self) -> None:
         """Builtin presets resolve when custom_presets dict is passed."""

@@ -640,7 +640,17 @@ def _expand_single_agent(  # noqa: PLR0913
     """Expand a single template agent dict.
 
     Steps: auto-name generation, name deduplication, personality
-    preset/inline resolution, and model tier assignment.
+    preset/inline resolution, model tier assignment, and merge
+    directive handling.
+
+    Args:
+        agent: Raw agent dict from rendered YAML.
+        idx: Zero-based index for error context.
+        used_names: Set of already-used names for deduplication.
+        has_extends: Whether the template uses inheritance.
+        locales: Faker locale codes for auto-name generation.
+        custom_presets: Optional custom preset mapping for resolving
+            user-defined presets.
     """
     role = agent.get("role")
     if not role:
