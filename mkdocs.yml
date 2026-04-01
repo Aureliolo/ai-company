@@ -101,6 +101,7 @@ nav:
       - Security & Trust Policies: guides/security.md
       - Tool Integration (MCP): guides/mcp-tools.md
       - Deployment (Docker): guides/deployment.md
+      - Centralized Logging: guides/centralized-logging.md
       - Memory Configuration: guides/memory.md
       - Contributing: guides/contributing.md
   - Design:

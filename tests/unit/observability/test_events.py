@@ -233,6 +233,7 @@ class TestEventConstants:
             "context_budget",
             "settings",
             "setup",
+            "shipping",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
@@ -698,3 +699,30 @@ class TestEventConstants:
         assert DETECTOR_START == "classification.detector.start"
         assert DETECTOR_COMPLETE == "classification.detector.complete"
         assert DETECTOR_ERROR == "classification.detector.error"
+
+    def test_shipping_events_exist(self) -> None:
+        from synthorg.observability.events.shipping import (
+            SHIPPING_COMPRESSION_COMPLETED,
+            SHIPPING_COMPRESSION_FAILED,
+            SHIPPING_HTTP_BATCH_FAILED,
+            SHIPPING_HTTP_BATCH_SENT,
+            SHIPPING_HTTP_DROPPED,
+            SHIPPING_HTTP_FLUSHER_STARTED,
+            SHIPPING_HTTP_FLUSHER_STOPPED,
+            SHIPPING_HTTP_RETRY,
+            SHIPPING_SYSLOG_CONNECTED,
+            SHIPPING_SYSLOG_RECONNECTED,
+            SHIPPING_SYSLOG_SEND_FAILED,
+        )
+
+        assert SHIPPING_SYSLOG_CONNECTED == "shipping.syslog.connected"
+        assert SHIPPING_SYSLOG_SEND_FAILED == "shipping.syslog.send_failed"
+        assert SHIPPING_SYSLOG_RECONNECTED == "shipping.syslog.reconnected"
+        assert SHIPPING_HTTP_BATCH_SENT == "shipping.http.batch_sent"
+        assert SHIPPING_HTTP_BATCH_FAILED == "shipping.http.batch_failed"
+        assert SHIPPING_HTTP_RETRY == "shipping.http.retry"
+        assert SHIPPING_HTTP_DROPPED == "shipping.http.dropped"
+        assert SHIPPING_HTTP_FLUSHER_STARTED == "shipping.http.flusher_started"
+        assert SHIPPING_HTTP_FLUSHER_STOPPED == "shipping.http.flusher_stopped"
+        assert SHIPPING_COMPRESSION_COMPLETED == "shipping.compression.completed"
+        assert SHIPPING_COMPRESSION_FAILED == "shipping.compression.failed"

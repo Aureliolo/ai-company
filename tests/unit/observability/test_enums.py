@@ -2,7 +2,13 @@
 
 import pytest
 
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+    SyslogFacility,
+    SyslogProtocol,
+)
 
 
 @pytest.mark.unit
@@ -57,13 +63,67 @@ class TestSinkType:
 
     def test_all_members_exist(self) -> None:
         members = set(SinkType)
-        assert len(members) == 2
+        assert len(members) == 4
         assert SinkType.CONSOLE in members
         assert SinkType.FILE in members
+        assert SinkType.SYSLOG in members
+        assert SinkType.HTTP in members
 
     def test_values_are_strings(self) -> None:
         assert SinkType.CONSOLE.value == "console"
         assert SinkType.FILE.value == "file"
+        assert SinkType.SYSLOG.value == "syslog"
+        assert SinkType.HTTP.value == "http"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(SinkType.CONSOLE, str)
+
+
+@pytest.mark.unit
+class TestSyslogFacility:
+    """Tests for SyslogFacility enum."""
+
+    def test_all_members_exist(self) -> None:
+        members = set(SyslogFacility)
+        assert len(members) == 13
+        for name in (
+            "USER",
+            "LOCAL0",
+            "LOCAL1",
+            "LOCAL2",
+            "LOCAL3",
+            "LOCAL4",
+            "LOCAL5",
+            "LOCAL6",
+            "LOCAL7",
+            "DAEMON",
+            "SYSLOG",
+            "AUTH",
+            "KERN",
+        ):
+            assert hasattr(SyslogFacility, name)
+
+    def test_values_are_lowercase_strings(self) -> None:
+        for member in SyslogFacility:
+            assert member.value == member.name.lower()
+
+    def test_is_str_subclass(self) -> None:
+        assert isinstance(SyslogFacility.USER, str)
+
+
+@pytest.mark.unit
+class TestSyslogProtocol:
+    """Tests for SyslogProtocol enum."""
+
+    def test_all_members_exist(self) -> None:
+        members = set(SyslogProtocol)
+        assert len(members) == 2
+        assert SyslogProtocol.TCP in members
+        assert SyslogProtocol.UDP in members
+
+    def test_values_are_strings(self) -> None:
+        assert SyslogProtocol.TCP.value == "tcp"
+        assert SyslogProtocol.UDP.value == "udp"
+
+    def test_is_str_subclass(self) -> None:
+        assert isinstance(SyslogProtocol.TCP, str)

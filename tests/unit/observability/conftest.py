@@ -30,6 +30,9 @@ class SinkConfigFactory(ModelFactory[SinkConfig]):
     file_path = None
     rotation = None
     json_format = False
+    syslog_host = None
+    http_url = None
+    http_headers = ()
 
 
 class LogConfigFactory(ModelFactory[LogConfig]):

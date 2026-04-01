@@ -1,0 +1,194 @@
+"""HTTP batch handler for shipping structured logs via HTTP POST.
+
+Batches log records in a thread-safe queue and POSTs them as JSON
+arrays to a configurable URL using a background daemon thread.
+Uses ``urllib.request`` (stdlib) to avoid external dependencies.
+"""
+
+import json
+import logging
+import queue
+import sys
+import threading
+import urllib.request
+from typing import TYPE_CHECKING, Any
+
+import structlog
+from structlog.stdlib import ProcessorFormatter
+
+if TYPE_CHECKING:
+    from synthorg.observability.config import SinkConfig
+
+
+class HttpBatchHandler(logging.Handler):
+    """Handler that batches log records and POSTs them as JSON arrays.
+
+    A background daemon thread periodically flushes the queue.  Records
+    are also flushed when the batch size is reached or when the handler
+    is closed.
+
+    Args:
+        url: HTTP endpoint to POST log batches to.
+        headers: Extra HTTP headers as ``(name, value)`` pairs.
+        batch_size: Number of records per POST batch.
+        flush_interval: Seconds between automatic flushes.
+        timeout: HTTP request timeout in seconds.
+        max_retries: Number of retries on HTTP failure.
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        url: str,
+        *,
+        headers: tuple[tuple[str, str], ...] = (),
+        batch_size: int = 100,
+        flush_interval: float = 5.0,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+    ) -> None:
+        super().__init__()
+        self._url = url
+        self._extra_headers = dict(headers)
+        self._batch_size = batch_size
+        self._flush_interval = flush_interval
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
+        self._pending_count = 0
+        self._pending_lock = threading.Lock()
+        self._shutdown = threading.Event()
+        self._batch_ready = threading.Event()
+        self._flusher = threading.Thread(
+            target=self._flush_loop,
+            daemon=True,
+            name="log-http-flusher",
+        )
+        self._flusher.start()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Queue a record for batched shipping."""
+        try:
+            self._queue.put_nowait(record)
+            with self._pending_lock:
+                self._pending_count += 1
+                if self._pending_count >= self._batch_size:
+                    self._batch_ready.set()
+        except Exception:
+            self.handleError(record)
+
+    def _flush_loop(self) -> None:
+        """Background loop: flush on interval, batch-ready, or shutdown."""
+        while not self._shutdown.is_set():
+            # Wait for batch_ready or timeout (flush interval)
+            self._batch_ready.wait(timeout=self._flush_interval)
+            self._batch_ready.clear()
+            if self._shutdown.is_set():
+                break
+            self._drain_and_flush()
+
+    def _drain_and_flush(self) -> None:
+        """Drain all queued records and POST as JSON batches."""
+        records: list[logging.LogRecord] = []
+        while True:
+            try:
+                records.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+
+        with self._pending_lock:
+            self._pending_count = 0
+
+        if records:
+            self._post_batch(records)
+
+    def _post_batch(self, records: list[logging.LogRecord]) -> None:
+        """POST a batch of records as a JSON array with retries."""
+        entries: list[str] = []
+        for record in records:
+            try:
+                entries.append(self.format(record))
+            except Exception:
+                self.handleError(record)
+
+        if not entries:
+            return
+
+        body = json.dumps(entries).encode("utf-8")
+        request = urllib.request.Request(  # noqa: S310
+            self._url,
+            data=body,
+            method="POST",
+        )
+        request.add_header("Content-Type", "application/json")
+        for name, value in self._extra_headers.items():
+            request.add_header(name, value)
+
+        last_error: Exception | None = None
+        for attempt in range(1 + self._max_retries):
+            try:
+                urllib.request.urlopen(  # noqa: S310
+                    request,
+                    timeout=self._timeout,
+                )
+            except Exception as exc:
+                last_error = exc
+                if attempt < self._max_retries:
+                    continue
+            else:
+                return
+
+        # All retries exhausted -- drop the batch with a warning
+        if last_error is not None:
+            print(  # noqa: T201
+                f"WARNING: HTTP log shipping failed after "
+                f"{1 + self._max_retries} attempts to {self._url}: "
+                f"{last_error}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def close(self) -> None:
+        """Signal shutdown, flush remaining records, stop thread."""
+        self._shutdown.set()
+        self._batch_ready.set()  # Wake the flusher
+        self._flusher.join(timeout=self._timeout)
+        self._drain_and_flush()
+        super().close()
+
+
+def build_http_handler(
+    sink: SinkConfig,
+    foreign_pre_chain: list[Any],
+) -> HttpBatchHandler:
+    """Build an HttpBatchHandler from an HTTP sink configuration.
+
+    Args:
+        sink: The HTTP sink configuration.
+        foreign_pre_chain: Processor chain for stdlib-originated logs.
+
+    Returns:
+        A configured ``HttpBatchHandler`` with JSON formatting.
+    """
+    handler = HttpBatchHandler(
+        url=sink.http_url or "",
+        headers=sink.http_headers,
+        batch_size=sink.http_batch_size,
+        flush_interval=sink.http_flush_interval_seconds,
+        timeout=sink.http_timeout_seconds,
+        max_retries=sink.http_max_retries,
+    )
+    handler.setLevel(sink.level.value)
+
+    renderer: Any = structlog.processors.JSONRenderer()
+    processors: list[Any] = [
+        ProcessorFormatter.remove_processors_meta,
+        structlog.processors.format_exc_info,
+        renderer,
+    ]
+    formatter = ProcessorFormatter(
+        processors=processors,
+        foreign_pre_chain=foreign_pre_chain,
+    )
+    handler.setFormatter(formatter)
+
+    return handler

@@ -5,9 +5,12 @@ into fully configured :class:`logging.Handler` objects with the
 appropriate structlog :class:`~structlog.stdlib.ProcessorFormatter`.
 """
 
+import contextlib
+import gzip
 import logging
 import logging.handlers
 import sys
+from pathlib import Path as StdPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +39,88 @@ class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
             self.flush()
         except Exception:  # mirrors StreamHandler.emit
             self.handleError(record)
+
+
+class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
+    """RotatingFileHandler that gzips backup files after rotation.
+
+    When ``compress`` is ``True``, the rotation chain operates on
+    ``.gz`` files directly: existing ``.N.gz`` backups are shifted,
+    then the freshly rotated ``.1`` file is compressed in place.
+
+    Compression errors are handled gracefully -- the uncompressed
+    backup is retained on failure.
+    """
+
+    def __init__(
+        self,
+        *,
+        compress: bool = True,
+        filename: str,
+        maxBytes: int = 0,  # noqa: N803
+        backupCount: int = 0,  # noqa: N803
+    ) -> None:
+        self._compress = compress
+        super().__init__(
+            filename=filename,
+            maxBytes=maxBytes,
+            backupCount=backupCount,
+        )
+
+    def doRollover(self) -> None:  # noqa: N802
+        """Rotate with gzip-aware backup chain."""
+        if not self._compress:
+            super().doRollover()
+            return
+
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        if self.backupCount > 0:
+            # Shift existing .gz backups (highest index first)
+            for i in range(self.backupCount - 1, 0, -1):
+                src = StdPath(f"{self.baseFilename}.{i}.gz")
+                dst = StdPath(f"{self.baseFilename}.{i + 1}.gz")
+                if src.exists():
+                    if dst.exists():
+                        dst.unlink()
+                    src.rename(dst)
+
+            # Remove the oldest if it exceeds backupCount
+            oldest = StdPath(f"{self.baseFilename}.{self.backupCount}.gz")
+            if oldest.exists():
+                oldest.unlink()
+
+            # Rotate current log to .1
+            dfn = self.rotation_filename(
+                f"{self.baseFilename}.1",
+            )
+            dfn_path = StdPath(dfn)
+            if dfn_path.exists():
+                dfn_path.unlink()
+            self.rotate(self.baseFilename, dfn)
+
+            # Compress the freshly rotated .1 file
+            self._compress_file(dfn)
+
+        if not self.delay:
+            self.stream = self._open()
+
+    def _compress_file(self, path: str) -> None:
+        """Gzip a single file in place, removing the original."""
+        src = StdPath(path)
+        gz = StdPath(f"{path}.gz")
+        try:
+            data = src.read_bytes()
+            with gzip.open(gz, "wb") as f:
+                f.write(data)
+            src.unlink()
+        except OSError:
+            # Compression failed -- keep the uncompressed file
+            with contextlib.suppress(OSError):
+                if gz.exists():
+                    gz.unlink()
 
 
 class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
@@ -160,6 +245,13 @@ def _build_file_handler(
 
     try:
         if rotation.strategy == RotationStrategy.BUILTIN:
+            if rotation.compress_rotated:
+                return _CompressingRotatingFileHandler(
+                    filename=str(file_path),
+                    maxBytes=rotation.max_bytes,
+                    backupCount=rotation.backup_count,
+                    compress=True,
+                )
             return _FlushingRotatingFileHandler(
                 filename=str(file_path),
                 maxBytes=rotation.max_bytes,
@@ -211,7 +303,8 @@ def build_handler(
 
     For ``CONSOLE`` sinks a :class:`logging.StreamHandler` writing to
     ``stderr`` is created.  For ``FILE`` sinks see
-    :func:`_build_file_handler`.
+    :func:`_build_file_handler`.  For ``SYSLOG`` and ``HTTP`` sinks,
+    dedicated handler builders are used.
 
     Args:
         sink: The sink configuration describing the handler to build.
@@ -226,10 +319,24 @@ def build_handler(
     """
     effective_routing = routing if routing is not None else SINK_ROUTING
 
-    if sink.sink_type == SinkType.CONSOLE:
-        handler: logging.Handler = logging.StreamHandler(sys.stderr)
-    else:
-        handler = _build_file_handler(sink, log_dir)
+    handler: logging.Handler
+    match sink.sink_type:
+        case SinkType.CONSOLE:
+            handler = logging.StreamHandler(sys.stderr)
+        case SinkType.FILE:
+            handler = _build_file_handler(sink, log_dir)
+        case SinkType.SYSLOG:
+            from synthorg.observability.syslog_handler import (  # noqa: PLC0415
+                build_syslog_handler,
+            )
+
+            return build_syslog_handler(sink, foreign_pre_chain)
+        case SinkType.HTTP:
+            from synthorg.observability.http_handler import (  # noqa: PLC0415
+                build_http_handler,
+            )
+
+            return build_http_handler(sink, foreign_pre_chain)
 
     handler.setLevel(sink.level.value)
     handler.setFormatter(_build_formatter(sink, foreign_pre_chain))

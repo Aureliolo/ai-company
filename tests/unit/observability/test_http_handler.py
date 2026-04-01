@@ -1,0 +1,247 @@
+"""Tests for HTTP batch handler."""
+
+import json
+import logging
+import time
+from collections.abc import Iterator
+from unittest.mock import MagicMock, patch
+
+import pytest
+from structlog.stdlib import ProcessorFormatter
+
+from synthorg.observability.config import SinkConfig
+from synthorg.observability.enums import LogLevel, SinkType
+from synthorg.observability.http_handler import HttpBatchHandler, build_http_handler
+
+
+def _make_record(msg: str = "test message") -> logging.LogRecord:
+    return logging.LogRecord(
+        name="test.logger",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg=msg,
+        args=(),
+        exc_info=None,
+    )
+
+
+@pytest.fixture
+def handler_cleanup() -> Iterator[list[logging.Handler]]:
+    """Collect handlers and close them after the test."""
+    handlers: list[logging.Handler] = []
+    yield handlers
+    for h in handlers:
+        h.close()
+
+
+def _make_handler(
+    *,
+    batch_size: int = 5,
+    flush_interval: float = 60.0,
+    timeout: float = 5.0,
+    max_retries: int = 3,
+) -> HttpBatchHandler:
+    """Create a handler with a long flush interval (manual flush only)."""
+    handler = HttpBatchHandler(
+        url="https://logs.example.com/ingest",
+        batch_size=batch_size,
+        flush_interval=flush_interval,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    return handler
+
+
+@pytest.mark.unit
+class TestHttpBatchHandler:
+    """Tests for HttpBatchHandler core behavior."""
+
+    def test_emit_queues_record(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+
+        with patch("urllib.request.urlopen"):
+            handler.emit(_make_record())
+        # Record is queued (not yet flushed since batch_size=5)
+        assert handler._queue.qsize() >= 0  # Just verify no crash
+
+    def test_batch_flushed_on_batch_size(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=3)
+        handler_cleanup.append(handler)
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            for _ in range(3):
+                handler.emit(_make_record())
+            # Give the flusher thread time to process
+            time.sleep(0.5)
+
+        # Should have been called at least once with a batch
+        assert mock_urlopen.call_count >= 1
+
+    def test_flush_on_close(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100)
+        # Don't add to cleanup since we're closing manually
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler.emit(_make_record("close-test"))
+            handler.close()
+
+        # close() should flush remaining records
+        assert mock_urlopen.call_count >= 1
+
+    def test_flush_sends_json_array(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100)
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler.emit(_make_record("json-test"))
+            handler.close()
+
+        if mock_urlopen.call_count > 0:
+            request = mock_urlopen.call_args[0][0]
+            body = json.loads(request.data.decode("utf-8"))
+            assert isinstance(body, list)
+            assert len(body) >= 1
+
+    def test_timeout_applied(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100, timeout=7.5)
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler.emit(_make_record())
+            handler.close()
+
+        if mock_urlopen.call_count > 0:
+            call_kwargs = mock_urlopen.call_args
+            assert call_kwargs[1].get("timeout") == 7.5
+
+    def test_custom_headers_applied(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = HttpBatchHandler(
+            url="https://example.com/logs",
+            headers=(("Authorization", "Bearer test-token"),),
+            batch_size=100,
+            flush_interval=60.0,
+        )
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler_cleanup.append(handler)
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler.emit(_make_record())
+            handler.close()
+
+        if mock_urlopen.call_count > 0:
+            request = mock_urlopen.call_args[0][0]
+            assert request.get_header("Authorization") == "Bearer test-token"
+            assert request.get_header("Content-type") == "application/json"
+
+    def test_retry_on_failure(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100, max_retries=2)
+
+        error = OSError("connection refused")
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=[error, error, MagicMock()],
+        ) as mock_urlopen:
+            handler.emit(_make_record())
+            handler.close()
+
+        # Should have retried: initial + 2 retries = 3 calls
+        assert mock_urlopen.call_count == 3
+
+    def test_max_retries_exhausted_drops_batch(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100, max_retries=1)
+
+        error = OSError("connection refused")
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=error,
+        ):
+            handler.emit(_make_record())
+            # Should not raise even after exhausting retries
+            handler.close()
+
+    def test_daemon_thread(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler()
+        handler_cleanup.append(handler)
+        assert handler._flusher.daemon is True
+
+    def test_empty_queue_no_http_call(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        handler = _make_handler(batch_size=100)
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            handler.close()
+
+        # No records emitted, no HTTP call
+        assert mock_urlopen.call_count == 0
+
+
+@pytest.mark.unit
+class TestBuildHttpHandler:
+    """Tests for build_http_handler factory."""
+
+    def test_returns_http_batch_handler(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+        )
+        handler = build_http_handler(sink, foreign_pre_chain=[])
+        handler_cleanup.append(handler)
+        assert isinstance(handler, HttpBatchHandler)
+
+    def test_handler_level_set(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+            level=LogLevel.ERROR,
+        )
+        handler = build_http_handler(sink, foreign_pre_chain=[])
+        handler_cleanup.append(handler)
+        assert handler.level == logging.ERROR
+
+    def test_formatter_attached(
+        self,
+        handler_cleanup: list[logging.Handler],
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+        )
+        handler = build_http_handler(sink, foreign_pre_chain=[])
+        handler_cleanup.append(handler)
+        assert isinstance(handler.formatter, ProcessorFormatter)

@@ -9,7 +9,13 @@ from synthorg.observability.config import (
     RotationConfig,
     SinkConfig,
 )
-from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
+from synthorg.observability.enums import (
+    LogLevel,
+    RotationStrategy,
+    SinkType,
+    SyslogFacility,
+    SyslogProtocol,
+)
 
 from .conftest import LogConfigFactory, RotationConfigFactory, SinkConfigFactory
 
@@ -61,6 +67,14 @@ class TestRotationConfig:
         cfg = RotationConfigFactory.build()
         assert isinstance(cfg, RotationConfig)
 
+    def test_compress_rotated_defaults_false(self) -> None:
+        cfg = RotationConfig()
+        assert cfg.compress_rotated is False
+
+    def test_compress_rotated_true(self) -> None:
+        cfg = RotationConfig(compress_rotated=True)
+        assert cfg.compress_rotated is True
+
     def test_json_roundtrip(self) -> None:
         cfg = RotationConfig(
             strategy=RotationStrategy.EXTERNAL,
@@ -69,6 +83,11 @@ class TestRotationConfig:
         )
         restored = RotationConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg
+
+    def test_json_roundtrip_with_compression(self) -> None:
+        cfg = RotationConfig(compress_rotated=True)
+        restored = RotationConfig.model_validate_json(cfg.model_dump_json())
+        assert restored.compress_rotated is True
 
 
 # ── SinkConfig ─────────────────────────────────────────────────────
@@ -164,6 +183,350 @@ class TestSinkConfig:
         )
         restored = SinkConfig.model_validate_json(cfg.model_dump_json())
         assert restored == cfg
+
+
+# ── SinkConfig (Syslog) ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSinkConfigSyslog:
+    """Tests for SYSLOG sink configuration validation."""
+
+    def test_valid_syslog_sink(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="loghost.example.com",
+        )
+        assert cfg.syslog_host == "loghost.example.com"
+        assert cfg.syslog_port == 514
+        assert cfg.syslog_facility == SyslogFacility.USER
+        assert cfg.syslog_protocol == SyslogProtocol.UDP
+
+    def test_custom_port_and_facility(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="10.0.0.1",
+            syslog_port=1514,
+            syslog_facility=SyslogFacility.LOCAL3,
+            syslog_protocol=SyslogProtocol.TCP,
+        )
+        assert cfg.syslog_port == 1514
+        assert cfg.syslog_facility == SyslogFacility.LOCAL3
+        assert cfg.syslog_protocol == SyslogProtocol.TCP
+
+    def test_syslog_requires_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host is required"):
+            SinkConfig(sink_type=SinkType.SYSLOG)
+
+    def test_syslog_rejects_blank_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must not be blank"):
+            SinkConfig(sink_type=SinkType.SYSLOG, syslog_host="   ")
+
+    def test_syslog_rejects_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be None for SYSLOG"):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                file_path="nope.log",
+            )
+
+    def test_syslog_rejects_rotation(self) -> None:
+        with pytest.raises(ValidationError, match="rotation must be None for SYSLOG"):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                rotation=RotationConfig(),
+            )
+
+    def test_syslog_rejects_http_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must be None for SYSLOG"):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                http_url="http://example.com",
+            )
+
+    def test_syslog_port_bounds(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                syslog_port=0,
+            )
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.SYSLOG,
+                syslog_host="localhost",
+                syslog_port=65536,
+            )
+
+    def test_custom_level(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="localhost",
+            level=LogLevel.ERROR,
+        )
+        assert cfg.level == LogLevel.ERROR
+
+    def test_frozen(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="localhost",
+        )
+        with pytest.raises(ValidationError):
+            cfg.syslog_host = "other"  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.SYSLOG,
+            syslog_host="syslog.local",
+            syslog_port=1514,
+            syslog_facility=SyslogFacility.LOCAL7,
+            syslog_protocol=SyslogProtocol.TCP,
+            level=LogLevel.WARNING,
+        )
+        restored = SinkConfig.model_validate_json(cfg.model_dump_json())
+        assert restored == cfg
+
+
+# ── SinkConfig (HTTP) ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSinkConfigHttp:
+    """Tests for HTTP sink configuration validation."""
+
+    def test_valid_http_sink(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+        )
+        assert cfg.http_url == "https://logs.example.com/ingest"
+        assert cfg.http_headers == ()
+        assert cfg.http_batch_size == 100
+        assert cfg.http_flush_interval_seconds == 5.0
+        assert cfg.http_timeout_seconds == 10.0
+        assert cfg.http_max_retries == 3
+
+    def test_custom_http_settings(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="http://loki:3100/loki/api/v1/push",
+            http_headers=(("Authorization", "Bearer test-token"),),
+            http_batch_size=50,
+            http_flush_interval_seconds=2.0,
+            http_timeout_seconds=30.0,
+            http_max_retries=5,
+        )
+        assert cfg.http_batch_size == 50
+        assert cfg.http_flush_interval_seconds == 2.0
+        assert cfg.http_timeout_seconds == 30.0
+        assert cfg.http_max_retries == 5
+        assert len(cfg.http_headers) == 1
+
+    def test_http_requires_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url is required"):
+            SinkConfig(sink_type=SinkType.HTTP)
+
+    def test_http_rejects_blank_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must not be blank"):
+            SinkConfig(sink_type=SinkType.HTTP, http_url="   ")
+
+    def test_http_rejects_non_http_scheme(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must start with"):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="ftp://example.com/logs",
+            )
+
+    def test_http_rejects_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be None for HTTP"):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                file_path="nope.log",
+            )
+
+    def test_http_rejects_rotation(self) -> None:
+        with pytest.raises(ValidationError, match="rotation must be None for HTTP"):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                rotation=RotationConfig(),
+            )
+
+    def test_http_rejects_syslog_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must be None for HTTP"):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                syslog_host="localhost",
+            )
+
+    def test_http_batch_size_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                http_batch_size=0,
+            )
+
+    def test_http_flush_interval_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                http_flush_interval_seconds=0.0,
+            )
+
+    def test_http_timeout_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            SinkConfig(
+                sink_type=SinkType.HTTP,
+                http_url="https://example.com",
+                http_timeout_seconds=0.0,
+            )
+
+    def test_http_max_retries_zero_accepted(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://example.com",
+            http_max_retries=0,
+        )
+        assert cfg.http_max_retries == 0
+
+    def test_frozen(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://example.com",
+        )
+        with pytest.raises(ValidationError):
+            cfg.http_url = "other"  # type: ignore[misc]
+
+    def test_json_roundtrip(self) -> None:
+        cfg = SinkConfig(
+            sink_type=SinkType.HTTP,
+            http_url="https://logs.example.com/ingest",
+            http_headers=(("X-Source", "synthorg"),),
+            http_batch_size=200,
+            level=LogLevel.ERROR,
+        )
+        restored = SinkConfig.model_validate_json(cfg.model_dump_json())
+        assert restored == cfg
+
+
+# ── SinkConfig (Cross-type rejection) ────────────────────────────
+
+
+@pytest.mark.unit
+class TestSinkConfigCrossTypeRejection:
+    """Ensure each sink type rejects fields belonging to other types."""
+
+    def test_console_rejects_syslog_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                syslog_host="localhost",
+            )
+
+    def test_console_rejects_http_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                http_url="https://example.com",
+            )
+
+    def test_file_rejects_syslog_host(self) -> None:
+        with pytest.raises(ValidationError, match="syslog_host must be None"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="app.log",
+                syslog_host="localhost",
+            )
+
+    def test_file_rejects_http_url(self) -> None:
+        with pytest.raises(ValidationError, match="http_url must be None"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="app.log",
+                http_url="https://example.com",
+            )
+
+
+# ── LogConfig (endpoint uniqueness) ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestLogConfigEndpointUniqueness:
+    """Ensure LogConfig rejects duplicate syslog/HTTP endpoints."""
+
+    def test_duplicate_syslog_endpoints_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate syslog endpoints"):
+            LogConfig(
+                sinks=(
+                    _console_sink(),
+                    SinkConfig(
+                        sink_type=SinkType.SYSLOG,
+                        syslog_host="loghost",
+                        syslog_port=514,
+                    ),
+                    SinkConfig(
+                        sink_type=SinkType.SYSLOG,
+                        syslog_host="loghost",
+                        syslog_port=514,
+                    ),
+                ),
+            )
+
+    def test_different_syslog_ports_accepted(self) -> None:
+        cfg = LogConfig(
+            sinks=(
+                _console_sink(),
+                SinkConfig(
+                    sink_type=SinkType.SYSLOG,
+                    syslog_host="loghost",
+                    syslog_port=514,
+                ),
+                SinkConfig(
+                    sink_type=SinkType.SYSLOG,
+                    syslog_host="loghost",
+                    syslog_port=1514,
+                ),
+            ),
+        )
+        assert len(cfg.sinks) == 3
+
+    def test_duplicate_http_urls_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate HTTP URLs"):
+            LogConfig(
+                sinks=(
+                    _console_sink(),
+                    SinkConfig(
+                        sink_type=SinkType.HTTP,
+                        http_url="https://example.com/logs",
+                    ),
+                    SinkConfig(
+                        sink_type=SinkType.HTTP,
+                        http_url="https://example.com/logs",
+                    ),
+                ),
+            )
+
+    def test_different_http_urls_accepted(self) -> None:
+        cfg = LogConfig(
+            sinks=(
+                _console_sink(),
+                SinkConfig(
+                    sink_type=SinkType.HTTP,
+                    http_url="https://loki.example.com/push",
+                ),
+                SinkConfig(
+                    sink_type=SinkType.HTTP,
+                    http_url="https://elastic.example.com/push",
+                ),
+            ),
+        )
+        assert len(cfg.sinks) == 3
 
 
 # ── LogConfig ──────────────────────────────────────────────────────

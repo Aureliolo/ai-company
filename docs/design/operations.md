@@ -1310,6 +1310,18 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 | `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |
 | `backup.log` | File | INFO | JSON | `synthorg.backup.*` | Backup/restore lifecycle |
 
+In addition to the 11 default sinks, two shipping sink types are available for centralized
+log aggregation:
+
+| Sink Type | Transport | Format | Description |
+|-----------|-----------|--------|-------------|
+| Syslog | UDP or TCP to a configurable endpoint | JSON | Ship structured logs to rsyslog, syslog-ng, or Graylog |
+| HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to Loki, Elasticsearch, Datadog, or any JSON-accepting endpoint |
+
+Shipping sinks are catch-all (no logger name routing) and are configured at runtime via the
+`custom_sinks` setting or YAML. See the [Centralized Logging](../guides/centralized-logging.md)
+guide for configuration examples and deployment patterns.
+
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
 
@@ -1324,10 +1336,15 @@ processor because `ConsoleRenderer` handles exception rendering natively.
 - **Local dev**: `logs/` relative to working directory (default)
 - **Override**: `SYNTHORG_LOG_DIR` env var
 
-### Rotation
+### Rotation and Compression
 
 File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alternative:
 `WatchedFileHandler` for external logrotate (`rotation.strategy: external` in config).
+
+Rotated backup files can be automatically gzip-compressed by setting `compress_rotated: true`
+in the rotation config. Compressed backups are stored as `.log.N.gz` instead of `.log.N`,
+typically achieving 5--10x size reduction for structured JSON logs. Compression is off by
+default for backward compatibility.
 
 ### Sensitive Field Redaction
 

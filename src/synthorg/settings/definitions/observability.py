@@ -58,10 +58,15 @@ _r.register(
         type=SettingType.JSON,
         default="[]",
         description=(
-            "Additional file sinks as JSON array. Each entry: "
-            "file_path (required), level (string, default info), "
-            "json_format (bool, default true), rotation (object), "
-            "routing_prefixes (array of logger name prefix strings)"
+            "Additional sinks as JSON array. Each entry may specify "
+            "sink_type (file, syslog, http; default file). "
+            "File: file_path (required), level, json_format, rotation, "
+            "routing_prefixes. "
+            "Syslog: syslog_host (required), syslog_port, "
+            "syslog_facility, syslog_protocol, level. "
+            "HTTP: http_url (required), http_headers, http_batch_size, "
+            "http_flush_interval_seconds, http_timeout_seconds, "
+            "http_max_retries, level"
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,
