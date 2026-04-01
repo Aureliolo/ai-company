@@ -363,7 +363,7 @@ class LogConfig(BaseModel):
     def _validate_no_duplicate_syslog_endpoints(self) -> Self:
         """Ensure no duplicate syslog ``(host, port)`` pairs."""
         endpoints = [
-            (s.syslog_host, s.syslog_port)
+            (s.syslog_host.strip() if s.syslog_host else "", s.syslog_port)
             for s in self.sinks
             if s.sink_type == SinkType.SYSLOG
         ]

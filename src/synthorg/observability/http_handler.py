@@ -122,6 +122,8 @@ class HttpBatchHandler(logging.Handler):
                 entries.append(self.format(record))
             except Exception:
                 self.handleError(record)
+                with self._pending_lock:
+                    self._dropped_count += 1
 
         if not entries:
             return
