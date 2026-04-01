@@ -272,52 +272,11 @@ class HybridStrategy:
             msg = f"Unknown config keys: {sorted(unknown)}"
             raise ValueError(msg)
 
-        duration = config.get(_KEY_DURATION_DAYS)
-        if duration is not None:
-            if not isinstance(duration, int):
-                msg = (
-                    f"{_KEY_DURATION_DAYS} must be a positive integer, got {duration!r}"
-                )
-                raise ValueError(msg)
-            if duration < _MIN_DURATION_DAYS or duration > _MAX_DURATION_DAYS:
-                msg = (
-                    f"{_KEY_DURATION_DAYS} must be between "
-                    f"{_MIN_DURATION_DAYS} and {_MAX_DURATION_DAYS}, "
-                    f"got {duration!r}"
-                )
-                raise ValueError(msg)
-
-        trigger = config.get(_KEY_TRIGGER)
-        if trigger is not None and trigger not in _VALID_TRIGGERS:
-            msg = (
-                f"Invalid trigger {trigger!r}. "
-                f"Valid triggers: {sorted(_VALID_TRIGGERS)}"
-            )
-            raise ValueError(msg)
-
-        every_n = config.get(_KEY_EVERY_N)
-        if every_n is not None and (not isinstance(every_n, int) or every_n < 1):
-            msg = f"{_KEY_EVERY_N} must be a positive integer, got {every_n!r}"
-            raise ValueError(msg)
-
-        pct = config.get(_KEY_SPRINT_PERCENTAGE)
-        if pct is not None and (
-            not isinstance(pct, int | float) or pct <= 0 or pct > _MAX_SPRINT_PCT
-        ):
-            msg = (
-                f"{_KEY_SPRINT_PERCENTAGE} must be between "
-                f"0 (exclusive) and {_MAX_SPRINT_PCT} (inclusive),"
-                f" got {pct!r}"
-            )
-            raise ValueError(msg)
-
-        freq = config.get(_KEY_FREQUENCY)
-        if freq is not None and freq not in _VALID_FREQUENCIES:
-            msg = (
-                f"Invalid frequency {freq!r}. "
-                f"Valid frequencies: {sorted(_VALID_FREQUENCIES)}"
-            )
-            raise ValueError(msg)
+        _validate_duration_days(config.get(_KEY_DURATION_DAYS))
+        _validate_trigger(config.get(_KEY_TRIGGER))
+        _validate_every_n(config.get(_KEY_EVERY_N))
+        _validate_sprint_percentage(config.get(_KEY_SPRINT_PERCENTAGE))
+        _validate_frequency(config.get(_KEY_FREQUENCY))
 
     # -- Internal helpers -----------------------------------------------
 
@@ -386,6 +345,59 @@ class HybridStrategy:
         return config.duration_days
 
 
+def _validate_duration_days(value: object) -> None:
+    """Validate optional duration_days config value."""
+    if value is None:
+        return
+    if not isinstance(value, int):
+        msg = f"{_KEY_DURATION_DAYS} must be a positive integer, got {value!r}"
+        raise ValueError(msg)  # noqa: TRY004 -- ValueError for consistency
+    if value < _MIN_DURATION_DAYS or value > _MAX_DURATION_DAYS:
+        msg = (
+            f"{_KEY_DURATION_DAYS} must be between "
+            f"{_MIN_DURATION_DAYS} and {_MAX_DURATION_DAYS}, "
+            f"got {value!r}"
+        )
+        raise ValueError(msg)
+
+
+def _validate_trigger(value: object) -> None:
+    """Validate optional trigger config value."""
+    if value is not None and value not in _VALID_TRIGGERS:
+        msg = f"Invalid trigger {value!r}. Valid triggers: {sorted(_VALID_TRIGGERS)}"
+        raise ValueError(msg)
+
+
+def _validate_every_n(value: object) -> None:
+    """Validate optional every_n_completions config value."""
+    if value is not None and (not isinstance(value, int) or value < 1):
+        msg = f"{_KEY_EVERY_N} must be a positive integer, got {value!r}"
+        raise ValueError(msg)
+
+
+def _validate_sprint_percentage(value: object) -> None:
+    """Validate optional sprint_percentage config value."""
+    if value is not None and (
+        not isinstance(value, int | float) or value <= 0 or value > _MAX_SPRINT_PCT
+    ):
+        msg = (
+            f"{_KEY_SPRINT_PERCENTAGE} must be between "
+            f"0 (exclusive) and {_MAX_SPRINT_PCT} (inclusive),"
+            f" got {value!r}"
+        )
+        raise ValueError(msg)
+
+
+def _validate_frequency(value: object) -> None:
+    """Validate optional frequency config value."""
+    if value is not None and value not in _VALID_FREQUENCIES:
+        msg = (
+            f"Invalid frequency {value!r}. "
+            f"Valid frequencies: {sorted(_VALID_FREQUENCIES)}"
+        )
+        raise ValueError(msg)
+
+
 def _evaluate_task_trigger(
     trigger: str,
     config: Mapping[str, Any],
@@ -415,4 +427,10 @@ def _evaluate_task_trigger(
         )
         return has_tasks and pct >= (threshold / _MAX_SPRINT_PCT)
 
+    logger.warning(
+        SPRINT_CEREMONY_SKIPPED,
+        trigger=trigger,
+        reason="unrecognized_trigger",
+        valid_triggers=sorted(_VALID_TRIGGERS),
+    )
     return False

@@ -446,8 +446,8 @@ class VelocityCalculator(Protocol):
 | Calculator | Primary unit | Strategy default for |
 |------------|-------------|---------------------|
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
-| `CalendarVelocityCalculator` (planned) | `pts/day` | calendar |
-| `MultiDimensionalVelocityCalculator` (planned) | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
+| `CalendarVelocityCalculator` | `pts/day` | calendar |
+| `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
 | `BudgetVelocityCalculator` (planned) | `pts/EUR` | budget_driven |
 | `PointsPerSprintVelocityCalculator` (planned) | `pts/sprint` | external_trigger |
 
@@ -675,12 +675,18 @@ Event constants in `synthorg.observability.events.workflow`:
 - Observability event constants
 - This design page
 
+### Shipped in #969 + #970 (Calendar + Hybrid Strategies)
+
+- `CalendarStrategy` -- time-based ceremony firing using `MeetingFrequency` intervals
+- `CalendarVelocityCalculator` -- `pts/day` with duration-weighted rolling averages
+- `HybridStrategy` -- first-wins between calendar (floor) and task-driven (ceiling) triggers
+- `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
+- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION`, `VELOCITY_MULTI_NO_TASK_COUNT`)
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.5.7 | #969 | CalendarStrategy + CalendarVelocityCalculator |
-| v0.5.7 | #970 | HybridStrategy + MultiDimensionalVelocityCalculator |
 | v0.5.8 | #971 | EventDrivenStrategy + PointsPerSprintVelocityCalculator |
 | v0.5.8 | #972 | BudgetDrivenStrategy + BudgetVelocityCalculator |
 | v0.5.9 | #973 | ThroughputAdaptiveStrategy |

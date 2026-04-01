@@ -98,34 +98,16 @@ class MultiDimensionalVelocityCalculator:
             )
         recent = records[-window:]
         n = len(recent)
-
-        # Primary: average pts/sprint.
         total_pts = sum(r.story_points_completed for r in recent)
-        avg_pts_sprint = total_pts / n
-
-        # Secondary: weighted pts/day.
         total_days = sum(r.duration_days for r in recent)
-        pts_per_day = total_pts / total_days if total_days > 0 else 0.0
-
-        # Secondary: weighted pts/task (skip records without task count).
-        task_pts = 0.0
-        task_total = 0
-        for r in recent:
-            if r.task_completion_count is not None and r.task_completion_count > 0:
-                task_pts += r.story_points_completed
-                task_total += r.task_completion_count
-        pts_per_task = task_pts / task_total if task_total > 0 else 0.0
-
-        # Secondary: average completion ratio.
-        avg_ratio = sum(r.completion_ratio for r in recent) / n
 
         return VelocityMetrics(
-            primary_value=avg_pts_sprint,
+            primary_value=total_pts / n,
             primary_unit=_UNIT,
             secondary={
-                "pts_per_task": pts_per_task,
-                "pts_per_day": pts_per_day,
-                "completion_ratio": avg_ratio,
+                "pts_per_task": _weighted_pts_per_task(recent),
+                "pts_per_day": (total_pts / total_days if total_days > 0 else 0.0),
+                "completion_ratio": (sum(r.completion_ratio for r in recent) / n),
                 "sprints_averaged": float(n),
             },
         )
@@ -139,3 +121,17 @@ class MultiDimensionalVelocityCalculator:
     def primary_unit(self) -> str:
         """Return ``pts/sprint``."""
         return _UNIT
+
+
+def _weighted_pts_per_task(
+    records: Sequence[VelocityRecord],
+) -> float:
+    """Compute weighted pts/task, skipping records without counts."""
+    task_pts = 0.0
+    task_total = 0
+    for r in records:
+        count = r.task_completion_count
+        if count is not None and count > 0:
+            task_pts += r.story_points_completed
+            task_total += count
+    return task_pts / task_total if task_total > 0 else 0.0
