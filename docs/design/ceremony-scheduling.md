@@ -621,7 +621,7 @@ When the ceremony strategy changes between sprints:
 
 ## Template Defaults
 
-Each builtin template ships with a default ceremony strategy that matches
+Each built-in template ships with a default ceremony strategy that matches
 its persona. Users can override via settings.
 
 | Template | Default strategy | Rationale |

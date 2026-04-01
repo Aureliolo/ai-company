@@ -68,7 +68,11 @@ class CeremonyEvalContext:
 
     def __post_init__(self) -> None:
         """Validate field constraints and normalize collections."""
-        # Defensively copy incoming tuples to enforce immutability.
+        self._normalize_collections()
+        self._validate_fields()
+
+    def _normalize_collections(self) -> None:
+        """Defensively copy incoming tuples to enforce immutability."""
         object.__setattr__(
             self,
             "velocity_history",
@@ -80,7 +84,8 @@ class CeremonyEvalContext:
             tuple(self.external_events),
         )
 
-        # Validate all fields.
+    def _validate_fields(self) -> None:
+        """Validate all field constraints."""
         self._check_non_negative_int(
             "completions_since_last_trigger",
             self.completions_since_last_trigger,
