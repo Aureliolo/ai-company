@@ -54,7 +54,7 @@ export default function OrgChartMini({ tick }: Props) {
 
         {/* Communication edge */}
         <line x1="150" y1="220" x2="260" y2="220" stroke="#2dd4bf" strokeWidth="1.5" strokeOpacity="0.4" strokeDasharray="4 3">
-          <animate attributeName="strokeDashoffset" from="0" to="-14" dur="2s" repeatCount="indefinite" />
+          <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="2s" repeatCount="indefinite" />
         </line>
 
         {/* Agent nodes */}
