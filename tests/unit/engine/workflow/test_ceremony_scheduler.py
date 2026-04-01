@@ -66,7 +66,7 @@ def _ceremony_with_trigger(
     every_n: int = 5,
     sprint_percentage: float | None = None,
 ) -> SprintCeremonyConfig:
-    config: dict = {"trigger": trigger}
+    config: dict[str, Any] = {"trigger": trigger}
     if trigger == "every_n_completions":
         config["every_n_completions"] = every_n
     if sprint_percentage is not None:
