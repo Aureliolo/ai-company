@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    KANBAN_CONFIG_VALIDATION_FAILED,
     KANBAN_WIP_LIMIT_EXCEEDED,
     KANBAN_WIP_LIMIT_REACHED,
 )
@@ -100,6 +101,11 @@ class KanbanConfig(BaseModel):
                 c.value for c, count in Counter(columns).items() if count > 1
             )
             msg = f"Duplicate WIP limit columns: {dupes}"
+            logger.warning(
+                KANBAN_CONFIG_VALIDATION_FAILED,
+                reason="duplicate_wip_limit_columns",
+                columns=dupes,
+            )
             raise ValueError(msg)
         return self
 
@@ -111,6 +117,12 @@ class KanbanConfig(BaseModel):
                 msg = (
                     "WIP limits on the DONE column are not allowed "
                     "-- completed work has no capacity constraint"
+                )
+                logger.warning(
+                    KANBAN_CONFIG_VALIDATION_FAILED,
+                    reason="done_column_wip_limit",
+                    column=wl.column.value,
+                    limit=wl.limit,
                 )
                 raise ValueError(msg)
         return self

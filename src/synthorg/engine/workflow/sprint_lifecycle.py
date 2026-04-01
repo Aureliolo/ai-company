@@ -67,6 +67,8 @@ if _missing:
     )
     raise ValueError(_msg)
 
+del _missing
+
 
 def validate_sprint_transition(
     current: SprintStatus,
@@ -146,6 +148,7 @@ class Sprint(BaseModel):
     )
     sprint_number: int = Field(
         ge=1,
+        le=100_000,
         description="Sequential sprint number",
     )
     duration_days: int = Field(
@@ -173,11 +176,13 @@ class Sprint(BaseModel):
     story_points_committed: float = Field(
         default=0.0,
         ge=0.0,
+        le=100_000.0,
         description="Total story points planned",
     )
     story_points_completed: float = Field(
         default=0.0,
         ge=0.0,
+        le=100_000.0,
         description="Story points delivered",
     )
 
@@ -264,25 +269,44 @@ class Sprint(BaseModel):
             raise ValueError(msg)
         return self
 
+    _TRANSITION_ALLOWED_OVERRIDES: frozenset[str] = frozenset(
+        {"start_date", "end_date"},
+    )
+
     def with_transition(self, target: SprintStatus, **overrides: Any) -> Sprint:
         """Create a new Sprint with a validated lifecycle transition.
 
+        Only ``start_date`` and ``end_date`` may be passed as overrides;
+        all other fields are carried forward from the current sprint.
+
         Args:
             target: The desired target status.
-            **overrides: Additional field overrides.
+            **overrides: Additional field overrides (start_date, end_date).
 
         Returns:
             A new Sprint with the target status.
 
         Raises:
-            ValueError: If the transition is invalid or overrides
-                contain ``status``.
+            ValueError: If the transition is invalid, overrides contain
+                ``status``, or overrides contain disallowed fields.
         """
         if "status" in overrides:
             msg = "status override is not allowed; pass transition target explicitly"
+            logger.warning(
+                SPRINT_LIFECYCLE_TRANSITION_INVALID,
+                sprint_id=self.id,
+                reason="status_in_overrides",
+            )
+            raise ValueError(msg)
+        disallowed = set(overrides) - self._TRANSITION_ALLOWED_OVERRIDES
+        if disallowed:
+            msg = f"with_transition does not allow overriding: {sorted(disallowed)}"
+            logger.warning(
+                SPRINT_LIFECYCLE_TRANSITION_INVALID,
+                sprint_id=self.id,
+                reason="disallowed_overrides",
+                fields=sorted(disallowed),
+            )
             raise ValueError(msg)
         validate_sprint_transition(self.status, target)
-        payload = self.model_dump()
-        payload.update(overrides)
-        payload["status"] = target
-        return Sprint.model_validate(payload)
+        return self.model_copy(update={**overrides, "status": target})

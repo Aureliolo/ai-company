@@ -97,6 +97,8 @@ for _status, _column in STATUS_TO_COLUMN.items():
         )
         raise ValueError(_msg)
 
+del _missing_columns, _missing_statuses, _status, _column
+
 
 # -- Column transitions -----------------------------------------------------
 
@@ -130,6 +132,8 @@ if _missing_col_transitions:
     )
     raise ValueError(_msg)
 
+del _missing_col_transitions
+
 
 # -- Task status transition paths per column move ---------------------------
 # Maps (from_column, to_column) to the sequence of TaskStatus values
@@ -137,11 +141,14 @@ if _missing_col_transitions:
 # in the task state machine (e.g. BACKLOG->DONE skips intermediate
 # statuses).
 #
-# NOTE: Backward moves to BACKLOG and READY go through BLOCKED because
-# the task state machine has no direct backward path.  After applying
-# these transitions the task ends up off-board (BLOCKED) or in READY
-# (ASSIGNED).  The caller is responsible for unblocking the task to
-# re-enter the board at the target column.
+# NOTE: Backward moves go through BLOCKED because the task state machine
+# has no direct backward path.  Moves to READY end at ASSIGNED (on-board
+# in the READY column).  Moves to BACKLOG end at BLOCKED (off-board)
+# because there is no valid task transition from BLOCKED to CREATED; the
+# task cannot actually land in BACKLOG through the status path alone.
+# These backward-to-BACKLOG transitions are still modeled so the Kanban
+# layer can express the intent -- the engine must handle the off-board
+# result (e.g. reset via a dedicated mechanism outside the state machine).
 
 _COLUMN_MOVE_STATUS_PATH: MappingProxyType[
     tuple[KanbanColumn, KanbanColumn], tuple[TaskStatus, ...]
@@ -188,6 +195,8 @@ for _from_col, _targets in VALID_COLUMN_TRANSITIONS.items():
                 f"{_from_col.value!r} -> {_to_col.value!r}"
             )
             raise ValueError(_msg)
+
+del _from_col, _targets, _to_col
 
 
 def validate_column_transition(

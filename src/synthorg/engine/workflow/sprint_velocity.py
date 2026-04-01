@@ -60,7 +60,12 @@ class VelocityRecord(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def completion_ratio(self) -> float:
-        """Ratio of completed to committed points."""
+        """Ratio of completed to committed points.
+
+        Values above 1.0 are valid and indicate that the team
+        completed more work than initially committed (scope
+        expansion during the sprint).
+        """
         if self.story_points_committed == 0.0:
             return 0.0
         return self.story_points_completed / self.story_points_committed

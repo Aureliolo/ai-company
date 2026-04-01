@@ -257,6 +257,16 @@ class TestSprintWithTransition:
             )
 
     @pytest.mark.unit
+    def test_disallowed_override_rejected(self) -> None:
+        sprint = self._make_planning_sprint()
+        with pytest.raises(ValueError, match="does not allow overriding"):
+            sprint.with_transition(
+                SprintStatus.ACTIVE,
+                start_date="2026-04-01",
+                sprint_number=99,
+            )
+
+    @pytest.mark.unit
     def test_full_lifecycle_with_transition(self) -> None:
         sprint = self._make_planning_sprint()
 

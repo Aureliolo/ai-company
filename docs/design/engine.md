@@ -145,15 +145,23 @@ WIP limits with strict (hard-reject) or advisory (log-warning) enforcement.
 Column transitions are validated independently and resolved to the underlying
 task status transition path.
 
-### Agile Sprints
+### Agile Kanban
+
+The fourth workflow type combines the Kanban board columns with Agile
+sprint time-boxing.  The `WorkflowType.AGILE_KANBAN` enum value selects
+this combined mode; `WorkflowConfig` aggregates both `KanbanConfig` and
+`SprintConfig` under a single top-level section (`workflow`) in the root
+configuration.
 
 ```text
-Sprint Backlog --> Sprint Execution --> Review --> Retrospective --> Next Sprint
+Planning --> Active --> In Review --> Retrospective --> Completed
 ```
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
-IN_REVIEW, RETROSPECTIVE, COMPLETED.  The `Sprint` model tracks task IDs,
-story points (committed and completed), dates, and duration.  Sprint backlog
+IN_REVIEW, RETROSPECTIVE, COMPLETED.  Each sprint is a discrete
+lifecycle -- a new sprint is created after the previous one completes
+(no automatic cycling).  The `Sprint` model tracks task IDs, story
+points (committed and completed), dates, and duration.  Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
 added during PLANNING).  `SprintConfig` defines sprint duration, task limits,
 velocity window, and ceremony configurations that integrate with the meeting

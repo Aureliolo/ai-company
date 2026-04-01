@@ -7,12 +7,6 @@ from synthorg.engine.workflow.kanban_columns import KanbanColumn
 
 
 @pytest.fixture
-def default_kanban_config() -> KanbanConfig:
-    """KanbanConfig with default WIP limits."""
-    return KanbanConfig()
-
-
-@pytest.fixture
 def strict_kanban_config() -> KanbanConfig:
     """KanbanConfig with tight WIP limits for testing."""
     return KanbanConfig(

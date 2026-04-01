@@ -4,6 +4,8 @@ All operations are immutable: they return a new ``Sprint`` rather than
 mutating the input.
 """
 
+from typing import NoReturn
+
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.observability import get_logger
@@ -17,8 +19,8 @@ from synthorg.observability.events.workflow import (
 logger = get_logger(__name__)
 
 
-def _log_and_raise(event: str, msg: str, **kwargs: object) -> None:
-    """Log a warning with *event* and structured *kwargs*, then raise."""
+def _log_and_raise(event: str, msg: str, **kwargs: object) -> NoReturn:
+    """Log a warning with *event* and structured *kwargs*, then raise ``ValueError``."""
     logger.warning(event, **kwargs)
     raise ValueError(msg)
 
@@ -30,7 +32,9 @@ def add_task_to_sprint(
 ) -> Sprint:
     """Return a new Sprint with a task added to the backlog.
 
-    Tasks can only be added during PLANNING.
+    Tasks can only be added during PLANNING.  Enforcement of
+    ``SprintConfig.max_tasks_per_sprint`` is the caller's responsibility;
+    this function does not receive config context.
 
     Args:
         sprint: The current sprint.
@@ -97,7 +101,10 @@ def remove_task_from_sprint(
 
     Tasks cannot be removed from a COMPLETED sprint.  Story point
     totals are **not** adjusted because per-task point data is not
-    stored on the Sprint model.
+    stored on the Sprint model.  If the task was previously completed,
+    ``story_points_completed`` will retain that task's points, which
+    may overstate delivered work.  Callers should manually adjust
+    ``story_points_completed`` via ``model_copy`` if needed.
 
     Args:
         sprint: The current sprint.
@@ -128,8 +135,18 @@ def remove_task_from_sprint(
             task_id=task_id,
             reason="not_found",
         )
+    was_completed = task_id in sprint.completed_task_ids
     new_task_ids = tuple(t for t in sprint.task_ids if t != task_id)
     new_completed = tuple(t for t in sprint.completed_task_ids if t != task_id)
+    if was_completed:
+        logger.warning(
+            SPRINT_BACKLOG_INVALID,
+            sprint_id=sprint.id,
+            task_id=task_id,
+            reason="completed_task_removed_points_stale",
+            story_points_committed=sprint.story_points_committed,
+            story_points_completed=sprint.story_points_completed,
+        )
     result = sprint.model_copy(
         update={
             "task_ids": new_task_ids,
@@ -187,7 +204,7 @@ def complete_task_in_sprint(
 
 def _validate_completion_preconditions(
     sprint: Sprint,
-    task_id: str,
+    task_id: NotBlankStr,
     story_points: float,
 ) -> None:
     """Validate preconditions for completing a task in a sprint."""

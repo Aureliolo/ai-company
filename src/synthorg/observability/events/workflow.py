@@ -20,6 +20,12 @@ KANBAN_COLUMN_TRANSITION_INVALID: str = "workflow.kanban.column_transition_inval
 KANBAN_STATUS_PATH_MISSING: str = "workflow.kanban.status_path_missing"
 """No task status path defined for a column move."""
 
+WORKFLOW_CONFIG_UNUSED_SUBCONFIG: str = "workflow.config.unused_subconfig"
+"""Sub-config customized for an inactive workflow type (advisory)."""
+
+KANBAN_CONFIG_VALIDATION_FAILED: str = "workflow.kanban.config_validation_failed"
+"""Kanban configuration validation failed."""
+
 KANBAN_TASK_PLACED: str = "workflow.kanban.task_placed"
 """Task placed on the Kanban board (initial column assignment)."""
 

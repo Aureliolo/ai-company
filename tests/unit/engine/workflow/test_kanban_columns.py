@@ -1,7 +1,7 @@
 """Tests for Kanban board columns, transitions, WIP limits, and config."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.core.enums import TaskStatus
@@ -380,7 +380,6 @@ class TestKanbanProperties:
     @given(
         column=st.sampled_from(list(KanbanColumn)),
     )
-    @settings(max_examples=50)
     def test_status_to_column_round_trips(self, column: KanbanColumn) -> None:
         """Every on-board status in a column maps back to that column."""
         for status in COLUMN_TO_STATUSES[column]:
@@ -390,7 +389,6 @@ class TestKanbanProperties:
     @given(
         status=st.sampled_from(list(TaskStatus)),
     )
-    @settings(max_examples=50)
     def test_every_status_is_mapped(self, status: TaskStatus) -> None:
         """Every TaskStatus appears in STATUS_TO_COLUMN."""
         assert status in STATUS_TO_COLUMN
