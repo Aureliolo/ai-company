@@ -72,7 +72,7 @@ export function ArtifactMetadata({ artifact }: ArtifactMetadataProps) {
               Download
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} className="text-danger hover:bg-danger/10">
+          <Button variant="outline" size="sm" onClick={() => setDeleteOpen(true)} disabled={deleting} className="text-danger hover:bg-danger/10">
             <Trash2 className="mr-1 size-4" />
             Delete
           </Button>
