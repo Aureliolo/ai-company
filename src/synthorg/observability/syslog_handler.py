@@ -59,9 +59,10 @@ def build_syslog_handler(
     if not sink.syslog_host or not sink.syslog_host.strip():
         msg = "SYSLOG sink requires a non-empty syslog_host"
         raise ValueError(msg)
+    host = sink.syslog_host.strip()
     try:
         handler = logging.handlers.SysLogHandler(
-            address=(sink.syslog_host, sink.syslog_port),
+            address=(host, sink.syslog_port),
             facility=FACILITY_MAP[sink.syslog_facility],
             socktype=socket.SocketKind(
                 PROTOCOL_MAP[sink.syslog_protocol],

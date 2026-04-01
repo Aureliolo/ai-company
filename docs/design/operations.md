@@ -1316,7 +1316,11 @@ log aggregation:
 | Sink Type | Transport | Format | Description |
 |-----------|-----------|--------|-------------|
 | Syslog | UDP or TCP to a configurable endpoint | JSON | Ship structured logs to rsyslog, syslog-ng, or Graylog |
-| HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to Loki, Elasticsearch, Datadog, or any JSON-accepting endpoint |
+| HTTP | Batched POST to a configurable URL | JSON array | Ship log batches to any JSON-accepting endpoint |
+
+The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
+(e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
+collector/proxy (Promtail, Logstash, Vector, etc.) to translate the payload.
 
 Shipping sinks are catch-all (no logger name routing) and are configured at runtime via the
 `custom_sinks` setting or YAML. See the [Centralized Logging](../guides/centralized-logging.md)
@@ -1344,7 +1348,8 @@ File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alt
 Rotated backup files can be automatically gzip-compressed by setting `compress_rotated: true`
 in the rotation config. Compressed backups are stored as `.log.N.gz` instead of `.log.N`,
 typically achieving 5--10x size reduction for structured JSON logs. Compression is off by
-default for backward compatibility.
+default for backward compatibility. `compress_rotated` is only supported with the builtin
+rotation strategy; it is rejected when `rotation.strategy` is set to `external`.
 
 ### Sensitive Field Redaction
 
@@ -1454,7 +1459,7 @@ Four observability settings are runtime-editable via `SettingsService`:
 - `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
   console sink, file path for file sinks). Each value is an object with optional fields:
   `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
-  `backup_count`, `strategy`, `compress_rotated`). The console sink cannot be disabled
+  `backup_count`, `strategy`, `compress_rotated` (builtin-only)). The console sink cannot be disabled
   (`enabled: false` is rejected).
 - `custom_sinks` (JSON) -- additional sinks as a JSON array. Each entry may specify `sink_type`
   (`file`, `syslog`, `http`; defaults to `file`). File sinks require `file_path` and accept

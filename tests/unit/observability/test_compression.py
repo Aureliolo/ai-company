@@ -253,17 +253,9 @@ class TestBuildFileHandlerCompression:
         assert isinstance(handler, _FlushingRotatingFileHandler)
         assert not isinstance(handler, _CompressingRotatingFileHandler)
 
-    def test_external_rotation_with_compress_raises(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        sink = SinkConfig(
-            sink_type=SinkType.FILE,
-            file_path="app.log",
-            rotation=RotationConfig(
+    def test_external_rotation_with_compress_raises(self) -> None:
+        with pytest.raises(ValueError, match="compress_rotated"):
+            RotationConfig(
                 strategy=RotationStrategy.EXTERNAL,
                 compress_rotated=True,
-            ),
-        )
-        with pytest.raises(ValueError, match="compress_rotated"):
-            _build_file_handler(sink, tmp_path)
+            )

@@ -465,17 +465,9 @@ class TestLoggerNameFilterValidation:
 class TestCompressRotatedExternalRaises:
     """compress_rotated with EXTERNAL strategy raises ValueError."""
 
-    def test_compress_rotated_external_raises(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        sink = SinkConfig(
-            sink_type=SinkType.FILE,
-            file_path="app.log",
-            rotation=RotationConfig(
+    def test_compress_rotated_external_raises(self) -> None:
+        with pytest.raises(ValueError, match="compress_rotated"):
+            RotationConfig(
                 strategy=RotationStrategy.EXTERNAL,
                 compress_rotated=True,
-            ),
-        )
-        with pytest.raises(ValueError, match="compress_rotated"):
-            _build_file_handler(sink, tmp_path)
+            )

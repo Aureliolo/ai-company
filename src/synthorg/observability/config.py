@@ -42,10 +42,18 @@ class RotationConfig(BaseModel):
             :attr:`RotationStrategy.BUILTIN`.
         backup_count: Number of rotated backup files to keep.
         compress_rotated: Whether to gzip-compress rotated backup
-            files.
+            files.  Only supported with builtin rotation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _reject_compress_with_external(self) -> Self:
+        """Reject compress_rotated with non-builtin strategy."""
+        if self.compress_rotated and self.strategy != RotationStrategy.BUILTIN:
+            msg = "compress_rotated is only supported with builtin rotation strategy"
+            raise ValueError(msg)
+        return self
 
     strategy: RotationStrategy = Field(
         default=RotationStrategy.BUILTIN,
@@ -250,6 +258,10 @@ class SinkConfig(BaseModel):
         if not parsed.hostname:
             msg = "http_url must include a host"
             raise ValueError(msg)
+        for i, (name, _value) in enumerate(self.http_headers):
+            if not name or not name.strip():
+                msg = f"http_headers[{i}] has an empty header name"
+                raise ValueError(msg)
 
     def _reject_http_fields(self, sink_label: str) -> None:
         if self.http_url is not None:

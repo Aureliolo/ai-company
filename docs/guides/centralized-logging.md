@@ -178,8 +178,22 @@ transform the array into the vendor-specific format.
 
 ## Docker Logging Drivers
 
-Docker's built-in logging drivers capture container stdout/stderr.  SynthOrg's console
-sink writes colored text to stderr, which Docker captures with the configured driver.
+Docker's built-in logging drivers capture container stdout/stderr.  By default the
+console sink writes colored text to stderr.  For structured JSON output that Docker
+drivers and downstream parsers can process, override the console sink format:
+
+```json
+{"__console__": {"json_format": true}}
+```
+
+Or in YAML company config:
+
+```yaml
+logging:
+  sink_overrides:
+    __console__:
+      json_format: true
+```
 
 ### When to Use Docker Drivers
 

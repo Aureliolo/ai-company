@@ -167,6 +167,9 @@ class HttpBatchHandler(logging.Handler):
                 # HTTPError wraps a response FP -- close to avoid FD leak.
                 if isinstance(exc, urllib.error.HTTPError):
                     exc.close()
+                    # 4xx client errors are non-retryable.
+                    if 400 <= exc.code < 500:  # noqa: PLR2004
+                        return exc
                 last_error = exc
                 if attempt < self._max_retries:
                     continue

@@ -293,16 +293,9 @@ def _parse_rotation_override(
     if not updates:
         return base
     merged = {**base.model_dump(), **updates}
-    result = RotationConfig.model_validate(merged)
-    _check_compress_rotated_strategy(result)
-    return result
-
-
-def _check_compress_rotated_strategy(rotation: RotationConfig) -> None:
-    """Reject compress_rotated with non-builtin strategy."""
-    if rotation.compress_rotated and rotation.strategy != RotationStrategy.BUILTIN:
-        msg = "compress_rotated is only supported with builtin rotation strategy"
-        raise ValueError(msg)
+    # model_validate enforces compress_rotated + strategy check via
+    # RotationConfig._reject_compress_with_external.
+    return RotationConfig.model_validate(merged)
 
 
 # -- Override application ------------------------------------------
