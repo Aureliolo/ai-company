@@ -84,8 +84,115 @@ surface:
 | Measure | Mechanism |
 |---------|-----------|
 | **XSS prevention** | ESLint `no-restricted-syntax` rule bans `dangerouslySetInnerHTML` at write time. Override requires `// eslint-disable-next-line` with justification. |
-| **CSP nonce readiness** | `<MotionConfig nonce>` wrapper in `App.tsx` + `lib/csp.ts` reader. When nonce-based CSP is activated (nginx `sub_filter` replaces the `__CSP_NONCE__` placeholder per request), Framer Motion's dynamically injected `<style>` tags pass CSP without `'unsafe-inline'`. Currently staged -- see the activation checklist in `web/index.html`. |
+| **CSP nonce readiness** | `<MotionConfig nonce>` wrapper in `App.tsx` + `lib/csp.ts` reader. Framer Motion's dynamically injected `<style>` tags are nonce-ready. `react-style-singleton` (used by Radix Dialog/AlertDialog/Popover via `react-remove-scroll`) also supports nonces via the `get-nonce` package -- wiring `setNonce()` in `lib/csp.ts` is the remaining step. Currently staged -- see the activation checklist in `web/index.html` and the [accepted risk](#accepted-risk-inline-style-attributes) section below. |
 | **JWT storage** | `localStorage` with short-lived tokens, automatic expiry cleanup, and 401 interceptor. Cookie-based auth (httpOnly) is a future enhancement tracked separately. |
+
+### Accepted Risk: Inline Style Attributes
+
+The dashboard CSP includes `style-src 'unsafe-inline'` because Radix UI primitives inject
+inline styles at runtime. This section documents the risk, the upstream blocker, and the
+recommended mitigation path.
+
+#### What is permitted
+
+`style-src 'unsafe-inline'` (or `style-src-attr 'unsafe-inline'` when using CSP Level 3
+directive splitting) allows any inline `style` attribute on DOM elements. It also permits
+`<style>` elements without nonces, though the nonce infrastructure can lock down the latter
+independently.
+
+#### Why this is required
+
+Radix UI primitives violate CSP in two distinct ways:
+
+1. **Inline `style` attributes on DOM elements.** Radix Popper (used by Popover, Tooltip,
+   Select, DropdownMenu) sets CSS custom properties via `style="--radix-*: ..."`.
+   Dialog/AlertDialog set `style="pointer-events: auto"` on overlays. Tabs set
+   `animationDuration: "0s"` on mount. **CSP nonces cannot fix this** -- the CSP
+   specification only supports nonces on `<style>` and `<script>` elements, not on
+   `style` attributes.
+
+2. **`<style>` tag injection.** `react-remove-scroll` / `react-style-singleton` (used by
+   Dialog, AlertDialog, Popover) inject `<style>` tags at runtime. **This is fixable** --
+   `react-style-singleton` already calls `getNonce()` from the `get-nonce` package and
+   applies nonces to its `<style>` tags when `setNonce()` has been called.
+
+**Affected dashboard components:** Dialog (4 pages), AlertDialog/ConfirmDialog (1),
+Popover/ThemeToggle (1), Tabs/OrgEditPage (1), FocusScope/CommandPalette (1). Additionally,
+`cmdk` (CommandPalette) internally depends on `@radix-ui/react-dialog`.
+
+#### Risk assessment
+
+Inline `style` attribute injection is **not a practical XSS vector**:
+
+- Unlike `<script>` or `<style>` elements, a `style` attribute **cannot execute JavaScript**
+- Data exfiltration via `style` attributes is limited to single-element visual manipulation
+  (no CSS selectors, no `url()` loading, no `@import`)
+- The primary theoretical risk is UI redress/clickjacking via
+  `position: fixed; z-index: 99999`, which is already mitigated by `X-Frame-Options: DENY`
+- The higher-risk vector (`<style>` element injection for CSS-based data exfiltration via
+  attribute selectors) is separately addressable via nonces
+
+`script-src` -- the critical XSS vector -- is locked down to `'self'` with no `'unsafe-inline'`.
+
+#### Upstream status (stagnant)
+
+| Date | Event |
+|------|-------|
+| 2024-02 | Nonce prop merged for ScrollArea/Select only ([PR #2728](https://github.com/radix-ui/primitives/pull/2728)) |
+| 2024-09 | CSS export approach PR rejected by maintainer ([PR #3131](https://github.com/radix-ui/primitives/pull/3131)) |
+| 2024-10 | Maintainer said "near the top of my todo list" |
+| 2025-04 | Community asked for update -- no response |
+| 2025-07 | Community asked again -- no response |
+| 2026-01 | Community asked again -- no response |
+| 2026-02 | [Discussion #3130](https://github.com/radix-ui/primitives/discussions/3130) **closed** -- author pointed to Base UI as the successor with CSP support |
+
+Open issues with no maintainer engagement:
+[#2057](https://github.com/radix-ui/primitives/issues/2057),
+[#3063](https://github.com/radix-ui/primitives/issues/3063),
+[#3117](https://github.com/radix-ui/primitives/issues/3117).
+
+#### Base UI migration assessment
+
+[Base UI 1.0](https://base-ui.com) (released February 2026, currently v1.3.0) offers first-class
+CSP support via [`CSPProvider`](https://base-ui.com/react/utils/csp-provider) with context-based
+nonce propagation. However, migrating is **prohibitively large**:
+
+- The dashboard has 9 direct Radix imports across the codebase
+- shadcn/ui is architecturally built on Radix primitives -- migrating away from Radix means
+  replacing the entire component system in `web/src/components/ui/`
+- `cmdk` (CommandPalette) depends on `@radix-ui/react-dialog` internally -- no Base UI
+  equivalent exists
+- Base UI's `CSPProvider` solves `<style>` element injection but would **still likely require
+  `style-src-attr 'unsafe-inline'`** for positioned components that use inline `style`
+  attributes (Floating UI, which Base UI also uses, sets inline styles for positioning)
+
+**Verdict:** the migration scope is disproportionate to the marginal security gain beyond what
+nonce wiring + directive splitting already achieves.
+
+#### Recommended mitigation path
+
+**Phase 1 -- Wire `get-nonce` bridge** (low effort, high impact):
+Add a `setNonce()` call from the `get-nonce` package in `web/src/lib/csp.ts` so that
+`react-style-singleton`'s `<style>` tags receive the CSP nonce. Combined with the existing
+`MotionConfig nonce` wrapper, this makes all `<style>` element injection nonce-capable.
+
+**Phase 2 -- Activate nonce infrastructure + split CSP directives** (coordinated deployment):
+Uncomment the `<meta name="csp-nonce">` tag in `web/index.html`, add `sub_filter` to
+`web/nginx.conf`, and replace `style-src 'self' 'unsafe-inline'` with CSP Level 3 split
+directives in `web/security-headers.conf`:
+
+- `style-src-elem 'self' 'nonce-...'` -- locks down `<style>` elements (higher-risk vector)
+- `style-src-attr 'unsafe-inline'` -- permits inline `style` attributes (low-risk, required
+  by Radix)
+
+Browser support: `style-src-elem` and `style-src-attr` are supported in Chrome 75+, Firefox
+105+, Safari 15.4+, Edge 79+.
+
+**Phase 3 -- Re-evaluate quarterly:**
+Check upstream Radix issues ([#2057](https://github.com/radix-ui/primitives/issues/2057),
+[#3063](https://github.com/radix-ui/primitives/issues/3063)) for movement. If Radix ships
+nonce support for inline styles, or if Base UI reaches feature parity with the dashboard's
+Radix usage, remove `style-src-attr 'unsafe-inline'`.
 
 ### Security Headers
 
@@ -101,7 +208,7 @@ All API responses include:
 | `Cross-Origin-Resource-Policy` | `same-origin` |
 | `Cross-Origin-Opener-Policy` | `same-origin` (API); `same-origin-allow-popups` (docs) |
 | `Cache-Control` | `no-store` (API); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
-| `Content-Security-Policy` | Strict default; relaxed only for docs UI. Dashboard is nonce-ready (`MotionConfig` + `lib/csp.ts`); activate by replacing `style-src 'unsafe-inline'` with nonce-based policy in `web/security-headers.conf`. |
+| `Content-Security-Policy` | Strict default; relaxed only for docs UI. Dashboard requires `style-src 'unsafe-inline'` due to Radix UI inline style injection ([accepted risk](#accepted-risk-inline-style-attributes)). Nonce infrastructure is staged for `<style>` elements (Framer Motion + react-style-singleton); full activation blocked by Radix inline `style` attributes. See recommended mitigation path for CSP Level 3 directive splitting. |
 
 ---
 

@@ -88,6 +88,20 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 **Alternatives:** Stay on MkDocs (unmaintained, accumulating CVEs and unresolved issues), Sphinx (poor landing pages, different ecosystem), VitePress/Docusaurus (no Python API docs).
 
+## Embedding Model Evaluation (2026-04-01)
+
+**Decision:** Use [LMEB](https://arxiv.org/abs/2603.12572) (Long-horizon Memory Embedding Benchmark) instead of MTEB for evaluating and selecting embedding models for the memory subsystem.
+
+**Context:** SynthOrg's memory retrieval spans episodic, procedural, semantic, and social categories -- long-horizon, fragmented, context-dependent tasks. LMEB (Zhao et al., March 2026) evaluates exactly these patterns across 22 datasets and 193 tasks. Its key finding is that MTEB performance has near-zero or negative correlation with memory retrieval quality (overall Spearman: -0.130; dialogue: -0.364).
+
+| Candidate | Score Basis | Why chosen / rejected |
+|-----------|-------------|----------------------|
+| **LMEB** (chosen) | 193 memory retrieval tasks across 4 types | Direct taxonomy mapping to SynthOrg's MemoryCategory enum. Evaluates the exact retrieval patterns the memory system uses |
+| MTEB | General passage retrieval | MTEB performance does not transfer to memory retrieval (Pearson: -0.115). Optimizing for MTEB may actively harm memory retrieval quality |
+| Manual evaluation | Custom retrieval benchmarks | Too expensive to maintain. LMEB provides a standardized, reproducible alternative |
+
+**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) documented as an optional initialization hook via `EmbeddingFineTuneConfig`.
+
 ## Overarching Pattern
 
 Nearly every decision follows the same architecture: a pluggable protocol interface with one initial implementation shipped, and alternative strategies documented for future extension. This is consistent with the project's protocol-driven design philosophy.

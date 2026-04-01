@@ -20,6 +20,48 @@ from synthorg.observability.events.memory import (
 logger = get_logger(__name__)
 
 
+class EmbeddingFineTuneConfig(BaseModel):
+    """Optional domain-specific embedding fine-tuning configuration.
+
+    When ``enabled`` is ``True``, the memory backend looks for a
+    fine-tuned model checkpoint at ``checkpoint_path`` during
+    initialization.  If found, the fine-tuned model overrides the
+    base ``Mem0EmbedderConfig.model``.  If not found, the base model
+    is used with a logged warning.
+
+    Fine-tuning itself runs offline via a separate pipeline (CLI
+    command or scheduled task), not during backend initialization.
+    See the `Embedding Evaluation <docs/reference/embedding-evaluation.md>`_
+    reference page for the full pipeline design.
+
+    Attributes:
+        enabled: Whether fine-tuning checkpoint lookup is active.
+        checkpoint_path: Path to the fine-tuned model checkpoint.
+        base_model: Identifier of the base model that was fine-tuned.
+        training_data_dir: Directory containing training data for the
+            fine-tuning pipeline.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether fine-tuning checkpoint lookup is active",
+    )
+    checkpoint_path: NotBlankStr | None = Field(
+        default=None,
+        description="Path to the fine-tuned model checkpoint",
+    )
+    base_model: NotBlankStr | None = Field(
+        default=None,
+        description="Identifier of the base model that was fine-tuned",
+    )
+    training_data_dir: NotBlankStr | None = Field(
+        default=None,
+        description=("Directory containing training data for the fine-tuning pipeline"),
+    )
+
+
 class Mem0EmbedderConfig(BaseModel):
     """Embedder settings for the Mem0 memory backend.
 
@@ -34,6 +76,8 @@ class Mem0EmbedderConfig(BaseModel):
         provider: Embedding provider name (Mem0 SDK identifier).
         model: Embedding model identifier (Mem0 SDK identifier).
         dims: Embedding vector dimensions.
+        fine_tune: Optional fine-tuning configuration (disabled by
+            default).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -48,6 +92,10 @@ class Mem0EmbedderConfig(BaseModel):
         default=1536,
         ge=1,
         description="Embedding vector dimensions",
+    )
+    fine_tune: EmbeddingFineTuneConfig | None = Field(
+        default=None,
+        description="Optional fine-tuning configuration (disabled by default)",
     )
 
 

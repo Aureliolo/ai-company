@@ -25,7 +25,7 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task. |
 | Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type. |
 | Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers. |
-| Memory retrieval quality | Medium | Mem0 selected as initial backend (see [Decision Log](../architecture/decisions.md)). Protocol layer enables backend swap if retrieval quality is insufficient. Pin version, test Python 3.14 compatibility in CI. |
+| Memory retrieval quality | Medium | Mem0 selected as initial backend (see [Decision Log](../architecture/decisions.md)). LMEB evaluation ([arXiv:2603.12572](https://arxiv.org/abs/2603.12572)) shows MTEB scores do not predict memory retrieval quality (Spearman: -0.130). Embedding model selection should be guided by LMEB episodic + procedural scores. Optional domain fine-tuning (+10-27%) available via `EmbeddingFineTuneConfig`. See [Embedding Evaluation](../reference/embedding-evaluation.md). |
 | Agent personality inconsistency | Low | Strong system prompts, few-shot examples, personality tests. |
 | WebSocket scaling | Low | Start local, add Redis pub/sub when needed. |
 

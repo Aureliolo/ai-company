@@ -314,6 +314,78 @@ Pydantic models. The `create_memory_backend(config, *, embedder=...)` factory re
 isolated `MemoryBackend` instance per company. The `embedder` kwarg is required for the
 Mem0 backend (must be a `Mem0EmbedderConfig`).
 
+### Embedding Model Selection
+
+Embedding model quality directly determines memory retrieval accuracy. The
+[LMEB benchmark](https://arxiv.org/abs/2603.12572) (Zhao et al., March 2026) evaluates embedding
+models on long-horizon memory retrieval across four types that map directly to SynthOrg's
+`MemoryCategory` enum:
+
+| SynthOrg Category | LMEB Category | Evaluation Priority |
+|-------------------|---------------|---------------------|
+| EPISODIC | Episodic (69 tasks) | High |
+| PROCEDURAL | Procedural (67 tasks) | High |
+| SEMANTIC | Semantic (15 tasks) | Medium |
+| SOCIAL | Dialogue (42 tasks) | Medium |
+| WORKING | N/A (in-context) | N/A |
+
+**MTEB scores do not predict memory retrieval quality** (Pearson: -0.115, Spearman: -0.130).
+Embedding model selection must be evaluated on LMEB, not MTEB. See
+[Decision Log](../architecture/decisions.md) and the
+[Embedding Evaluation](../reference/embedding-evaluation.md) reference page for the full analysis,
+model rankings, and deployment tier recommendations.
+
+Key findings:
+
+- Larger models do not always outperform smaller ones on memory retrieval
+- Dialogue/social memory is the hardest retrieval category for all models
+- Instruction sensitivity varies per model -- must be validated per deployment
+- Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
+  CPU-only (< 1B)
+
+!!! info "Research Direction: Domain-Specific Embedding Fine-Tuning"
+
+    Domain-specific fine-tuning can improve retrieval quality by 10-27% over base models
+    ([NVIDIA evaluation](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune)).
+    The pipeline requires no manual annotation and runs on a single GPU.
+
+    **Pipeline stages:**
+
+    1. **Synthetic data generation** -- LLM generates query-document pairs from org documents
+       (policies, ADRs, procedures, coding standards)
+    2. **Hard negative mining** -- base model embeds all passages; top-k semantically similar
+       but non-matching passages become hard negatives
+    3. **Contrastive fine-tuning** -- biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
+       lr=1e-5). Single GPU, 1-2 hours for ~500 documents
+    4. **Deploy** -- save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
+
+    **Integration design:** fine-tuning is an offline pipeline, not a runtime operation. The
+    optional `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. At
+    backend initialization, if a checkpoint exists, the fine-tuned model is used; otherwise
+    the base model is used with a logged warning.
+
+    ```python
+    class EmbeddingFineTuneConfig(BaseModel):
+        model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+        enabled: bool = False
+        checkpoint_path: NotBlankStr | None = None
+        base_model: NotBlankStr | None = None
+        training_data_dir: NotBlankStr | None = None
+    ```
+
+    A future `FineTuningPipeline` protocol would formalize the four stages:
+
+    ```python
+    class FineTuningPipeline(Protocol):
+        async def generate_training_data(self, source_dir: str) -> Path: ...
+        async def mine_hard_negatives(self, training_data: Path) -> Path: ...
+        async def fine_tune(self, training_data: Path, base_model: str) -> Path: ...
+    ```
+
+    See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full pipeline
+    design and expected improvement metrics.
+
 ### Consolidation and Retention
 
 Memory consolidation, retention enforcement, and archival are configured via frozen Pydantic
