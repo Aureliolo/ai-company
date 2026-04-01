@@ -45,7 +45,8 @@ from synthorg.templates.model_requirements import (
     parse_model_requirement,
     resolve_model_requirement,
 )
-from synthorg.templates.renderer import render_template, validate_preset_references
+from synthorg.templates.presets import validate_preset_references
+from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,

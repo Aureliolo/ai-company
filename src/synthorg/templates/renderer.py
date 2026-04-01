@@ -22,23 +22,20 @@ from pydantic import ValidationError
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
 from synthorg.config.utils import deep_merge, to_float
-from synthorg.core.agent import PersonalityConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
     TEMPLATE_INHERIT_DEPTH_EXCEEDED,
     TEMPLATE_INHERIT_RESOLVE_START,
     TEMPLATE_INHERIT_RESOLVE_SUCCESS,
-    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-    TEMPLATE_PRESET_RESOLVED_CUSTOM,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
     TEMPLATE_RENDER_TYPE_ERROR,
-    TEMPLATE_RENDER_VALIDATION_ERROR,
     TEMPLATE_RENDER_VARIABLE_ERROR,
     TEMPLATE_RENDER_YAML_ERROR,
 )
+from synthorg.templates._preset_resolution import resolve_agent_personality
 from synthorg.templates._render_helpers import (
     build_departments,
     validate_as_root_config,
@@ -48,10 +45,7 @@ from synthorg.templates.errors import (
     TemplateRenderError,
 )
 from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
-from synthorg.templates.presets import (
-    generate_auto_name,
-    get_personality_preset,
-)
+from synthorg.templates.presets import generate_auto_name
 
 # Placeholder provider name resolved by the engine at startup.
 _DEFAULT_PROVIDER = "default"
@@ -672,7 +666,7 @@ def _expand_single_agent(  # noqa: PLR0913
         "level": agent.get("level", "mid"),
     }
 
-    personality = _resolve_agent_personality(
+    personality = resolve_agent_personality(
         agent,
         name,
         custom_presets=custom_presets,
@@ -744,131 +738,3 @@ def _resolve_model_tier(agent: dict[str, Any]) -> str:
             )
             raise TemplateRenderError(msg) from exc
     return str(model_raw)
-
-
-def _resolve_agent_personality(
-    agent: dict[str, Any],
-    name: str,
-    *,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
-    """Resolve personality from inline config or named preset.
-
-    Custom presets are checked first, then builtins.  When a named
-    preset is not found in either source, a warning is logged and
-    ``None`` is returned (the agent proceeds without a personality).
-
-    Args:
-        agent: Raw agent dict from rendered YAML.
-        name: Resolved agent name for error context.
-        custom_presets: Optional custom preset mapping.
-
-    Returns:
-        Personality dict, or ``None`` if no personality configured or
-        the referenced preset does not exist.
-
-    Raises:
-        TemplateRenderError: If an inline personality config is invalid.
-    """
-    inline_personality = agent.get("personality")
-    preset_name = agent.get("personality_preset")
-    if inline_personality is not None:
-        if not isinstance(inline_personality, dict):
-            msg = (
-                f"Personality for agent {name!r} must be a mapping, "
-                f"got {type(inline_personality).__name__}"
-            )
-            logger.warning(
-                TEMPLATE_RENDER_TYPE_ERROR,
-                agent=name,
-                field="personality",
-                got=type(inline_personality).__name__,
-            )
-            raise TemplateRenderError(msg)
-        _validate_inline_personality(inline_personality, name)
-        return dict(inline_personality)
-    if preset_name:
-        # Normalize once for both the lookup and the custom-source check.
-        key = preset_name.strip().lower()
-        is_custom = custom_presets is not None and key in custom_presets
-        try:
-            result = get_personality_preset(
-                preset_name,
-                custom_presets=custom_presets,
-            )
-        except KeyError:
-            logger.warning(
-                TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-                agent=name,
-                preset=preset_name,
-                exc_info=True,
-            )
-            return None
-        if is_custom:
-            logger.debug(
-                TEMPLATE_PRESET_RESOLVED_CUSTOM,
-                agent=name,
-                preset=preset_name,
-            )
-        return result
-    return None
-
-
-def validate_preset_references(
-    template: CompanyTemplate,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-) -> tuple[str, ...]:
-    """Check all agent personality_preset references against known presets.
-
-    Returns a tuple of warning messages for unknown presets.  Does not
-    raise -- purely advisory for pre-flight validation and template
-    import/export scenarios.
-
-    Args:
-        template: Parsed template to validate.
-        custom_presets: Optional custom preset mapping.
-
-    Returns:
-        Tuple of warning strings (empty when all presets are known).
-    """
-    from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
-
-    issues: list[str] = []
-    for agent_cfg in template.agents:
-        preset = agent_cfg.personality_preset
-        if preset is None:
-            continue
-        key = preset.strip().lower()
-        if custom_presets is not None and key in custom_presets:
-            continue
-        if key in PERSONALITY_PRESETS:
-            continue
-        issues.append(
-            f"Agent {agent_cfg.role!r} references unknown personality preset {preset!r}"
-        )
-    return tuple(issues)
-
-
-def _validate_inline_personality(
-    personality: dict[str, Any],
-    agent_name: str,
-) -> None:
-    """Eagerly validate an inline personality dict.
-
-    Args:
-        personality: Raw personality dict from template YAML.
-        agent_name: Agent name for error context.
-
-    Raises:
-        TemplateRenderError: If the dict is not valid for PersonalityConfig.
-    """
-    try:
-        PersonalityConfig(**personality)
-    except (ValidationError, TypeError) as exc:
-        logger.warning(
-            TEMPLATE_RENDER_VALIDATION_ERROR,
-            agent_name=agent_name,
-            error=str(exc),
-        )
-        msg = f"Invalid inline personality for agent {agent_name!r}: {exc}"
-        raise TemplateRenderError(msg) from exc

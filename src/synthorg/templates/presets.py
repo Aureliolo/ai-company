@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from synthorg.templates.schema import CompanyTemplate
+
 from pydantic import ValidationError
 
 from synthorg.core.agent import PersonalityConfig
@@ -458,6 +460,39 @@ def _validate_presets() -> None:
 
 _validate_presets()
 del _validate_presets
+
+
+def validate_preset_references(
+    template: CompanyTemplate,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    """Check all agent personality_preset references against known presets.
+
+    Returns a tuple of warning messages for unknown presets.  Does not
+    raise -- purely advisory for pre-flight validation and template
+    import/export scenarios.
+
+    Args:
+        template: Parsed template to validate.
+        custom_presets: Optional custom preset mapping.
+
+    Returns:
+        Tuple of warning strings (empty when all presets are known).
+    """
+    issues: list[str] = []
+    for agent_cfg in template.agents:
+        preset = agent_cfg.personality_preset
+        if preset is None:
+            continue
+        key = preset.strip().lower()
+        if custom_presets is not None and key in custom_presets:
+            continue
+        if key in PERSONALITY_PRESETS:
+            continue
+        issues.append(
+            f"Agent {agent_cfg.role!r} references unknown personality preset {preset!r}"
+        )
+    return tuple(issues)
 
 
 def generate_auto_name(
