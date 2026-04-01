@@ -59,7 +59,9 @@
     }
 
     function resize(): void {
-      const rect = canvas.parentElement!.getBoundingClientRect();
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const rect = parent.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = rect.width;
       h = rect.height;
@@ -204,7 +206,7 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(resize, 200);
     });
-    ro.observe(canvas.parentElement!);
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
 
     // Cleanup on Astro view transitions
     document.addEventListener("astro:before-swap", () => {

@@ -437,16 +437,16 @@
   } else {
     const observer = new IntersectionObserver(
       (entries) => {
-        const active = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (!active) return;
-        const step = parseInt((active.target as HTMLElement).dataset.step || "0", 10);
-        setStep(step);
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const step = parseInt((entry.target as HTMLElement).dataset.step || "0", 10);
+            setStep(step);
+          }
+        }
       },
       {
-        rootMargin: "-40% 0px -40% 0px",
-        threshold: [0, 0.25, 0.5, 0.75, 1],
+        rootMargin: "-45% 0px -45% 0px",
+        threshold: 0.5,
       }
     );
 

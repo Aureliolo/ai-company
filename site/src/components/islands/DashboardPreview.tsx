@@ -168,7 +168,7 @@ export default function DashboardPreview() {
         <button
           className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           style={{ color: activeTab > 0 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
-          onClick={() => activeTab > 0 && selectTab(activeTab - 1)}
+          onClick={() => selectTab(activeTab - 1)}
           aria-label="Previous page"
           disabled={activeTab === 0}
         >
@@ -200,7 +200,7 @@ export default function DashboardPreview() {
         <button
           className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           style={{ color: activeTab < 3 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
-          onClick={() => activeTab < 3 && selectTab(activeTab + 1)}
+          onClick={() => selectTab(activeTab + 1)}
           aria-label="Next page"
           disabled={activeTab === 3}
         >

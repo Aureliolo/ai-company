@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 interface Props {
   tick: number;
 }
@@ -10,6 +12,7 @@ const agentSpend = [
 ];
 
 export default function BudgetMini({ tick }: Props) {
+  const sparkGradId = useId();
   // Slowly decreasing gauge
   const basePct = 68;
   const gaugeValue = Math.max(30, basePct - (tick % 40) * 0.3);
@@ -109,6 +112,12 @@ export default function BudgetMini({ tick }: Props) {
             <span className="text-[7px]" style={{ color: "var(--dp-success)" }}>-3.2%</span>
           </div>
           <svg viewBox="0 0 200 24" className="w-full h-5" aria-hidden="true">
+            <defs>
+              <linearGradient id={sparkGradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+              </linearGradient>
+            </defs>
             <polyline
               points="0,18 30,15 60,12 90,16 120,10 150,8 170,11 200,6"
               fill="none"
@@ -119,15 +128,9 @@ export default function BudgetMini({ tick }: Props) {
             />
             <polyline
               points="0,18 30,15 60,12 90,16 120,10 150,8 170,11 200,6 200,24 0,24"
-              fill="url(#dp-sparkGrad)"
+              fill={`url(#${sparkGradId})`}
               stroke="none"
             />
-            <defs>
-              <linearGradient id="dp-sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
-              </linearGradient>
-            </defs>
           </svg>
         </div>
       </div>
