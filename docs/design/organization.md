@@ -383,16 +383,22 @@ Scalars (`company_name`, `company_type`)
     A child department with `_remove: true` removes the matching parent department.
 
 `workflow_config` dict
-:   Consumed by the renderer during config building (before the merge step).
-    Each template's ``workflow_config`` is transformed into a ``workflow`` dict
-    independently.  A child template that uses ``extends`` must declare its own
-    ``workflow_config`` if it needs one; the parent's ``workflow_config`` is not
-    carried forward as raw config.
+:   Not merged during inheritance.  Each template's ``workflow_config`` is
+    transformed into a ``workflow`` dict by ``_build_workflow_dict`` during
+    rendering (before the merge step).  A child template that uses ``extends``
+    must declare its own ``workflow_config`` if it needs one; the parent's
+    ``workflow_config`` is not carried forward as raw config.
 
-`workflow`, `workflow_handoffs`, and `escalation_paths`
-:   Child replaces entirely if present; otherwise inherited from parent.  Note
-    that ``workflow`` is always produced by the renderer, so in practice the
-    child's rendered ``workflow`` always overrides the parent's.
+`workflow` dict
+:   The renderer always produces a ``workflow`` dict from ``workflow_config``
+    (or schema defaults), so ``workflow`` is always present in the child's
+    rendered output.  At merge time the child's ``workflow`` replaces the
+    parent's entirely -- the "inherit from parent" path cannot trigger.
+
+`workflow_handoffs` and `escalation_paths`
+:   Child replaces entirely if present; otherwise inherited from parent.
+    Unlike ``workflow``, these fields may be absent from the rendered output,
+    so the inherit-from-parent fallback applies.
 
 After merging, agent names are deduplicated: if parent and child auto-generation
 produces the same name, later occurrences receive a numeric suffix (e.g.,
