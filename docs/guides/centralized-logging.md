@@ -14,7 +14,7 @@ Three approaches are available -- they can be combined.
 | Approach | Mechanism | Best For |
 |----------|-----------|----------|
 | **Syslog sink** | App-level `SysLogHandler` shipping JSON to a syslog endpoint | rsyslog, syslog-ng, Graylog |
-| **HTTP sink** | App-level batched HTTP POST of JSON log arrays | Loki, Elasticsearch, Datadog, Splunk HEC |
+| **HTTP sink** | App-level batched HTTP POST of JSON log arrays | Any JSON-accepting endpoint; vendor APIs (Loki, Elasticsearch, etc.) need a collector/proxy |
 | **Docker logging driver** | Container-level stdout/stderr capture | fluentd, GELF, AWS CloudWatch, GCP Logging |
 
 ---

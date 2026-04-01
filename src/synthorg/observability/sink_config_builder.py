@@ -289,7 +289,10 @@ def _parse_rotation_override(
             field_name="rotation.compress_rotated",
         )
 
-    return base.model_copy(update=updates) if updates else base
+    if not updates:
+        return base
+    merged = {**base.model_dump(), **updates}
+    return RotationConfig.model_validate(merged)
 
 
 # -- Override application ------------------------------------------
@@ -339,7 +342,10 @@ def _apply_override(
             sink.rotation,
         )
 
-    return sink.model_copy(update=updates) if updates else sink
+    if not updates:
+        return sink
+    merged = {**sink.model_dump(), **updates}
+    return SinkConfig.model_validate(merged)
 
 
 # -- Custom sink construction --------------------------------------

@@ -169,7 +169,11 @@ class HttpBatchHandler(logging.Handler):
         self._shutdown.set()
         self._batch_ready.set()  # Wake the flusher
         self._flusher.join(timeout=self._timeout)
-        self._drain_and_flush()
+        # Only drain from the calling thread if the flusher has exited.
+        # If join() timed out the flusher may still be in _drain_and_flush,
+        # and draining concurrently would race on the queue.
+        if not self._flusher.is_alive():
+            self._drain_and_flush()
         super().close()
 
 

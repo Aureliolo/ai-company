@@ -74,6 +74,7 @@ def build_syslog_handler(
             f"({sink.syslog_protocol.value.upper()}): {exc}"
         )
         raise RuntimeError(msg) from exc
+    handler.append_nul = False
     handler.setLevel(sink.level.value)
 
     renderer: Any = structlog.processors.JSONRenderer()

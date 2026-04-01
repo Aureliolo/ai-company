@@ -61,12 +61,12 @@ class TestHttpBatchHandler:
         handler_cleanup: list[logging.Handler],
     ) -> None:
         handler = _make_handler()
-        handler_cleanup.append(handler)
 
         with patch("urllib.request.urlopen"):
             handler.emit(_make_record())
-        # Record is queued (not yet flushed since batch_size=5)
-        assert handler._queue.qsize() >= 1
+            # Record is queued (not yet flushed since batch_size=5)
+            assert handler._queue.qsize() >= 1
+            handler.close()  # Close inside patch to avoid real network calls
 
     def test_batch_flushed_on_batch_size(
         self,

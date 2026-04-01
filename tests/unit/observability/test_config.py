@@ -311,7 +311,7 @@ class TestSinkConfigHttp:
     def test_custom_http_settings(self) -> None:
         cfg = SinkConfig(
             sink_type=SinkType.HTTP,
-            http_url="http://loki:3100/loki/api/v1/push",
+            http_url="http://logs.example.local:3100/api/v1/push",
             http_headers=(("Authorization", "Bearer test-token"),),
             http_batch_size=50,
             http_flush_interval_seconds=2.0,
@@ -518,11 +518,11 @@ class TestLogConfigEndpointUniqueness:
                 _console_sink(),
                 SinkConfig(
                     sink_type=SinkType.HTTP,
-                    http_url="https://loki.example.com/push",
+                    http_url="https://logs-a.example.com/push",
                 ),
                 SinkConfig(
                     sink_type=SinkType.HTTP,
-                    http_url="https://elastic.example.com/push",
+                    http_url="https://logs-b.example.com/push",
                 ),
             ),
         )

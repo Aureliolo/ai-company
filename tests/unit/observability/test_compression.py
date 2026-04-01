@@ -209,6 +209,9 @@ class TestCompressingRotatingFileHandler:
 
         # The main log file should still exist and be writable
         assert log_file.exists()
+        # The uncompressed backup should be retained on compression failure
+        backup = Path(f"{log_file}.1")
+        assert backup.exists(), "Uncompressed .1 backup lost after compression failure"
 
     def test_is_subclass_of_flushing_handler(self) -> None:
         assert issubclass(
