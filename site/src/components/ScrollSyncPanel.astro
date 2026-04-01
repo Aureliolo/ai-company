@@ -15,7 +15,7 @@
         <!-- Step 1: Define -->
         <div class="scroll-step min-h-[60vh] flex items-center" data-step="0">
           <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
-            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+            <div data-code-box class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
                 <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
@@ -52,7 +52,7 @@
         <!-- Step 2: Launch -->
         <div class="scroll-step min-h-[60vh] flex items-center" data-step="1">
           <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
-            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+            <div data-code-box class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
                 <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
@@ -76,7 +76,7 @@
         <!-- Step 3: Collaborate -->
         <div class="scroll-step min-h-[60vh] flex items-center" data-step="2">
           <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
-            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+            <div data-code-box class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
                 <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
@@ -98,7 +98,7 @@
         <!-- Step 4: Observe -->
         <div class="scroll-step min-h-[60vh] flex items-center" data-step="3">
           <div class="w-full transition-all duration-500 opacity-40 scale-[0.98]">
-            <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
+            <div data-code-box class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10 border-l-2 border-l-transparent transition-colors">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
                 <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
@@ -240,7 +240,7 @@
     // Update code step highlighting
     steps.forEach((s, i) => {
       const inner = s.firstElementChild as HTMLElement;
-      const codeBox = inner?.querySelector(".bg-\\[\\#1a1f2e\\]") as HTMLElement;
+      const codeBox = inner?.querySelector("[data-code-box]") as HTMLElement;
       if (i === step) {
         inner.classList.remove("opacity-40", "scale-[0.98]");
         inner.classList.add("opacity-100", "scale-100");
@@ -322,25 +322,41 @@
     }
   }
 
-  // IntersectionObserver for scroll sync
+  // Reduced motion: disable SVG SMIL animations
   const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const step = parseInt((entry.target as HTMLElement).dataset.step || "0", 10);
-          setStep(step);
-        }
+
+  function disableSvgAnimations(): void {
+    document.querySelectorAll<SVGElement>("#sync-viz animate").forEach((el) => {
+      el.parentNode?.removeChild(el);
+    });
+  }
+
+  if (prefersReduced.matches) {
+    disableSvgAnimations();
+    setStep(0);
+  } else {
+    // IntersectionObserver for scroll sync
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const active = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!active) return;
+        const step = parseInt((active.target as HTMLElement).dataset.step || "0", 10);
+        setStep(step);
+      },
+      {
+        rootMargin: "-40% 0px -40% 0px",
+        threshold: [0, 0.25, 0.5, 0.75, 1],
       }
-    },
-    {
-      rootMargin: "-40% 0px -40% 0px",
-      threshold: 0,
-    }
-  );
+    );
 
-  steps.forEach((step) => observer.observe(step));
+    steps.forEach((step) => observer.observe(step));
 
-  // Start with step 0 visible
-  setStep(0);
+    // Cleanup on Astro view transitions
+    document.addEventListener("astro:before-swap", () => observer.disconnect(), { once: true });
+
+    // Start with step 0 visible
+    setStep(0);
+  }
 </script>

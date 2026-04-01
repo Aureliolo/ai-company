@@ -118,12 +118,12 @@ export default function BudgetMini({ tick }: Props) {
               strokeLinejoin="round"
             />
             <polyline
-              points="0,18 30,15 60,12 90,16 120,10 150,8 170,11 200,6"
-              fill="url(#sparkGrad)"
+              points="0,18 30,15 60,12 90,16 120,10 150,8 170,11 200,6 200,24 0,24"
+              fill="url(#dp-sparkGrad)"
               stroke="none"
             />
             <defs>
-              <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="dp-sparkGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
                 <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
               </linearGradient>

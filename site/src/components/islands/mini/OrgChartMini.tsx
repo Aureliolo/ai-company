@@ -35,8 +35,9 @@ export default function OrgChartMini({ tick }: Props) {
 
         {/* Edges */}
         {edges.map((e) => {
-          const from = agents.find((a) => a.id === e.from)!;
-          const to = agents.find((a) => a.id === e.to)!;
+          const from = agents.find((a) => a.id === e.from);
+          const to = agents.find((a) => a.id === e.to);
+          if (!from || !to) return null;
           return (
             <line
               key={`${e.from}-${e.to}`}
@@ -91,7 +92,7 @@ export default function OrgChartMini({ tick }: Props) {
         })}
       </svg>
       <div className="absolute bottom-2 right-3 text-[9px] px-2 py-0.5 rounded-full border" style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}>
-        8 seniority levels -- Intern to C-Suite
+        4 seniority levels -- Mid to C-Suite
       </div>
     </div>
   );

@@ -70,8 +70,7 @@ const useCases = [
 ---
 
 <div
-  class="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-4 -mx-6 px-6
-         scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/20
+  class="use-case-scroll flex gap-6 overflow-x-auto snap-x snap-mandatory pb-4 -mx-6 px-6
          lg:grid lg:grid-cols-3 lg:overflow-x-visible lg:snap-none lg:pb-0 lg:mx-0 lg:px-0"
   role="region"
   aria-label="Use case examples"
@@ -82,7 +81,7 @@ const useCases = [
     const titleColor = uc.color === "violet" ? "text-violet-400" : "text-teal-400";
     const dotColor = uc.color === "violet" ? "bg-violet-400" : "bg-teal-400";
     return (
-      <div class={`min-w-[300px] flex-shrink-0 snap-center bg-[#0F1219] rounded-xl p-6 border ${borderColor} transition-colors lg:min-w-0 lg:flex-shrink`}>
+      <div class={`min-w-[300px] flex-shrink-0 snap-center bg-[#0F1219] rounded-xl p-6 border ${borderColor} transition-colors lg:min-w-0 lg:shrink`}>
         <p class={`${titleColor} font-semibold mb-2`}>{uc.title}</p>
         <p class="text-sm text-gray-400 mb-4">{uc.description}</p>
         <ul class="text-xs text-gray-500 space-y-1">
@@ -99,6 +98,22 @@ const useCases = [
 </div>
 
 <style>
+  /* Scrollbar styling (no plugin needed) */
+  .use-case-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  .use-case-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+  .use-case-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .use-case-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
   /* Gradient fade hints for scroll on mobile */
   @media (max-width: 1023px) {
     [role="region"] {
