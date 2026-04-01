@@ -44,6 +44,11 @@ TEMPLATE_NAME_GEN_FAKER_ERROR: Final[str] = "template.name_generation.faker_erro
 # Locale resolution
 TEMPLATE_LOCALES_DROPPED_INVALID: Final[str] = "template.locales.dropped_invalid"
 
+# Workflow config
+TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY: Final[str] = (
+    "template.workflow_config.unknown_key"
+)
+
 # Model matching
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"

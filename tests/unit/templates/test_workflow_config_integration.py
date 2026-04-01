@@ -448,12 +448,12 @@ class TestBuiltinWorkflowConfigs:
         ids=list(BUILTIN_TEMPLATES),
     )
     def test_workflow_config_valid(self, name: str) -> None:
-        """Every builtin must produce a valid WorkflowConfig (not just defaults)."""
+        """Every builtin must explicitly declare workflow_config."""
         loaded = load_template(name)
         config = render_template(loaded)
         assert isinstance(config.workflow, WorkflowConfig)
-        # All templates should have at least one WIP limit set.
-        assert len(config.workflow.kanban.wip_limits) >= 1
+        # Builtins must explicitly declare workflow_config, not rely on defaults.
+        assert loaded.template.workflow_config, f"{name}: missing workflow_config"
 
     @pytest.mark.parametrize(
         "name",
@@ -461,8 +461,11 @@ class TestBuiltinWorkflowConfigs:
         ids=["startup", "dev_shop", "product_team", "full_company"],
     )
     def test_agile_templates_have_ceremonies(self, name: str) -> None:
-        """Agile kanban templates must define at least one ceremony."""
+        """Agile kanban templates must explicitly declare sprint ceremonies."""
         loaded = load_template(name)
+        # Verify the template YAML explicitly declares sprint ceremonies.
+        sprint_cfg = loaded.template.workflow_config.get("sprint", {})
+        assert sprint_cfg.get("ceremonies"), f"{name}: missing sprint ceremonies"
         config = render_template(loaded)
         assert len(config.workflow.sprint.ceremonies) >= 1
 
@@ -484,6 +487,17 @@ class TestBuiltinWorkflowConfigs:
     )
     def test_strict_kanban_templates(self, name: str) -> None:
         """Supervised kanban templates use strict WIP enforcement."""
+        loaded = load_template(name)
+        config = render_template(loaded)
+        assert config.workflow.kanban.enforce_wip is True
+
+    @pytest.mark.parametrize(
+        "name",
+        ["startup", "dev_shop", "product_team", "full_company"],
+        ids=["startup", "dev_shop", "product_team", "full_company"],
+    )
+    def test_agile_templates_enforce_wip(self, name: str) -> None:
+        """Agile kanban templates use strict WIP enforcement."""
         loaded = load_template(name)
         config = render_template(loaded)
         assert config.workflow.kanban.enforce_wip is True

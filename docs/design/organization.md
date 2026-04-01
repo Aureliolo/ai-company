@@ -282,12 +282,12 @@ template:
     kanban:
       wip_limits:
         - column: "in_progress"
-          limit: "{{ wip_limit | default(3) }}"
+          limit: {{ wip_limit | default(3) }}
         - column: "review"
           limit: 2
       enforce_wip: true
     sprint:
-      duration_days: "{{ sprint_length | default(7) }}"
+      duration_days: {{ sprint_length | default(7) }}
       ceremonies:
         - name: "sprint_planning"
           protocol: "structured_phases"
@@ -368,8 +368,9 @@ Scalars (`company_name`, `company_type`)
     replaces the parent entry entirely; departments with new names are appended.
 
 `workflow_config` dict
-:   Deep-merged (child keys override parent).  A child that sets only ``kanban``
-    inherits the parent's ``sprint`` sub-config (and vice versa).
+:   Not merged during inheritance.  A child template that uses ``extends`` must
+    declare its full ``workflow_config`` if it needs one; the parent's
+    ``workflow_config`` is not carried forward.
 
 `workflow_handoffs` and `escalation_paths`
 :   Child replaces entirely if present.

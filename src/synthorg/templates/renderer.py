@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from synthorg.config.defaults import default_config_dict
 from synthorg.config.errors import ConfigLocation
 from synthorg.config.utils import deep_merge, to_float
+from synthorg.core.enums import WorkflowType
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
@@ -34,6 +35,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VARIABLE_ERROR,
     TEMPLATE_RENDER_YAML_ERROR,
+    TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
 )
 from synthorg.templates._preset_resolution import resolve_agent_personality
 from synthorg.templates._render_helpers import (
@@ -461,15 +463,23 @@ def _build_workflow_dict(
     workflow_type_raw = rendered_data.get("workflow", template.workflow.value)
     workflow_type_str = (
         workflow_type_raw.value
-        if hasattr(workflow_type_raw, "value")
+        if isinstance(workflow_type_raw, WorkflowType)
         else str(workflow_type_raw)
     )
     workflow_dict: dict[str, Any] = {"workflow_type": workflow_type_str}
     wf_config = rendered_data.get("workflow_config")
     if isinstance(wf_config, dict):
-        for key in ("kanban", "sprint"):
+        known_keys = {"kanban", "sprint"}
+        for key in known_keys:
             if key in wf_config:
                 workflow_dict[key] = wf_config[key]
+        unknown = set(wf_config) - known_keys
+        if unknown:
+            logger.warning(
+                TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
+                unknown_keys=sorted(unknown),
+                source_name=template.metadata.name,
+            )
     return workflow_dict
 
 
