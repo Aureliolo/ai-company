@@ -35,7 +35,11 @@ interface ProjectsState {
 
 let _detailRequestToken = 0
 /** True when a newer detail request has superseded this one. */
-function isStaleRequest(token: number): boolean { return _detailRequestToken !== token }
+function isStaleDetailRequest(token: number): boolean { return _detailRequestToken !== token }
+
+let _listRequestToken = 0
+/** True when a newer list request has superseded this one. */
+function isStaleListRequest(token: number): boolean { return _listRequestToken !== token }
 
 export const useProjectsStore = create<ProjectsState>()((set) => ({
   projects: [],
@@ -53,11 +57,14 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   detailError: null,
 
   fetchProjects: async () => {
+    const token = ++_listRequestToken
     set({ listLoading: true, listError: null })
     try {
       const result = await listProjects({ limit: 200 })
+      if (isStaleListRequest(token)) return
       set({ projects: result.data, totalProjects: result.total, listLoading: false })
     } catch (err) {
+      if (isStaleListRequest(token)) return
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },
@@ -71,7 +78,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
       listTasks({ project: id, limit: 50 }),
     ])
 
-    if (isStaleRequest(token)) return
+    if (isStaleDetailRequest(token)) return
 
     const project = projectResult.status === 'fulfilled' ? projectResult.value : null
     if (!project) {
@@ -95,11 +102,15 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
 
   createProject: async (data: CreateProjectRequest) => {
     const project = await createProjectApi(data)
-    // Optimistically add to local state for immediate UI update
-    set((state) => ({
-      projects: [project, ...state.projects],
-      totalProjects: state.totalProjects + 1,
-    }))
+    // Optimistically add to local state for immediate UI update.
+    // Filter by ID first to prevent duplicates if a concurrent fetch already added it.
+    set((state) => {
+      const filtered = state.projects.filter((p) => p.id !== project.id)
+      return {
+        projects: [project, ...filtered],
+        totalProjects: filtered.length + 1,
+      }
+    })
     // Polling and WS events will reconcile with server state.
     return project
   },
@@ -109,7 +120,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   setLeadFilter: (l) => set({ leadFilter: l }),
 
   clearDetail: () => {
-    _detailRequestToken = 0
+    ++_detailRequestToken
     set({
       selectedProject: null,
       projectTasks: [],

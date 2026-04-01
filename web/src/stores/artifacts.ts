@@ -130,7 +130,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   setProjectIdFilter: (p) => set({ projectIdFilter: p }),
 
   clearDetail: () => {
-    _detailRequestToken = 0
+    ++_detailRequestToken
     set({
       selectedArtifact: null,
       contentPreview: null,
