@@ -75,8 +75,12 @@ def resolve_inheritance(  # noqa: PLR0913
     Raises:
         TemplateInheritanceError: On circular chains or depth overflow.
     """
-    # Guaranteed by _render_to_dict caller.
-    assert loaded.template.extends is not None  # noqa: S101
+    if loaded.template.extends is None:
+        msg = (
+            f"resolve_inheritance called for {loaded.source_name!r} "
+            "but template has no 'extends' -- caller contract violated"
+        )
+        raise TemplateInheritanceError(msg)
     parent_name: str = loaded.template.extends
     child_id = loaded.source_name
 

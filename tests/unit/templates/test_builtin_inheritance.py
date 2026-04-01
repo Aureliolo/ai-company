@@ -287,3 +287,57 @@ class TestFullCompanyStandalone:
         assert isinstance(config, RootConfig)
         assert len(config.agents) >= 8
         assert len(config.departments) >= 3
+
+
+# ── Three-level inheritance regression ───────────────────────────
+
+
+@pytest.mark.unit
+class TestThreeLevelInheritanceRegression:
+    """Regression tests for solo_founder -> startup -> dev_shop/product_team.
+
+    Verifies that workflow config and agent merge_id handling work
+    correctly across three inheritance levels.
+    """
+
+    def test_dev_shop_workflow_from_own_config(self) -> None:
+        """dev_shop uses its own workflow_config, not grandparent's.
+
+        Each template's workflow_config is rendered independently by the
+        renderer (not inherited via merge), so dev_shop gets its own
+        kanban WIP limit of 2, not solo_founder's 3.
+        """
+        config = _render("dev_shop")
+        wf = config.workflow
+        assert wf is not None
+        kanban = wf.kanban
+        in_progress = next(
+            w for w in kanban.wip_limits if w.column.value == "in_progress"
+        )
+        assert in_progress.limit == 2
+
+    def test_dev_shop_grandparent_agents_removed(self) -> None:
+        """Agents originating from solo_founder (CEO) are removable by dev_shop.
+
+        startup inherits CEO from solo_founder. After the solo_founder +
+        startup merge, merge_ids are stripped. dev_shop removes CEO by
+        (role, department, '') key -- no merge_id needed.
+        """
+        config = _render("dev_shop")
+        roles = {a.role for a in config.agents}
+        assert "CEO" not in roles
+
+    def test_product_team_override_survives_chain(self) -> None:
+        """product_team overrides a Full-Stack Developer that was already
+        overridden by startup from solo_founder's original.
+
+        Chain: solo_founder defines FS Dev -> startup overrides via
+        merge_id -> merge strips merge_id -> product_team overrides
+        by (role, dept, '') key -> personality is communication_bridge.
+        """
+        config = _render("product_team")
+        fs_agents = [a for a in config.agents if a.role == "Full-Stack Developer"]
+        assert len(fs_agents) == 1
+        assert fs_agents[0].personality is not None
+        # communication_bridge preset has articulate, sociable, diplomatic
+        assert "articulate" in fs_agents[0].personality.get("traits", ())
