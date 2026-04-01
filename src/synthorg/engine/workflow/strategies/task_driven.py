@@ -43,6 +43,7 @@ _MIDPOINT_THRESHOLD: float = 0.5
 _DEFAULT_EVERY_N: int = 5
 _DEFAULT_SPRINT_PCT: float = 50.0
 _MAX_SPRINT_PCT: float = 100.0
+_DEFAULT_TRANSITION_THRESHOLD: float = 1.0
 
 _VALID_TRIGGERS: frozenset[str] = frozenset(
     {
@@ -140,9 +141,11 @@ class TaskDrivenStrategy:
         if context.total_tasks_in_sprint == 0:
             return None
 
-        threshold = config.ceremony_policy.transition_threshold
-        if threshold is None:
-            threshold = 1.0
+        threshold: float = (
+            config.ceremony_policy.transition_threshold
+            if config.ceremony_policy.transition_threshold is not None
+            else _DEFAULT_TRANSITION_THRESHOLD
+        )
 
         if context.sprint_percentage_complete >= threshold:
             return SprintStatus.IN_REVIEW
@@ -269,7 +272,7 @@ class TaskDrivenStrategy:
             return False
 
         if trigger == _TRIGGER_SPRINT_END:
-            return has_tasks and pct >= _MAX_SPRINT_PCT / _MAX_SPRINT_PCT
+            return has_tasks and pct >= _DEFAULT_TRANSITION_THRESHOLD
 
         if trigger == _TRIGGER_SPRINT_MIDPOINT:
             return has_tasks and pct >= _MIDPOINT_THRESHOLD

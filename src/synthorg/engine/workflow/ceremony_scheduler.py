@@ -8,6 +8,7 @@ fired-once tracking) and delegates scheduling decisions to the active
 See ``docs/design/ceremony-scheduling.md`` for the full design.
 """
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -29,10 +30,16 @@ if TYPE_CHECKING:
     from synthorg.engine.workflow.ceremony_strategy import (
         CeremonySchedulingStrategy,
     )
-    from synthorg.engine.workflow.sprint_config import SprintConfig
+    from synthorg.engine.workflow.sprint_config import (
+        SprintCeremonyConfig,
+        SprintConfig,
+    )
     from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 logger = get_logger(__name__)
+
+_MIDPOINT_THRESHOLD: float = 0.5
+_COMPLETE_THRESHOLD: float = 1.0
 
 
 class CeremonyScheduler:
@@ -104,6 +111,8 @@ class CeremonyScheduler:
         strategy's ``on_sprint_activated`` hook.
 
         Fires any ``sprint_start`` one-shot ceremonies immediately.
+        If activation fails partway through, the scheduler is
+        deactivated to avoid partial state.
 
         Args:
             sprint: The sprint to activate (should be ACTIVE).
@@ -124,10 +133,19 @@ class CeremonyScheduler:
         self._activation_time = time.monotonic()
         self._running = True
 
-        await strategy.on_sprint_activated(sprint, config)
-
-        # Fire sprint_start one-shot ceremonies.
-        await self._fire_sprint_start_ceremonies(sprint, config)
+        try:
+            await strategy.on_sprint_activated(sprint, config)
+            await self._fire_sprint_start_ceremonies(sprint, config)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SPRINT_CEREMONY_SCHEDULER_STARTED,
+                sprint_id=sprint.id,
+                note="activation failed, deactivating",
+            )
+            await self.deactivate_sprint()
+            raise
 
         logger.info(
             SPRINT_CEREMONY_SCHEDULER_STARTED,
@@ -140,8 +158,13 @@ class CeremonyScheduler:
         """Stop tracking the current sprint's ceremonies.
 
         Calls the strategy's ``on_sprint_deactivated`` hook.
+        No-op if the scheduler is not running.
         """
         if not self._running:
+            logger.debug(
+                SPRINT_CEREMONY_SCHEDULER_STOPPED,
+                note="already_inactive",
+            )
             return
 
         if self._active_strategy is not None:
@@ -183,48 +206,63 @@ class CeremonyScheduler:
             The sprint, possibly transitioned to IN_REVIEW.
         """
         if not self._running or self._active_strategy is None:
+            logger.debug(
+                SPRINT_CEREMONY_TRIGGERED,
+                note="scheduler_not_active",
+                task_id=task_id,
+            )
             return sprint
         assert self._sprint_config is not None  # noqa: S101
 
         self._active_sprint = sprint
         self._total_completions += 1
 
-        # Build context for this evaluation.
         context = self._build_context(sprint)
-
-        # Notify strategy.
         await self._active_strategy.on_task_completed(
             sprint,
             task_id,
             story_points,
             context,
         )
+        await self._evaluate_ceremonies(sprint)
+        await self._check_one_shot_triggers(sprint, context)
+        return self._check_auto_transition(sprint, context)
 
-        # Evaluate each ceremony.
+    # -- Ceremony evaluation -------------------------------------------------
+
+    async def _evaluate_ceremonies(self, sprint: Sprint) -> None:
+        """Evaluate and fire per-task ceremonies."""
+        assert self._sprint_config is not None  # noqa: S101
+        assert self._active_strategy is not None  # noqa: S101
+
         for ceremony in self._sprint_config.ceremonies:
-            self._completion_counters.setdefault(ceremony.name, 0)
             self._completion_counters[ceremony.name] += 1
-
-            ceremony_context = self._build_ceremony_context(
-                ceremony.name,
-                sprint,
-            )
 
             if self._is_one_shot_fired(ceremony.name):
                 continue
 
+            ctx = self._build_ceremony_context(ceremony.name, sprint)
             if self._active_strategy.should_fire_ceremony(
                 ceremony,
                 sprint,
-                ceremony_context,
+                ctx,
             ):
-                await self._trigger_ceremony(ceremony.name, sprint)
-                self._completion_counters[ceremony.name] = 0
+                success = await self._trigger_ceremony(
+                    ceremony.name,
+                    sprint,
+                )
+                if success:
+                    self._completion_counters[ceremony.name] = 0
 
-        # Check for midpoint and end one-shots.
-        await self._check_one_shot_triggers(sprint, context)
+    def _check_auto_transition(
+        self,
+        sprint: Sprint,
+        context: CeremonyEvalContext,
+    ) -> Sprint:
+        """Check and apply auto-transition if strategy says so."""
+        assert self._active_strategy is not None  # noqa: S101
+        assert self._sprint_config is not None  # noqa: S101
 
-        # Check auto-transition.
         target = self._active_strategy.should_transition_sprint(
             sprint,
             self._sprint_config,
@@ -240,10 +278,71 @@ class CeremonyScheduler:
             )
             sprint = sprint.with_transition(target)
             self._active_sprint = sprint
-
         return sprint
 
-    # -- Internal helpers ----------------------------------------------------
+    # -- One-shot ceremonies -------------------------------------------------
+
+    async def _fire_sprint_start_ceremonies(
+        self,
+        sprint: Sprint,
+        config: SprintConfig,
+    ) -> None:
+        """Fire ceremonies configured with sprint_start trigger."""
+        tasks: list[tuple[str, Sprint]] = []
+        for ceremony in config.ceremonies:
+            if ceremony.policy_override is None:
+                continue
+            sc = ceremony.policy_override.strategy_config or {}
+            if sc.get("trigger") == "sprint_start":
+                tasks.append((ceremony.name, sprint))
+
+        await self._fire_ceremonies_parallel(tasks)
+
+    async def _check_one_shot_triggers(
+        self,
+        sprint: Sprint,
+        context: CeremonyEvalContext,
+    ) -> None:
+        """Check and fire midpoint/end one-shot ceremonies."""
+        if self._sprint_config is None:
+            return
+
+        tasks: list[tuple[str, Sprint]] = []
+        for ceremony in self._sprint_config.ceremonies:
+            trigger = _get_trigger(ceremony)
+            if trigger is None:
+                continue
+            not_fired = ceremony.name not in self._fired_once_triggers
+            pct = context.sprint_percentage_complete
+
+            is_midpoint = trigger == "sprint_midpoint" and pct >= _MIDPOINT_THRESHOLD
+            is_end = trigger == "sprint_end" and pct >= _COMPLETE_THRESHOLD
+            if not_fired and (is_midpoint or is_end):
+                tasks.append((ceremony.name, sprint))
+
+        await self._fire_ceremonies_parallel(tasks)
+
+    async def _fire_ceremonies_parallel(
+        self,
+        ceremonies: list[tuple[str, Sprint]],
+    ) -> None:
+        """Fire multiple ceremonies in parallel, marking one-shots."""
+        if not ceremonies:
+            return
+
+        async def _fire(name: str, sprint: Sprint) -> tuple[str, bool]:
+            success = await self._trigger_ceremony(name, sprint)
+            return (name, success)
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(_fire(name, sprint)) for name, sprint in ceremonies]
+
+        for task in tasks:
+            name, success = task.result()
+            if success:
+                self._fired_once_triggers.add(name)
+
+    # -- Context building ----------------------------------------------------
 
     def _build_context(self, sprint: Sprint) -> CeremonyEvalContext:
         """Build a CeremonyEvalContext for the current state."""
@@ -256,6 +355,7 @@ class CeremonyScheduler:
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=time.monotonic() - self._activation_time,
+            # Budget integration is a follow-up (#972).
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,
             velocity_history=self._velocity_history,
@@ -283,6 +383,7 @@ class CeremonyScheduler:
             total_completions_this_sprint=self._total_completions,
             total_tasks_in_sprint=total_tasks,
             elapsed_seconds=time.monotonic() - self._activation_time,
+            # Budget integration is a follow-up (#972).
             budget_consumed_fraction=0.0,
             budget_remaining=0.0,
             velocity_history=self._velocity_history,
@@ -292,58 +393,23 @@ class CeremonyScheduler:
             story_points_committed=sprint.story_points_committed,
         )
 
+    # -- Trigger execution ---------------------------------------------------
+
     def _is_one_shot_fired(self, ceremony_name: str) -> bool:
         """Check if a one-shot ceremony has already fired."""
         return ceremony_name in self._fired_once_triggers
-
-    async def _fire_sprint_start_ceremonies(
-        self,
-        sprint: Sprint,
-        config: SprintConfig,
-    ) -> None:
-        """Fire ceremonies configured with sprint_start trigger."""
-        for ceremony in config.ceremonies:
-            if ceremony.policy_override is None:
-                continue
-            sc = ceremony.policy_override.strategy_config or {}
-            if sc.get("trigger") == "sprint_start":
-                await self._trigger_ceremony(ceremony.name, sprint)
-                self._fired_once_triggers.add(ceremony.name)
-
-    _MIDPOINT_THRESHOLD: float = 0.5
-    _COMPLETE_THRESHOLD: float = 1.0
-
-    async def _check_one_shot_triggers(
-        self,
-        sprint: Sprint,
-        context: CeremonyEvalContext,
-    ) -> None:
-        """Check and fire midpoint/end one-shot ceremonies."""
-        if self._sprint_config is None:
-            return
-
-        for ceremony in self._sprint_config.ceremonies:
-            if ceremony.policy_override is None:
-                continue
-            sc = ceremony.policy_override.strategy_config or {}
-            trigger = sc.get("trigger")
-            not_fired = ceremony.name not in self._fired_once_triggers
-            pct = context.sprint_percentage_complete
-
-            is_midpoint = (
-                trigger == "sprint_midpoint" and pct >= self._MIDPOINT_THRESHOLD
-            )
-            is_end = trigger == "sprint_end" and pct >= self._COMPLETE_THRESHOLD
-            if not_fired and (is_midpoint or is_end):
-                await self._trigger_ceremony(ceremony.name, sprint)
-                self._fired_once_triggers.add(ceremony.name)
 
     async def _trigger_ceremony(
         self,
         ceremony_name: str,
         sprint: Sprint,
-    ) -> None:
-        """Fire a ceremony via MeetingScheduler.trigger_event."""
+    ) -> bool:
+        """Fire a ceremony via MeetingScheduler.trigger_event.
+
+        Returns:
+            ``True`` if the ceremony was successfully triggered,
+            ``False`` if the trigger failed (logged and swallowed).
+        """
         event_name = build_trigger_event_name(ceremony_name, sprint.id)
         context: dict[str, Any] = {
             "sprint_id": sprint.id,
@@ -373,3 +439,13 @@ class CeremonyScheduler:
                 sprint_id=sprint.id,
                 note="trigger_event failed",
             )
+            return False
+        return True
+
+
+def _get_trigger(ceremony: SprintCeremonyConfig) -> str | None:
+    """Extract the trigger string from a ceremony's policy override."""
+    if ceremony.policy_override is None:
+        return None
+    sc = ceremony.policy_override.strategy_config or {}
+    return sc.get("trigger")

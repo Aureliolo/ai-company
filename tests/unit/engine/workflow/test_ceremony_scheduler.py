@@ -270,7 +270,11 @@ class TestCeremonySchedulerTaskCompletion:
         mock_ms = _make_mock_meeting_scheduler()
         mock_ms.trigger_event = AsyncMock(side_effect=RuntimeError("boom"))
         scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
-        ceremony = _ceremony_with_trigger("standup", "every_n_completions", every_n=1)
+        ceremony = _ceremony_with_trigger(
+            "standup",
+            "every_n_completions",
+            every_n=1,
+        )
         config = _make_config(ceremonies=(ceremony,))
         strategy = TaskDrivenStrategy()
 
@@ -281,3 +285,54 @@ class TestCeremonySchedulerTaskCompletion:
         sprint = _make_sprint(task_count=10, completed_count=2)
         result = await scheduler.on_task_completed(sprint, "task-1", 3.0)
         assert result.status is SprintStatus.ACTIVE
+
+    @pytest.mark.unit
+    async def test_memory_error_propagates(self) -> None:
+        mock_ms = _make_mock_meeting_scheduler()
+        mock_ms.trigger_event = AsyncMock(side_effect=MemoryError)
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        ceremony = _ceremony_with_trigger(
+            "standup",
+            "every_n_completions",
+            every_n=1,
+        )
+        config = _make_config(ceremonies=(ceremony,))
+        strategy = TaskDrivenStrategy()
+
+        sprint = _make_sprint(task_count=10, completed_count=1)
+        await scheduler.activate_sprint(sprint, config, strategy)
+
+        sprint = _make_sprint(task_count=10, completed_count=2)
+        with pytest.raises(MemoryError):
+            await scheduler.on_task_completed(sprint, "task-1", 3.0)
+
+    @pytest.mark.unit
+    async def test_deactivate_noop_when_not_running(self) -> None:
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        # Should not raise.
+        await scheduler.deactivate_sprint()
+        assert scheduler.running is False
+
+    @pytest.mark.unit
+    async def test_one_shot_not_marked_on_trigger_failure(self) -> None:
+        """One-shot ceremonies must not be marked fired on failure."""
+        mock_ms = _make_mock_meeting_scheduler()
+        mock_ms.trigger_event = AsyncMock(
+            side_effect=RuntimeError("boom"),
+        )
+        scheduler = CeremonyScheduler(meeting_scheduler=mock_ms)
+        ceremony = _ceremony_with_trigger("retro", "sprint_end")
+        config = _make_config(ceremonies=(ceremony,))
+        strategy = TaskDrivenStrategy()
+
+        sprint = _make_sprint(task_count=1, completed_count=0)
+        await scheduler.activate_sprint(sprint, config, strategy)
+
+        # Complete the only task -- sprint_end should trigger but fail.
+        sprint = _make_sprint(task_count=1, completed_count=1)
+        await scheduler.on_task_completed(sprint, "task-0", 3.0)
+
+        # The one-shot should NOT be marked as fired.
+        assert "retro" not in scheduler._fired_once_triggers

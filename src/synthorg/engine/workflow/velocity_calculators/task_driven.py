@@ -9,11 +9,16 @@ from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
 )
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+
+logger = get_logger(__name__)
+
+_UNIT: str = "pts/task"
 
 
 class TaskDrivenVelocityCalculator:
@@ -22,10 +27,8 @@ class TaskDrivenVelocityCalculator:
     Primary unit: ``pts/task``.
 
     When ``task_completion_count`` is not available on a
-    ``VelocityRecord``, falls back to counting
-    ``completed_task_ids`` (story_points_completed / task count
-    is not available, so uses story_points_completed directly as
-    a per-sprint metric with a warning secondary).
+    ``VelocityRecord``, falls back to zero with a secondary
+    ``pts_per_sprint`` metric.
     """
 
     __slots__ = ()
@@ -40,10 +43,22 @@ class TaskDrivenVelocityCalculator:
             Velocity metrics with ``pts/task`` as primary unit.
         """
         task_count = record.task_completion_count
-        if task_count is None or task_count == 0:
+        if task_count is None:
+            logger.debug(
+                "velocity.task_driven.no_task_count",
+                sprint_id=record.sprint_id,
+            )
             return VelocityMetrics(
                 primary_value=0.0,
-                primary_unit="pts/task",
+                primary_unit=_UNIT,
+                secondary={
+                    "pts_per_sprint": record.story_points_completed,
+                },
+            )
+        if task_count == 0:
+            return VelocityMetrics(
+                primary_value=0.0,
+                primary_unit=_UNIT,
                 secondary={
                     "pts_per_sprint": record.story_points_completed,
                 },
@@ -51,7 +66,7 @@ class TaskDrivenVelocityCalculator:
         pts_per_task = record.story_points_completed / task_count
         return VelocityMetrics(
             primary_value=pts_per_task,
-            primary_unit="pts/task",
+            primary_unit=_UNIT,
             secondary={
                 "pts_per_sprint": record.story_points_completed,
                 "task_count": float(task_count),
@@ -78,7 +93,7 @@ class TaskDrivenVelocityCalculator:
         if not records or window < 1:
             return VelocityMetrics(
                 primary_value=0.0,
-                primary_unit="pts/task",
+                primary_unit=_UNIT,
             )
         recent = records[-window:]
         total_pts = 0.0
@@ -91,11 +106,11 @@ class TaskDrivenVelocityCalculator:
         if total_tasks == 0:
             return VelocityMetrics(
                 primary_value=0.0,
-                primary_unit="pts/task",
+                primary_unit=_UNIT,
             )
         return VelocityMetrics(
             primary_value=total_pts / total_tasks,
-            primary_unit="pts/task",
+            primary_unit=_UNIT,
             secondary={
                 "total_tasks": float(total_tasks),
                 "sprints_averaged": float(len(recent)),
@@ -110,4 +125,4 @@ class TaskDrivenVelocityCalculator:
     @property
     def primary_unit(self) -> str:
         """Return ``pts/task``."""
-        return "pts/task"
+        return _UNIT

@@ -34,6 +34,40 @@ their workflow rhythm.
 
 ---
 
+## Design Decisions
+
+**All scheduling paradigms are pluggable strategies.** The system ships eight
+scheduling strategies (task-driven, calendar, hybrid, event-driven,
+budget-driven, throughput-adaptive, external-trigger, milestone-driven)
+behind a single `CeremonySchedulingStrategy` protocol. Users select the
+strategy that fits their workflow at the project, department, or per-ceremony
+level.
+
+**Why pluggable:**
+
+- Different templates naturally want different rhythms (startup vs. enterprise).
+- The `CeremonySchedulingStrategy` protocol adds minimal implementation cost
+  per strategy while maximizing flexibility.
+- Users can switch strategies between sprints without any code changes.
+
+**Key decisions:**
+
+- **Templates can mix strategies.** The 3-level config resolution (project /
+  department / per-ceremony) allows different ceremonies to use different
+  strategies within a single template.
+- **Each strategy defines its own velocity unit.** There is no forced
+  normalization to points/sprint. Each strategy ships a default
+  `VelocityCalculator` (e.g. task-driven uses `pts/task`, calendar uses
+  `pts/day`). Users can override via settings.
+- **Ceremony triggering integrates with coordination** via the protocol's
+  lifecycle hooks (`on_task_completed`, `on_external_event`). The
+  `CeremonyEvalContext` is extensible for coordination metadata. Detailed
+  interaction patterns are deferred to the coordination integration phase.
+- **Strategy is locked per-sprint.** Changes take effect at the next sprint
+  start, with a migration notification to the responsible role.
+
+---
+
 ## Architecture Overview
 
 ```text

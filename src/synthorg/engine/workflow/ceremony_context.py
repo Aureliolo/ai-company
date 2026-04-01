@@ -52,3 +52,33 @@ class CeremonyEvalContext:
     sprint_percentage_complete: float
     story_points_completed: float
     story_points_committed: float
+
+    def __post_init__(self) -> None:
+        """Validate field constraints."""
+        if self.completions_since_last_trigger < 0:
+            msg = "completions_since_last_trigger must be >= 0"
+            raise ValueError(msg)
+        if self.total_completions_this_sprint < 0:
+            msg = "total_completions_this_sprint must be >= 0"
+            raise ValueError(msg)
+        if self.total_tasks_in_sprint < 0:
+            msg = "total_tasks_in_sprint must be >= 0"
+            raise ValueError(msg)
+        if self.elapsed_seconds < 0.0:
+            msg = "elapsed_seconds must be >= 0.0"
+            raise ValueError(msg)
+        if not 0.0 <= self.budget_consumed_fraction <= 1.0:
+            msg = "budget_consumed_fraction must be in [0.0, 1.0]"
+            raise ValueError(msg)
+        if self.budget_remaining < 0.0:
+            msg = "budget_remaining must be >= 0.0"
+            raise ValueError(msg)
+        if not 0.0 <= self.sprint_percentage_complete <= 1.0:
+            msg = "sprint_percentage_complete must be in [0.0, 1.0]"
+            raise ValueError(msg)
+        if self.story_points_completed < 0.0:
+            msg = "story_points_completed must be >= 0.0"
+            raise ValueError(msg)
+        if self.story_points_committed < 0.0:
+            msg = "story_points_committed must be >= 0.0"
+            raise ValueError(msg)
