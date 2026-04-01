@@ -15,9 +15,9 @@
 </div>
 
 <script>
-  const canvas = document.getElementById("particle-network") as HTMLCanvasElement;
-  if (canvas) {
-    const ctx = canvas.getContext("2d")!;
+  const canvas = document.getElementById("particle-network") as HTMLCanvasElement | null;
+  const ctx = canvas?.getContext("2d") ?? null;
+  if (canvas && ctx) {
     const COLORS = ["#a78bfa", "#2dd4bf"]; // violet-400, teal-400
     const MAX_DIST = 150;
     const MAX_DIST_SQ = MAX_DIST * MAX_DIST;
@@ -226,6 +226,13 @@
       resizeTimer = setTimeout(resize, 200);
     });
     ro.observe(canvas.parentElement!);
+
+    // Cleanup on Astro view transitions
+    document.addEventListener("astro:before-swap", () => {
+      ro.disconnect();
+      clearTimeout(resizeTimer);
+      animating = false;
+    }, { once: true });
 
     start();
   }

@@ -31,11 +31,8 @@ export default function DashboardPreview() {
   useEffect(() => {
     if (isPaused) return;
     const timer = setInterval(() => {
-      setActiveTab((t) => {
-        const next = (t + 1) % 4;
-        setPageKey((k) => k + 1);
-        return next;
-      });
+      setActiveTab((t) => (t + 1) % 4);
+      setPageKey((k) => k + 1);
     }, 6000);
     return () => clearInterval(timer);
   }, [isPaused]);
@@ -128,8 +125,10 @@ export default function DashboardPreview() {
             {pages.map((page, i) => (
               <button
                 key={page.label}
+                id={`dp-tab-${i}`}
                 role="tab"
                 aria-selected={i === activeTab}
+                aria-controls="dp-tabpanel"
                 onClick={() => selectTab(i)}
                 className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors border-b-2 cursor-pointer"
                 style={{
@@ -148,9 +147,10 @@ export default function DashboardPreview() {
 
           {/* Page content */}
           <div
+            id="dp-tabpanel"
             className="p-3 min-h-[280px] sm:min-h-[320px] flex items-start"
             role="tabpanel"
-            aria-label={pages[activeTab].label}
+            aria-labelledby={`dp-tab-${activeTab}`}
           >
             <div key={pageKey} className="w-full dp-page-enter">
               <PageComponent tick={tick} />
@@ -164,7 +164,7 @@ export default function DashboardPreview() {
         {pages.map((page, i) => (
           <button
             key={i}
-            className="w-1.5 h-1.5 rounded-full transition-colors cursor-pointer"
+            className="w-1.5 h-1.5 rounded-full transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1"
             style={{
               background: i === activeTab ? "var(--dp-accent)" : "var(--dp-border-bright)",
               border: "none",

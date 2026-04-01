@@ -1,7 +1,7 @@
 ---
 const heroFeatures = [
   {
-    icon: "&#9881;",
+    icon: "\u2699",
     title: "Orchestration Engine",
     headline: "Six routing strategies. Three execution loops. One engine.",
     description:
@@ -12,7 +12,7 @@ const heroFeatures = [
     color: "violet",
   },
   {
-    icon: "&#128274;",
+    icon: "\uD83D\uDD12",
     title: "Governance & Security",
     headline: "Every action classified, audited, and gated.",
     description:
@@ -23,7 +23,7 @@ const heroFeatures = [
     color: "teal",
   },
   {
-    icon: "&#129504;",
+    icon: "\uD83E\uDDE0",
     title: "Agent Identity",
     headline: "Agents with personalities, careers, and performance reviews.",
     description:
@@ -34,7 +34,7 @@ const heroFeatures = [
     color: "violet",
   },
   {
-    icon: "&#128451;",
+    icon: "\uD83D\uDDC3",
     title: "Memory & Knowledge",
     headline: "Five memory types. Knowledge that outlasts any agent.",
     description:
@@ -101,7 +101,7 @@ const compactFeatures = [
         class={`block bg-[#0F1219] rounded-xl p-8 border ${borderColor} transition-colors no-underline text-white group`}
       >
         <div class={`w-12 h-12 rounded-lg ${iconBg} flex items-center justify-center ${iconColor} mb-4 text-xl`}>
-          <Fragment set:html={f.icon} />
+          {f.icon}
         </div>
         <h3 class="text-xl font-semibold mb-1">{f.title}</h3>
         <p class={`text-sm ${iconColor} font-medium mb-3`}>{f.headline}</p>

@@ -143,6 +143,7 @@ const architecture = [
   {architecture.map((arch) => (
     <div class="relative">
       <button
+        id={`btn-${arch.id}`}
         data-arch-toggle
         aria-expanded="false"
         aria-controls={`panel-${arch.id}`}
@@ -174,6 +175,8 @@ const architecture = [
     id={`panel-${arch.id}`}
     role="region"
     aria-labelledby={`btn-${arch.id}`}
+    aria-hidden="true"
+    inert
     class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out"
   >
     <div class="overflow-hidden">
@@ -208,6 +211,8 @@ const architecture = [
         if (panelId) {
           const panel = document.getElementById(panelId);
           if (panel) {
+            panel.setAttribute("aria-hidden", "true");
+            panel.setAttribute("inert", "");
             panel.classList.remove("grid-rows-[1fr]");
             panel.classList.add("grid-rows-[0fr]");
           }
@@ -217,6 +222,8 @@ const architecture = [
       // Expand clicked (if it was collapsed)
       if (!isExpanded && target) {
         btn.setAttribute("aria-expanded", "true");
+        target.removeAttribute("aria-hidden");
+        target.removeAttribute("inert");
         target.classList.remove("grid-rows-[0fr]");
         target.classList.add("grid-rows-[1fr]");
       }

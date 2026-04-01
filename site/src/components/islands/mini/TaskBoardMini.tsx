@@ -9,7 +9,7 @@ interface TaskCard {
   assignee: string;
 }
 
-const priorityColors: Record<string, string> = {
+const priorityColors: Record<TaskCard["priority"], string> = {
   critical: "#ef4444",
   high: "#f59e0b",
   medium: "#38bdf8",
