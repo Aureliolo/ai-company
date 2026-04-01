@@ -21,6 +21,7 @@ from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -65,13 +66,14 @@ class Phase1Result(NamedTuple):
 class MeetingWireResult(NamedTuple):
     """Services created during meeting auto-wiring.
 
-    Both fields are guaranteed non-``None`` after
+    All fields are guaranteed non-``None`` after
     ``auto_wire_meetings()`` returns -- explicit values pass through
     and ``None`` inputs are replaced with auto-wired instances.
     """
 
     meeting_orchestrator: MeetingOrchestrator
     meeting_scheduler: MeetingScheduler
+    ceremony_scheduler: CeremonyScheduler
 
 
 class BuildDispatcherFn(Protocol):
@@ -286,9 +288,14 @@ def auto_wire_meetings(
             agent_registry,
         )
 
+    ceremony_scheduler = CeremonyScheduler(
+        meeting_scheduler=meeting_scheduler,
+    )
+
     return MeetingWireResult(
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
+        ceremony_scheduler=ceremony_scheduler,
     )
 
 

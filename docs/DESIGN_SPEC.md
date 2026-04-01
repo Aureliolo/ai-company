@@ -21,6 +21,7 @@ The design specification has been split into focused documentation pages for bet
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
 | [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for all v0.5.0 dashboard pages |
 | [UX Research](design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
+| [Ceremony Scheduling](design/ceremony-scheduling.md) | Strategies, Protocols, Velocity | Pluggable ceremony scheduling, 8 strategies, velocity calculation |
 
 ## Supporting Pages
 

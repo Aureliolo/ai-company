@@ -24,6 +24,7 @@ from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
+from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
@@ -71,6 +72,7 @@ class AppState:
         "_artifact_storage",
         "_auth_service",
         "_backup_service",
+        "_ceremony_scheduler",
         "_config_resolver",
         "_coordinator",
         "_cost_tracker",
@@ -110,6 +112,7 @@ class AppState:
         performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
         meeting_scheduler: MeetingScheduler | None = None,
+        ceremony_scheduler: CeremonyScheduler | None = None,
         settings_service: SettingsService | None = None,
         provider_registry: ProviderRegistry | None = None,
         model_router: ModelRouter | None = None,
@@ -134,6 +137,7 @@ class AppState:
         self._performance_tracker = performance_tracker
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
+        self._ceremony_scheduler = ceremony_scheduler
         self._settings_service = settings_service
         self._provider_registry = provider_registry
         self._model_router = model_router
@@ -264,6 +268,11 @@ class AppState:
             self._meeting_scheduler,
             "meeting_scheduler",
         )
+
+    @property
+    def ceremony_scheduler(self) -> CeremonyScheduler | None:
+        """Return ceremony scheduler, or None if not configured."""
+        return self._ceremony_scheduler
 
     @property
     def approval_gate(self) -> ApprovalGate | None:

@@ -62,3 +62,27 @@ SPRINT_VELOCITY_RECORDED: str = "workflow.sprint.velocity_recorded"
 
 SPRINT_CEREMONY_SCHEDULED: str = "workflow.sprint.ceremony_scheduled"
 """Sprint ceremony scheduled."""
+
+SPRINT_CEREMONY_TRIGGERED: str = "workflow.sprint.ceremony_triggered"
+"""Sprint ceremony triggered by strategy evaluation."""
+
+SPRINT_CEREMONY_SKIPPED: str = "workflow.sprint.ceremony_skipped"
+"""Ceremony evaluation returned false -- ceremony not fired."""
+
+SPRINT_AUTO_TRANSITION: str = "workflow.sprint.auto_transition"
+"""Sprint auto-transitioned by ceremony scheduling strategy."""
+
+SPRINT_CEREMONY_SCHEDULER_STARTED: str = "workflow.sprint.ceremony_scheduler_started"
+"""CeremonyScheduler activated for a sprint."""
+
+SPRINT_CEREMONY_SCHEDULER_STOPPED: str = "workflow.sprint.ceremony_scheduler_stopped"
+"""CeremonyScheduler deactivated."""
+
+SPRINT_CEREMONY_BRIDGE_CREATED: str = "workflow.sprint.ceremony_bridge_created"
+"""Sprint ceremony config bridged to meeting type config."""
+
+SPRINT_CEREMONY_POLICY_RESOLVED: str = "workflow.sprint.ceremony_policy_resolved"
+"""3-level ceremony policy resolution completed."""
+
+SPRINT_CEREMONY_STRATEGY_CHANGED: str = "workflow.sprint.ceremony_strategy_changed"
+"""Ceremony scheduling strategy changed between sprints."""

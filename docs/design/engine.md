@@ -175,6 +175,12 @@ The template renderer maps these into the root `WorkflowConfig` during
 rendering.  Template variables (`sprint_length`, `wip_limit`) allow users
 to customize workflow settings at template instantiation time.
 
+!!! info "Ceremony Scheduling"
+    Sprint ceremony runtime scheduling -- including pluggable strategies,
+    velocity calculation, 3-level config resolution, and sprint auto-transition
+    -- is documented on the dedicated [Ceremony Scheduling](ceremony-scheduling.md)
+    design page.
+
 ---
 
 ## Task Routing & Assignment
