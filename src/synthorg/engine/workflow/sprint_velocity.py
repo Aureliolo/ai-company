@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    SPRINT_VELOCITY_INVALID,
     SPRINT_VELOCITY_RECORDED,
 )
 
@@ -83,6 +84,12 @@ def record_velocity(sprint: Sprint) -> VelocityRecord:
             f"in status {sprint.status.value!r} -- "
             f"must be 'completed'"
         )
+        logger.warning(
+            SPRINT_VELOCITY_INVALID,
+            sprint_id=sprint.id,
+            status=sprint.status.value,
+            reason="not_completed",
+        )
         raise ValueError(msg)
     record = VelocityRecord(
         sprint_id=sprint.id,
@@ -123,6 +130,7 @@ def calculate_average_velocity(
     """
     if window < 1:
         msg = f"window must be >= 1, got {window}"
+        logger.warning(SPRINT_VELOCITY_INVALID, window=window, reason="invalid_window")
         raise ValueError(msg)
     if not records:
         return 0.0

@@ -10,7 +10,11 @@ from types import MappingProxyType
 
 from synthorg.core.enums import TaskStatus
 from synthorg.observability import get_logger
-from synthorg.observability.events.workflow import KANBAN_COLUMN_TRANSITION
+from synthorg.observability.events.workflow import (
+    KANBAN_COLUMN_TRANSITION,
+    KANBAN_COLUMN_TRANSITION_INVALID,
+    KANBAN_STATUS_PATH_MISSING,
+)
 
 logger = get_logger(__name__)
 
@@ -96,19 +100,27 @@ for _status, _column in STATUS_TO_COLUMN.items():
 
 # -- Column transitions -----------------------------------------------------
 
-VALID_COLUMN_TRANSITIONS: dict[KanbanColumn, frozenset[KanbanColumn]] = {
-    KanbanColumn.BACKLOG: frozenset({KanbanColumn.READY, KanbanColumn.DONE}),
-    KanbanColumn.READY: frozenset({KanbanColumn.IN_PROGRESS, KanbanColumn.BACKLOG}),
-    KanbanColumn.IN_PROGRESS: frozenset(
+VALID_COLUMN_TRANSITIONS: MappingProxyType[KanbanColumn, frozenset[KanbanColumn]] = (
+    MappingProxyType(
         {
-            KanbanColumn.REVIEW,
-            KanbanColumn.BACKLOG,
-            KanbanColumn.READY,
+            KanbanColumn.BACKLOG: frozenset({KanbanColumn.READY, KanbanColumn.DONE}),
+            KanbanColumn.READY: frozenset(
+                {KanbanColumn.IN_PROGRESS, KanbanColumn.BACKLOG}
+            ),
+            KanbanColumn.IN_PROGRESS: frozenset(
+                {
+                    KanbanColumn.REVIEW,
+                    KanbanColumn.BACKLOG,
+                    KanbanColumn.READY,
+                }
+            ),
+            KanbanColumn.REVIEW: frozenset(
+                {KanbanColumn.DONE, KanbanColumn.IN_PROGRESS}
+            ),
+            KanbanColumn.DONE: frozenset(),  # terminal
         }
-    ),
-    KanbanColumn.REVIEW: frozenset({KanbanColumn.DONE, KanbanColumn.IN_PROGRESS}),
-    KanbanColumn.DONE: frozenset(),  # terminal
-}
+    )
+)
 
 _missing_col_transitions = set(KanbanColumn) - set(VALID_COLUMN_TRANSITIONS)
 if _missing_col_transitions:
@@ -124,40 +136,58 @@ if _missing_col_transitions:
 # the task must pass through.  Multi-step when columns are not adjacent
 # in the task state machine (e.g. BACKLOG->DONE skips intermediate
 # statuses).
+#
+# NOTE: Backward moves to BACKLOG and READY go through BLOCKED because
+# the task state machine has no direct backward path.  After applying
+# these transitions the task ends up off-board (BLOCKED) or in READY
+# (ASSIGNED).  The caller is responsible for unblocking the task to
+# re-enter the board at the target column.
 
-_COLUMN_MOVE_STATUS_PATH: dict[
+_COLUMN_MOVE_STATUS_PATH: MappingProxyType[
     tuple[KanbanColumn, KanbanColumn], tuple[TaskStatus, ...]
-] = {
-    # BACKLOG -> ...
-    (KanbanColumn.BACKLOG, KanbanColumn.READY): (TaskStatus.ASSIGNED,),
-    (KanbanColumn.BACKLOG, KanbanColumn.DONE): (
-        TaskStatus.ASSIGNED,
-        TaskStatus.IN_PROGRESS,
-        TaskStatus.IN_REVIEW,
-        TaskStatus.COMPLETED,
-    ),
-    # READY -> ...
-    (KanbanColumn.READY, KanbanColumn.IN_PROGRESS): (TaskStatus.IN_PROGRESS,),
-    (KanbanColumn.READY, KanbanColumn.BACKLOG): (
-        TaskStatus.BLOCKED,
-        TaskStatus.ASSIGNED,
-        TaskStatus.BLOCKED,
-    ),
-    # IN_PROGRESS -> ...
-    (KanbanColumn.IN_PROGRESS, KanbanColumn.REVIEW): (TaskStatus.IN_REVIEW,),
-    (KanbanColumn.IN_PROGRESS, KanbanColumn.BACKLOG): (
-        TaskStatus.BLOCKED,
-        TaskStatus.ASSIGNED,
-        TaskStatus.BLOCKED,
-    ),
-    (KanbanColumn.IN_PROGRESS, KanbanColumn.READY): (
-        TaskStatus.BLOCKED,
-        TaskStatus.ASSIGNED,
-    ),
-    # REVIEW -> ...
-    (KanbanColumn.REVIEW, KanbanColumn.DONE): (TaskStatus.COMPLETED,),
-    (KanbanColumn.REVIEW, KanbanColumn.IN_PROGRESS): (TaskStatus.IN_PROGRESS,),
-}
+] = MappingProxyType(
+    {
+        # BACKLOG -> ...
+        (KanbanColumn.BACKLOG, KanbanColumn.READY): (TaskStatus.ASSIGNED,),
+        (KanbanColumn.BACKLOG, KanbanColumn.DONE): (
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.IN_REVIEW,
+            TaskStatus.COMPLETED,
+        ),
+        # READY -> ...
+        (KanbanColumn.READY, KanbanColumn.IN_PROGRESS): (TaskStatus.IN_PROGRESS,),
+        (KanbanColumn.READY, KanbanColumn.BACKLOG): (
+            TaskStatus.BLOCKED,
+            TaskStatus.ASSIGNED,
+            TaskStatus.BLOCKED,
+        ),
+        # IN_PROGRESS -> ...
+        (KanbanColumn.IN_PROGRESS, KanbanColumn.REVIEW): (TaskStatus.IN_REVIEW,),
+        (KanbanColumn.IN_PROGRESS, KanbanColumn.BACKLOG): (
+            TaskStatus.BLOCKED,
+            TaskStatus.ASSIGNED,
+            TaskStatus.BLOCKED,
+        ),
+        (KanbanColumn.IN_PROGRESS, KanbanColumn.READY): (
+            TaskStatus.BLOCKED,
+            TaskStatus.ASSIGNED,
+        ),
+        # REVIEW -> ...
+        (KanbanColumn.REVIEW, KanbanColumn.DONE): (TaskStatus.COMPLETED,),
+        (KanbanColumn.REVIEW, KanbanColumn.IN_PROGRESS): (TaskStatus.IN_PROGRESS,),
+    }
+)
+
+# Guard: every valid column transition must have a status path entry.
+for _from_col, _targets in VALID_COLUMN_TRANSITIONS.items():
+    for _to_col in _targets:
+        if (_from_col, _to_col) not in _COLUMN_MOVE_STATUS_PATH:
+            _msg = (
+                f"Missing _COLUMN_MOVE_STATUS_PATH entry for "
+                f"{_from_col.value!r} -> {_to_col.value!r}"
+            )
+            raise ValueError(_msg)
 
 
 def validate_column_transition(
@@ -177,9 +207,21 @@ def validate_column_transition(
         msg = (
             f"KanbanColumn {current.value!r} has no entry in VALID_COLUMN_TRANSITIONS."
         )
+        logger.warning(
+            KANBAN_COLUMN_TRANSITION_INVALID,
+            current_column=current.value,
+            target_column=target.value,
+            reason="missing_transition_entry",
+        )
         raise ValueError(msg)
     allowed = VALID_COLUMN_TRANSITIONS[current]
     if target not in allowed:
+        logger.warning(
+            KANBAN_COLUMN_TRANSITION_INVALID,
+            current_column=current.value,
+            target_column=target.value,
+            allowed=sorted(c.value for c in allowed),
+        )
         msg = (
             f"Invalid Kanban column transition: "
             f"{current.value!r} -> {target.value!r}. "
@@ -217,6 +259,11 @@ def resolve_task_transitions(
     key = (from_column, to_column)
     path = _COLUMN_MOVE_STATUS_PATH.get(key)
     if path is None:
+        logger.warning(
+            KANBAN_STATUS_PATH_MISSING,
+            from_column=from_column.value,
+            to_column=to_column.value,
+        )
         msg = (
             f"No task status path defined for column move "
             f"{from_column.value!r} -> {to_column.value!r}"

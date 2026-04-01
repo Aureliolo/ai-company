@@ -8,6 +8,7 @@ tracks tasks, story points, and dates across the sprint lifecycle.
 from collections import Counter
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,6 +17,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_LIFECYCLE_TRANSITION,
+    SPRINT_LIFECYCLE_TRANSITION_INVALID,
 )
 
 logger = get_logger(__name__)
@@ -45,13 +47,17 @@ class SprintStatus(StrEnum):
 
 # -- Sprint lifecycle transitions -------------------------------------------
 
-VALID_SPRINT_TRANSITIONS: dict[SprintStatus, frozenset[SprintStatus]] = {
-    SprintStatus.PLANNING: frozenset({SprintStatus.ACTIVE}),
-    SprintStatus.ACTIVE: frozenset({SprintStatus.IN_REVIEW}),
-    SprintStatus.IN_REVIEW: frozenset({SprintStatus.RETROSPECTIVE}),
-    SprintStatus.RETROSPECTIVE: frozenset({SprintStatus.COMPLETED}),
-    SprintStatus.COMPLETED: frozenset(),  # terminal
-}
+VALID_SPRINT_TRANSITIONS: MappingProxyType[SprintStatus, frozenset[SprintStatus]] = (
+    MappingProxyType(
+        {
+            SprintStatus.PLANNING: frozenset({SprintStatus.ACTIVE}),
+            SprintStatus.ACTIVE: frozenset({SprintStatus.IN_REVIEW}),
+            SprintStatus.IN_REVIEW: frozenset({SprintStatus.RETROSPECTIVE}),
+            SprintStatus.RETROSPECTIVE: frozenset({SprintStatus.COMPLETED}),
+            SprintStatus.COMPLETED: frozenset(),  # terminal
+        }
+    )
+)
 
 _missing = set(SprintStatus) - set(VALID_SPRINT_TRANSITIONS)
 if _missing:
@@ -79,9 +85,21 @@ def validate_sprint_transition(
         msg = (
             f"SprintStatus {current.value!r} has no entry in VALID_SPRINT_TRANSITIONS."
         )
+        logger.warning(
+            SPRINT_LIFECYCLE_TRANSITION_INVALID,
+            current_status=current.value,
+            target_status=target.value,
+            reason="missing_transition_entry",
+        )
         raise ValueError(msg)
     allowed = VALID_SPRINT_TRANSITIONS[current]
     if target not in allowed:
+        logger.warning(
+            SPRINT_LIFECYCLE_TRANSITION_INVALID,
+            current_status=current.value,
+            target_status=target.value,
+            allowed=sorted(s.value for s in allowed),
+        )
         msg = (
             f"Invalid sprint transition: "
             f"{current.value!r} -> {target.value!r}. "

@@ -137,11 +137,29 @@ Backlog | Ready | In Progress | Review | Done
    o    |       |             |        |  *
 ```
 
+The `KanbanColumn` enum defines five columns that map bidirectionally to
+`TaskStatus` (Backlog=CREATED, Ready=ASSIGNED, In Progress=IN_PROGRESS,
+Review=IN_REVIEW, Done=COMPLETED).  Off-board statuses (BLOCKED, FAILED,
+INTERRUPTED, CANCELLED) map to `None`.  `KanbanConfig` provides per-column
+WIP limits with strict (hard-reject) or advisory (log-warning) enforcement.
+Column transitions are validated independently and resolved to the underlying
+task status transition path.
+
 ### Agile Sprints
 
 ```text
 Sprint Backlog --> Sprint Execution --> Review --> Retrospective --> Next Sprint
 ```
+
+The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
+IN_REVIEW, RETROSPECTIVE, COMPLETED.  The `Sprint` model tracks task IDs,
+story points (committed and completed), dates, and duration.  Sprint backlog
+management functions enforce status-dependent gates (e.g. tasks can only be
+added during PLANNING).  `SprintConfig` defines sprint duration, task limits,
+velocity window, and ceremony configurations that integrate with the meeting
+protocol system (`MeetingProtocolType` and `MeetingFrequency`).
+`VelocityRecord` captures delivery metrics from completed sprints with a
+rolling average calculation.
 
 ---
 

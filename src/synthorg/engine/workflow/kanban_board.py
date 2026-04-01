@@ -116,6 +116,17 @@ class KanbanConfig(BaseModel):
         return self
 
 
+def _find_column_limit(
+    config: KanbanConfig,
+    column: KanbanColumn,
+) -> int | None:
+    """Return the WIP limit for *column*, or ``None`` if unlimited."""
+    for wl in config.wip_limits:
+        if wl.column == column:
+            return wl.limit
+    return None
+
+
 def check_wip_limit(
     config: KanbanConfig,
     target_column: KanbanColumn,
@@ -136,13 +147,7 @@ def check_wip_limit(
         allowed and the relevant counts.
     """
     current = current_counts.get(target_column, 0)
-
-    # Find the limit for this column (if any).
-    limit: int | None = None
-    for wl in config.wip_limits:
-        if wl.column == target_column:
-            limit = wl.limit
-            break
+    limit = _find_column_limit(config, target_column)
 
     if limit is None:
         return WipCheckResult(
@@ -152,7 +157,6 @@ def check_wip_limit(
             limit=None,
         )
 
-    # After the move, the count would be current + 1.
     new_count = current + 1
 
     if new_count == limit:
@@ -164,6 +168,13 @@ def check_wip_limit(
         )
 
     if new_count > limit:
+        logger.warning(
+            KANBAN_WIP_LIMIT_EXCEEDED,
+            column=target_column.value,
+            count=new_count,
+            limit=limit,
+            enforced=config.enforce_wip,
+        )
         if config.enforce_wip:
             return WipCheckResult(
                 allowed=False,
@@ -171,12 +182,6 @@ def check_wip_limit(
                 current_count=current,
                 limit=limit,
             )
-        logger.warning(
-            KANBAN_WIP_LIMIT_EXCEEDED,
-            column=target_column.value,
-            count=new_count,
-            limit=limit,
-        )
 
     return WipCheckResult(
         allowed=True,
