@@ -34,13 +34,13 @@ const allTasks: TaskCard[] = [
 const columnNames = ["Backlog", "In Progress", "In Review", "Done"];
 const wipLimits: Record<string, number> = { "In Progress": 3 };
 
-function MiniCard({ task, highlight }: { task: TaskCard; highlight: boolean }) {
+function MiniCard({ task }: { task: TaskCard }) {
   return (
     <div
-      className="rounded-md p-2 border transition-all duration-500"
+      className="rounded-md p-2 border"
       style={{
-        background: highlight ? "var(--dp-bg-card-hover)" : "var(--dp-bg-card)",
-        borderColor: highlight ? "var(--dp-accent)" : "var(--dp-border)",
+        background: "var(--dp-bg-card)",
+        borderColor: "var(--dp-border)",
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
@@ -94,9 +94,6 @@ export default function TaskBoardMini({ tick }: Props) {
     return cols;
   }, [tick]);
 
-  // The task that just "moved" gets highlighted
-  const movingTaskId = allTasks[tick % allTasks.length].id;
-
   return (
     <div className="w-full">
       <div className="grid grid-cols-4 gap-2 px-1">
@@ -128,7 +125,7 @@ export default function TaskBoardMini({ tick }: Props) {
               </div>
               <div className="space-y-1.5">
                 {tasks.map((task) => (
-                  <MiniCard key={task.id} task={task} highlight={task.id === movingTaskId} />
+                  <MiniCard key={task.id} task={task} />
                 ))}
               </div>
             </div>

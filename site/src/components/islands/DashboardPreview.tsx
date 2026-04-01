@@ -31,7 +31,7 @@ export default function DashboardPreview() {
   useEffect(() => {
     if (isPaused) return;
     const timer = setInterval(() => {
-      setActiveTab((t) => (t + 1) % 4);
+      setActiveTab((t) => (t + 1) % pages.length);
       setPageKey((k) => k + 1);
     }, 6000);
     return () => clearInterval(timer);
@@ -204,10 +204,10 @@ export default function DashboardPreview() {
         {/* Next arrow */}
         <button
           className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          style={{ color: activeTab < 3 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          style={{ color: activeTab < pages.length - 1 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
           onClick={() => selectTab(activeTab + 1)}
           aria-label="Next page"
-          disabled={activeTab === 3}
+          disabled={activeTab === pages.length - 1}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 5l7 7-7 7" />

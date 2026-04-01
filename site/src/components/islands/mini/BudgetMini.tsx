@@ -114,8 +114,8 @@ export default function BudgetMini({ tick }: Props) {
           <svg viewBox="0 0 200 24" className="w-full h-5" aria-hidden="true">
             <defs>
               <linearGradient id={sparkGradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.15" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+                <stop offset="0%" stopColor="var(--dp-accent)" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="var(--dp-accent)" stopOpacity="0" />
               </linearGradient>
             </defs>
             <polyline

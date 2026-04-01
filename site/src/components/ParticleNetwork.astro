@@ -11,7 +11,7 @@
     role="presentation"
   ></canvas>
   <!-- Gradient overlay for text readability -->
-  <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219]/80 via-[#1a1025]/60 to-[#0F1219]/90"></div>
+  <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219]/80 via-[#1a1025]/60 to-[#0F1219]/90 pointer-events-none"></div>
 </div>
 
 <script>
@@ -74,6 +74,11 @@
       const target = getNodeCount();
       while (nodes.length < target) nodes.push(createNode());
       while (nodes.length > target) nodes.pop();
+
+      // Repaint static frame if not animating (reduced-motion)
+      if (!animating && nodes.length > 0) {
+        drawStaticFrame();
+      }
     }
 
     function draw(now: number): void {
