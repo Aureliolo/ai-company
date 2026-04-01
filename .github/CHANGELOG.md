@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.5](https://github.com/Aureliolo/synthorg/compare/v0.5.4...v0.5.5) (2026-04-01)
+
+
+### Features
+
+* add workflow configs to builtin templates ([#963](https://github.com/Aureliolo/synthorg/issues/963)) ([b7fe6e3](https://github.com/Aureliolo/synthorg/commit/b7fe6e3101626b55bd235f09f5748e5e29d758b4))
+* implement Kanban board and Agile sprints workflow types ([#960](https://github.com/Aureliolo/synthorg/issues/960)) ([f511e1d](https://github.com/Aureliolo/synthorg/commit/f511e1d6e0323babc9480df529d986a66fae54eb))
+* personality preset support in template YAML schema ([#959](https://github.com/Aureliolo/synthorg/issues/959)) ([97ca81e](https://github.com/Aureliolo/synthorg/commit/97ca81e232517b60d64a56c47b6aefdb12baa1f3))
+
+
+### Documentation
+
+* LMEB embedding evaluation + CSP accepted risk ([#695](https://github.com/Aureliolo/synthorg/issues/695), [#925](https://github.com/Aureliolo/synthorg/issues/925)) ([#962](https://github.com/Aureliolo/synthorg/issues/962)) ([43dfab3](https://github.com/Aureliolo/synthorg/commit/43dfab3d8683950ddca845e6f2e307a35486dd2f))
+
+
+### CI/CD
+
+* bump wrangler from 4.78.0 to 4.79.0 in /.github in the all group across 1 directory ([#955](https://github.com/Aureliolo/synthorg/issues/955)) ([18b4cb1](https://github.com/Aureliolo/synthorg/commit/18b4cb13707ffa2976e485db08fccf7a60982ce2))
+
+
+### Maintenance
+
+* bump mypy from 1.19.1 to 1.20.0 in the all group across 1 directory ([#956](https://github.com/Aureliolo/synthorg/issues/956)) ([29cc419](https://github.com/Aureliolo/synthorg/commit/29cc41981a7effc722453db79fb96845bcde91e6))
+
 ## [0.5.4](https://github.com/Aureliolo/synthorg/compare/v0.5.3...v0.5.4) (2026-04-01)
 
 
