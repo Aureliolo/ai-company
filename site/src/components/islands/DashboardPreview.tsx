@@ -57,7 +57,11 @@ export default function DashboardPreview() {
       className="dashboard-preview rounded-xl overflow-hidden border max-w-4xl mx-auto"
       style={{ background: "var(--dp-bg-base)", borderColor: "var(--dp-border)" }}
       onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      onMouseLeave={(e) => {
+        if (!e.currentTarget.contains(document.activeElement)) {
+          setIsPaused(false);
+        }
+      }}
       onFocus={() => setIsPaused(true)}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {

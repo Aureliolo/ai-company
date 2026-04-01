@@ -49,6 +49,8 @@ export default function OrgChartMini({ tick }: Props) {
           const from = agents.find((a) => a.id === e.from);
           const to = agents.find((a) => a.id === e.to);
           if (!from || !to) return null;
+          const activeAgent = agents[activeIdx];
+          const isActive = activeAgent && (e.from === activeAgent.id || e.to === activeAgent.id);
           return (
             <line
               key={`${e.from}-${e.to}`}
@@ -56,10 +58,10 @@ export default function OrgChartMini({ tick }: Props) {
               y1={from.y + 20}
               x2={to.x}
               y2={to.y - 5}
-              stroke="#a78bfa"
-              strokeWidth="0.8"
-              strokeOpacity="0.2"
-              strokeDasharray="3 3"
+              stroke={isActive ? "#38bdf8" : "#a78bfa"}
+              strokeWidth={isActive ? "1.5" : "0.8"}
+              strokeOpacity={isActive ? "0.6" : "0.15"}
+              strokeDasharray={isActive ? "none" : "3 3"}
             />
           );
         })}

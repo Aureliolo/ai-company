@@ -32,30 +32,30 @@ export default function BudgetMini({ tick }: Props) {
       <div className="flex items-start gap-4 mb-3">
         {/* Gauge */}
         <div className="relative flex-shrink-0">
-          <svg viewBox="0 0 120 70" width="120" height="70" aria-hidden="true">
+          <svg viewBox="0 0 120 80" width="120" height="80" aria-hidden="true">
             {/* Background arc */}
             <path
-              d="M 10 65 A 52 52 0 0 1 110 65"
+              d="M 10 60 A 50 50 0 0 1 110 60"
               fill="none"
               stroke="var(--dp-border)"
-              strokeWidth="8"
+              strokeWidth="7"
               strokeLinecap="round"
             />
             {/* Filled arc */}
             <path
-              d="M 10 65 A 52 52 0 0 1 110 65"
+              d="M 10 60 A 50 50 0 0 1 110 60"
               fill="none"
               stroke="var(--dp-accent)"
-              strokeWidth="8"
+              strokeWidth="7"
               strokeLinecap="round"
               strokeDasharray={`${circumference}`}
               strokeDashoffset={dashOffset}
               className="dp-gauge-fill"
             />
-            <text x="60" y="55" textAnchor="middle" fill="var(--dp-text-primary)" fontSize="18" fontWeight="700" fontFamily="var(--dp-font-mono)">
+            <text x="60" y="48" textAnchor="middle" fill="var(--dp-text-primary)" fontSize="16" fontWeight="700" fontFamily="var(--dp-font-mono)">
               {Math.round(gaugeValue)}%
             </text>
-            <text x="60" y="66" textAnchor="middle" fill="var(--dp-text-muted)" fontSize="11" fontFamily="var(--dp-font-sans)">
+            <text x="60" y="72" textAnchor="middle" fill="var(--dp-text-muted)" fontSize="9" fontFamily="var(--dp-font-sans)">
               budget remaining
             </text>
           </svg>

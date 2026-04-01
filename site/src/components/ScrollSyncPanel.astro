@@ -373,23 +373,22 @@
     }
 
     if (step === 1) {
-      // Step 2: Agents configured -- departments + agents appear + hierarchy edges
+      // Step 2: Agents configured -- departments + agents, NO edges yet
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
       allNodes.forEach(show);
-      allEdges.forEach(show);
     }
 
     if (step === 2) {
-      // Step 3: Collaboration -- agents active, communication flowing, tasks delegated
+      // Step 3: Collaboration -- all edges active, communication flowing
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
       allNodes.forEach(show);
       allEdges.forEach(show);
-      edgeTask?.setAttribute("stroke-opacity", "0.5");
+      edgeTask?.setAttribute("stroke-opacity", "0.6");
       edgeTask?.setAttribute("stroke-dasharray", "5 3");
-      edgeComm1?.setAttribute("stroke-opacity", "0.5");
-      edgeComm2?.setAttribute("stroke-opacity", "0.5");
+      edgeComm1?.setAttribute("stroke-opacity", "0.6");
+      edgeComm2?.setAttribute("stroke-opacity", "0.6");
       setFill(statusEls[0], "#a78bfa"); // CEO directing
       setFill(statusEls[1], "#a78bfa"); // CTO directing
       setFill(statusEls[2], "#2dd4bf"); // BE1 working

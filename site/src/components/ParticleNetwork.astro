@@ -157,12 +157,13 @@
       }
     }
 
+    let isVisible = true;
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onMotionChange = (e: MediaQueryListEvent) => {
       if (e.matches) {
         animating = false;
         drawStaticFrame();
-      } else {
+      } else if (isVisible) {
         animating = true;
         lastFrame = performance.now();
         requestAnimationFrame(draw);
@@ -209,16 +210,15 @@
     if (canvas.parentElement) ro.observe(canvas.parentElement);
 
     // Pause animation when canvas is off-screen (saves CPU/battery)
-    let wasAnimating = false;
     const visObserver = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        if (wasAnimating && !animating && !prefersReduced.matches) {
+      isVisible = entry.isIntersecting;
+      if (isVisible) {
+        if (!animating && !prefersReduced.matches) {
           animating = true;
           lastFrame = performance.now();
           requestAnimationFrame(draw);
         }
-      } else if (animating) {
-        wasAnimating = true;
+      } else {
         animating = false;
       }
     }, { threshold: 0 });
