@@ -100,14 +100,14 @@ template:
     - role: "CTO"
       department: "executive"
       _remove: true
-    # Override first Full-Stack Developer (positional): change personality
+    # Override first Full-Stack Developer (matched by role+department): change personality
     - role: "Full-Stack Developer"
       name: ""
       level: "senior"
       model: "medium"
       personality_preset: "communication_bridge"
       department: "engineering"
-    # Remove second Full-Stack Developer (positional)
+    # Remove second Full-Stack Developer (matched by role+department)
     - role: "Full-Stack Developer"
       department: "engineering"
       _remove: true

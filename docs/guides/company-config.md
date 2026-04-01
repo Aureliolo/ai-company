@@ -70,13 +70,13 @@ The `company_type` field selects a pre-defined organizational template:
 |------|-------------|--------|
 | `solo_founder` | Solo builder with full autonomy | 2 |
 | `startup` | CEO + small engineering team | 3--5 |
-| `dev_shop` | Engineering squad with quality gates | 4--6 |
-| `product_team` | Product-focused studio with design | 4--6 |
+| `dev_shop` | Engineering squad with quality gates | 6--10 |
+| `product_team` | Product-focused studio with design | 8--12 |
 | `agency` | Project manager + specialists | 4--8 |
 | `full_company` | Enterprise org with all departments | 8--15 |
-| `research_lab` | Lead researcher + assistants | 3--5 |
+| `research_lab` | Lead researcher + assistants | 5--10 |
 | `consultancy` | Client-facing advisory and delivery | 4--6 |
-| `data_team` | Analytics and ML-focused team | 3--5 |
+| `data_team` | Analytics and ML-focused team | 5--8 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels

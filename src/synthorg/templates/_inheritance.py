@@ -5,7 +5,7 @@ parent-child merge, variable flow, and post-merge name deduplication.
 Extracted from ``renderer.py`` to keep file sizes under 800 lines.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -23,6 +23,22 @@ if TYPE_CHECKING:
     from synthorg.templates.loader import LoadedTemplate
     from synthorg.templates.schema import CompanyTemplate
 
+
+class _RenderToDictFn(Protocol):
+    """Callback protocol for ``_render_to_dict``."""
+
+    def __call__(
+        self,
+        loaded: LoadedTemplate,
+        variables: dict[str, Any] | None = ...,
+        *,
+        locales: list[str] | None = ...,
+        _chain: frozenset[str] = ...,
+        custom_presets: Mapping[str, dict[str, Any]] | None = ...,
+        _as_parent: bool = ...,
+    ) -> dict[str, Any]: ...
+
+
 logger = get_logger(__name__)
 
 # Maximum inheritance chain depth.
@@ -37,7 +53,7 @@ def resolve_inheritance(  # noqa: PLR0913
     locales: list[str] | None = None,
     _chain: frozenset[str],
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    render_to_dict_fn: Any,
+    render_to_dict_fn: _RenderToDictFn,
 ) -> dict[str, Any]:
     """Resolve template inheritance for a child config.
 
@@ -51,8 +67,7 @@ def resolve_inheritance(  # noqa: PLR0913
         locales: Faker locale codes for auto-name generation.
         _chain: Already-visited parent names for circular detection.
         custom_presets: Optional custom preset mapping.
-        render_to_dict_fn: Callback to ``_render_to_dict`` (avoids
-            circular import between renderer and this module).
+        render_to_dict_fn: Callback to ``_render_to_dict``.
 
     Returns:
         Merged config dict (parent + child).
@@ -136,7 +151,7 @@ def _render_and_merge_parent(  # noqa: PLR0913
     *,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    render_to_dict_fn: Any,
+    render_to_dict_fn: _RenderToDictFn,
 ) -> dict[str, Any]:
     """Load, render, and merge a parent template with a child config."""
     from synthorg.templates.loader import load_template  # noqa: PLC0415
@@ -176,6 +191,8 @@ def _deduplicate_merged_agent_names(merged: dict[str, Any]) -> None:
     used: set[str] = set()
     for agent in agents:
         name = agent.get("name", "")
+        if not name:
+            continue
         if name in used:
             base = name
             counter = 2
@@ -192,8 +209,8 @@ def collect_parent_variables(
 ) -> dict[str, Any]:
     """Collect variables for a parent template.
 
-    Child's resolved variables serve as defaults for the parent.
-    Parent's own defaults fill gaps.
+    Child's resolved variables take priority over the parent's own
+    defaults.  Parent-declared defaults fill any remaining gaps.
 
     Args:
         parent_template: The parent template.

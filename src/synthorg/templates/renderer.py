@@ -159,7 +159,7 @@ def _render_to_dict(
         vars_dict,
         locales=locales,
         custom_presets=custom_presets,
-        _preserve_merge_ids=_as_parent,
+        preserve_merge_ids=_as_parent,
     )
 
     # If no inheritance, return child config directly.
@@ -343,14 +343,14 @@ def _build_workflow_dict(
     return workflow_dict
 
 
-def _build_config_dict(
+def _build_config_dict(  # noqa: PLR0913
     rendered_data: dict[str, Any],
     template: CompanyTemplate,
     variables: dict[str, Any],
     *,
     locales: list[str] | None = None,
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    _preserve_merge_ids: bool = False,
+    preserve_merge_ids: bool = False,
 ) -> dict[str, Any]:
     """Build a RootConfig-compatible dict from rendered template data.
 
@@ -360,7 +360,7 @@ def _build_config_dict(
         variables: Collected variables.
         locales: Faker locale codes for auto-name generation.
         custom_presets: Optional custom preset mapping.
-        _preserve_merge_ids: Force ``merge_id`` preservation even when
+        preserve_merge_ids: Force ``merge_id`` preservation even when
             the template itself has no ``extends``.  Used for parent
             rendering.
 
@@ -381,7 +381,7 @@ def _build_config_dict(
     )
 
     has_extends = template.extends is not None
-    preserve_merge = has_extends or _preserve_merge_ids
+    preserve_merge = has_extends or preserve_merge_ids
     agents = _expand_agents(
         _validate_list(rendered_data, "agents"),
         has_extends=has_extends,
@@ -565,6 +565,9 @@ def _expand_single_agent(  # noqa: PLR0913
         custom_presets: Optional custom preset mapping for resolving
             user-defined presets.
         preserve_merge_id: Preserve ``merge_id`` on the expanded agent.
+
+    Returns:
+        Expanded agent dict suitable for ``AgentConfig`` construction.
     """
     role = agent.get("role")
     if not role:

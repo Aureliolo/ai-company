@@ -141,7 +141,7 @@ def _handle_dept_remove(
             f"Department {dept_name!r} uses '_remove' but the "
             "template has no 'extends' -- directive has no effect"
         )
-        logger.warning(
+        logger.error(
             TEMPLATE_RENDER_VARIABLE_ERROR,
             department=dept_name,
             field="_remove",

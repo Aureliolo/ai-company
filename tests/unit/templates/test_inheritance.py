@@ -10,7 +10,10 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import CompanyType
-from synthorg.templates._inheritance import collect_parent_variables
+from synthorg.templates._inheritance import (
+    _deduplicate_merged_agent_names,
+    collect_parent_variables,
+)
 from synthorg.templates.errors import TemplateInheritanceError, TemplateRenderError
 from synthorg.templates.loader import load_template, load_template_file
 from synthorg.templates.merge import (
@@ -312,6 +315,127 @@ class TestMergeTemplateConfigs:
         child: dict[str, Any] = {"company_name": None}
         result = merge_template_configs(parent, child)
         assert result["company_name"] == "Parent Co"
+
+    def test_workflow_child_replaces_parent(self) -> None:
+        """Child workflow replaces parent workflow entirely."""
+        parent: dict[str, Any] = {
+            "workflow": {"type": "kanban", "wip": 3},
+        }
+        child: dict[str, Any] = {
+            "workflow": {"type": "agile_kanban"},
+        }
+        result = merge_template_configs(parent, child)
+        assert result["workflow"] == {"type": "agile_kanban"}
+
+    def test_workflow_inherited_from_parent(self) -> None:
+        """Parent workflow inherited when child has no workflow."""
+        parent: dict[str, Any] = {
+            "workflow": {"type": "kanban", "wip": 3},
+        }
+        child: dict[str, Any] = {}
+        result = merge_template_configs(parent, child)
+        assert result["workflow"] == {"type": "kanban", "wip": 3}
+
+    def test_workflow_deep_copy_isolation(self) -> None:
+        """Inherited workflow is deep-copied from parent."""
+        parent: dict[str, Any] = {
+            "workflow": {"type": "kanban", "config": {"wip": 3}},
+        }
+        child: dict[str, Any] = {}
+        result = merge_template_configs(parent, child)
+        result["workflow"]["config"]["wip"] = 99
+        assert parent["workflow"]["config"]["wip"] == 3
+
+
+# ── TestDeduplicateMergedAgentNames ────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeduplicateMergedAgentNames:
+    def test_empty_agents(self) -> None:
+        """No agents key is a no-op."""
+        merged: dict[str, Any] = {}
+        _deduplicate_merged_agent_names(merged)
+        assert "agents" not in merged
+
+    def test_empty_list(self) -> None:
+        """Empty agents list is a no-op."""
+        merged: dict[str, Any] = {"agents": []}
+        _deduplicate_merged_agent_names(merged)
+        assert merged["agents"] == []
+
+    def test_no_duplicates(self) -> None:
+        """Unique names are unchanged."""
+        merged: dict[str, Any] = {
+            "agents": [{"name": "Alice"}, {"name": "Bob"}],
+        }
+        _deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in merged["agents"]]
+        assert names == ["Alice", "Bob"]
+
+    def test_single_duplicate(self) -> None:
+        """Second occurrence gets ' 2' suffix."""
+        merged: dict[str, Any] = {
+            "agents": [{"name": "Alice"}, {"name": "Alice"}],
+        }
+        _deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in merged["agents"]]
+        assert names == ["Alice", "Alice 2"]
+
+    def test_triple_duplicate(self) -> None:
+        """Third occurrence gets ' 3' suffix."""
+        merged: dict[str, Any] = {
+            "agents": [{"name": "A"}, {"name": "A"}, {"name": "A"}],
+        }
+        _deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in merged["agents"]]
+        assert names == ["A", "A 2", "A 3"]
+
+    def test_empty_names_skipped(self) -> None:
+        """Empty-string names are not deduplicated."""
+        merged: dict[str, Any] = {
+            "agents": [{"name": ""}, {"name": ""}, {"name": "Alice"}],
+        }
+        _deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in merged["agents"]]
+        assert names == ["", "", "Alice"]
+
+    def test_missing_name_key_skipped(self) -> None:
+        """Agents without a name key are skipped."""
+        merged: dict[str, Any] = {
+            "agents": [{"role": "Dev"}, {"name": "Alice"}],
+        }
+        _deduplicate_merged_agent_names(merged)
+        assert "name" not in merged["agents"][0]
+        assert merged["agents"][1]["name"] == "Alice"
+
+
+# ── TestNamelessDepartmentMerge ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestNamelessDepartmentMerge:
+    def test_parent_nameless_dept_passes_through(self) -> None:
+        """Parent department with empty name passes through."""
+        parent = [{"name": ""}, {"name": "engineering"}]
+        child: list[dict[str, Any]] = []
+        result = _merge_departments(parent, child)
+        assert len(result) == 2
+        assert result[0]["name"] == ""
+
+    def test_child_nameless_dept_appended(self) -> None:
+        """Child department with empty name is appended."""
+        parent = [{"name": "engineering"}]
+        child = [{"name": ""}]
+        result = _merge_departments(parent, child)
+        assert len(result) == 2
+
+    def test_both_nameless_depts_preserved(self) -> None:
+        """Both parent and child nameless departments are preserved."""
+        parent = [{"name": ""}]
+        child = [{"name": ""}]
+        result = _merge_departments(parent, child)
+        assert len(result) == 2
 
 
 # ── TestCollectParentVariables ────────────────────────────────────
@@ -677,7 +801,7 @@ class TestMergeIdTargeting:
 
 
 @pytest.mark.unit
-class TestInheritanceIntegration:
+class TestInheritanceFullPipeline:
     def test_child_extends_builtin_renders_to_valid_root_config(
         self,
         tmp_path: Path,
@@ -688,5 +812,5 @@ class TestInheritanceIntegration:
         loaded = load_template_file(child_path)
         config = render_template(loaded)
         assert isinstance(config, RootConfig)
-        assert len(config.agents) >= 1
-        assert len(config.departments) >= 1
+        assert len(config.agents) == 6
+        assert len(config.departments) == 3

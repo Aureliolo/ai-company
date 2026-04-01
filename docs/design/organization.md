@@ -13,7 +13,7 @@ SynthOrg provides pre-built company templates for common organizational patterns
 |----------|------|----------|---------------|----------|----------|
 | **Solo Builder** | 1-2 | full | event_driven | kanban | Quick prototypes, solo projects |
 | **Tech Startup** | 3-5 | semi | hybrid | agile_kanban | Small projects, MVPs |
-| **Engineering Squad** | 5-10 | semi | hybrid | agile_kanban | Software development focus |
+| **Engineering Squad** | 6-10 | semi | hybrid | agile_kanban | Software development focus |
 | **Product Studio** | 8-15 | semi | meeting_based | agile_kanban | Product-focused development |
 | **Agency** | 10-20 | supervised | hierarchical | kanban | Client work, multiple projects |
 | **Enterprise Org** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
@@ -348,6 +348,20 @@ template:
 Inheritance resolves parent-to-child chains up to **10 levels deep**. Circular inheritance
 is detected via chain tracking and raises `TemplateInheritanceError`.
 
+**Builtin inheritance tree:**
+
+```
+solo_founder (base: 2 agents)
+  -> startup (extends solo_founder: 5 agents)
+     -> dev_shop (extends startup: 8 agents)
+     -> product_team (extends startup: 10 agents)
+
+research_lab (base: 7 agents)
+  -> data_team (extends research_lab: 6 agents)
+
+Standalone (no inheritance): agency, full_company, consultancy
+```
+
 ### Merge Semantics
 
 The merge behavior during template inheritance follows these rules:
@@ -369,12 +383,16 @@ Scalars (`company_name`, `company_type`)
     A child department with `_remove: true` removes the matching parent department.
 
 `workflow_config` dict
-:   Not merged during inheritance.  A child template that uses ``extends`` must
-    declare its full ``workflow_config`` if it needs one; the parent's
-    ``workflow_config`` is not carried forward.
+:   Consumed by the renderer during config building (before the merge step).
+    Each template's ``workflow_config`` is transformed into a ``workflow`` dict
+    independently.  A child template that uses ``extends`` must declare its own
+    ``workflow_config`` if it needs one; the parent's ``workflow_config`` is not
+    carried forward as raw config.
 
 `workflow`, `workflow_handoffs`, and `escalation_paths`
-:   Child replaces entirely if present; otherwise inherited from parent.
+:   Child replaces entirely if present; otherwise inherited from parent.  Note
+    that ``workflow`` is always produced by the renderer, so in practice the
+    child's rendered ``workflow`` always overrides the parent's.
 
 After merging, agent names are deduplicated: if parent and child auto-generation
 produces the same name, later occurrences receive a numeric suffix (e.g.,

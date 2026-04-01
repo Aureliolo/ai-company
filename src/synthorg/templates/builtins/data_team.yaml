@@ -90,11 +90,11 @@ template:
       model: "small"
       personality_preset: "technical_communicator"
       department: "engineering"
-    # Inherited unchanged from research_lab:
-    # - Data Engineer (data_analytics)
-    # - Data Analyst [analyst-primary] (data_analytics)
-    # - Data Analyst [analyst-secondary] (data_analytics)
-    # - ML Engineer (data_analytics)
+  # Inherited unchanged from research_lab:
+  # - Data Engineer (data_analytics)
+  # - Data Analyst [analyst-primary] (data_analytics)
+  # - Data Analyst [analyst-secondary] (data_analytics)
+  # - ML Engineer (data_analytics)
 
   workflow_config:
     kanban:

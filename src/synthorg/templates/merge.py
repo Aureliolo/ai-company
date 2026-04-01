@@ -274,22 +274,25 @@ def _merge_departments(
             seen_names.add(name)
 
     # Append unmatched child depts + nameless children.
-    _append_unmatched_child_depts(child_by_name, seen_names, result)
+    result.extend(_collect_unmatched_child_depts(child_by_name, seen_names))
     result.extend(copy.deepcopy(nameless_child))
 
     return result
 
 
-def _append_unmatched_child_depts(
+def _collect_unmatched_child_depts(
     child_by_name: dict[str, dict[str, Any]],
     seen_names: set[str],
-    result: list[dict[str, Any]],
-) -> None:
-    """Append child departments that didn't match any parent.
+) -> list[dict[str, Any]]:
+    """Return child departments that didn't match any parent.
+
+    Returns:
+        List of cleaned child department dicts.
 
     Raises:
         TemplateInheritanceError: If a child ``_remove`` has no parent.
     """
+    result: list[dict[str, Any]] = []
     for name, child_dept in child_by_name.items():
         if name not in seen_names:
             if child_dept.get("_remove"):
@@ -305,13 +308,14 @@ def _append_unmatched_child_depts(
                 raise TemplateInheritanceError(msg)
             clean = {k: v for k, v in child_dept.items() if k not in _DEPT_STRIP_KEYS}
             result.append(clean)
+    return result
 
 
 def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
     """Compute the merge key for an agent dict.
 
     Uses ``(role, department, merge_id)`` when ``merge_id`` is present,
-    otherwise ``(role, department, "")`` for backwards compatibility.
+    otherwise ``(role, department, "")`` as the default.
     """
     role = str(agent.get("role", "")).lower()
     if not role:

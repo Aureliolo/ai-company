@@ -280,13 +280,13 @@ Templates pre-populate agents, departments, and workflows. You can customize any
 |----------|--------|----------|----------|---------------|
 | `solo_founder` | 2 | Full | Kanban | Event-driven |
 | `startup` | 5 | Semi | Agile/Kanban | Hybrid |
-| `dev_shop` | 4--6 | Semi | Kanban | Hybrid |
-| `product_team` | 4--6 | Semi | Agile | Hybrid |
+| `dev_shop` | 6--10 | Semi | Kanban | Hybrid |
+| `product_team` | 8--12 | Semi | Agile/Kanban | Meeting-based |
 | `agency` | 4--8 | Supervised | Pipeline | Hierarchical |
 | `full_company` | 8--15 | Semi | Agile | Hybrid |
-| `research_lab` | 3--5 | Full | Kanban | Event-driven |
+| `research_lab` | 5--10 | Full | Kanban | Event-driven |
 | `consultancy` | 4--6 | Supervised | Pipeline | Hierarchical |
-| `data_team` | 3--5 | Semi | Kanban | Hybrid |
+| `data_team` | 5--8 | Full | Kanban | Event-driven |
 
 Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customization.
 

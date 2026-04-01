@@ -264,7 +264,6 @@ class TestDataTeamExtendsResearchLab:
     ("template_name", "expected_count"),
     [
         ("agency", 12),
-        ("full_company", None),  # dynamic, just verify renders
         ("consultancy", 5),
         ("solo_founder", 2),
         ("research_lab", 7),
@@ -274,9 +273,17 @@ class TestStandaloneTemplatesUnchanged:
     def test_renders_to_valid_config(
         self,
         template_name: str,
-        expected_count: int | None,
+        expected_count: int,
     ) -> None:
         config = _render(template_name)
         assert isinstance(config, RootConfig)
-        if expected_count is not None:
-            assert len(config.agents) == expected_count
+        assert len(config.agents) == expected_count
+
+
+@pytest.mark.unit
+class TestFullCompanyStandalone:
+    def test_renders_to_valid_config(self) -> None:
+        config = _render("full_company")
+        assert isinstance(config, RootConfig)
+        assert len(config.agents) >= 8
+        assert len(config.departments) >= 3

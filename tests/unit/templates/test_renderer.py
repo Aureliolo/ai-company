@@ -642,6 +642,24 @@ class TestExpandPreservesMergeId:
         result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert "merge_id" not in result
 
+    def test_preserve_merge_id_without_extends(self) -> None:
+        """Parent rendering preserves merge_id even without extends."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Full-Stack Developer",
+            "merge_id": "frontend",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(
+            agent,
+            0,
+            set(),
+            has_extends=False,
+            preserve_merge_id=True,
+        )
+        assert result.get("merge_id") == "frontend"
+
 
 @pytest.mark.unit
 class TestRosterCounts:
