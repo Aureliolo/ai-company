@@ -117,6 +117,13 @@ const useCases = [
   /* Gradient fade hints for scroll on mobile */
   @media (max-width: 1023px) {
     .use-case-scroll {
+      -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        black 24px,
+        black calc(100% - 24px),
+        transparent
+      );
       mask-image: linear-gradient(
         to right,
         transparent,

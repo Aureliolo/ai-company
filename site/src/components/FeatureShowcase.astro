@@ -95,10 +95,11 @@ const compactFeatures = [
     const iconBg = f.color === "violet" ? "bg-violet-600/20" : "bg-teal-600/20";
     const iconColor = f.color === "violet" ? "text-violet-400" : "text-teal-400";
     const diffColor = f.color === "violet" ? "text-violet-400/80" : "text-teal-400/80";
+    const ringColor = f.color === "violet" ? "focus-visible:ring-violet-400" : "focus-visible:ring-teal-400";
     return (
       <a
         href={f.href}
-        class={`block bg-[#0F1219] rounded-xl p-8 border ${borderColor} transition-colors no-underline text-white group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F1219]`}
+        class={`block bg-[#0F1219] rounded-xl p-8 border ${borderColor} transition-colors no-underline text-white group focus-visible:outline-none focus-visible:ring-2 ${ringColor} focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F1219]`}
       >
         <div class={`w-12 h-12 rounded-lg ${iconBg} flex items-center justify-center ${iconColor} mb-4 text-xl`}>
           {f.icon}
@@ -117,7 +118,7 @@ const compactFeatures = [
   {compactFeatures.map((f) => (
     <a
       href={f.href}
-      class="block bg-[#1a1f2e]/50 rounded-lg p-5 border border-white/5 hover:border-white/15 transition-colors no-underline text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0F1219]"
+      class="block bg-[#1a1f2e]/50 rounded-lg p-5 border border-white/5 hover:border-white/15 transition-colors no-underline text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1a1f2e]"
     >
       <p class="font-semibold text-sm mb-1">{f.title}</p>
       <p class="text-xs text-gray-400">{f.description}</p>

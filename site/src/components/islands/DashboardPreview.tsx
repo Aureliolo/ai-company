@@ -145,10 +145,10 @@ export default function DashboardPreview() {
             ))}
           </div>
 
-          {/* Page content */}
+          {/* Page content -- fixed height to prevent layout shift */}
           <div
             id="dp-tabpanel"
-            className="p-3 min-h-[280px] sm:min-h-[320px] flex items-start"
+            className="p-3 h-[280px] sm:h-[320px] overflow-hidden flex items-start"
             role="tabpanel"
             aria-labelledby={`dp-tab-${activeTab}`}
           >
@@ -159,21 +159,55 @@ export default function DashboardPreview() {
         </div>
       </div>
 
-      {/* Dot navigation */}
-      <div className="flex gap-1.5 justify-center py-2 border-t" style={{ borderColor: "var(--dp-border)" }}>
-        {pages.map((page, i) => (
-          <button
-            key={i}
-            className="w-1.5 h-1.5 rounded-full transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1"
-            style={{
-              background: i === activeTab ? "var(--dp-accent)" : "var(--dp-border-bright)",
-              border: "none",
-              padding: 0,
-            }}
-            onClick={() => selectTab(i)}
-            aria-label={`Go to ${page.label}`}
-          />
-        ))}
+      {/* Page navigation */}
+      <div
+        className="flex items-center justify-between px-2 py-1.5 border-t"
+        style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
+      >
+        {/* Prev arrow */}
+        <button
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          style={{ color: activeTab > 0 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          onClick={() => activeTab > 0 && selectTab(activeTab - 1)}
+          aria-label="Previous page"
+          disabled={activeTab === 0}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        {/* Page indicators */}
+        <div className="flex gap-1">
+          {pages.map((page, i) => (
+            <button
+              key={i}
+              className="px-2 py-0.5 rounded text-[9px] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              style={{
+                background: i === activeTab ? "rgba(56, 189, 248, 0.15)" : "transparent",
+                color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
+                border: "none",
+              }}
+              onClick={() => selectTab(i)}
+              aria-label={`Go to ${page.label}`}
+            >
+              {page.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Next arrow */}
+        <button
+          className="w-6 h-6 flex items-center justify-center rounded transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          style={{ color: activeTab < 3 ? "var(--dp-text-secondary)" : "var(--dp-border-bright)" }}
+          onClick={() => activeTab < 3 && selectTab(activeTab + 1)}
+          aria-label="Next page"
+          disabled={activeTab === 3}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   );
