@@ -305,12 +305,18 @@ template:
         assert config.workflow.kanban == KanbanConfig()
         assert config.workflow.sprint == SprintConfig()
 
-    def test_unknown_keys_in_workflow_config_silently_ignored(
+    def test_unknown_keys_in_workflow_config_dropped_with_warning(
         self,
         tmp_template_file: TemplateFileFactory,
     ) -> None:
-        """Unknown keys in workflow_config are dropped; only kanban/sprint
-        are forwarded to WorkflowConfig."""
+        """Unknown keys in workflow_config are dropped with a warning log;
+        only kanban/sprint are forwarded to WorkflowConfig."""
+        import structlog
+
+        from synthorg.observability.events.template import (
+            TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
+        )
+
         yaml_text = """\
 template:
   name: "Unknown Keys"
@@ -334,9 +340,16 @@ template:
 """
         path = tmp_template_file(yaml_text)
         loaded = load_template_file(path)
-        config = render_template(loaded)
-        # scrumban key is silently dropped.
+        with structlog.testing.capture_logs() as cap:
+            config = render_template(loaded)
+        # scrumban key is dropped.
         assert config.workflow.kanban.enforce_wip is False
+        # Warning emitted for the unknown key.
+        warnings = [
+            e for e in cap if e.get("event") == TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY
+        ]
+        assert len(warnings) == 1
+        assert "scrumban" in warnings[0]["unknown_keys"]
 
     def test_invalid_workflow_config_raises_on_render(
         self,
