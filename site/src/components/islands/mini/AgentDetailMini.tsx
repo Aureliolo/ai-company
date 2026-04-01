@@ -62,7 +62,7 @@ export default function AgentDetailMini({ tick }: Props) {
             <div className="text-xs mb-0.5" style={{ color: "var(--dp-text-muted)" }}>
               {m.label}
             </div>
-            <div className="text-sm font-semibold font-mono" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
+            <div className="text-sm font-semibold" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
               {m.value}
             </div>
           </div>
@@ -91,6 +91,7 @@ export default function AgentDetailMini({ tick }: Props) {
         </div>
         <div className="h-[72px] overflow-hidden relative">
           <div className="dp-activity-scroll">
+            {/* Duplicated array for infinite scroll effect -- index key is intentional (static data) */}
             {[...activities, ...activities].map((a, i) => (
               <div key={i} className="flex items-start gap-2 px-2 py-1">
                 <span className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ background: a.color }} />

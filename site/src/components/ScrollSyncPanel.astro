@@ -416,7 +416,8 @@
       const stepIdx = parseInt(dot.dataset.dot || "0", 10);
       const target = steps[stepIdx];
       if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        const scrollBehavior = prefersReduced.matches ? "auto" : "smooth";
+        target.scrollIntoView({ behavior: scrollBehavior, block: "center" });
       }
     });
   });
