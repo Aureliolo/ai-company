@@ -366,40 +366,48 @@
     hide(metricsGroup);
     statusEls.forEach((el) => setFill(el, "#94a3b8"));
 
-    if (step >= 0) {
-      // Step 1+: Show all nodes and departments
-      allNodes.forEach(show);
+    if (step === 0) {
+      // Step 1: Template selection -- show empty department frames only
       allDepts.forEach(show);
       deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
     }
 
-    if (step >= 1) {
-      // Step 2+: Show hierarchy edges + task delegation
+    if (step === 1) {
+      // Step 2: Agents configured -- departments + agents appear + hierarchy edges
+      allDepts.forEach(show);
+      deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
+      allNodes.forEach(show);
       allEdges.forEach(show);
-      edgeTask?.setAttribute("stroke-opacity", "0.4");
-      edgeTask?.setAttribute("stroke-dasharray", "5 3");
-      // Some agents active
-      setFill(statusEls[0], "#a78bfa"); // CEO
-      setFill(statusEls[1], "#a78bfa"); // CTO
-      setFill(statusEls[5], "#2dd4bf"); // PM
     }
 
-    if (step >= 2) {
-      // Step 3+: Communication edges
+    if (step === 2) {
+      // Step 3: Collaboration -- agents active, communication flowing, tasks delegated
+      allDepts.forEach(show);
+      deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
+      allNodes.forEach(show);
+      allEdges.forEach(show);
+      edgeTask?.setAttribute("stroke-opacity", "0.5");
+      edgeTask?.setAttribute("stroke-dasharray", "5 3");
       edgeComm1?.setAttribute("stroke-opacity", "0.5");
       edgeComm2?.setAttribute("stroke-opacity", "0.5");
-      // More agents active/done
+      setFill(statusEls[0], "#a78bfa"); // CEO directing
+      setFill(statusEls[1], "#a78bfa"); // CTO directing
       setFill(statusEls[2], "#2dd4bf"); // BE1 working
       setFill(statusEls[3], "#2dd4bf"); // BE2 working
+      setFill(statusEls[4], "#2dd4bf"); // FE working
+      setFill(statusEls[5], "#a78bfa"); // PM directing
       setFill(statusEls[7], "#10b981"); // UX done
       setFill(statusEls[9], "#f59e0b"); // QA reviewing
     }
 
-    if (step >= 3) {
-      // Step 4: All done + metrics
+    if (step === 3) {
+      // Step 4: Observe -- all done, metrics visible
+      allDepts.forEach(show);
+      deptLabels.forEach((el) => el.setAttribute("opacity", "0.5"));
+      allNodes.forEach(show);
+      allEdges.forEach(show);
       show(metricsGroup);
       statusEls.forEach((el) => setFill(el, "#10b981"));
-      edgeTask?.setAttribute("stroke-opacity", "0");
     }
   }
 

@@ -40,9 +40,9 @@ export default function OrgChartMini({ tick }: Props) {
       <svg viewBox="0 0 400 270" className="w-full" aria-hidden="true">
         {/* Department groups */}
         <rect x="20" y="95" width="180" height="140" rx="8" fill="none" stroke="#a78bfa" strokeOpacity="0.1" strokeWidth="1" />
-        <text x="32" y="112" fill="#a78bfa" fontSize="8" fontFamily="var(--dp-font-sans)" opacity="0.5">Engineering</text>
+        <text x="32" y="112" fill="#a78bfa" fontSize="11" fontFamily="var(--dp-font-sans)" opacity="0.5">Engineering</text>
         <rect x="225" y="95" width="160" height="140" rx="8" fill="none" stroke="#2dd4bf" strokeOpacity="0.1" strokeWidth="1" />
-        <text x="237" y="112" fill="#2dd4bf" fontSize="8" fontFamily="var(--dp-font-sans)" opacity="0.5">Design & QA</text>
+        <text x="237" y="112" fill="#2dd4bf" fontSize="11" fontFamily="var(--dp-font-sans)" opacity="0.5">Design & QA</text>
 
         {/* Edges */}
         {edges.map((e) => {
@@ -92,17 +92,17 @@ export default function OrgChartMini({ tick }: Props) {
                 r="3"
                 fill={isActive ? "#10b981" : "#94a3b8"}
               />
-              <text x={a.x} y={a.y + 11} textAnchor="middle" fill="var(--dp-text-primary)" fontSize="9" fontWeight="600" fontFamily="var(--dp-font-sans)">
+              <text x={a.x} y={a.y + 12} textAnchor="middle" fill="var(--dp-text-primary)" fontSize="12" fontWeight="600" fontFamily="var(--dp-font-sans)">
                 {a.name}
               </text>
-              <text x={a.x} y={a.y + 22} textAnchor="middle" fill="var(--dp-text-secondary)" fontSize="7" fontFamily="var(--dp-font-sans)">
+              <text x={a.x} y={a.y + 24} textAnchor="middle" fill="var(--dp-text-secondary)" fontSize="10" fontFamily="var(--dp-font-sans)">
                 {a.seniority}
               </text>
             </g>
           );
         })}
       </svg>
-      <div className="absolute bottom-2 right-3 text-[9px] px-2 py-0.5 rounded-full border" style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}>
+      <div className="absolute bottom-3 right-4 text-xs px-3 py-1 rounded-full border" style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}>
         4 seniority levels -- Mid to C-Suite
       </div>
     </div>

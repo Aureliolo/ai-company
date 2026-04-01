@@ -60,7 +60,7 @@ function MiniCard({ task, highlight }: { task: TaskCard; highlight: boolean }) {
           className="w-1.5 h-1.5 rounded-full shrink-0"
           style={{ background: priorityColors[task.priority] }}
         />
-        <span className="text-[9px] truncate" style={{ color: "var(--dp-text-primary)" }}>
+        <span className="text-xs truncate" style={{ color: "var(--dp-text-primary)" }}>
           {task.title}
         </span>
       </div>
@@ -89,12 +89,12 @@ export default function TaskBoardMini({ tick }: Props) {
         {columns.map((col) => (
           <div key={col.name}>
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[9px] font-semibold" style={{ color: "var(--dp-text-secondary)" }}>
+              <span className="text-xs font-semibold" style={{ color: "var(--dp-text-secondary)" }}>
                 {col.name}
               </span>
               <span className="flex items-center gap-1">
                 <span
-                  className="text-[8px] px-1 rounded"
+                  className="text-[10px] px-1 rounded"
                   style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}
                 >
                   {col.tasks.length}
@@ -119,7 +119,7 @@ export default function TaskBoardMini({ tick }: Props) {
       </div>
       <div className="mt-3 text-center">
         <span
-          className="text-[9px] px-2 py-0.5 rounded-full border inline-block"
+          className="text-xs px-2 py-0.5 rounded-full border inline-block"
           style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}
         >
           Kanban, Agile sprints, or sequential pipelines

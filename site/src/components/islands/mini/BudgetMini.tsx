@@ -52,7 +52,7 @@ export default function BudgetMini({ tick }: Props) {
             <text x="60" y="55" textAnchor="middle" fill="var(--dp-text-primary)" fontSize="18" fontWeight="700" fontFamily="var(--dp-font-mono)">
               {Math.round(gaugeValue)}%
             </text>
-            <text x="60" y="66" textAnchor="middle" fill="var(--dp-text-muted)" fontSize="8" fontFamily="var(--dp-font-sans)">
+            <text x="60" y="66" textAnchor="middle" fill="var(--dp-text-muted)" fontSize="11" fontFamily="var(--dp-font-sans)">
               budget remaining
             </text>
           </svg>
@@ -70,7 +70,7 @@ export default function BudgetMini({ tick }: Props) {
               <div className="text-[7px]" style={{ color: "var(--dp-text-muted)" }}>
                 {m.label}
               </div>
-              <div className="text-[10px] font-semibold" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
+              <div className="text-xs font-semibold" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
                 {m.value}
               </div>
             </div>
@@ -80,13 +80,13 @@ export default function BudgetMini({ tick }: Props) {
 
       {/* Agent spend breakdown */}
       <div className="rounded-md p-2" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
-        <div className="text-[8px] font-semibold mb-2" style={{ color: "var(--dp-text-secondary)" }}>
+        <div className="text-xs font-semibold mb-2" style={{ color: "var(--dp-text-secondary)" }}>
           Spend by Agent
         </div>
         <div className="space-y-1.5">
           {agentSpend.map((a) => (
             <div key={a.name} className="flex items-center gap-2">
-              <span className="text-[8px] w-12" style={{ color: "var(--dp-text-secondary)" }}>
+              <span className="text-xs w-12" style={{ color: "var(--dp-text-secondary)" }}>
                 {a.name}
               </span>
               <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--dp-border)" }}>
@@ -95,7 +95,7 @@ export default function BudgetMini({ tick }: Props) {
                   style={{ width: `${a.pct}%`, background: a.color }}
                 />
               </div>
-              <span className="text-[8px] w-6 text-right" style={{ color: "var(--dp-text-muted)" }}>
+              <span className="text-xs w-6 text-right" style={{ color: "var(--dp-text-muted)" }}>
                 {a.pct}%
               </span>
             </div>
@@ -134,7 +134,7 @@ export default function BudgetMini({ tick }: Props) {
 
       <div className="mt-2 text-center">
         <span
-          className="text-[9px] px-2 py-0.5 rounded-full border inline-block"
+          className="text-xs px-2 py-0.5 rounded-full border inline-block"
           style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}
         >
           Per-token cost tracking with hierarchical budget cascades

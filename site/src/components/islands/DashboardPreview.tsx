@@ -67,19 +67,19 @@ export default function DashboardPreview() {
       <div className="flex">
         {/* Mock sidebar */}
         <div
-          className="hidden sm:flex flex-col items-center py-3 px-1.5 gap-2 shrink-0"
+          className="hidden sm:flex flex-col items-center py-4 px-2 gap-3 shrink-0"
           style={{ background: "var(--dp-bg-surface)", borderRight: "1px solid var(--dp-border)" }}
         >
           {sidebarIcons.map((d, i) => (
             <div
               key={i}
-              className="w-6 h-6 flex items-center justify-center rounded"
+              className="w-8 h-8 flex items-center justify-center rounded"
               style={{
                 color: i === activeTab + 1 ? "var(--dp-accent)" : "var(--dp-text-muted)",
                 background: i === activeTab + 1 ? "rgba(56, 189, 248, 0.1)" : "transparent",
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d={d} />
               </svg>
             </div>
@@ -90,26 +90,26 @@ export default function DashboardPreview() {
         <div className="flex-1 min-w-0">
           {/* Header */}
           <div
-            className="flex items-center justify-between px-3 py-2 border-b"
+            className="flex items-center justify-between px-4 py-2.5 border-b"
             style={{ borderColor: "var(--dp-border)", background: "var(--dp-bg-surface)" }}
           >
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold" style={{ color: "var(--dp-text-primary)" }}>
+              <span className="text-sm font-semibold" style={{ color: "var(--dp-text-primary)" }}>
                 Acme AI Lab
               </span>
               <span
-                className="w-1.5 h-1.5 rounded-full"
+                className="w-2 h-2 rounded-full"
                 style={{ background: "var(--dp-success)" }}
               />
-              <span className="text-[8px]" style={{ color: "var(--dp-success)" }}>
+              <span className="text-xs" style={{ color: "var(--dp-success)" }}>
                 Running
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[8px] px-1.5 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
                 7 agents
               </span>
-              <span className="text-[8px] px-1.5 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
+              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "var(--dp-border)", color: "var(--dp-text-muted)" }}>
                 12 tasks
               </span>
             </div>
@@ -130,14 +130,14 @@ export default function DashboardPreview() {
                 aria-selected={i === activeTab}
                 aria-controls="dp-tabpanel"
                 onClick={() => selectTab(i)}
-                className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors border-b-2 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm transition-colors border-b-2 cursor-pointer"
                 style={{
                   color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",
                   borderBottomColor: i === activeTab ? "var(--dp-accent)" : "transparent",
                   background: "transparent",
                 }}
               >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d={page.icon} />
                 </svg>
                 {page.label}
@@ -148,7 +148,7 @@ export default function DashboardPreview() {
           {/* Page content -- fixed height to prevent layout shift */}
           <div
             id="dp-tabpanel"
-            className="p-3 h-[280px] sm:h-[320px] overflow-hidden flex items-start"
+            className="p-4 h-[360px] sm:h-[420px] overflow-hidden flex items-start"
             role="tabpanel"
             aria-labelledby={`dp-tab-${activeTab}`}
           >
@@ -182,7 +182,7 @@ export default function DashboardPreview() {
           {pages.map((page, i) => (
             <button
               key={i}
-              className="px-2 py-0.5 rounded text-[9px] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              className="px-3 py-1 rounded text-xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               style={{
                 background: i === activeTab ? "rgba(56, 189, 248, 0.15)" : "transparent",
                 color: i === activeTab ? "var(--dp-accent)" : "var(--dp-text-muted)",

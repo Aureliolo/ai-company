@@ -33,17 +33,17 @@ export default function AgentDetailMini({ tick }: Props) {
               Sarah Chen
             </span>
             <span
-              className="text-[8px] px-1.5 py-0.5 rounded-full font-medium"
+              className="text-xs px-1.5 py-0.5 rounded-full font-medium"
               style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--dp-success)" }}
             >
               Active
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px]" style={{ color: "var(--dp-text-secondary)" }}>
+            <span className="text-xs" style={{ color: "var(--dp-text-secondary)" }}>
               CTO -- C-Suite
             </span>
-            <span className="text-[10px]" style={{ color: "var(--dp-text-muted)" }}>
+            <span className="text-xs" style={{ color: "var(--dp-text-muted)" }}>
               Semi-Autonomous
             </span>
           </div>
@@ -59,10 +59,10 @@ export default function AgentDetailMini({ tick }: Props) {
           { label: "Trust", value: "Semi-Auto", color: "var(--dp-accent)" },
         ].map((m) => (
           <div key={m.label} className="rounded-md p-2 text-center" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
-            <div className="text-[8px] mb-0.5" style={{ color: "var(--dp-text-muted)" }}>
+            <div className="text-xs mb-0.5" style={{ color: "var(--dp-text-muted)" }}>
               {m.label}
             </div>
-            <div className="text-[11px] font-semibold font-mono" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
+            <div className="text-sm font-semibold font-mono" style={{ color: m.color, fontFamily: "var(--dp-font-mono)" }}>
               {m.value}
             </div>
           </div>
@@ -74,7 +74,7 @@ export default function AgentDetailMini({ tick }: Props) {
         {tools.map((t) => (
           <span
             key={t}
-            className="text-[8px] px-1.5 py-0.5 rounded"
+            className="text-xs px-1.5 py-0.5 rounded"
             style={{ background: "var(--dp-border)", color: "var(--dp-text-secondary)" }}
           >
             {t}
@@ -85,7 +85,7 @@ export default function AgentDetailMini({ tick }: Props) {
       {/* Activity log */}
       <div className="rounded-md overflow-hidden" style={{ background: "var(--dp-bg-card)", border: "1px solid var(--dp-border)" }}>
         <div className="px-2 py-1.5 border-b" style={{ borderColor: "var(--dp-border)" }}>
-          <span className="text-[9px] font-semibold" style={{ color: "var(--dp-text-secondary)" }}>
+          <span className="text-xs font-semibold" style={{ color: "var(--dp-text-secondary)" }}>
             Recent Activity
           </span>
         </div>
@@ -95,10 +95,10 @@ export default function AgentDetailMini({ tick }: Props) {
               <div key={i} className="flex items-start gap-2 px-2 py-1">
                 <span className="w-1 h-1 rounded-full mt-1.5 shrink-0" style={{ background: a.color }} />
                 <div className="min-w-0">
-                  <span className="text-[8px] block truncate" style={{ color: "var(--dp-text-primary)" }}>
+                  <span className="text-xs block truncate" style={{ color: "var(--dp-text-primary)" }}>
                     {a.action}
                   </span>
-                  <span className="text-[7px]" style={{ color: "var(--dp-text-muted)" }}>
+                  <span className="text-[9px]" style={{ color: "var(--dp-text-muted)" }}>
                     {a.time}
                   </span>
                 </div>
@@ -110,7 +110,7 @@ export default function AgentDetailMini({ tick }: Props) {
 
       <div className="mt-2 text-center">
         <span
-          className="text-[9px] px-2 py-0.5 rounded-full border inline-block"
+          className="text-xs px-2 py-0.5 rounded-full border inline-block"
           style={{ color: "var(--dp-accent)", borderColor: "var(--dp-border-bright)", background: "var(--dp-bg-surface)" }}
         >
           Personality-driven teams with career progression
