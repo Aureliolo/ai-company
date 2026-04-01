@@ -360,6 +360,9 @@ def build_handler(
             )
 
             return build_http_handler(sink, foreign_pre_chain)
+        case _:
+            msg = f"Unsupported sink type: {sink.sink_type}"
+            raise ValueError(msg)
 
     handler.setLevel(sink.level.value)
     handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
