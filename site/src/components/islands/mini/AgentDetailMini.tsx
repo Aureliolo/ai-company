@@ -5,12 +5,12 @@ interface Props {
 const tools = ["file_system", "git", "code_runner", "web_search", "database"];
 
 const activities = [
-  { time: "2m ago", action: "Completed task #12: Schema validation", color: "#10b981" },
-  { time: "5m ago", action: "Delegated subtask to Engineer", color: "#38bdf8" },
-  { time: "8m ago", action: "Approved PR #47 (quality: 94%)", color: "#10b981" },
-  { time: "12m ago", action: "Started task #11: API design", color: "#a78bfa" },
-  { time: "15m ago", action: "Meeting: sprint planning (chair)", color: "#2dd4bf" },
-  { time: "20m ago", action: "Budget alert: 72% daily used", color: "#f59e0b" },
+  { time: "2m ago", action: "Completed task #12: Schema validation", color: "var(--dp-success)" },
+  { time: "5m ago", action: "Delegated subtask to Engineer", color: "var(--dp-accent)" },
+  { time: "8m ago", action: "Approved PR #47 (quality: 94%)", color: "var(--dp-success)" },
+  { time: "12m ago", action: "Started task #11: API design", color: "var(--dp-accent)" },
+  { time: "15m ago", action: "Meeting: sprint planning (chair)", color: "var(--dp-success)" },
+  { time: "20m ago", action: "Budget alert: 72% daily used", color: "var(--dp-warning)" },
 ];
 
 export default function AgentDetailMini({ tick }: Props) {
