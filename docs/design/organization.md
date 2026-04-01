@@ -348,7 +348,7 @@ template:
 Inheritance resolves parent-to-child chains up to **10 levels deep**. Circular inheritance
 is detected via chain tracking and raises `TemplateInheritanceError`.
 
-**Builtin inheritance tree:**
+**Built-in inheritance tree:**
 
 ```
 solo_founder (base: 2 agents)

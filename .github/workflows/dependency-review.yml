@@ -49,16 +49,29 @@ jobs:
             LicenseRef-scancode-free-unknown, LicenseRef-scancode-protobuf,
             LicenseRef-scancode-google-patent-license-golang,
             ZPL-2.1,
-            LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
+            LGPL-2.0-only, LGPL-2.0-or-later, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
             BlueOak-1.0.0,
             OFL-1.1
           # Packages with null/missing SPDX license metadata in lockfile.
           # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
-          # qdrant-client (Apache-2.0), posthog (MIT).
+          # qdrant-client (Apache-2.0), posthog (MIT), aiohttp (Apache-2.0),
+          # cyclonedx-python-lib (Apache-2.0), fsspec (BSD-3-Clause),
+          # griffelib (ISC), grpcio (Apache-2.0).
+          #
           # sharp platform binaries use compound AND licenses (e.g.
           # "Apache-2.0 AND LGPL-3.0-or-later") -- all constituents are
           # in the allowlist but the action doesn't split AND expressions.
           # CI-only transitive dep via wrangler, no licensing impact.
+          #
+          # charset-normalizer (LGPL-2.0-or-later AND LGPL-2.1-only AND
+          # MIT AND MPL-1.1): compound AND license. All constituents are
+          # permissive. Actual license is MIT. The action cannot split
+          # compound AND expressions.
+          #
+          # wrapt (BSD-2-Clause AND BSD-3-Clause AND Python-2.0 AND Ruby):
+          # compound AND license from vendored code metadata. Actual
+          # license is BSD-2-Clause. The "Ruby" component is from vendored
+          # code scan metadata, not a separate licensing concern.
           #
           # json-schema-typed (BSD-2-Clause AND JSON): transitive dep via
           # shadcn/radix. The "JSON" license has a non-standard "Good, not
@@ -78,10 +91,17 @@ jobs:
           # not apply to the project output. The action cannot distinguish
           # tool deps from runtime deps, so they need per-package exemptions.
           allow-dependencies-licenses: >-
-            pkg:pypi/mem0ai@1.0.5,
-            pkg:pypi/numpy@2.4.3,
-            pkg:pypi/qdrant-client@1.17.0,
+            pkg:pypi/mem0ai@1.0.9,
+            pkg:pypi/numpy@2.4.4,
+            pkg:pypi/qdrant-client@1.17.1,
             pkg:pypi/posthog@7.9.12,
+            pkg:pypi/aiohttp@3.13.5,
+            pkg:pypi/cyclonedx-python-lib@11.7.0,
+            pkg:pypi/fsspec@2026.3.0,
+            pkg:pypi/griffelib@2.0.2,
+            pkg:pypi/grpcio@1.80.0,
+            pkg:pypi/charset-normalizer@3.4.6,
+            pkg:pypi/wrapt@2.1.2,
             pkg:npm/@img/sharp-wasm32@0.33.5,
             pkg:npm/@img/sharp-win32-ia32@0.33.5,
             pkg:npm/@img/sharp-win32-x64@0.33.5,
