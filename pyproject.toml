@@ -170,6 +170,8 @@ warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
 enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
+local_partial_types = true
+strict_bytes = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
