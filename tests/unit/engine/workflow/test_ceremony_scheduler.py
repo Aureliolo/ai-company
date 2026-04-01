@@ -1,5 +1,6 @@
 """Tests for CeremonyScheduler service."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,7 +29,7 @@ def _make_sprint(
 ) -> Sprint:
     task_ids = tuple(f"task-{i}" for i in range(task_count))
     completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict = {
+    kwargs: dict[str, Any] = {
         "id": "sprint-1",
         "name": "Sprint 1",
         "sprint_number": 1,

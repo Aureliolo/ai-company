@@ -1,5 +1,7 @@
 """Tests for CeremonyEvalContext dataclass."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
@@ -99,7 +101,7 @@ class TestCeremonyEvalContext:
 
     @pytest.mark.unit
     def test_equality(self) -> None:
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "completions_since_last_trigger": 1,
             "total_completions_this_sprint": 5,
             "total_tasks_in_sprint": 10,

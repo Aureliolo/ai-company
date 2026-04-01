@@ -1,5 +1,7 @@
 """Tests for the TaskDrivenStrategy reference implementation."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
@@ -30,7 +32,7 @@ def _make_ceremony(
     sprint_percentage: float | None = None,
 ) -> SprintCeremonyConfig:
     """Create a ceremony config with task-driven policy override."""
-    config: dict = {"trigger": trigger}
+    config: dict[str, object] = {"trigger": trigger}
     if trigger == "every_n_completions":
         config["every_n_completions"] = every_n
     if sprint_percentage is not None:
@@ -53,7 +55,7 @@ def _make_sprint(
     """Create a sprint with the given task/completion counts."""
     task_ids = tuple(f"task-{i}" for i in range(task_count))
     completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict = {
+    kwargs: dict[str, Any] = {
         "id": "sprint-1",
         "name": "Sprint 1",
         "sprint_number": 1,
