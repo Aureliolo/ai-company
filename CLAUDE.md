@@ -119,6 +119,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 ## Shell Usage
 
 - **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`.
+- **NEVER use Bash to write files** -- use the Write or Edit tools. NEVER use `cat > file`, `cat << EOF`, `echo >`, `python -c`, or `tee` to write file contents. This includes plan files, config files, and all other files. This rule applies to all subagents.
 
 ## Code Conventions
 
