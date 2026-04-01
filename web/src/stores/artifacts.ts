@@ -48,7 +48,9 @@ interface ArtifactsState {
   updateFromWsEvent: (event: WsEvent) => void
 }
 
-let _detailRequestId = ''
+let _detailRequestToken = 0
+/** True when a newer detail request has superseded this one. */
+function isStaleRequest(token: number): boolean { return _detailRequestToken !== token }
 
 export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   artifacts: [],
@@ -79,11 +81,11 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   },
 
   fetchArtifactDetail: async (id: string) => {
-    _detailRequestId = id
-    set({ detailLoading: true, detailError: null })
+    const token = ++_detailRequestToken
+    set({ detailLoading: true, detailError: null, selectedArtifact: null, contentPreview: null })
     try {
       const artifact = await getArtifact(id)
-      if (_detailRequestId !== id) return
+      if (isStaleRequest(token)) return
 
       let preview: string | null = null
       const partialErrors: string[] = []
@@ -95,7 +97,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
         }
       }
 
-      if (_detailRequestId !== id) return
+      if (isStaleRequest(token)) return
       set({
         selectedArtifact: artifact,
         contentPreview: preview,
@@ -105,8 +107,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
           : null,
       })
     } catch (err) {
-      if (_detailRequestId !== id) return
-      set({ detailLoading: false, detailError: getErrorMessage(err) })
+      if (isStaleRequest(token)) return
+      set({ detailLoading: false, detailError: getErrorMessage(err), selectedArtifact: null, contentPreview: null })
     }
   },
 
@@ -115,6 +117,8 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
     set((state) => ({
       artifacts: state.artifacts.filter((a) => a.id !== id),
       totalArtifacts: Math.max(0, state.totalArtifacts - 1),
+      selectedArtifact: state.selectedArtifact?.id === id ? null : state.selectedArtifact,
+      contentPreview: state.selectedArtifact?.id === id ? null : state.contentPreview,
     }))
   },
 
@@ -126,7 +130,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set) => ({
   setProjectIdFilter: (p) => set({ projectIdFilter: p }),
 
   clearDetail: () => {
-    _detailRequestId = ''
+    _detailRequestToken = 0
     set({
       selectedArtifact: null,
       contentPreview: null,

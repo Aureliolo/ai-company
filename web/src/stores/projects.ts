@@ -33,7 +33,9 @@ interface ProjectsState {
   updateFromWsEvent: (event: WsEvent) => void
 }
 
-let _detailRequestId = ''
+let _detailRequestToken = 0
+/** True when a newer detail request has superseded this one. */
+function isStaleRequest(token: number): boolean { return _detailRequestToken !== token }
 
 export const useProjectsStore = create<ProjectsState>()((set) => ({
   projects: [],
@@ -61,20 +63,20 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   },
 
   fetchProjectDetail: async (id: string) => {
-    _detailRequestId = id
-    set({ detailLoading: true, detailError: null })
+    const token = ++_detailRequestToken
+    set({ detailLoading: true, detailError: null, selectedProject: null, projectTasks: [] })
 
     const [projectResult, tasksResult] = await Promise.allSettled([
       getProject(id),
       listTasks({ project: id, limit: 50 }),
     ])
 
-    if (_detailRequestId !== id) return
+    if (isStaleRequest(token)) return
 
     const project = projectResult.status === 'fulfilled' ? projectResult.value : null
     if (!project) {
       const reason = projectResult.status === 'rejected' ? projectResult.reason : null
-      set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Project not found') })
+      set({ detailLoading: false, detailError: getErrorMessage(reason ?? 'Project not found'), selectedProject: null })
       return
     }
 
@@ -107,7 +109,7 @@ export const useProjectsStore = create<ProjectsState>()((set) => ({
   setLeadFilter: (l) => set({ leadFilter: l }),
 
   clearDetail: () => {
-    _detailRequestId = ''
+    _detailRequestToken = 0
     set({
       selectedProject: null,
       projectTasks: [],
