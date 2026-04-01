@@ -407,3 +407,23 @@ class PersonalityPresetService:
             JSON Schema dict.
         """
         return PersonalityConfig.model_json_schema()
+
+
+async def fetch_custom_presets_map(
+    repo: PersonalityPresetRepository,
+) -> dict[str, dict[str, Any]]:
+    """Fetch all custom presets as a sync-friendly name-to-config dict.
+
+    This bridges the async persistence layer and the sync template
+    rendering pipeline.  Call once before rendering and pass the
+    result as ``custom_presets`` to :func:`render_template` or
+    :func:`expand_template_agents`.
+
+    Args:
+        repo: Personality preset repository.
+
+    Returns:
+        Mapping of lowercased preset names to personality config dicts.
+    """
+    rows = await repo.list_all()
+    return {str(row.name): json.loads(row.config_json) for row in rows}

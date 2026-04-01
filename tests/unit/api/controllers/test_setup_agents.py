@@ -100,3 +100,45 @@ class TestExpandTemplateAgentsDictModel:
         assert "model_requirement" in agent
         assert agent["model_requirement"]["tier"] == "medium"
         assert agent["model_requirement"]["priority"] == "balanced"
+
+
+@pytest.mark.unit
+class TestExpandTemplateAgentsCustomPresets:
+    def test_custom_preset_resolved(self) -> None:
+        """Custom preset is used when passed to expand_template_agents."""
+        custom = {
+            "my_custom": {
+                "traits": ("custom-trait",),
+                "communication_style": "custom",
+                "description": "Custom",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        template = _make_template([{"role": "Dev", "personality_preset": "my_custom"}])
+        agents = expand_template_agents(template, custom_presets=custom)
+        assert len(agents) == 1
+        assert agents[0]["personality"]["communication_style"] == "custom"
+        assert agents[0]["personality_preset"] == "my_custom"
+
+    def test_unknown_preset_falls_back_to_default(self) -> None:
+        """Unknown custom preset falls back to pragmatic_builder."""
+        template = _make_template(
+            [{"role": "Dev", "personality_preset": "nonexistent"}]
+        )
+        agents = expand_template_agents(template)
+        assert len(agents) == 1
+        assert agents[0]["personality_preset"] == "pragmatic_builder"
+
+    def test_builtin_preset_works_with_custom_presets(self) -> None:
+        """Builtin presets still work when custom_presets dict is passed."""
+        custom = {"other": {"traits": ("a",)}}
+        template = _make_template(
+            [{"role": "Dev", "personality_preset": "pragmatic_builder"}]
+        )
+        agents = expand_template_agents(template, custom_presets=custom)
+        assert len(agents) == 1
+        assert agents[0]["personality"]["communication_style"] == "concise"

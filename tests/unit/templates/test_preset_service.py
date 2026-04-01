@@ -252,3 +252,53 @@ class TestGetSchema:
         assert "openness" in schema["properties"]
         assert "traits" in schema["properties"]
         assert schema["properties"]["openness"]["type"] == "number"
+
+
+@pytest.mark.unit
+class TestFetchCustomPresetsMap:
+    async def test_empty_repo_returns_empty_dict(
+        self,
+        repo: FakePersonalityPresetRepository,
+    ) -> None:
+        from synthorg.templates.preset_service import fetch_custom_presets_map
+
+        result = await fetch_custom_presets_map(repo)
+        assert result == {}
+
+    async def test_returns_name_to_config_mapping(
+        self,
+        repo: FakePersonalityPresetRepository,
+    ) -> None:
+        from synthorg.templates.preset_service import fetch_custom_presets_map
+
+        config = _make_valid_config()
+        await repo.save(
+            name="test_preset",
+            config_json=json.dumps(config),
+            description="test",
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+        result = await fetch_custom_presets_map(repo)
+        assert "test_preset" in result
+        assert result["test_preset"]["communication_style"] == "warm"
+
+    async def test_multiple_presets(
+        self,
+        repo: FakePersonalityPresetRepository,
+    ) -> None:
+        from synthorg.templates.preset_service import fetch_custom_presets_map
+
+        config = _make_valid_config()
+        for name in ("preset_a", "preset_b"):
+            await repo.save(
+                name=name,
+                config_json=json.dumps(config),
+                description="test",
+                created_at="2026-01-01T00:00:00+00:00",
+                updated_at="2026-01-01T00:00:00+00:00",
+            )
+        result = await fetch_custom_presets_map(repo)
+        assert len(result) == 2
+        assert "preset_a" in result
+        assert "preset_b" in result

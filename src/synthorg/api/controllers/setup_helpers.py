@@ -398,8 +398,19 @@ async def auto_create_template_agents(
     settings_svc: SettingsService,
 ) -> tuple[SetupAgentSummary, ...]:
     """Expand template agents, match models, persist, and return summaries."""
+    from synthorg.templates.preset_service import (  # noqa: PLC0415
+        fetch_custom_presets_map,
+    )
+
     locales = await read_name_locales(settings_svc)
-    agents = expand_template_agents(template, locales=locales)
+    custom_presets = await fetch_custom_presets_map(
+        app_state.persistence.custom_presets,
+    )
+    agents = expand_template_agents(
+        template,
+        locales=locales,
+        custom_presets=custom_presets,
+    )
     providers = await app_state.provider_management.list_providers()
     agents = match_and_assign_models(agents, providers)
 

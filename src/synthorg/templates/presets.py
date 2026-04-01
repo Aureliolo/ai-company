@@ -7,7 +7,10 @@ backed by the Faker library.
 
 import functools
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from pydantic import ValidationError
 
@@ -404,29 +407,38 @@ PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
 del _RAW_PRESETS
 
 
-def get_personality_preset(name: str) -> dict[str, Any]:
+def get_personality_preset(
+    name: str,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Look up a personality preset by name.
+
+    Custom presets are checked first (higher precedence), then builtins.
 
     Args:
         name: Preset name (case-insensitive, whitespace-stripped).
+        custom_presets: Optional mapping of custom preset names to
+            personality config dicts.  Keys must be lowercased.
 
     Returns:
         A *copy* of the personality configuration dict.
 
     Raises:
-        KeyError: If the preset name is not found.
+        KeyError: If the preset name is not found in either source.
     """
     key = name.strip().lower()
-    if key not in PERSONALITY_PRESETS:
-        available = sorted(PERSONALITY_PRESETS)
-        msg = f"Unknown personality preset {name!r}. Available: {available}"
-        logger.warning(
-            TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-            preset_name=name,
-            available=available,
-        )
-        raise KeyError(msg)
-    return dict(PERSONALITY_PRESETS[key])
+    if custom_presets is not None and key in custom_presets:
+        return dict(custom_presets[key])
+    if key in PERSONALITY_PRESETS:
+        return dict(PERSONALITY_PRESETS[key])
+    available = sorted(PERSONALITY_PRESETS)
+    msg = f"Unknown personality preset {name!r}. Available: {available}"
+    logger.warning(
+        TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+        preset_name=name,
+        available=available,
+    )
+    raise KeyError(msg)
 
 
 # Validate all presets at import time to catch key typos immediately.

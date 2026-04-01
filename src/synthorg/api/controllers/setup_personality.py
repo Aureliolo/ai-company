@@ -80,12 +80,19 @@ class SetupPersonalityController(Controller):
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
 
+            from synthorg.templates.preset_service import (  # noqa: PLC0415
+                fetch_custom_presets_map,
+            )
             from synthorg.templates.presets import (  # noqa: PLC0415
                 get_personality_preset,
             )
 
+            custom_presets = await fetch_custom_presets_map(
+                app_state.persistence.custom_presets,
+            )
             personality_dict = get_personality_preset(
                 data.personality_preset,
+                custom_presets=custom_presets,
             )
             updated_agent = {
                 **agents[agent_index],

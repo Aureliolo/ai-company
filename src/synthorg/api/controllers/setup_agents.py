@@ -21,7 +21,7 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from synthorg.api.controllers.setup_models import (
         SetupAgentRequest,
@@ -40,6 +40,8 @@ _REQUIRED_AGENT_KEYS: frozenset[str] = frozenset({"name", "role"})
 def expand_template_agents(
     template: CompanyTemplate,
     locales: list[str] | None = None,
+    *,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Expand template agent configs into persistable agent dicts.
 
@@ -51,6 +53,8 @@ def expand_template_agents(
         template: Parsed ``CompanyTemplate`` from the loader.
         locales: Faker locale codes for name generation.  ``None``
             uses all Latin-script locales.
+        custom_presets: Optional mapping of custom preset names to
+            personality config dicts (checked before builtins).
 
     Returns:
         List of agent config dicts with ``tier`` metadata and, when
@@ -81,7 +85,10 @@ def expand_template_agents(
         # Resolve personality.
         preset_name = agent_cfg.personality_preset or "pragmatic_builder"
         try:
-            personality = get_personality_preset(preset_name)
+            personality = get_personality_preset(
+                preset_name,
+                custom_presets=custom_presets,
+            )
         except KeyError:
             logger.warning(
                 SETUP_TEMPLATE_INVALID,
@@ -229,18 +236,26 @@ def validate_provider_and_model(
     _validate_provider_model_pair(providers, data.model_provider, data.model_id)
 
 
-def build_agent_config(data: SetupAgentRequest) -> dict[str, Any]:
+def build_agent_config(
+    data: SetupAgentRequest,
+    *,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build an agent config dict for settings persistence.
 
     Args:
         data: Validated agent creation payload.
+        custom_presets: Optional custom preset mapping.
 
     Returns:
         Agent configuration dict suitable for JSON serialization.
     """
     from synthorg.templates.presets import get_personality_preset  # noqa: PLC0415
 
-    personality_dict = get_personality_preset(data.personality_preset)
+    personality_dict = get_personality_preset(
+        data.personality_preset,
+        custom_presets=custom_presets,
+    )
     agent_config: dict[str, Any] = {
         "name": data.name,
         "role": data.role,

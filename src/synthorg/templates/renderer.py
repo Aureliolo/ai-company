@@ -30,6 +30,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_RESOLVE_START,
     TEMPLATE_INHERIT_RESOLVE_SUCCESS,
     TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+    TEMPLATE_PRESET_RESOLVED_CUSTOM,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -62,6 +63,8 @@ _DEFAULT_DEPARTMENT = DEFAULT_MERGE_DEPARTMENT
 _MAX_INHERITANCE_DEPTH = 10
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.config.schema import RootConfig
     from synthorg.templates.loader import LoadedTemplate
     from synthorg.templates.schema import CompanyTemplate
@@ -78,6 +81,7 @@ def render_template(
     variables: dict[str, Any] | None = None,
     *,
     locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> RootConfig:
     """Render a loaded template into a validated RootConfig.
 
@@ -88,6 +92,8 @@ def render_template(
         variables: User-supplied variable values (overrides defaults).
         locales: Faker locale codes for auto-name generation.
             Defaults to all Latin-script locales when ``None``.
+        custom_presets: Optional mapping of custom preset names to
+            personality config dicts for resolving user-defined presets.
 
     Returns:
         Validated, frozen :class:`RootConfig`.
@@ -101,7 +107,12 @@ def render_template(
         TEMPLATE_RENDER_START,
         source_name=loaded.source_name,
     )
-    config_dict = _render_to_dict(loaded, variables, locales=locales)
+    config_dict = _render_to_dict(
+        loaded,
+        variables,
+        locales=locales,
+        custom_presets=custom_presets,
+    )
 
     # Merge with defaults and validate.
     merged = deep_merge(default_config_dict(), config_dict)
@@ -119,6 +130,7 @@ def _render_to_dict(
     *,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Render a template to a config dict, resolving inheritance.
 
@@ -128,6 +140,7 @@ def _render_to_dict(
         locales: Faker locale codes for auto-name generation.
         _chain: Set of already-seen template identifiers for circular
             detection (internal use).
+        custom_presets: Optional custom preset mapping.
 
     Returns:
         Config dict suitable for merging with defaults.
@@ -151,6 +164,7 @@ def _render_to_dict(
         template,
         vars_dict,
         locales=locales,
+        custom_presets=custom_presets,
     )
 
     # If no inheritance, return child config directly.
@@ -164,6 +178,7 @@ def _render_to_dict(
         vars_dict=vars_dict,
         locales=locales,
         _chain=_chain,
+        custom_presets=custom_presets,
     )
 
 
@@ -174,6 +189,7 @@ def _resolve_inheritance(
     vars_dict: dict[str, Any],
     locales: list[str] | None = None,
     _chain: frozenset[str],
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Resolve template inheritance for a child config.
 
@@ -186,6 +202,7 @@ def _resolve_inheritance(
         vars_dict: Child's resolved variables.
         locales: Faker locale codes for auto-name generation.
         _chain: Already-visited parent names for circular detection.
+        custom_presets: Optional custom preset mapping.
 
     Returns:
         Merged config dict (parent + child).
@@ -212,6 +229,7 @@ def _resolve_inheritance(
         vars_dict,
         _chain,
         locales=locales,
+        custom_presets=custom_presets,
     )
     logger.info(
         TEMPLATE_INHERIT_RESOLVE_SUCCESS,
@@ -261,6 +279,7 @@ def _render_and_merge_parent(
     _chain: frozenset[str],
     *,
     locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Load, render, and merge a parent template with a child config."""
     from synthorg.templates.loader import load_template  # noqa: PLC0415
@@ -275,6 +294,7 @@ def _render_and_merge_parent(
         parent_vars,
         locales=locales,
         _chain=_chain | {parent_name},
+        custom_presets=custom_presets,
     )
     return merge_template_configs(parent_config, child_config)
 
@@ -437,6 +457,7 @@ def _build_config_dict(
     variables: dict[str, Any],
     *,
     locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a RootConfig-compatible dict from rendered template data.
 
@@ -445,6 +466,7 @@ def _build_config_dict(
         template: Original template metadata (for fallback values).
         variables: Collected variables.
         locales: Faker locale codes for auto-name generation.
+        custom_presets: Optional custom preset mapping.
 
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
@@ -467,6 +489,7 @@ def _build_config_dict(
         _validate_list(rendered_data, "agents"),
         has_extends=has_extends,
         locales=locales,
+        custom_presets=custom_presets,
     )
     departments = build_departments(_validate_list(rendered_data, "departments"))
 
@@ -582,6 +605,7 @@ def _expand_agents(
     *,
     has_extends: bool,
     locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
@@ -589,6 +613,7 @@ def _expand_agents(
         raw_agents: List of agent dicts from rendered YAML.
         has_extends: Whether the template uses inheritance.
         locales: Faker locale codes for auto-name generation.
+        custom_presets: Optional custom preset mapping.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
@@ -603,18 +628,20 @@ def _expand_agents(
                 used_names,
                 has_extends=has_extends,
                 locales=locales,
+                custom_presets=custom_presets,
             ),
         )
     return expanded
 
 
-def _expand_single_agent(
+def _expand_single_agent(  # noqa: PLR0913
     agent: dict[str, Any],
     idx: int,
     used_names: set[str],
     *,
     has_extends: bool,
     locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Expand a single template agent dict.
 
@@ -645,7 +672,11 @@ def _expand_single_agent(
         "level": agent.get("level", "mid"),
     }
 
-    personality = _resolve_agent_personality(agent, name)
+    personality = _resolve_agent_personality(
+        agent,
+        name,
+        custom_presets=custom_presets,
+    )
     if personality is not None:
         agent_dict["personality"] = personality
 
@@ -718,19 +749,26 @@ def _resolve_model_tier(agent: dict[str, Any]) -> str:
 def _resolve_agent_personality(
     agent: dict[str, Any],
     name: str,
+    *,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Resolve personality from inline config or named preset.
+
+    Custom presets are checked first, then builtins.  When a named
+    preset is not found in either source, a warning is logged and
+    ``None`` is returned (the agent proceeds without a personality).
 
     Args:
         agent: Raw agent dict from rendered YAML.
         name: Resolved agent name for error context.
+        custom_presets: Optional custom preset mapping.
 
     Returns:
-        Personality dict, or ``None`` if no personality configured.
+        Personality dict, or ``None`` if no personality configured or
+        the referenced preset does not exist.
 
     Raises:
-        TemplateRenderError: If personality config is invalid or preset
-            is unknown.
+        TemplateRenderError: If an inline personality config is invalid.
     """
     inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
@@ -751,16 +789,62 @@ def _resolve_agent_personality(
         return dict(inline_personality)
     if preset_name:
         try:
-            return get_personality_preset(preset_name)
-        except KeyError as exc:
-            msg = f"Unknown personality preset {preset_name!r} for agent {name!r}"
+            result = get_personality_preset(
+                preset_name,
+                custom_presets=custom_presets,
+            )
+        except KeyError:
             logger.warning(
                 TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
                 agent=name,
                 preset=preset_name,
             )
-            raise TemplateRenderError(msg) from exc
+            return None
+        # Log when a custom preset is resolved for traceability.
+        key = preset_name.strip().lower()
+        if custom_presets is not None and key in custom_presets:
+            logger.debug(
+                TEMPLATE_PRESET_RESOLVED_CUSTOM,
+                agent=name,
+                preset=preset_name,
+            )
+        return result
     return None
+
+
+def validate_preset_references(
+    template: CompanyTemplate,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    """Check all agent personality_preset references against known presets.
+
+    Returns a tuple of warning messages for unknown presets.  Does not
+    raise -- purely advisory for pre-flight validation and template
+    import/export scenarios.
+
+    Args:
+        template: Parsed template to validate.
+        custom_presets: Optional custom preset mapping.
+
+    Returns:
+        Tuple of warning strings (empty when all presets are known).
+    """
+    from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
+
+    warnings: list[str] = []
+    for agent_cfg in template.agents:
+        preset = agent_cfg.personality_preset
+        if preset is None:
+            continue
+        key = preset.strip().lower()
+        if custom_presets is not None and key in custom_presets:
+            continue
+        if key in PERSONALITY_PRESETS:
+            continue
+        warnings.append(
+            f"Agent {agent_cfg.role!r} references unknown personality preset {preset!r}"
+        )
+    return tuple(warnings)
 
 
 def _validate_inline_personality(

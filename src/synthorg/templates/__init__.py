@@ -45,7 +45,7 @@ from synthorg.templates.model_requirements import (
     parse_model_requirement,
     resolve_model_requirement,
 )
-from synthorg.templates.renderer import render_template
+from synthorg.templates.renderer import render_template, validate_preset_references
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -78,4 +78,5 @@ __all__ = [
     "parse_model_requirement",
     "render_template",
     "resolve_model_requirement",
+    "validate_preset_references",
 ]

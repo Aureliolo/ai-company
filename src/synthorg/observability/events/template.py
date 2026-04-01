@@ -15,6 +15,9 @@ TEMPLATE_RENDER_YAML_ERROR: Final[str] = "template.render.yaml_error"
 TEMPLATE_RENDER_VALIDATION_ERROR: Final[str] = "template.render.validation_error"
 TEMPLATE_PERSONALITY_PRESET_INVALID: Final[str] = "template.personality_preset.invalid"
 TEMPLATE_PERSONALITY_PRESET_UNKNOWN: Final[str] = "template.personality_preset.unknown"
+TEMPLATE_PRESET_RESOLVED_CUSTOM: Final[str] = (
+    "template.personality_preset.resolved_custom"
+)
 TEMPLATE_PASS1_FLOAT_FALLBACK: Final[str] = "template.pass1.float_fallback"
 TEMPLATE_INHERIT_RESOLVE_START: Final[str] = "template.inherit.resolve_start"
 TEMPLATE_INHERIT_RESOLVE_SUCCESS: Final[str] = "template.inherit.resolve_success"
