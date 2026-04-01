@@ -56,6 +56,7 @@ class HttpBatchHandler(logging.Handler):
         self._queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
         self._pending_count = 0
         self._pending_lock = threading.Lock()
+        self._dropped_count = 0
         self._shutdown = threading.Event()
         self._batch_ready = threading.Event()
         self._flusher = threading.Thread(
@@ -84,7 +85,14 @@ class HttpBatchHandler(logging.Handler):
             self._batch_ready.clear()
             if self._shutdown.is_set():
                 break
-            self._drain_and_flush()
+            try:
+                self._drain_and_flush()
+            except Exception as exc:
+                print(  # noqa: T201
+                    f"ERROR: log-http-flusher encountered unexpected error: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     def _drain_and_flush(self) -> None:
         """Drain all queued records and POST as JSON batches."""
@@ -96,7 +104,7 @@ class HttpBatchHandler(logging.Handler):
                 break
 
         with self._pending_lock:
-            self._pending_count = 0
+            self._pending_count = max(0, self._pending_count - len(records))
 
         if records:
             self._post_batch(records)
@@ -139,10 +147,13 @@ class HttpBatchHandler(logging.Handler):
 
         # All retries exhausted -- drop the batch with a warning
         if last_error is not None:
+            self._dropped_count += len(entries)
             print(  # noqa: T201
                 f"WARNING: HTTP log shipping failed after "
                 f"{1 + self._max_retries} attempts to {self._url}: "
-                f"{last_error}",
+                f"{last_error} "
+                f"(dropped {len(entries)} records, "
+                f"total dropped: {self._dropped_count})",
                 file=sys.stderr,
                 flush=True,
             )
@@ -169,8 +180,11 @@ def build_http_handler(
     Returns:
         A configured ``HttpBatchHandler`` with JSON formatting.
     """
+    if not sink.http_url:
+        msg = "HTTP sink requires a non-empty http_url"
+        raise ValueError(msg)
     handler = HttpBatchHandler(
-        url=sink.http_url or "",
+        url=sink.http_url,
         headers=sink.http_headers,
         batch_size=sink.http_batch_size,
         flush_interval=sink.http_flush_interval_seconds,

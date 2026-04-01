@@ -56,9 +56,11 @@ def build_syslog_handler(
     Returns:
         A configured ``SysLogHandler`` with JSON formatting.
     """
-    host = sink.syslog_host or "localhost"
+    if not sink.syslog_host:
+        msg = "SYSLOG sink requires a non-empty syslog_host"
+        raise ValueError(msg)
     handler = logging.handlers.SysLogHandler(
-        address=(host, sink.syslog_port),
+        address=(sink.syslog_host, sink.syslog_port),
         facility=FACILITY_MAP[sink.syslog_facility],
         socktype=socket.SocketKind(PROTOCOL_MAP[sink.syslog_protocol]),
     )

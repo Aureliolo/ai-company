@@ -88,7 +88,7 @@ _CUSTOM_SINK_FIELDS: frozenset[str] = (
     _CUSTOM_FILE_SINK_FIELDS | _CUSTOM_SYSLOG_SINK_FIELDS | _CUSTOM_HTTP_SINK_FIELDS
 )
 _ROTATION_FIELDS: frozenset[str] = frozenset(
-    {"strategy", "max_bytes", "backup_count"},
+    {"strategy", "max_bytes", "backup_count", "compress_rotated"},
 )
 _VALID_CUSTOM_SINK_TYPES: frozenset[str] = frozenset(
     {"file", "syslog", "http"},
@@ -280,6 +280,12 @@ def _parse_rotation_override(
             msg = f"Invalid backup_count value {val!r}: must be an integer"
             raise ValueError(msg)
         updates["backup_count"] = val
+
+    if "compress_rotated" in raw:
+        updates["compress_rotated"] = _parse_bool(
+            raw["compress_rotated"],
+            field_name="rotation.compress_rotated",
+        )
 
     return base.model_copy(update=updates) if updates else base
 

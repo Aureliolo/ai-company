@@ -1386,7 +1386,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-54 domain-specific event constant modules under `observability/events/` (one per subsystem:
+55 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
@@ -1454,10 +1454,14 @@ Four observability settings are runtime-editable via `SettingsService`:
 - `sink_overrides` (JSON) -- per-sink overrides keyed by sink identifier (`__console__` for the
   console sink, file path for file sinks). Each value is an object with optional fields:
   `enabled` (bool), `level` (string), `json_format` (bool), `rotation` (object with `max_bytes`,
-  `backup_count`, `strategy`). The console sink cannot be disabled (`enabled: false` is rejected).
-- `custom_sinks` (JSON) -- additional file sinks as a JSON array. Each entry requires `file_path`
-  and optionally: `level` (default info), `json_format` (default true), `rotation` (object),
-  `routing_prefixes` (array of logger name prefix strings for targeted routing).
+  `backup_count`, `strategy`, `compress_rotated`). The console sink cannot be disabled
+  (`enabled: false` is rejected).
+- `custom_sinks` (JSON) -- additional sinks as a JSON array. Each entry may specify `sink_type`
+  (`file`, `syslog`, `http`; defaults to `file`). File sinks require `file_path` and accept
+  `level`, `json_format`, `rotation`, `routing_prefixes`. Syslog sinks require `syslog_host`
+  and accept `syslog_port`, `syslog_facility`, `syslog_protocol`, `level`. HTTP sinks require
+  `http_url` and accept `http_headers`, `http_batch_size`, `http_flush_interval_seconds`,
+  `http_timeout_seconds`, `http_max_retries`, `level`.
 
 Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
 

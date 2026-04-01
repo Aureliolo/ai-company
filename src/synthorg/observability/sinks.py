@@ -78,49 +78,72 @@ class _CompressingRotatingFileHandler(_FlushingRotatingFileHandler):
             self.stream = None
 
         if self.backupCount > 0:
-            # Shift existing .gz backups (highest index first)
-            for i in range(self.backupCount - 1, 0, -1):
-                src = StdPath(f"{self.baseFilename}.{i}.gz")
-                dst = StdPath(f"{self.baseFilename}.{i + 1}.gz")
-                if src.exists():
-                    if dst.exists():
-                        dst.unlink()
-                    src.rename(dst)
-
-            # Remove the oldest if it exceeds backupCount
-            oldest = StdPath(f"{self.baseFilename}.{self.backupCount}.gz")
-            if oldest.exists():
-                oldest.unlink()
-
-            # Rotate current log to .1
-            dfn = self.rotation_filename(
-                f"{self.baseFilename}.1",
-            )
-            dfn_path = StdPath(dfn)
-            if dfn_path.exists():
-                dfn_path.unlink()
-            self.rotate(self.baseFilename, dfn)
-
-            # Compress the freshly rotated .1 file
-            self._compress_file(dfn)
+            try:
+                self._shift_gz_backups()
+                dfn = self._rotate_current_log()
+                self._compress_file(dfn)
+            except OSError as exc:
+                print(  # noqa: T201
+                    f"WARNING: Compressed rotation failed for "
+                    f"{self.baseFilename}: {exc}; "
+                    "falling back to uncompressed rotation",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                super().doRollover()
+                return
 
         if not self.delay:
             self.stream = self._open()
 
+    def _shift_gz_backups(self) -> None:
+        """Shift existing .gz backups (highest index first)."""
+        for i in range(self.backupCount - 1, 0, -1):
+            src = StdPath(f"{self.baseFilename}.{i}.gz")
+            dst = StdPath(f"{self.baseFilename}.{i + 1}.gz")
+            if src.exists():
+                if dst.exists():
+                    dst.unlink()
+                src.rename(dst)
+
+        # Remove the oldest if it exceeds backupCount
+        oldest = StdPath(
+            f"{self.baseFilename}.{self.backupCount}.gz",
+        )
+        if oldest.exists():
+            oldest.unlink()
+
+    def _rotate_current_log(self) -> str:
+        """Rotate the current log to .1 and return the path."""
+        dfn = self.rotation_filename(
+            f"{self.baseFilename}.1",
+        )
+        dfn_path = StdPath(dfn)
+        if dfn_path.exists():
+            dfn_path.unlink()
+        self.rotate(self.baseFilename, dfn)
+        return dfn
+
     def _compress_file(self, path: str) -> None:
-        """Gzip a single file in place, removing the original."""
+        """Gzip a single file in place via atomic temp file."""
         src = StdPath(path)
+        tmp_gz = StdPath(f"{path}.gz.tmp")
         gz = StdPath(f"{path}.gz")
         try:
             data = src.read_bytes()
-            with gzip.open(gz, "wb") as f:
+            with gzip.open(tmp_gz, "wb") as f:
                 f.write(data)
+            tmp_gz.rename(gz)
             src.unlink()
-        except OSError:
-            # Compression failed -- keep the uncompressed file
+        except OSError as exc:
+            print(  # noqa: T201
+                f"WARNING: Failed to compress rotated log {path}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
             with contextlib.suppress(OSError):
-                if gz.exists():
-                    gz.unlink()
+                if tmp_gz.exists():
+                    tmp_gz.unlink()
 
 
 class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
