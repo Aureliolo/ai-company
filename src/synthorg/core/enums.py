@@ -281,6 +281,19 @@ class Complexity(StrEnum):
     EPIC = "epic"
 
 
+class WorkflowType(StrEnum):
+    """Workflow type for organizing task execution.
+
+    Matches the four workflow types defined in the Engine design page
+    (docs/design/engine.md, Workflow Types section).
+    """
+
+    SEQUENTIAL_PIPELINE = "sequential_pipeline"
+    PARALLEL_EXECUTION = "parallel_execution"
+    KANBAN = "kanban"
+    AGILE_KANBAN = "agile_kanban"
+
+
 class ArtifactType(StrEnum):
     """Type of produced artifact."""
 

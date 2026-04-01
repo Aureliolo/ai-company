@@ -42,4 +42,5 @@ def default_config_dict() -> dict[str, object]:
         "coordination": {},
         "git_clone": {},
         "backup": {},
+        "workflow": {},
     }

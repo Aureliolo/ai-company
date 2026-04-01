@@ -55,6 +55,7 @@ from synthorg.core.enums import (
     TaskType,
     ToolAccessLevel,
     ToolCategory,
+    WorkflowType,
 )
 from synthorg.core.project import Project
 from synthorg.core.role import (
@@ -138,6 +139,7 @@ __all__ = [
     "ToolCategory",
     "ToolPermissions",
     "WorkflowHandoff",
+    "WorkflowType",
     "get_builtin_role",
     "get_seniority_info",
     "validate_transition",
