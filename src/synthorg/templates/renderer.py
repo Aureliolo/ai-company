@@ -445,6 +445,34 @@ def _parse_rendered_yaml(
     return template_data
 
 
+def _build_workflow_dict(
+    rendered_data: dict[str, Any],
+    template: CompanyTemplate,
+) -> dict[str, Any]:
+    """Build a WorkflowConfig-compatible dict from workflow type and sub-configs.
+
+    Args:
+        rendered_data: Parsed dict from the rendered YAML.
+        template: Original template metadata (for fallback workflow type).
+
+    Returns:
+        Dict suitable for the ``workflow`` key on ``RootConfig``.
+    """
+    workflow_type_raw = rendered_data.get("workflow", template.workflow.value)
+    workflow_type_str = (
+        workflow_type_raw.value
+        if hasattr(workflow_type_raw, "value")
+        else str(workflow_type_raw)
+    )
+    workflow_dict: dict[str, Any] = {"workflow_type": workflow_type_str}
+    wf_config = rendered_data.get("workflow_config")
+    if isinstance(wf_config, dict):
+        for key in ("kanban", "sprint"):
+            if key in wf_config:
+                workflow_dict[key] = wf_config[key]
+    return workflow_dict
+
+
 def _build_config_dict(
     rendered_data: dict[str, Any],
     template: CompanyTemplate,
@@ -489,26 +517,12 @@ def _build_config_dict(
 
     autonomy, budget_monthly = _extract_numeric_config(company, template)
 
-    # Build WorkflowConfig-compatible dict from workflow type + sub-configs.
-    workflow_type_raw = rendered_data.get("workflow", template.workflow.value)
-    workflow_type_str = (
-        workflow_type_raw.value
-        if hasattr(workflow_type_raw, "value")
-        else str(workflow_type_raw)
-    )
-    workflow_dict: dict[str, Any] = {"workflow_type": workflow_type_str}
-    wf_config = rendered_data.get("workflow_config")
-    if isinstance(wf_config, dict):
-        for key in ("kanban", "sprint"):
-            if key in wf_config:
-                workflow_dict[key] = wf_config[key]
-
     result: dict[str, Any] = {
         "company_name": company_name,
         "company_type": company.get("type", template.metadata.company_type.value),
         "agents": agents,
         "departments": departments,
-        "workflow": workflow_dict,
+        "workflow": _build_workflow_dict(rendered_data, template),
         "config": {
             "autonomy": autonomy,
             "budget_monthly": budget_monthly,

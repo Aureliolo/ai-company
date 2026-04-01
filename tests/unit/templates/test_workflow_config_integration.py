@@ -305,6 +305,73 @@ template:
         assert config.workflow.kanban == KanbanConfig()
         assert config.workflow.sprint == SprintConfig()
 
+    def test_unknown_keys_in_workflow_config_silently_ignored(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """Unknown keys in workflow_config are dropped; only kanban/sprint
+        are forwarded to WorkflowConfig."""
+        yaml_text = """\
+template:
+  name: "Unknown Keys"
+  description: "Has unknown workflow_config keys"
+  version: "1.0.0"
+  company:
+    type: "custom"
+  agents:
+    - role: "Backend Developer"
+      name: "Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+  workflow: "kanban"
+  communication: "event_driven"
+  workflow_config:
+    scrumban:
+      duration_days: 5
+    kanban:
+      enforce_wip: false
+"""
+        path = tmp_template_file(yaml_text)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+        # scrumban key is silently dropped.
+        assert config.workflow.kanban.enforce_wip is False
+
+    def test_invalid_workflow_config_raises_on_render(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """Structurally invalid workflow_config passes Pass 1 but fails
+        validation during render_template when WorkflowConfig is built."""
+        from synthorg.templates.errors import TemplateValidationError
+
+        yaml_text = """\
+template:
+  name: "Invalid WF"
+  description: "Invalid workflow_config content"
+  version: "1.0.0"
+  company:
+    type: "custom"
+  agents:
+    - role: "Backend Developer"
+      name: "Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+  workflow: "kanban"
+  communication: "event_driven"
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "invalid_column_name"
+          limit: 3
+"""
+        path = tmp_template_file(yaml_text)
+        loaded = load_template_file(path)
+        with pytest.raises(TemplateValidationError):
+            render_template(loaded)
+
 
 # ── Template variables in workflow_config ───────────────────────
 

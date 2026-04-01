@@ -169,6 +169,12 @@ protocol system (`MeetingProtocolType` and `MeetingFrequency`).
 `VelocityRecord` captures delivery metrics from completed sprints with a
 rolling average calculation.
 
+Builtin templates declare a `workflow_config` section with default
+Kanban/Sprint sub-configurations (WIP limits, sprint duration, ceremonies).
+The template renderer maps these into the root `WorkflowConfig` during
+rendering.  Template variables (`sprint_length`, `wip_limit`) allow users
+to customize workflow settings at template instantiation time.
+
 ---
 
 ## Task Routing & Assignment

@@ -184,11 +184,21 @@ the primary mechanism for bootstrapping organizations.
 
 ```yaml
 # templates/startup.yaml (simplified -- real templates also declare
-# variables, departments with policies, min_agents/max_agents, and tags)
+# min_agents/max_agents, tags, and department policies)
 template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
   version: "1.0"
+
+  variables:
+    - name: "sprint_length"
+      description: "Sprint duration in days"
+      var_type: "int"
+      default: 7
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 3
 
   company:
     type: "startup"
@@ -268,6 +278,24 @@ template:
   workflow: "agile_kanban"     # operational configs vary per template --
   communication: "hybrid"      # see Company Types table for each template's defaults
 
+  workflow_config:             # optional Kanban/Sprint sub-configurations
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: "{{ wip_limit | default(3) }}"
+        - column: "review"
+          limit: 2
+      enforce_wip: true
+    sprint:
+      duration_days: "{{ sprint_length | default(7) }}"
+      ceremonies:
+        - name: "sprint_planning"
+          protocol: "structured_phases"
+          frequency: "weekly"
+        - name: "sprint_review"
+          protocol: "round_robin"
+          frequency: "weekly"
+
   workflow_handoffs:
     - from_department: "engineering"
       to_department: "product"
@@ -338,6 +366,10 @@ Scalars (`company_name`, `company_type`)
 `departments` list
 :   Merged by department `name` (case-insensitive). A child department with the same `name`
     replaces the parent entry entirely; departments with new names are appended.
+
+`workflow_config` dict
+:   Deep-merged (child keys override parent).  A child that sets only ``kanban``
+    inherits the parent's ``sprint`` sub-config (and vice versa).
 
 `workflow_handoffs` and `escalation_paths`
 :   Child replaces entirely if present.
