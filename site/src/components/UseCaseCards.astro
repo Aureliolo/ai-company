@@ -82,7 +82,7 @@ const useCases = [
     const dotColor = uc.color === "violet" ? "bg-violet-400" : "bg-teal-400";
     return (
       <div class={`min-w-[300px] flex-shrink-0 snap-center bg-[#0F1219] rounded-xl p-6 border ${borderColor} transition-colors lg:min-w-0 lg:shrink`}>
-        <p class={`${titleColor} font-semibold mb-2`}>{uc.title}</p>
+        <h3 class={`${titleColor} font-semibold mb-2`}>{uc.title}</h3>
         <p class="text-sm text-gray-400 mb-4">{uc.description}</p>
         <ul class="text-xs text-gray-500 space-y-1">
           {uc.features.map((f) => (
@@ -116,7 +116,7 @@ const useCases = [
 
   /* Gradient fade hints for scroll on mobile */
   @media (max-width: 1023px) {
-    [role="region"] {
+    .use-case-scroll {
       mask-image: linear-gradient(
         to right,
         transparent,

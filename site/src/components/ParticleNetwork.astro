@@ -150,12 +150,22 @@
       requestAnimationFrame(draw);
     }
 
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onMotionChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        animating = false;
+        drawStaticFrame();
+      } else {
+        animating = true;
+        lastFrame = performance.now();
+        requestAnimationFrame(draw);
+      }
+    };
+
     function start(): void {
       resize();
-      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)");
 
       if (prefersReduced.matches) {
-        // Static single frame
         drawStaticFrame();
       } else {
         animating = true;
@@ -163,17 +173,7 @@
         requestAnimationFrame(draw);
       }
 
-      // Listen for preference changes
-      prefersReduced.addEventListener("change", (e) => {
-        if (e.matches) {
-          animating = false;
-          drawStaticFrame();
-        } else {
-          animating = true;
-          lastFrame = performance.now();
-          requestAnimationFrame(draw);
-        }
-      });
+      prefersReduced.addEventListener("change", onMotionChange);
     }
 
     function drawStaticFrame(): void {
@@ -232,6 +232,7 @@
       ro.disconnect();
       clearTimeout(resizeTimer);
       animating = false;
+      prefersReduced.removeEventListener("change", onMotionChange);
     }, { once: true });
 
     start();

@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+
 interface Props {
   tick: number;
 }
@@ -23,6 +25,15 @@ const edges = [
 
 export default function OrgChartMini({ tick }: Props) {
   const activeIdx = tick % agents.length;
+  const [prefersReduced, setPrefersReduced] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setPrefersReduced(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   return (
     <div className="relative w-full">
@@ -55,7 +66,7 @@ export default function OrgChartMini({ tick }: Props) {
 
         {/* Communication edge */}
         <line x1="150" y1="220" x2="260" y2="220" stroke="#2dd4bf" strokeWidth="1.5" strokeOpacity="0.4" strokeDasharray="4 3">
-          <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="2s" repeatCount="indefinite" />
+          {!prefersReduced && <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="2s" repeatCount="indefinite" />}
         </line>
 
         {/* Agent nodes */}
