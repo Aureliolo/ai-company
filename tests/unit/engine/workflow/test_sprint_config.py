@@ -1,0 +1,155 @@
+"""Tests for sprint configuration models."""
+
+import pytest
+
+from synthorg.communication.meeting.enums import MeetingProtocolType
+from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.engine.workflow.sprint_config import (
+    SprintCeremonyConfig,
+    SprintConfig,
+)
+
+# ── SprintCeremonyConfig ───────────────────────────────────────
+
+
+class TestSprintCeremonyConfig:
+    """SprintCeremonyConfig validates ceremony definitions."""
+
+    @pytest.mark.unit
+    def test_basic_ceremony(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="sprint_planning",
+            protocol=MeetingProtocolType.STRUCTURED_PHASES,
+            frequency=MeetingFrequency.BI_WEEKLY,
+        )
+        assert ceremony.name == "sprint_planning"
+        assert ceremony.duration_tokens == 5000
+
+    @pytest.mark.unit
+    def test_custom_duration_tokens(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="daily_standup",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            frequency=MeetingFrequency.PER_SPRINT_DAY,
+            duration_tokens=2000,
+        )
+        assert ceremony.duration_tokens == 2000
+
+    @pytest.mark.unit
+    def test_duration_token_bounds(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal"):
+            SprintCeremonyConfig(
+                name="bad",
+                protocol=MeetingProtocolType.ROUND_ROBIN,
+                frequency=MeetingFrequency.DAILY,
+                duration_tokens=50,
+            )
+        with pytest.raises(ValueError, match="less than or equal"):
+            SprintCeremonyConfig(
+                name="bad",
+                protocol=MeetingProtocolType.ROUND_ROBIN,
+                frequency=MeetingFrequency.DAILY,
+                duration_tokens=100_000,
+            )
+
+    @pytest.mark.unit
+    def test_participants_default_empty(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="test",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            frequency=MeetingFrequency.WEEKLY,
+        )
+        assert ceremony.participants == ()
+
+
+# ── SprintConfig ───────────────────────────────────────────────
+
+
+class TestSprintConfig:
+    """SprintConfig validates sprint workflow settings."""
+
+    @pytest.mark.unit
+    def test_default_config(self) -> None:
+        config = SprintConfig()
+        assert config.duration_days == 14
+        assert config.max_tasks_per_sprint == 50
+        assert config.velocity_window == 3
+        assert len(config.ceremonies) == 4
+
+    @pytest.mark.unit
+    def test_default_ceremony_names(self) -> None:
+        config = SprintConfig()
+        names = {c.name for c in config.ceremonies}
+        assert names == {
+            "sprint_planning",
+            "daily_standup",
+            "sprint_review",
+            "retrospective",
+        }
+
+    @pytest.mark.unit
+    def test_default_ceremony_protocols(self) -> None:
+        config = SprintConfig()
+        by_name = {c.name: c for c in config.ceremonies}
+        assert (
+            by_name["sprint_planning"].protocol == MeetingProtocolType.STRUCTURED_PHASES
+        )
+        assert by_name["daily_standup"].protocol == MeetingProtocolType.ROUND_ROBIN
+        assert by_name["sprint_review"].protocol == MeetingProtocolType.ROUND_ROBIN
+        assert by_name["retrospective"].protocol == MeetingProtocolType.POSITION_PAPERS
+
+    @pytest.mark.unit
+    def test_default_ceremony_frequencies(self) -> None:
+        config = SprintConfig()
+        by_name = {c.name: c for c in config.ceremonies}
+        assert by_name["daily_standup"].frequency == MeetingFrequency.PER_SPRINT_DAY
+        assert by_name["sprint_planning"].frequency == MeetingFrequency.BI_WEEKLY
+
+    @pytest.mark.unit
+    def test_duplicate_ceremony_names_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Duplicate ceremony names"):
+            SprintConfig(
+                ceremonies=(
+                    SprintCeremonyConfig(
+                        name="standup",
+                        protocol=MeetingProtocolType.ROUND_ROBIN,
+                        frequency=MeetingFrequency.DAILY,
+                    ),
+                    SprintCeremonyConfig(
+                        name="standup",
+                        protocol=MeetingProtocolType.POSITION_PAPERS,
+                        frequency=MeetingFrequency.DAILY,
+                    ),
+                ),
+            )
+
+    @pytest.mark.unit
+    def test_empty_ceremonies_allowed(self) -> None:
+        config = SprintConfig(ceremonies=())
+        assert config.ceremonies == ()
+
+    @pytest.mark.unit
+    def test_custom_config(self) -> None:
+        config = SprintConfig(
+            duration_days=7,
+            max_tasks_per_sprint=20,
+            velocity_window=5,
+            ceremonies=(),
+        )
+        assert config.duration_days == 7
+        assert config.max_tasks_per_sprint == 20
+        assert config.velocity_window == 5
+
+    @pytest.mark.unit
+    def test_duration_bounds(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal"):
+            SprintConfig(duration_days=0)
+        with pytest.raises(ValueError, match="less than or equal"):
+            SprintConfig(duration_days=91)
+
+    @pytest.mark.unit
+    def test_velocity_window_bounds(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal"):
+            SprintConfig(velocity_window=0)
+        with pytest.raises(ValueError, match="less than or equal"):
+            SprintConfig(velocity_window=21)

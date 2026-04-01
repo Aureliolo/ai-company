@@ -1,0 +1,270 @@
+"""Sprint lifecycle state machine and Sprint domain model.
+
+Defines the five sprint statuses from the Engine design page and
+the strictly-linear lifecycle transitions.  The ``Sprint`` model
+tracks tasks, story points, and dates across the sprint lifecycle.
+"""
+
+from collections import Counter
+from datetime import datetime
+from enum import StrEnum
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import (
+    SPRINT_LIFECYCLE_TRANSITION,
+)
+
+logger = get_logger(__name__)
+
+
+class SprintStatus(StrEnum):
+    """Sprint lifecycle status.
+
+    Transitions are strictly linear with no backward moves::
+
+        PLANNING -> ACTIVE -> IN_REVIEW -> RETROSPECTIVE -> COMPLETED
+
+    Members:
+        PLANNING: Sprint backlog is being assembled.
+        ACTIVE: Sprint is executing.
+        IN_REVIEW: Sprint work is being reviewed.
+        RETROSPECTIVE: Team is conducting the retrospective.
+        COMPLETED: Sprint is finished.
+    """
+
+    PLANNING = "planning"
+    ACTIVE = "active"
+    IN_REVIEW = "in_review"
+    RETROSPECTIVE = "retrospective"
+    COMPLETED = "completed"
+
+
+# -- Sprint lifecycle transitions -------------------------------------------
+
+VALID_SPRINT_TRANSITIONS: dict[SprintStatus, frozenset[SprintStatus]] = {
+    SprintStatus.PLANNING: frozenset({SprintStatus.ACTIVE}),
+    SprintStatus.ACTIVE: frozenset({SprintStatus.IN_REVIEW}),
+    SprintStatus.IN_REVIEW: frozenset({SprintStatus.RETROSPECTIVE}),
+    SprintStatus.RETROSPECTIVE: frozenset({SprintStatus.COMPLETED}),
+    SprintStatus.COMPLETED: frozenset(),  # terminal
+}
+
+_missing = set(SprintStatus) - set(VALID_SPRINT_TRANSITIONS)
+if _missing:
+    _msg = (
+        f"Missing VALID_SPRINT_TRANSITIONS entries for: "
+        f"{sorted(s.value for s in _missing)}"
+    )
+    raise ValueError(_msg)
+
+
+def validate_sprint_transition(
+    current: SprintStatus,
+    target: SprintStatus,
+) -> None:
+    """Validate that a sprint lifecycle transition is allowed.
+
+    Args:
+        current: The current sprint status.
+        target: The desired target status.
+
+    Raises:
+        ValueError: If the transition is not allowed.
+    """
+    if current not in VALID_SPRINT_TRANSITIONS:
+        msg = (
+            f"SprintStatus {current.value!r} has no entry in VALID_SPRINT_TRANSITIONS."
+        )
+        raise ValueError(msg)
+    allowed = VALID_SPRINT_TRANSITIONS[current]
+    if target not in allowed:
+        msg = (
+            f"Invalid sprint transition: "
+            f"{current.value!r} -> {target.value!r}. "
+            f"Allowed from {current.value!r}: "
+            f"{sorted(s.value for s in allowed)}"
+        )
+        raise ValueError(msg)
+    logger.info(
+        SPRINT_LIFECYCLE_TRANSITION,
+        from_status=current.value,
+        to_status=target.value,
+    )
+
+
+# -- Sprint model -----------------------------------------------------------
+
+
+class Sprint(BaseModel):
+    """A time-boxed work cycle in the Agile sprints workflow.
+
+    Attributes:
+        id: Unique sprint identifier.
+        name: Sprint display name.
+        goal: Sprint goal statement.
+        status: Current lifecycle status.
+        sprint_number: Sequential sprint number (1-based).
+        duration_days: Planned sprint duration in days.
+        start_date: Sprint start date (ISO 8601, required when ACTIVE+).
+        end_date: Sprint end date (ISO 8601, required when COMPLETED).
+        task_ids: IDs of tasks in the sprint backlog.
+        completed_task_ids: IDs of completed tasks (subset of task_ids).
+        story_points_committed: Total story points planned.
+        story_points_completed: Story points delivered.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique sprint identifier")
+    name: NotBlankStr = Field(description="Sprint display name")
+    goal: str = Field(default="", description="Sprint goal statement")
+    status: SprintStatus = Field(
+        default=SprintStatus.PLANNING,
+        description="Current lifecycle status",
+    )
+    sprint_number: int = Field(
+        ge=1,
+        description="Sequential sprint number",
+    )
+    duration_days: int = Field(
+        default=14,
+        ge=1,
+        le=90,
+        description="Planned sprint duration in days",
+    )
+    start_date: str | None = Field(
+        default=None,
+        description="Sprint start date (ISO 8601)",
+    )
+    end_date: str | None = Field(
+        default=None,
+        description="Sprint end date (ISO 8601)",
+    )
+    task_ids: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Task IDs in the sprint backlog",
+    )
+    completed_task_ids: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Completed task IDs (subset of task_ids)",
+    )
+    story_points_committed: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Total story points planned",
+    )
+    story_points_completed: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Story points delivered",
+    )
+
+    @model_validator(mode="after")
+    def _validate_date_formats(self) -> Self:
+        """Validate ISO 8601 date format when present."""
+        for field_name in ("start_date", "end_date"):
+            value = getattr(self, field_name)
+            if value is not None:
+                if not value.strip():
+                    msg = f"{field_name} must not be whitespace-only"
+                    raise ValueError(msg)
+                try:
+                    datetime.fromisoformat(value)
+                except ValueError as exc:
+                    msg = f"{field_name} must be a valid ISO 8601 string, got {value!r}"
+                    raise ValueError(msg) from exc
+        return self
+
+    @model_validator(mode="after")
+    def _validate_date_ordering(self) -> Self:
+        """Ensure end_date >= start_date when both are present."""
+        if self.start_date is not None and self.end_date is not None:
+            start = datetime.fromisoformat(self.start_date)
+            end = datetime.fromisoformat(self.end_date)
+            if end < start:
+                msg = (
+                    f"end_date ({self.end_date}) must be >= "
+                    f"start_date ({self.start_date})"
+                )
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_task_collections(self) -> Self:
+        """Validate task ID uniqueness and subset constraint."""
+        if len(self.task_ids) != len(set(self.task_ids)):
+            dupes = sorted(t for t, c in Counter(self.task_ids).items() if c > 1)
+            msg = f"Duplicate entries in task_ids: {dupes}"
+            raise ValueError(msg)
+        if len(self.completed_task_ids) != len(set(self.completed_task_ids)):
+            dupes = sorted(
+                t for t, c in Counter(self.completed_task_ids).items() if c > 1
+            )
+            msg = f"Duplicate entries in completed_task_ids: {dupes}"
+            raise ValueError(msg)
+        task_set = set(self.task_ids)
+        extra = set(self.completed_task_ids) - task_set
+        if extra:
+            msg = f"completed_task_ids contains IDs not in task_ids: {sorted(extra)}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_story_points(self) -> Self:
+        """story_points_completed must not exceed committed."""
+        if self.story_points_completed > self.story_points_committed:
+            msg = (
+                f"story_points_completed ({self.story_points_completed}) "
+                f"exceeds story_points_committed "
+                f"({self.story_points_committed})"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_status_date_requirements(self) -> Self:
+        """Enforce date requirements based on status.
+
+        - ACTIVE and later require ``start_date``.
+        - COMPLETED requires ``end_date``.
+        """
+        requires_start = {
+            SprintStatus.ACTIVE,
+            SprintStatus.IN_REVIEW,
+            SprintStatus.RETROSPECTIVE,
+            SprintStatus.COMPLETED,
+        }
+        if self.status in requires_start and self.start_date is None:
+            msg = f"start_date is required when status is {self.status.value!r}"
+            raise ValueError(msg)
+        if self.status is SprintStatus.COMPLETED and self.end_date is None:
+            msg = "end_date is required when status is 'completed'"
+            raise ValueError(msg)
+        return self
+
+    def with_transition(self, target: SprintStatus, **overrides: Any) -> Sprint:
+        """Create a new Sprint with a validated lifecycle transition.
+
+        Args:
+            target: The desired target status.
+            **overrides: Additional field overrides.
+
+        Returns:
+            A new Sprint with the target status.
+
+        Raises:
+            ValueError: If the transition is invalid or overrides
+                contain ``status``.
+        """
+        if "status" in overrides:
+            msg = "status override is not allowed; pass transition target explicitly"
+            raise ValueError(msg)
+        validate_sprint_transition(self.status, target)
+        payload = self.model_dump()
+        payload.update(overrides)
+        payload["status"] = target
+        return Sprint.model_validate(payload)

@@ -24,6 +24,7 @@ from synthorg.core.role import CustomRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -530,6 +531,7 @@ class RootConfig(BaseModel):
         coordination: Multi-agent coordination configuration.
         git_clone: Git clone SSRF prevention network policy.
         backup: Backup and restore configuration.
+        workflow: Workflow type configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -652,6 +654,10 @@ class RootConfig(BaseModel):
     backup: BackupConfig = Field(
         default_factory=BackupConfig,
         description="Backup and restore configuration",
+    )
+    workflow: WorkflowConfig = Field(
+        default_factory=WorkflowConfig,
+        description="Workflow type configuration",
     )
 
     @model_validator(mode="after")

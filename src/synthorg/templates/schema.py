@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
+from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern, WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
@@ -335,9 +335,9 @@ class CompanyTemplate(BaseModel):
         default=(),
         description="Template department definitions",
     )
-    workflow: NotBlankStr = Field(
-        default="agile_kanban",
-        description="Workflow name",
+    workflow: WorkflowType = Field(
+        default=WorkflowType.AGILE_KANBAN,
+        description="Workflow type",
     )
     communication: NotBlankStr = Field(
         default="hybrid",

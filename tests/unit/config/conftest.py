@@ -24,6 +24,7 @@ from synthorg.config.schema import (
 from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -102,6 +103,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     promotion = PromotionConfig()
     coordination = CoordinationSectionConfig()
     backup = BackupConfig()
+    workflow = WorkflowConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────
