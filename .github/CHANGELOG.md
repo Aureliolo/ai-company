@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.4](https://github.com/Aureliolo/synthorg/compare/v0.5.3...v0.5.4) (2026-04-01)
+
+
+### Features
+
+* artifact and project management UI in web dashboard ([#954](https://github.com/Aureliolo/synthorg/issues/954)) ([00a0430](https://github.com/Aureliolo/synthorg/commit/00a0430336a00d99a60bb2def1dc0e02f8895cc0))
+* embed MkDocs build output in React web dashboard at /docs ([#948](https://github.com/Aureliolo/synthorg/issues/948)) ([f229fc2](https://github.com/Aureliolo/synthorg/commit/f229fc2376b1ada584ea01367f57a72b1201a582))
+* personality preset discovery API and user-defined preset CRUD ([#952](https://github.com/Aureliolo/synthorg/issues/952)) ([497848a](https://github.com/Aureliolo/synthorg/commit/497848a2da8efd5fa1c3e002a3aaa314df731001))
+* support multi-provider model resolution with budget-based selection ([#953](https://github.com/Aureliolo/synthorg/issues/953)) ([146b782](https://github.com/Aureliolo/synthorg/commit/146b78296176cb72332f0f2bfcbd61b03f32fcc2))
+* support per-agent memory retention overrides ([#209](https://github.com/Aureliolo/synthorg/issues/209)) ([#951](https://github.com/Aureliolo/synthorg/issues/951)) ([020c610](https://github.com/Aureliolo/synthorg/commit/020c610fe19ffaaa6144b5e28f70db104681bfc7))
+
+
+### Documentation
+
+* write user guides and tutorials ([#949](https://github.com/Aureliolo/synthorg/issues/949)) ([1367225](https://github.com/Aureliolo/synthorg/commit/136722517230f5240a6d2baf1280db835fb6a8fc))
+
 ## [0.5.3](https://github.com/Aureliolo/synthorg/compare/v0.5.2...v0.5.3) (2026-03-31)
 
 
