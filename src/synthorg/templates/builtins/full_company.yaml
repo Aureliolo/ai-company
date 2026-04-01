@@ -38,6 +38,14 @@ template:
       description: "Number of frontend developers"
       var_type: "int"
       default: 2
+    - name: "sprint_length"
+      description: "Sprint duration in days"
+      var_type: "int"
+      default: 14
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 5
 
   company:
     type: "full_company"
@@ -355,6 +363,38 @@ template:
 
   workflow: "agile_kanban"
   communication: "hierarchical"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(5) }}
+        - column: "review"
+          limit: 3
+      enforce_wip: true
+    sprint:
+      duration_days: {{ sprint_length | default(14) }}
+      velocity_window: 5
+      ceremonies:
+        - name: "sprint_planning"
+          protocol: "structured_phases"
+          frequency: "bi_weekly"
+          participants:
+            - "engineering"
+            - "product"
+        - name: "daily_standup"
+          protocol: "round_robin"
+          frequency: "per_sprint_day"
+          duration_tokens: 2000
+        - name: "sprint_review"
+          protocol: "round_robin"
+          frequency: "bi_weekly"
+          participants:
+            - "all"
+        - name: "retrospective"
+          protocol: "position_papers"
+          frequency: "bi_weekly"
+          duration_tokens: 3000
 
   workflow_handoffs:
     - from_department: "product"

@@ -25,6 +25,10 @@ template:
       description: "Monthly budget in USD"
       var_type: "float"
       default: 25.0
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 3
 
   company:
     type: "solo_founder"
@@ -59,3 +63,10 @@ template:
 
   workflow: "kanban"
   communication: "event_driven"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(3) }}
+      enforce_wip: false

@@ -28,6 +28,10 @@ template:
       description: "Monthly budget in USD"
       var_type: "float"
       default: 100.0
+    - name: "wip_limit"
+      description: "Work-in-progress limit per column"
+      var_type: "int"
+      default: 3
 
   company:
     type: "agency"
@@ -173,6 +177,15 @@ template:
 
   workflow: "kanban"
   communication: "hierarchical"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: {{ wip_limit | default(3) }}
+        - column: "review"
+          limit: 2
+      enforce_wip: true
 
   workflow_handoffs:
     - from_department: "operations"

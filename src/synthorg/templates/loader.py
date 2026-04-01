@@ -488,6 +488,7 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         "agents": data.get("agents", ()),
         "departments": data.get("departments", ()),
         "workflow": data.get("workflow", "agile_kanban"),
+        "workflow_config": data.get("workflow_config", {}),
         "communication": data.get("communication", "hybrid"),
         "budget_monthly": _to_float(company.get("budget_monthly", 50.0)),
         "autonomy": company.get("autonomy", {"level": "semi"}),

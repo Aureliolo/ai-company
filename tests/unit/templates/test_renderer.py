@@ -44,11 +44,19 @@ class TestRenderTemplateBasic:
         assert len(config.agents) == 5
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
+        from synthorg.engine.workflow.config import WorkflowConfig
+
         for name in BUILTIN_TEMPLATES:
             loaded = load_template(name)
             config = render_template(loaded)
             assert isinstance(config, RootConfig), f"{name} failed"
             assert len(config.agents) >= 1, f"{name} has no agents"
+            assert isinstance(config.workflow, WorkflowConfig), (
+                f"{name}: workflow is not WorkflowConfig"
+            )
+            assert config.workflow.workflow_type == loaded.template.workflow, (
+                f"{name}: workflow type mismatch"
+            )
 
     def test_render_returns_frozen_config(self) -> None:
         loaded = load_template("solo_founder")

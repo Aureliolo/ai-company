@@ -339,6 +339,13 @@ class CompanyTemplate(BaseModel):
         default=WorkflowType.AGILE_KANBAN,
         description="Workflow type",
     )
+    workflow_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Optional Kanban/Sprint sub-configurations.  "
+            "Validated as WorkflowConfig on the rendered RootConfig."
+        ),
+    )
     communication: NotBlankStr = Field(
         default="hybrid",
         description="Communication pattern",
