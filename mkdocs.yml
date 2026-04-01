@@ -116,6 +116,7 @@ nav:
       - Page Structure & IA: design/page-structure.md
       - UX Guidelines: design/ux-guidelines.md
       - UX Research: design/ux-research.md
+      - Ceremony Scheduling: design/ceremony-scheduling.md
   - Architecture:
       - architecture/index.md
       - Tech Stack: architecture/tech-stack.md

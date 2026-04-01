@@ -1,5 +1,7 @@
 """Tests for sprint velocity tracking."""
 
+from typing import Any
+
 import pytest
 
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
@@ -67,6 +69,60 @@ class TestVelocityRecord:
         )
         assert record.completion_ratio == pytest.approx(1.0)
 
+    @pytest.mark.unit
+    def test_new_optional_fields_default_none(self) -> None:
+        record = VelocityRecord(
+            sprint_id="sprint-1",
+            sprint_number=1,
+            story_points_committed=50.0,
+            story_points_completed=42.0,
+            duration_days=14,
+        )
+        assert record.task_completion_count is None
+        assert record.wall_clock_seconds is None
+        assert record.budget_consumed is None
+
+    @pytest.mark.unit
+    def test_new_optional_fields_with_values(self) -> None:
+        record = VelocityRecord(
+            sprint_id="sprint-1",
+            sprint_number=1,
+            story_points_committed=50.0,
+            story_points_completed=42.0,
+            duration_days=14,
+            task_completion_count=15,
+            wall_clock_seconds=3600.0,
+            budget_consumed=25.50,
+        )
+        assert record.task_completion_count == 15
+        assert record.wall_clock_seconds == 3600.0
+        assert record.budget_consumed == 25.50
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("task_completion_count", -1),
+            ("wall_clock_seconds", -1.0),
+            ("budget_consumed", -0.01),
+        ],
+    )
+    def test_negative_optional_fields_rejected(
+        self,
+        field: str,
+        value: int | float,
+    ) -> None:
+        kwargs: dict[str, Any] = {
+            "sprint_id": "sprint-1",
+            "sprint_number": 1,
+            "story_points_committed": 50.0,
+            "story_points_completed": 42.0,
+            "duration_days": 14,
+            field: value,
+        }
+        with pytest.raises(ValueError, match="greater than or equal"):
+            VelocityRecord(**kwargs)
+
 
 # ── record_velocity ────────────────────────────────────────────
 
@@ -83,6 +139,19 @@ class TestRecordVelocity:
         assert record.story_points_committed == 13.0
         assert record.story_points_completed == 8.0
         assert record.duration_days == 14
+
+    @pytest.mark.unit
+    def test_record_with_new_optional_fields(self) -> None:
+        sprint = _completed_sprint()
+        record = record_velocity(
+            sprint,
+            task_completion_count=5,
+            wall_clock_seconds=1800.0,
+            budget_consumed=12.50,
+        )
+        assert record.task_completion_count == 5
+        assert record.wall_clock_seconds == 1800.0
+        assert record.budget_consumed == 12.50
 
     @pytest.mark.unit
     def test_reject_non_completed_sprint(self) -> None:

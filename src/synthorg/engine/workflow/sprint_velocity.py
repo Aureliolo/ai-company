@@ -56,6 +56,21 @@ class VelocityRecord(BaseModel):
         ge=1,
         description="Sprint duration in days",
     )
+    task_completion_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Tasks completed in the sprint",
+    )
+    wall_clock_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Real elapsed time in seconds",
+    )
+    budget_consumed: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Cost consumed during the sprint",
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -71,11 +86,20 @@ class VelocityRecord(BaseModel):
         return self.story_points_completed / self.story_points_committed
 
 
-def record_velocity(sprint: Sprint) -> VelocityRecord:
+def record_velocity(
+    sprint: Sprint,
+    *,
+    task_completion_count: int | None = None,
+    wall_clock_seconds: float | None = None,
+    budget_consumed: float | None = None,
+) -> VelocityRecord:
     """Create a VelocityRecord from a completed sprint.
 
     Args:
         sprint: A sprint in COMPLETED status.
+        task_completion_count: Number of tasks completed (optional).
+        wall_clock_seconds: Real elapsed time in seconds (optional).
+        budget_consumed: Cost consumed during the sprint (optional).
 
     Returns:
         A velocity record capturing the sprint's delivery metrics.
@@ -102,6 +126,9 @@ def record_velocity(sprint: Sprint) -> VelocityRecord:
         story_points_committed=sprint.story_points_committed,
         story_points_completed=sprint.story_points_completed,
         duration_days=sprint.duration_days,
+        task_completion_count=task_completion_count,
+        wall_clock_seconds=wall_clock_seconds,
+        budget_consumed=budget_consumed,
     )
     logger.info(
         SPRINT_VELOCITY_RECORDED,

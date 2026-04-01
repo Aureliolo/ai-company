@@ -478,7 +478,7 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     return patched
 
 
-def create_app(  # noqa: PLR0913
+def create_app(  # noqa: PLR0913, PLR0915
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,
@@ -612,6 +612,7 @@ def create_app(  # noqa: PLR0913
     )
     meeting_orchestrator = meeting_wire.meeting_orchestrator
     meeting_scheduler = meeting_wire.meeting_scheduler
+    ceremony_scheduler = meeting_wire.ceremony_scheduler
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
@@ -637,6 +638,7 @@ def create_app(  # noqa: PLR0913
         agent_registry=agent_registry,
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
+        ceremony_scheduler=ceremony_scheduler,
         performance_tracker=performance_tracker,
         settings_service=settings_service,
         provider_registry=provider_registry,

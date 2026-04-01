@@ -1,7 +1,8 @@
 """Sprint configuration models -- ceremony definitions and sprint settings.
 
 Integrates with the meeting protocol system via ``MeetingProtocolType``
-and ``MeetingFrequency`` from the communication module.
+and ``MeetingFrequency`` from the communication module, and with the
+pluggable ceremony scheduling system via ``CeremonyPolicyConfig``.
 """
 
 from collections import Counter
@@ -12,32 +13,48 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.ceremony_policy import (
+    CeremonyPolicyConfig,
+    CeremonyStrategyType,  # used in default_factory lambda
+)
 
 
 class SprintCeremonyConfig(BaseModel):
     """Configuration for a single sprint ceremony.
 
-    Links a ceremony name to a meeting protocol type and recurrence
-    frequency from the communication subsystem.
+    Links a ceremony name to a meeting protocol type and an optional
+    recurrence frequency from the communication subsystem.  Ceremonies
+    may also declare a ``policy_override`` to override the project or
+    department-level ceremony scheduling policy for this specific
+    ceremony.
+
+    At least one of ``frequency`` or ``policy_override`` must be set.
+    When both are set, the ``frequency`` provides a calendar-based
+    fallback while the policy strategy handles task-driven triggers.
 
     Attributes:
         name: Ceremony identifier (e.g. ``"sprint_planning"``).
         protocol: Meeting protocol type to use.
-        frequency: How often the ceremony occurs.
+        frequency: How often the ceremony occurs (calendar-based).
+            ``None`` when scheduling is fully strategy-driven.
         duration_tokens: Token budget for the meeting.
         participants: Department names or ``"all"``.
+        policy_override: Optional per-ceremony override for the
+            ceremony scheduling policy.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(
         description="Ceremony identifier",
+        pattern=r"^[a-z0-9_-]+$",
     )
     protocol: MeetingProtocolType = Field(
         description="Meeting protocol type",
     )
-    frequency: MeetingFrequency = Field(
-        description="Recurrence frequency",
+    frequency: MeetingFrequency | None = Field(
+        default=None,
+        description="Recurrence frequency (calendar-based)",
     )
     duration_tokens: int = Field(
         default=5000,
@@ -49,6 +66,21 @@ class SprintCeremonyConfig(BaseModel):
         default=(),
         description='Department names or "all"',
     )
+    policy_override: CeremonyPolicyConfig | None = Field(
+        default=None,
+        description="Per-ceremony scheduling policy override",
+    )
+
+    @model_validator(mode="after")
+    def _validate_scheduling_source(self) -> Self:
+        """At least one of frequency or policy_override must be set."""
+        if self.frequency is None and self.policy_override is None:
+            msg = (
+                f"Ceremony {self.name!r}: at least one of "
+                f"'frequency' or 'policy_override' must be set"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class SprintConfig(BaseModel):
@@ -59,6 +91,7 @@ class SprintConfig(BaseModel):
         max_tasks_per_sprint: Maximum tasks allowed in a sprint backlog.
         velocity_window: Number of recent sprints for rolling velocity
             average.
+        ceremony_policy: Project-level ceremony scheduling policy.
         ceremonies: Sprint ceremony definitions.
     """
 
@@ -81,6 +114,14 @@ class SprintConfig(BaseModel):
         ge=1,
         le=20,
         description="Sprints for rolling velocity average",
+    )
+    ceremony_policy: CeremonyPolicyConfig = Field(
+        default_factory=lambda: CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.TASK_DRIVEN,
+            auto_transition=True,
+            transition_threshold=1.0,
+        ),
+        description="Project-level ceremony scheduling policy",
     )
     ceremonies: tuple[SprintCeremonyConfig, ...] = Field(
         default=(

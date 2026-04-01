@@ -4,6 +4,10 @@ import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
+from synthorg.engine.workflow.ceremony_policy import (
+    CeremonyPolicyConfig,
+    CeremonyStrategyType,
+)
 from synthorg.engine.workflow.sprint_config import (
     SprintCeremonyConfig,
     SprintConfig,
@@ -51,6 +55,40 @@ class TestSprintCeremonyConfig:
                 frequency=MeetingFrequency.DAILY,
                 duration_tokens=100_000,
             )
+
+    @pytest.mark.unit
+    def test_no_frequency_no_policy_override_rejected(self) -> None:
+        with pytest.raises(ValueError, match="at least one of"):
+            SprintCeremonyConfig(
+                name="bad",
+                protocol=MeetingProtocolType.ROUND_ROBIN,
+            )
+
+    @pytest.mark.unit
+    def test_policy_override_only_accepted(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="trigger_only",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            policy_override=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.TASK_DRIVEN,
+                strategy_config={"trigger": "sprint_start"},
+            ),
+        )
+        assert ceremony.frequency is None
+        assert ceremony.policy_override is not None
+
+    @pytest.mark.unit
+    def test_both_frequency_and_policy_override_accepted(self) -> None:
+        ceremony = SprintCeremonyConfig(
+            name="hybrid",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            frequency=MeetingFrequency.DAILY,
+            policy_override=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.HYBRID,
+            ),
+        )
+        assert ceremony.frequency is MeetingFrequency.DAILY
+        assert ceremony.policy_override is not None
 
     @pytest.mark.unit
     def test_participants_default_empty(self) -> None:
@@ -146,6 +184,24 @@ class TestSprintConfig:
             SprintConfig(duration_days=0)
         with pytest.raises(ValueError, match="less than or equal"):
             SprintConfig(duration_days=91)
+
+    @pytest.mark.unit
+    def test_default_ceremony_policy(self) -> None:
+        config = SprintConfig()
+        policy = config.ceremony_policy
+        assert policy.strategy is CeremonyStrategyType.TASK_DRIVEN
+        assert policy.auto_transition is True
+        assert policy.transition_threshold == 1.0
+
+    @pytest.mark.unit
+    def test_custom_ceremony_policy(self) -> None:
+        custom = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.CALENDAR,
+            auto_transition=False,
+        )
+        config = SprintConfig(ceremony_policy=custom)
+        assert config.ceremony_policy.strategy is CeremonyStrategyType.CALENDAR
+        assert config.ceremony_policy.auto_transition is False
 
     @pytest.mark.unit
     def test_velocity_window_bounds(self) -> None:
