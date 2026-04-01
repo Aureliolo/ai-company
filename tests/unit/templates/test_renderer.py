@@ -575,21 +575,6 @@ class TestEscalationPathsPassthrough:
 
 
 @pytest.mark.unit
-class TestUnknownPresetError:
-    def test_unknown_preset_raises_template_render_error(self) -> None:
-        """Unknown personality_preset raises TemplateRenderError."""
-        from synthorg.templates.errors import TemplateRenderError
-        from synthorg.templates.renderer import _expand_single_agent
-
-        agent: dict[str, object] = {
-            "role": "Dev",
-            "personality_preset": "does_not_exist",
-        }
-        with pytest.raises(TemplateRenderError, match="Unknown personality preset"):
-            _expand_single_agent(agent, 0, set(), has_extends=False)
-
-
-@pytest.mark.unit
 class TestValidateListErrors:
     def test_non_list_raises(self) -> None:
         """Non-list value for a list field raises TemplateRenderError."""

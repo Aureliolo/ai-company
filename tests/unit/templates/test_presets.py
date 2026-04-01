@@ -98,6 +98,113 @@ class TestGetPersonalityPreset:
                 f"{name} missing Big Five keys"
             )
 
+    def test_custom_presets_resolved_first(self) -> None:
+        custom = {
+            "my_custom": {
+                "traits": ("custom-trait",),
+                "communication_style": "custom",
+                "description": "Custom preset",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        result = get_personality_preset("my_custom", custom_presets=custom)
+        assert result["communication_style"] == "custom"
+        assert result["traits"] == ("custom-trait",)
+
+    def test_custom_presets_returns_deep_copy(self) -> None:
+        custom = {
+            "my_custom": {
+                "traits": ["a", "b"],
+                "communication_style": "test",
+                "description": "test",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        a = get_personality_preset("my_custom", custom_presets=custom)
+        b = get_personality_preset("my_custom", custom_presets=custom)
+        assert a == b
+        assert a is not b
+        # Mutating a nested mutable field must not affect the source.
+        a["traits"].append("mutated")
+        source_traits = custom["my_custom"]["traits"]
+        assert isinstance(source_traits, list)
+        assert "mutated" not in source_traits
+        c = get_personality_preset("my_custom", custom_presets=custom)
+        assert "mutated" not in c["traits"]
+
+    def test_custom_preset_overrides_builtin_defense_in_depth(self) -> None:
+        """Custom preset with same name as builtin takes precedence.
+
+        The CRUD service prevents creating custom presets that shadow
+        builtins, but the lookup function is resilient to corrupt or
+        legacy DB data by giving custom presets higher precedence.
+        """
+        custom = {
+            "visionary_leader": {
+                "traits": ("overridden",),
+                "communication_style": "overridden",
+                "description": "Overridden builtin",
+                "openness": 0.1,
+                "conscientiousness": 0.1,
+                "extraversion": 0.1,
+                "agreeableness": 0.1,
+                "stress_response": 0.1,
+            },
+        }
+        result = get_personality_preset(
+            "visionary_leader",
+            custom_presets=custom,
+        )
+        assert result["communication_style"] == "overridden"
+
+    def test_custom_presets_case_insensitive(self) -> None:
+        custom = {
+            "my_custom": {
+                "traits": ("a",),
+                "communication_style": "test",
+                "description": "test",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        result = get_personality_preset("MY_CUSTOM", custom_presets=custom)
+        assert result["communication_style"] == "test"
+
+    def test_builtin_still_works_when_custom_presets_passed(self) -> None:
+        """Builtin preset resolves when custom_presets is provided but
+        does not contain the requested name."""
+        custom = {"other_preset": {"traits": ("a",)}}
+        result = get_personality_preset(
+            "pragmatic_builder",
+            custom_presets=custom,
+        )
+        assert result["communication_style"] == "concise"
+
+    def test_unknown_with_custom_presets_still_raises(self) -> None:
+        """Unknown preset raises KeyError even with custom_presets."""
+        custom = {"other_preset": {"traits": ("a",)}}
+        with pytest.raises(KeyError, match="Unknown personality preset"):
+            get_personality_preset("nonexistent", custom_presets=custom)
+
+    def test_none_custom_presets_is_default(self) -> None:
+        """Passing custom_presets=None behaves like no argument."""
+        result = get_personality_preset(
+            "pragmatic_builder",
+            custom_presets=None,
+        )
+        assert result["communication_style"] == "concise"
+
 
 @pytest.mark.unit
 class TestGenerateAutoName:

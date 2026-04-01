@@ -1,11 +1,16 @@
-"""Tests for expand_template_agents dict-model handling."""
+"""Tests for expand_template_agents and build_agent_config."""
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
-from synthorg.api.controllers.setup_agents import expand_template_agents
-from synthorg.core.enums import CompanyType
+from synthorg.api.controllers.setup_agents import (
+    build_agent_config,
+    expand_template_agents,
+)
+from synthorg.api.errors import ApiValidationError
+from synthorg.core.enums import CompanyType, SeniorityLevel
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -100,3 +105,91 @@ class TestExpandTemplateAgentsDictModel:
         assert "model_requirement" in agent
         assert agent["model_requirement"]["tier"] == "medium"
         assert agent["model_requirement"]["priority"] == "balanced"
+
+
+@pytest.mark.unit
+class TestExpandTemplateAgentsCustomPresets:
+    def test_custom_preset_resolved(self) -> None:
+        """Custom preset is used when passed to expand_template_agents."""
+        custom = {
+            "my_custom": {
+                "traits": ("custom-trait",),
+                "communication_style": "custom",
+                "description": "Custom",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        template = _make_template([{"role": "Dev", "personality_preset": "my_custom"}])
+        agents = expand_template_agents(template, custom_presets=custom)
+        assert len(agents) == 1
+        assert agents[0]["personality"]["communication_style"] == "custom"
+        assert agents[0]["personality_preset"] == "my_custom"
+
+    def test_unknown_preset_falls_back_to_pragmatic_builder(self) -> None:
+        """Unknown preset falls back to pragmatic_builder in setup path."""
+        template = _make_template(
+            [{"role": "Dev", "personality_preset": "nonexistent"}]
+        )
+        agents = expand_template_agents(template)
+        assert len(agents) == 1
+        assert agents[0]["personality_preset"] == "pragmatic_builder"
+
+    def test_builtin_preset_works_with_custom_presets(self) -> None:
+        """Builtin presets still work when custom_presets dict is passed."""
+        custom = {"other": {"traits": ("a",)}}
+        template = _make_template(
+            [{"role": "Dev", "personality_preset": "pragmatic_builder"}]
+        )
+        agents = expand_template_agents(template, custom_presets=custom)
+        assert len(agents) == 1
+        assert agents[0]["personality"]["communication_style"] == "concise"
+
+
+@pytest.mark.unit
+class TestBuildAgentConfigCustomPresets:
+    def _make_request(
+        self,
+        preset: str = "pragmatic_builder",
+    ) -> Any:
+        req = MagicMock()
+        req.name = "Test Agent"
+        req.role = "Backend Developer"
+        req.department = "engineering"
+        req.level = SeniorityLevel.MID
+        req.personality_preset = preset
+        req.model_provider = "test-provider"
+        req.model_id = "test-small-001"
+        req.budget_limit_monthly = None
+        return req
+
+    def test_builtin_preset_resolves(self) -> None:
+        data = self._make_request("pragmatic_builder")
+        result = build_agent_config(data)
+        assert result["personality"]["communication_style"] == "concise"
+        assert result["personality_preset"] == "pragmatic_builder"
+
+    def test_custom_preset_resolves(self) -> None:
+        custom = {
+            "my_custom": {
+                "traits": ("custom-trait",),
+                "communication_style": "custom",
+                "description": "Custom",
+                "openness": 0.5,
+                "conscientiousness": 0.5,
+                "extraversion": 0.5,
+                "agreeableness": 0.5,
+                "stress_response": 0.5,
+            },
+        }
+        data = self._make_request("my_custom")
+        result = build_agent_config(data, custom_presets=custom)
+        assert result["personality"]["communication_style"] == "custom"
+
+    def test_unknown_preset_raises_validation_error(self) -> None:
+        data = self._make_request("nonexistent")
+        with pytest.raises(ApiValidationError, match="Unknown personality preset"):
+            build_agent_config(data)

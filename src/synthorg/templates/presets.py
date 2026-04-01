@@ -5,9 +5,15 @@ and behavioral enums, plus internationally diverse auto-name generation
 backed by the Faker library.
 """
 
+import copy
 import functools
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.templates.schema import CompanyTemplate
 
 from pydantic import ValidationError
 
@@ -404,29 +410,40 @@ PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
 del _RAW_PRESETS
 
 
-def get_personality_preset(name: str) -> dict[str, Any]:
+def get_personality_preset(
+    name: str,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Look up a personality preset by name.
+
+    Custom presets are checked first (higher precedence), then builtins.
 
     Args:
         name: Preset name (case-insensitive, whitespace-stripped).
+        custom_presets: Optional mapping of custom preset names to
+            personality config dicts.  Keys must be lowercased.
 
     Returns:
         A *copy* of the personality configuration dict.
 
     Raises:
-        KeyError: If the preset name is not found.
+        KeyError: If the preset name is not found in either source.
     """
     key = name.strip().lower()
-    if key not in PERSONALITY_PRESETS:
-        available = sorted(PERSONALITY_PRESETS)
-        msg = f"Unknown personality preset {name!r}. Available: {available}"
-        logger.warning(
-            TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-            preset_name=name,
-            available=available,
-        )
-        raise KeyError(msg)
-    return dict(PERSONALITY_PRESETS[key])
+    if custom_presets is not None and key in custom_presets:
+        return copy.deepcopy(custom_presets[key])
+    if key in PERSONALITY_PRESETS:
+        return dict(PERSONALITY_PRESETS[key])
+    available = sorted(PERSONALITY_PRESETS)
+    if custom_presets:
+        available = sorted({*available, *custom_presets})
+    msg = f"Unknown personality preset {name!r}. Available: {available}"
+    logger.warning(
+        TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+        preset_name=name,
+        available=available,
+    )
+    raise KeyError(msg)
 
 
 # Validate all presets at import time to catch key typos immediately.
@@ -446,6 +463,40 @@ def _validate_presets() -> None:
 
 _validate_presets()
 del _validate_presets
+
+
+def validate_preset_references(
+    template: CompanyTemplate,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    """Check all agent personality_preset references against known presets.
+
+    Returns a tuple of warning messages for unknown presets.  Does not
+    raise -- purely advisory for pre-flight validation and template
+    import/export scenarios.
+
+    Args:
+        template: Parsed template to validate.
+        custom_presets: Optional custom preset mapping.  Keys must
+            be lowercased.
+
+    Returns:
+        Tuple of warning strings (empty when all presets are known).
+    """
+    issues: list[str] = []
+    for agent_cfg in template.agents:
+        preset = agent_cfg.personality_preset
+        if preset is None:
+            continue
+        key = preset.strip().lower()
+        if custom_presets is not None and key in custom_presets:
+            continue
+        if key in PERSONALITY_PRESETS:
+            continue
+        issues.append(
+            f"Agent {agent_cfg.role!r} references unknown personality preset {preset!r}"
+        )
+    return tuple(issues)
 
 
 def generate_auto_name(

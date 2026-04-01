@@ -330,9 +330,19 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
+        from synthorg.templates.preset_service import (  # noqa: PLC0415
+            fetch_custom_presets_map,
+        )
+
         providers = await app_state.provider_management.list_providers()
         validate_provider_and_model(providers, data)
-        agent_config = build_agent_config(data)
+        custom_presets = await fetch_custom_presets_map(
+            app_state.persistence.custom_presets,
+        )
+        agent_config = build_agent_config(
+            data,
+            custom_presets=custom_presets,
+        )
 
         async with _AGENT_LOCK:
             existing_agents = await get_existing_agents(settings_svc)

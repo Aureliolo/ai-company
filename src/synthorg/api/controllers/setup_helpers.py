@@ -398,9 +398,26 @@ async def auto_create_template_agents(
     settings_svc: SettingsService,
 ) -> tuple[SetupAgentSummary, ...]:
     """Expand template agents, match models, persist, and return summaries."""
-    locales = await read_name_locales(settings_svc)
-    agents = expand_template_agents(template, locales=locales)
-    providers = await app_state.provider_management.list_providers()
+    from synthorg.templates.preset_service import (  # noqa: PLC0415
+        fetch_custom_presets_map,
+    )
+
+    async with asyncio.TaskGroup() as tg:
+        loc_task = tg.create_task(read_name_locales(settings_svc))
+        preset_task = tg.create_task(
+            fetch_custom_presets_map(app_state.persistence.custom_presets),
+        )
+        prov_task = tg.create_task(
+            app_state.provider_management.list_providers(),
+        )
+    locales = loc_task.result()
+    custom_presets = preset_task.result()
+    agents = expand_template_agents(
+        template,
+        locales=locales,
+        custom_presets=custom_presets,
+    )
+    providers = prov_task.result()
     agents = match_and_assign_models(agents, providers)
 
     async with AGENT_LOCK:

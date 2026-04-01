@@ -36,6 +36,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_PERSONALITY_UPDATED,
     SETUP_PERSONALITY_PRESETS_LISTED,
+    SETUP_PRESET_NOT_FOUND,
 )
 
 logger = get_logger(__name__)
@@ -76,17 +77,37 @@ class SetupPersonalityController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
+        from synthorg.templates.preset_service import (  # noqa: PLC0415
+            fetch_custom_presets_map,
+        )
+        from synthorg.templates.presets import (  # noqa: PLC0415
+            get_personality_preset,
+        )
+
+        custom_presets = await fetch_custom_presets_map(
+            app_state.persistence.custom_presets,
+        )
+        try:
+            personality_dict = get_personality_preset(
+                data.personality_preset,
+                custom_presets=custom_presets,
+            )
+        except KeyError:
+            from synthorg.api.errors import (  # noqa: PLC0415
+                ApiValidationError,
+            )
+
+            logger.warning(
+                SETUP_PRESET_NOT_FOUND,
+                preset=data.personality_preset,
+                agent_index=agent_index,
+            )
+            msg = f"Unknown personality preset {data.personality_preset!r}"
+            raise ApiValidationError(msg) from None
+
         async with _AGENT_LOCK:
             agents = await get_existing_agents(settings_svc)
             _validate_agent_index(agent_index, agents)
-
-            from synthorg.templates.presets import (  # noqa: PLC0415
-                get_personality_preset,
-            )
-
-            personality_dict = get_personality_preset(
-                data.personality_preset,
-            )
             updated_agent = {
                 **agents[agent_index],
                 "personality_preset": data.personality_preset,

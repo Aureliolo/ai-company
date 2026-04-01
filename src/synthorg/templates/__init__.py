@@ -8,6 +8,7 @@ Public API
     list_templates
     list_builtin_templates
     render_template
+    validate_preset_references
     CompanyTemplate
     LoadedTemplate
     ModelMatch
@@ -45,6 +46,7 @@ from synthorg.templates.model_requirements import (
     parse_model_requirement,
     resolve_model_requirement,
 )
+from synthorg.templates.presets import validate_preset_references
 from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import (
     CompanyTemplate,
@@ -78,4 +80,5 @@ __all__ = [
     "parse_model_requirement",
     "render_template",
     "resolve_model_requirement",
+    "validate_preset_references",
 ]

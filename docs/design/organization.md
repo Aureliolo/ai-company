@@ -296,6 +296,8 @@ Personality presets come in two flavors:
 
 Custom preset names must match `^[a-z][a-z0-9_]*$` and cannot shadow built-in names. All custom presets are validated against `PersonalityConfig` before persistence. The API distinguishes origin via a `source: "builtin" | "custom"` field in responses.
 
+During template rendering and setup agent expansion, custom presets are fetched from the database and passed into the rendering pipeline alongside builtins. If an agent references a preset name that exists in neither custom nor built-in collections, the system logs a warning rather than raising an error: during template rendering, the personality is omitted (the agent proceeds with no personality assigned); during setup agent expansion, the agent falls back to the `pragmatic_builder` default. The `validate_preset_references()` function provides advisory pre-flight validation for template import/export scenarios, returning warning strings for unknown presets without raising.
+
 Discovery endpoints (`GET /api/v1/personalities/presets`, `GET /api/v1/personalities/presets/{name}`, `GET /api/v1/personalities/schema`) are available to all authenticated users. CRUD endpoints require write access.
 
 ### Template Inheritance

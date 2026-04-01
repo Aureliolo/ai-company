@@ -407,3 +407,46 @@ class PersonalityPresetService:
             JSON Schema dict.
         """
         return PersonalityConfig.model_json_schema()
+
+
+async def fetch_custom_presets_map(
+    repo: PersonalityPresetRepository,
+) -> dict[str, dict[str, Any]]:
+    """Fetch all custom presets as a sync-friendly name-to-config dict.
+
+    This bridges the async persistence layer and the sync template
+    rendering pipeline.  Call once before rendering and pass the
+    result as ``custom_presets`` to :func:`render_template` or
+    :func:`expand_template_agents`.
+
+    Rows with corrupt JSON are logged and skipped -- a single bad
+    row does not prevent the remaining presets from loading.
+
+    Args:
+        repo: Personality preset repository.
+
+    Returns:
+        Mapping of lowercased preset names to personality config dicts.
+    """
+    rows = await repo.list_all()
+    result: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.name).strip().lower()
+        try:
+            decoded = json.loads(row.config_json)
+        except json.JSONDecodeError:
+            logger.exception(
+                PRESET_VALIDATION_FAILED,
+                preset_name=row.name,
+                reason="corrupt_json_in_fetch_map",
+            )
+            continue
+        if not isinstance(decoded, dict):
+            logger.error(
+                PRESET_VALIDATION_FAILED,
+                preset_name=row.name,
+                reason="non_object_config_in_fetch_map",
+            )
+            continue
+        result[key] = decoded
+    return result
