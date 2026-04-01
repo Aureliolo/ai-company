@@ -60,7 +60,7 @@ docs = [
 ]
 dev = [
     "commitizen==4.13.9",
-    "mypy==1.19.1",
+    "mypy==1.20.0",
     "pre-commit==4.5.1",
     "pip-audit==2.10.0",
     "pre-commit-uv==4.2.1",
