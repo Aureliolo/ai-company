@@ -74,7 +74,10 @@ def build_syslog_handler(
             f"({sink.syslog_protocol.value.upper()}): {exc}"
         )
         raise RuntimeError(msg) from exc
-    handler.append_nul = False
+    # UDP: disable NUL terminator (datagrams are self-framing, NUL
+    # corrupts JSON parsers).  TCP: keep NUL (the traditional syslog-
+    # over-TCP message delimiter that receivers expect).
+    handler.append_nul = sink.syslog_protocol == SyslogProtocol.TCP
     handler.setLevel(sink.level.value)
 
     renderer: Any = structlog.processors.JSONRenderer()

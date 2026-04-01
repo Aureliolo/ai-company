@@ -9,6 +9,7 @@ import logging
 import queue
 import sys
 import threading
+import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
@@ -135,6 +136,25 @@ class HttpBatchHandler(logging.Handler):
         for name, value in self._extra_headers.items():
             request.add_header(name, value)
 
+        error = self._send_with_retries(request)
+        if error is not None:
+            with self._pending_lock:
+                self._dropped_count += len(entries)
+            print(  # noqa: T201
+                f"WARNING: HTTP log shipping failed after "
+                f"{1 + self._max_retries} attempts to {self._url}: "
+                f"{error} "
+                f"(dropped {len(entries)} records, "
+                f"total dropped: {self._dropped_count})",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def _send_with_retries(
+        self,
+        request: urllib.request.Request,
+    ) -> Exception | None:
+        """Attempt to send *request*, returning the last error or None."""
         last_error: Exception | None = None
         for attempt in range(1 + self._max_retries):
             try:
@@ -144,25 +164,15 @@ class HttpBatchHandler(logging.Handler):
                 ):
                     pass  # Response body not needed
             except Exception as exc:
+                # HTTPError wraps a response FP -- close to avoid FD leak.
+                if isinstance(exc, urllib.error.HTTPError):
+                    exc.close()
                 last_error = exc
                 if attempt < self._max_retries:
                     continue
             else:
-                return
-
-        # All retries exhausted -- drop the batch with a warning
-        if last_error is not None:
-            with self._pending_lock:
-                self._dropped_count += len(entries)
-            print(  # noqa: T201
-                f"WARNING: HTTP log shipping failed after "
-                f"{1 + self._max_retries} attempts to {self._url}: "
-                f"{last_error} "
-                f"(dropped {len(entries)} records, "
-                f"total dropped: {self._dropped_count})",
-                file=sys.stderr,
-                flush=True,
-            )
+                return None
+        return last_error
 
     def close(self) -> None:
         """Signal shutdown, flush remaining records, stop thread."""

@@ -119,6 +119,9 @@ class TestHttpBatchHandler:
         body = json.loads(request.data.decode("utf-8"))
         assert isinstance(body, list)
         assert len(body) >= 1
+        for item in body:
+            assert isinstance(item, dict), f"Expected dict, got {type(item)}"
+            assert "event" in item
 
     def test_timeout_applied(
         self,

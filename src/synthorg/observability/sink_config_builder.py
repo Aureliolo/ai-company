@@ -619,7 +619,11 @@ def _parse_http_headers(
                 "a [name, value] string pair"
             )
             raise ValueError(msg)
-        headers.append((pair[0], pair[1]))
+        name = pair[0].strip()
+        if not name:
+            msg = f"custom_sinks[{index}].http_headers[{j}] has an empty header name"
+            raise ValueError(msg)
+        headers.append((name, pair[1]))
     return tuple(headers)
 
 
