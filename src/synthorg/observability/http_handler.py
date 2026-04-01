@@ -178,7 +178,10 @@ class HttpBatchHandler(logging.Handler):
         """Signal shutdown, flush remaining records, stop thread."""
         self._shutdown.set()
         self._batch_ready.set()  # Wake the flusher
-        self._flusher.join(timeout=self._timeout)
+        # Allow enough time for in-flight retries to finish:
+        # worst case is (1 + max_retries) * timeout per batch.
+        join_timeout = (1 + self._max_retries) * self._timeout
+        self._flusher.join(timeout=join_timeout)
         # Only drain from the calling thread if the flusher has exited.
         # If join() timed out the flusher may still be in _drain_and_flush,
         # and draining concurrently would race on the queue.

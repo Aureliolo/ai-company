@@ -242,6 +242,12 @@ class SinkConfig(BaseModel):
         ):
             msg = "http_url must start with http:// or https://"
             raise ValueError(msg)
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(self.http_url)
+        if not parsed.hostname:
+            msg = "http_url must include a host"
+            raise ValueError(msg)
 
     def _reject_http_fields(self, sink_label: str) -> None:
         if self.http_url is not None:

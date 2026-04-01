@@ -43,7 +43,8 @@ _r.register(
             "(__console__ or file path). Each value is an object with "
             "optional fields: enabled (bool), level (string), "
             "json_format (bool), rotation (object with strategy, "
-            "max_bytes, backup_count, compress_rotated)"
+            "max_bytes, backup_count, compress_rotated "
+            "(builtin-only; rejected with external strategy))"
         ),
         group="Sinks",
         level=SettingLevel.ADVANCED,

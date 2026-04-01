@@ -56,7 +56,7 @@ def build_syslog_handler(
     Returns:
         A configured ``SysLogHandler`` with JSON formatting.
     """
-    if not sink.syslog_host:
+    if not sink.syslog_host or not sink.syslog_host.strip():
         msg = "SYSLOG sink requires a non-empty syslog_host"
         raise ValueError(msg)
     try:
