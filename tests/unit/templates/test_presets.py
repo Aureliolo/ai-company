@@ -115,10 +115,10 @@ class TestGetPersonalityPreset:
         assert result["communication_style"] == "custom"
         assert result["traits"] == ("custom-trait",)
 
-    def test_custom_presets_returns_copy(self) -> None:
+    def test_custom_presets_returns_deep_copy(self) -> None:
         custom = {
             "my_custom": {
-                "traits": ("a",),
+                "traits": ["a", "b"],
                 "communication_style": "test",
                 "description": "test",
                 "openness": 0.5,
@@ -132,6 +132,13 @@ class TestGetPersonalityPreset:
         b = get_personality_preset("my_custom", custom_presets=custom)
         assert a == b
         assert a is not b
+        # Mutating a nested mutable field must not affect the source.
+        a["traits"].append("mutated")
+        source_traits = custom["my_custom"]["traits"]
+        assert isinstance(source_traits, list)
+        assert "mutated" not in source_traits
+        c = get_personality_preset("my_custom", custom_presets=custom)
+        assert "mutated" not in c["traits"]
 
     def test_custom_preset_overrides_builtin_defense_in_depth(self) -> None:
         """Custom preset with same name as builtin takes precedence.

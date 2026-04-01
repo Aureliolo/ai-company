@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from synthorg.core.agent import PersonalityConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
-    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
     TEMPLATE_PRESET_RESOLVED_CUSTOM,
     TEMPLATE_RENDER_TYPE_ERROR,
     TEMPLATE_RENDER_VALIDATION_ERROR,
@@ -78,11 +77,7 @@ def resolve_agent_personality(
                 custom_presets=custom_presets,
             )
         except KeyError:
-            logger.warning(
-                TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
-                agent=name,
-                preset=preset_name,
-            )
+            # Warning already logged by get_personality_preset.
             return None
         if is_custom:
             logger.debug(
