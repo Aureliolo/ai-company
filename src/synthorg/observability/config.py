@@ -173,10 +173,12 @@ class SinkConfig(BaseModel):
                 self._reject_file_fields("SYSLOG")
                 self._validate_syslog_fields()
                 self._reject_http_fields("SYSLOG")
+                self._require_json_format("SYSLOG")
             case SinkType.HTTP:
                 self._reject_file_fields("HTTP")
                 self._reject_syslog_fields("HTTP")
                 self._validate_http_fields()
+                self._require_json_format("HTTP")
         return self
 
     def _validate_file_fields(self) -> None:
@@ -270,6 +272,11 @@ class SinkConfig(BaseModel):
             raise ValueError(msg)
         if self.http_max_retries != _DEFAULT_HTTP_MAX_RETRIES:
             msg = f"http_max_retries must be default (3) for {sink_label} sinks"
+            raise ValueError(msg)
+
+    def _require_json_format(self, sink_label: str) -> None:
+        if not self.json_format:
+            msg = f"json_format must be True for {sink_label} sinks (always JSON)"
             raise ValueError(msg)
 
 
