@@ -63,6 +63,24 @@ def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", _TEST_SETTINGS_KEY)
 
 
+@pytest.fixture(autouse=True)
+def _no_backup_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the backup service in all API unit tests.
+
+    ``create_app`` auto-builds a real ``BackupService`` from config,
+    which triggers filesystem I/O (backup creation + retention
+    pruning of tar.gz archives) on every app startup and shutdown.
+    On Windows this adds 15-25 s per ``TestClient`` lifecycle due to
+    Defender scanning each archive.  Patching the factory to return
+    ``None`` eliminates this overhead.  Backup-specific behaviour is
+    tested in ``tests/unit/backup/`` with dedicated mocks.
+    """
+    monkeypatch.setattr(
+        "synthorg.api.app.build_backup_service",
+        lambda *_a, **_kw: None,
+    )
+
+
 def make_exception_handler_app(handler: Any) -> Litestar:
     """Build a minimal Litestar app with project exception handlers."""
     return Litestar(

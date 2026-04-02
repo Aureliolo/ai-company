@@ -344,6 +344,27 @@ class TestRestoreConfirmGate:
 class TestBackupGuards:
     """HTTP-level guard tests for backup controller access control."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_backup_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Override the API-wide backup disable.
+
+        Guard tests need a backup service instance in ``app_state``
+        so the list-backups endpoint responds instead of crashing,
+        but we still want to avoid real filesystem I/O.
+        """
+        mock_svc = MagicMock()
+        mock_svc.on_startup = False
+        mock_svc.on_shutdown = False
+        mock_svc.start = AsyncMock()
+        mock_svc.stop = AsyncMock()
+        mock_svc.list_backups = AsyncMock(return_value=[])
+        mock_svc.scheduler = MagicMock()
+        mock_svc.scheduler.stop = AsyncMock()
+        monkeypatch.setattr(
+            "synthorg.api.app.build_backup_service",
+            lambda *_a, **_kw: mock_svc,
+        )
+
     def test_ceo_can_access(
         self,
         test_client: TestClient[Any],
