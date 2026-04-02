@@ -14,13 +14,13 @@ from synthorg.memory.embedding.fine_tune import (
 @pytest.mark.unit
 class TestFineTuneStage:
     def test_values(self) -> None:
-        assert FineTuneStage.IDLE == "idle"
-        assert FineTuneStage.GENERATING_DATA == "generating_data"
-        assert FineTuneStage.MINING_NEGATIVES == "mining_negatives"
-        assert FineTuneStage.TRAINING == "training"
-        assert FineTuneStage.DEPLOYING == "deploying"
-        assert FineTuneStage.COMPLETE == "complete"
-        assert FineTuneStage.FAILED == "failed"
+        assert FineTuneStage.IDLE.value == "idle"
+        assert FineTuneStage.GENERATING_DATA.value == "generating_data"
+        assert FineTuneStage.MINING_NEGATIVES.value == "mining_negatives"
+        assert FineTuneStage.TRAINING.value == "training"
+        assert FineTuneStage.DEPLOYING.value == "deploying"
+        assert FineTuneStage.COMPLETE.value == "complete"
+        assert FineTuneStage.FAILED.value == "failed"
 
 
 @pytest.mark.unit

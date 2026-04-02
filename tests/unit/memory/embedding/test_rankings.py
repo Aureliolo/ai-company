@@ -13,9 +13,9 @@ from synthorg.memory.embedding.rankings import (
 @pytest.mark.unit
 class TestDeploymentTier:
     def test_values(self) -> None:
-        assert DeploymentTier.GPU_FULL == "gpu_full"
-        assert DeploymentTier.GPU_CONSUMER == "gpu_consumer"
-        assert DeploymentTier.CPU == "cpu"
+        assert DeploymentTier.GPU_FULL.value == "gpu_full"
+        assert DeploymentTier.GPU_CONSUMER.value == "gpu_consumer"
+        assert DeploymentTier.CPU.value == "cpu"
 
     def test_exhaustive(self) -> None:
         assert len(DeploymentTier) == 3
