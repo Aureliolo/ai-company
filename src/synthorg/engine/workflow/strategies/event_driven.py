@@ -265,6 +265,7 @@ class EventDrivenStrategy:
         """Clear all internal state."""
         self._event_counts.clear()
         self._ceremony_last_fire_at.clear()
+        self._debounce_default = _DEFAULT_DEBOUNCE
 
     async def on_task_completed(
         self,
