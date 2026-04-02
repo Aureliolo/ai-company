@@ -71,6 +71,7 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
+    MEMORY_SPARSE_FIELD_ENSURE_FAILED,
     MEMORY_SPARSE_UPSERT_FAILED,
 )
 
@@ -202,10 +203,13 @@ class Mem0MemoryBackend:
                     raise
                 except Exception as exc:
                     logger.warning(
-                        MEMORY_SPARSE_UPSERT_FAILED,
-                        operation="ensure_sparse_field",
+                        MEMORY_SPARSE_FIELD_ENSURE_FAILED,
                         error=str(exc),
                         error_type=type(exc).__name__,
+                        reason=(
+                            "sparse search disabled for this connection "
+                            "-- reconnect to retry"
+                        ),
                     )
                     # Non-fatal: dense search still works.
                     self._qdrant_client = None

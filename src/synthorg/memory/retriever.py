@@ -5,6 +5,7 @@ budget-fit → format.  Implements ``MemoryInjectionStrategy`` protocol.
 """
 
 import asyncio
+import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -45,9 +46,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Alias to disambiguate from domain MemoryError
-builtins_MemoryError = MemoryError  # noqa: N816
-
 
 async def _safe_call(
     coro: Awaitable[tuple[MemoryEntry, ...]],
@@ -75,9 +73,7 @@ async def _safe_call(
     """
     try:
         return await coro
-    except builtins_MemoryError:
-        raise
-    except RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except memory_errors.MemoryError as exc:
         logger.warning(
@@ -198,7 +194,7 @@ class ContextInjectionStrategy:
                 token_budget=token_budget,
                 categories=categories,
             )
-        except builtins_MemoryError:
+        except builtins.MemoryError:
             raise
         except RecursionError:
             raise
@@ -217,7 +213,7 @@ class ContextInjectionStrategy:
                 system_errors = exc.subgroup(
                     lambda e: isinstance(
                         e,
-                        builtins_MemoryError | RecursionError,
+                        builtins.MemoryError | RecursionError,
                     ),
                 )
                 if system_errors is not None:
@@ -278,7 +274,7 @@ class ContextInjectionStrategy:
         if self._memory_filter is not None:
             try:
                 ranked = self._memory_filter.filter_for_injection(ranked)
-            except builtins_MemoryError, RecursionError:
+            except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
                 logger.warning(
@@ -374,7 +370,7 @@ class ContextInjectionStrategy:
             async with asyncio.TaskGroup() as tg:
                 dense_task = tg.create_task(dense_coro)
                 sparse_task = tg.create_task(sparse_coro)
-        except* builtins_MemoryError as eg:
+        except* builtins.MemoryError as eg:
             raise eg.exceptions[0] from eg
         except* RecursionError as eg:
             raise eg.exceptions[0] from eg
@@ -418,38 +414,53 @@ class ContextInjectionStrategy:
         Returns:
             Tuple of (personal_sparse, shared_sparse).
         """
-        if not getattr(self._backend, "supports_sparse_search", False):
-            return (), ()
-
-        personal_coro = _safe_call(
-            self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
-            source="sparse_personal",
-            agent_id=agent_id,
+        personal_has_sparse = getattr(
+            self._backend,
+            "supports_sparse_search",
+            False,
         )
-
         shared_store = self._shared_store
-        if (
+        shared_has_sparse = (
             self._config.include_shared
             and shared_store is not None
             and getattr(shared_store, "supports_sparse_search", False)
-        ):
-            shared_coro = _safe_call(
+        )
+
+        if not personal_has_sparse and not shared_has_sparse:
+            return (), ()
+
+        # Build coroutines -- use no-op for missing capabilities.
+        async def _empty() -> tuple[MemoryEntry, ...]:
+            return ()
+
+        personal_coro = (
+            _safe_call(
+                self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
+                source="sparse_personal",
+                agent_id=agent_id,
+            )
+            if personal_has_sparse
+            else _empty()
+        )
+        shared_coro = (
+            _safe_call(
                 shared_store.retrieve_sparse(query, exclude_agent=agent_id),  # type: ignore[attr-defined]
                 source="sparse_shared",
                 agent_id=agent_id,
             )
-            try:
-                async with asyncio.TaskGroup() as tg:
-                    personal_task = tg.create_task(personal_coro)
-                    shared_task = tg.create_task(shared_coro)
-            except* builtins_MemoryError as eg:
-                raise eg.exceptions[0] from eg
-            except* RecursionError as eg:
-                raise eg.exceptions[0] from eg
-            return personal_task.result(), shared_task.result()
+            if shared_has_sparse and shared_store is not None
+            else _empty()
+        )
 
-        personal = await personal_coro
-        return personal, ()
+        try:
+            async with asyncio.TaskGroup() as tg:
+                personal_task = tg.create_task(personal_coro)
+                shared_task = tg.create_task(shared_coro)
+        except* builtins.MemoryError as eg:
+            raise eg.exceptions[0] from eg
+        except* RecursionError as eg:
+            raise eg.exceptions[0] from eg
+        return personal_task.result(), shared_task.result()
 
     async def _fetch_memories(
         self,
@@ -501,7 +512,7 @@ class ContextInjectionStrategy:
                     )
             # TaskGroup wraps task exceptions in ExceptionGroup;
             # unwrap system-level errors so callers see bare exceptions.
-            except* builtins_MemoryError as eg:
+            except* builtins.MemoryError as eg:
                 raise eg.exceptions[0] from eg
             except* RecursionError as eg:
                 raise eg.exceptions[0] from eg

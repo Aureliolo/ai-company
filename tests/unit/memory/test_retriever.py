@@ -49,9 +49,10 @@ def _make_entry(
 
 
 def _make_backend(entries: tuple[MemoryEntry, ...] = ()) -> AsyncMock:
-    """Create a mock MemoryBackend."""
+    """Create a mock MemoryBackend (dense-only, no sparse support)."""
     backend = AsyncMock()
     backend.retrieve = AsyncMock(return_value=entries)
+    backend.supports_sparse_search = False
     return backend
 
 
@@ -627,6 +628,7 @@ def _make_sparse_backend(
     backend = AsyncMock()
     backend.retrieve = AsyncMock(return_value=dense_entries)
     backend.retrieve_sparse = AsyncMock(return_value=sparse_entries)
+    backend.supports_sparse_search = True
     return backend
 
 
@@ -724,6 +726,7 @@ class TestHybridSearchPipeline:
         content = result[0].content
         assert content is not None
         assert "high score" in content
+        assert "low score" not in content
 
     async def test_rrf_sparse_error_degrades_to_dense(self) -> None:
         """Sparse search failure degrades gracefully to dense-only."""

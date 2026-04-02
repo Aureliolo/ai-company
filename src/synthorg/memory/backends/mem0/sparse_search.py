@@ -14,7 +14,9 @@ from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_SPARSE_BATCH_DEGRADED,
     MEMORY_SPARSE_FIELD_ENSURED,
+    MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
     MEMORY_SPARSE_SEARCH_COMPLETE,
     MEMORY_SPARSE_SEARCH_FAILED,
     MEMORY_SPARSE_UPSERT_COMPLETE,
@@ -207,14 +209,74 @@ def scored_points_to_entries(
                 reason="malformed payload",
                 exc_info=True,
             )
-    if skipped > 0 and not entries:
-        logger.error(
-            MEMORY_SPARSE_SEARCH_FAILED,
-            reason="all points skipped -- possible code bug in _point_to_entry",
+    if skipped > 0:
+        level = logger.error if not entries else logger.warning
+        level(
+            MEMORY_SPARSE_BATCH_DEGRADED,
+            reason="points skipped due to malformed payload",
             total_points=len(points),
             skipped=skipped,
+            recovered=len(entries),
         )
     return tuple(entries)
+
+
+def _extract_metadata(
+    metadata_raw: dict[str, Any],
+    point_id_str: str,
+) -> tuple[Any, float, str | None, tuple[NotBlankStr, ...]]:
+    """Extract category, confidence, source, tags from payload metadata.
+
+    Returns:
+        Tuple of (category, confidence, source, tags).
+    """
+    from synthorg.core.enums import MemoryCategory  # noqa: PLC0415
+
+    category_str = metadata_raw.get(f"{_SYNTHORG_PREFIX}category", "episodic")
+    try:
+        category = MemoryCategory(category_str)
+    except ValueError:
+        logger.info(
+            MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
+            point_id=point_id_str,
+            field="category",
+            original=category_str,
+            default="episodic",
+        )
+        category = MemoryCategory.EPISODIC
+
+    confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
+    source = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
+    tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags", [])
+    tags = tuple(NotBlankStr(t) for t in tags_raw if t and str(t).strip())
+    return category, confidence, source, tags
+
+
+def _parse_created_at(
+    payload: dict[str, Any],
+    point_id_str: str,
+) -> datetime:
+    """Parse created_at from payload with fallback to epoch sentinel."""
+    created_str = payload.get("created_at")
+    if not created_str:
+        logger.info(
+            MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
+            point_id=point_id_str,
+            field="created_at",
+            default="1970-01-01T00:00:00+00:00",
+        )
+        return datetime(1970, 1, 1, tzinfo=UTC)
+    try:
+        return datetime.fromisoformat(created_str)
+    except ValueError:
+        logger.info(
+            MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
+            point_id=point_id_str,
+            field="created_at",
+            original=created_str,
+            default="1970-01-01T00:00:00+00:00",
+        )
+        return datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
@@ -223,47 +285,25 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     Raises:
         ValueError: If the point has no usable content.
     """
-    from synthorg.core.enums import MemoryCategory  # noqa: PLC0415
-
     payload = point.payload
+    point_id_str = str(getattr(point, "id", "unknown"))
     metadata_raw = payload.get("metadata", {})
 
-    category_str = metadata_raw.get(f"{_SYNTHORG_PREFIX}category", "episodic")
-    try:
-        category = MemoryCategory(category_str)
-    except ValueError:
-        logger.debug(
-            MEMORY_SPARSE_SEARCH_FAILED,
-            point_id=str(getattr(point, "id", "unknown")),
-            reason=f"invalid category {category_str!r}, defaulting to EPISODIC",
-        )
-        category = MemoryCategory.EPISODIC
-
-    confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
-    source = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
-    tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags", [])
-    tags = tuple(NotBlankStr(t) for t in tags_raw if t and str(t).strip())
+    category, confidence, source, tags = _extract_metadata(
+        metadata_raw,
+        point_id_str,
+    )
 
     content = payload.get("data") or payload.get("memory", "")
     if not content:
         msg = "empty content in Qdrant payload"
         raise ValueError(msg)
 
-    created_str = payload.get("created_at")
-    if created_str:
-        created_at = datetime.fromisoformat(created_str)
-    else:
-        logger.debug(
-            MEMORY_SPARSE_SEARCH_FAILED,
-            point_id=str(getattr(point, "id", "unknown")),
-            reason="missing created_at, using epoch as sentinel",
-        )
-        created_at = datetime(1970, 1, 1, tzinfo=UTC)
-
+    created_at = _parse_created_at(payload, point_id_str)
     score = min(1.0, max(0.0, float(point.score))) if point.score is not None else None
 
     return MemoryEntry(
-        id=NotBlankStr(str(point.id)),
+        id=NotBlankStr(point_id_str),
         agent_id=agent_id,
         category=category,
         content=NotBlankStr(content),

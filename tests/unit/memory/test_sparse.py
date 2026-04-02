@@ -1,8 +1,9 @@
 """Tests for BM25 sparse encoder."""
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from synthorg.memory.sparse import (
     BM25Tokenizer,
@@ -21,7 +22,7 @@ class TestSparseVector:
 
     def test_frozen(self) -> None:
         vec = SparseVector(indices=(1, 2), values=(1.0, 2.0))
-        with pytest.raises(Exception, match="frozen"):
+        with pytest.raises(ValidationError, match="frozen"):
             vec.indices = (3,)  # type: ignore[misc]
 
     def test_length_mismatch_rejected(self) -> None:
@@ -195,7 +196,6 @@ class TestSparseProperties:
             alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
         )
     )
-    @settings(max_examples=50)
     def test_encoding_is_deterministic(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         assert tokenizer.encode(text) == tokenizer.encode(text)
@@ -206,7 +206,6 @@ class TestSparseProperties:
             alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
         )
     )
-    @settings(max_examples=50)
     def test_non_empty_alpha_produces_non_empty_vector(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
@@ -218,7 +217,6 @@ class TestSparseProperties:
             alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
         )
     )
-    @settings(max_examples=50)
     def test_indices_always_sorted(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
@@ -230,7 +228,6 @@ class TestSparseProperties:
             alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
         )
     )
-    @settings(max_examples=50)
     def test_values_always_positive(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
@@ -243,7 +240,6 @@ class TestSparseProperties:
             alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
         )
     )
-    @settings(max_examples=50)
     def test_indices_always_non_negative(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)

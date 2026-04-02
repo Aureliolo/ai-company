@@ -705,10 +705,14 @@ the agent during execution.
     Implemented via `ToolBasedInjectionStrategy`. The strategy:
 
     - Injects a brief system instruction about available memory tools
-    - Exposes `search_memory` (semantic + hybrid search) and `recall_memory` (by ID) tools
-    - Handles retrieval internally (dense + optional sparse with RRF fusion)
-    - Supports optional agentic query reformulation via `QueryReformulator` and
-      `SufficiencyChecker` protocols (LLM-powered, disabled by default)
+    - Exposes `search_memory` and `recall_memory` (by ID) tools
+    - Delegates `search_memory` requests to `MemoryBackend.retrieve()`
+    - Relies on the configured backend for retrieval semantics; hybrid dense+sparse
+      search and RRF fusion are handled at the backend/retriever level, not within
+      `ToolBasedInjectionStrategy` itself
+    - `QueryReformulator` and `SufficiencyChecker` protocols exist with LLM-based
+      implementations, but iterative reformulation is not yet wired into the tool-based
+      strategy's search handler (reserved via `query_reformulation_enabled` config field)
 
     **MCP bridge evaluation**: Both context injection and tool-based strategies hold direct
     `MemoryBackend` references and run in-process. The memory hot path already bypasses MCP
@@ -729,7 +733,7 @@ All strategies implement `MemoryInjectionStrategy`:
 class MemoryInjectionStrategy(Protocol):
 
     async def prepare_messages(
-        self, agent_id: NotBlankStr, query_text: str, token_budget: int
+        self, agent_id: NotBlankStr, query_text: NotBlankStr, token_budget: int
     ) -> tuple[ChatMessage, ...]: ...
 
     def get_tool_definitions(self) -> tuple[ToolDefinition, ...]: ...

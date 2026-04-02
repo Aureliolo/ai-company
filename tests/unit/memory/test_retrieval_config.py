@@ -175,6 +175,8 @@ class TestMemoryRetrievalConfigFusion:
             recency_weight=0.3,
         )
         assert c.fusion_strategy is FusionStrategy.RRF
+        assert c.relevance_weight == 0.5
+        assert c.recency_weight == 0.3
 
     def test_linear_strategy_still_enforces_weight_sum(self) -> None:
         with pytest.raises(ValidationError, match=r"must equal 1\.0"):
@@ -211,3 +213,62 @@ class TestMemoryRetrievalConfigFusion:
         assert len(events) == 1
         assert events[0]["field"] == "rrf_k"
         assert "rrf_k is ignored" in events[0]["reason"]
+
+
+@pytest.mark.unit
+class TestMemoryRetrievalConfigReformulation:
+    def test_default_reformulation_disabled(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.query_reformulation_enabled is False
+
+    def test_default_max_reformulation_rounds(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.max_reformulation_rounds == 2
+
+    def test_reformulation_enabled_rejected(self) -> None:
+        """Reformulation is not yet wired -- reject with ValueError."""
+        with pytest.raises(ValueError, match="not yet supported"):
+            MemoryRetrievalConfig(query_reformulation_enabled=True)
+
+    def test_max_reformulation_rounds_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(max_reformulation_rounds=0)
+
+    def test_max_reformulation_rounds_six_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(max_reformulation_rounds=6)
+
+    def test_max_reformulation_rounds_boundaries(self) -> None:
+        c1 = MemoryRetrievalConfig(max_reformulation_rounds=1)
+        assert c1.max_reformulation_rounds == 1
+        c5 = MemoryRetrievalConfig(max_reformulation_rounds=5)
+        assert c5.max_reformulation_rounds == 5
+
+
+@pytest.mark.unit
+class TestPersonalBoostRRFWarning:
+    def test_personal_boost_with_rrf_warns(self) -> None:
+        """personal_boost > 0 with RRF fusion emits a warning."""
+        with structlog.testing.capture_logs() as cap:
+            c = MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.RRF,
+                personal_boost=0.1,
+            )
+        assert c.personal_boost == 0.1
+        events = [e for e in cap if e.get("event") == CONFIG_VALIDATION_FAILED]
+        assert len(events) == 1
+        assert "personal_boost" in events[0]["reason"]
+
+    def test_personal_boost_zero_with_rrf_no_warning(self) -> None:
+        with structlog.testing.capture_logs() as cap:
+            MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.RRF,
+                personal_boost=0.0,
+            )
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "personal_boost"
+        ]
+        assert len(events) == 0

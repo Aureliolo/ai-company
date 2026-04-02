@@ -115,16 +115,19 @@ class MemoryRetrievalConfig(BaseModel):
     query_reformulation_enabled: bool = Field(
         default=False,
         description=(
-            "Enable agentic query reformulation for TOOL_BASED "
-            "strategy. When True, the tool-based strategy iteratively "
-            "rewrites queries using an LLM for better retrieval."
+            "Reserved for future query reformulation support in the "
+            "TOOL_BASED strategy. Not yet wired into the retrieval "
+            "pipeline -- must remain False until implemented."
         ),
     )
     max_reformulation_rounds: int = Field(
         default=2,
         ge=1,
         le=5,
-        description="Maximum query reformulation iterations (1-5).",
+        description=(
+            "Reserved for future query reformulation support (1-5). "
+            "Currently unused until reformulation is wired."
+        ),
     )
 
     @model_validator(mode="after")
@@ -164,19 +167,34 @@ class MemoryRetrievalConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_reformulation_strategy_consistency(self) -> Self:
-        """Warn when reformulation is enabled with a non-TOOL_BASED strategy."""
-        if (
-            self.query_reformulation_enabled
-            and self.strategy != InjectionStrategy.TOOL_BASED
-        ):
+    def _validate_reformulation_not_supported(self) -> Self:
+        """Reject query_reformulation_enabled until wiring is complete."""
+        if not self.query_reformulation_enabled:
+            return self
+        msg = (
+            "query_reformulation_enabled is not yet supported: "
+            "the retrieval pipeline does not consume this option"
+        )
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            field="query_reformulation_enabled",
+            value=self.query_reformulation_enabled,
+            reason=msg,
+        )
+        raise ValueError(msg)
+
+    @model_validator(mode="after")
+    def _validate_personal_boost_rrf_consistency(self) -> Self:
+        """Warn when personal_boost is set with RRF fusion."""
+        if self.fusion_strategy == FusionStrategy.RRF and self.personal_boost > 0.0:
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
-                field="query_reformulation_enabled",
-                value=self.query_reformulation_enabled,
+                field="personal_boost",
+                value=self.personal_boost,
                 reason=(
-                    "query_reformulation_enabled is ignored when "
-                    "strategy is not tool_based"
+                    "personal_boost is not applied with RRF fusion "
+                    "strategy -- RRF merges flat ranked lists without "
+                    "personal/shared distinction"
                 ),
             )
         return self

@@ -32,8 +32,8 @@ class InjectionStrategy(StrEnum):
     """
 
     CONTEXT = "context"
-    TOOL_BASED = "tool_based"  # implemented
-    SELF_EDITING = "self_editing"  # future
+    TOOL_BASED = "tool_based"
+    SELF_EDITING = "self_editing"
 
 
 class InjectionPoint(StrEnum):

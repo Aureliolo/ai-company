@@ -7,15 +7,12 @@ handles IDF scoring server-side, so only term frequencies are stored.
 """
 
 import re
+import unicodedata
 from collections import Counter
 from typing import Self
 
 import mmh3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-from synthorg.observability import get_logger
-
-logger = get_logger(__name__)
 
 # Minimal English stop words -- kept small to avoid over-filtering
 # domain-specific content.
@@ -78,6 +75,7 @@ _STOP_WORDS: frozenset[str] = frozenset(
 )
 
 _TOKEN_SPLIT_RE = re.compile(r"[\W_]+")
+_MIN_INDICES_FOR_SORT_CHECK = 2
 
 
 class SparseVector(BaseModel):
@@ -118,8 +116,7 @@ class SparseVector(BaseModel):
         if self.indices and any(idx < 0 for idx in self.indices):
             msg = "indices must be non-negative"
             raise ValueError(msg)
-        _min_for_sort_check = 2
-        if len(self.indices) >= _min_for_sort_check and any(
+        if len(self.indices) >= _MIN_INDICES_FOR_SORT_CHECK and any(
             a >= b for a, b in zip(self.indices, self.indices[1:], strict=False)
         ):
             msg = "indices must be sorted in strictly ascending order"
@@ -144,6 +141,8 @@ class BM25Tokenizer:
             words from tokenization.  Defaults to ``True``.
     """
 
+    __slots__ = ("_remove_stop_words",)
+
     def __init__(self, *, remove_stop_words: bool = True) -> None:
         self._remove_stop_words = remove_stop_words
 
@@ -161,7 +160,8 @@ class BM25Tokenizer:
         """
         if not text or not text.strip():
             return ()
-        raw_tokens = _TOKEN_SPLIT_RE.split(text.lower())
+        normalized = unicodedata.normalize("NFKC", text).casefold()
+        raw_tokens = _TOKEN_SPLIT_RE.split(normalized)
         tokens = [t for t in raw_tokens if t]
         if self._remove_stop_words:
             tokens = [t for t in tokens if t not in _STOP_WORDS]

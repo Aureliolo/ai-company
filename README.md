@@ -61,7 +61,7 @@ SecOps agent with fail-closed rule engine, progressive trust (4 strategies), con
 
 **Memory**
 
-Per-agent and shared organizational memory with retrieval pipeline, non-inferable filtering, consolidation, and archival. Pluggable backends via protocol.
+Per-agent and shared organizational memory with hybrid retrieval pipeline (dense + BM25 sparse with RRF fusion), tool-based and context injection strategies, non-inferable filtering, consolidation, and archival. Pluggable backends via protocol.
 
 </td>
 <td>

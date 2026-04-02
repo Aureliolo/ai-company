@@ -6,6 +6,7 @@ that agents invoke on-demand during execution.  Implements the
 """
 
 import builtins
+import copy
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import MemoryCategory
@@ -47,7 +48,8 @@ _SEARCH_MEMORY_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": {"type": "string"},
             "description": (
-                "Optional category filter (episodic, semantic, procedural, social)."
+                "Optional category filter "
+                "(working, episodic, semantic, procedural, social)."
             ),
         },
         "limit": {
@@ -91,7 +93,10 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
 def _parse_categories(
     raw: Any,
 ) -> frozenset[MemoryCategory] | None:
-    """Parse category filter from LLM arguments."""
+    """Parse category filter from LLM arguments.
+
+    Invalid category values are skipped with a debug log.
+    """
     if not raw or not isinstance(raw, list):
         return None
     categories: list[MemoryCategory] = []
@@ -99,8 +104,44 @@ def _parse_categories(
         try:
             categories.append(MemoryCategory(val))
         except ValueError:
-            continue
+            logger.debug(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="category_parse",
+                invalid_category=str(val),
+                reason="unknown category value, skipped",
+            )
     return frozenset(categories) if categories else None
+
+
+def _parse_search_args(
+    arguments: dict[str, Any],
+    config_max_memories: int,
+) -> tuple[str | None, int, frozenset[MemoryCategory] | None]:
+    """Extract and validate search_memory arguments.
+
+    Args:
+        arguments: Raw tool arguments from LLM.
+        config_max_memories: System-configured max memories limit.
+
+    Returns:
+        Tuple of (query_text, limit, categories).  ``query_text``
+        is ``None`` when the query is empty or whitespace-only.
+    """
+    query_text = arguments.get("query", "")
+    if not query_text or not str(query_text).strip():
+        return None, 0, None
+
+    limit_raw = arguments.get("limit", 10)
+    if isinstance(limit_raw, bool) or not isinstance(limit_raw, int | float):
+        limit = 10
+    else:
+        limit = int(limit_raw)
+    # Clamp to [1, min(50, config.max_memories)]
+    effective_max = min(50, config_max_memories)
+    limit = min(max(limit, 1), effective_max)
+
+    categories = _parse_categories(arguments.get("categories"))
+    return query_text, limit, categories
 
 
 class ToolBasedInjectionStrategy:
@@ -110,13 +151,22 @@ class ToolBasedInjectionStrategy:
     pre-loading memories, exposes ``search_memory`` and
     ``recall_memory`` tools for the agent to invoke during execution.
 
+    Note: Tool-based strategies expose additional methods
+    (``handle_tool_call``, ``get_tool_definitions``) beyond the
+    base ``MemoryInjectionStrategy`` protocol.  Callers needing
+    tool dispatch should type-narrow or check strategy type.
+
     Args:
         backend: Memory backend for personal memories.
         config: Retrieval pipeline configuration.
         shared_store: Optional shared knowledge store.
-        token_estimator: Unused (protocol conformance).
-        memory_filter: Unused (protocol conformance).
+        token_estimator: Accepts for constructor parity with
+            ``ContextInjectionStrategy`` (unused).
+        memory_filter: Accepts for constructor parity with
+            ``ContextInjectionStrategy`` (unused).
     """
+
+    __slots__ = ("_backend", "_config", "_shared_store")
 
     def __init__(
         self,
@@ -172,12 +222,12 @@ class ToolBasedInjectionStrategy:
                     "Search agent memory for relevant past context, "
                     "decisions, or learned information."
                 ),
-                parameters_schema=_SEARCH_MEMORY_SCHEMA,
+                parameters_schema=copy.deepcopy(_SEARCH_MEMORY_SCHEMA),
             ),
             ToolDefinition(
                 name=NotBlankStr(_RECALL_TOOL),
                 description="Recall a specific memory entry by its ID.",
-                parameters_schema=_RECALL_MEMORY_SCHEMA,
+                parameters_schema=copy.deepcopy(_RECALL_MEMORY_SCHEMA),
             ),
         )
 
@@ -213,13 +263,12 @@ class ToolBasedInjectionStrategy:
         agent_id: str,
     ) -> str:
         """Handle a search_memory tool call."""
-        query_text = arguments.get("query", "")
-        if not query_text or not str(query_text).strip():
+        query_text, limit, categories = _parse_search_args(
+            arguments,
+            self._config.max_memories,
+        )
+        if query_text is None:
             return "Error: query must be a non-empty string."
-
-        limit_raw = arguments.get("limit", 10)
-        limit = int(limit_raw) if isinstance(limit_raw, int | float) else 10
-        categories = _parse_categories(arguments.get("categories"))
 
         logger.info(
             MEMORY_RETRIEVAL_START,
@@ -231,7 +280,7 @@ class ToolBasedInjectionStrategy:
         try:
             query = MemoryQuery(
                 text=query_text,
-                limit=min(max(limit, 1), 50),
+                limit=limit,
                 categories=categories,
             )
             entries = await self._backend.retrieve(

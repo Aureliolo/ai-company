@@ -85,15 +85,18 @@ MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )
 
-# -- Sparse search -----------------------------------------------------------
+# ── Sparse search ─────────────────────────────────────────────────
 
 MEMORY_SPARSE_FIELD_ENSURED: Final[str] = "memory.sparse.field_ensured"
+MEMORY_SPARSE_FIELD_ENSURE_FAILED: Final[str] = "memory.sparse.field_ensure_failed"
 MEMORY_SPARSE_UPSERT_COMPLETE: Final[str] = "memory.sparse.upsert_complete"
 MEMORY_SPARSE_UPSERT_FAILED: Final[str] = "memory.sparse.upsert_failed"
 MEMORY_SPARSE_SEARCH_COMPLETE: Final[str] = "memory.sparse.search_complete"
 MEMORY_SPARSE_SEARCH_FAILED: Final[str] = "memory.sparse.search_failed"
+MEMORY_SPARSE_POINT_FIELD_DEFAULTED: Final[str] = "memory.sparse.point_field_defaulted"
+MEMORY_SPARSE_BATCH_DEGRADED: Final[str] = "memory.sparse.batch_degraded"
 
-# -- Query reformulation ------------------------------------------------------
+# ── Query reformulation ───────────────────────────────────────────
 
 MEMORY_REFORMULATION_FAILED: Final[str] = "memory.reformulation.failed"
 MEMORY_SUFFICIENCY_CHECK_FAILED: Final[str] = "memory.sufficiency_check.failed"
