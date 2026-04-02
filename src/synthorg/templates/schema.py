@@ -328,6 +328,7 @@ class CompanyTemplate(BaseModel):
         escalation_paths: Cross-department escalation path definitions.
         extends: Parent template name for inheritance (``None`` for
             standalone templates).
+        memory: Memory configuration overrides (e.g. embedder settings).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -383,6 +384,14 @@ class CompanyTemplate(BaseModel):
     uses_packs: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Pack names to compose into this template",
+    )
+    memory: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Memory configuration overrides.  Supports "
+            "``embedder.provider``, ``embedder.model``, "
+            "``embedder.dims`` keys."
+        ),
     )
 
     @field_validator("extends", mode="before")

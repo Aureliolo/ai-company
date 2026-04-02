@@ -359,12 +359,12 @@ Key findings:
        lr=1e-5). Single GPU, 1-2 hours for ~500 documents
     4. **Deploy** -- save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
 
-    **Integration design (planned):** fine-tuning is an offline pipeline, not a runtime
-    operation. The optional `EmbeddingFineTuneConfig` (disabled by default) stores the
-    checkpoint path. In a future implementation, backend initialization will check for a
-    checkpoint and prefer the fine-tuned model when available, falling back to the base
-    model with a logged warning. The config is currently defined but not wired into the
-    Mem0 adapter initialization.
+    **Integration design:** fine-tuning is an offline pipeline triggered via
+    `POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
+    `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
+    `enabled=True` and `checkpoint_path` is set, backend initialization uses the
+    checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
+    provider must serve the fine-tuned model under this identifier.
 
     ```python
     class EmbeddingFineTuneConfig(BaseModel):

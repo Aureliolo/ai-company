@@ -17,6 +17,7 @@ class TestMemoryExports:
             "ArchivalStore",
             "ContentDensity",
             "DualModeConsolidationStrategy",
+            "EmbedderOverrideConfig",
             "FusionStrategy",
             "Mem0EmbedderConfig",
             "Mem0MemoryBackend",

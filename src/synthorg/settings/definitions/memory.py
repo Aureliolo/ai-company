@@ -45,3 +45,45 @@ _r.register(
         yaml_path="memory.consolidation_interval",
     )
 )
+
+# ── Embedding overrides (advanced) ───────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="embedder_provider",
+        type=SettingType.STRING,
+        default=None,
+        description="Override embedding provider (advanced)",
+        group="Embedding",
+        level=SettingLevel.ADVANCED,
+        yaml_path="memory.embedder.provider",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="embedder_model",
+        type=SettingType.STRING,
+        default=None,
+        description="Override embedding model (advanced)",
+        group="Embedding",
+        level=SettingLevel.ADVANCED,
+        yaml_path="memory.embedder.model",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.MEMORY,
+        key="embedder_dims",
+        type=SettingType.INTEGER,
+        default=None,
+        description="Override embedding vector dimensions (advanced)",
+        group="Embedding",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        yaml_path="memory.embedder.dims",
+    )
+)

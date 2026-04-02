@@ -16,6 +16,7 @@ from synthorg.memory.backends.mem0 import (
 from synthorg.memory.capabilities import MemoryCapabilities
 from synthorg.memory.config import (
     CompanyMemoryConfig,
+    EmbedderOverrideConfig,
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
@@ -83,6 +84,7 @@ __all__ = [
     "ContextInjectionStrategy",
     "DefaultTokenEstimator",
     "DualModeConsolidationStrategy",
+    "EmbedderOverrideConfig",
     "FusionStrategy",
     "InjectionPoint",
     "InjectionStrategy",

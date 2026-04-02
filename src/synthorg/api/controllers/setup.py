@@ -28,6 +28,9 @@ from synthorg.api.controllers.setup_helpers import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup_helpers import (
+    auto_select_embedder,
+)
+from synthorg.api.controllers.setup_helpers import (
     check_has_agents as _check_has_agents,
 )
 from synthorg.api.controllers.setup_helpers import (
@@ -96,6 +99,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
     SETUP_COMPANY_CREATED,
+    SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETED,
     SETUP_NAME_LOCALES_LISTED,
     SETUP_NAME_LOCALES_SAVED,
@@ -107,6 +111,24 @@ from synthorg.observability.events.setup import (
 )
 
 logger = get_logger(__name__)
+
+
+async def _collect_model_ids(app_state: AppState) -> tuple[str, ...]:
+    """Extract model IDs from provider configs for embedding selection.
+
+    Best-effort: returns an empty tuple if config resolver is not
+    available or provider configs cannot be read.
+    """
+    if not app_state.has_config_resolver:
+        return ()
+    try:
+        configs = await app_state.config_resolver.get_provider_configs()
+        ids: list[str] = [
+            str(model.id) for pc in configs.values() for model in pc.models
+        ]
+        return tuple(ids)
+    except Exception:
+        return ()
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -744,6 +766,22 @@ class SetupController(Controller):
             msg = "At least one provider must be configured before completing setup"
             logger.warning(SETUP_NO_PROVIDERS)
             raise ApiValidationError(msg)
+
+        # Auto-select embedding model from configured providers.
+        # Best-effort: does not block setup completion on failure.
+        try:
+            model_ids = await _collect_model_ids(app_state)
+            await auto_select_embedder(
+                settings_svc=settings_svc,
+                available_model_ids=model_ids,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SETUP_COMPLETE_CHECK_ERROR,
+                check="auto_select_embedder",
+            )
 
         await settings_svc.set("api", "setup_complete", "true")
 

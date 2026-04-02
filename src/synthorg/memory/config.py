@@ -136,6 +136,53 @@ class MemoryOptionsConfig(BaseModel):
     )
 
 
+class EmbedderOverrideConfig(BaseModel):
+    """User-facing embedder override configuration.
+
+    Allows users to override the auto-selected embedding model via
+    company YAML config, runtime settings, or template config.  All
+    fields are optional -- ``None`` means "use auto-selection".
+
+    Attributes:
+        provider: Embedding provider name override.
+        model: Embedding model identifier override.
+        dims: Embedding vector dimensions (required when ``model``
+            is set, since dimensions are model-dependent).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    provider: NotBlankStr | None = Field(
+        default=None,
+        description="Embedding provider name override",
+    )
+    model: NotBlankStr | None = Field(
+        default=None,
+        description="Embedding model identifier override",
+    )
+    dims: int | None = Field(
+        default=None,
+        ge=1,
+        description="Embedding vector dimensions",
+    )
+
+    @model_validator(mode="after")
+    def _model_requires_dims(self) -> Self:
+        """Require dims when model is set."""
+        if self.model is not None and self.dims is None:
+            msg = (
+                "dims must be set when model is overridden "
+                "(dimensions are model-dependent)"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="dims",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+
 class CompanyMemoryConfig(BaseModel):
     """Top-level company-wide memory configuration.
 
@@ -146,6 +193,7 @@ class CompanyMemoryConfig(BaseModel):
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
         consolidation: Memory consolidation settings.
+        embedder: Optional embedder override (``None`` = auto-select).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -175,6 +223,13 @@ class CompanyMemoryConfig(BaseModel):
     consolidation: ConsolidationConfig = Field(
         default_factory=ConsolidationConfig,
         description="Memory consolidation settings",
+    )
+    embedder: EmbedderOverrideConfig | None = Field(
+        default=None,
+        description=(
+            "Optional embedder override.  When set, overrides "
+            "auto-selection for provider, model, and/or dims."
+        ),
     )
 
     @model_validator(mode="after")

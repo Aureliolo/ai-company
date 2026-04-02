@@ -34,6 +34,9 @@ dependencies = [
 requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
+[project.optional-dependencies]
+fine-tune = ["torch>=2.6", "sentence-transformers>=4.0"]
+
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
 

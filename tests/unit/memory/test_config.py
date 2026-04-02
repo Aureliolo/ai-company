@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import ConsolidationInterval, MemoryLevel
 from synthorg.memory.config import (
     CompanyMemoryConfig,
+    EmbedderOverrideConfig,
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
@@ -152,6 +153,73 @@ class TestMemoryOptionsConfig:
             assert c.consolidation_interval is interval
 
 
+# ── EmbedderOverrideConfig ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestEmbedderOverrideConfig:
+    def test_defaults_all_none(self) -> None:
+        c = EmbedderOverrideConfig()
+        assert c.provider is None
+        assert c.model is None
+        assert c.dims is None
+
+    def test_provider_only(self) -> None:
+        c = EmbedderOverrideConfig(provider="test-provider")
+        assert c.provider == "test-provider"
+        assert c.model is None
+        assert c.dims is None
+
+    def test_model_requires_dims(self) -> None:
+        with pytest.raises(ValidationError, match="dims"):
+            EmbedderOverrideConfig(model="test-model")
+
+    def test_model_with_dims_accepted(self) -> None:
+        c = EmbedderOverrideConfig(
+            model="test-model",
+            dims=768,
+        )
+        assert c.model == "test-model"
+        assert c.dims == 768
+
+    def test_full_override(self) -> None:
+        c = EmbedderOverrideConfig(
+            provider="test-provider",
+            model="test-model",
+            dims=3584,
+        )
+        assert c.provider == "test-provider"
+        assert c.model == "test-model"
+        assert c.dims == 3584
+
+    def test_frozen(self) -> None:
+        c = EmbedderOverrideConfig()
+        with pytest.raises(ValidationError):
+            c.dims = 512  # type: ignore[misc]
+
+    def test_rejects_blank_provider(self) -> None:
+        with pytest.raises(ValidationError):
+            EmbedderOverrideConfig(provider="   ")
+
+    def test_rejects_blank_model(self) -> None:
+        with pytest.raises(ValidationError):
+            EmbedderOverrideConfig(model="   ", dims=768)
+
+    def test_rejects_zero_dims(self) -> None:
+        with pytest.raises(ValidationError):
+            EmbedderOverrideConfig(model="test-model", dims=0)
+
+    def test_rejects_negative_dims(self) -> None:
+        with pytest.raises(ValidationError):
+            EmbedderOverrideConfig(model="test-model", dims=-1)
+
+    def test_dims_without_model_accepted(self) -> None:
+        """dims-only is valid (model can be auto-selected)."""
+        c = EmbedderOverrideConfig(dims=1024)
+        assert c.dims == 1024
+        assert c.model is None
+
+
 # ── CompanyMemoryConfig ──────────────────────────────────────────
 
 
@@ -202,6 +270,20 @@ class TestCompanyMemoryConfig:
         json_str = c.model_dump_json()
         restored = CompanyMemoryConfig.model_validate_json(json_str)
         assert restored == c
+
+    def test_embedder_default_none(self) -> None:
+        c = CompanyMemoryConfig()
+        assert c.embedder is None
+
+    def test_embedder_override(self) -> None:
+        override = EmbedderOverrideConfig(
+            provider="test-provider",
+            model="test-model",
+            dims=768,
+        )
+        c = CompanyMemoryConfig(embedder=override)
+        assert c.embedder is not None
+        assert c.embedder.model == "test-model"
 
     def test_custom_retrieval_config(self) -> None:
         c = CompanyMemoryConfig(
