@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.6](https://github.com/Aureliolo/synthorg/compare/v0.5.5...v0.5.6) (2026-04-02)
+
+
+### Features
+
+* calendar + hybrid ceremony scheduling strategies ([#985](https://github.com/Aureliolo/synthorg/issues/985)) ([59a9b84](https://github.com/Aureliolo/synthorg/commit/59a9b84486702b6b3dcd2561f200922ae4c6a5f2)), closes [#969](https://github.com/Aureliolo/synthorg/issues/969) [#970](https://github.com/Aureliolo/synthorg/issues/970)
+* landing page interactive components ([#984](https://github.com/Aureliolo/synthorg/issues/984)) ([49868cb](https://github.com/Aureliolo/synthorg/commit/49868cb4d25d58e64a0d2786ad1f678404b00ffc))
+* log aggregation and shipping (syslog, HTTP, compression) ([#964](https://github.com/Aureliolo/synthorg/issues/964)) ([84be9f8](https://github.com/Aureliolo/synthorg/commit/84be9f8dc6142a7feb29198c4411975a07a95890))
+* restructure builtin templates into inheritance tree ([#982](https://github.com/Aureliolo/synthorg/issues/982)) ([3794c12](https://github.com/Aureliolo/synthorg/commit/3794c12facfc29e9c23d808dfb69dca4f31c93f8))
+* sprint ceremony runtime scheduler with pluggable strategies ([#983](https://github.com/Aureliolo/synthorg/issues/983)) ([43564a9](https://github.com/Aureliolo/synthorg/commit/43564a99a69ac5c04608a9a8813403f0f7b7a355))
+
+
+### Maintenance
+
+* add no-bash-file-writes rule to CLAUDE.md ([#968](https://github.com/Aureliolo/synthorg/issues/968)) ([a854dcc](https://github.com/Aureliolo/synthorg/commit/a854dccac97432288c6af8b1575ab2d550551735))
+* bump web dependencies (lodash, eslint-react v4, storybook, playwright, esbuild, codemirror) ([#987](https://github.com/Aureliolo/synthorg/issues/987)) ([c344dfb](https://github.com/Aureliolo/synthorg/commit/c344dfb4bf407d15e27188d00172ac50d3ab0763))
+
 ## [0.5.5](https://github.com/Aureliolo/synthorg/compare/v0.5.4...v0.5.5) (2026-04-01)
 
 
