@@ -1,11 +1,9 @@
 .comparison-table {
   --ct-accent: #7c3aed;
-  --ct-accent-teal: #14b8a6;
   --ct-support-full: #10b981;
   --ct-support-partial: #f59e0b;
   --ct-support-none: #64748b;
   --ct-support-planned: #38bdf8;
-  --ct-bg-base: #0a0a12;
   --ct-bg-surface: #0f0f1a;
   --ct-bg-row-hover: #13131f;
   --ct-bg-synthorg: rgba(124, 58, 237, 0.08);
@@ -355,8 +353,7 @@
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .ct-expand-btn svg,
-  .ct-filter-btn,
-  .ct-support {
+  .ct-filter-btn {
     transition: none;
   }
 }

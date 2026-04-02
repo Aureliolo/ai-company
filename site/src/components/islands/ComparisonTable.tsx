@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { Fragment, useState, useMemo, useCallback } from "react";
 import "./ComparisonTable.css";
 
 /* ------------------------------------------------------------------ */
@@ -314,9 +314,8 @@ export default function ComparisonTable({
             {sorted.map((comp) => {
               const isExpanded = expandedRows.has(comp.slug);
               return (
-                <>
+                <Fragment key={comp.slug}>
                   <tr
-                    key={comp.slug}
                     data-synthorg={comp.is_synthorg ? "true" : "false"}
                   >
                     <td>
@@ -387,7 +386,6 @@ export default function ComparisonTable({
                   </tr>
                   {isExpanded && (
                     <tr
-                      key={`${comp.slug}-detail`}
                       className="ct-detail-row"
                     >
                       <td colSpan={4 + dimensions.length}>
@@ -429,7 +427,7 @@ export default function ComparisonTable({
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

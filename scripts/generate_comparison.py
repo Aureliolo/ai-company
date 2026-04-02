@@ -3,7 +3,11 @@
 Used by CI (pages.yml, pages-preview.yml) to generate:
 - ``docs/reference/comparison.md`` -- Markdown comparison tables
 
-Run before ``zensical build``. See Quick Commands in CLAUDE.md.
+The same YAML data (``data/competitors.yaml``) is also consumed
+directly by the Astro landing page (``site/src/pages/compare.astro``).
+
+Run ``uv run python scripts/generate_comparison.py`` before
+``uv run zensical build``.
 """
 
 import sys
@@ -46,24 +50,36 @@ TABLE_GROUPS = [
 
 
 def _load_data() -> dict:
-    """Load and validate the competitors YAML file."""
+    """Load and validate the competitors YAML file.
+
+    Raises:
+        FileNotFoundError: If the data file does not exist.
+        ValueError: If the YAML is empty or missing required keys.
+    """
     if not DATA_FILE.exists():
-        print(f"Data file not found: {DATA_FILE}", file=sys.stderr)
-        sys.exit(1)
+        msg = f"Data file not found: {DATA_FILE}"
+        raise FileNotFoundError(msg)
 
     with DATA_FILE.open(encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
-    # Basic validation
+    if data is None:
+        msg = f"YAML file is empty or contains no data: {DATA_FILE}"
+        raise ValueError(msg)
+
     required_keys = {"meta", "dimensions", "categories", "competitors"}
     missing = required_keys - set(data.keys())
     if missing:
-        print(f"Missing top-level keys in YAML: {missing}", file=sys.stderr)
-        sys.exit(1)
+        msg = f"Missing top-level keys in {DATA_FILE}: {missing}"
+        raise ValueError(msg)
 
     if not data["competitors"]:
-        print("No competitors found in YAML", file=sys.stderr)
-        sys.exit(1)
+        msg = f"No competitors found in {DATA_FILE}"
+        raise ValueError(msg)
+
+    if "last_updated" not in data.get("meta", {}):
+        msg = f"Missing meta.last_updated in {DATA_FILE}"
+        raise ValueError(msg)
 
     return data
 
