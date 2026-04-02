@@ -267,7 +267,7 @@ export default function ComparisonTable({
       </div>
 
       {/* Filter bar */}
-      <div className="ct-filter-bar">
+      <div className="ct-filter-bar" data-testid="ct-filter-bar">
         <input
           type="text"
           className="ct-search"
@@ -326,7 +326,7 @@ export default function ComparisonTable({
       </div>
 
       {/* Desktop: Table view */}
-      <div className="ct-table-wrap">
+      <div className="ct-table-wrap" data-testid="ct-table-wrap">
         <table className="ct-table">
           <thead>
             <tr>
@@ -334,7 +334,7 @@ export default function ComparisonTable({
               <th
                 onClick={() => handleSort("name")}
                 tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && handleSort("name")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("name"); } }}
                 aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
               >
                 Framework
@@ -343,7 +343,7 @@ export default function ComparisonTable({
               <th
                 onClick={() => handleSort("category")}
                 tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && handleSort("category")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("category"); } }}
                 aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
               >
                 Category
@@ -352,7 +352,7 @@ export default function ComparisonTable({
               <th
                 onClick={() => handleSort("license")}
                 tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && handleSort("license")}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("license"); } }}
                 aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
               >
                 License
@@ -363,7 +363,7 @@ export default function ComparisonTable({
                   key={dim.key}
                   onClick={() => handleSort(dim.key)}
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && handleSort(dim.key)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(dim.key); } }}
                   aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
                   title={dim.description}
                 >
@@ -556,24 +556,9 @@ export default function ComparisonTable({
       </div>
 
       {sorted.length === 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "3rem",
-            color: "var(--ct-text-muted)",
-          }}
-        >
+        <div className="ct-empty-state">
           No frameworks match your filters.{" "}
-          <button
-            onClick={clearFilters}
-            style={{
-              color: "var(--ct-accent)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              textDecoration: "underline",
-            }}
-          >
+          <button className="ct-empty-clear-btn" onClick={clearFilters}>
             Clear filters
           </button>
         </div>

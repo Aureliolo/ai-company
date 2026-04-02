@@ -84,8 +84,8 @@ describe("ComparisonTable", () => {
 
   it("filters by category", () => {
     renderTable();
-    const filterBar = document.querySelector(".ct-filter-bar")!;
-    const catBtn = within(filterBar as HTMLElement).getByText("Commercial Platform");
+    const filterBar = screen.getByTestId("ct-filter-bar");
+    const catBtn = within(filterBar).getByText("Commercial Platform");
     fireEvent.click(catBtn);
     expect(screen.getByTestId("result-count").textContent).toBe(
       "Showing 1 of 3 frameworks",
@@ -125,13 +125,13 @@ describe("ComparisonTable", () => {
 
   it("clears all filters", () => {
     renderTable();
-    const filterBar = document.querySelector(".ct-filter-bar")!;
-    const catBtn = within(filterBar as HTMLElement).getByText("Commercial Platform");
+    const filterBar = screen.getByTestId("ct-filter-bar");
+    const catBtn = within(filterBar).getByText("Commercial Platform");
     fireEvent.click(catBtn);
     expect(screen.getByTestId("result-count").textContent).toBe(
       "Showing 1 of 3 frameworks",
     );
-    const clearBtn = within(filterBar as HTMLElement).getByText("Clear");
+    const clearBtn = within(filterBar).getByText("Clear");
     fireEvent.click(clearBtn);
     expect(screen.getByTestId("result-count").textContent).toBe(
       "Showing 3 of 3 frameworks",
@@ -146,15 +146,15 @@ describe("ComparisonTable", () => {
 
   it("renders sortable headers with aria-sort", () => {
     renderTable();
-    const table = document.querySelector(".ct-table-wrap")!;
-    const header = within(table as HTMLElement).getByText("Framework").closest("th");
+    const table = screen.getByTestId("ct-table-wrap");
+    const header = within(table).getByText("Framework").closest("th");
     expect(header).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("toggles sort direction on header click", () => {
     renderTable();
-    const table = document.querySelector(".ct-table-wrap")!;
-    const header = within(table as HTMLElement).getByText("Framework").closest("th")!;
+    const table = screen.getByTestId("ct-table-wrap");
+    const header = within(table).getByText("Framework").closest("th")!;
     expect(header).toHaveAttribute("aria-sort", "ascending");
     fireEvent.click(header);
     expect(header).toHaveAttribute("aria-sort", "descending");
@@ -172,8 +172,8 @@ describe("ComparisonTable", () => {
 
   it("category filter buttons have aria-pressed", () => {
     renderTable();
-    const filterBar = document.querySelector(".ct-filter-bar")!;
-    const catBtn = within(filterBar as HTMLElement).getByText("Multi-Agent Framework");
+    const filterBar = screen.getByTestId("ct-filter-bar");
+    const catBtn = within(filterBar).getByText("Multi-Agent Framework");
     expect(catBtn).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(catBtn);
     expect(catBtn).toHaveAttribute("aria-pressed", "true");

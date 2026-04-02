@@ -17,8 +17,9 @@ const data = yaml.load(raw) as {
   competitors: Competitor[];
 };
 
-if (!data?.dimensions || !data?.categories || !data?.competitors) {
-  throw new Error("Invalid structure in competitors.yaml: missing required keys (dimensions, categories, competitors)");
+const missing = ["dimensions", "categories", "competitors"].filter((k) => !data?.[k]);
+if (missing.length > 0) {
+  throw new Error(`Invalid structure in ${dataPath}: missing required keys: ${missing.join(", ")}`);
 }
 
 const { dimensions, categories, competitors } = data;

@@ -378,6 +378,21 @@
   background: color-mix(in srgb, var(--ct-danger) 10%, transparent);
 }
 
+/* Empty state */
+.ct-empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: var(--ct-text-muted);
+}
+
+.ct-empty-clear-btn {
+  color: var(--ct-accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .ct-table-wrap {
