@@ -102,7 +102,7 @@ competitors:
     description: "Framework for building synthetic organizations; autonomous AI agents orchestrated as a virtual company"
     license: "BUSL-1.1"
     language: "Python"
-    category: multi_agent_framework
+    category: virtual_org
     pricing: depends
     self_hosted: "true"
     is_synthorg: true
@@ -117,7 +117,7 @@ competitors:
       security_model: { support: full, note: "Rule engine + LLM evaluator, progressive trust, audit trail" }
       observability: { support: full, note: "Structured logging, correlation tracking, log shipping, redaction" }
       web_dashboard: { support: full, note: "React 19 real-time dashboard with org chart, tasks, budgets" }
-      cli: { support: full, note: "Go binary with cosign verification, cross-platform" }
+      cli: { support: partial, note: "Go binary for container management and verification; not used for agent orchestration UI" }
       production_ready: { support: partial, note: "Docker + CI/CD + cosign + SLSA provenance; pre-alpha, API unstable, no production deployments yet" }
       workflow_types: { support: full, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking" }
       template_system: { support: full, note: "9 archetypes, personality presets, locale-aware name generation" }

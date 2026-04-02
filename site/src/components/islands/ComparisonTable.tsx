@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useCallback } from "react";
+import { Fragment, useState, useMemo, useCallback, useRef, useEffect } from "react";
 import "./ComparisonTable.css";
 
 /* ------------------------------------------------------------------ */
@@ -119,6 +119,37 @@ export default function ComparisonTable({
     direction: "asc" | "desc";
   }>({ key: "name", direction: "asc" });
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [fullWidth, setFullWidth] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+
+  // -- Scroll hint detection --
+  useEffect(() => {
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const checkScroll = () => {
+      setCanScrollRight(el.scrollWidth - el.scrollLeft - el.clientWidth > 4);
+    };
+
+    checkScroll();
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    const observer = new ResizeObserver(checkScroll);
+    observer.observe(el);
+
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      observer.disconnect();
+    };
+  }, [hiddenColumns, fullWidth]);
+
+  // -- Visible dimensions --
+  const visibleDimensions = useMemo(
+    () => dimensions.filter((d) => !hiddenColumns.has(d.key)),
+    [dimensions, hiddenColumns],
+  );
 
   // -- Category lookup --
   const categoryMap = useMemo(() => {
@@ -129,20 +160,21 @@ export default function ComparisonTable({
     return map;
   }, [categories]);
 
-  // -- Filtering --
+  // -- Filtering (SynthOrg always passes) --
   const filtered = useMemo(() => {
     let result = competitors;
 
     if (categoryFilter) {
-      result = result.filter((c) => c.category === categoryFilter);
+      result = result.filter((c) => c.is_synthorg || c.category === categoryFilter);
     }
 
     if (licenseFilter) {
-      result = result.filter((c) => c.license === licenseFilter);
+      result = result.filter((c) => c.is_synthorg || c.license === licenseFilter);
     }
 
     if (featureFilter) {
       result = result.filter((c) => {
+        if (c.is_synthorg) return true;
         const feat = c.features[featureFilter];
         return feat?.support === "full" || feat?.support === "partial";
       });
@@ -152,6 +184,7 @@ export default function ComparisonTable({
       const q = search.trim().toLowerCase();
       result = result.filter(
         (c) =>
+          c.is_synthorg ||
           c.name.toLowerCase().includes(q) ||
           c.description.toLowerCase().includes(q) ||
           c.license.toLowerCase().includes(q),
@@ -217,6 +250,18 @@ export default function ComparisonTable({
     });
   }, []);
 
+  const toggleColumn = useCallback((key: string) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
   const clearFilters = useCallback(() => {
     setCategoryFilter(null);
     setLicenseFilter(null);
@@ -249,7 +294,7 @@ export default function ComparisonTable({
   }, [competitors]);
 
   return (
-    <div className="comparison-table">
+    <div className={`comparison-table${fullWidth ? " ct-full-width" : ""}`}>
       {/* Legend */}
       <div className="ct-legend" data-testid="comparison-legend">
         <span>
@@ -320,174 +365,248 @@ export default function ComparisonTable({
         )}
       </div>
 
-      {/* Result count */}
-      <div className="ct-result-count" data-testid="result-count">
-        Showing {sorted.length} of {competitors.length} frameworks
+      {/* Toolbar: column picker + full-width toggle */}
+      <div className="ct-toolbar">
+        <div className="ct-result-count" data-testid="result-count">
+          Showing {sorted.length} of {competitors.length} frameworks
+        </div>
+        <div className="ct-toolbar-actions">
+          <div className="ct-column-picker-wrap">
+            <button
+              className="ct-toolbar-btn"
+              onClick={() => setShowColumnPicker((prev) => !prev)}
+              aria-expanded={showColumnPicker}
+              aria-label="Toggle column visibility"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+              </svg>
+              Columns
+              {hiddenColumns.size > 0 && (
+                <span className="ct-badge">{dimensions.length - hiddenColumns.size}/{dimensions.length}</span>
+              )}
+            </button>
+            {showColumnPicker && (
+              <div className="ct-column-picker" role="menu">
+                {dimensions.map((dim) => (
+                  <label key={dim.key} className="ct-column-option">
+                    <input
+                      type="checkbox"
+                      checked={!hiddenColumns.has(dim.key)}
+                      onChange={() => toggleColumn(dim.key)}
+                    />
+                    {dim.label}
+                  </label>
+                ))}
+                {hiddenColumns.size > 0 && (
+                  <button
+                    className="ct-column-reset"
+                    onClick={() => setHiddenColumns(new Set())}
+                  >
+                    Show all
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            className="ct-toolbar-btn"
+            onClick={() => setFullWidth((prev) => !prev)}
+            aria-label={fullWidth ? "Exit full width" : "Expand to full width"}
+            title={fullWidth ? "Exit full width" : "Expand to full width"}
+          >
+            {fullWidth ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="4 14 10 14 10 20" /><polyline points="20 10 14 10 14 4" />
+                <line x1="14" y1="10" x2="21" y2="3" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Desktop: Table view */}
-      <div className="ct-table-wrap" data-testid="ct-table-wrap">
-        <table className="ct-table">
-          <thead>
-            <tr>
-              <th className="ct-th-expand"></th>
-              <th aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button type="button" className="ct-sort-btn" onClick={() => handleSort("name")}>
-                  Framework
-                  <SortArrow column="name" sortBy={sortBy} />
-                </button>
-              </th>
-              <th aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button type="button" className="ct-sort-btn" onClick={() => handleSort("category")}>
-                  Category
-                  <SortArrow column="category" sortBy={sortBy} />
-                </button>
-              </th>
-              <th aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
-                <button type="button" className="ct-sort-btn" onClick={() => handleSort("license")}>
-                  License
-                  <SortArrow column="license" sortBy={sortBy} />
-                </button>
-              </th>
-              {dimensions.map((dim) => (
-                <th
-                  key={dim.key}
-                  aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
-                >
-                  <button type="button" className="ct-sort-btn" onClick={() => handleSort(dim.key)} aria-describedby={`dim-desc-${dim.key}`}>
-                    {dim.label}
-                    <SortArrow column={dim.key} sortBy={sortBy} />
+      <div className="ct-table-wrap-outer">
+        <div
+          className="ct-table-wrap"
+          ref={tableWrapRef}
+          data-testid="ct-table-wrap"
+        >
+          <table className="ct-table">
+            <thead>
+              <tr>
+                <th className="ct-th-expand"></th>
+                <th aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="ct-sort-btn" onClick={() => handleSort("name")}>
+                    Framework
+                    <SortArrow column="name" sortBy={sortBy} />
                   </button>
-                  <span id={`dim-desc-${dim.key}`} className="ct-sr-only">{dim.description}</span>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((comp) => {
-              const isExpanded = expandedRows.has(comp.slug);
-              return (
-                <Fragment key={comp.slug}>
-                  <tr
-                    data-synthorg={comp.is_synthorg ? "true" : "false"}
+                <th aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="ct-sort-btn" onClick={() => handleSort("category")}>
+                    Category
+                    <SortArrow column="category" sortBy={sortBy} />
+                  </button>
+                </th>
+                <th aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="ct-sort-btn" onClick={() => handleSort("license")}>
+                    License
+                    <SortArrow column="license" sortBy={sortBy} />
+                  </button>
+                </th>
+                {visibleDimensions.map((dim) => (
+                  <th
+                    key={dim.key}
+                    aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
                   >
-                    <td>
-                      <button
-                        className="ct-expand-btn"
-                        data-open={isExpanded ? "true" : "false"}
-                        onClick={() => toggleExpanded(comp.slug)}
-                        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${comp.name} details`}
-                        aria-expanded={isExpanded}
-                        aria-controls={`details-${comp.slug}`}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="m6 9 6 6 6-6" />
-                        </svg>
-                      </button>
-                    </td>
-                    <th scope="row">
-                      <div className="ct-name-cell">
-                        {comp.url ? (
-                          <a
-                            href={comp.url}
-                            className={
-                              comp.is_synthorg
-                                ? "ct-name-link ct-name-synthorg"
-                                : "ct-name-link"
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {comp.name}
-                          </a>
-                        ) : (
-                          <span
-                            className={
-                              comp.is_synthorg
-                                ? "ct-name-synthorg"
-                                : undefined
-                            }
-                          >
-                            {comp.name}
-                          </span>
-                        )}
-                      </div>
-                    </th>
-                    <td>
-                      <span className="ct-category-badge">
-                        {categoryMap[comp.category] || comp.category}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="ct-license">{comp.license}</span>
-                    </td>
-                    {dimensions.map((dim) => {
-                      const feat = comp.features[dim.key];
-                      const support = feat?.support || "none";
-                      const note = feat?.note || "";
-                      return (
-                        <td key={dim.key} className="ct-support-cell">
-                          <SupportIcon level={support} note={note} />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  {isExpanded && (
+                    <button type="button" className="ct-sort-btn" onClick={() => handleSort(dim.key)} aria-describedby={`dim-desc-${dim.key}`}>
+                      {dim.label}
+                      <SortArrow column={dim.key} sortBy={sortBy} />
+                    </button>
+                    <span id={`dim-desc-${dim.key}`} className="ct-sr-only">{dim.description}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((comp) => {
+                const isExpanded = expandedRows.has(comp.slug);
+                return (
+                  <Fragment key={comp.slug}>
                     <tr
-                      className="ct-detail-row"
-                      id={`details-${comp.slug}`}
+                      data-synthorg={comp.is_synthorg ? "true" : "false"}
                     >
-                      <td colSpan={4 + dimensions.length}>
-                        <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
-                          <div className="ct-detail-item ct-detail-description">
-                            <span className="ct-detail-label">Description</span>
-                            <span className="ct-detail-value">
-                              {comp.description}
-                              {comp.repo && (
-                                <>
-                                  {" "}
-                                  <a
-                                    href={comp.repo}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="ct-repo-link"
-                                  >
-                                    Repository
-                                  </a>
-                                </>
-                              )}
-                            </span>
-                          </div>
-                          {dimensions.map((dim) => {
-                            const feat = comp.features[dim.key];
-                            if (!feat?.note) return null;
-                            return (
-                              <div key={dim.key} className="ct-detail-item">
-                                <span className="ct-detail-label">
-                                  {dim.label}
-                                </span>
-                                <span className="ct-detail-value">
-                                  {feat.note}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                      <td>
+                        <button
+                          className="ct-expand-btn"
+                          data-open={isExpanded ? "true" : "false"}
+                          onClick={() => toggleExpanded(comp.slug)}
+                          aria-label={`${isExpanded ? "Collapse" : "Expand"} ${comp.name} details`}
+                          aria-expanded={isExpanded}
+                          aria-controls={`details-${comp.slug}`}
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
                       </td>
+                      <th scope="row">
+                        <div className="ct-name-cell">
+                          {comp.url ? (
+                            <a
+                              href={comp.url}
+                              className={
+                                comp.is_synthorg
+                                  ? "ct-name-link ct-name-synthorg"
+                                  : "ct-name-link"
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {comp.name}
+                            </a>
+                          ) : (
+                            <span
+                              className={
+                                comp.is_synthorg
+                                  ? "ct-name-synthorg"
+                                  : undefined
+                              }
+                            >
+                              {comp.name}
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                      <td>
+                        <span className="ct-category-badge">
+                          {categoryMap[comp.category] || comp.category}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="ct-license">{comp.license}</span>
+                      </td>
+                      {visibleDimensions.map((dim) => {
+                        const feat = comp.features[dim.key];
+                        const support = feat?.support || "none";
+                        const note = feat?.note || "";
+                        return (
+                          <td key={dim.key} className="ct-support-cell">
+                            <SupportIcon level={support} note={note} />
+                          </td>
+                        );
+                      })}
                     </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                    {isExpanded && (
+                      <tr
+                        className="ct-detail-row"
+                        id={`details-${comp.slug}`}
+                      >
+                        <td colSpan={4 + visibleDimensions.length}>
+                          <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
+                            <div className="ct-detail-item ct-detail-description">
+                              <span className="ct-detail-label">Description</span>
+                              <span className="ct-detail-value">
+                                {comp.description}
+                                {comp.repo && (
+                                  <>
+                                    {" "}
+                                    <a
+                                      href={comp.repo}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ct-repo-link"
+                                    >
+                                      Repository
+                                    </a>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            {dimensions.map((dim) => {
+                              const feat = comp.features[dim.key];
+                              if (!feat?.note) return null;
+                              return (
+                                <div key={dim.key} className="ct-detail-item">
+                                  <span className="ct-detail-label">
+                                    {dim.label}
+                                  </span>
+                                  <span className="ct-detail-value">
+                                    {feat.note}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {canScrollRight && (
+          <div className="ct-scroll-hint" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </div>
+        )}
       </div>
 
       {/* Mobile: Card view */}
