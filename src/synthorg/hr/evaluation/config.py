@@ -1,8 +1,8 @@
 """Evaluation framework configuration.
 
 Per-pillar sub-configs with metric-level enable/disable toggles
-and configurable weights. Disabled metrics have their weight
-redistributed proportionally to remaining enabled metrics.
+and configurable weights. Weight redistribution for disabled metrics
+is handled by the evaluation service and strategies at scoring time.
 
 Shipped defaults: all pillars enabled with recommended weights.
 """
@@ -32,6 +32,16 @@ class IntelligenceConfig(BaseModel):
     llm_calibration_enabled: bool = True
     ci_quality_weight: float = Field(default=0.7, ge=0.0, le=1.0)
     llm_calibration_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_metric(self) -> Self:
+        """Ensure at least one metric is enabled when pillar is enabled."""
+        if self.enabled and not (
+            self.ci_quality_enabled or self.llm_calibration_enabled
+        ):
+            msg = "At least one metric must be enabled when pillar is enabled"
+            raise ValueError(msg)
+        return self
 
 
 class EfficiencyConfig(BaseModel):
@@ -64,6 +74,16 @@ class EfficiencyConfig(BaseModel):
     reference_cost_usd: float = Field(default=10.0, gt=0.0)
     reference_time_seconds: float = Field(default=300.0, gt=0.0)
     reference_tokens: int = Field(default=5000, gt=0)
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_metric(self) -> Self:
+        """Ensure at least one metric is enabled when pillar is enabled."""
+        if self.enabled and not (
+            self.cost_enabled or self.time_enabled or self.tokens_enabled
+        ):
+            msg = "At least one metric must be enabled when pillar is enabled"
+            raise ValueError(msg)
+        return self
 
 
 class ResilienceConfig(BaseModel):
@@ -99,6 +119,19 @@ class ResilienceConfig(BaseModel):
     streak_factor: float = Field(default=1.0, gt=0.0)
     consistency_k: float = Field(default=2.0, gt=0.0)
 
+    @model_validator(mode="after")
+    def _validate_at_least_one_metric(self) -> Self:
+        """Ensure at least one metric is enabled when pillar is enabled."""
+        if self.enabled and not (
+            self.success_rate_enabled
+            or self.recovery_rate_enabled
+            or self.consistency_enabled
+            or self.streak_enabled
+        ):
+            msg = "At least one metric must be enabled when pillar is enabled"
+            raise ValueError(msg)
+        return self
+
 
 class GovernanceConfig(BaseModel):
     """Responsibility/Governance pillar configuration.
@@ -124,6 +157,18 @@ class GovernanceConfig(BaseModel):
     audit_compliance_weight: float = Field(default=0.5, ge=0.0, le=1.0)
     trust_level_weight: float = Field(default=0.3, ge=0.0, le=1.0)
     autonomy_compliance_weight: float = Field(default=0.2, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_metric(self) -> Self:
+        """Ensure at least one metric is enabled when pillar is enabled."""
+        if self.enabled and not (
+            self.audit_compliance_enabled
+            or self.trust_level_enabled
+            or self.autonomy_compliance_enabled
+        ):
+            msg = "At least one metric must be enabled when pillar is enabled"
+            raise ValueError(msg)
+        return self
 
 
 class ExperienceConfig(BaseModel):
@@ -160,6 +205,20 @@ class ExperienceConfig(BaseModel):
     trust_weight: float = Field(default=0.20, ge=0.0, le=1.0)
     satisfaction_weight: float = Field(default=0.15, ge=0.0, le=1.0)
     min_feedback_count: int = Field(default=3, ge=1)
+
+    @model_validator(mode="after")
+    def _validate_at_least_one_metric(self) -> Self:
+        """Ensure at least one metric is enabled when pillar is enabled."""
+        if self.enabled and not (
+            self.clarity_enabled
+            or self.tone_enabled
+            or self.helpfulness_enabled
+            or self.trust_enabled
+            or self.satisfaction_enabled
+        ):
+            msg = "At least one metric must be enabled when pillar is enabled"
+            raise ValueError(msg)
+        return self
 
 
 class EvaluationConfig(BaseModel):

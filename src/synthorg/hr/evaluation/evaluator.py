@@ -22,21 +22,26 @@ from synthorg.hr.evaluation.models import (
     redistribute_weights,
 )
 from synthorg.hr.performance.models import (  # noqa: TC001
+    AgentPerformanceSnapshot,
     LlmCalibrationRecord,
     TaskMetricRecord,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import (
     EVAL_FEEDBACK_RECORDED,
+    EVAL_PILLAR_INSUFFICIENT_DATA,
     EVAL_PILLAR_SCORED,
     EVAL_PILLAR_SKIPPED,
     EVAL_REPORT_COMPUTED,
+    EVAL_WEIGHTS_REDISTRIBUTED,
 )
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
+    from synthorg.hr.evaluation.config import EfficiencyConfig
     from synthorg.hr.evaluation.pillar_protocol import PillarScoringStrategy
+    from synthorg.hr.performance.models import WindowMetrics
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
@@ -44,6 +49,7 @@ logger = get_logger(__name__)
 _MAX_SCORE: float = 10.0
 _NEUTRAL_SCORE: float = 5.0
 _MIN_QUALITY_SCORES_FOR_STDDEV: int = 2
+_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 
 class EvaluationService:
@@ -51,8 +57,8 @@ class EvaluationService:
 
     Delegates to pluggable strategies for Intelligence, Resilience,
     Governance, and Experience pillars. Efficiency is computed inline
-    from ``WindowMetrics``. Disabled pillars are skipped and their
-    weight redistributed.
+    from snapshot window metrics. Disabled pillars are skipped and
+    their weight redistributed.
 
     Args:
         tracker: Performance tracker for snapshot and metric data.
@@ -122,8 +128,10 @@ class EvaluationService:
     ) -> EvaluationReport:
         """Compute a five-pillar evaluation report for an agent.
 
-        Skips disabled pillars and redistributes their weight to
-        enabled pillars. Scores enabled pillars concurrently.
+        Builds an evaluation context from the tracker, gathers stored
+        feedback, computes resilience metrics from task records, then
+        scores enabled pillars concurrently. Disabled pillars are
+        skipped with their weight redistributed.
 
         Args:
             agent_id: Agent to evaluate.
@@ -135,25 +143,38 @@ class EvaluationService:
         if now is None:
             now = datetime.now(UTC)
 
+        context = await self._build_context(agent_id, now=now)
+        enabled, weights = self._resolve_enabled_pillars(agent_id)
+        pillar_scores = await self._score_pillars(enabled, context)
+        return self._assemble_report(
+            agent_id,
+            now,
+            context.snapshot,
+            pillar_scores,
+            weights,
+        )
+
+    async def _build_context(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        now: AwareDatetime,
+    ) -> EvaluationContext:
+        """Fetch data from tracker and build the evaluation context."""
         cfg = self._config
         snapshot = await self._tracker.get_snapshot(agent_id, now=now)
         task_records = self._tracker.get_task_metrics(agent_id=agent_id)
 
-        # Build calibration records if sampler is available.
         calibration_records: tuple[LlmCalibrationRecord, ...] = ()
         if self._tracker.sampler is not None:
             calibration_records = self._tracker.sampler.get_calibration_records(
                 agent_id=agent_id,
             )
 
-        # Build feedback records.
         feedback = tuple(self._feedback.get(str(agent_id), []))
-
-        # Build resilience metrics from task records.
         resilience_metrics = self._compute_resilience_metrics(task_records)
 
-        # Build evaluation context.
-        context = EvaluationContext(
+        return EvaluationContext(
             agent_id=agent_id,
             now=now,
             config=cfg,
@@ -164,63 +185,101 @@ class EvaluationService:
             resilience_metrics=resilience_metrics,
         )
 
-        # Determine enabled pillars and their strategies.
-        pillar_entries: list[
-            tuple[EvaluationPillar, float, PillarScoringStrategy | None]
+    def _resolve_enabled_pillars(
+        self,
+        agent_id: NotBlankStr,
+    ) -> tuple[
+        list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
+        dict[str, float],
+    ]:
+        """Determine enabled pillars, log skipped ones, redistribute weights."""
+        cfg = self._config
+        pillar_map: list[
+            tuple[EvaluationPillar, bool, float, PillarScoringStrategy | None]
         ] = [
             (
                 EvaluationPillar.INTELLIGENCE,
+                cfg.intelligence.enabled,
                 cfg.intelligence.weight,
                 self._intelligence,
             ),
-            (EvaluationPillar.EFFICIENCY, cfg.efficiency.weight, None),  # inline
-            (EvaluationPillar.RESILIENCE, cfg.resilience.weight, self._resilience),
-            (EvaluationPillar.GOVERNANCE, cfg.governance.weight, self._governance),
-            (EvaluationPillar.EXPERIENCE, cfg.experience.weight, self._ux),
+            (
+                EvaluationPillar.EFFICIENCY,
+                cfg.efficiency.enabled,
+                cfg.efficiency.weight,
+                None,
+            ),
+            (
+                EvaluationPillar.RESILIENCE,
+                cfg.resilience.enabled,
+                cfg.resilience.weight,
+                self._resilience,
+            ),
+            (
+                EvaluationPillar.GOVERNANCE,
+                cfg.governance.enabled,
+                cfg.governance.weight,
+                self._governance,
+            ),
+            (
+                EvaluationPillar.EXPERIENCE,
+                cfg.experience.enabled,
+                cfg.experience.weight,
+                self._ux,
+            ),
         ]
 
-        enabled_flags = {
-            EvaluationPillar.INTELLIGENCE: cfg.intelligence.enabled,
-            EvaluationPillar.EFFICIENCY: cfg.efficiency.enabled,
-            EvaluationPillar.RESILIENCE: cfg.resilience.enabled,
-            EvaluationPillar.GOVERNANCE: cfg.governance.enabled,
-            EvaluationPillar.EXPERIENCE: cfg.experience.enabled,
-        }
-
-        enabled_entries = [(p, w, s) for p, w, s in pillar_entries if enabled_flags[p]]
-
-        for p, _w, _s in pillar_entries:
-            if not enabled_flags[p]:
+        enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy | None]] = []
+        for pillar, is_enabled, weight, strategy in pillar_map:
+            if is_enabled:
+                enabled.append((pillar, weight, strategy))
+            else:
                 logger.debug(
                     EVAL_PILLAR_SKIPPED,
                     agent_id=agent_id,
-                    pillar=p.value,
+                    pillar=pillar.value,
                 )
 
-        # Redistribute weights among enabled pillars.
         weights = redistribute_weights(
-            [(p.value, w, True) for p, w, _ in enabled_entries],
+            [(p.value, w, True) for p, w, _ in enabled],
+        )
+        logger.debug(
+            EVAL_WEIGHTS_REDISTRIBUTED,
+            agent_id=agent_id,
+            weights=weights,
         )
 
-        # Score all enabled pillars concurrently.
-        pillar_scores: list[PillarScore] = []
+        return [(p, s) for p, _w, s in enabled], weights
+
+    async def _score_pillars(
+        self,
+        enabled: list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
+        context: EvaluationContext,
+    ) -> list[PillarScore]:
+        """Score all enabled pillars concurrently via TaskGroup."""
         async with asyncio.TaskGroup() as tg:
             tasks: dict[EvaluationPillar, asyncio.Task[PillarScore]] = {}
-            for pillar, _weight, strategy in enabled_entries:
+            for pillar, strategy in enabled:
                 if strategy is not None:
                     tasks[pillar] = tg.create_task(
                         strategy.score(context=context),
                     )
                 else:
-                    # Efficiency is inline.
                     tasks[pillar] = tg.create_task(
                         self._score_efficiency(context),
                     )
 
-        for pillar, _weight, _strategy in enabled_entries:
-            pillar_scores.append(tasks[pillar].result())
+        return [tasks[p].result() for p, _ in enabled]
 
-        # Compute weighted overall score and confidence.
+    def _assemble_report(
+        self,
+        agent_id: NotBlankStr,
+        now: AwareDatetime,
+        snapshot: AgentPerformanceSnapshot,
+        pillar_scores: list[PillarScore],
+        weights: dict[str, float],
+    ) -> EvaluationReport:
+        """Compute weighted overall score and build the report."""
         overall_score = 0.0
         overall_confidence = 0.0
         for ps in pillar_scores:
@@ -254,7 +313,7 @@ class EvaluationService:
         )
         return report
 
-    async def record_feedback(
+    def record_feedback(
         self,
         feedback: InteractionFeedback,
     ) -> InteractionFeedback:
@@ -267,9 +326,7 @@ class EvaluationService:
             The stored feedback record.
         """
         agent_key = str(feedback.agent_id)
-        if agent_key not in self._feedback:
-            self._feedback[agent_key] = []
-        self._feedback[agent_key].append(feedback)
+        self._feedback.setdefault(agent_key, []).append(feedback)
 
         logger.info(
             EVAL_FEEDBACK_RECORDED,
@@ -306,41 +363,56 @@ class EvaluationService:
         self,
         context: EvaluationContext,
     ) -> PillarScore:
-        """Compute efficiency pillar score inline from WindowMetrics.
+        """Compute efficiency pillar score inline from snapshot windows.
 
         Uses the 30d window (falling back to 7d) for cost, time,
-        and token efficiency sub-metrics.
+        and token efficiency sub-metrics. Returns a neutral 5.0 score
+        with zero confidence when neither window is available.
         """
         cfg = context.config.efficiency
-        snapshot = context.snapshot
-
-        # Find best window (prefer 30d, fall back to 7d).
-        window_map = {w.window_size: w for w in snapshot.windows}
+        window_map = {w.window_size: w for w in context.snapshot.windows}
         window = window_map.get("30d") or window_map.get("7d")
 
         if window is None or window.data_point_count == 0:
-            return PillarScore(
-                pillar=EvaluationPillar.EFFICIENCY,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr("inline_efficiency"),
-                data_point_count=0,
-                evaluated_at=context.now,
+            logger.info(
+                EVAL_PILLAR_INSUFFICIENT_DATA,
+                agent_id=context.agent_id,
+                pillar=EvaluationPillar.EFFICIENCY.value,
+                reason="no_window_data",
             )
+            return self._neutral_efficiency(0, context.now)
 
-        metrics: list[tuple[str, float, bool]] = []
-        scores: dict[str, float] = {}
+        scores = self._compute_efficiency_sub_scores(cfg, window)
+        if not scores:
+            logger.info(
+                EVAL_PILLAR_INSUFFICIENT_DATA,
+                agent_id=context.agent_id,
+                pillar=EvaluationPillar.EFFICIENCY.value,
+                reason="no_enabled_metrics_with_data",
+            )
+            return self._neutral_efficiency(window.data_point_count, context.now)
 
+        return self._build_efficiency_score(scores, window, context)
+
+    @staticmethod
+    def _compute_efficiency_sub_scores(
+        cfg: EfficiencyConfig,
+        window: WindowMetrics,
+    ) -> list[tuple[str, float, float]]:
+        """Compute enabled efficiency sub-metric scores.
+
+        Returns list of (name, weight, score) tuples.
+        """
+        results: list[tuple[str, float, float]] = []
         if cfg.cost_enabled and window.avg_cost_per_task is not None:
-            cost_score = max(
+            score = max(
                 0.0,
                 _MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost_usd),
             )
-            scores["cost"] = min(_MAX_SCORE, cost_score)
-            metrics.append(("cost", cfg.cost_weight, True))
+            results.append(("cost", cfg.cost_weight, min(_MAX_SCORE, score)))
 
         if cfg.time_enabled and window.avg_completion_time_seconds is not None:
-            time_score = max(
+            score = max(
                 0.0,
                 _MAX_SCORE
                 * (
@@ -348,35 +420,52 @@ class EvaluationService:
                     - window.avg_completion_time_seconds / cfg.reference_time_seconds
                 ),
             )
-            scores["time"] = min(_MAX_SCORE, time_score)
-            metrics.append(("time", cfg.time_weight, True))
+            results.append(("time", cfg.time_weight, min(_MAX_SCORE, score)))
 
         if cfg.tokens_enabled and window.avg_tokens_per_task is not None:
-            token_score = max(
+            score = max(
                 0.0,
                 _MAX_SCORE * (1.0 - window.avg_tokens_per_task / cfg.reference_tokens),
             )
-            scores["tokens"] = min(_MAX_SCORE, token_score)
-            metrics.append(("tokens", cfg.tokens_weight, True))
+            results.append(("tokens", cfg.tokens_weight, min(_MAX_SCORE, score)))
+        return results
 
-        if not metrics:
-            return PillarScore(
-                pillar=EvaluationPillar.EFFICIENCY,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr("inline_efficiency"),
-                data_point_count=window.data_point_count,
-                evaluated_at=context.now,
-            )
+    @staticmethod
+    def _neutral_efficiency(
+        data_point_count: int,
+        now: AwareDatetime,
+    ) -> PillarScore:
+        """Return a neutral efficiency score with zero confidence."""
+        return PillarScore(
+            pillar=EvaluationPillar.EFFICIENCY,
+            score=_NEUTRAL_SCORE,
+            confidence=0.0,
+            strategy_name=NotBlankStr("inline_efficiency"),
+            data_point_count=data_point_count,
+            evaluated_at=now,
+        )
 
-        weights = redistribute_weights(metrics)
-        weighted_sum = sum(scores[k] * weights[k] for k in weights)
+    @staticmethod
+    def _build_efficiency_score(
+        sub_scores: list[tuple[str, float, float]],
+        window: WindowMetrics,
+        context: EvaluationContext,
+    ) -> PillarScore:
+        """Aggregate sub-metric scores into an efficiency pillar score."""
+        weights = redistribute_weights(
+            [(name, w, True) for name, w, _ in sub_scores],
+        )
+        score_map = {name: s for name, _, s in sub_scores}
+        weighted_sum = sum(score_map[k] * weights[k] for k in weights)
         final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
 
         breakdown = tuple(
-            (NotBlankStr(k), round(v, 4)) for k, v in sorted(scores.items())
+            (NotBlankStr(k), round(v, 4)) for k, v in sorted(score_map.items())
         )
-        confidence = min(1.0, window.data_point_count / 10.0)
+        confidence = min(
+            1.0,
+            window.data_point_count / _FULL_CONFIDENCE_DATA_POINTS,
+        )
 
         result = PillarScore(
             pillar=EvaluationPillar.EFFICIENCY,
@@ -393,6 +482,7 @@ class EvaluationService:
             agent_id=context.agent_id,
             pillar=EvaluationPillar.EFFICIENCY.value,
             score=result.score,
+            confidence=result.confidence,
         )
         return result
 
@@ -402,7 +492,9 @@ class EvaluationService:
     ) -> ResilienceMetrics:
         """Derive resilience metrics from raw task records.
 
-        Computes recovery count, streaks, and quality score stddev.
+        Sorts records by completion time, then computes success/failure
+        counts, recovery rate, success streaks, and quality score
+        standard deviation.
         """
         total = len(records)
         if total == 0:
@@ -414,37 +506,11 @@ class EvaluationService:
                 longest_success_streak=0,
             )
 
-        # Sort by completion time.
         sorted_records = sorted(records, key=lambda r: r.completed_at)
-
-        failed = sum(1 for r in sorted_records if not r.is_success)
-        recovered = 0
-        current_streak = 0
-        longest_streak = 0
-        prev_failed = False
-
-        for record in sorted_records:
-            if record.is_success:
-                current_streak += 1
-                longest_streak = max(longest_streak, current_streak)
-                if prev_failed:
-                    recovered += 1
-                prev_failed = False
-            else:
-                current_streak = 0
-                prev_failed = True
-
-        # Quality score stddev.
-        quality_scores = [
-            r.quality_score for r in sorted_records if r.quality_score is not None
-        ]
-        stddev: float | None = None
-        if len(quality_scores) >= _MIN_QUALITY_SCORES_FOR_STDDEV:
-            mean = sum(quality_scores) / len(quality_scores)
-            variance = sum((s - mean) ** 2 for s in quality_scores) / len(
-                quality_scores,
-            )
-            stddev = round(math.sqrt(variance), 4)
+        failed, recovered, current_streak, longest_streak = _compute_streaks(
+            sorted_records
+        )
+        stddev = _compute_quality_stddev(sorted_records)
 
         return ResilienceMetrics(
             total_tasks=total,
@@ -454,3 +520,50 @@ class EvaluationService:
             longest_success_streak=longest_streak,
             quality_score_stddev=stddev,
         )
+
+
+def _compute_streaks(
+    sorted_records: list[TaskMetricRecord],
+) -> tuple[int, int, int, int]:
+    """Compute failure count, recovery count, and streak stats.
+
+    Returns:
+        Tuple of (failed, recovered, current_streak, longest_streak).
+    """
+    failed = sum(1 for r in sorted_records if not r.is_success)
+    recovered = 0
+    current_streak = 0
+    longest_streak = 0
+    prev_failed = False
+
+    for record in sorted_records:
+        if record.is_success:
+            current_streak += 1
+            longest_streak = max(longest_streak, current_streak)
+            if prev_failed:
+                recovered += 1
+            prev_failed = False
+        else:
+            current_streak = 0
+            prev_failed = True
+
+    return failed, recovered, current_streak, longest_streak
+
+
+def _compute_quality_stddev(
+    sorted_records: list[TaskMetricRecord],
+) -> float | None:
+    """Compute population standard deviation of quality scores.
+
+    Returns None when fewer than 2 scored records exist.
+    """
+    quality_scores = [
+        r.quality_score for r in sorted_records if r.quality_score is not None
+    ]
+    if len(quality_scores) < _MIN_QUALITY_SCORES_FOR_STDDEV:
+        return None
+    mean = sum(quality_scores) / len(quality_scores)
+    variance = sum((s - mean) ** 2 for s in quality_scores) / len(
+        quality_scores,
+    )
+    return round(math.sqrt(variance), 4)

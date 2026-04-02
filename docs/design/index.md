@@ -158,7 +158,7 @@ graph TD
     ---
 
     Agent identity, seniority levels, role catalog, hiring, firing, performance tracking,
-    and promotions.
+    evaluation, and promotions.
 
 -   [**Organization & Templates**](organization.md)
 

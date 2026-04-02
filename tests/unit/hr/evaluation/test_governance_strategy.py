@@ -8,6 +8,8 @@ from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.governance_strategy import AuditBasedGovernanceStrategy
 from tests.unit.hr.evaluation.conftest import make_evaluation_context
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def strategy() -> AuditBasedGovernanceStrategy:
@@ -166,3 +168,21 @@ class TestAuditBasedGovernanceStrategy:
         result_clean = await strategy.score(context=ctx_clean)
         result_downgraded = await strategy.score(context=ctx_downgraded)
         assert result_downgraded.score < result_clean.score
+
+    async def test_unknown_trust_level_falls_back_to_neutral(
+        self,
+        strategy: AuditBasedGovernanceStrategy,
+    ) -> None:
+        """Unrecognized trust level maps to neutral score (5.0)."""
+        ctx = make_evaluation_context()
+        ctx = ctx.model_copy(
+            update={
+                "trust_level": NotBlankStr("unknown_custom_level"),
+                "audit_allow_count": 10,
+            }
+        )
+        result = await strategy.score(context=ctx)
+        # Trust component should be near neutral (5.0).
+        trust_scores = [v for k, v in result.breakdown if k == "trust_level"]
+        assert len(trust_scores) == 1
+        assert trust_scores[0] == 5.0

@@ -204,8 +204,9 @@ class ResilienceMetrics(BaseModel):
 class PillarScore(BaseModel):
     """Score for a single evaluation pillar.
 
-    Output of every pillar scoring strategy. Mirrors the shape of
-    ``QualityScoreResult`` for consistency.
+    Output of every pillar scoring strategy. Extends the pattern
+    of ``QualityScoreResult`` with pillar identity, data provenance,
+    and temporal metadata.
 
     Attributes:
         pillar: Which pillar this score represents.
@@ -314,6 +315,17 @@ class EvaluationContext(BaseModel):
         default=0,
         description="Autonomy downgrades in the window",
     )
+
+    @model_validator(mode="after")
+    def _validate_agent_id_consistency(self) -> Self:
+        """Ensure context agent_id matches snapshot agent_id."""
+        if self.agent_id != self.snapshot.agent_id:
+            msg = (
+                f"Context agent_id ({self.agent_id}) does not match "
+                f"snapshot agent_id ({self.snapshot.agent_id})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class EvaluationReport(BaseModel):

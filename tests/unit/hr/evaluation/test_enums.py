@@ -4,6 +4,8 @@ import pytest
 
 from synthorg.hr.evaluation.enums import EvaluationPillar
 
+pytestmark = pytest.mark.unit
+
 
 class TestEvaluationPillar:
     """EvaluationPillar enum tests."""

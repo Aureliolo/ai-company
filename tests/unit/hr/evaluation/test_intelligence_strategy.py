@@ -10,6 +10,8 @@ from synthorg.hr.evaluation.intelligence_strategy import (
 from tests.unit.hr.evaluation.conftest import make_evaluation_context, make_snapshot
 from tests.unit.hr.performance.conftest import make_calibration_record
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def strategy() -> QualityBlendIntelligenceStrategy:
@@ -47,8 +49,7 @@ class TestQualityBlendIntelligenceStrategy:
         )
         result = await strategy.score(context=ctx)
         assert result.pillar == EvaluationPillar.INTELLIGENCE
-        assert result.score > 0.0
-        assert result.confidence > 0.0
+        assert abs(result.score - 8.0) < 0.1
         assert any(k == "ci_quality" for k, _ in result.breakdown)
 
     async def test_with_calibration_records(
@@ -125,6 +126,7 @@ class TestQualityBlendIntelligenceStrategy:
     ) -> None:
         cfg = EvaluationConfig(
             intelligence=IntelligenceConfig(
+                enabled=False,
                 ci_quality_enabled=False,
                 llm_calibration_enabled=False,
             ),
@@ -136,3 +138,24 @@ class TestQualityBlendIntelligenceStrategy:
         result = await strategy.score(context=ctx)
         assert result.score == 5.0
         assert result.confidence == 0.0
+
+    async def test_ci_disabled_llm_calibration_only(
+        self,
+        strategy: QualityBlendIntelligenceStrategy,
+    ) -> None:
+        """With CI disabled, LLM calibration gets 100% weight."""
+        cfg = EvaluationConfig(
+            intelligence=IntelligenceConfig(ci_quality_enabled=False),
+        )
+        records = tuple(
+            make_calibration_record(llm_score=9.0, behavioral_score=7.0)
+            for _ in range(5)
+        )
+        ctx = make_evaluation_context(
+            snapshot=make_snapshot(overall_quality_score=7.0),
+            config=cfg,
+        )
+        ctx = ctx.model_copy(update={"calibration_records": records})
+        result = await strategy.score(context=ctx)
+        assert abs(result.score - 9.0) < 0.1
+        assert not any(k == "ci_quality" for k, _ in result.breakdown)

@@ -1,8 +1,8 @@
 """Intelligence/Accuracy pillar scoring strategy.
 
-Blends existing CI-signal quality score with LLM calibration data.
-When LLM calibration is disabled or unavailable, falls back to
-CI quality alone with reduced confidence.
+Blends existing CI (continuous integration) signal quality score with
+LLM calibration data. When LLM calibration is disabled or unavailable,
+falls back to CI quality alone with reduced confidence.
 """
 
 from synthorg.core.types import NotBlankStr
@@ -14,6 +14,7 @@ from synthorg.hr.evaluation.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.evaluation import (
+    EVAL_CALIBRATION_DRIFT_HIGH,
     EVAL_METRIC_SKIPPED,
     EVAL_PILLAR_INSUFFICIENT_DATA,
     EVAL_PILLAR_SCORED,
@@ -23,15 +24,16 @@ logger = get_logger(__name__)
 
 _MAX_SCORE: float = 10.0
 _NEUTRAL_SCORE: float = 5.0
+_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 
 class QualityBlendIntelligenceStrategy:
     """Intelligence scoring by blending CI quality with LLM calibration.
 
     Uses the existing ``overall_quality_score`` from the performance
-    snapshot as the CI signal, and blends it with the average LLM
-    calibration score when available. High calibration drift reduces
-    confidence.
+    snapshot as the CI (continuous integration) signal, and blends it
+    with the average LLM calibration score when available. High
+    calibration drift reduces confidence.
     """
 
     @property
@@ -94,7 +96,7 @@ class QualityBlendIntelligenceStrategy:
         # Compute CI quality component.
         breakdown: list[tuple[str, float]] = []
         weighted_sum = 0.0
-        data_points = len(context.task_records) or 1
+        data_points = len(context.task_records)
 
         if "ci_quality" in weights:
             breakdown.append(("ci_quality", round(ci_score, 4)))
@@ -125,8 +127,15 @@ class QualityBlendIntelligenceStrategy:
         final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
 
         # Confidence: base from data volume, reduced by drift.
-        confidence = min(1.0, data_points / 10.0)
+        confidence = min(1.0, data_points / _FULL_CONFIDENCE_DATA_POINTS)
         if calibration_drift > context.config.calibration_drift_threshold:
+            logger.info(
+                EVAL_CALIBRATION_DRIFT_HIGH,
+                agent_id=context.agent_id,
+                pillar=self.pillar.value,
+                drift=round(calibration_drift, 4),
+                threshold=context.config.calibration_drift_threshold,
+            )
             confidence *= max(
                 0.1,
                 1.0

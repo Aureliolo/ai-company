@@ -10,6 +10,8 @@ from tests.unit.hr.evaluation.conftest import (
     make_interaction_feedback,
 )
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def strategy() -> FeedbackBasedUxStrategy:
@@ -129,6 +131,7 @@ class TestFeedbackBasedUxStrategy:
     ) -> None:
         cfg = EvaluationConfig(
             experience=ExperienceConfig(
+                enabled=False,
                 clarity_enabled=False,
                 tone_enabled=False,
                 helpfulness_enabled=False,

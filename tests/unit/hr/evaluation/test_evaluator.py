@@ -18,6 +18,8 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from tests.unit.hr.evaluation.conftest import make_interaction_feedback
 from tests.unit.hr.performance.conftest import make_task_metric
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def tracker() -> PerformanceTracker:
@@ -168,8 +170,8 @@ class TestEvaluationService:
     ) -> None:
         fb1 = make_interaction_feedback(agent_id="agent-001")
         fb2 = make_interaction_feedback(agent_id="agent-002")
-        await service.record_feedback(fb1)
-        await service.record_feedback(fb2)
+        service.record_feedback(fb1)
+        service.record_feedback(fb2)
 
         all_fb = service.get_feedback()
         assert len(all_fb) == 2
@@ -191,8 +193,8 @@ class TestEvaluationService:
             agent_id="agent-001",
             recorded_at=now,
         )
-        await service.record_feedback(old)
-        await service.record_feedback(recent)
+        service.record_feedback(old)
+        service.record_feedback(recent)
 
         result = service.get_feedback(since=now - timedelta(days=1))
         assert len(result) == 1
@@ -282,3 +284,87 @@ class TestComputeResilienceMetrics:
         )
         rm = EvaluationService._compute_resilience_metrics(records)
         assert rm.quality_score_stddev is None
+
+    def test_shuffled_records_sorted_by_completion_time(self) -> None:
+        """Records arriving out of order are sorted before processing."""
+        now = datetime.now(UTC)
+        # Create records in reverse order.
+        records = tuple(
+            make_task_metric(
+                task_id=f"t-{i}",
+                is_success=True,
+                completed_at=now + timedelta(minutes=4 - i),
+            )
+            for i in range(5)
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.current_success_streak == 5
+        assert rm.longest_success_streak == 5
+
+    def test_pattern_ending_in_failures(self) -> None:
+        """S S F F -- streak resets, longest is 2."""
+        now = datetime.now(UTC)
+        pattern = [True, True, False, False]
+        records = tuple(
+            make_task_metric(
+                task_id=f"t-{i}",
+                is_success=s,
+                completed_at=now + timedelta(minutes=i),
+            )
+            for i, s in enumerate(pattern)
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.total_tasks == 4
+        assert rm.failed_tasks == 2
+        assert rm.recovered_tasks == 0
+        assert rm.current_success_streak == 0
+        assert rm.longest_success_streak == 2
+
+    async def test_explicit_now_threads_to_report(self) -> None:
+        """Explicit now parameter appears in the report's computed_at."""
+        tracker = PerformanceTracker()
+        svc = EvaluationService(tracker=tracker)
+        agent_id = NotBlankStr("agent-001")
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001"),
+        )
+        explicit_now = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
+        report = await svc.evaluate(agent_id, now=explicit_now)
+        assert report.computed_at == explicit_now
+
+
+class TestFeedbackToEvaluationPipeline:
+    """End-to-end: record feedback then evaluate to verify UX pillar."""
+
+    async def test_feedback_flows_into_evaluation(self) -> None:
+        """Recorded feedback reaches the experience pillar in evaluation."""
+        from synthorg.hr.evaluation.config import ExperienceConfig
+
+        cfg = EvaluationConfig(
+            experience=ExperienceConfig(min_feedback_count=1),
+        )
+        tracker = PerformanceTracker()
+        svc = EvaluationService(tracker=tracker, config=cfg)
+        agent_id = NotBlankStr("agent-001")
+
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001", quality_score=7.0),
+        )
+
+        for _ in range(3):
+            svc.record_feedback(
+                make_interaction_feedback(
+                    agent_id="agent-001",
+                    clarity_rating=0.9,
+                    helpfulness_rating=0.8,
+                ),
+            )
+
+        report = await svc.evaluate(agent_id)
+        ux = next(
+            ps
+            for ps in report.pillar_scores
+            if ps.pillar == EvaluationPillar.EXPERIENCE
+        )
+        assert ux.confidence > 0.0
+        assert ux.score > 5.0

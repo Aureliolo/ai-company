@@ -433,9 +433,9 @@ from `WindowMetrics`. Human-calibrated LLM labeling uses the existing
 threshold reduces the intelligence pillar's confidence, signaling the need for
 more human labels.
 
-???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D16)"
+???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
 
-    **D16 -- Five-Pillar Evaluation:** Pluggable `PillarScoringStrategy` protocol with
+    **D24 -- Five-Pillar Evaluation:** Pluggable `PillarScoringStrategy` protocol with
     single `EvaluationContext` bag. Each pillar has a default strategy:
 
     - **Intelligence:** `QualityBlendIntelligenceStrategy` -- blends CI quality score

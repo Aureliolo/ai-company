@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 _MAX_SCORE: float = 10.0
 _NEUTRAL_SCORE: float = 5.0
+_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 
 class TaskBasedResilienceStrategy:
@@ -30,7 +31,7 @@ class TaskBasedResilienceStrategy:
     Components (all toggleable):
         - success_rate: Task success rate scaled to 0-10.
         - recovery_rate: Ratio of recovered-after-failure tasks.
-        - consistency: Inverse of quality score stddev.
+        - consistency: Quality score penalized linearly by stddev.
         - streak: Current success streak bonus.
     """
 
@@ -133,7 +134,7 @@ class TaskBasedResilienceStrategy:
         breakdown = tuple(
             (NotBlankStr(k), round(v, 4)) for k, v in sorted(scores.items())
         )
-        confidence = min(1.0, rm.total_tasks / 10.0)
+        confidence = min(1.0, rm.total_tasks / _FULL_CONFIDENCE_DATA_POINTS)
 
         result = PillarScore(
             pillar=self.pillar,

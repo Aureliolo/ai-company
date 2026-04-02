@@ -16,6 +16,8 @@ from synthorg.hr.evaluation.models import (
 )
 from tests.unit.hr.evaluation.conftest import make_pillar_score, make_snapshot
 
+pytestmark = pytest.mark.unit
+
 # ── redistribute_weights ─────────────────────────────────────
 
 

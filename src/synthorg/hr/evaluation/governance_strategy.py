@@ -22,6 +22,7 @@ logger = get_logger(__name__)
 
 _MAX_SCORE: float = 10.0
 _NEUTRAL_SCORE: float = 5.0
+_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 # Trust level to score mapping.
 _TRUST_LEVEL_SCORES: dict[str, float] = {
@@ -91,8 +92,8 @@ class AuditBasedGovernanceStrategy:
         data_points = 0
 
         if cfg.audit_compliance_enabled and total_audits > 0:
-            compliance = context.audit_allow_count / max(1, total_audits)
-            high_risk_penalty = context.audit_high_risk_count / max(1, total_audits)
+            compliance = context.audit_allow_count / total_audits
+            high_risk_penalty = context.audit_high_risk_count / total_audits
             audit_score = max(
                 0.0,
                 compliance * _MAX_SCORE - high_risk_penalty * _MAX_SCORE,
@@ -104,10 +105,17 @@ class AuditBasedGovernanceStrategy:
             data_points += total_audits
 
         if cfg.trust_level_enabled and context.trust_level is not None:
-            base_trust = _TRUST_LEVEL_SCORES.get(
-                str(context.trust_level).lower(),
-                _NEUTRAL_SCORE,
-            )
+            trust_key = str(context.trust_level).lower()
+            base_trust = _TRUST_LEVEL_SCORES.get(trust_key, _NEUTRAL_SCORE)
+            if trust_key not in _TRUST_LEVEL_SCORES:
+                logger.warning(
+                    EVAL_PILLAR_SCORED,
+                    agent_id=context.agent_id,
+                    pillar=self.pillar.value,
+                    warning="unknown_trust_level",
+                    trust_level=trust_key,
+                    fallback_score=_NEUTRAL_SCORE,
+                )
             demotion_penalty = min(
                 base_trust,
                 context.trust_demotions_in_window * _DOWNGRADE_PENALTY,
@@ -146,7 +154,7 @@ class AuditBasedGovernanceStrategy:
         breakdown = tuple(
             (NotBlankStr(k), round(v, 4)) for k, v in sorted(scores.items())
         )
-        confidence = min(1.0, data_points / 10.0)
+        confidence = min(1.0, data_points / _FULL_CONFIDENCE_DATA_POINTS)
 
         result = PillarScore(
             pillar=self.pillar,

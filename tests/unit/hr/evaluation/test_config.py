@@ -12,6 +12,8 @@ from synthorg.hr.evaluation.config import (
     ResilienceConfig,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestIntelligenceConfig:
     """IntelligenceConfig tests."""
@@ -214,3 +216,21 @@ class TestEvaluationConfig:
         for other_field in configs:
             if other_field != pillar_field:
                 assert getattr(cfg, other_field).enabled is True
+
+    def test_pillar_enabled_all_metrics_disabled_raises(self) -> None:
+        """Pillar enabled but all metrics disabled must raise."""
+        with pytest.raises(ValueError, match="At least one metric"):
+            IntelligenceConfig(
+                enabled=True,
+                ci_quality_enabled=False,
+                llm_calibration_enabled=False,
+            )
+
+    def test_pillar_disabled_all_metrics_disabled_ok(self) -> None:
+        """Pillar disabled with all metrics disabled is fine."""
+        cfg = IntelligenceConfig(
+            enabled=False,
+            ci_quality_enabled=False,
+            llm_calibration_enabled=False,
+        )
+        assert cfg.enabled is False

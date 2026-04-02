@@ -10,6 +10,8 @@ from tests.unit.hr.evaluation.conftest import (
     make_resilience_metrics,
 )
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def strategy() -> TaskBasedResilienceStrategy:
