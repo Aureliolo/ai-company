@@ -87,6 +87,7 @@ class TestSelectEmbeddingModel:
         available = (top.model_id,)
         result = select_embedding_model(available)
         assert result is not None
+        assert result.model_id == top.model_id
 
 
 @pytest.mark.unit
