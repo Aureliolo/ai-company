@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, fireEvent, within, cleanup } from "@testing-library/react";
-import "@testing-library/jest-dom/vitest";
 import ComparisonTable from "./ComparisonTable";
 import type { Dimension, Category, Competitor } from "./ComparisonTable";
 
@@ -71,7 +70,6 @@ describe("ComparisonTable", () => {
 
   it("renders all competitors in both desktop and mobile views", () => {
     renderTable();
-    // Each competitor appears twice (desktop table + mobile card)
     expect(screen.getAllByText("SynthOrg")).toHaveLength(2);
     expect(screen.getAllByText("TestAI")).toHaveLength(2);
     expect(screen.getAllByText("PlatformX")).toHaveLength(2);
@@ -79,20 +77,19 @@ describe("ComparisonTable", () => {
 
   it("shows correct result count", () => {
     renderTable();
-    // Result count element appears once
-    const countEl = document.querySelector(".ct-result-count")!;
-    expect(countEl.textContent).toBe("Showing 3 of 3 frameworks");
+    expect(screen.getByTestId("result-count").textContent).toBe(
+      "Showing 3 of 3 frameworks",
+    );
   });
 
   it("filters by category", () => {
     renderTable();
-    // Category buttons are in the filter bar (single instance)
     const filterBar = document.querySelector(".ct-filter-bar")!;
     const catBtn = within(filterBar as HTMLElement).getByText("Commercial Platform");
     fireEvent.click(catBtn);
-    const countEl = document.querySelector(".ct-result-count")!;
-    expect(countEl.textContent).toBe("Showing 1 of 3 frameworks");
-    // PlatformX still visible, TestAI gone
+    expect(screen.getByTestId("result-count").textContent).toBe(
+      "Showing 1 of 3 frameworks",
+    );
     expect(screen.getAllByText("PlatformX")).toHaveLength(2);
     expect(screen.queryAllByText("TestAI")).toHaveLength(0);
   });
@@ -101,26 +98,28 @@ describe("ComparisonTable", () => {
     renderTable();
     const searchInput = screen.getByPlaceholderText("Search frameworks...");
     fireEvent.change(searchInput, { target: { value: "TestAI" } });
-    const countEl = document.querySelector(".ct-result-count")!;
-    expect(countEl.textContent).toBe("Showing 1 of 3 frameworks");
+    expect(screen.getByTestId("result-count").textContent).toBe(
+      "Showing 1 of 3 frameworks",
+    );
   });
 
   it("filters by license", () => {
     renderTable();
     const licenseSelect = screen.getByLabelText("Filter by license");
     fireEvent.change(licenseSelect, { target: { value: "MIT" } });
-    const countEl = document.querySelector(".ct-result-count")!;
-    expect(countEl.textContent).toBe("Showing 1 of 3 frameworks");
+    expect(screen.getByTestId("result-count").textContent).toBe(
+      "Showing 1 of 3 frameworks",
+    );
     expect(screen.getAllByText("TestAI")).toHaveLength(2);
   });
 
   it("filters by feature support", () => {
     renderTable();
     const featureSelect = screen.getByLabelText("Filter by feature support");
-    // Filter by "Has Tool Use" -- TestAI has "none" so should be excluded
     fireEvent.change(featureSelect, { target: { value: "tool_use" } });
-    const countEl = document.querySelector(".ct-result-count")!;
-    expect(countEl.textContent).toBe("Showing 2 of 3 frameworks");
+    expect(screen.getByTestId("result-count").textContent).toBe(
+      "Showing 2 of 3 frameworks",
+    );
     expect(screen.queryAllByText("TestAI")).toHaveLength(0);
   });
 
@@ -129,12 +128,12 @@ describe("ComparisonTable", () => {
     const filterBar = document.querySelector(".ct-filter-bar")!;
     const catBtn = within(filterBar as HTMLElement).getByText("Commercial Platform");
     fireEvent.click(catBtn);
-    expect(document.querySelector(".ct-result-count")!.textContent).toBe(
+    expect(screen.getByTestId("result-count").textContent).toBe(
       "Showing 1 of 3 frameworks",
     );
     const clearBtn = within(filterBar as HTMLElement).getByText("Clear");
     fireEvent.click(clearBtn);
-    expect(document.querySelector(".ct-result-count")!.textContent).toBe(
+    expect(screen.getByTestId("result-count").textContent).toBe(
       "Showing 3 of 3 frameworks",
     );
   });
@@ -165,7 +164,6 @@ describe("ComparisonTable", () => {
     renderTable();
     const expandBtn = screen.getByLabelText("Expand SynthOrg details");
     fireEvent.click(expandBtn);
-    // The expanded detail row contains a "Description" label
     const detailContent = document.querySelector(".ct-detail-content")!;
     expect(detailContent).toBeTruthy();
     expect(detailContent.textContent).toContain("Virtual org framework");
@@ -183,7 +181,7 @@ describe("ComparisonTable", () => {
 
   it("shows legend with support levels", () => {
     renderTable();
-    const legend = document.querySelector(".comparison-table > div:first-child")!;
+    const legend = screen.getByTestId("comparison-legend");
     expect(legend.textContent).toContain("Full");
     expect(legend.textContent).toContain("Partial");
     expect(legend.textContent).toContain("Planned");

@@ -15,6 +15,17 @@
   --ct-border-bright: #2a2a3e;
   --ct-font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
   --ct-font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --ct-danger: #ef4444;
+}
+
+/* Legend */
+.ct-legend {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+  color: var(--ct-text-muted);
+  flex-wrap: wrap;
 }
 
 /* Filter bar */
@@ -93,7 +104,7 @@
 }
 
 .ct-select option {
-  background: #0f0f1a;
+  background: var(--ct-bg-surface);
   color: var(--ct-text-primary);
 }
 
@@ -355,16 +366,16 @@
 .ct-clear-btn {
   padding: 0.375rem 0.75rem;
   border-radius: 0.5rem;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border: 1px solid color-mix(in srgb, var(--ct-danger) 30%, transparent);
   background: transparent;
-  color: #ef4444;
+  color: var(--ct-danger);
   font-size: 0.8125rem;
   cursor: pointer;
   font-family: var(--ct-font-sans);
 }
 
 .ct-clear-btn:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--ct-danger) 10%, transparent);
 }
 
 /* Responsive */

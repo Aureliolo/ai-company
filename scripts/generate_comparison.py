@@ -13,6 +13,7 @@ Run ``uv run python scripts/generate_comparison.py`` before
 import sys
 import traceback
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -49,7 +50,7 @@ TABLE_GROUPS = [
 ]
 
 
-def _load_data() -> dict:
+def _load_data() -> dict[str, Any]:
     """Load and validate the competitors YAML file.
 
     Validates top-level keys (meta, dimensions, categories, competitors),
@@ -92,7 +93,7 @@ def _load_data() -> dict:
     return data
 
 
-def _validate_competitors(competitors: list) -> None:
+def _validate_competitors(competitors: list[Any]) -> None:
     """Validate required fields on each competitor entry."""
     required_keys = {"name", "slug", "category"}
     for i, comp in enumerate(competitors):
@@ -106,7 +107,7 @@ def _validate_competitors(competitors: list) -> None:
             raise ValueError(msg)
 
 
-def _validate_dimension_keys(dimensions: list[dict]) -> None:
+def _validate_dimension_keys(dimensions: list[dict[str, Any]]) -> None:
     """Warn if TABLE_GROUPS references keys not in the loaded dimensions."""
     dim_keys = {d["key"] for d in dimensions}
     for group in TABLE_GROUPS:
@@ -119,7 +120,7 @@ def _validate_dimension_keys(dimensions: list[dict]) -> None:
             )
 
 
-def _dimension_label(dimensions: list[dict], key: str) -> str:
+def _dimension_label(dimensions: list[dict[str, str]], key: str) -> str:
     """Get the display label for a dimension key."""
     for dim in dimensions:
         if dim["key"] == key:
@@ -143,7 +144,7 @@ def _support_icon(value: str) -> str:
     return icon
 
 
-def _category_label(categories: list[dict], key: str) -> str:
+def _category_label(categories: list[dict[str, str]], key: str) -> str:
     """Get the display label for a category key."""
     for cat in categories:
         if cat["key"] == key:
@@ -190,9 +191,9 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
 
 
 def _competitor_row(
-    comp: dict,
+    comp: dict[str, Any],
     group_keys: list[str],
-    categories: list[dict],
+    categories: list[dict[str, str]],
 ) -> str:
     """Build a single Markdown table row for a competitor."""
     name = comp["name"]
@@ -220,9 +221,9 @@ def _competitor_row(
 
 
 def _thematic_tables(
-    dimensions: list[dict],
-    categories: list[dict],
-    competitors: list[dict],
+    dimensions: list[dict[str, str]],
+    categories: list[dict[str, str]],
+    competitors: list[dict[str, Any]],
 ) -> list[str]:
     """Generate the thematic comparison tables."""
     lines: list[str] = []
@@ -247,7 +248,7 @@ def _thematic_tables(
     return lines
 
 
-def _project_links(competitors: list[dict]) -> list[str]:
+def _project_links(competitors: list[dict[str, Any]]) -> list[str]:
     """Generate the project links section."""
     lines = ["## Project Links", ""]
     for comp in competitors:
@@ -264,7 +265,7 @@ def _project_links(competitors: list[dict]) -> list[str]:
     return lines
 
 
-def _generate_markdown(data: dict) -> str:
+def _generate_markdown(data: dict[str, Any]) -> str:
     """Generate the full Markdown page from the structured data."""
     lines: list[str] = []
     lines.extend(_frontmatter_and_intro(data["meta"]["last_updated"]))

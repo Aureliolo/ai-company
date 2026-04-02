@@ -251,16 +251,7 @@ export default function ComparisonTable({
   return (
     <div className="comparison-table">
       {/* Legend */}
-      <div
-        style={{
-          display: "flex",
-          gap: "1rem",
-          marginBottom: "1rem",
-          fontSize: "0.8125rem",
-          color: "var(--ct-text-muted)",
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="ct-legend" data-testid="comparison-legend">
         <span>
           <SupportIcon level="full" /> Full
         </span>
@@ -330,7 +321,7 @@ export default function ComparisonTable({
       </div>
 
       {/* Result count */}
-      <div className="ct-result-count">
+      <div className="ct-result-count" data-testid="result-count">
         Showing {sorted.length} of {competitors.length} frameworks
       </div>
 

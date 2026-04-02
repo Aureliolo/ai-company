@@ -111,7 +111,7 @@ class TestLoadData:
             gen._load_data()
 
     def test_empty_yaml(self, tmp_path: Path) -> None:
-        f = _write_yaml(tmp_path, None, "empty.yaml")
+        f = tmp_path / "empty.yaml"
         f.write_text("", encoding="utf-8")
         with (
             patch.object(gen, "DATA_FILE", f),
@@ -248,7 +248,7 @@ class TestMarkdownGeneration:
     def test_generate_markdown_contains_competitor(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
         assert "TestFramework" in markdown
-        assert "example.com" in markdown
+        assert COMP["url"] in markdown
         assert "MIT" in markdown
 
     def test_frontmatter_contains_date(self) -> None:
