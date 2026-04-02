@@ -103,6 +103,8 @@ def _classify_path(parts: tuple[str, ...]) -> tuple[str, str | None]:
         )
 
     if is_deep_enough and parts[0] == "tests" and parts[1] == "unit":
+        # The regex already rejects dotted names like test_smoke.py and
+        # __init__.py, but listing them explicitly documents the intent.
         is_root = (
             not _SAFE_MODULE_NAME.match(parts[2])
             or parts[2] == "test_smoke.py"
