@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.7](https://github.com/Aureliolo/synthorg/compare/v0.5.6...v0.5.7) (2026-04-02)
+
+
+### Features
+
+* comparison page -- SynthOrg vs agent orchestration frameworks ([#994](https://github.com/Aureliolo/synthorg/issues/994)) ([6f937ef](https://github.com/Aureliolo/synthorg/commit/6f937efb1ce43cb9dca2979cc13756dba017de1c)), closes [#981](https://github.com/Aureliolo/synthorg/issues/981)
+* event-driven and budget-driven ceremony scheduling strategies ([#995](https://github.com/Aureliolo/synthorg/issues/995)) ([f88e7b0](https://github.com/Aureliolo/synthorg/commit/f88e7b0a76e5ff49db04dd86304644e431c8ba32)), closes [#971](https://github.com/Aureliolo/synthorg/issues/971) [#972](https://github.com/Aureliolo/synthorg/issues/972)
+* template packs for post-setup additive team expansion ([#996](https://github.com/Aureliolo/synthorg/issues/996)) ([b45e14a](https://github.com/Aureliolo/synthorg/commit/b45e14a564bbd2c27a1bdb9b191b6f4024629c8a)), closes [#727](https://github.com/Aureliolo/synthorg/issues/727)
+
+
+### Performance
+
+* preload JetBrains Mono font, remove unused api.github.com preconnect ([#998](https://github.com/Aureliolo/synthorg/issues/998)) ([2a189c2](https://github.com/Aureliolo/synthorg/commit/2a189c2171b996d632dd5ce7ee490043f4ca03fd))
+* run only affected modules in pre-push hooks ([#992](https://github.com/Aureliolo/synthorg/issues/992)) ([7956e23](https://github.com/Aureliolo/synthorg/commit/7956e2335a6ce507f7812e971f52275daf1da621))
+
+
+### Maintenance
+
+* bump astro from 6.1.2 to 6.1.3 in /site in the all group ([#988](https://github.com/Aureliolo/synthorg/issues/988)) ([17b58db](https://github.com/Aureliolo/synthorg/commit/17b58db23dde3c84d09d4cb98be7c550007c74e4))
+* bump the all group across 1 directory with 2 updates ([#989](https://github.com/Aureliolo/synthorg/issues/989)) ([1ff462a](https://github.com/Aureliolo/synthorg/commit/1ff462a841ad96870953812242ce73688a667c40))
+
 ## [0.5.6](https://github.com/Aureliolo/synthorg/compare/v0.5.5...v0.5.6) (2026-04-02)
 
 
