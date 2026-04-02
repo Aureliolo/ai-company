@@ -13,7 +13,7 @@
 | Reselling or embedding SynthOrg as your core product | Conditional | Commercial license |
 | Contributing to SynthOrg | Yes | Sign the [CLA](https://github.com/Aureliolo/synthorg/blob/main/.github/CLA.md) |
 
-*"Conditional" uses require a commercial license -- please [contact us](https://github.com/Aureliolo/synthorg/discussions) to discuss terms.*
+*"Conditional" uses require a commercial license -- please [contact us](https://synthorg.io/#contact) to discuss terms.*
 
 ---
 
@@ -149,7 +149,7 @@ Please [open a discussion](https://github.com/Aureliolo/synthorg/discussions) or
 
 **Yes**, if your company has fewer than 500 employees (including contractors and affiliates). No license needed.
 
-If your company has 500+ employees, contact us -- we are likely to grant a free commercial license for internal use.
+If your company has 500+ employees, [contact us](https://synthorg.io/#contact) -- we are likely to grant a free commercial license for internal use.
 
 ### Can I build a product that uses SynthOrg?
 

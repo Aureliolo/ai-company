@@ -1,0 +1,39 @@
+---
+interface Props {
+  competitorCount: number;
+}
+
+const { competitorCount } = Astro.props;
+---
+
+<section class="relative min-h-[50vh] flex items-center justify-center px-6 overflow-hidden">
+  <!-- Background gradient -->
+  <div class="absolute inset-0 bg-gradient-to-br from-violet-950/40 via-[#0F1219] to-teal-950/30"></div>
+  <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(124,58,237,0.15),transparent_60%)]"></div>
+
+  <div class="relative z-10 max-w-4xl mx-auto text-center py-20">
+    <!-- Eyebrow -->
+    <p class="text-sm tracking-widest text-teal-400 mb-6 font-mono">
+      {competitorCount}+ FRAMEWORKS COMPARED
+    </p>
+
+    <!-- Headline -->
+    <h1 class="text-4xl md:text-6xl font-bold leading-tight mb-6">
+      How SynthOrg
+      <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
+        compares
+      </span>
+    </h1>
+
+    <!-- Subtext -->
+    <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-8">
+      The definitive comparison of agent orchestration frameworks, platforms, and research projects.
+      Filter, sort, and explore what each framework actually delivers.
+    </p>
+
+    <!-- Scroll hint -->
+    <a href="#comparison-table" class="inline-block text-gray-400 hover:text-gray-300 animate-bounce motion-reduce:animate-none" aria-label="Scroll to comparison table">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </a>
+  </div>
+</section>

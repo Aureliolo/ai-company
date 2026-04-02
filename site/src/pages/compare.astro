@@ -1,0 +1,171 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import yaml from "js-yaml";
+
+import Base from "../layouts/Base.astro";
+import ComparisonHero from "../components/ComparisonHero.astro";
+import ComparisonFAQ from "../components/ComparisonFAQ.astro";
+import ComparisonTable from "../components/islands/ComparisonTable";
+import type { Dimension, Category, Competitor } from "../components/islands/ComparisonTable";
+
+const dataPath = path.resolve("../data/competitors.yaml");
+const raw = fs.readFileSync(dataPath, "utf-8");
+const data = yaml.load(raw) as {
+  dimensions: Dimension[];
+  categories: Category[];
+  competitors: Competitor[];
+};
+
+const missing = ["dimensions", "categories", "competitors"].filter((k) => !data?.[k]);
+if (missing.length > 0) {
+  throw new Error(`Invalid structure in ${dataPath}: missing required keys: ${missing.join(", ")}`);
+}
+
+const { dimensions, categories, competitors } = data;
+// Exclude SynthOrg itself from the "N+ frameworks compared" count
+const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
+
+const title = `SynthOrg vs ${competitorCount}+ Agent Frameworks -- Feature Comparison`;
+const description = `Interactive comparison of SynthOrg against ${competitorCount}+ agent orchestration frameworks, platforms, and research projects. Filter by category, sort by feature.`;
+---
+
+<Base title={title} description={description}>
+  <ComparisonHero competitorCount={competitorCount} />
+
+  <!-- ============================================================ -->
+  <!-- INTERACTIVE COMPARISON TABLE (React Island) -->
+  <!-- ============================================================ -->
+  <section class="py-12 px-6" id="comparison-table">
+    <div class="max-w-7xl mx-auto">
+      <ComparisonTable
+        client:visible
+        competitors={competitors}
+        dimensions={dimensions}
+        categories={categories}
+      />
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- FEATURE DEEP-DIVES -->
+  <!-- ============================================================ -->
+  <section class="py-16 px-6">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-3xl font-bold mb-12 text-center">
+        Where SynthOrg is
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
+          uniquely different
+        </span>
+      </h2>
+
+      <div class="grid md:grid-cols-2 gap-8">
+        <!-- Deep-dive 1: Org Structure -->
+        <div class="border border-violet-500/20 rounded-xl p-6 bg-violet-950/10">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-violet-400"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h3 class="text-xl font-semibold">Virtual Organization</h3>
+          </div>
+          <p class="text-gray-400 leading-relaxed">
+            The only framework that models a complete organizational structure --
+            departments, reporting chains, 8 seniority levels, hiring/firing,
+            performance tracking, and career progression. Agents are not just tools;
+            they are employees with roles and responsibilities.
+          </p>
+        </div>
+
+        <!-- Deep-dive 2: Budget -->
+        <div class="border border-teal-500/20 rounded-xl p-6 bg-teal-950/10">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-teal-600/20 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-teal-400"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h3 class="text-xl font-semibold">Cost Intelligence</h3>
+          </div>
+          <p class="text-gray-400 leading-relaxed">
+            Per-agent budget tracking with hierarchical cascades, CFO-level optimization,
+            quota degradation, and trend analysis. No other framework gives you financial
+            controls at the agent level -- know exactly what each agent costs and why.
+          </p>
+        </div>
+
+        <!-- Deep-dive 3: Security -->
+        <div class="border border-violet-500/20 rounded-xl p-6 bg-violet-950/10">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-violet-600/20 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-violet-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3 class="text-xl font-semibold">Progressive Security</h3>
+          </div>
+          <p class="text-gray-400 leading-relaxed">
+            A rule engine combined with LLM-based evaluation, 5 autonomy tiers,
+            progressive trust scoring, comprehensive audit trails, and output scanning.
+            Security is built into the framework from day one, not bolted on after.
+          </p>
+        </div>
+
+        <!-- Deep-dive 4: Production Stack -->
+        <div class="border border-teal-500/20 rounded-xl p-6 bg-teal-950/10">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-lg bg-teal-600/20 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-teal-400"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            </div>
+            <h3 class="text-xl font-semibold">Production Infrastructure</h3>
+          </div>
+          <p class="text-gray-400 leading-relaxed">
+            Docker with Chainguard distroless images, cosign signature verification,
+            SLSA provenance, backup/restore, structured logging with redaction, and
+            a Go CLI with cross-platform binaries. Ship to production, not just notebooks.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <ComparisonFAQ />
+
+  <!-- ============================================================ -->
+  <!-- FINAL CTA -->
+  <!-- ============================================================ -->
+  <section class="py-16 px-6">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-6">
+        Ready to build your
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
+          synthetic organization?
+        </span>
+      </h2>
+      <p class="text-gray-400 mb-8">
+        Get started with SynthOrg in minutes. Define your company in YAML, configure your agents, and watch them work.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <a href="/get/" class="px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors">
+          Get Started
+        </a>
+        <a href="/" class="px-8 py-3 border border-white/20 hover:bg-white/5 rounded-lg font-semibold transition-colors">
+          Back to SynthOrg
+        </a>
+        <a href="https://github.com/Aureliolo/synthorg" class="px-8 py-3 border border-teal-400/50 text-teal-400 hover:bg-teal-400/10 rounded-lg font-semibold transition-colors">
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": title,
+    "description": description,
+    "url": "https://synthorg.io/compare/",
+    "mainEntity": {
+      "@type": "SoftwareApplication",
+      "name": "SynthOrg",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Cross-platform",
+      "url": "https://synthorg.io",
+    },
+  }).replace(/</g, "\\u003c")} />
+</Base>

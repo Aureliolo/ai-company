@@ -13,5 +13,6 @@ export default defineConfig({
   // Landing page is everything else
   build: {
     assets: "_assets",
+    inlineStylesheets: "auto",
   },
 });
