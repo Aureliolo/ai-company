@@ -441,15 +441,15 @@ class VelocityCalculator(Protocol):
     def primary_unit(self) -> str: ...
 ```
 
-**Shipped and planned implementations:**
+**Shipped implementations:**
 
 | Calculator | Primary unit | Strategy default for |
 |------------|-------------|---------------------|
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
 | `CalendarVelocityCalculator` | `pts/day` | calendar |
 | `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid |
-| `BudgetVelocityCalculator` (planned) | `pts/EUR` | budget_driven |
-| `PointsPerSprintVelocityCalculator` (planned) | `pts/sprint` | external_trigger |
+| `BudgetVelocityCalculator` | `pts/EUR` | budget_driven |
+| `PointsPerSprintVelocityCalculator` | `pts/sprint` | event_driven, external_trigger, milestone_driven |
 
 ---
 
@@ -657,6 +657,12 @@ Event constants in `synthorg.observability.events.workflow`:
 | `VELOCITY_CALENDAR_NO_DURATION` | CalendarVelocityCalculator received a record with zero duration_days (defensive) |
 | `VELOCITY_MULTI_NO_TASK_COUNT` | MultiDimensionalVelocityCalculator: no task_completion_count |
 | `VELOCITY_MULTI_NO_DURATION` | MultiDimensionalVelocityCalculator received a record with zero duration_days (defensive) |
+| `SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET` | Event-driven strategy debounce threshold not yet met |
+| `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED` | Event-driven strategy incremented an internal event counter |
+| `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED` | Budget-driven strategy detected a budget threshold crossing |
+| `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED` | Budget-driven strategy skipped an already-fired threshold |
+| `SPRINT_AUTO_TRANSITION_BUDGET` | Sprint auto-transitioned due to budget exhaustion |
+| `VELOCITY_BUDGET_NO_BUDGET_CONSUMED` | BudgetVelocityCalculator: record has None or zero budget_consumed |
 
 ---
 
@@ -687,12 +693,20 @@ Event constants in `synthorg.observability.events.workflow`:
 - `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
 - Observability event constants (`VELOCITY_CALENDAR_NO_DURATION` -- defensive, for invalid/unvalidated records only, `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION` -- defensive, for invalid/unvalidated records only)
 
+### Implemented in #971 + #972 (Event-Driven + Budget-Driven Strategies, integration pending)
+
+- `EventDrivenStrategy` -- reactive ceremony firing on engine events with configurable debounce
+- `PointsPerSprintVelocityCalculator` -- `pts/sprint` for event-driven and external-trigger strategies
+- `BudgetDrivenStrategy` -- ceremony firing at cost-consumption thresholds
+- `BudgetVelocityCalculator` -- `pts/EUR` with budget-weighted rolling averages
+- Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
+
+> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.5.8 | #971 | EventDrivenStrategy + PointsPerSprintVelocityCalculator |
-| v0.5.8 | #972 | BudgetDrivenStrategy + BudgetVelocityCalculator |
 | v0.5.9 | #973 | ThroughputAdaptiveStrategy |
 | v0.5.9 | #974 | ExternalTriggerStrategy |
 | v0.6.0 | #975 | MilestoneStrategy |
