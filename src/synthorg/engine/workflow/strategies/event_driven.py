@@ -237,7 +237,7 @@ class EventDrivenStrategy:
         if (
             isinstance(debounce_default, int)
             and not isinstance(debounce_default, bool)
-            and debounce_default >= 1
+            and 1 <= debounce_default <= _MAX_DEBOUNCE
         ):
             self._debounce_default = debounce_default
         elif debounce_default is not None:
@@ -420,7 +420,11 @@ class EventDrivenStrategy:
     ) -> int:
         """Resolve debounce value with type validation."""
         raw = config.get(_KEY_DEBOUNCE, self._debounce_default)
-        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, int)
+            or not (1 <= raw <= _MAX_DEBOUNCE)
+        ):
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
                 ceremony=ceremony_name,
