@@ -1,5 +1,7 @@
 """Tests for workflow definition YAML export."""
 
+from typing import Any
+
 import pytest
 import yaml
 
@@ -53,7 +55,7 @@ def _wf(
     )
 
 
-def _parse_yaml(yaml_str: str) -> dict[str, object]:
+def _parse_yaml(yaml_str: str) -> dict[str, Any]:
     return yaml.safe_load(yaml_str)  # type: ignore[no-any-return]
 
 

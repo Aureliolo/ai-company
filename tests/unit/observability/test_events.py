@@ -227,6 +227,7 @@ class TestEventConstants:
             "timeout",
             "tool",
             "workflow",
+            "workflow_definition",
             "workspace",
             "trust",
             "promotion",
