@@ -15,7 +15,7 @@ from synthorg.memory.embedding.rankings import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
-    MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+    MEMORY_EMBEDDER_AUTO_SELECTED,
 )
 
 logger = get_logger(__name__)
@@ -61,8 +61,7 @@ def select_embedding_model(
         for available in available_lower:
             if ranking_id_lower in available:
                 logger.debug(
-                    MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
-                    reason="match_found",
+                    MEMORY_EMBEDDER_AUTO_SELECTED,
                     ranking_model=ranking.model_id,
                     available_model=available,
                 )

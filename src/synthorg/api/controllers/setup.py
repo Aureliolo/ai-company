@@ -754,6 +754,8 @@ class SetupController(Controller):
 
         # Auto-select embedding model from configured providers.
         # Best-effort: does not block setup completion on failure.
+        # TODO(#1001): forward provider_preset_name and has_gpu from
+        # the setup context so tier inference uses real hardware info.
         try:
             model_ids = await _collect_model_ids(app_state)
             await auto_select_embedder(

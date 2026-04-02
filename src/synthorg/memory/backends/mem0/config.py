@@ -251,16 +251,17 @@ def _resolve_effective_model(embedder: Mem0EmbedderConfig) -> str:
     ft = embedder.fine_tune
     if ft is not None and ft.enabled:
         if ft.checkpoint_path is None:  # pragma: no cover -- guaranteed by validator
-            return embedder.model
+            return ft.base_model or embedder.model
         checkpoint = Path(ft.checkpoint_path)
         if not checkpoint.exists():
+            fallback = ft.base_model or embedder.model
             logger.warning(
                 MEMORY_EMBEDDER_CHECKPOINT_MISSING,
                 checkpoint_path=ft.checkpoint_path,
-                base_model=ft.base_model,
+                base_model=fallback,
                 reason="checkpoint not found on disk, falling back to base model",
             )
-            return embedder.model
+            return fallback
         logger.info(
             MEMORY_EMBEDDER_CHECKPOINT_ACTIVE,
             checkpoint_path=ft.checkpoint_path,

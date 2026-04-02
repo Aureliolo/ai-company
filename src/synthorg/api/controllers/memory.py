@@ -140,8 +140,8 @@ class MemoryAdminController(Controller):
                             reason="invalid integer value",
                         )
                 result = ActiveEmbedderResponse(
-                    provider=provider_sv.value,
-                    model=model_sv.value,
+                    provider=provider_sv.value or None,
+                    model=model_sv.value or None,
                     dims=dims_value,
                 )
             except MemoryError, RecursionError:

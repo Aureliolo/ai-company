@@ -150,7 +150,7 @@ class EmbedderOverrideConfig(BaseModel):
             is set, since dimensions are model-dependent).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     provider: NotBlankStr | None = Field(
         default=None,
