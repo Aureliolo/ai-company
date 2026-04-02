@@ -451,9 +451,10 @@ class CompanyTemplate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_pack_names(self) -> Self:
-        """Pack names in uses_packs must be unique."""
-        if len(self.uses_packs) != len(set(self.uses_packs)):
-            dupes = sorted(n for n, c in Counter(self.uses_packs).items() if c > 1)
+        """Pack names in uses_packs must be unique (case-insensitive)."""
+        normalized = [p.strip().lower() for p in self.uses_packs]
+        if len(normalized) != len(set(normalized)):
+            dupes = sorted(n for n, c in Counter(normalized).items() if c > 1)
             msg = f"Duplicate pack names in uses_packs: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)

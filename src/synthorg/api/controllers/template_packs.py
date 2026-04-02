@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.controllers.setup_agents import expand_template_agents
 from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError
+from synthorg.api.errors import ApiError, NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -111,7 +111,7 @@ async def _read_setting_list(
     if not entry.value:
         return []
     try:
-        result: list[dict[str, Any]] = json.loads(entry.value)
+        parsed = json.loads(entry.value)
     except json.JSONDecodeError as exc:
         logger.exception(
             TEMPLATE_PACK_APPLY_ERROR,
@@ -120,8 +120,20 @@ async def _read_setting_list(
             action="corrupt_setting_json",
         )
         msg = f"Setting 'company/{key}' contains invalid JSON"
-        raise NotFoundError(msg) from exc
-    return result
+        raise ApiError(msg) from exc
+    if not isinstance(parsed, list) or not all(
+        isinstance(item, dict) for item in parsed
+    ):
+        logger.error(
+            TEMPLATE_PACK_APPLY_ERROR,
+            key=key,
+            action="corrupt_setting_type",
+            expected="list[dict]",
+            got=type(parsed).__name__,
+        )
+        msg = f"Setting 'company/{key}' is not a list of objects"
+        raise ApiError(msg)
+    return parsed
 
 
 def _serialize_departments(
@@ -281,7 +293,17 @@ class TemplatePackController(Controller):
             TEMPLATE_PACK_APPLY_START,
             pack_name=data.pack_name,
         )
-        result = await _apply_pack_to_settings(app_state, data)
+        try:
+            result = await _apply_pack_to_settings(app_state, data)
+        except NotFoundError:
+            raise
+        except Exception:
+            logger.exception(
+                TEMPLATE_PACK_APPLY_ERROR,
+                pack_name=data.pack_name,
+                action="apply_failed",
+            )
+            raise
         logger.info(
             TEMPLATE_PACK_APPLY_SUCCESS,
             pack_name=data.pack_name,
