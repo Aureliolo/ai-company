@@ -21,11 +21,6 @@ addEventListener('activate', function (event) {
 })
 
 addEventListener('message', async function (event) {
-  // Verify same-origin (CWE-020/CWE-940)
-  if (event.origin && event.origin !== self.location.origin) {
-    return
-  }
-
   const clientId = Reflect.get(event.source || {}, 'id')
 
   if (!clientId || !self.clients) {
