@@ -412,14 +412,13 @@ class TestValidateStrategyConfig:
     @pytest.mark.unit
     def test_valid_config(self) -> None:
         strategy = ExternalTriggerStrategy()
-        strategy.validate_strategy_config({"on_external": "pr_merged"})
+        strategy.validate_strategy_config({"transition_event": "deploy_complete"})
 
     @pytest.mark.unit
     def test_valid_config_with_all_keys(self) -> None:
         strategy = ExternalTriggerStrategy()
         strategy.validate_strategy_config(
             {
-                "on_external": "pr_merged",
                 "transition_event": "deploy_complete",
                 "sources": [
                     {"type": "webhook"},
@@ -443,10 +442,7 @@ class TestValidateStrategyConfig:
     @pytest.mark.parametrize(
         ("config", "match"),
         [
-            ({"on_external": ""}, "non-empty string"),
-            ({"on_external": 123}, "non-empty string"),
-            ({"on_external": True}, "non-empty string"),
-            ({"on_external": "x" * 200}, "<= 128"),
+            ({"on_external": "pr_merged"}, "Unknown config keys"),
             ({"transition_event": ""}, "non-empty string"),
             ({"transition_event": 42}, "non-empty string"),
             ({"transition_event": "x" * 200}, "<= 128"),
@@ -460,10 +456,7 @@ class TestValidateStrategyConfig:
             ),
         ],
         ids=[
-            "on_external_empty",
-            "on_external_non_string",
-            "on_external_bool",
-            "on_external_too_long",
+            "on_external_sprint_level_rejected",
             "transition_event_empty",
             "transition_event_non_string",
             "transition_event_too_long",

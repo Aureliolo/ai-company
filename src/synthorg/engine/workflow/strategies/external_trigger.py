@@ -57,11 +57,13 @@ _KEY_SOURCES: str = "sources"
 
 _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
     {
-        _KEY_ON_EXTERNAL,
         _KEY_TRANSITION_EVENT,
         _KEY_SOURCES,
     }
 )
+
+# Per-ceremony keys (read via get_ceremony_config, not sprint-level config).
+_KNOWN_CEREMONY_KEYS: frozenset[str] = frozenset({_KEY_ON_EXTERNAL})
 
 # -- Defaults and limits -------------------------------------------------------
 
@@ -100,7 +102,7 @@ class ExternalTriggerStrategy:
     def __init__(self) -> None:
         self._received_events: set[str] = set()
         self._event_counts: dict[str, int] = {}
-        self._ceremony_last_fired_counts: dict[str, int] = {}
+        self._ceremony_last_fired_counts: dict[tuple[str, str], int] = {}
         self._sources: tuple[MappingProxyType[str, Any], ...] = ()
 
     # -- Core evaluation -------------------------------------------------------
@@ -364,7 +366,6 @@ class ExternalTriggerStrategy:
             )
             raise ValueError(msg)
 
-        self._validate_string_key(config, _KEY_ON_EXTERNAL)
         self._validate_string_key(config, _KEY_TRANSITION_EVENT)
         try:
             self._validate_sources(config)
@@ -397,7 +398,7 @@ class ExternalTriggerStrategy:
         if current_count == 0:
             return False
 
-        key = f"{ceremony_name}:{event_name}"
+        key = (ceremony_name, event_name)
         last_count = self._ceremony_last_fired_counts.get(key, 0)
         if current_count > last_count:
             self._ceremony_last_fired_counts[key] = current_count
