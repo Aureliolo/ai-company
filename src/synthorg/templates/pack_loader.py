@@ -12,6 +12,7 @@ the ``synthorg.templates.packs`` package, and user packs live in
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 from synthorg.config.errors import ConfigLocation
@@ -33,13 +34,15 @@ logger = get_logger(__name__)
 
 _USER_PACKS_DIR = Path.home() / ".synthorg" / "template-packs"
 
-BUILTIN_PACKS: dict[str, str] = {
-    "security-team": "security-team.yaml",
-    "data-team": "data-team.yaml",
-    "qa-pipeline": "qa-pipeline.yaml",
-    "creative-marketing": "creative-marketing.yaml",
-    "design-team": "design-team.yaml",
-}
+BUILTIN_PACKS: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "security-team": "security-team.yaml",
+        "data-team": "data-team.yaml",
+        "qa-pipeline": "qa-pipeline.yaml",
+        "creative-marketing": "creative-marketing.yaml",
+        "design-team": "design-team.yaml",
+    }
+)
 
 
 @dataclass(frozen=True)

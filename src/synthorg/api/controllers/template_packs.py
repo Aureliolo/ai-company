@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 class PackInfoResponse(BaseModel):
     """Pack summary for the listing endpoint."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr
     display_name: str
@@ -63,7 +63,7 @@ class ApplyTemplatePackRequest(BaseModel):
 class ApplyTemplatePackResponse(BaseModel):
     """Response after applying a template pack."""
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     pack_name: str
     agents_added: int = Field(ge=0)
@@ -174,9 +174,12 @@ class TemplatePackController(Controller):
 
         # Merge departments (skip existing by name).
         existing_dept_names = {str(d.get("name", "")).lower() for d in current_depts}
-        new_depts_raw = json.loads(
-            departments_to_json(loaded.template.departments) or "[]",
-        )
+        if loaded.template.departments:
+            new_depts_raw: list[dict[str, Any]] = json.loads(
+                departments_to_json(loaded.template.departments),
+            )
+        else:
+            new_depts_raw = []
         new_depts = [
             d
             for d in new_depts_raw

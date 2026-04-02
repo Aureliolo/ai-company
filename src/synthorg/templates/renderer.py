@@ -235,7 +235,7 @@ def _resolve_packs(
             pack_loaded,
             None,
             locales=locales,
-            _chain=_chain,
+            _chain=_chain | {pack_name},
             custom_presets=custom_presets,
             _as_parent=True,
         )
