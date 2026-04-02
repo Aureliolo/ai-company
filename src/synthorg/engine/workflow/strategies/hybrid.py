@@ -22,6 +22,7 @@ from synthorg.engine.workflow.strategies._helpers import (
     KEY_SPRINT_PERCENTAGE,
     KEY_TRIGGER,
     SECONDS_PER_DAY,
+    STICKY_TRIGGERS,
     evaluate_task_trigger,
     resolve_duration_days,
     resolve_interval,
@@ -34,6 +35,7 @@ from synthorg.engine.workflow.strategies._helpers import (
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
 )
@@ -163,6 +165,14 @@ class HybridStrategy:
         duration_days = resolve_duration_days(config, "hybrid")
         duration_seconds = duration_days * SECONDS_PER_DAY
         if context.elapsed_seconds >= duration_seconds:
+            logger.info(
+                SPRINT_AUTO_TRANSITION,
+                strategy="hybrid",
+                reason="time_elapsed",
+                sprint_id=sprint.id,
+                elapsed_seconds=context.elapsed_seconds,
+                duration_seconds=duration_seconds,
+            )
             return SprintStatus.IN_REVIEW
 
         # Task-driven leg.
@@ -173,6 +183,14 @@ class HybridStrategy:
                 else DEFAULT_TRANSITION_THRESHOLD
             )
             if context.sprint_percentage_complete >= threshold:
+                logger.info(
+                    SPRINT_AUTO_TRANSITION,
+                    strategy="hybrid",
+                    reason="task_threshold",
+                    sprint_id=sprint.id,
+                    sprint_pct=context.sprint_percentage_complete,
+                    threshold=threshold,
+                )
                 return SprintStatus.IN_REVIEW
 
         return None
@@ -286,27 +304,32 @@ class HybridStrategy:
     ) -> bool:
         """Check the task-driven leg.
 
-        Suppressed if the ceremony has already fired within the current
-        calendar interval to prevent percentage-based triggers from
-        firing repeatedly once their threshold is permanently crossed.
+        For sticky triggers (sprint_end, sprint_midpoint,
+        sprint_percentage) whose condition stays permanently true
+        once crossed, the task leg is suppressed if the ceremony
+        has already fired within the current calendar interval.
+        Non-sticky triggers (every_n_completions) reset naturally
+        via ``completions_since_last_trigger`` and are not suppressed.
         """
-        # Suppress task leg if the ceremony has already fired and the
-        # calendar interval has not yet elapsed.  This prevents infinite
-        # re-firing for percentage-based triggers (sprint_end,
-        # sprint_midpoint, sprint_percentage) whose condition stays
-        # true once crossed.  Only applies after at least one fire --
-        # the task leg must be free to fire *before* the first calendar
-        # interval to preserve "first-wins" semantics.
-        interval = resolve_interval(ceremony, "hybrid")
-        if interval is not None and ceremony.name in self._last_fire_elapsed:
-            last_fire = self._last_fire_elapsed[ceremony.name]
-            if context.elapsed_seconds - last_fire < interval:
-                return False
-
         if ceremony.policy_override is None:
             return False
         config = ceremony.policy_override.strategy_config or {}
         trigger = config.get(KEY_TRIGGER)
         if trigger is None:
             return False
+
+        # Suppress sticky triggers if the ceremony has already fired
+        # and the calendar interval has not yet elapsed.  This prevents
+        # infinite re-firing for percentage-based triggers whose
+        # condition stays true once crossed.  Only applies after at
+        # least one fire -- the task leg must be free to fire *before*
+        # the first calendar interval to preserve "first-wins"
+        # semantics.
+        if trigger in STICKY_TRIGGERS:
+            interval = resolve_interval(ceremony, "hybrid")
+            if interval is not None and ceremony.name in self._last_fire_elapsed:
+                last_fire = self._last_fire_elapsed[ceremony.name]
+                if context.elapsed_seconds - last_fire < interval:
+                    return False
+
         return evaluate_task_trigger(trigger, config, context)

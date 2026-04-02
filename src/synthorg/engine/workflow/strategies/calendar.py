@@ -23,6 +23,7 @@ from synthorg.engine.workflow.strategies._helpers import (
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
 )
@@ -143,6 +144,14 @@ class CalendarStrategy:
         duration_days = resolve_duration_days(config, "calendar")
         duration_seconds = duration_days * SECONDS_PER_DAY
         if context.elapsed_seconds >= duration_seconds:
+            logger.info(
+                SPRINT_AUTO_TRANSITION,
+                strategy="calendar",
+                reason="time_elapsed",
+                sprint_id=sprint.id,
+                elapsed_seconds=context.elapsed_seconds,
+                duration_seconds=duration_seconds,
+            )
             return SprintStatus.IN_REVIEW
         return None
 

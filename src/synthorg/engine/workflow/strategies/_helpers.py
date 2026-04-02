@@ -60,6 +60,18 @@ VALID_TRIGGERS: frozenset[str] = frozenset(
 
 VALID_FREQUENCIES: frozenset[str] = frozenset(m.value for m in MeetingFrequency)
 
+# Triggers whose condition stays permanently true once crossed (percentage-
+# based).  Unlike ``every_n_completions`` (which resets via
+# ``completions_since_last_trigger``), these need interval-based suppression
+# to prevent infinite re-firing in the hybrid strategy.
+STICKY_TRIGGERS: frozenset[str] = frozenset(
+    {
+        TRIGGER_SPRINT_END,
+        TRIGGER_SPRINT_MIDPOINT,
+        TRIGGER_SPRINT_PERCENTAGE,
+    }
+)
+
 
 # -- Config resolution ------------------------------------------------------
 
