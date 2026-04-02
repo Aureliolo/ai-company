@@ -120,12 +120,13 @@ class TestInteractionFeedback:
         ],
     )
     def test_rating_lower_bound(self, field: str) -> None:
+        kwargs: dict[str, object] = {field: -0.1}
         with pytest.raises(ValueError, match="greater than or equal to 0"):
             InteractionFeedback(
                 agent_id=NotBlankStr("agent-001"),
                 recorded_at=datetime.now(UTC),
                 source=NotBlankStr("human"),
-                **{field: -0.1},
+                **kwargs,  # type: ignore[arg-type]
             )
 
     @pytest.mark.parametrize(
@@ -139,12 +140,13 @@ class TestInteractionFeedback:
         ],
     )
     def test_rating_upper_bound(self, field: str) -> None:
+        kwargs: dict[str, object] = {field: 1.1}
         with pytest.raises(ValueError, match="less than or equal to 1"):
             InteractionFeedback(
                 agent_id=NotBlankStr("agent-001"),
                 recorded_at=datetime.now(UTC),
                 source=NotBlankStr("human"),
-                **{field: 1.1},
+                **kwargs,  # type: ignore[arg-type]
             )
 
     def test_free_text_max_length(self) -> None:
