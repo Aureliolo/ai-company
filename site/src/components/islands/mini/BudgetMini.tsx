@@ -18,7 +18,7 @@ export default function BudgetMini({ tick }: Props) {
   const gaugeValue = Math.max(30, basePct - (tick % 40) * 0.3);
   const spent = (500 * (1 - gaugeValue / 100)).toFixed(2);
   const remaining = (500 * (gaugeValue / 100)).toFixed(2);
-  const forecast = (500 * (1 - gaugeValue / 100) * 1.15).toFixed(2);
+  const forecast = (500 * (1 - gaugeValue / 100) * 1.5).toFixed(2);
 
   // SVG arc math for the gauge
   const radius = 50; // matches SVG arc: A 50 50
