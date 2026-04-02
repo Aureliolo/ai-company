@@ -102,11 +102,6 @@ async def _read_setting_list(
     try:
         entry = await app_state.settings_service.get("company", key)
     except SettingNotFoundError:
-        logger.debug(
-            TEMPLATE_PACK_APPLY_START,
-            key=key,
-            action="setting_not_found_default_empty",
-        )
         return []
     if not entry.value:
         return []
