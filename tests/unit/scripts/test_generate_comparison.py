@@ -1,23 +1,34 @@
 """Tests for scripts/generate_comparison.py."""
 
 import importlib.util
+from collections.abc import Generator
 from pathlib import Path
+from types import ModuleType
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-# Import the script module dynamically since it's not a package
-SCRIPT_PATH = Path(__file__).resolve().parents[3] / "scripts" / "generate_comparison.py"
-_spec = importlib.util.spec_from_file_location("generate_comparison", SCRIPT_PATH)
-gen = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gen)
+
+def _import_script() -> ModuleType:
+    """Import generate_comparison.py as a module."""
+    script = Path(__file__).resolve().parents[3] / "scripts" / "generate_comparison.py"
+    spec = importlib.util.spec_from_file_location("generate_comparison", script)
+    assert spec is not None
+    assert spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+gen = _import_script()
 
 
 # -- Fixtures --
 
 
-DIMS = [
+DIMS: list[dict[str, str]] = [
     {"key": "memory", "label": "Memory", "description": "Mem"},
     {"key": "tool_use", "label": "Tool Use", "description": "Tools"},
     {"key": "org_structure", "label": "Org Structure", "description": ""},
@@ -34,9 +45,11 @@ DIMS = [
     {"key": "template_system", "label": "Templates", "description": ""},
 ]
 
-CATS = [{"key": "framework", "label": "Multi-Agent Framework"}]
+CATS: list[dict[str, str]] = [
+    {"key": "framework", "label": "Multi-Agent Framework"},
+]
 
-COMP = {
+COMP: dict[str, Any] = {
     "name": "TestFramework",
     "slug": "test-framework",
     "url": "https://example.com",
@@ -50,7 +63,7 @@ COMP = {
     },
 }
 
-MINIMAL_YAML = {
+MINIMAL_YAML: dict[str, Any] = {
     "meta": {"last_updated": "2026-04-02"},
     "dimensions": DIMS,
     "categories": CATS,
@@ -59,7 +72,7 @@ MINIMAL_YAML = {
 
 
 @pytest.fixture
-def minimal_yaml_file(tmp_path):
+def minimal_yaml_file(tmp_path: Path) -> Generator[Path]:
     """Write minimal valid YAML and patch DATA_FILE."""
     f = tmp_path / "competitors.yaml"
     f.write_text(yaml.dump(MINIMAL_YAML), encoding="utf-8")
@@ -67,7 +80,11 @@ def minimal_yaml_file(tmp_path):
         yield f
 
 
-def _write_yaml(tmp_path, data, name="test.yaml"):
+def _write_yaml(
+    tmp_path: Path,
+    data: Any,
+    name: str = "test.yaml",
+) -> Path:
     f = tmp_path / name
     f.write_text(yaml.dump(data), encoding="utf-8")
     return f
@@ -80,20 +97,20 @@ def _write_yaml(tmp_path, data, name="test.yaml"):
 class TestLoadData:
     """Tests for _load_data validation logic."""
 
-    def test_valid_data(self, minimal_yaml_file):
+    def test_valid_data(self, minimal_yaml_file: Path) -> None:
         data = gen._load_data()
         assert data["meta"]["last_updated"] == "2026-04-02"
         assert len(data["competitors"]) == 1
         assert data["competitors"][0]["name"] == "TestFramework"
 
-    def test_missing_file(self, tmp_path):
+    def test_missing_file(self, tmp_path: Path) -> None:
         with (
             patch.object(gen, "DATA_FILE", tmp_path / "nope.yaml"),
             pytest.raises(FileNotFoundError, match="Data file not found"),
         ):
             gen._load_data()
 
-    def test_empty_yaml(self, tmp_path):
+    def test_empty_yaml(self, tmp_path: Path) -> None:
         f = _write_yaml(tmp_path, None, "empty.yaml")
         f.write_text("", encoding="utf-8")
         with (
@@ -102,7 +119,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_missing_top_level_keys(self, tmp_path):
+    def test_missing_top_level_keys(self, tmp_path: Path) -> None:
         data = {"meta": {"last_updated": "2026-01-01"}}
         f = _write_yaml(tmp_path, data)
         with (
@@ -111,7 +128,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_empty_competitors_list(self, tmp_path):
+    def test_empty_competitors_list(self, tmp_path: Path) -> None:
         data = {**MINIMAL_YAML, "competitors": []}
         f = _write_yaml(tmp_path, data)
         with (
@@ -120,7 +137,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_missing_last_updated(self, tmp_path):
+    def test_missing_last_updated(self, tmp_path: Path) -> None:
         data = {**MINIMAL_YAML, "meta": {}}
         f = _write_yaml(tmp_path, data)
         with (
@@ -129,7 +146,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_competitor_missing_name(self, tmp_path):
+    def test_competitor_missing_name(self, tmp_path: Path) -> None:
         bad = {"slug": "x", "category": "framework"}
         data = {**MINIMAL_YAML, "competitors": [bad]}
         f = _write_yaml(tmp_path, data)
@@ -139,7 +156,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_competitor_missing_slug(self, tmp_path):
+    def test_competitor_missing_slug(self, tmp_path: Path) -> None:
         bad = {"name": "Test", "category": "framework"}
         data = {**MINIMAL_YAML, "competitors": [bad]}
         f = _write_yaml(tmp_path, data)
@@ -149,7 +166,7 @@ class TestLoadData:
         ):
             gen._load_data()
 
-    def test_competitor_not_a_mapping(self, tmp_path):
+    def test_competitor_not_a_mapping(self, tmp_path: Path) -> None:
         data = {**MINIMAL_YAML, "competitors": ["not-a-dict"]}
         f = _write_yaml(tmp_path, data)
         with (
@@ -162,12 +179,12 @@ class TestLoadData:
 # -- Helper functions --
 
 
-HELPER_DIMS = [
+HELPER_DIMS: list[dict[str, str]] = [
     {"key": "memory", "label": "Memory"},
     {"key": "tool_use", "label": "Tool Use"},
 ]
 
-HELPER_CATS = [
+HELPER_CATS: list[dict[str, str]] = [
     {"key": "framework", "label": "Multi-Agent Framework"},
     {"key": "platform", "label": "Commercial Platform"},
 ]
@@ -177,19 +194,19 @@ HELPER_CATS = [
 class TestHelpers:
     """Tests for helper functions."""
 
-    def test_dimension_label_known(self):
+    def test_dimension_label_known(self) -> None:
         assert gen._dimension_label(HELPER_DIMS, "memory") == "Memory"
 
-    def test_dimension_label_unknown(self, capsys):
+    def test_dimension_label_unknown(self, capsys: pytest.CaptureFixture[str]) -> None:
         result = gen._dimension_label(HELPER_DIMS, "unknown_dim")
         assert result == "unknown_dim"
         assert "WARNING" in capsys.readouterr().err
 
-    def test_category_label_known(self):
+    def test_category_label_known(self) -> None:
         label = gen._category_label(HELPER_CATS, "framework")
         assert label == "Multi-Agent Framework"
 
-    def test_category_label_unknown(self, capsys):
+    def test_category_label_unknown(self, capsys: pytest.CaptureFixture[str]) -> None:
         result = gen._category_label(HELPER_CATS, "unknown_cat")
         assert result == "unknown_cat"
         assert "WARNING" in capsys.readouterr().err
@@ -203,10 +220,10 @@ class TestHelpers:
             ("planned", "\u23f2"),
         ],
     )
-    def test_support_icon_known(self, value, expected):
+    def test_support_icon_known(self, value: str, expected: str) -> None:
         assert gen._support_icon(value) == expected
 
-    def test_support_icon_unknown(self, capsys):
+    def test_support_icon_unknown(self, capsys: pytest.CaptureFixture[str]) -> None:
         result = gen._support_icon("bogus")
         assert result == "bogus"
         assert "WARNING" in capsys.readouterr().err
@@ -219,7 +236,7 @@ class TestHelpers:
 class TestMarkdownGeneration:
     """Tests for Markdown output."""
 
-    def test_generate_markdown_structure(self):
+    def test_generate_markdown_structure(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
         assert "# Framework Comparison" in markdown
         assert "## Organization & Coordination" in markdown
@@ -228,41 +245,41 @@ class TestMarkdownGeneration:
         assert "## Maturity" in markdown
         assert "## Project Links" in markdown
 
-    def test_generate_markdown_contains_competitor(self):
+    def test_generate_markdown_contains_competitor(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
         assert "TestFramework" in markdown
         assert "example.com" in markdown
         assert "MIT" in markdown
 
-    def test_frontmatter_contains_date(self):
+    def test_frontmatter_contains_date(self) -> None:
         lines = gen._frontmatter_and_intro("2026-04-02")
         text = "\n".join(lines)
         assert "Last updated: 2026-04-02" in text
 
-    def test_frontmatter_contains_legend(self):
+    def test_frontmatter_contains_legend(self) -> None:
         lines = gen._frontmatter_and_intro("2026-04-02")
         text = "\n".join(lines)
         assert "Full support" in text
         assert "Partial support" in text
 
-    def test_competitor_row_with_url(self):
+    def test_competitor_row_with_url(self) -> None:
         row = gen._competitor_row(COMP, ["memory", "tool_use"], CATS)
         assert "[TestFramework](https://example.com)" in row
         assert "\u2714" in row  # full support for memory
         assert "~" in row  # partial support for tool_use
 
-    def test_competitor_row_without_url(self):
+    def test_competitor_row_without_url(self) -> None:
         comp = {**COMP, "url": ""}
         row = gen._competitor_row(comp, ["memory"], CATS)
         assert "TestFramework" in row
         assert "[" not in row  # no link
 
-    def test_competitor_row_synthorg_bold(self):
+    def test_competitor_row_synthorg_bold(self) -> None:
         comp = {**COMP, "is_synthorg": True}
         row = gen._competitor_row(comp, ["memory"], CATS)
         assert "**TestFramework**" in row
 
-    def test_project_links(self):
+    def test_project_links(self) -> None:
         lines = gen._project_links(MINIMAL_YAML["competitors"])
         text = "\n".join(lines)
         assert "**TestFramework**" in text
@@ -276,7 +293,7 @@ class TestMarkdownGeneration:
 class TestMain:
     """Tests for the main() entrypoint."""
 
-    def test_main_success(self, tmp_path, minimal_yaml_file):
+    def test_main_success(self, tmp_path: Path, minimal_yaml_file: Path) -> None:
         out = tmp_path / "output.md"
         with (
             patch.object(gen, "OUTPUT_FILE", out),
@@ -288,7 +305,7 @@ class TestMain:
         content = out.read_text(encoding="utf-8")
         assert "# Framework Comparison" in content
 
-    def test_main_missing_data_file(self, tmp_path):
+    def test_main_missing_data_file(self, tmp_path: Path) -> None:
         with (
             patch.object(gen, "DATA_FILE", tmp_path / "missing.yaml"),
             patch.object(gen, "OUTPUT_FILE", tmp_path / "out.md"),
