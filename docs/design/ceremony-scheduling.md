@@ -446,8 +446,8 @@ class VelocityCalculator(Protocol):
 | Calculator | Primary unit | Strategy default for |
 |------------|-------------|---------------------|
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
-| `CalendarVelocityCalculator` (planned) | `pts/day` | calendar |
-| `MultiDimensionalVelocityCalculator` (planned) | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
+| `CalendarVelocityCalculator` | `pts/day` | calendar |
+| `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid |
 | `BudgetVelocityCalculator` (planned) | `pts/EUR` | budget_driven |
 | `PointsPerSprintVelocityCalculator` (planned) | `pts/sprint` | external_trigger |
 
@@ -653,6 +653,10 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_BRIDGE_CREATED` | Ceremony config bridged to meeting type |
 | `SPRINT_CEREMONY_POLICY_RESOLVED` | 3-level policy resolution completed |
 | `SPRINT_CEREMONY_STRATEGY_CHANGED` | Strategy change detected between sprints |
+| `VELOCITY_TASK_DRIVEN_NO_TASK_COUNT` | VelocityRecord has no task_completion_count for task-driven calculation |
+| `VELOCITY_CALENDAR_NO_DURATION` | CalendarVelocityCalculator received a record with zero duration_days (defensive) |
+| `VELOCITY_MULTI_NO_TASK_COUNT` | MultiDimensionalVelocityCalculator: no task_completion_count |
+| `VELOCITY_MULTI_NO_DURATION` | MultiDimensionalVelocityCalculator received a record with zero duration_days (defensive) |
 
 ---
 
@@ -675,12 +679,18 @@ Event constants in `synthorg.observability.events.workflow`:
 - Observability event constants
 - This design page
 
+### Shipped in #969 + #970 (Calendar + Hybrid Strategies)
+
+- `CalendarStrategy` -- time-based ceremony firing using `MeetingFrequency` intervals
+- `CalendarVelocityCalculator` -- `pts/day` with duration-weighted rolling averages
+- `HybridStrategy` -- first-wins between calendar (floor) and task-driven (ceiling) triggers
+- `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
+- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION` -- defensive, for invalid/unvalidated records only, `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION` -- defensive, for invalid/unvalidated records only)
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.5.7 | #969 | CalendarStrategy + CalendarVelocityCalculator |
-| v0.5.7 | #970 | HybridStrategy + MultiDimensionalVelocityCalculator |
 | v0.5.8 | #971 | EventDrivenStrategy + PointsPerSprintVelocityCalculator |
 | v0.5.8 | #972 | BudgetDrivenStrategy + BudgetVelocityCalculator |
 | v0.5.9 | #973 | ThroughputAdaptiveStrategy |

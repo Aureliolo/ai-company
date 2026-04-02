@@ -55,9 +55,15 @@ from synthorg.engine.workflow.sprint_velocity import (
     calculate_average_velocity,
     record_velocity,
 )
-from synthorg.engine.workflow.strategies import TaskDrivenStrategy
+from synthorg.engine.workflow.strategies import (
+    CalendarStrategy,
+    HybridStrategy,
+    TaskDrivenStrategy,
+)
 from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
 from synthorg.engine.workflow.velocity_calculators import (
+    CalendarVelocityCalculator,
+    MultiDimensionalVelocityCalculator,
     TaskDrivenVelocityCalculator,
 )
 from synthorg.engine.workflow.velocity_types import (
@@ -70,14 +76,18 @@ __all__ = [
     "STATUS_TO_COLUMN",
     "VALID_COLUMN_TRANSITIONS",
     "VALID_SPRINT_TRANSITIONS",
+    "CalendarStrategy",
+    "CalendarVelocityCalculator",
     "CeremonyEvalContext",
     "CeremonyPolicyConfig",
     "CeremonyScheduler",
     "CeremonySchedulingStrategy",
     "CeremonyStrategyType",
+    "HybridStrategy",
     "KanbanColumn",
     "KanbanConfig",
     "KanbanWipLimit",
+    "MultiDimensionalVelocityCalculator",
     "ResolvedCeremonyPolicy",
     "Sprint",
     "SprintCeremonyConfig",
