@@ -14,6 +14,9 @@ from synthorg.memory.embedding.rankings import (
     EmbeddingModelRanking,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -56,7 +59,13 @@ def select_embedding_model(
     for ranking in candidates:
         ranking_id_lower = ranking.model_id.lower()
         for available in available_lower:
-            if ranking_id_lower in available or available in ranking_id_lower:
+            if ranking_id_lower in available:
+                logger.debug(
+                    MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+                    reason="match_found",
+                    ranking_model=ranking.model_id,
+                    available_model=available,
+                )
                 return ranking
     return None
 
@@ -70,8 +79,9 @@ def infer_deployment_tier(
 
     Args:
         provider_preset_name: Provider preset identifier (e.g.
-            ``"ollama"``, ``"lm-studio"``).  ``None`` or unknown
-            names default to ``GPU_CONSUMER``.
+            ``"ollama"``, ``"lm-studio"``).  ``None`` defaults to
+            ``GPU_CONSUMER``.  Non-local/unknown provider names
+            default to ``GPU_FULL`` (cloud providers).
         has_gpu: Whether the host has a GPU.  Only meaningful for
             local providers.  ``None`` means unknown (assumes GPU
             available for local providers).

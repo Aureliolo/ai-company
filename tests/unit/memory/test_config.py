@@ -213,11 +213,10 @@ class TestEmbedderOverrideConfig:
         with pytest.raises(ValidationError):
             EmbedderOverrideConfig(model="test-model", dims=-1)
 
-    def test_dims_without_model_accepted(self) -> None:
-        """dims-only is valid (model can be auto-selected)."""
-        c = EmbedderOverrideConfig(dims=1024)
-        assert c.dims == 1024
-        assert c.model is None
+    def test_dims_without_model_rejected(self) -> None:
+        """dims-only is rejected (dimensions are model-dependent)."""
+        with pytest.raises(ValidationError, match="model"):
+            EmbedderOverrideConfig(dims=1024)
 
 
 # ── CompanyMemoryConfig ──────────────────────────────────────────

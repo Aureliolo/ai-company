@@ -15,6 +15,7 @@ from synthorg.memory.config import (
     CompanyMemoryConfig,  # noqa: TC001
     EmbedderOverrideConfig,  # noqa: TC001
 )
+from synthorg.memory.embedding.rankings import DeploymentTier  # noqa: TC001
 from synthorg.memory.embedding.selector import (
     infer_deployment_tier,
     select_embedding_model,
@@ -32,21 +33,51 @@ logger = get_logger(__name__)
 def _merge_override(
     override: EmbedderOverrideConfig | None,
     *,
-    auto_provider: str | None,
-    auto_model: str | None,
-    auto_dims: int | None,
+    fallback_provider: str | None,
+    fallback_model: str | None,
+    fallback_dims: int | None,
 ) -> tuple[str | None, str | None, int | None]:
-    """Merge an override with auto-selected values.
+    """Merge an override with fallback values.
 
-    Override fields take precedence; ``None`` falls through to auto.
+    Override fields take precedence; ``None`` falls through to
+    fallback.
     """
     if override is None:
-        return auto_provider, auto_model, auto_dims
+        return fallback_provider, fallback_model, fallback_dims
     return (
-        override.provider if override.provider is not None else auto_provider,
-        override.model if override.model is not None else auto_model,
-        override.dims if override.dims is not None else auto_dims,
+        override.provider if override.provider is not None else fallback_provider,
+        override.model if override.model is not None else fallback_model,
+        override.dims if override.dims is not None else fallback_dims,
     )
+
+
+def _auto_select_from_lmeb(
+    available_models: tuple[str, ...],
+    tier: DeploymentTier,
+) -> tuple[str | None, int | None]:
+    """Auto-select model and dims from LMEB rankings.
+
+    Tries tier-filtered first, then falls back to all tiers.
+
+    Returns:
+        ``(model_id, dims)`` or ``(None, None)`` if no match.
+    """
+    ranking = select_embedding_model(
+        available_models,
+        deployment_tier=tier,
+    )
+    if ranking is None:
+        ranking = select_embedding_model(available_models)
+    if ranking is not None:
+        logger.info(
+            MEMORY_EMBEDDER_AUTO_SELECTED,
+            model_id=ranking.model_id,
+            tier=tier.value,
+            overall_score=ranking.overall,
+            dims=ranking.output_dims,
+        )
+        return ranking.model_id, ranking.output_dims
+    return None, None
 
 
 def resolve_embedder_config(
@@ -80,48 +111,23 @@ def resolve_embedder_config(
         MemoryConfigError: If no embedding model can be resolved
             (no overrides and no LMEB match in available models).
     """
-    # Auto-select from LMEB rankings as the base.
-    auto_provider: str | None = None
-    auto_model: str | None = None
-    auto_dims: int | None = None
-
-    tier = infer_deployment_tier(
-        provider_preset_name,
-        has_gpu=has_gpu,
-    )
-    # Try tier-filtered first, fall back to all tiers.
-    ranking = select_embedding_model(
-        available_models,
-        deployment_tier=tier,
-    )
-    if ranking is None:
-        ranking = select_embedding_model(available_models)
-    if ranking is not None:
-        auto_provider = ranking.model_id
-        auto_model = ranking.model_id
-        auto_dims = ranking.output_dims
-        logger.info(
-            MEMORY_EMBEDDER_AUTO_SELECTED,
-            model_id=ranking.model_id,
-            tier=tier.value,
-            overall_score=ranking.overall,
-            dims=ranking.output_dims,
-        )
+    tier = infer_deployment_tier(provider_preset_name, has_gpu=has_gpu)
+    auto_model, auto_dims = _auto_select_from_lmeb(available_models, tier)
 
     # Apply YAML config override (second priority).
     provider, model, dims = _merge_override(
         memory_config.embedder,
-        auto_provider=auto_provider,
-        auto_model=auto_model,
-        auto_dims=auto_dims,
+        fallback_provider=None,
+        fallback_model=auto_model,
+        fallback_dims=auto_dims,
     )
 
     # Apply settings override (highest priority).
     provider, model, dims = _merge_override(
         settings_override,
-        auto_provider=provider,
-        auto_model=model,
-        auto_dims=dims,
+        fallback_provider=provider,
+        fallback_model=model,
+        fallback_dims=dims,
     )
 
     if model is None or dims is None:
@@ -138,6 +144,8 @@ def resolve_embedder_config(
         )
         raise MemoryConfigError(msg)
 
+    # Provider defaults to model for local embedder setups
+    # (e.g. Ollama serves models by name).
     if provider is None:
         provider = model
 

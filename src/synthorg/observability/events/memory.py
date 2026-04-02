@@ -80,6 +80,7 @@ MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_mis
 # ── Fine-tuning pipeline ─────────────────────────────────────────
 
 MEMORY_FINE_TUNE_REQUESTED: Final[str] = "memory.fine_tune.requested"
+MEMORY_FINE_TUNE_VALIDATION_FAILED: Final[str] = "memory.fine_tune.validation_failed"
 MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )

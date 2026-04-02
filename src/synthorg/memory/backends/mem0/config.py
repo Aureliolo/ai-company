@@ -5,7 +5,7 @@ The ``build_mem0_config_dict`` function produces the dict that Mem0's
 ``Memory.from_config()`` expects.
 """
 
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -16,6 +16,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONFIG_INVALID,
     MEMORY_EMBEDDER_CHECKPOINT_ACTIVE,
+    MEMORY_EMBEDDER_CHECKPOINT_MISSING,
 )
 
 logger = get_logger(__name__)
@@ -236,10 +237,10 @@ class Mem0BackendConfig(BaseModel):
 def _resolve_effective_model(embedder: Mem0EmbedderConfig) -> str:
     """Resolve the effective model identifier.
 
-    When fine-tuning is enabled and a checkpoint path is set, the
-    checkpoint path is used as the model identifier (the embedding
-    provider must serve the fine-tuned model under this identifier).
-    Otherwise, the base model is returned.
+    When fine-tuning is enabled and a checkpoint path exists on disk,
+    the checkpoint path is used as the model identifier.  If the
+    checkpoint is missing, falls back to the base model with a
+    warning.  Otherwise, the base model is returned.
 
     Args:
         embedder: Embedder configuration.
@@ -249,12 +250,23 @@ def _resolve_effective_model(embedder: Mem0EmbedderConfig) -> str:
     """
     ft = embedder.fine_tune
     if ft is not None and ft.enabled:
+        if ft.checkpoint_path is None:  # pragma: no cover -- guaranteed by validator
+            return embedder.model
+        checkpoint = Path(ft.checkpoint_path)
+        if not checkpoint.exists():
+            logger.warning(
+                MEMORY_EMBEDDER_CHECKPOINT_MISSING,
+                checkpoint_path=ft.checkpoint_path,
+                base_model=ft.base_model,
+                reason="checkpoint not found on disk, falling back to base model",
+            )
+            return embedder.model
         logger.info(
             MEMORY_EMBEDDER_CHECKPOINT_ACTIVE,
             checkpoint_path=ft.checkpoint_path,
             base_model=ft.base_model,
         )
-        return ft.checkpoint_path  # type: ignore[return-value]
+        return ft.checkpoint_path
     return embedder.model
 
 

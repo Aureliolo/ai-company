@@ -49,6 +49,9 @@ from synthorg.api.controllers.setup_helpers import (
     check_setup_not_complete as _check_setup_not_complete,
 )
 from synthorg.api.controllers.setup_helpers import (
+    collect_model_ids as _collect_model_ids,
+)
+from synthorg.api.controllers.setup_helpers import (
     persist_company_settings as _persist_company_settings,
 )
 from synthorg.api.controllers.setup_helpers import (
@@ -111,31 +114,6 @@ from synthorg.observability.events.setup import (
 )
 
 logger = get_logger(__name__)
-
-
-async def _collect_model_ids(app_state: AppState) -> tuple[str, ...]:
-    """Extract model IDs from provider configs for embedding selection.
-
-    Best-effort: returns an empty tuple if config resolver is not
-    available or provider configs cannot be read.
-    """
-    if not app_state.has_config_resolver:
-        return ()
-    try:
-        configs = await app_state.config_resolver.get_provider_configs()
-        ids: list[str] = [
-            str(model.id) for pc in configs.values() for model in pc.models
-        ]
-        return tuple(ids)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.debug(
-            SETUP_COMPLETE_CHECK_ERROR,
-            check="collect_model_ids",
-            exc_info=True,
-        )
-        return ()
 
 
 # ── Controller ───────────────────────────────────────────────

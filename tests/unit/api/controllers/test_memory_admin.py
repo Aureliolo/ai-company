@@ -3,7 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.api.controllers.memory import MemoryAdminController
+from synthorg.api.controllers.memory import (
+    ActiveEmbedderResponse,
+    MemoryAdminController,
+)
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
@@ -20,7 +23,7 @@ class TestFineTuneRequest:
         assert req.output_dir is None
 
     def test_rejects_blank_source_dir(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace"):
+        with pytest.raises(ValidationError, match="source_dir"):
             FineTuneRequest(source_dir="   ")
 
     def test_full_request(self) -> None:
@@ -30,6 +33,18 @@ class TestFineTuneRequest:
             output_dir="/output",
         )
         assert req.base_model == "test-model"
+
+    def test_rejects_traversal_in_source_dir(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            FineTuneRequest(source_dir="/data/../etc")
+
+    def test_rejects_windows_path_in_source_dir(self) -> None:
+        with pytest.raises(ValidationError, match="POSIX"):
+            FineTuneRequest(source_dir="C:\\data\\docs")
+
+    def test_rejects_traversal_in_output_dir(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            FineTuneRequest(source_dir="/data/docs", output_dir="/out/../secret")
 
 
 @pytest.mark.unit
@@ -69,6 +84,48 @@ class TestFineTuneStatus:
             error="pipeline crashed",
         )
         assert status.error == "pipeline crashed"
+
+    def test_rejects_idle_with_progress(self) -> None:
+        with pytest.raises(ValidationError, match="IDLE"):
+            FineTuneStatus(stage=FineTuneStage.IDLE, progress=0.5)
+
+    def test_rejects_idle_with_error(self) -> None:
+        with pytest.raises(ValidationError, match="IDLE"):
+            FineTuneStatus(stage=FineTuneStage.IDLE, error="oops")
+
+    def test_rejects_failed_without_error(self) -> None:
+        with pytest.raises(ValidationError, match="FAILED"):
+            FineTuneStatus(stage=FineTuneStage.FAILED)
+
+    def test_rejects_active_with_error(self) -> None:
+        with pytest.raises(ValidationError, match="active"):
+            FineTuneStatus(
+                stage=FineTuneStage.TRAINING,
+                progress=0.5,
+                error="should not be here",
+            )
+
+    def test_rejects_blank_error(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(stage=FineTuneStage.FAILED, error="   ")
+
+
+@pytest.mark.unit
+class TestActiveEmbedderResponse:
+    def test_defaults(self) -> None:
+        resp = ActiveEmbedderResponse()
+        assert resp.provider is None
+        assert resp.model is None
+        assert resp.dims is None
+
+    def test_with_values(self) -> None:
+        resp = ActiveEmbedderResponse(
+            provider="test-provider",
+            model="test-model",
+            dims=768,
+        )
+        assert resp.provider == "test-provider"
+        assert resp.dims == 768
 
 
 @pytest.mark.unit

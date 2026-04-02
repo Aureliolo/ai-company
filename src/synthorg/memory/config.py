@@ -168,7 +168,7 @@ class EmbedderOverrideConfig(BaseModel):
 
     @model_validator(mode="after")
     def _model_requires_dims(self) -> Self:
-        """Require dims when model is set."""
+        """Require dims when model is set, and model when dims is set."""
         if self.model is not None and self.dims is None:
             msg = (
                 "dims must be set when model is overridden "
@@ -177,6 +177,17 @@ class EmbedderOverrideConfig(BaseModel):
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 field="dims",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.dims is not None and self.model is None:
+            msg = (
+                "model must be set when dims is overridden "
+                "(dimensions are model-dependent)"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="model",
                 reason=msg,
             )
             raise ValueError(msg)

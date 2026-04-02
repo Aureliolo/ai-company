@@ -139,3 +139,21 @@ class TestResolveEmbedderConfig:
             available_models=(top.model_id,),
         )
         assert result.provider == top.model_id
+
+    def test_tier_filtered_miss_falls_back_to_all(self) -> None:
+        """When no tier match, falls back to all-tier selection."""
+        cpu_models = [r for r in LMEB_RANKINGS if r.tier == DeploymentTier.CPU]
+        gpu_models = [r for r in LMEB_RANKINGS if r.tier == DeploymentTier.GPU_FULL]
+        if not cpu_models or not gpu_models:
+            pytest.skip("Need both CPU and GPU_FULL models in rankings")
+        # Offer only a GPU model but infer CPU tier -- tier filter
+        # misses, all-tier fallback should find the GPU model.
+        gpu_model = gpu_models[0]
+        config = CompanyMemoryConfig()
+        result = resolve_embedder_config(
+            config,
+            available_models=(gpu_model.model_id,),
+            provider_preset_name="ollama",
+            has_gpu=False,
+        )
+        assert result.model == gpu_model.model_id

@@ -622,6 +622,31 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
         raise ApiValidationError(msg) from exc
 
 
+async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
+    """Extract model IDs from provider configs for embedding selection.
+
+    Best-effort: returns an empty tuple if config resolver is not
+    available or provider configs cannot be read.
+    """
+    if not app_state.has_config_resolver:
+        return ()
+    try:
+        configs = await app_state.config_resolver.get_provider_configs()
+        ids: list[str] = [
+            str(model.id) for pc in configs.values() for model in pc.models
+        ]
+        return tuple(ids)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.debug(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="collect_model_ids",
+            exc_info=True,
+        )
+        return ()
+
+
 async def auto_select_embedder(
     *,
     settings_svc: SettingsService,
@@ -675,18 +700,22 @@ async def auto_select_embedder(
         overall_score=ranking.overall,
         dims=ranking.output_dims,
     )
-    await settings_svc.set(
-        "memory",
-        "embedder_provider",
-        ranking.model_id,
-    )
-    await settings_svc.set(
-        "memory",
-        "embedder_model",
-        ranking.model_id,
-    )
-    await settings_svc.set(
-        "memory",
-        "embedder_dims",
-        str(ranking.output_dims),
-    )
+    try:
+        await settings_svc.set(
+            "memory",
+            "embedder_model",
+            ranking.model_id,
+        )
+        await settings_svc.set(
+            "memory",
+            "embedder_dims",
+            str(ranking.output_dims),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+            reason="failed to persist embedder settings",
+            exc_info=True,
+        )

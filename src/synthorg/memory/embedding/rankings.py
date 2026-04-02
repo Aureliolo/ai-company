@@ -96,6 +96,10 @@ class EmbeddingModelRanking(BaseModel):
 #   - docs/reference/embedding-evaluation.md
 #   - Model cards for output dimensions
 #
+# Note: EmbeddingGemma-300M and Qwen3-Embedding-4B per-category
+# scores are estimated from limited LMEB data -- only overall
+# scores and procedural scores are directly sourced from the paper.
+#
 # Dimensions verified from model cards:
 #   bge-multilingual-gemma2:  3584 (BAAI/bge-multilingual-gemma2)
 #   NV-Embed-v2:              4096 (nvidia/NV-Embed-v2)

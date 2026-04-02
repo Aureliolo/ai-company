@@ -7,16 +7,19 @@ Four-stage offline pipeline for domain-specific embedding fine-tuning:
 3. Contrastive fine-tuning (InfoNCE loss, biencoder training)
 4. Deploy (save checkpoint, update config)
 
-ML dependencies (torch, sentence-transformers) are optional and
-guarded with ``ImportError`` messages pointing to the ``fine-tune``
-extra.  Actual training logic is not yet implemented -- functions
-validate inputs and raise ``NotImplementedError``.
+ML dependencies (torch, sentence-transformers) are optional.
+Actual training logic is not yet implemented -- functions validate
+inputs and raise ``NotImplementedError``.  See issue #1001 for the
+implementation roadmap.
 """
 
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.memory import (
+    MEMORY_FINE_TUNE_VALIDATION_FAILED,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,7 +44,7 @@ def _require_not_blank(value: str, name: str) -> None:
     if not value.strip():
         msg = f"{name} must not be blank"
         logger.warning(
-            "memory.fine_tune.validation_failed",
+            MEMORY_FINE_TUNE_VALIDATION_FAILED,
             field=name,
             reason=msg,
         )
@@ -153,6 +156,11 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     _require_not_blank(output_dir, "output_dir")
     if epochs < 1:
         msg = "epochs must be >= 1"
+        logger.warning(
+            MEMORY_FINE_TUNE_VALIDATION_FAILED,
+            field="epochs",
+            reason=msg,
+        )
         raise ValueError(msg)
     msg = (
         "Contrastive training is not yet implemented. "

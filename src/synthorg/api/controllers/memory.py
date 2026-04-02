@@ -6,6 +6,7 @@ All endpoints require CEO or the internal SYSTEM role
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
@@ -24,6 +25,26 @@ from synthorg.observability.events.memory import (
 logger = get_logger(__name__)
 
 
+class ActiveEmbedderResponse(BaseModel):
+    """Active embedder configuration read from settings."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    provider: str | None = Field(
+        default=None,
+        description="Embedding provider name",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Embedding model identifier",
+    )
+    dims: int | None = Field(
+        default=None,
+        ge=1,
+        description="Embedding vector dimensions",
+    )
+
+
 class MemoryAdminController(Controller):
     """Admin endpoints for memory management.
 
@@ -38,7 +59,7 @@ class MemoryAdminController(Controller):
     @post("/fine-tune")
     async def start_fine_tune(
         self,
-        state: State,
+        state: State,  # noqa: ARG002
         data: FineTuneRequest,
     ) -> ApiResponse[FineTuneStatus]:
         """Trigger a fine-tuning pipeline run.
@@ -50,7 +71,6 @@ class MemoryAdminController(Controller):
         Returns:
             Current pipeline status.
         """
-        _ = state  # reserved for future state access
         logger.info(
             MEMORY_FINE_TUNE_REQUESTED,
             source_dir=data.source_dir,
@@ -58,6 +78,7 @@ class MemoryAdminController(Controller):
         )
         # Pipeline stages are not yet implemented -- return status
         # indicating the pipeline is idle with a descriptive error.
+        # See issue #1001 for the implementation roadmap.
         return ApiResponse(
             data=FineTuneStatus(
                 stage=FineTuneStage.FAILED,
@@ -72,7 +93,7 @@ class MemoryAdminController(Controller):
     @get("/fine-tune/status")
     async def get_fine_tune_status(
         self,
-        state: State,
+        state: State,  # noqa: ARG002
     ) -> ApiResponse[FineTuneStatus]:
         """Get the current fine-tuning pipeline status.
 
@@ -82,7 +103,6 @@ class MemoryAdminController(Controller):
         Returns:
             Current pipeline status.
         """
-        _ = state
         return ApiResponse(
             data=FineTuneStatus(stage=FineTuneStage.IDLE),
         )
@@ -91,7 +111,7 @@ class MemoryAdminController(Controller):
     async def get_active_embedder(
         self,
         state: State,
-    ) -> ApiResponse[dict[str, str | int | None]]:
+    ) -> ApiResponse[ActiveEmbedderResponse]:
         """Get the active embedder configuration.
 
         Args:
@@ -101,22 +121,29 @@ class MemoryAdminController(Controller):
             Active embedder provider, model, and dims.
         """
         app_state: AppState = state.app_state
-        result: dict[str, str | int | None] = {
-            "provider": None,
-            "model": None,
-            "dims": None,
-        }
+        result = ActiveEmbedderResponse()
         if app_state.has_settings_service:
             svc = app_state.settings_service
             try:
                 provider_sv = await svc.get("memory", "embedder_provider")
                 model_sv = await svc.get("memory", "embedder_model")
                 dims_sv = await svc.get("memory", "embedder_dims")
-                result = {
-                    "provider": provider_sv.value,
-                    "model": model_sv.value,
-                    "dims": int(dims_sv.value) if dims_sv.value else None,
-                }
+                dims_value: int | None = None
+                if dims_sv.value:
+                    try:
+                        dims_value = int(dims_sv.value)
+                    except ValueError, TypeError:
+                        logger.warning(
+                            MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+                            setting="embedder_dims",
+                            value=dims_sv.value,
+                            reason="invalid integer value",
+                        )
+                result = ActiveEmbedderResponse(
+                    provider=provider_sv.value,
+                    model=model_sv.value,
+                    dims=dims_value,
+                )
             except MemoryError, RecursionError:
                 raise
             except Exception:
