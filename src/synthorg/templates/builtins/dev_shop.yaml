@@ -170,6 +170,8 @@ template:
           limit: 2
       enforce_wip: true
     sprint:
+      ceremony_policy:
+        strategy: "hybrid"
       duration_days: {{ sprint_length | default(14) }}
       ceremonies:
         - name: "sprint_planning"

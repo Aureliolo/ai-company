@@ -114,6 +114,8 @@ template:
           limit: 2
       enforce_wip: true
     sprint:
+      ceremony_policy:
+        strategy: "task_driven"
       duration_days: {{ sprint_length | default(7) }}
       ceremonies:
         - name: "sprint_planning"

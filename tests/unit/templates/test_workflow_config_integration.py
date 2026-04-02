@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, ClassVar
 import pytest
 
 from synthorg.core.enums import WorkflowType
+from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
 from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.engine.workflow.kanban_board import KanbanConfig
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
@@ -570,3 +571,113 @@ class TestBuiltinWorkflowConfigs:
         limits = {wl.column: wl.limit for wl in config.workflow.kanban.wip_limits}
         assert limits[KanbanColumn.IN_PROGRESS] == expected_wip
         assert config.workflow.sprint.duration_days == expected_sprint_days
+
+    # (name, expected_ceremony_strategy)
+    _EXPECTED_STRATEGIES: ClassVar[list[tuple[str, str]]] = [
+        ("solo_founder", "task_driven"),
+        ("startup", "task_driven"),
+        ("dev_shop", "hybrid"),
+        ("product_team", "hybrid"),
+        ("agency", "event_driven"),
+        ("full_company", "hybrid"),
+        ("research_lab", "throughput_adaptive"),
+        ("consultancy", "calendar"),
+        ("data_team", "task_driven"),
+    ]
+
+    @pytest.mark.parametrize(
+        ("name", "expected_strategy"),
+        _EXPECTED_STRATEGIES,
+        ids=[row[0] for row in _EXPECTED_STRATEGIES],
+    )
+    def test_builtin_ceremony_policy_strategy(
+        self,
+        name: str,
+        expected_strategy: str,
+    ) -> None:
+        """Each builtin template must declare its default ceremony strategy."""
+        loaded = load_template(name)
+        config = render_template(loaded)
+        policy = config.workflow.sprint.ceremony_policy
+        assert policy.strategy == CeremonyStrategyType(expected_strategy)
+
+
+# ── Department ceremony policy passthrough ───────────────────────
+
+
+DEPT_CEREMONY_POLICY_TEMPLATE_YAML = """\
+template:
+  name: "Dept Policy Test"
+  description: "Template with department ceremony policy"
+  version: "1.0.0"
+
+  company:
+    type: "custom"
+
+  agents:
+    - role: "Backend Developer"
+      name: "Test Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+    - role: "Designer"
+      name: "Test Designer"
+      level: "mid"
+      model: "medium"
+      department: "marketing"
+
+  departments:
+    - name: "engineering"
+      budget_percent: 60
+      head_role: "Backend Developer"
+    - name: "marketing"
+      budget_percent: 40
+      head_role: "Designer"
+      ceremony_policy:
+        strategy: "calendar"
+        transition_threshold: 0.8
+
+  workflow: "kanban"
+  communication: "event_driven"
+
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: 3
+      enforce_wip: false
+    sprint:
+      ceremony_policy:
+        strategy: "task_driven"
+"""
+
+
+@pytest.mark.unit
+class TestDepartmentCeremonyPolicy:
+    """Department-level ceremony policy override flows through rendering."""
+
+    def test_department_ceremony_policy_flows_to_root_config(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        path = tmp_template_file(DEPT_CEREMONY_POLICY_TEMPLATE_YAML)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+
+        dept_by_name = {d.name: d for d in config.departments}
+        marketing = dept_by_name["marketing"]
+        assert marketing.ceremony_policy is not None
+        assert marketing.ceremony_policy["strategy"] == "calendar"
+        assert marketing.ceremony_policy["transition_threshold"] == 0.8
+
+    def test_department_without_policy_defaults_none(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        path = tmp_template_file(DEPT_CEREMONY_POLICY_TEMPLATE_YAML)
+        loaded = load_template_file(path)
+        config = render_template(loaded)
+
+        dept_by_name = {d.name: d for d in config.departments}
+        engineering = dept_by_name["engineering"]
+        assert engineering.ceremony_policy is None

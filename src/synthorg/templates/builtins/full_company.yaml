@@ -373,6 +373,8 @@ template:
           limit: 3
       enforce_wip: true
     sprint:
+      ceremony_policy:
+        strategy: "hybrid"
       duration_days: {{ sprint_length | default(14) }}
       velocity_window: 5
       ceremonies:
