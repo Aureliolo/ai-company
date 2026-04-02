@@ -32,7 +32,7 @@ vi.mock('framer-motion', async () => {
 // Mock useBreakpoint so we can control breakpoint per-test
 const getBreakpoint = vi.fn()
 vi.mock('@/hooks/useBreakpoint', () => ({
-  // eslint-disable-next-line @eslint-react/component-hook-factories -- test mock, not a real hook factory
+
   useBreakpoint: () => getBreakpoint(),
 }))
 

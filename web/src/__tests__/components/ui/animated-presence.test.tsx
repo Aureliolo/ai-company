@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 
 // Mock framer-motion to avoid animation timing issues in tests
-/* eslint-disable @eslint-react/component-hook-factories */
+
 vi.mock('framer-motion', async () => {
   const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
   return {
@@ -24,7 +24,7 @@ vi.mock('framer-motion', async () => {
     },
   }
 })
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 describe('AnimatedPresence', () => {
   it('renders children', () => {

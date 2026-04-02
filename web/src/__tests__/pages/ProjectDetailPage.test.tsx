@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import type { UseProjectDetailDataReturn } from '@/hooks/useProjectDetailData'
 import { makeProject } from '../helpers/factories'
 
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+
 vi.mock('@/pages/projects/ProjectDetailSkeleton', () => ({
   ProjectDetailSkeleton: () => <div data-testid="project-detail-skeleton" />,
 }))
@@ -17,7 +17,7 @@ vi.mock('@/pages/projects/ProjectTeamSection', () => ({
 vi.mock('@/pages/projects/ProjectTaskList', () => ({
   ProjectTaskList: () => <div data-testid="project-task-list" />,
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const project = makeProject('proj-001')
 

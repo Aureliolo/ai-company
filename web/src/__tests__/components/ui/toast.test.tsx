@@ -5,7 +5,7 @@ import { useToastStore } from '@/stores/toast'
 import { Toast, ToastContainer } from '@/components/ui/toast'
 
 // Mock framer-motion
-/* eslint-disable @eslint-react/component-hook-factories */
+
 vi.mock('framer-motion', async () => {
   const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
   return {
@@ -27,7 +27,7 @@ vi.mock('framer-motion', async () => {
     },
   }
 })
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const baseToast: ToastItem = {
   id: '1',

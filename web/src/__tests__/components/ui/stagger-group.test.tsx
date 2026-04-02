@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 
 // Mock framer-motion
-/* eslint-disable @eslint-react/component-hook-factories */
+
 vi.mock('framer-motion', async () => {
   const actual = await vi.importActual<typeof import('framer-motion')>('framer-motion')
   return {
@@ -23,7 +23,7 @@ vi.mock('framer-motion', async () => {
     },
   }
 })
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 describe('StaggerGroup', () => {
   it('renders all children', () => {

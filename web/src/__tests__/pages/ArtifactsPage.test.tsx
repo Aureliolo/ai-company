@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import type { UseArtifactsDataReturn } from '@/hooks/useArtifactsData'
 import { makeArtifact } from '../helpers/factories'
 
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+
 vi.mock('@/pages/artifacts/ArtifactsSkeleton', () => ({
   ArtifactsSkeleton: () => <div data-testid="artifacts-skeleton" />,
 }))
@@ -14,7 +14,7 @@ vi.mock('@/pages/artifacts/ArtifactFilters', () => ({
 vi.mock('@/pages/artifacts/ArtifactGridView', () => ({
   ArtifactGridView: () => <div data-testid="artifact-grid-view" />,
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const defaultHookReturn: UseArtifactsDataReturn = {
   artifacts: [makeArtifact('artifact-001')],

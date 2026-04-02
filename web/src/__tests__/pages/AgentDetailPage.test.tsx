@@ -3,7 +3,7 @@ import { MemoryRouter, Routes, Route } from 'react-router'
 import type { UseAgentDetailDataReturn } from '@/hooks/useAgentDetailData'
 import { makeAgent } from '../helpers/factories'
 
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+
 vi.mock('@/pages/agents/AgentDetailSkeleton', () => ({
   AgentDetailSkeleton: () => <div data-testid="agent-detail-skeleton" />,
 }))
@@ -33,7 +33,7 @@ vi.mock('@/pages/agents/TaskHistory', () => ({
 vi.mock('@/pages/agents/ActivityLog', () => ({
   ActivityLog: () => <div data-testid="activity-log" />,
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const defaultHookReturn: UseAgentDetailDataReturn = {
   agent: makeAgent('alice'),

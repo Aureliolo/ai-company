@@ -118,7 +118,7 @@ See `web/CLAUDE.md` for the full component inventory, design token rules, and po
 
 ## Shell Usage
 
-- **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`.
+- **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`. Exception: `bash -c "cd <dir> && <cmd>"` is safe (runs in a child process, no cwd side effects). Use this for tools without a `-C` flag -- e.g. `bash -c "cd web && npm install"` since `npm --prefix` is broken for bare `npm install`.
 - **NEVER use Bash to write or modify files** -- use the Write or Edit tools. Do not use `cat >`, `cat << EOF`, `echo >`, `echo >>`, `sed -i`, `python -c "open(...).write(...)"`, or `tee` to create or modify files (read-only/inspection uses like piping to stdout are fine). This applies to all files (plan files, config files, source code) and all subagents.
 
 ## Code Conventions

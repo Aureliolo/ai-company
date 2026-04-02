@@ -29,14 +29,14 @@ const defaultHookReturn: UseTaskBoardDataReturn = {
 let hookReturn = { ...defaultHookReturn }
 
 const getTaskBoardData = vi.fn(() => hookReturn)
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define hook names for module replacement, not component-level hook creation */
+
 vi.mock('@/hooks/useTaskBoardData', () => ({
   useTaskBoardData: () => getTaskBoardData(),
 }))
 vi.mock('@/hooks/useOptimisticUpdate', () => ({
   useOptimisticUpdate: () => ({ execute: vi.fn(), pending: false, error: null }),
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 vi.mock('@xyflow/react', () => ({
   ReactFlow: () => null,
   Background: () => null,

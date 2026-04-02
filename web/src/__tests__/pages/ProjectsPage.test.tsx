@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router'
 import type { UseProjectsDataReturn } from '@/hooks/useProjectsData'
 import { makeProject } from '../helpers/factories'
 
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+
 vi.mock('@/pages/projects/ProjectsSkeleton', () => ({
   ProjectsSkeleton: () => <div data-testid="projects-skeleton" />,
 }))
@@ -16,7 +16,7 @@ vi.mock('@/pages/projects/ProjectGridView', () => ({
 vi.mock('@/pages/projects/ProjectCreateDrawer', () => ({
   ProjectCreateDrawer: () => <div data-testid="project-create-drawer" />,
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const defaultHookReturn: UseProjectsDataReturn = {
   projects: [makeProject('proj-001')],

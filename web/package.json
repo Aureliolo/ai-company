@@ -60,7 +60,7 @@
     "zustand": "^5"
   },
   "devDependencies": {
-    "@eslint-react/eslint-plugin": "^3",
+    "@eslint-react/eslint-plugin": "^4",
     "@eslint/js": "^10",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.59.0",

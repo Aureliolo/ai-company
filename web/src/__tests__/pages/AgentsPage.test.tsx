@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router'
 import type { UseAgentsDataReturn } from '@/hooks/useAgentsData'
 import { makeAgent } from '../helpers/factories'
 
-/* eslint-disable @eslint-react/component-hook-factories -- vi.mock factories define stub components for module replacement */
+
 vi.mock('@/pages/agents/AgentsSkeleton', () => ({
   AgentsSkeleton: () => <div data-testid="agents-skeleton" />,
 }))
@@ -13,7 +13,7 @@ vi.mock('@/pages/agents/AgentFilters', () => ({
 vi.mock('@/pages/agents/AgentGridView', () => ({
   AgentGridView: () => <div data-testid="agent-grid-view" />,
 }))
-/* eslint-enable @eslint-react/component-hook-factories */
+
 
 const defaultHookReturn: UseAgentsDataReturn = {
   agents: [makeAgent('alice')],
