@@ -60,6 +60,49 @@ _MAX_THRESHOLD_PCT: float = 100.0
 _MAX_THRESHOLD_COUNT: int = 20
 
 
+def _check_threshold_element(t: object, *, strict: bool) -> None:
+    """Validate a single threshold element (strict mode raises)."""
+    # bool is a subclass of int; check first
+    if (
+        isinstance(t, bool)
+        or not isinstance(t, int | float)
+        or not math.isfinite(t)
+        or not (0 < t <= _MAX_THRESHOLD_PCT)
+    ):
+        msg = f"Each budget threshold must be a finite number in (0, 100], got {t!r}"
+        if strict:
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="budget_driven",
+                key=_KEY_BUDGET_THRESHOLDS,
+                value=t,
+            )
+            raise ValueError(msg)
+
+
+def _coerce_threshold(t: object, ceremony_name: str) -> float | None:
+    """Coerce a single threshold element, returning None on failure."""
+    if isinstance(t, bool) or not isinstance(t, int | float):
+        logger.warning(
+            SPRINT_CEREMONY_SKIPPED,
+            ceremony=ceremony_name,
+            reason="invalid_threshold_element",
+            value=t,
+            strategy="budget_driven",
+        )
+        return None
+    if not math.isfinite(t) or not (0 < t <= _MAX_THRESHOLD_PCT):
+        logger.warning(
+            SPRINT_CEREMONY_SKIPPED,
+            ceremony=ceremony_name,
+            reason="threshold_out_of_range",
+            value=t,
+            strategy="budget_driven",
+        )
+        return None
+    return float(t)
+
+
 class BudgetDrivenStrategy:
     """Ceremony scheduling strategy driven by budget consumption.
 
@@ -146,31 +189,7 @@ class BudgetDrivenStrategy:
         if sprint.status is not SprintStatus.ACTIVE:
             return None
 
-        strategy_config = (
-            config.ceremony_policy.strategy_config
-            if config.ceremony_policy.strategy_config is not None
-            else {}
-        )
-        raw_threshold = strategy_config.get(
-            _KEY_TRANSITION_THRESHOLD,
-            _DEFAULT_TRANSITION_THRESHOLD_PCT,
-        )
-        # Defensive type + range check -- validate_strategy_config should
-        # have caught this, but sprint-level config may bypass validation.
-        if (
-            isinstance(raw_threshold, bool)
-            or not isinstance(raw_threshold, int | float)
-            or not (0 < raw_threshold <= _MAX_THRESHOLD_PCT)
-        ):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_transition_threshold",
-                value=raw_threshold,
-                fallback=_DEFAULT_TRANSITION_THRESHOLD_PCT,
-                strategy="budget_driven",
-            )
-            raw_threshold = _DEFAULT_TRANSITION_THRESHOLD_PCT
-        transition_pct: float = raw_threshold
+        transition_pct = self._get_transition_threshold(config)
         budget_pct = context.budget_consumed_fraction * _MAX_THRESHOLD_PCT
 
         if budget_pct >= transition_pct:
@@ -334,7 +353,7 @@ class BudgetDrivenStrategy:
 
     @staticmethod
     def _validate_thresholds(thresholds: object) -> None:
-        """Validate budget_thresholds list values."""
+        """Validate budget_thresholds list values (strict)."""
         if not isinstance(thresholds, list):
             msg = (
                 f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
@@ -363,20 +382,7 @@ class BudgetDrivenStrategy:
             raise ValueError(msg)
         seen: set[float] = set()
         for t in thresholds:
-            # bool is a subclass of int; check first
-            if (
-                isinstance(t, bool)
-                or not isinstance(t, int | float)
-                or not (0 < t <= _MAX_THRESHOLD_PCT)
-            ):
-                msg = f"Each budget threshold must be a number in (0, 100], got {t!r}"
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="budget_driven",
-                    key=_KEY_BUDGET_THRESHOLDS,
-                    value=t,
-                )
-                raise ValueError(msg)
+            _check_threshold_element(t, strict=True)
             if t in seen:
                 msg = f"Duplicate budget threshold: {t}"
                 logger.warning(
@@ -395,22 +401,14 @@ class BudgetDrivenStrategy:
     ) -> list[float] | None:
         """Validate and filter budget thresholds at read time.
 
-        Returns a clean list of numeric thresholds, or ``None``
-        if the config is missing or entirely invalid.
+        Returns a deduplicated list of valid numeric thresholds,
+        or ``None`` if the config is missing or entirely invalid.
         """
-        if not raw:
+        if not raw or not isinstance(raw, list):
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 ceremony=ceremony_name,
                 reason="no_budget_thresholds",
-                strategy="budget_driven",
-            )
-            return None
-        if not isinstance(raw, list):
-            logger.debug(
-                SPRINT_CEREMONY_SKIPPED,
-                ceremony=ceremony_name,
-                reason="invalid_budget_thresholds_type",
                 strategy="budget_driven",
             )
             return None
@@ -424,27 +422,37 @@ class BudgetDrivenStrategy:
             )
             return None
         valid: list[float] = []
+        seen: set[float] = set()
         for t in raw:
-            if isinstance(t, bool) or not isinstance(t, int | float):
-                logger.warning(
-                    SPRINT_CEREMONY_SKIPPED,
-                    ceremony=ceremony_name,
-                    reason="invalid_threshold_element",
-                    value=t,
-                    strategy="budget_driven",
-                )
+            coerced = _coerce_threshold(t, ceremony_name)
+            if coerced is None or coerced in seen:
                 continue
-            if not math.isfinite(t) or not (0 < t <= _MAX_THRESHOLD_PCT):
-                logger.warning(
-                    SPRINT_CEREMONY_SKIPPED,
-                    ceremony=ceremony_name,
-                    reason="threshold_out_of_range",
-                    value=t,
-                    strategy="budget_driven",
-                )
-                continue
-            valid.append(float(t))
+            seen.add(coerced)
+            valid.append(coerced)
         return valid or None
+
+    @staticmethod
+    def _get_transition_threshold(config: SprintConfig) -> float:
+        """Resolve transition threshold with type + range validation."""
+        strategy_config = config.ceremony_policy.strategy_config or {}
+        raw = strategy_config.get(
+            _KEY_TRANSITION_THRESHOLD,
+            _DEFAULT_TRANSITION_THRESHOLD_PCT,
+        )
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, int | float)
+            or not (0 < raw <= _MAX_THRESHOLD_PCT)
+        ):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_transition_threshold",
+                value=raw,
+                fallback=_DEFAULT_TRANSITION_THRESHOLD_PCT,
+                strategy="budget_driven",
+            )
+            return _DEFAULT_TRANSITION_THRESHOLD_PCT
+        return float(raw)
 
     def _find_crossed_threshold(
         self,
