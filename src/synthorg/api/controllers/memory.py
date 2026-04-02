@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import HumanRole, require_roles
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.memory.embedding.fine_tune_models import (
     FineTuneRequest,
@@ -30,11 +31,11 @@ class ActiveEmbedderResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    provider: str | None = Field(
+    provider: NotBlankStr | None = Field(
         default=None,
         description="Embedding provider name",
     )
-    model: str | None = Field(
+    model: NotBlankStr | None = Field(
         default=None,
         description="Embedding model identifier",
     )

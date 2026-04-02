@@ -266,12 +266,13 @@ class TestBuildMem0ConfigDict:
             fine_tune=EmbeddingFineTuneConfig(
                 enabled=True,
                 checkpoint_path="/nonexistent/checkpoint/v1",
-                base_model="test-embedding-001",
+                base_model="test-base-model-v2",
             ),
         )
         config = Mem0BackendConfig(embedder=embedder)
         result = build_mem0_config_dict(config)
-        assert result["embedder"]["config"]["model"] == "test-embedding-001"
+        # Falls back to ft.base_model, not embedder.model.
+        assert result["embedder"]["config"]["model"] == "test-base-model-v2"
 
     def test_uses_base_model_when_fine_tune_disabled(self) -> None:
         embedder = Mem0EmbedderConfig(

@@ -39,7 +39,11 @@ class TestSelectEmbeddingModel:
         assert len(cpu_models) >= 1
         cpu_model = cpu_models[0]
         # Offer both a GPU and CPU model -- tier filter should pick CPU
-        gpu_model = next(r for r in LMEB_RANKINGS if r.tier == DeploymentTier.GPU_FULL)
+        gpu_model = next(
+            (r for r in LMEB_RANKINGS if r.tier == DeploymentTier.GPU_FULL),
+            None,
+        )
+        assert gpu_model is not None, "LMEB_RANKINGS must have a GPU_FULL entry"
         available = (gpu_model.model_id, cpu_model.model_id)
         result = select_embedding_model(
             available,
@@ -50,7 +54,11 @@ class TestSelectEmbeddingModel:
 
     def test_tier_filter_no_match(self) -> None:
         """Tier filter excludes all available models."""
-        gpu_model = next(r for r in LMEB_RANKINGS if r.tier == DeploymentTier.GPU_FULL)
+        gpu_model = next(
+            (r for r in LMEB_RANKINGS if r.tier == DeploymentTier.GPU_FULL),
+            None,
+        )
+        assert gpu_model is not None, "LMEB_RANKINGS must have a GPU_FULL entry"
         result = select_embedding_model(
             (gpu_model.model_id,),
             deployment_tier=DeploymentTier.CPU,
