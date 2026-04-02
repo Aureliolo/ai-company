@@ -27,7 +27,11 @@ class TestAuditBasedGovernanceStrategy:
         self,
         strategy: AuditBasedGovernanceStrategy,
     ) -> None:
-        ctx = make_evaluation_context()
+        """No audit data, no trust level, autonomy disabled -> neutral."""
+        cfg = EvaluationConfig(
+            governance=GovernanceConfig(autonomy_compliance_enabled=False),
+        )
+        ctx = make_evaluation_context(config=cfg)
         result = await strategy.score(context=ctx)
         assert result.score == 5.0
         assert result.confidence == 0.0

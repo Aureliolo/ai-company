@@ -61,23 +61,14 @@ class QualityBlendIntelligenceStrategy:
         Returns:
             Intelligence pillar score.
         """
-        ci_score = context.snapshot.overall_quality_score
-
-        if ci_score is None:
-            return self._neutral(context, reason="no_quality_score")
-
-        available, data_points, drift = self._collect_metrics(
-            ci_score,
-            context,
-        )
+        available, data_points, drift = self._collect_metrics(context)
         if not available:
-            return self._neutral(context, reason="no_enabled_metrics")
+            return self._neutral(context, reason="no_enabled_metrics_with_data")
 
         return self._build_result(available, data_points, drift, context)
 
     def _collect_metrics(
         self,
-        ci_score: float,
         context: EvaluationContext,
     ) -> tuple[list[tuple[str, float, float]], int, float]:
         """Gather enabled metrics with data.
@@ -88,14 +79,23 @@ class QualityBlendIntelligenceStrategy:
         available: list[tuple[str, float, float]] = []
         data_points = len(context.task_records)
         calibration_drift = 0.0
+        ci_score = context.snapshot.overall_quality_score
 
-        if context.config.intelligence.ci_quality_enabled:
+        if context.config.intelligence.ci_quality_enabled and ci_score is not None:
             available.append(
                 (
                     "ci_quality",
                     context.config.intelligence.ci_quality_weight,
                     ci_score,
                 )
+            )
+        elif context.config.intelligence.ci_quality_enabled:
+            logger.debug(
+                EVAL_METRIC_SKIPPED,
+                agent_id=context.agent_id,
+                pillar=self.pillar.value,
+                metric="ci_quality",
+                reason="no_quality_score",
             )
 
         if context.config.intelligence.llm_calibration_enabled:

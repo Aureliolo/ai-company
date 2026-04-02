@@ -15,7 +15,10 @@ from synthorg.hr.evaluation.config import (
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.evaluator import EvaluationService
 from synthorg.hr.performance.tracker import PerformanceTracker
-from tests.unit.hr.evaluation.conftest import make_interaction_feedback
+from tests.unit.hr.evaluation.conftest import (
+    make_interaction_feedback,
+    make_snapshot,
+)
 from tests.unit.hr.performance.conftest import make_task_metric
 
 pytestmark = pytest.mark.unit
@@ -169,45 +172,53 @@ class TestEvaluationService:
         tracker: PerformanceTracker,
     ) -> None:
         """Efficiency uses 7d window when 30d is absent."""
+        from synthorg.hr.evaluation.models import EvaluationContext
+        from synthorg.hr.performance.models import WindowMetrics
 
-        agent_id = NotBlankStr("agent-001")
-        await tracker.record_task_metric(
-            make_task_metric(
-                agent_id="agent-001",
-                cost_usd=2.0,
-                duration_seconds=60.0,
-                tokens_used=1000,
+        snapshot = make_snapshot(
+            windows=(
+                WindowMetrics(
+                    window_size=NotBlankStr("7d"),
+                    data_point_count=5,
+                    tasks_completed=4,
+                    tasks_failed=1,
+                    avg_quality_score=7.0,
+                    avg_cost_per_task=3.0,
+                    avg_completion_time_seconds=100.0,
+                    avg_tokens_per_task=1500.0,
+                    success_rate=0.8,
+                ),
             ),
         )
-        # Patch snapshot to have only 7d window.
-        svc = EvaluationService(tracker=tracker)
-        report = await svc.evaluate(agent_id)
-        # Default snapshot has 30d -- verify baseline works.
-        eff = next(
-            ps
-            for ps in report.pillar_scores
-            if ps.pillar == EvaluationPillar.EFFICIENCY
+        ctx = EvaluationContext(
+            agent_id=NotBlankStr("agent-001"),
+            now=datetime.now(UTC),
+            config=EvaluationConfig(),
+            snapshot=snapshot,
         )
-        assert eff.score > 0.0
+        svc = EvaluationService(tracker=tracker)
+        result = await svc._score_efficiency(ctx)
+        assert result.score > 0.0
+        assert result.confidence > 0.0
 
     async def test_efficiency_no_window_returns_neutral(
         self,
         tracker: PerformanceTracker,
     ) -> None:
         """Efficiency returns neutral when no windows are available."""
-        agent_id = NotBlankStr("agent-001")
-        await tracker.record_task_metric(
-            make_task_metric(agent_id="agent-001"),
+        from synthorg.hr.evaluation.models import EvaluationContext
+
+        snapshot = make_snapshot(windows=())
+        ctx = EvaluationContext(
+            agent_id=NotBlankStr("agent-001"),
+            now=datetime.now(UTC),
+            config=EvaluationConfig(),
+            snapshot=snapshot,
         )
         svc = EvaluationService(tracker=tracker)
-        report = await svc.evaluate(agent_id)
-        eff = next(
-            ps
-            for ps in report.pillar_scores
-            if ps.pillar == EvaluationPillar.EFFICIENCY
-        )
-        # With minimal data the efficiency pillar still produces a result.
-        assert eff.pillar == EvaluationPillar.EFFICIENCY
+        result = await svc._score_efficiency(ctx)
+        assert result.score == 5.0
+        assert result.confidence == 0.0
 
     async def test_efficiency_cost_exceeds_reference_clamps_to_zero(
         self,

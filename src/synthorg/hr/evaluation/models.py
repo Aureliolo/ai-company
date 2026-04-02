@@ -402,8 +402,12 @@ class EvaluationReport(BaseModel):
     @model_validator(mode="after")
     def _validate_weights_match_scores(self) -> Self:
         """Ensure pillar_weights entries correspond to pillar_scores."""
+        weight_names = [name for name, _ in self.pillar_weights]
+        if len(weight_names) != len(set(weight_names)):
+            msg = "Duplicate entries in pillar_weights"
+            raise ValueError(msg)
         score_pillars = {ps.pillar.value for ps in self.pillar_scores}
-        weight_pillars = {name for name, _ in self.pillar_weights}
+        weight_pillars = set(weight_names)
         if score_pillars != weight_pillars:
             msg = (
                 f"Pillar weight names {sorted(weight_pillars)} do not match "

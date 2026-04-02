@@ -72,7 +72,8 @@ class AuditBasedGovernanceStrategy:
             + context.audit_escalate_count
         )
 
-        if total_audits == 0 and context.trust_level is None:
+        has_autonomy = context.config.governance.autonomy_compliance_enabled
+        if total_audits == 0 and context.trust_level is None and not has_autonomy:
             return self._neutral(context, reason="no_governance_data")
 
         scores, enabled, data_points = self._collect_metrics(
