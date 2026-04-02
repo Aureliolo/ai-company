@@ -59,9 +59,9 @@
   border-bottom: 1px solid #1e1e2e;
 }
 
-/* Navigation sidebar */
+/* Navigation sidebar -- transparent so it blends with main bg */
 .md-sidebar {
-  background: #0f0f1a;
+  background: transparent;
 }
 
 /* Search overlay */

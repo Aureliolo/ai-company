@@ -52,9 +52,14 @@ TABLE_GROUPS = [
 def _load_data() -> dict:
     """Load and validate the competitors YAML file.
 
+    Validates top-level keys (meta, dimensions, categories, competitors),
+    ``meta.last_updated``, non-empty competitors list, and required fields
+    on each competitor entry (name, slug, category).
+
     Raises:
         FileNotFoundError: If the data file does not exist.
-        ValueError: If the YAML is empty or missing required keys.
+        ValueError: If the YAML is empty, malformed, or missing required
+            keys at the top level or on individual competitor entries.
     """
     if not DATA_FILE.exists():
         msg = f"Data file not found: {DATA_FILE}"
@@ -81,7 +86,37 @@ def _load_data() -> dict:
         msg = f"Missing meta.last_updated in {DATA_FILE}"
         raise ValueError(msg)
 
+    _validate_competitors(data["competitors"])
+    _validate_dimension_keys(data["dimensions"])
+
     return data
+
+
+def _validate_competitors(competitors: list) -> None:
+    """Validate required fields on each competitor entry."""
+    required_keys = {"name", "slug", "category"}
+    for i, comp in enumerate(competitors):
+        if not isinstance(comp, dict):
+            msg = f"Competitor at index {i} is not a mapping"
+            raise TypeError(msg)
+        missing = required_keys - set(comp.keys())
+        if missing:
+            name = comp.get("name", f"<index {i}>")
+            msg = f"Competitor '{name}' is missing required keys: {missing}"
+            raise ValueError(msg)
+
+
+def _validate_dimension_keys(dimensions: list[dict]) -> None:
+    """Warn if TABLE_GROUPS references keys not in the loaded dimensions."""
+    dim_keys = {d["key"] for d in dimensions}
+    for group in TABLE_GROUPS:
+        unknown = set(group["keys"]) - dim_keys
+        if unknown:
+            print(
+                f"WARNING: TABLE_GROUPS '{group['title']}' references "
+                f"unknown dimensions: {unknown}",
+                file=sys.stderr,
+            )
 
 
 def _dimension_label(dimensions: list[dict], key: str) -> str:
@@ -89,12 +124,23 @@ def _dimension_label(dimensions: list[dict], key: str) -> str:
     for dim in dimensions:
         if dim["key"] == key:
             return dim["label"]
+    print(
+        f"WARNING: Unknown dimension key '{key}', using raw key as label",
+        file=sys.stderr,
+    )
     return key
 
 
 def _support_icon(value: str) -> str:
     """Convert a support value to its display symbol."""
-    return SUPPORT_ICONS.get(value, value)
+    icon = SUPPORT_ICONS.get(value)
+    if icon is None:
+        print(
+            f"WARNING: Unknown support value '{value}', using raw value",
+            file=sys.stderr,
+        )
+        return value
+    return icon
 
 
 def _category_label(categories: list[dict], key: str) -> str:
@@ -102,6 +148,10 @@ def _category_label(categories: list[dict], key: str) -> str:
     for cat in categories:
         if cat["key"] == key:
             return cat["label"]
+    print(
+        f"WARNING: Unknown category key '{key}', using raw key as label",
+        file=sys.stderr,
+    )
     return key
 
 

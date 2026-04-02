@@ -1,22 +1,27 @@
 ---
 import fs from "node:fs";
-import path from "node:path";
 import yaml from "js-yaml";
 
 import Base from "../layouts/Base.astro";
 import ComparisonHero from "../components/ComparisonHero.astro";
 import ComparisonFAQ from "../components/ComparisonFAQ.astro";
 import ComparisonTable from "../components/islands/ComparisonTable";
+import type { Dimension, Category, Competitor } from "../components/islands/ComparisonTable";
 
-const dataPath = path.resolve("../data/competitors.yaml");
-const raw = fs.readFileSync(dataPath, "utf-8");
+const dataUrl = new URL("../../../data/competitors.yaml", import.meta.url);
+const raw = fs.readFileSync(dataUrl, "utf-8");
 const data = yaml.load(raw) as {
-  dimensions: Array<{ key: string; label: string; description: string }>;
-  categories: Array<{ key: string; label: string }>;
-  competitors: Array<Record<string, unknown>>;
+  dimensions: Dimension[];
+  categories: Category[];
+  competitors: Competitor[];
 };
 
+if (!data?.dimensions || !data?.categories || !data?.competitors) {
+  throw new Error("Invalid structure in competitors.yaml: missing required keys (dimensions, categories, competitors)");
+}
+
 const { dimensions, categories, competitors } = data;
+// Exclude SynthOrg itself from the "N+ frameworks compared" count
 const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
 
 const title = `SynthOrg vs ${competitorCount}+ Agent Frameworks -- Feature Comparison`;
@@ -144,7 +149,6 @@ const description = `Interactive comparison of SynthOrg against ${competitorCoun
     </div>
   </section>
 
-  <!-- JSON-LD structured data -->
   <script type="application/ld+json" set:html={JSON.stringify({
     "@context": "https://schema.org",
     "@type": "WebPage",
@@ -158,5 +162,5 @@ const description = `Interactive comparison of SynthOrg against ${competitorCoun
       "operatingSystem": "Cross-platform",
       "url": "https://synthorg.io",
     },
-  })} />
+  }).replace(/</g, "\\u003c")} />
 </Base>

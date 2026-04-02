@@ -58,25 +58,46 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
     <!-- GitHub buttons (https://buttons.github.io/) -->
     <script async defer src="https://buttons.github.io/buttons.js"></script>
     {enableRecaptcha && (
-      <!-- Lazy-load reCAPTCHA v3 when the contact form scrolls into view -->
+      <!-- Lazy-load reCAPTCHA v3 when the contact form scrolls into view,
+           with IntersectionObserver fallback and form submit guard -->
       <script define:vars={{ recaptchaSiteKey }}>
         (function () {
           var form = document.getElementById("contact-form");
           if (!form) return;
-          var observer = new IntersectionObserver(
-            function (entries) {
-              if (entries[0].isIntersecting) {
-                var s = document.createElement("script");
-                s.src =
-                  "https://www.google.com/recaptcha/api.js?render=" +
-                  recaptchaSiteKey;
-                document.head.appendChild(s);
-                observer.disconnect();
-              }
-            },
-            { rootMargin: "200px" },
-          );
-          observer.observe(form);
+
+          var loading = false;
+
+          function loadRecaptcha() {
+            if (loading) return;
+            loading = true;
+            var s = document.createElement("script");
+            s.src =
+              "https://www.google.com/recaptcha/api.js?render=" +
+              recaptchaSiteKey;
+            s.async = true;
+            s.onerror = function () {
+              loading = false;
+              console.warn("reCAPTCHA script failed to load");
+            };
+            document.head.appendChild(s);
+          }
+
+          if ("IntersectionObserver" in window) {
+            var observer = new IntersectionObserver(
+              function (entries) {
+                if (entries[0].isIntersecting) {
+                  loadRecaptcha();
+                  observer.disconnect();
+                }
+              },
+              { rootMargin: "200px" },
+            );
+            observer.observe(form);
+          } else {
+            loadRecaptcha();
+          }
+
+          form.addEventListener("focusin", function () { loadRecaptcha(); }, { once: true });
         })();
       </script>
     )}

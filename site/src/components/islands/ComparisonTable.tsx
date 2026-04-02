@@ -5,23 +5,23 @@ import "./ComparisonTable.css";
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-interface Dimension {
+export interface Dimension {
   key: string;
   label: string;
   description: string;
 }
 
-interface Category {
+export interface Category {
   key: string;
   label: string;
 }
 
-interface FeatureEntry {
+export interface FeatureEntry {
   support: "full" | "partial" | "none" | "planned";
   note: string;
 }
 
-interface Competitor {
+export interface Competitor {
   name: string;
   slug: string;
   url?: string;
@@ -70,11 +70,14 @@ const SUPPORT_LABELS: Record<string, string> = {
 /* ------------------------------------------------------------------ */
 
 function SupportIcon({ level, note }: { level: string; note?: string }) {
+  const label = SUPPORT_LABELS[level] || level;
   return (
     <span
       className="ct-support"
       data-level={level}
-      title={note || SUPPORT_LABELS[level] || level}
+      role="img"
+      aria-label={note ? `${label}: ${note}` : label}
+      title={note || label}
     >
       {SUPPORT_ICONS[level] || level}
     </span>
@@ -108,6 +111,8 @@ export default function ComparisonTable({
 }: Props) {
   // -- State --
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [licenseFilter, setLicenseFilter] = useState<string | null>(null);
+  const [featureFilter, setFeatureFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<{
     key: string;
@@ -132,6 +137,17 @@ export default function ComparisonTable({
       result = result.filter((c) => c.category === categoryFilter);
     }
 
+    if (licenseFilter) {
+      result = result.filter((c) => c.license === licenseFilter);
+    }
+
+    if (featureFilter) {
+      result = result.filter((c) => {
+        const feat = c.features[featureFilter];
+        return feat?.support === "full" || feat?.support === "partial";
+      });
+    }
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       result = result.filter(
@@ -143,7 +159,7 @@ export default function ComparisonTable({
     }
 
     return result;
-  }, [competitors, categoryFilter, search]);
+  }, [competitors, categoryFilter, licenseFilter, featureFilter, search]);
 
   // -- Sorting (SynthOrg always pinned to top) --
   const sorted = useMemo(() => {
@@ -203,10 +219,16 @@ export default function ComparisonTable({
 
   const clearFilters = useCallback(() => {
     setCategoryFilter(null);
+    setLicenseFilter(null);
+    setFeatureFilter(null);
     setSearch("");
   }, []);
 
-  const hasFilters = categoryFilter !== null || search.trim() !== "";
+  const hasFilters =
+    categoryFilter !== null ||
+    licenseFilter !== null ||
+    featureFilter !== null ||
+    search.trim() !== "";
 
   // -- Unique categories present in data --
   const availableCategories = useMemo(() => {
@@ -216,6 +238,15 @@ export default function ComparisonTable({
     }
     return categories.filter((cat) => seen.has(cat.key));
   }, [competitors, categories]);
+
+  // -- Unique licenses present in data --
+  const availableLicenses = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of competitors) {
+      if (c.license) seen.add(c.license);
+    }
+    return Array.from(seen).sort();
+  }, [competitors]);
 
   return (
     <div className="comparison-table">
@@ -259,6 +290,7 @@ export default function ComparisonTable({
             key={cat.key}
             className="ct-filter-btn"
             data-active={categoryFilter === cat.key ? "true" : "false"}
+            aria-pressed={categoryFilter === cat.key}
             onClick={() =>
               setCategoryFilter((prev) =>
                 prev === cat.key ? null : cat.key,
@@ -268,6 +300,28 @@ export default function ComparisonTable({
             {cat.label}
           </button>
         ))}
+        <select
+          className="ct-select"
+          value={licenseFilter || ""}
+          onChange={(e) => setLicenseFilter(e.target.value || null)}
+          aria-label="Filter by license"
+        >
+          <option value="">All Licenses</option>
+          {availableLicenses.map((lic) => (
+            <option key={lic} value={lic}>{lic}</option>
+          ))}
+        </select>
+        <select
+          className="ct-select"
+          value={featureFilter || ""}
+          onChange={(e) => setFeatureFilter(e.target.value || null)}
+          aria-label="Filter by feature support"
+        >
+          <option value="">All Features</option>
+          {dimensions.map((dim) => (
+            <option key={dim.key} value={dim.key}>Has {dim.label}</option>
+          ))}
+        </select>
         {hasFilters && (
           <button className="ct-clear-btn" onClick={clearFilters}>
             Clear
@@ -286,15 +340,30 @@ export default function ComparisonTable({
           <thead>
             <tr>
               <th style={{ width: "2rem" }}></th>
-              <th onClick={() => handleSort("name")}>
+              <th
+                onClick={() => handleSort("name")}
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleSort("name")}
+                aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
+              >
                 Framework
                 <SortArrow column="name" sortBy={sortBy} />
               </th>
-              <th onClick={() => handleSort("category")}>
+              <th
+                onClick={() => handleSort("category")}
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleSort("category")}
+                aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
+              >
                 Category
                 <SortArrow column="category" sortBy={sortBy} />
               </th>
-              <th onClick={() => handleSort("license")}>
+              <th
+                onClick={() => handleSort("license")}
+                tabIndex={0}
+                onKeyDown={(e) => e.key === "Enter" && handleSort("license")}
+                aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
+              >
                 License
                 <SortArrow column="license" sortBy={sortBy} />
               </th>
@@ -302,6 +371,9 @@ export default function ComparisonTable({
                 <th
                   key={dim.key}
                   onClick={() => handleSort(dim.key)}
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && handleSort(dim.key)}
+                  aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
                   title={dim.description}
                 >
                   {dim.label}

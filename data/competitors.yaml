@@ -12,7 +12,6 @@
 
 meta:
   last_updated: "2026-04-02"
-  version: 1
 
 dimensions:
   - key: org_structure
@@ -75,8 +74,8 @@ categories:
     label: "Protocol / Standard"
 
 # -- Competitors --
-# Initial set. Add new entries following the schema above.
-# Full population tracked in GitHub issue #993.
+# Initial set. Add new entries following the structure of existing entries.
+# Adding more competitors is tracked in GitHub issue #993.
 
 competitors:
   - name: "SynthOrg"

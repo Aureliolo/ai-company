@@ -70,6 +70,33 @@
   color: var(--ct-text-muted);
 }
 
+/* Select dropdowns */
+.ct-select {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--ct-border);
+  background: transparent;
+  color: var(--ct-text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  font-family: var(--ct-font-sans);
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.75rem;
+}
+
+.ct-select:focus {
+  border-color: var(--ct-accent);
+}
+
+.ct-select option {
+  background: #0f0f1a;
+  color: var(--ct-text-primary);
+}
+
 /* Table */
 .ct-table-wrap {
   overflow-x: auto;
