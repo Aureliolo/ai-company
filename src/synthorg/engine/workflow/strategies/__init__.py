@@ -5,8 +5,14 @@ implementation.  The task-driven strategy is the initial reference
 implementation; additional strategies are added as needed.
 """
 
+from synthorg.engine.workflow.strategies.budget_driven import (
+    BudgetDrivenStrategy,
+)
 from synthorg.engine.workflow.strategies.calendar import (
     CalendarStrategy,
+)
+from synthorg.engine.workflow.strategies.event_driven import (
+    EventDrivenStrategy,
 )
 from synthorg.engine.workflow.strategies.hybrid import (
     HybridStrategy,
@@ -16,7 +22,9 @@ from synthorg.engine.workflow.strategies.task_driven import (
 )
 
 __all__ = [
+    "BudgetDrivenStrategy",
     "CalendarStrategy",
+    "EventDrivenStrategy",
     "HybridStrategy",
     "TaskDrivenStrategy",
 ]

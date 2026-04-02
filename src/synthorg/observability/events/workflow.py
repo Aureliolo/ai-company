@@ -119,3 +119,33 @@ VELOCITY_MULTI_NO_DURATION: str = "workflow.velocity.multi_no_duration"
 Defensive guard -- should not occur with validated input since
 ``VelocityRecord`` enforces ``duration_days >= 1``.
 """
+
+# -- Event-driven strategy events ---------------------------------------------
+
+SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET: str = "workflow.sprint.event_debounce_not_met"
+"""Event-driven strategy debounce threshold not yet met."""
+
+SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED: str = (
+    "workflow.sprint.event_counter_incremented"
+)
+"""Event-driven strategy incremented an internal event counter."""
+
+# -- Budget-driven strategy events --------------------------------------------
+
+SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED: str = (
+    "workflow.sprint.budget_threshold_crossed"
+)
+"""Budget-driven strategy detected a budget threshold crossing."""
+
+SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED: str = (
+    "workflow.sprint.budget_threshold_already_fired"
+)
+"""Budget-driven strategy skipped an already-fired threshold."""
+
+SPRINT_AUTO_TRANSITION_BUDGET: str = "workflow.sprint.auto_transition_budget"
+"""Sprint auto-transitioned due to budget exhaustion."""
+
+# -- Budget velocity calculator events ----------------------------------------
+
+VELOCITY_BUDGET_NO_BUDGET_CONSUMED: str = "workflow.velocity.budget_no_budget_consumed"
+"""BudgetVelocityCalculator: record has None or zero budget_consumed."""

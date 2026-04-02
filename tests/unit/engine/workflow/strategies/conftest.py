@@ -59,6 +59,9 @@ def make_context(  # noqa: PLR0913
     sprint_pct: float = 0.0,
     story_points_committed: float | None = None,
     story_points_completed: float | None = None,
+    budget_consumed_fraction: float = 0.0,
+    budget_remaining: float = 0.0,
+    external_events: tuple[str, ...] = (),
 ) -> CeremonyEvalContext:
     """Create an evaluation context.
 
@@ -80,10 +83,10 @@ def make_context(  # noqa: PLR0913
         total_completions_this_sprint=total_completions,
         total_tasks_in_sprint=total_tasks,
         elapsed_seconds=elapsed_seconds,
-        budget_consumed_fraction=0.0,
-        budget_remaining=0.0,
+        budget_consumed_fraction=budget_consumed_fraction,
+        budget_remaining=budget_remaining,
         velocity_history=(),
-        external_events=(),
+        external_events=external_events,
         sprint_percentage_complete=sprint_pct,
         story_points_completed=completed_pts,
         story_points_committed=committed,

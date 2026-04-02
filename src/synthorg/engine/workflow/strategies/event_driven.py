@@ -1,0 +1,362 @@
+"""Event-driven ceremony scheduling strategy.
+
+Ceremonies subscribe to engine events with configurable debounce.
+No fixed schedule -- ceremonies fire reactively based on event
+subscriptions.
+
+**Config keys** (per-ceremony ``policy_override.strategy_config``):
+
+- ``on_event`` (str): event name this ceremony subscribes to.
+- ``debounce`` (int): number of events before firing (per-ceremony
+  override).
+
+**Config keys** (sprint-level ``ceremony_policy.strategy_config``):
+
+- ``debounce_default`` (int): global fallback debounce (default: 5).
+- ``transition_event`` (str): event name that triggers sprint
+  auto-transition.
+"""
+
+from typing import TYPE_CHECKING, Any
+
+from synthorg.engine.workflow.ceremony_policy import (
+    CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.velocity_types import VelocityCalcType
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import (
+    SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED,
+    SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET,
+    SPRINT_CEREMONY_TRIGGERED,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
+    from synthorg.engine.workflow.sprint_config import (
+        SprintCeremonyConfig,
+        SprintConfig,
+    )
+
+logger = get_logger(__name__)
+
+# -- Config keys ---------------------------------------------------------------
+
+_KEY_ON_EVENT: str = "on_event"
+_KEY_DEBOUNCE: str = "debounce"
+_KEY_DEBOUNCE_DEFAULT: str = "debounce_default"
+_KEY_TRANSITION_EVENT: str = "transition_event"
+
+_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        _KEY_ON_EVENT,
+        _KEY_DEBOUNCE,
+        _KEY_DEBOUNCE_DEFAULT,
+        _KEY_TRANSITION_EVENT,
+    }
+)
+
+_DEFAULT_DEBOUNCE: int = 5
+
+# -- Recognized lifecycle event names -----------------------------------------
+
+EVENT_TASK_COMPLETED: str = "task_completed"
+EVENT_TASK_ADDED: str = "task_added"
+EVENT_TASK_BLOCKED: str = "task_blocked"
+EVENT_BUDGET_UPDATED: str = "budget_updated"
+
+
+class EventDrivenStrategy:
+    """Ceremony scheduling strategy driven by engine events.
+
+    Ceremonies subscribe to named events (e.g. ``task_completed``,
+    ``task_blocked``, or any external event) with a configurable
+    debounce count.  A ceremony fires once the debounce threshold is
+    reached, then resets.
+
+    State is tracked per-sprint and cleared on sprint transitions.
+    """
+
+    __slots__ = ("_ceremony_last_fire_at", "_debounce_default", "_event_counts")
+
+    def __init__(self) -> None:
+        self._event_counts: dict[str, int] = {}
+        self._ceremony_last_fire_at: dict[str, int] = {}
+        self._debounce_default: int = _DEFAULT_DEBOUNCE
+
+    # -- Core evaluation -------------------------------------------------------
+
+    def should_fire_ceremony(
+        self,
+        ceremony: SprintCeremonyConfig,
+        sprint: Sprint,  # noqa: ARG002
+        context: CeremonyEvalContext,  # noqa: ARG002
+    ) -> bool:
+        """Check if the subscribed event's debounce threshold is met.
+
+        Args:
+            ceremony: The ceremony being evaluated.
+            sprint: Current sprint state.
+            context: Evaluation context.
+
+        Returns:
+            ``True`` if the ceremony should fire.
+        """
+        config = self._get_ceremony_config(ceremony)
+        on_event = config.get(_KEY_ON_EVENT)
+
+        if on_event is None:
+            return False
+
+        debounce: int = config.get(_KEY_DEBOUNCE, self._debounce_default)
+        global_count = self._event_counts.get(on_event, 0)
+        last_fire_at = self._ceremony_last_fire_at.get(ceremony.name, 0)
+        events_since_fire = global_count - last_fire_at
+
+        if events_since_fire >= debounce:
+            self._ceremony_last_fire_at[ceremony.name] = global_count
+            logger.info(
+                SPRINT_CEREMONY_TRIGGERED,
+                ceremony=ceremony.name,
+                on_event=on_event,
+                debounce=debounce,
+                events_since_fire=events_since_fire,
+                strategy="event_driven",
+            )
+            return True
+
+        logger.debug(
+            SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET,
+            ceremony=ceremony.name,
+            on_event=on_event,
+            debounce=debounce,
+            events_since_fire=events_since_fire,
+            strategy="event_driven",
+        )
+        return False
+
+    def should_transition_sprint(
+        self,
+        sprint: Sprint,
+        config: SprintConfig,
+        context: CeremonyEvalContext,
+    ) -> SprintStatus | None:
+        """Return IN_REVIEW when the configured transition event fires.
+
+        Only transitions from ACTIVE status.
+
+        Args:
+            sprint: Current sprint state.
+            config: Sprint configuration.
+            context: Evaluation context.
+
+        Returns:
+            ``SprintStatus.IN_REVIEW`` if transition event detected,
+            else ``None``.
+        """
+        if sprint.status is not SprintStatus.ACTIVE:
+            return None
+
+        strategy_config = (
+            config.ceremony_policy.strategy_config
+            if config.ceremony_policy.strategy_config is not None
+            else {}
+        )
+        transition_event = strategy_config.get(_KEY_TRANSITION_EVENT)
+        if transition_event is None:
+            return None
+
+        # Check external events in context
+        if transition_event in context.external_events:
+            logger.info(
+                SPRINT_CEREMONY_TRIGGERED,
+                transition_event=transition_event,
+                source="external_events",
+                strategy="event_driven",
+            )
+            return SprintStatus.IN_REVIEW
+
+        # Check internal event counters
+        if self._event_counts.get(transition_event, 0) > 0:
+            logger.info(
+                SPRINT_CEREMONY_TRIGGERED,
+                transition_event=transition_event,
+                source="internal_counter",
+                strategy="event_driven",
+            )
+            return SprintStatus.IN_REVIEW
+
+        return None
+
+    # -- Lifecycle hooks -------------------------------------------------------
+
+    async def on_sprint_activated(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        config: SprintConfig,
+    ) -> None:
+        """Reset state and read debounce_default from config.
+
+        Args:
+            sprint: The activated sprint.
+            config: Sprint configuration.
+        """
+        self._event_counts.clear()
+        self._ceremony_last_fire_at.clear()
+
+        strategy_config = (
+            config.ceremony_policy.strategy_config
+            if config.ceremony_policy.strategy_config is not None
+            else {}
+        )
+        debounce_default = strategy_config.get(_KEY_DEBOUNCE_DEFAULT)
+        if isinstance(debounce_default, int) and not isinstance(debounce_default, bool):
+            self._debounce_default = debounce_default
+        else:
+            self._debounce_default = _DEFAULT_DEBOUNCE
+
+    async def on_sprint_deactivated(self) -> None:
+        """Clear all internal state."""
+        self._event_counts.clear()
+        self._ceremony_last_fire_at.clear()
+
+    async def on_task_completed(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        task_id: str,  # noqa: ARG002
+        story_points: float,  # noqa: ARG002
+        context: CeremonyEvalContext,  # noqa: ARG002
+    ) -> None:
+        """Increment the ``task_completed`` event counter.
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The completed task ID.
+            story_points: Points earned for the task.
+            context: Evaluation context.
+        """
+        self._increment(EVENT_TASK_COMPLETED)
+
+    async def on_task_added(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        task_id: str,  # noqa: ARG002
+    ) -> None:
+        """Increment the ``task_added`` event counter.
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The added task ID.
+        """
+        self._increment(EVENT_TASK_ADDED)
+
+    async def on_task_blocked(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        task_id: str,  # noqa: ARG002
+    ) -> None:
+        """Increment the ``task_blocked`` event counter.
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The blocked task ID.
+        """
+        self._increment(EVENT_TASK_BLOCKED)
+
+    async def on_budget_updated(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        budget_consumed_fraction: float,  # noqa: ARG002
+    ) -> None:
+        """Increment the ``budget_updated`` event counter.
+
+        Args:
+            sprint: Current sprint state.
+            budget_consumed_fraction: Budget consumed fraction.
+        """
+        self._increment(EVENT_BUDGET_UPDATED)
+
+    async def on_external_event(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        event_name: str,
+        payload: Mapping[str, Any],  # noqa: ARG002
+    ) -> None:
+        """Increment the counter for the named external event.
+
+        Args:
+            sprint: Current sprint state.
+            event_name: Name of the external event.
+            payload: Event payload data.
+        """
+        self._increment(event_name)
+
+    # -- Metadata --------------------------------------------------------------
+
+    @property
+    def strategy_type(self) -> CeremonyStrategyType:
+        """Return EVENT_DRIVEN."""
+        return CeremonyStrategyType.EVENT_DRIVEN
+
+    def get_default_velocity_calculator(self) -> VelocityCalcType:
+        """Return POINTS_PER_SPRINT."""
+        return VelocityCalcType.POINTS_PER_SPRINT
+
+    def validate_strategy_config(
+        self,
+        config: Mapping[str, Any],
+    ) -> None:
+        """Validate event-driven strategy config.
+
+        Args:
+            config: Strategy config to validate.
+
+        Raises:
+            ValueError: If the config contains invalid keys or values.
+        """
+        unknown = set(config) - _KNOWN_CONFIG_KEYS
+        if unknown:
+            msg = f"Unknown config keys: {sorted(unknown)}"
+            raise ValueError(msg)
+
+        on_event = config.get(_KEY_ON_EVENT)
+        if on_event is not None and (not isinstance(on_event, str) or not on_event):
+            msg = f"'{_KEY_ON_EVENT}' must be a non-empty string"
+            raise ValueError(msg)
+
+        transition_event = config.get(_KEY_TRANSITION_EVENT)
+        if transition_event is not None and (
+            not isinstance(transition_event, str) or not transition_event
+        ):
+            msg = f"'{_KEY_TRANSITION_EVENT}' must be a non-empty string"
+            raise ValueError(msg)
+
+        for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
+            value = config.get(key)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+            ):
+                msg = f"'{key}' must be a positive integer, got {value!r}"
+                raise ValueError(msg)
+
+    # -- Private helpers -------------------------------------------------------
+
+    def _increment(self, event_name: str) -> None:
+        """Increment the global event counter for the given event."""
+        self._event_counts[event_name] = self._event_counts.get(event_name, 0) + 1
+        logger.debug(
+            SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED,
+            event_name=event_name,
+            count=self._event_counts[event_name],
+        )
+
+    @staticmethod
+    def _get_ceremony_config(
+        ceremony: SprintCeremonyConfig,
+    ) -> Mapping[str, Any]:
+        """Extract strategy config from a ceremony's policy override."""
+        if ceremony.policy_override is None:
+            return {}
+        return ceremony.policy_override.strategy_config or {}
