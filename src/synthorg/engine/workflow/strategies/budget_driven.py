@@ -60,8 +60,8 @@ _MAX_THRESHOLD_PCT: float = 100.0
 _MAX_THRESHOLD_COUNT: int = 20
 
 
-def _check_threshold_element(t: object, *, strict: bool) -> None:
-    """Validate a single threshold element (strict mode raises)."""
+def _check_threshold_element(t: object) -> None:
+    """Validate a single threshold element (raises on invalid)."""
     # bool is a subclass of int; check first
     if (
         isinstance(t, bool)
@@ -70,14 +70,13 @@ def _check_threshold_element(t: object, *, strict: bool) -> None:
         or not (0 < t <= _MAX_THRESHOLD_PCT)
     ):
         msg = f"Each budget threshold must be a finite number in (0, 100], got {t!r}"
-        if strict:
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="budget_driven",
-                key=_KEY_BUDGET_THRESHOLDS,
-                value=t,
-            )
-            raise ValueError(msg)
+        logger.warning(
+            SPRINT_STRATEGY_CONFIG_INVALID,
+            strategy="budget_driven",
+            key=_KEY_BUDGET_THRESHOLDS,
+            value=t,
+        )
+        raise ValueError(msg)
 
 
 def _coerce_threshold(t: object, ceremony_name: str) -> float | None:
@@ -335,6 +334,7 @@ class BudgetDrivenStrategy:
         if transition is not None and (
             isinstance(transition, bool)
             or not isinstance(transition, int | float)
+            or not math.isfinite(transition)
             or not (0 < transition <= _MAX_THRESHOLD_PCT)
         ):
             msg = (
@@ -382,7 +382,7 @@ class BudgetDrivenStrategy:
             raise ValueError(msg)
         seen: set[float] = set()
         for t in thresholds:
-            _check_threshold_element(t, strict=True)
+            _check_threshold_element(t)
             if t in seen:
                 msg = f"Duplicate budget threshold: {t}"
                 logger.warning(
@@ -442,6 +442,7 @@ class BudgetDrivenStrategy:
         if (
             isinstance(raw, bool)
             or not isinstance(raw, int | float)
+            or not math.isfinite(raw)
             or not (0 < raw <= _MAX_THRESHOLD_PCT)
         ):
             logger.warning(
