@@ -353,12 +353,12 @@ export default function ComparisonTable({
                 <th
                   key={dim.key}
                   aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
-                  title={dim.description}
                 >
-                  <button type="button" className="ct-sort-btn" onClick={() => handleSort(dim.key)}>
+                  <button type="button" className="ct-sort-btn" onClick={() => handleSort(dim.key)} aria-describedby={`dim-desc-${dim.key}`}>
                     {dim.label}
                     <SortArrow column={dim.key} sortBy={sortBy} />
                   </button>
+                  <span id={`dim-desc-${dim.key}`} className="ct-sr-only">{dim.description}</span>
                 </th>
               ))}
             </tr>
@@ -377,6 +377,8 @@ export default function ComparisonTable({
                         data-open={isExpanded ? "true" : "false"}
                         onClick={() => toggleExpanded(comp.slug)}
                         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${comp.name} details`}
+                        aria-expanded={isExpanded}
+                        aria-controls={`details-${comp.slug}`}
                       >
                         <svg
                           width="14"
@@ -390,7 +392,7 @@ export default function ComparisonTable({
                         </svg>
                       </button>
                     </td>
-                    <td>
+                    <th scope="row">
                       <div className="ct-name-cell">
                         {comp.url ? (
                           <a
@@ -417,7 +419,7 @@ export default function ComparisonTable({
                           </span>
                         )}
                       </div>
-                    </td>
+                    </th>
                     <td>
                       <span className="ct-category-badge">
                         {categoryMap[comp.category] || comp.category}
@@ -440,6 +442,7 @@ export default function ComparisonTable({
                   {isExpanded && (
                     <tr
                       className="ct-detail-row"
+                      id={`details-${comp.slug}`}
                     >
                       <td colSpan={4 + dimensions.length}>
                         <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
