@@ -10,11 +10,14 @@ from synthorg.engine.workflow.velocity_types import (
     VelocityCalcType,
     VelocityMetrics,
 )
+from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+
+logger = get_logger(__name__)
 
 _UNIT: str = "pts/sprint"
 

@@ -377,3 +377,23 @@ class TestValidateStrategyConfig:
                     "transition_threshold": 101,
                 }
             )
+
+    @pytest.mark.unit
+    def test_invalid_threshold_bool(self) -> None:
+        strategy = BudgetDrivenStrategy()
+        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
+            strategy.validate_strategy_config(
+                {
+                    "budget_thresholds": [True],
+                }
+            )
+
+    @pytest.mark.unit
+    def test_invalid_transition_threshold_bool(self) -> None:
+        strategy = BudgetDrivenStrategy()
+        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
+            strategy.validate_strategy_config(
+                {
+                    "transition_threshold": True,
+                }
+            )

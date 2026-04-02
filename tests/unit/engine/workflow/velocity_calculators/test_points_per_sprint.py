@@ -110,3 +110,10 @@ class TestPointsPerSprintVelocityCalculator:
         # Mean ratio: (0.8 + 1.0) / 2 = 0.9
         assert metrics.secondary["completion_ratio"] == pytest.approx(0.9)
         assert metrics.secondary["sprints_averaged"] == 2.0
+
+    @pytest.mark.unit
+    def test_rolling_average_zero_window(self) -> None:
+        calc = PointsPerSprintVelocityCalculator()
+        records = [_make_record(points_completed=42.0)]
+        metrics = calc.rolling_average(records, window=0)
+        assert metrics.primary_value == 0.0

@@ -24,6 +24,7 @@ from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION_BUDGET,
+    SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
     SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED,
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
@@ -95,6 +96,10 @@ class BudgetDrivenStrategy:
 
         Returns:
             ``True`` if a threshold was newly crossed.
+
+        Note:
+            This method mutates internal state -- it marks the
+            fired threshold as consumed.  It is not a pure predicate.
         """
         config = self._get_ceremony_config(ceremony)
         thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
@@ -107,6 +112,12 @@ class BudgetDrivenStrategy:
 
         for threshold in sorted(thresholds):
             if threshold in fired:
+                logger.debug(
+                    SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
+                    ceremony=ceremony.name,
+                    threshold=threshold,
+                    strategy="budget_driven",
+                )
                 continue
             if budget_pct >= threshold:
                 fired.add(threshold)
@@ -300,7 +311,11 @@ class BudgetDrivenStrategy:
                 raise ValueError(msg)
             seen: set[float] = set()
             for t in thresholds:
-                if not isinstance(t, int | float) or not (0 < t <= _MAX_THRESHOLD_PCT):
+                if (
+                    isinstance(t, bool)
+                    or not isinstance(t, int | float)
+                    or not (0 < t <= _MAX_THRESHOLD_PCT)
+                ):
                     msg = (
                         f"Each budget threshold must be a number in (0, 100], got {t!r}"
                     )
@@ -312,7 +327,8 @@ class BudgetDrivenStrategy:
 
         transition = config.get(_KEY_TRANSITION_THRESHOLD)
         if transition is not None and (
-            not isinstance(transition, int | float)
+            isinstance(transition, bool)
+            or not isinstance(transition, int | float)
             or not (0 < transition <= _MAX_THRESHOLD_PCT)
         ):
             msg = (
