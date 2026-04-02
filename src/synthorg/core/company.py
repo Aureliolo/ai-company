@@ -1,7 +1,7 @@
 """Company structure and configuration models."""
 
 from collections import Counter
-from typing import Self
+from typing import Any, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -369,6 +369,11 @@ class Department(BaseModel):
         autonomy_level: Per-department autonomy level override
             (``None`` to inherit company default).
         policies: Department-level operational policies.
+        ceremony_policy: Per-department ceremony scheduling policy
+            override as a raw dict (avoids circular imports with
+            ``engine.workflow``).  ``None`` inherits the project-level
+            policy.  Consumers construct ``CeremonyPolicyConfig`` from
+            this dict when needed.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -403,6 +408,10 @@ class Department(BaseModel):
     policies: DepartmentPolicies = Field(
         default_factory=DepartmentPolicies,
         description="Department-level operational policies",
+    )
+    ceremony_policy: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-department ceremony policy override",
     )
 
     @model_validator(mode="after")

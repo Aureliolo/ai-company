@@ -227,6 +227,10 @@ class TemplateDepartmentConfig(BaseModel):
         default=None,
         description="Department operational policies",
     )
+    ceremony_policy: dict[str, Any] | None = Field(
+        default=None,
+        description="Per-department ceremony policy override",
+    )
     remove: bool = Field(
         default=False,
         alias="_remove",
