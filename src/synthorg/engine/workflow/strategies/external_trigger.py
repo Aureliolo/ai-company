@@ -211,6 +211,10 @@ class ExternalTriggerStrategy:
             else {}
         )
 
+        # Lenient: filter non-dict entries at runtime (warn, don't raise).
+        # Strict validation lives in _validate_sources / validate_strategy_config
+        # and runs at config-load time.  At activation time we tolerate
+        # partial misconfigs so the sprint can still proceed.
         raw_sources = strategy_config.get(_KEY_SOURCES)
         if isinstance(raw_sources, list):
             bad_indices = [
