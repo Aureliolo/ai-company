@@ -693,7 +693,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
 - Observability event constants (`VELOCITY_CALENDAR_NO_DURATION` -- defensive, for invalid/unvalidated records only, `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION` -- defensive, for invalid/unvalidated records only)
 
-### Shipped in #971 + #972 (Event-Driven + Budget-Driven Strategies)
+### Implemented in #971 + #972 (Event-Driven + Budget-Driven Strategies, integration pending)
 
 - `EventDrivenStrategy` -- reactive ceremony firing on engine events with configurable debounce
 - `PointsPerSprintVelocityCalculator` -- `pts/sprint` for event-driven and external-trigger strategies
@@ -701,7 +701,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `BudgetVelocityCalculator` -- `pts/EUR` with budget-weighted rolling averages
 - Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
 
-> **Note:** These strategies are implemented but the `CeremonyScheduler` does not yet wire all lifecycle hooks (e.g. `on_budget_updated`, `on_external_event`). Scheduler integration is tracked in follow-up work.
+> **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
 
 ### Follow-up Issues
 

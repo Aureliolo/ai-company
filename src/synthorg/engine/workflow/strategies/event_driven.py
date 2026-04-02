@@ -115,7 +115,11 @@ class EventDrivenStrategy:
         config = get_ceremony_config(ceremony)
         on_event = config.get(_KEY_ON_EVENT)
 
-        if on_event is None:
+        if (
+            not isinstance(on_event, str)
+            or not on_event
+            or len(on_event) > _MAX_EVENT_NAME_LEN
+        ):
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 ceremony=ceremony.name,
@@ -326,6 +330,14 @@ class EventDrivenStrategy:
             event_name: Name of the external event.
             payload: Event payload data.
         """
+        if not isinstance(event_name, str) or not event_name.strip():
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_external_event_name",
+                value=event_name,
+                strategy="event_driven",
+            )
+            return
         self._increment(event_name)
 
     # -- Metadata --------------------------------------------------------------
@@ -374,8 +386,10 @@ class EventDrivenStrategy:
     ) -> None:
         """Validate that *key* is a non-empty string if present."""
         value = config.get(key)
-        if value is not None and (not isinstance(value, str) or not value):
-            msg = f"'{key}' must be a non-empty string"
+        if value is None:
+            return
+        if not isinstance(value, str) or not value or len(value) > _MAX_EVENT_NAME_LEN:
+            msg = f"'{key}' must be a non-empty string (<= {_MAX_EVENT_NAME_LEN} chars)"
             logger.warning(
                 SPRINT_STRATEGY_CONFIG_INVALID,
                 strategy="event_driven",

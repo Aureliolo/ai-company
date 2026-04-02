@@ -310,115 +310,46 @@ class TestValidateStrategyConfig:
             strategy.validate_strategy_config({"unknown_key": 42})
 
     @pytest.mark.unit
-    def test_invalid_threshold_zero(self) -> None:
+    @pytest.mark.parametrize(
+        ("config", "match"),
+        [
+            ({"budget_thresholds": [0]}, r"in \(0, 100\]"),
+            ({"budget_thresholds": [101]}, r"in \(0, 100\]"),
+            ({"budget_thresholds": [-10]}, r"in \(0, 100\]"),
+            ({"budget_thresholds": 50}, "list"),
+            ({"budget_thresholds": [25, 50, 25]}, r"[Dd]uplicate"),
+            ({"budget_thresholds": [True]}, r"in \(0, 100\]"),
+            ({"budget_thresholds": ["fifty"]}, r"in \(0, 100\]"),
+            (
+                {"budget_thresholds": [float(i) for i in range(1, 22)]},
+                "must not exceed",
+            ),
+            ({"transition_threshold": 0}, r"in \(0, 100\]"),
+            ({"transition_threshold": 101}, r"in \(0, 100\]"),
+            ({"transition_threshold": True}, r"in \(0, 100\]"),
+        ],
+        ids=[
+            "threshold_zero",
+            "threshold_over_100",
+            "threshold_negative",
+            "thresholds_not_list",
+            "duplicate_thresholds",
+            "threshold_bool",
+            "threshold_string",
+            "threshold_list_exceeds_max",
+            "transition_zero",
+            "transition_over_100",
+            "transition_bool",
+        ],
+    )
+    def test_invalid_config_rejected(
+        self,
+        config: dict[str, object],
+        match: str,
+    ) -> None:
         strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": [0],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_threshold_over_100(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": [101],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_threshold_negative(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": [-10],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_thresholds_not_list(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="list"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": 50,
-                }
-            )
-
-    @pytest.mark.unit
-    def test_duplicate_thresholds_rejected(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match=r"[Dd]uplicate"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": [25, 50, 25],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_transition_threshold_zero(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "transition_threshold": 0,
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_transition_threshold_over_100(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "transition_threshold": 101,
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_threshold_bool(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": [True],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_transition_threshold_bool(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "transition_threshold": True,
-                }
-            )
-
-    @pytest.mark.unit
-    def test_invalid_threshold_string(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        with pytest.raises(ValueError, match="in \\(0, 100\\]"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": ["fifty"],
-                }
-            )
-
-    @pytest.mark.unit
-    def test_threshold_list_exceeds_max_count(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        big_list = [float(i) for i in range(1, 22)]  # 21 entries > 20
-        with pytest.raises(ValueError, match="must not exceed"):
-            strategy.validate_strategy_config(
-                {
-                    "budget_thresholds": big_list,
-                }
-            )
+        with pytest.raises(ValueError, match=match):
+            strategy.validate_strategy_config(config)
 
     @pytest.mark.unit
     def test_no_policy_override_returns_false(self) -> None:

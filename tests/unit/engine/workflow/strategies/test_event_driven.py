@@ -442,105 +442,58 @@ class TestValidateStrategyConfig:
             strategy.validate_strategy_config({"unknown_key": 42})
 
     @pytest.mark.unit
-    def test_invalid_debounce_zero(self) -> None:
+    @pytest.mark.parametrize(
+        ("config", "match"),
+        [
+            ({"debounce": 0}, "positive integer"),
+            ({"debounce": -1}, "positive integer"),
+            ({"debounce": True}, "positive integer"),
+            ({"debounce_default": 0}, "positive integer"),
+            ({"on_event": ""}, "non-empty string"),
+            ({"transition_event": ""}, "non-empty string"),
+            ({"on_event": 123}, "non-empty string"),
+            ({"on_event": True}, "non-empty string"),
+            ({"debounce": 10_001}, "<= 10000"),
+            ({"debounce_default": 10_001}, "<= 10000"),
+        ],
+        ids=[
+            "debounce_zero",
+            "debounce_negative",
+            "debounce_bool",
+            "debounce_default_zero",
+            "on_event_empty",
+            "transition_event_empty",
+            "on_event_non_string",
+            "on_event_bool",
+            "debounce_exceeds_max",
+            "debounce_default_exceeds_max",
+        ],
+    )
+    def test_invalid_config_rejected(
+        self,
+        config: dict[str, object],
+        match: str,
+    ) -> None:
         strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="positive integer"):
-            strategy.validate_strategy_config({"debounce": 0})
+        with pytest.raises(ValueError, match=match):
+            strategy.validate_strategy_config(config)
 
     @pytest.mark.unit
-    def test_invalid_debounce_negative(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="positive integer"):
-            strategy.validate_strategy_config({"debounce": -1})
-
-    @pytest.mark.unit
-    def test_invalid_debounce_bool(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="positive integer"):
-            strategy.validate_strategy_config({"debounce": True})
-
-    @pytest.mark.unit
-    def test_invalid_debounce_default_zero(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="positive integer"):
-            strategy.validate_strategy_config({"debounce_default": 0})
-
-    @pytest.mark.unit
-    def test_invalid_on_event_empty(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="non-empty string"):
-            strategy.validate_strategy_config({"on_event": ""})
-
-    @pytest.mark.unit
-    def test_invalid_transition_event_empty(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="non-empty string"):
-            strategy.validate_strategy_config({"transition_event": ""})
-
-    @pytest.mark.unit
-    def test_invalid_on_event_non_string(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="non-empty string"):
-            strategy.validate_strategy_config({"on_event": 123})
-
-    @pytest.mark.unit
-    def test_invalid_on_event_bool(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="non-empty string"):
-            strategy.validate_strategy_config({"on_event": True})
-
-    @pytest.mark.unit
-    def test_debounce_exceeds_max(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="<= 10000"):
-            strategy.validate_strategy_config({"debounce": 10_001})
-
-    @pytest.mark.unit
-    def test_debounce_default_exceeds_max(self) -> None:
-        strategy = EventDrivenStrategy()
-        with pytest.raises(ValueError, match="<= 10000"):
-            strategy.validate_strategy_config({"debounce_default": 10_001})
-
-    @pytest.mark.unit
-    async def test_debounce_default_fallback_on_bool(self) -> None:
-        strategy = EventDrivenStrategy()
-        sprint = make_sprint()
-        config = _make_sprint_config(debounce_default=5)
-        # Activate with valid config first
-        await strategy.on_sprint_activated(sprint, config)
-
-        # Now activate with bool -- should fallback to default
-        bad_config = SprintConfig(
-            ceremony_policy=CeremonyPolicyConfig(
-                strategy=CeremonyStrategyType.EVENT_DRIVEN,
-                strategy_config={"debounce_default": True},
-            ),
-        )
-        await strategy.on_sprint_activated(sprint, bad_config)
-        # Verify the debounce_default is the default (5), not True (1)
-        assert strategy._debounce_default == 5
-
-    @pytest.mark.unit
-    async def test_debounce_default_fallback_on_float(self) -> None:
+    @pytest.mark.parametrize(
+        "bad_value",
+        [True, 3.5, 0],
+        ids=["bool", "float", "zero"],
+    )
+    async def test_debounce_default_fallback(
+        self,
+        bad_value: object,
+    ) -> None:
         strategy = EventDrivenStrategy()
         sprint = make_sprint()
         bad_config = SprintConfig(
             ceremony_policy=CeremonyPolicyConfig(
                 strategy=CeremonyStrategyType.EVENT_DRIVEN,
-                strategy_config={"debounce_default": 3.5},
-            ),
-        )
-        await strategy.on_sprint_activated(sprint, bad_config)
-        assert strategy._debounce_default == 5
-
-    @pytest.mark.unit
-    async def test_debounce_default_fallback_on_zero(self) -> None:
-        strategy = EventDrivenStrategy()
-        sprint = make_sprint()
-        bad_config = SprintConfig(
-            ceremony_policy=CeremonyPolicyConfig(
-                strategy=CeremonyStrategyType.EVENT_DRIVEN,
-                strategy_config={"debounce_default": 0},
+                strategy_config={"debounce_default": bad_value},
             ),
         )
         await strategy.on_sprint_activated(sprint, bad_config)
