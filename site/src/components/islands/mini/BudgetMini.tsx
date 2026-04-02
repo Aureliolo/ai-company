@@ -21,7 +21,7 @@ export default function BudgetMini({ tick }: Props) {
   const forecast = (500 * (1 - gaugeValue / 100) * 1.15).toFixed(2);
 
   // SVG arc math for the gauge
-  const radius = 52;
+  const radius = 50; // matches SVG arc: A 50 50
   const circumference = Math.PI * radius; // half circle
   const dashOffset = circumference * (1 - gaugeValue / 100);
 
