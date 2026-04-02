@@ -159,3 +159,19 @@ class TestQualityBlendIntelligenceStrategy:
         result = await strategy.score(context=ctx)
         assert abs(result.score - 9.0) < 0.1
         assert not any(k == "ci_quality" for k, _ in result.breakdown)
+
+    async def test_ci_disabled_no_calibration_returns_neutral(
+        self,
+        strategy: QualityBlendIntelligenceStrategy,
+    ) -> None:
+        """With CI disabled and no calibration data, return neutral."""
+        cfg = EvaluationConfig(
+            intelligence=IntelligenceConfig(ci_quality_enabled=False),
+        )
+        ctx = make_evaluation_context(
+            snapshot=make_snapshot(overall_quality_score=8.0),
+            config=cfg,
+        )
+        result = await strategy.score(context=ctx)
+        assert result.score == 5.0
+        assert result.confidence == 0.0

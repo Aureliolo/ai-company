@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
     EvaluationReport,
@@ -297,6 +298,25 @@ class TestPillarScore:
             ps.score = 5.0  # type: ignore[misc]
 
 
+# ── EvaluationContext ─────────────────────────────────────
+
+
+class TestEvaluationContext:
+    """EvaluationContext model tests."""
+
+    def test_agent_id_mismatch_raises(self) -> None:
+        """Mismatched agent_id between context and snapshot must raise."""
+        from synthorg.hr.evaluation.models import EvaluationContext
+
+        with pytest.raises(ValueError, match="does not match"):
+            EvaluationContext(
+                agent_id=NotBlankStr("agent-001"),
+                now=datetime.now(UTC),
+                config=EvaluationConfig(),
+                snapshot=make_snapshot(agent_id="agent-999"),
+            )
+
+
 # ── EvaluationReport ─────────────────────────────────────
 
 
@@ -407,3 +427,34 @@ class TestEvaluationReport:
         )
         with pytest.raises(ValidationError):
             report.overall_score = 8.0  # type: ignore[misc]
+
+    def test_agent_id_mismatch_raises(self) -> None:
+        """Report agent_id must match snapshot agent_id."""
+        now = datetime.now(UTC)
+        snapshot = make_snapshot(agent_id="agent-999")
+        with pytest.raises(ValueError, match="does not match"):
+            EvaluationReport(
+                agent_id=NotBlankStr("agent-001"),
+                computed_at=now,
+                snapshot=snapshot,
+                pillar_scores=(),
+                overall_score=0.0,
+                overall_confidence=0.0,
+                pillar_weights=(),
+            )
+
+    def test_weights_scores_mismatch_raises(self) -> None:
+        """Pillar weight names must match pillar score names."""
+        now = datetime.now(UTC)
+        snapshot = make_snapshot()
+        scores = (make_pillar_score(pillar=EvaluationPillar.INTELLIGENCE),)
+        with pytest.raises(ValueError, match="do not match"):
+            EvaluationReport(
+                agent_id=NotBlankStr("agent-001"),
+                computed_at=now,
+                snapshot=snapshot,
+                pillar_scores=scores,
+                overall_score=7.5,
+                overall_confidence=0.8,
+                pillar_weights=((NotBlankStr("efficiency"), 1.0),),
+            )

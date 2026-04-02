@@ -234,3 +234,48 @@ class TestEvaluationConfig:
             llm_calibration_enabled=False,
         )
         assert cfg.enabled is False
+
+    @pytest.mark.parametrize(
+        ("config_cls", "disable_kwargs"),
+        [
+            (
+                EfficiencyConfig,
+                {"cost_enabled": False, "time_enabled": False, "tokens_enabled": False},
+            ),
+            (
+                ResilienceConfig,
+                {
+                    "success_rate_enabled": False,
+                    "recovery_rate_enabled": False,
+                    "consistency_enabled": False,
+                    "streak_enabled": False,
+                },
+            ),
+            (
+                GovernanceConfig,
+                {
+                    "audit_compliance_enabled": False,
+                    "trust_level_enabled": False,
+                    "autonomy_compliance_enabled": False,
+                },
+            ),
+            (
+                ExperienceConfig,
+                {
+                    "clarity_enabled": False,
+                    "tone_enabled": False,
+                    "helpfulness_enabled": False,
+                    "trust_enabled": False,
+                    "satisfaction_enabled": False,
+                },
+            ),
+        ],
+    )
+    def test_all_metrics_disabled_raises_per_config(
+        self,
+        config_cls: type,
+        disable_kwargs: dict[str, bool],
+    ) -> None:
+        """Each pillar config raises when all metrics disabled."""
+        with pytest.raises(ValueError, match="At least one metric"):
+            config_cls(enabled=True, **disable_kwargs)

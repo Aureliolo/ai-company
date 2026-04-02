@@ -6,11 +6,11 @@ bag. Includes the ``redistribute_weights`` utility for proportional
 weight redistribution when pillars or metrics are disabled.
 """
 
-from typing import TYPE_CHECKING, Self
+from collections.abc import (
+    Sequence,  # noqa: TC003 - needed at runtime for PEP 649 VALUE format
+)
+from typing import Self
 from uuid import uuid4
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 from pydantic import (
     AwareDatetime,
@@ -385,5 +385,29 @@ class EvaluationReport(BaseModel):
                     dupes.append(n.value)
                 seen.add(n)
             msg = f"Duplicate pillar scores: {', '.join(dupes)}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_agent_id_consistency(self) -> Self:
+        """Ensure report agent_id matches snapshot agent_id."""
+        if self.agent_id != self.snapshot.agent_id:
+            msg = (
+                f"Report agent_id ({self.agent_id}) does not match "
+                f"snapshot agent_id ({self.snapshot.agent_id})"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_weights_match_scores(self) -> Self:
+        """Ensure pillar_weights entries correspond to pillar_scores."""
+        score_pillars = {ps.pillar.value for ps in self.pillar_scores}
+        weight_pillars = {name for name, _ in self.pillar_weights}
+        if score_pillars != weight_pillars:
+            msg = (
+                f"Pillar weight names {sorted(weight_pillars)} do not match "
+                f"pillar score names {sorted(score_pillars)}"
+            )
             raise ValueError(msg)
         return self

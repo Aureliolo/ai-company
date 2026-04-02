@@ -6,6 +6,7 @@ None ratings and disabled metrics have their weight redistributed.
 """
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.evaluation.constants import MAX_SCORE, NEUTRAL_SCORE
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
     EvaluationContext,
@@ -21,8 +22,17 @@ from synthorg.observability.events.evaluation import (
 
 logger = get_logger(__name__)
 
-_MAX_SCORE: float = 10.0
-_NEUTRAL_SCORE: float = 5.0
+# Full confidence at min_feedback_count * this multiplier.
+_FULL_CONFIDENCE_FEEDBACK_MULTIPLIER: int = 3
+
+# Rating field accessors keyed by metric name.
+_RATING_FIELDS: dict[str, str] = {
+    "clarity": "clarity_rating",
+    "tone": "tone_rating",
+    "helpfulness": "helpfulness_rating",
+    "trust": "trust_rating",
+    "satisfaction": "satisfaction_rating",
+}
 
 
 def _avg_rating(
@@ -75,74 +85,78 @@ class FeedbackBasedUxStrategy:
         feedback = context.feedback
 
         if len(feedback) < cfg.min_feedback_count:
-            logger.info(
-                EVAL_PILLAR_INSUFFICIENT_DATA,
-                agent_id=context.agent_id,
-                pillar=self.pillar.value,
+            return self._neutral(
+                context,
                 reason="insufficient_feedback",
                 count=len(feedback),
                 min_required=cfg.min_feedback_count,
             )
-            return PillarScore(
-                pillar=self.pillar,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr(self.name),
-                data_point_count=len(feedback),
-                evaluated_at=context.now,
-            )
 
-        # Map metric name -> (config_enabled, config_weight, field_name).
-        metric_defs = [
-            ("clarity", cfg.clarity_enabled, cfg.clarity_weight, "clarity_rating"),
-            ("tone", cfg.tone_enabled, cfg.tone_weight, "tone_rating"),
-            (
-                "helpfulness",
-                cfg.helpfulness_enabled,
-                cfg.helpfulness_weight,
-                "helpfulness_rating",
-            ),
-            ("trust", cfg.trust_enabled, cfg.trust_weight, "trust_rating"),
-            (
-                "satisfaction",
-                cfg.satisfaction_enabled,
-                cfg.satisfaction_weight,
-                "satisfaction_rating",
-            ),
-        ]
-
-        # Level 1: Filter by config-enabled.
-        available: list[tuple[str, float, float]] = []  # (name, weight, avg_score)
-        for metric_name, enabled, weight, field_name in metric_defs:
-            if not enabled:
-                continue
-            avg = _avg_rating(feedback, field_name)
-            if avg is not None:
-                available.append((metric_name, weight, avg * _MAX_SCORE))
+        available = self._collect_metrics(cfg, feedback)
 
         if not available:
-            return PillarScore(
-                pillar=self.pillar,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr(self.name),
-                data_point_count=len(feedback),
-                evaluated_at=context.now,
+            return self._neutral(
+                context,
+                reason="no_enabled_metrics_with_data",
             )
 
-        # Level 2: Redistribute weights among metrics with data.
+        return self._build_result(available, feedback, context)
+
+    @staticmethod
+    def _collect_metrics(
+        cfg: object,
+        feedback: tuple[InteractionFeedback, ...],
+    ) -> list[tuple[str, float, float]]:
+        """Gather enabled metrics with data.
+
+        Returns:
+            List of (name, weight, avg_score) tuples.
+        """
+        from synthorg.hr.evaluation.config import ExperienceConfig  # noqa: PLC0415
+
+        assert isinstance(cfg, ExperienceConfig)  # noqa: S101
+
+        metric_defs = [
+            ("clarity", cfg.clarity_enabled, cfg.clarity_weight),
+            ("tone", cfg.tone_enabled, cfg.tone_weight),
+            ("helpfulness", cfg.helpfulness_enabled, cfg.helpfulness_weight),
+            ("trust", cfg.trust_enabled, cfg.trust_weight),
+            ("satisfaction", cfg.satisfaction_enabled, cfg.satisfaction_weight),
+        ]
+
+        available: list[tuple[str, float, float]] = []
+        for metric_name, enabled, weight in metric_defs:
+            if not enabled:
+                continue
+            avg = _avg_rating(feedback, _RATING_FIELDS[metric_name])
+            if avg is not None:
+                available.append((metric_name, weight, avg * MAX_SCORE))
+        return available
+
+    def _build_result(
+        self,
+        available: list[tuple[str, float, float]],
+        feedback: tuple[InteractionFeedback, ...],
+        context: EvaluationContext,
+    ) -> PillarScore:
+        """Aggregate available metrics into a pillar score."""
+        cfg = context.config.experience
         weights = redistribute_weights(
             [(name, w, True) for name, w, _ in available],
         )
         scores = {name: s for name, _, s in available}
 
         weighted_sum = sum(scores[k] * weights[k] for k in weights)
-        final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
+        final_score = max(0.0, min(MAX_SCORE, weighted_sum))
 
         breakdown = tuple(
             (NotBlankStr(k), round(v, 4)) for k, v in sorted(scores.items())
         )
-        confidence = min(1.0, len(feedback) / (cfg.min_feedback_count * 3))
+        confidence = min(
+            1.0,
+            len(feedback)
+            / (cfg.min_feedback_count * _FULL_CONFIDENCE_FEEDBACK_MULTIPLIER),
+        )
 
         result = PillarScore(
             pillar=self.pillar,
@@ -162,3 +176,27 @@ class FeedbackBasedUxStrategy:
             confidence=result.confidence,
         )
         return result
+
+    def _neutral(
+        self,
+        context: EvaluationContext,
+        *,
+        reason: str,
+        **kwargs: object,
+    ) -> PillarScore:
+        """Return a neutral score with zero confidence."""
+        logger.info(
+            EVAL_PILLAR_INSUFFICIENT_DATA,
+            agent_id=context.agent_id,
+            pillar=self.pillar.value,
+            reason=reason,
+            **kwargs,
+        )
+        return PillarScore(
+            pillar=self.pillar,
+            score=NEUTRAL_SCORE,
+            confidence=0.0,
+            strategy_name=NotBlankStr(self.name),
+            data_point_count=len(context.feedback),
+            evaluated_at=context.now,
+        )

@@ -86,12 +86,11 @@ def make_snapshot(
     computed_at: datetime | None = None,
     overall_quality_score: float | None = 7.5,
     overall_collaboration_score: float | None = 6.8,
+    windows: tuple[WindowMetrics, ...] | None = None,
 ) -> AgentPerformanceSnapshot:
     """Build an AgentPerformanceSnapshot with sensible defaults."""
-    return AgentPerformanceSnapshot(
-        agent_id=NotBlankStr(agent_id),
-        computed_at=computed_at or datetime.now(UTC),
-        windows=(
+    if windows is None:
+        windows = (
             WindowMetrics(
                 window_size=NotBlankStr("30d"),
                 data_point_count=15,
@@ -103,7 +102,11 @@ def make_snapshot(
                 avg_tokens_per_task=2000.0,
                 success_rate=0.8,
             ),
-        ),
+        )
+    return AgentPerformanceSnapshot(
+        agent_id=NotBlankStr(agent_id),
+        computed_at=computed_at or datetime.now(UTC),
+        windows=windows,
         overall_quality_score=overall_quality_score,
         overall_collaboration_score=overall_collaboration_score,
     )

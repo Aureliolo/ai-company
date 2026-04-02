@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig
+from synthorg.hr.evaluation.constants import (
+    FULL_CONFIDENCE_DATA_POINTS,
+    MAX_SCORE,
+    NEUTRAL_SCORE,
+)
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
     EvaluationContext,
@@ -46,10 +51,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_MAX_SCORE: float = 10.0
-_NEUTRAL_SCORE: float = 5.0
 _MIN_QUALITY_SCORES_FOR_STDDEV: int = 2
-_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 
 class EvaluationService:
@@ -62,10 +64,10 @@ class EvaluationService:
 
     Args:
         tracker: Performance tracker for snapshot and metric data.
-        intelligence_strategy: Strategy for Pillar 1 (optional).
-        resilience_strategy: Strategy for Pillar 3 (optional).
-        governance_strategy: Strategy for Pillar 4 (optional).
-        ux_strategy: Strategy for Pillar 5 (optional).
+        intelligence_strategy: Intelligence/Accuracy strategy (optional).
+        resilience_strategy: Reliability/Resilience strategy (optional).
+        governance_strategy: Responsibility/Governance strategy (optional).
+        ux_strategy: User Experience strategy (optional).
         config: Evaluation configuration (optional, defaults to all
             pillars enabled).
     """
@@ -80,6 +82,7 @@ class EvaluationService:
         ux_strategy: PillarScoringStrategy | None = None,
         config: EvaluationConfig | None = None,
     ) -> None:
+        """Initialize the evaluation service."""
         self._tracker = tracker
         self._config = config or EvaluationConfig()
         self._intelligence = intelligence_strategy or self._default_intelligence()
@@ -185,18 +188,12 @@ class EvaluationService:
             resilience_metrics=resilience_metrics,
         )
 
-    def _resolve_enabled_pillars(
+    def _get_pillar_configs(
         self,
-        agent_id: NotBlankStr,
-    ) -> tuple[
-        list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
-        dict[str, float],
-    ]:
-        """Determine enabled pillars, log skipped ones, redistribute weights."""
+    ) -> list[tuple[EvaluationPillar, bool, float, PillarScoringStrategy | None]]:
+        """Return pillar configuration tuples."""
         cfg = self._config
-        pillar_map: list[
-            tuple[EvaluationPillar, bool, float, PillarScoringStrategy | None]
-        ] = [
+        return [
             (
                 EvaluationPillar.INTELLIGENCE,
                 cfg.intelligence.enabled,
@@ -228,6 +225,16 @@ class EvaluationService:
                 self._ux,
             ),
         ]
+
+    def _resolve_enabled_pillars(
+        self,
+        agent_id: NotBlankStr,
+    ) -> tuple[
+        list[tuple[EvaluationPillar, PillarScoringStrategy | None]],
+        dict[str, float],
+    ]:
+        """Determine enabled pillars, log skipped ones, redistribute weights."""
+        pillar_map = self._get_pillar_configs()
 
         enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy | None]] = []
         for pillar, is_enabled, weight, strategy in pillar_map:
@@ -287,7 +294,7 @@ class EvaluationService:
             overall_score += ps.score * w
             overall_confidence += ps.confidence * w
 
-        overall_score = max(0.0, min(_MAX_SCORE, overall_score))
+        overall_score = max(0.0, min(MAX_SCORE, overall_score))
         overall_confidence = max(0.0, min(1.0, overall_confidence))
 
         pillar_weights = tuple(
@@ -367,7 +374,8 @@ class EvaluationService:
 
         Uses the 30d window (falling back to 7d) for cost, time,
         and token efficiency sub-metrics. Returns a neutral 5.0 score
-        with zero confidence when neither window is available.
+        with zero confidence when neither window is available or when
+        no enabled metrics have data in the selected window.
         """
         cfg = context.config.efficiency
         window_map = {w.window_size: w for w in context.snapshot.windows}
@@ -407,27 +415,27 @@ class EvaluationService:
         if cfg.cost_enabled and window.avg_cost_per_task is not None:
             score = max(
                 0.0,
-                _MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost_usd),
+                MAX_SCORE * (1.0 - window.avg_cost_per_task / cfg.reference_cost_usd),
             )
-            results.append(("cost", cfg.cost_weight, min(_MAX_SCORE, score)))
+            results.append(("cost", cfg.cost_weight, min(MAX_SCORE, score)))
 
         if cfg.time_enabled and window.avg_completion_time_seconds is not None:
             score = max(
                 0.0,
-                _MAX_SCORE
+                MAX_SCORE
                 * (
                     1.0
                     - window.avg_completion_time_seconds / cfg.reference_time_seconds
                 ),
             )
-            results.append(("time", cfg.time_weight, min(_MAX_SCORE, score)))
+            results.append(("time", cfg.time_weight, min(MAX_SCORE, score)))
 
         if cfg.tokens_enabled and window.avg_tokens_per_task is not None:
             score = max(
                 0.0,
-                _MAX_SCORE * (1.0 - window.avg_tokens_per_task / cfg.reference_tokens),
+                MAX_SCORE * (1.0 - window.avg_tokens_per_task / cfg.reference_tokens),
             )
-            results.append(("tokens", cfg.tokens_weight, min(_MAX_SCORE, score)))
+            results.append(("tokens", cfg.tokens_weight, min(MAX_SCORE, score)))
         return results
 
     @staticmethod
@@ -438,7 +446,7 @@ class EvaluationService:
         """Return a neutral efficiency score with zero confidence."""
         return PillarScore(
             pillar=EvaluationPillar.EFFICIENCY,
-            score=_NEUTRAL_SCORE,
+            score=NEUTRAL_SCORE,
             confidence=0.0,
             strategy_name=NotBlankStr("inline_efficiency"),
             data_point_count=data_point_count,
@@ -457,14 +465,14 @@ class EvaluationService:
         )
         score_map = {name: s for name, _, s in sub_scores}
         weighted_sum = sum(score_map[k] * weights[k] for k in weights)
-        final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
+        final_score = max(0.0, min(MAX_SCORE, weighted_sum))
 
         breakdown = tuple(
             (NotBlankStr(k), round(v, 4)) for k, v in sorted(score_map.items())
         )
         confidence = min(
             1.0,
-            window.data_point_count / _FULL_CONFIDENCE_DATA_POINTS,
+            window.data_point_count / FULL_CONFIDENCE_DATA_POINTS,
         )
 
         result = PillarScore(
@@ -494,7 +502,8 @@ class EvaluationService:
 
         Sorts records by completion time, then computes success/failure
         counts, recovery rate, success streaks, and quality score
-        standard deviation.
+        standard deviation. Recovered tasks are capped at the failure
+        count as a defensive invariant.
         """
         total = len(records)
         if total == 0:

@@ -1,6 +1,6 @@
 ---
 title: Agents & HR
-description: Agent identity system, seniority levels, role catalog, hiring, firing, performance tracking, and promotions in the SynthOrg framework.
+description: Agent identity system, seniority levels, role catalog, hiring, firing, performance tracking, evaluation, and promotions in the SynthOrg framework.
 ---
 
 # Agents & HR

@@ -2,10 +2,20 @@
 
 Blends existing CI (continuous integration) signal quality score with
 LLM calibration data. When LLM calibration is disabled or unavailable,
-falls back to CI quality alone with reduced confidence.
+falls back to CI quality alone.
+
+Note: LLM calibration records originate from the collaboration scoring
+pipeline; their LLM-assigned scores serve as a proxy for reasoning
+quality, measuring how closely the LLM's independent assessment aligns
+with behavioral signals.
 """
 
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.evaluation.constants import (
+    FULL_CONFIDENCE_DATA_POINTS,
+    MAX_SCORE,
+    NEUTRAL_SCORE,
+)
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
     EvaluationContext,
@@ -21,10 +31,6 @@ from synthorg.observability.events.evaluation import (
 )
 
 logger = get_logger(__name__)
-
-_MAX_SCORE: float = 10.0
-_NEUTRAL_SCORE: float = 5.0
-_FULL_CONFIDENCE_DATA_POINTS: int = 10
 
 
 class QualityBlendIntelligenceStrategy:
@@ -55,61 +61,54 @@ class QualityBlendIntelligenceStrategy:
         Returns:
             Intelligence pillar score.
         """
-        cfg = context.config.intelligence
         ci_score = context.snapshot.overall_quality_score
 
         if ci_score is None:
-            logger.info(
-                EVAL_PILLAR_INSUFFICIENT_DATA,
-                agent_id=context.agent_id,
-                pillar=self.pillar.value,
-                reason="no_quality_score",
-            )
-            return PillarScore(
-                pillar=self.pillar,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr(self.name),
-                data_point_count=0,
-                evaluated_at=context.now,
-            )
+            return self._neutral(context, reason="no_quality_score")
 
-        # Build enabled metrics list.
-        metrics: list[tuple[str, float, bool]] = []
-        if cfg.ci_quality_enabled:
-            metrics.append(("ci_quality", cfg.ci_quality_weight, True))
-        if cfg.llm_calibration_enabled:
-            metrics.append(("llm_calibration", cfg.llm_calibration_weight, True))
+        available, data_points, drift = self._collect_metrics(
+            ci_score,
+            context,
+        )
+        if not available:
+            return self._neutral(context, reason="no_enabled_metrics")
 
-        if not metrics:
-            return PillarScore(
-                pillar=self.pillar,
-                score=_NEUTRAL_SCORE,
-                confidence=0.0,
-                strategy_name=NotBlankStr(self.name),
-                data_point_count=0,
-                evaluated_at=context.now,
-            )
+        return self._build_result(available, data_points, drift, context)
 
-        weights = redistribute_weights(metrics)
+    def _collect_metrics(
+        self,
+        ci_score: float,
+        context: EvaluationContext,
+    ) -> tuple[list[tuple[str, float, float]], int, float]:
+        """Gather enabled metrics with data.
 
-        # Compute CI quality component.
-        breakdown: list[tuple[str, float]] = []
-        weighted_sum = 0.0
+        Returns:
+            Tuple of (available_metrics, data_points, calibration_drift).
+        """
+        available: list[tuple[str, float, float]] = []
         data_points = len(context.task_records)
-
-        if "ci_quality" in weights:
-            breakdown.append(("ci_quality", round(ci_score, 4)))
-            weighted_sum += ci_score * weights["ci_quality"]
-
-        # Compute LLM calibration component.
         calibration_drift = 0.0
-        if "llm_calibration" in weights:
+
+        if context.config.intelligence.ci_quality_enabled:
+            available.append(
+                (
+                    "ci_quality",
+                    context.config.intelligence.ci_quality_weight,
+                    ci_score,
+                )
+            )
+
+        if context.config.intelligence.llm_calibration_enabled:
             records = context.calibration_records
             if records:
                 avg_llm = sum(r.llm_score for r in records) / len(records)
-                breakdown.append(("llm_calibration", round(avg_llm, 4)))
-                weighted_sum += avg_llm * weights["llm_calibration"]
+                available.append(
+                    (
+                        "llm_calibration",
+                        context.config.intelligence.llm_calibration_weight,
+                        avg_llm,
+                    )
+                )
                 calibration_drift = sum(r.drift for r in records) / len(records)
                 data_points += len(records)
             else:
@@ -120,35 +119,40 @@ class QualityBlendIntelligenceStrategy:
                     metric="llm_calibration",
                     reason="no_calibration_records",
                 )
-                # Redistribute to CI quality only.
-                weighted_sum = ci_score
-                breakdown = [("ci_quality", round(ci_score, 4))]
 
-        final_score = max(0.0, min(_MAX_SCORE, weighted_sum))
+        return available, data_points, calibration_drift
 
-        # Confidence: base from data volume, reduced by drift.
-        confidence = min(1.0, data_points / _FULL_CONFIDENCE_DATA_POINTS)
-        if calibration_drift > context.config.calibration_drift_threshold:
-            logger.info(
-                EVAL_CALIBRATION_DRIFT_HIGH,
-                agent_id=context.agent_id,
-                pillar=self.pillar.value,
-                drift=round(calibration_drift, 4),
-                threshold=context.config.calibration_drift_threshold,
-            )
-            confidence *= max(
-                0.1,
-                1.0
-                - (calibration_drift - context.config.calibration_drift_threshold)
-                / _MAX_SCORE,
-            )
+    def _build_result(
+        self,
+        available: list[tuple[str, float, float]],
+        data_points: int,
+        calibration_drift: float,
+        context: EvaluationContext,
+    ) -> PillarScore:
+        """Aggregate available metrics into a pillar score."""
+        weights = redistribute_weights(
+            [(name, w, True) for name, w, _ in available],
+        )
+        scores = {name: s for name, _, s in available}
+        weighted_sum = sum(scores[k] * weights[k] for k in weights)
+        final_score = max(0.0, min(MAX_SCORE, weighted_sum))
+
+        breakdown = tuple(
+            (NotBlankStr(k), round(v, 4)) for k, v in sorted(scores.items())
+        )
+
+        confidence = self._compute_confidence(
+            data_points,
+            calibration_drift,
+            context,
+        )
 
         result = PillarScore(
             pillar=self.pillar,
             score=round(final_score, 4),
             confidence=round(confidence, 4),
             strategy_name=NotBlankStr(self.name),
-            breakdown=tuple((NotBlankStr(k), v) for k, v in breakdown),
+            breakdown=breakdown,
             data_point_count=data_points,
             evaluated_at=context.now,
         )
@@ -161,3 +165,48 @@ class QualityBlendIntelligenceStrategy:
             confidence=result.confidence,
         )
         return result
+
+    def _compute_confidence(
+        self,
+        data_points: int,
+        calibration_drift: float,
+        context: EvaluationContext,
+    ) -> float:
+        """Compute confidence, reduced by high calibration drift."""
+        confidence = min(1.0, data_points / FULL_CONFIDENCE_DATA_POINTS)
+        threshold = context.config.calibration_drift_threshold
+        if calibration_drift > threshold:
+            logger.info(
+                EVAL_CALIBRATION_DRIFT_HIGH,
+                agent_id=context.agent_id,
+                pillar=self.pillar.value,
+                drift=round(calibration_drift, 4),
+                threshold=threshold,
+            )
+            confidence *= max(
+                0.1,
+                1.0 - (calibration_drift - threshold) / MAX_SCORE,
+            )
+        return confidence
+
+    def _neutral(
+        self,
+        context: EvaluationContext,
+        *,
+        reason: str,
+    ) -> PillarScore:
+        """Return a neutral score with zero confidence."""
+        logger.info(
+            EVAL_PILLAR_INSUFFICIENT_DATA,
+            agent_id=context.agent_id,
+            pillar=self.pillar.value,
+            reason=reason,
+        )
+        return PillarScore(
+            pillar=self.pillar,
+            score=NEUTRAL_SCORE,
+            confidence=0.0,
+            strategy_name=NotBlankStr(self.name),
+            data_point_count=0,
+            evaluated_at=context.now,
+        )
