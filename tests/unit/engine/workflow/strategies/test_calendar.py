@@ -1,12 +1,9 @@
 """Tests for the CalendarStrategy implementation."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
-from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
@@ -18,15 +15,15 @@ from synthorg.engine.workflow.sprint_config import (
     SprintCeremonyConfig,
     SprintConfig,
 )
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import SprintStatus
 from synthorg.engine.workflow.strategies.calendar import (
     CalendarStrategy,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 
-# -- Helpers -----------------------------------------------------------------
+from .conftest import SECONDS_PER_DAY, make_context, make_sprint
 
-_SECONDS_PER_DAY: float = 86_400.0
+# -- Helpers -----------------------------------------------------------------
 
 
 def _make_ceremony(
@@ -46,56 +43,6 @@ def _make_ceremony(
         protocol=MeetingProtocolType.ROUND_ROBIN,
         frequency=frequency,
         policy_override=override,
-    )
-
-
-def _make_sprint(
-    task_count: int = 10,
-    completed_count: int = 0,
-    status: SprintStatus = SprintStatus.ACTIVE,
-    duration_days: int = 14,
-) -> Sprint:
-    """Create a sprint with the given task/completion counts."""
-    task_ids = tuple(f"task-{i}" for i in range(task_count))
-    completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict[str, Any] = {
-        "id": "sprint-1",
-        "name": "Sprint 1",
-        "sprint_number": 1,
-        "status": status,
-        "duration_days": duration_days,
-        "task_ids": task_ids,
-        "completed_task_ids": completed_ids,
-        "story_points_committed": float(task_count * 3),
-        "story_points_completed": float(completed_count * 3),
-    }
-    if status is not SprintStatus.PLANNING:
-        kwargs["start_date"] = "2026-04-01T00:00:00"
-    if status is SprintStatus.COMPLETED:
-        kwargs["end_date"] = "2026-04-14T00:00:00"
-    return Sprint(**kwargs)
-
-
-def _make_context(
-    elapsed_seconds: float = 0.0,
-    completions_since_last: int = 1,
-    total_completions: int = 1,
-    total_tasks: int = 10,
-    sprint_pct: float = 0.0,
-) -> CeremonyEvalContext:
-    """Create an evaluation context with elapsed time."""
-    return CeremonyEvalContext(
-        completions_since_last_trigger=completions_since_last,
-        total_completions_this_sprint=total_completions,
-        total_tasks_in_sprint=total_tasks,
-        elapsed_seconds=elapsed_seconds,
-        budget_consumed_fraction=0.0,
-        budget_remaining=0.0,
-        velocity_history=(),
-        external_events=(),
-        sprint_percentage_complete=sprint_pct,
-        story_points_completed=sprint_pct * total_tasks * 3,
-        story_points_committed=float(total_tasks * 3),
     )
 
 
@@ -129,26 +76,38 @@ class TestShouldFireCeremony:
     """should_fire_ceremony() tests."""
 
     @pytest.mark.unit
-    def test_fires_when_daily_interval_elapsed(self) -> None:
+    @pytest.mark.parametrize(
+        ("frequency", "interval_seconds"),
+        [
+            (MeetingFrequency.DAILY, SECONDS_PER_DAY),
+            (MeetingFrequency.WEEKLY, 604_800.0),
+            (MeetingFrequency.BI_WEEKLY, 1_209_600.0),
+        ],
+    )
+    def test_fires_when_interval_elapsed(
+        self,
+        frequency: MeetingFrequency,
+        interval_seconds: float,
+    ) -> None:
         strategy = CalendarStrategy()
-        ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        ceremony = _make_ceremony(frequency=frequency)
+        ctx = make_context(elapsed_seconds=interval_seconds)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_does_not_fire_before_interval(self) -> None:
         strategy = CalendarStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY - 1.0)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY - 1.0)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
     @pytest.mark.unit
     def test_does_not_double_fire_within_interval(self) -> None:
         """Calling twice at the same elapsed time should fire only once."""
         strategy = CalendarStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        sprint = _make_sprint()
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        sprint = make_sprint()
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
 
         # First call fires.
         assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
@@ -159,29 +118,15 @@ class TestShouldFireCeremony:
     def test_fires_again_after_next_interval(self) -> None:
         strategy = CalendarStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
         # First fire at day 1.
-        ctx1 = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx1 = make_context(elapsed_seconds=SECONDS_PER_DAY)
         assert strategy.should_fire_ceremony(ceremony, sprint, ctx1) is True
 
         # Second fire at day 2.
-        ctx2 = _make_context(elapsed_seconds=2 * _SECONDS_PER_DAY)
+        ctx2 = make_context(elapsed_seconds=2 * SECONDS_PER_DAY)
         assert strategy.should_fire_ceremony(ceremony, sprint, ctx2) is True
-
-    @pytest.mark.unit
-    def test_weekly_interval(self) -> None:
-        strategy = CalendarStrategy()
-        ceremony = _make_ceremony(frequency=MeetingFrequency.WEEKLY)
-        ctx = _make_context(elapsed_seconds=604_800.0)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
-
-    @pytest.mark.unit
-    def test_bi_weekly_interval(self) -> None:
-        strategy = CalendarStrategy()
-        ceremony = _make_ceremony(frequency=MeetingFrequency.BI_WEEKLY)
-        ctx = _make_context(elapsed_seconds=1_209_600.0)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_no_frequency_returns_false(self) -> None:
@@ -195,8 +140,8 @@ class TestShouldFireCeremony:
                 strategy_config={},
             ),
         )
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY * 100)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY * 100)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
     @pytest.mark.unit
     def test_frequency_from_strategy_config_fallback(self) -> None:
@@ -210,8 +155,8 @@ class TestShouldFireCeremony:
                 strategy_config={"frequency": "weekly"},
             ),
         )
-        ctx = _make_context(elapsed_seconds=604_800.0)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        ctx = make_context(elapsed_seconds=604_800.0)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_independent_tracking_per_ceremony(self) -> None:
@@ -219,9 +164,9 @@ class TestShouldFireCeremony:
         strategy = CalendarStrategy()
         daily = _make_ceremony(name="standup", frequency=MeetingFrequency.DAILY)
         weekly = _make_ceremony(name="review", frequency=MeetingFrequency.WEEKLY)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
         # Daily fires, weekly does not.
         assert strategy.should_fire_ceremony(daily, sprint, ctx) is True
         assert strategy.should_fire_ceremony(weekly, sprint, ctx) is False
@@ -236,25 +181,25 @@ class TestShouldTransitionSprint:
     @pytest.mark.unit
     def test_transitions_at_duration_days(self) -> None:
         strategy = CalendarStrategy()
-        sprint = _make_sprint(duration_days=14)
+        sprint = make_sprint(duration_days=14)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(elapsed_seconds=14.0 * _SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=14.0 * SECONDS_PER_DAY)
         result = strategy.should_transition_sprint(sprint, config, ctx)
         assert result is SprintStatus.IN_REVIEW
 
     @pytest.mark.unit
     def test_does_not_transition_before_duration(self) -> None:
         strategy = CalendarStrategy()
-        sprint = _make_sprint(duration_days=14)
+        sprint = make_sprint(duration_days=14)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(elapsed_seconds=13.9 * _SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=13.9 * SECONDS_PER_DAY)
         assert strategy.should_transition_sprint(sprint, config, ctx) is None
 
     @pytest.mark.unit
     def test_duration_from_strategy_config(self) -> None:
         """strategy_config.duration_days overrides config.duration_days."""
         strategy = CalendarStrategy()
-        sprint = _make_sprint(duration_days=14)
+        sprint = make_sprint(duration_days=14)
         config = SprintConfig(
             duration_days=14,
             ceremony_policy=CeremonyPolicyConfig(
@@ -262,7 +207,7 @@ class TestShouldTransitionSprint:
                 strategy_config={"duration_days": 7},
             ),
         )
-        ctx = _make_context(elapsed_seconds=7.0 * _SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=7.0 * SECONDS_PER_DAY)
         result = strategy.should_transition_sprint(sprint, config, ctx)
         assert result is SprintStatus.IN_REVIEW
 
@@ -270,29 +215,29 @@ class TestShouldTransitionSprint:
     def test_defaults_to_config_duration_days(self) -> None:
         """Without strategy_config, uses SprintConfig.duration_days."""
         strategy = CalendarStrategy()
-        sprint = _make_sprint(duration_days=7)
+        sprint = make_sprint(duration_days=7)
         config = SprintConfig(duration_days=7)
-        ctx = _make_context(elapsed_seconds=7.0 * _SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=7.0 * SECONDS_PER_DAY)
         result = strategy.should_transition_sprint(sprint, config, ctx)
         assert result is SprintStatus.IN_REVIEW
 
     @pytest.mark.unit
     def test_does_not_transition_non_active(self) -> None:
         strategy = CalendarStrategy()
-        sprint = _make_sprint(status=SprintStatus.PLANNING, completed_count=0)
+        sprint = make_sprint(status=SprintStatus.PLANNING, completed_count=0)
         config = SprintConfig()
-        ctx = _make_context(elapsed_seconds=100 * _SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=100 * SECONDS_PER_DAY)
         assert strategy.should_transition_sprint(sprint, config, ctx) is None
 
     @pytest.mark.unit
     def test_task_completion_does_not_affect_transition(self) -> None:
         """Calendar transition is time-only; 100% tasks done doesn't trigger it."""
         strategy = CalendarStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=10)
+        sprint = make_sprint(task_count=10, completed_count=10)
         config = SprintConfig(duration_days=14)
         # Only 1 day elapsed, but all tasks done.
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             sprint_pct=1.0,
             total_tasks=10,
         )
@@ -350,6 +295,13 @@ class TestValidateStrategyConfig:
         with pytest.raises(ValueError, match="Unknown config keys"):
             strategy.validate_strategy_config({"trigger": "sprint_end"})
 
+    @pytest.mark.unit
+    def test_bool_rejected_as_duration_days(self) -> None:
+        """bool is not accepted as int for duration_days."""
+        strategy = CalendarStrategy()
+        with pytest.raises(ValueError, match="positive integer"):
+            strategy.validate_strategy_config({"duration_days": True})
+
 
 # -- Lifecycle hooks ---------------------------------------------------------
 
@@ -361,10 +313,10 @@ class TestLifecycleHooks:
     async def test_on_sprint_activated_clears_state(self) -> None:
         strategy = CalendarStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
         # Fire a ceremony to create tracked state.
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
         strategy.should_fire_ceremony(ceremony, sprint, ctx)
 
         # Activate new sprint -- should clear fire tracking.
@@ -377,10 +329,10 @@ class TestLifecycleHooks:
     async def test_on_sprint_deactivated_clears_state(self) -> None:
         strategy = CalendarStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
         # Fire a ceremony.
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
         strategy.should_fire_ceremony(ceremony, sprint, ctx)
 
         # Deactivate -- should clear state.

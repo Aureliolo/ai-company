@@ -1,12 +1,9 @@
 """Tests for the HybridStrategy (first-wins) implementation."""
 
-from typing import Any
-
 import pytest
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.frequency import MeetingFrequency
-from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
@@ -18,15 +15,15 @@ from synthorg.engine.workflow.sprint_config import (
     SprintCeremonyConfig,
     SprintConfig,
 )
-from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.sprint_lifecycle import SprintStatus
 from synthorg.engine.workflow.strategies.hybrid import (
     HybridStrategy,
 )
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 
-# -- Helpers -----------------------------------------------------------------
+from .conftest import SECONDS_PER_DAY, make_context, make_sprint
 
-_SECONDS_PER_DAY: float = 86_400.0
+# -- Helpers -----------------------------------------------------------------
 
 
 def _make_ceremony(
@@ -60,56 +57,6 @@ def _make_ceremony(
         protocol=MeetingProtocolType.ROUND_ROBIN,
         frequency=frequency,
         policy_override=override,
-    )
-
-
-def _make_sprint(
-    task_count: int = 10,
-    completed_count: int = 0,
-    status: SprintStatus = SprintStatus.ACTIVE,
-    duration_days: int = 14,
-) -> Sprint:
-    """Create a sprint with the given task/completion counts."""
-    task_ids = tuple(f"task-{i}" for i in range(task_count))
-    completed_ids = tuple(f"task-{i}" for i in range(completed_count))
-    kwargs: dict[str, Any] = {
-        "id": "sprint-1",
-        "name": "Sprint 1",
-        "sprint_number": 1,
-        "status": status,
-        "duration_days": duration_days,
-        "task_ids": task_ids,
-        "completed_task_ids": completed_ids,
-        "story_points_committed": float(task_count * 3),
-        "story_points_completed": float(completed_count * 3),
-    }
-    if status is not SprintStatus.PLANNING:
-        kwargs["start_date"] = "2026-04-01T00:00:00"
-    if status is SprintStatus.COMPLETED:
-        kwargs["end_date"] = "2026-04-14T00:00:00"
-    return Sprint(**kwargs)
-
-
-def _make_context(
-    elapsed_seconds: float = 0.0,
-    completions_since_last: int = 0,
-    total_completions: int = 0,
-    total_tasks: int = 10,
-    sprint_pct: float = 0.0,
-) -> CeremonyEvalContext:
-    """Create an evaluation context."""
-    return CeremonyEvalContext(
-        completions_since_last_trigger=completions_since_last,
-        total_completions_this_sprint=total_completions,
-        total_tasks_in_sprint=total_tasks,
-        elapsed_seconds=elapsed_seconds,
-        budget_consumed_fraction=0.0,
-        budget_remaining=0.0,
-        velocity_history=(),
-        external_events=(),
-        sprint_percentage_complete=sprint_pct,
-        story_points_completed=sprint_pct * total_tasks * 3,
-        story_points_committed=float(total_tasks * 3),
     )
 
 
@@ -147,15 +94,15 @@ class TestShouldFireCeremony:
         """Frequency-only ceremony fires on time interval."""
         strategy = HybridStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY, trigger=None)
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_calendar_leg_does_not_fire_before_interval(self) -> None:
         strategy = HybridStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY, trigger=None)
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY - 1.0)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY - 1.0)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
     @pytest.mark.unit
     def test_task_leg_fires_when_every_n_reached(self) -> None:
@@ -166,9 +113,8 @@ class TestShouldFireCeremony:
             trigger="every_n_completions",
             every_n=5,
         )
-        # No frequency, so need policy_override for the ceremony to be valid.
-        ctx = _make_context(completions_since_last=5, total_tasks=20)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        ctx = make_context(completions_since_last=5, total_tasks=20)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_task_leg_does_not_fire_below_threshold(self) -> None:
@@ -178,8 +124,8 @@ class TestShouldFireCeremony:
             trigger="every_n_completions",
             every_n=5,
         )
-        ctx = _make_context(completions_since_last=4, total_tasks=20)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        ctx = make_context(completions_since_last=4, total_tasks=20)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
     @pytest.mark.unit
     def test_task_leg_sprint_percentage(self) -> None:
@@ -189,8 +135,8 @@ class TestShouldFireCeremony:
             trigger="sprint_percentage",
             sprint_percentage=75.0,
         )
-        ctx = _make_context(sprint_pct=0.75, total_tasks=10)
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        ctx = make_context(sprint_pct=0.75, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_calendar_fires_first(self) -> None:
@@ -202,11 +148,11 @@ class TestShouldFireCeremony:
             every_n=10,
         )
         # Time elapsed, but only 3 completions (below 10).
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             completions_since_last=3,
         )
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_task_fires_first(self) -> None:
@@ -218,11 +164,11 @@ class TestShouldFireCeremony:
             every_n=5,
         )
         # Only half a day elapsed, but 5 completions.
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY / 2,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY / 2,
             completions_since_last=5,
         )
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_task_fire_resets_calendar_timer(self) -> None:
@@ -233,10 +179,10 @@ class TestShouldFireCeremony:
             trigger="every_n_completions",
             every_n=5,
         )
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
         # Task fires at T=50000 (before daily interval of 86400).
-        ctx1 = _make_context(
+        ctx1 = make_context(
             elapsed_seconds=50_000.0,
             completions_since_last=5,
         )
@@ -244,14 +190,14 @@ class TestShouldFireCeremony:
 
         # Calendar would have fired at T=86400, but timer was reset to 50000.
         # Next calendar fire should be at 50000 + 86400 = 136400.
-        ctx2 = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx2 = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             completions_since_last=2,
         )
         assert strategy.should_fire_ceremony(ceremony, sprint, ctx2) is False
 
         # Fires at 136400.
-        ctx3 = _make_context(
+        ctx3 = make_context(
             elapsed_seconds=136_400.0,
             completions_since_last=2,
         )
@@ -266,11 +212,11 @@ class TestShouldFireCeremony:
             trigger="every_n_completions",
             every_n=5,
         )
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             completions_since_last=5,
         )
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
 
     @pytest.mark.unit
     def test_neither_fires(self) -> None:
@@ -281,11 +227,11 @@ class TestShouldFireCeremony:
             trigger="every_n_completions",
             every_n=10,
         )
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY / 2,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY / 2,
             completions_since_last=3,
         )
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
 
     @pytest.mark.unit
     def test_no_frequency_no_trigger_returns_false(self) -> None:
@@ -299,11 +245,122 @@ class TestShouldFireCeremony:
                 strategy_config={},
             ),
         )
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY * 100,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY * 100,
             completions_since_last=100,
         )
-        assert strategy.should_fire_ceremony(ceremony, _make_sprint(), ctx) is False
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
+
+    # -- Trigger branch coverage (Item 9) --
+
+    @pytest.mark.unit
+    def test_sprint_start_trigger_never_fires(self) -> None:
+        """sprint_start triggers fire via lifecycle hooks, not evaluation."""
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=None,
+            trigger="sprint_start",
+        )
+        ctx = make_context(
+            elapsed_seconds=0.0,
+            total_tasks=10,
+            sprint_pct=0.0,
+        )
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
+
+    @pytest.mark.unit
+    def test_sprint_end_trigger_fires_at_100pct(self) -> None:
+        """sprint_end fires when all tasks complete."""
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=None,
+            trigger="sprint_end",
+        )
+        ctx = make_context(sprint_pct=1.0, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
+
+    @pytest.mark.unit
+    def test_sprint_end_trigger_does_not_fire_below_100pct(self) -> None:
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=None,
+            trigger="sprint_end",
+        )
+        ctx = make_context(sprint_pct=0.99, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
+
+    @pytest.mark.unit
+    def test_sprint_midpoint_trigger_fires_at_50pct(self) -> None:
+        """sprint_midpoint fires at 50% completion."""
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=None,
+            trigger="sprint_midpoint",
+        )
+        ctx = make_context(sprint_pct=0.5, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is True
+
+    @pytest.mark.unit
+    def test_sprint_midpoint_trigger_does_not_fire_below_50pct(self) -> None:
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=None,
+            trigger="sprint_midpoint",
+        )
+        ctx = make_context(sprint_pct=0.49, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
+
+    @pytest.mark.unit
+    def test_unrecognized_trigger_returns_false(self) -> None:
+        """An unrecognized trigger string returns False with a warning."""
+        strategy = HybridStrategy()
+        ceremony = SprintCeremonyConfig(
+            name="standup",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            policy_override=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.HYBRID,
+                strategy_config={"trigger": "nonexistent_trigger"},
+            ),
+        )
+        ctx = make_context(sprint_pct=1.0, total_tasks=10)
+        assert strategy.should_fire_ceremony(ceremony, make_sprint(), ctx) is False
+
+    # -- Infinite firing prevention --
+
+    @pytest.mark.unit
+    def test_percentage_trigger_does_not_refire_within_interval(self) -> None:
+        """Once a percentage trigger fires, it is suppressed until next interval."""
+        strategy = HybridStrategy()
+        ceremony = _make_ceremony(
+            frequency=MeetingFrequency.DAILY,
+            trigger="sprint_percentage",
+            sprint_percentage=50.0,
+        )
+        sprint = make_sprint()
+
+        # First evaluation at day 1: percentage >= 50% AND interval elapsed.
+        ctx1 = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
+            sprint_pct=0.5,
+            total_tasks=10,
+        )
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx1) is True
+
+        # Same percentage shortly after -- should NOT re-fire.
+        ctx2 = make_context(
+            elapsed_seconds=SECONDS_PER_DAY + 100.0,
+            sprint_pct=0.6,
+            total_tasks=10,
+        )
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx2) is False
+
+        # After next interval elapses, should fire again.
+        ctx3 = make_context(
+            elapsed_seconds=2 * SECONDS_PER_DAY + 1.0,
+            sprint_pct=0.7,
+            total_tasks=10,
+        )
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx3) is True
 
 
 # -- should_transition_sprint ------------------------------------------------
@@ -316,10 +373,10 @@ class TestShouldTransitionSprint:
     def test_transitions_on_calendar_duration(self) -> None:
         """Calendar leg: elapsed >= duration_days * 86400."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(duration_days=14)
+        sprint = make_sprint(duration_days=14)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(
-            elapsed_seconds=14.0 * _SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=14.0 * SECONDS_PER_DAY,
             sprint_pct=0.5,
         )
         result = strategy.should_transition_sprint(sprint, config, ctx)
@@ -329,11 +386,11 @@ class TestShouldTransitionSprint:
     def test_transitions_on_task_completion(self) -> None:
         """Task leg: sprint_percentage_complete >= threshold."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=10)
+        sprint = make_sprint(task_count=10, completed_count=10)
         config = SprintConfig(duration_days=14)
         # Only 1 day elapsed, but all tasks done.
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             sprint_pct=1.0,
             total_tasks=10,
         )
@@ -344,10 +401,10 @@ class TestShouldTransitionSprint:
     def test_calendar_met_task_not(self) -> None:
         """Calendar duration met, task completion below threshold -- transitions."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=5)
+        sprint = make_sprint(task_count=10, completed_count=5)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(
-            elapsed_seconds=14.0 * _SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=14.0 * SECONDS_PER_DAY,
             sprint_pct=0.5,
             total_tasks=10,
         )
@@ -358,10 +415,10 @@ class TestShouldTransitionSprint:
     def test_task_met_calendar_not(self) -> None:
         """Task threshold met, calendar not -- transitions."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=10)
+        sprint = make_sprint(task_count=10, completed_count=10)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             sprint_pct=1.0,
             total_tasks=10,
         )
@@ -371,10 +428,10 @@ class TestShouldTransitionSprint:
     @pytest.mark.unit
     def test_neither_transitions(self) -> None:
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=5)
+        sprint = make_sprint(task_count=10, completed_count=5)
         config = SprintConfig(duration_days=14)
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             sprint_pct=0.5,
             total_tasks=10,
         )
@@ -383,19 +440,19 @@ class TestShouldTransitionSprint:
     @pytest.mark.unit
     def test_does_not_transition_non_active(self) -> None:
         strategy = HybridStrategy()
-        sprint = _make_sprint(status=SprintStatus.PLANNING, completed_count=0)
+        sprint = make_sprint(status=SprintStatus.PLANNING, completed_count=0)
         config = SprintConfig()
-        ctx = _make_context(elapsed_seconds=100 * _SECONDS_PER_DAY, sprint_pct=1.0)
+        ctx = make_context(elapsed_seconds=100 * SECONDS_PER_DAY, sprint_pct=1.0)
         assert strategy.should_transition_sprint(sprint, config, ctx) is None
 
     @pytest.mark.unit
     def test_empty_sprint_calendar_only_transitions(self) -> None:
         """No tasks -- only calendar leg can transition."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=0, completed_count=0)
+        sprint = make_sprint(task_count=0, completed_count=0)
         config = SprintConfig(duration_days=7)
-        ctx = _make_context(
-            elapsed_seconds=7.0 * _SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=7.0 * SECONDS_PER_DAY,
             sprint_pct=0.0,
             total_tasks=0,
         )
@@ -406,7 +463,7 @@ class TestShouldTransitionSprint:
     def test_duration_from_strategy_config(self) -> None:
         """strategy_config.duration_days overrides config.duration_days."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(duration_days=14)
+        sprint = make_sprint(duration_days=14)
         config = SprintConfig(
             duration_days=14,
             ceremony_policy=CeremonyPolicyConfig(
@@ -414,7 +471,7 @@ class TestShouldTransitionSprint:
                 strategy_config={"duration_days": 7},
             ),
         )
-        ctx = _make_context(elapsed_seconds=7.0 * _SECONDS_PER_DAY, sprint_pct=0.0)
+        ctx = make_context(elapsed_seconds=7.0 * SECONDS_PER_DAY, sprint_pct=0.0)
         result = strategy.should_transition_sprint(sprint, config, ctx)
         assert result is SprintStatus.IN_REVIEW
 
@@ -422,15 +479,15 @@ class TestShouldTransitionSprint:
     def test_custom_task_threshold(self) -> None:
         """Custom transition_threshold for task leg."""
         strategy = HybridStrategy()
-        sprint = _make_sprint(task_count=10, completed_count=8)
+        sprint = make_sprint(task_count=10, completed_count=8)
         config = SprintConfig(
             duration_days=14,
             ceremony_policy=CeremonyPolicyConfig(
                 transition_threshold=0.8,
             ),
         )
-        ctx = _make_context(
-            elapsed_seconds=_SECONDS_PER_DAY,
+        ctx = make_context(
+            elapsed_seconds=SECONDS_PER_DAY,
             sprint_pct=0.8,
             total_tasks=10,
         )
@@ -488,6 +545,20 @@ class TestValidateStrategyConfig:
             strategy.validate_strategy_config({"sprint_percentage": 101})
 
     @pytest.mark.unit
+    def test_invalid_sprint_percentage_zero(self) -> None:
+        """Zero sprint_percentage is rejected (must be > 0)."""
+        strategy = HybridStrategy()
+        with pytest.raises(ValueError, match="between"):
+            strategy.validate_strategy_config({"sprint_percentage": 0})
+
+    @pytest.mark.unit
+    def test_invalid_sprint_percentage_negative(self) -> None:
+        """Negative sprint_percentage is rejected."""
+        strategy = HybridStrategy()
+        with pytest.raises(ValueError, match="between"):
+            strategy.validate_strategy_config({"sprint_percentage": -10})
+
+    @pytest.mark.unit
     def test_invalid_duration_days_range(self) -> None:
         strategy = HybridStrategy()
         with pytest.raises(ValueError, match=r"1.*90"):
@@ -504,6 +575,20 @@ class TestValidateStrategyConfig:
         strategy = HybridStrategy()
         strategy.validate_strategy_config({"frequency": "daily"})
 
+    @pytest.mark.unit
+    def test_bool_rejected_as_duration_days(self) -> None:
+        """bool is not accepted as int for duration_days."""
+        strategy = HybridStrategy()
+        with pytest.raises(ValueError, match="positive integer"):
+            strategy.validate_strategy_config({"duration_days": True})
+
+    @pytest.mark.unit
+    def test_bool_rejected_as_every_n(self) -> None:
+        """bool is not accepted as int for every_n_completions."""
+        strategy = HybridStrategy()
+        with pytest.raises(ValueError, match="positive integer"):
+            strategy.validate_strategy_config({"every_n_completions": True})
+
 
 # -- Lifecycle hooks ---------------------------------------------------------
 
@@ -515,10 +600,10 @@ class TestLifecycleHooks:
     async def test_on_sprint_activated_clears_state(self) -> None:
         strategy = HybridStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY, trigger=None)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
         # Fire to create tracked state.
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
         strategy.should_fire_ceremony(ceremony, sprint, ctx)
 
         # Activate new sprint.
@@ -531,9 +616,9 @@ class TestLifecycleHooks:
     async def test_on_sprint_deactivated_clears_state(self) -> None:
         strategy = HybridStrategy()
         ceremony = _make_ceremony(frequency=MeetingFrequency.DAILY, trigger=None)
-        sprint = _make_sprint()
+        sprint = make_sprint()
 
-        ctx = _make_context(elapsed_seconds=_SECONDS_PER_DAY)
+        ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
         strategy.should_fire_ceremony(ceremony, sprint, ctx)
 
         await strategy.on_sprint_deactivated()

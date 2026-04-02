@@ -2,18 +2,24 @@
 
 Ceremonies fire on wall-clock cadence using ``MeetingFrequency`` intervals,
 regardless of task progress.  Sprints auto-transition at the configured
-``duration_days`` boundary.  This is a time-based strategy with minimal
-internal state for tracking when each ceremony last fired.
+``duration_days`` boundary.  Rolling averages are weighted by sprint
+duration.  This is a time-based strategy with minimal internal state
+for tracking when each ceremony last fired.
 """
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.communication.meeting.frequency import (
-    MeetingFrequency,
-    frequency_to_seconds,
-)
 from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies._helpers import (
+    KEY_DURATION_DAYS,
+    KEY_FREQUENCY,
+    SECONDS_PER_DAY,
+    VALID_FREQUENCIES,
+    resolve_duration_days,
+    resolve_interval,
+    validate_duration_days,
+)
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
@@ -32,17 +38,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Strategy config keys.
-_KEY_DURATION_DAYS = "duration_days"
-_KEY_FREQUENCY = "frequency"
-
-_SECONDS_PER_DAY: float = 86_400.0
-_MIN_DURATION_DAYS: int = 1
-_MAX_DURATION_DAYS: int = 90
-
-_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({_KEY_DURATION_DAYS, _KEY_FREQUENCY})
-
-_VALID_FREQUENCIES: frozenset[str] = frozenset(m.value for m in MeetingFrequency)
+_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset({KEY_DURATION_DAYS, KEY_FREQUENCY})
 
 
 class CalendarStrategy:
@@ -91,7 +87,7 @@ class CalendarStrategy:
         Returns:
             ``True`` if the ceremony should fire.
         """
-        interval = self._resolve_interval(ceremony)
+        interval = resolve_interval(ceremony, "calendar")
         if interval is None:
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
@@ -144,8 +140,8 @@ class CalendarStrategy:
         if sprint.status is not SprintStatus.ACTIVE:
             return None
 
-        duration_days = self._resolve_duration_days(config)
-        duration_seconds = duration_days * _SECONDS_PER_DAY
+        duration_days = resolve_duration_days(config, "calendar")
+        duration_seconds = duration_days * SECONDS_PER_DAY
         if context.elapsed_seconds >= duration_seconds:
             return SprintStatus.IN_REVIEW
         return None
@@ -163,6 +159,8 @@ class CalendarStrategy:
     async def on_sprint_deactivated(self) -> None:
         """Clear fire tracking when sprint ends."""
         self._last_fire_elapsed.clear()
+
+    # -- Lifecycle hooks (no-op for calendar strategy) ----------------
 
     async def on_task_completed(
         self,
@@ -228,66 +226,12 @@ class CalendarStrategy:
             msg = f"Unknown config keys: {sorted(unknown)}"
             raise ValueError(msg)
 
-        duration = config.get(_KEY_DURATION_DAYS)
-        if duration is not None:
-            if not isinstance(duration, int):
-                msg = (
-                    f"{_KEY_DURATION_DAYS} must be a positive integer, got {duration!r}"
-                )
-                raise ValueError(msg)
-            if duration < _MIN_DURATION_DAYS or duration > _MAX_DURATION_DAYS:
-                msg = (
-                    f"{_KEY_DURATION_DAYS} must be between "
-                    f"{_MIN_DURATION_DAYS} and {_MAX_DURATION_DAYS}, "
-                    f"got {duration!r}"
-                )
-                raise ValueError(msg)
+        validate_duration_days(config.get(KEY_DURATION_DAYS))
 
-        freq = config.get(_KEY_FREQUENCY)
-        if freq is not None and freq not in _VALID_FREQUENCIES:
+        freq = config.get(KEY_FREQUENCY)
+        if freq is not None and freq not in VALID_FREQUENCIES:
             msg = (
                 f"Invalid frequency {freq!r}. "
-                f"Valid frequencies: {sorted(_VALID_FREQUENCIES)}"
+                f"Valid frequencies: {sorted(VALID_FREQUENCIES)}"
             )
             raise ValueError(msg)
-
-    # -- Internal helpers -----------------------------------------------
-
-    @staticmethod
-    def _get_ceremony_config(
-        ceremony: SprintCeremonyConfig,
-    ) -> Mapping[str, Any]:
-        """Extract strategy config from a ceremony's policy override."""
-        if ceremony.policy_override is None:
-            return {}
-        return ceremony.policy_override.strategy_config or {}
-
-    def _resolve_interval(
-        self,
-        ceremony: SprintCeremonyConfig,
-    ) -> float | None:
-        """Resolve the firing interval in seconds.
-
-        Priority: ``ceremony.frequency`` > ``strategy_config["frequency"]``.
-        """
-        if ceremony.frequency is not None:
-            return frequency_to_seconds(ceremony.frequency)
-
-        config = self._get_ceremony_config(ceremony)
-        freq_str = config.get(_KEY_FREQUENCY)
-        if freq_str is not None:
-            try:
-                freq = MeetingFrequency(freq_str)
-            except ValueError:
-                return None
-            return frequency_to_seconds(freq)
-        return None
-
-    @staticmethod
-    def _resolve_duration_days(config: SprintConfig) -> int:
-        """Resolve duration_days from strategy_config or SprintConfig."""
-        sc = config.ceremony_policy.strategy_config or {}
-        duration = sc.get(_KEY_DURATION_DAYS)
-        if isinstance(duration, int) and duration >= _MIN_DURATION_DAYS:
-            return duration
-        return config.duration_days

@@ -104,7 +104,18 @@ VELOCITY_TASK_DRIVEN_NO_TASK_COUNT: str = "workflow.velocity.task_driven_no_task
 """VelocityRecord has no task_completion_count for task-driven calculation."""
 
 VELOCITY_CALENDAR_NO_DURATION: str = "workflow.velocity.calendar_no_duration"
-"""CalendarVelocityCalculator received a record with zero duration_days."""
+"""CalendarVelocityCalculator received a record with zero duration_days.
+
+Defensive guard -- should not occur with validated input since
+``VelocityRecord`` enforces ``duration_days >= 1``.
+"""
 
 VELOCITY_MULTI_NO_TASK_COUNT: str = "workflow.velocity.multi_no_task_count"
 """MultiDimensionalVelocityCalculator: no task_completion_count."""
+
+VELOCITY_MULTI_NO_DURATION: str = "workflow.velocity.multi_no_duration"
+"""MultiDimensionalVelocityCalculator received a record with zero duration_days.
+
+Defensive guard -- should not occur with validated input since
+``VelocityRecord`` enforces ``duration_days >= 1``.
+"""

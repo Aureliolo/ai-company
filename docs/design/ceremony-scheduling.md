@@ -447,7 +447,7 @@ class VelocityCalculator(Protocol):
 |------------|-------------|---------------------|
 | `TaskDrivenVelocityCalculator` | `pts/task` | task_driven, throughput_adaptive |
 | `CalendarVelocityCalculator` | `pts/day` | calendar |
-| `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid, event_driven, milestone_driven |
+| `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid |
 | `BudgetVelocityCalculator` (planned) | `pts/EUR` | budget_driven |
 | `PointsPerSprintVelocityCalculator` (planned) | `pts/sprint` | external_trigger |
 
@@ -681,7 +681,7 @@ Event constants in `synthorg.observability.events.workflow`:
 - `CalendarVelocityCalculator` -- `pts/day` with duration-weighted rolling averages
 - `HybridStrategy` -- first-wins between calendar (floor) and task-driven (ceiling) triggers
 - `MultiDimensionalVelocityCalculator` -- `pts/sprint` with `pts_per_task`, `pts_per_day`, `completion_ratio` secondaries
-- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION`, `VELOCITY_MULTI_NO_TASK_COUNT`)
+- Observability event constants (`VELOCITY_CALENDAR_NO_DURATION` -- defensive, for invalid/unvalidated records only, `VELOCITY_MULTI_NO_TASK_COUNT`, `VELOCITY_MULTI_NO_DURATION` -- defensive, for invalid/unvalidated records only)
 
 ### Follow-up Issues
 

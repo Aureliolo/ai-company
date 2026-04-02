@@ -14,6 +14,7 @@ from synthorg.engine.workflow.velocity_types import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    VELOCITY_MULTI_NO_DURATION,
     VELOCITY_MULTI_NO_TASK_COUNT,
 )
 
@@ -53,7 +54,14 @@ class MultiDimensionalVelocityCalculator:
             as secondary metrics.
         """
         pts_sprint = record.story_points_completed
-        pts_per_day = pts_sprint / record.duration_days
+        if record.duration_days == 0:
+            logger.debug(
+                VELOCITY_MULTI_NO_DURATION,
+                sprint_id=record.sprint_id,
+            )
+            pts_per_day = 0.0
+        else:
+            pts_per_day = pts_sprint / record.duration_days
 
         task_count = record.task_completion_count
         if task_count is None:
@@ -82,7 +90,8 @@ class MultiDimensionalVelocityCalculator:
 
         Uses the last *window* records.  ``pts_per_day`` is weighted
         by duration_days.  ``pts_per_task`` uses only records with
-        a valid ``task_completion_count``.
+        a valid ``task_completion_count``.  ``completion_ratio`` is
+        an unweighted arithmetic mean across the window.
 
         Args:
             records: Ordered velocity records (oldest first).
