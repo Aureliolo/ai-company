@@ -353,11 +353,13 @@ class EventDrivenStrategy:
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
             msg = f"Unknown config keys: {sorted(unknown)}"
+            logger.warning(msg, strategy="event_driven")
             raise ValueError(msg)
 
         on_event = config.get(_KEY_ON_EVENT)
         if on_event is not None and (not isinstance(on_event, str) or not on_event):
             msg = f"'{_KEY_ON_EVENT}' must be a non-empty string"
+            logger.warning(msg, value=on_event, strategy="event_driven")
             raise ValueError(msg)
 
         transition_event = config.get(_KEY_TRANSITION_EVENT)
@@ -365,6 +367,7 @@ class EventDrivenStrategy:
             not isinstance(transition_event, str) or not transition_event
         ):
             msg = f"'{_KEY_TRANSITION_EVENT}' must be a non-empty string"
+            logger.warning(msg, value=transition_event, strategy="event_driven")
             raise ValueError(msg)
 
         for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
@@ -372,9 +375,11 @@ class EventDrivenStrategy:
             if value is not None:
                 if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                     msg = f"'{key}' must be a positive integer, got {value!r}"
+                    logger.warning(msg, strategy="event_driven")
                     raise ValueError(msg)
                 if value > _MAX_DEBOUNCE:
                     msg = f"'{key}' must be <= {_MAX_DEBOUNCE}, got {value!r}"
+                    logger.warning(msg, strategy="event_driven")
                     raise ValueError(msg)
 
     # -- Private helpers -------------------------------------------------------

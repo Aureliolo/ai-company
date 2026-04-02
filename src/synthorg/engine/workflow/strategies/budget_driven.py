@@ -108,30 +108,17 @@ class BudgetDrivenStrategy:
             fired threshold as consumed.  It is not a pure predicate.
         """
         config = get_ceremony_config(ceremony)
-        thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
-
-        if not thresholds:
-            logger.debug(
-                SPRINT_CEREMONY_SKIPPED,
-                ceremony=ceremony.name,
-                reason="no_budget_thresholds",
-                strategy="budget_driven",
-            )
-            return False
-
-        if not isinstance(thresholds, list):
-            logger.debug(
-                SPRINT_CEREMONY_SKIPPED,
-                ceremony=ceremony.name,
-                reason="invalid_budget_thresholds_type",
-                strategy="budget_driven",
-            )
+        valid = self._resolve_thresholds(
+            config.get(_KEY_BUDGET_THRESHOLDS),
+            ceremony.name,
+        )
+        if not valid:
             return False
 
         budget_pct = context.budget_consumed_fraction * _MAX_THRESHOLD_PCT
         return self._find_crossed_threshold(
             ceremony.name,
-            thresholds,
+            valid,
             budget_pct,
         )
 
@@ -307,6 +294,7 @@ class BudgetDrivenStrategy:
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
             msg = f"Unknown config keys: {sorted(unknown)}"
+            logger.warning(msg, strategy="budget_driven")
             raise ValueError(msg)
 
         thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
@@ -323,6 +311,7 @@ class BudgetDrivenStrategy:
                 f"'{_KEY_TRANSITION_THRESHOLD}' must be a number "
                 f"in (0, 100], got {transition!r}"
             )
+            logger.warning(msg, strategy="budget_driven")
             raise ValueError(msg)
 
     # -- Private helpers -------------------------------------------------------
@@ -335,12 +324,15 @@ class BudgetDrivenStrategy:
                 f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
                 f"got {type(thresholds).__name__}"
             )
+            logger.warning(msg, strategy="budget_driven")
             raise TypeError(msg)
         if len(thresholds) > _MAX_THRESHOLD_COUNT:
             msg = (
                 f"'{_KEY_BUDGET_THRESHOLDS}' must not exceed "
-                f"{_MAX_THRESHOLD_COUNT} entries, got {len(thresholds)}"
+                f"{_MAX_THRESHOLD_COUNT} entries, "
+                f"got {len(thresholds)}"
             )
+            logger.warning(msg, strategy="budget_driven")
             raise ValueError(msg)
         seen: set[float] = set()
         for t in thresholds:
@@ -351,11 +343,53 @@ class BudgetDrivenStrategy:
                 or not (0 < t <= _MAX_THRESHOLD_PCT)
             ):
                 msg = f"Each budget threshold must be a number in (0, 100], got {t!r}"
+                logger.warning(msg, strategy="budget_driven")
                 raise ValueError(msg)
             if t in seen:
                 msg = f"Duplicate budget threshold: {t}"
+                logger.warning(msg, strategy="budget_driven")
                 raise ValueError(msg)
             seen.add(t)
+
+    @staticmethod
+    def _resolve_thresholds(
+        raw: object,
+        ceremony_name: str,
+    ) -> list[float] | None:
+        """Validate and filter budget thresholds at read time.
+
+        Returns a clean list of numeric thresholds, or ``None``
+        if the config is missing or entirely invalid.
+        """
+        if not raw:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                reason="no_budget_thresholds",
+                strategy="budget_driven",
+            )
+            return None
+        if not isinstance(raw, list):
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                reason="invalid_budget_thresholds_type",
+                strategy="budget_driven",
+            )
+            return None
+        valid: list[float] = []
+        for t in raw:
+            if isinstance(t, bool) or not isinstance(t, int | float):
+                logger.warning(
+                    SPRINT_CEREMONY_SKIPPED,
+                    ceremony=ceremony_name,
+                    reason="invalid_threshold_element",
+                    value=t,
+                    strategy="budget_driven",
+                )
+                continue
+            valid.append(float(t))
+        return valid or None
 
     def _find_crossed_threshold(
         self,
