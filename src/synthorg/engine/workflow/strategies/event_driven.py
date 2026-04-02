@@ -117,7 +117,7 @@ class EventDrivenStrategy:
 
         if (
             not isinstance(on_event, str)
-            or not on_event
+            or not on_event.strip()
             or len(on_event) > _MAX_EVENT_NAME_LEN
         ):
             logger.debug(
@@ -182,7 +182,7 @@ class EventDrivenStrategy:
 
         strategy_config = config.ceremony_policy.strategy_config or {}
         transition_event = strategy_config.get(_KEY_TRANSITION_EVENT)
-        if transition_event is None:
+        if not isinstance(transition_event, str) or not transition_event.strip():
             return None
 
         return self._check_transition_event(
@@ -396,7 +396,11 @@ class EventDrivenStrategy:
         value = config.get(key)
         if value is None:
             return
-        if not isinstance(value, str) or not value or len(value) > _MAX_EVENT_NAME_LEN:
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value) > _MAX_EVENT_NAME_LEN
+        ):
             msg = f"'{key}' must be a non-empty string (<= {_MAX_EVENT_NAME_LEN} chars)"
             logger.warning(
                 SPRINT_STRATEGY_CONFIG_INVALID,

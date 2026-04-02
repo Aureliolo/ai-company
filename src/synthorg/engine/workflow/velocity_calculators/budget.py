@@ -48,11 +48,11 @@ class BudgetVelocityCalculator:
             Velocity metrics with ``pts/EUR`` as primary unit.
         """
         budget = record.budget_consumed
-        if budget is None or budget == 0.0:
+        if budget is None or budget <= 0.0:
             logger.debug(
                 VELOCITY_BUDGET_NO_BUDGET_CONSUMED,
                 sprint_id=record.sprint_id,
-                reason="none" if budget is None else "zero",
+                reason="none" if budget is None else "non_positive",
             )
             return VelocityMetrics(
                 primary_value=0.0,
