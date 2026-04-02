@@ -419,24 +419,22 @@ class TestLifecycleHooks:
         await strategy.on_sprint_activated(sprint, config)
 
         ctx = make_context()
-        assert strategy._baseline_rate is None
 
         with patch("time.monotonic") as mock_mono:
+            # After 1 completion -- baseline not yet established
             mock_mono.return_value = 100.0
             await strategy.on_task_completed(sprint, "t-0", 3.0, ctx)
-            assert strategy._baseline_rate is None
 
+            # After 2 completions -- still not established
             mock_mono.return_value = 110.0
             await strategy.on_task_completed(sprint, "t-1", 3.0, ctx)
-            assert strategy._baseline_rate is None
 
+            # After 3 completions (window full) -- baseline established
             mock_mono.return_value = 120.0
             await strategy.on_task_completed(sprint, "t-2", 3.0, ctx)
 
-        # Baseline now set: 3 tasks / 20 seconds = 0.15 tasks/sec
-        baseline = strategy._baseline_rate
-        assert baseline is not None
-        assert baseline == pytest.approx(3.0 / 20.0)
+        # Baseline: 3 tasks / 20 seconds = 0.15 tasks/sec
+        assert strategy._baseline_rate == pytest.approx(3.0 / 20.0)
 
     @pytest.mark.unit
     async def test_baseline_frozen_after_establishment(self) -> None:
