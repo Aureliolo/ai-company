@@ -342,7 +342,7 @@ class TestValidateStrategyConfig:
     @pytest.mark.unit
     def test_invalid_thresholds_not_list(self) -> None:
         strategy = BudgetDrivenStrategy()
-        with pytest.raises(TypeError, match="list"):
+        with pytest.raises(ValueError, match="list"):
             strategy.validate_strategy_config(
                 {
                     "budget_thresholds": 50,

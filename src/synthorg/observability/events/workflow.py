@@ -72,6 +72,9 @@ SPRINT_CEREMONY_SKIPPED: str = "workflow.sprint.ceremony_skipped"
 SPRINT_AUTO_TRANSITION: str = "workflow.sprint.auto_transition"
 """Sprint auto-transitioned by ceremony scheduling strategy."""
 
+SPRINT_STRATEGY_CONFIG_INVALID: str = "workflow.sprint.strategy_config_invalid"
+"""Strategy config validation failed."""
+
 SPRINT_CEREMONY_SCHEDULER_STARTED: str = "workflow.sprint.ceremony_scheduler_started"
 """CeremonyScheduler activated for a sprint."""
 

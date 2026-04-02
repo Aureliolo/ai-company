@@ -29,6 +29,7 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
     SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED,
     SPRINT_CEREMONY_SKIPPED,
+    SPRINT_STRATEGY_CONFIG_INVALID,
 )
 
 if TYPE_CHECKING:
@@ -297,12 +298,19 @@ class BudgetDrivenStrategy:
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
             msg = f"Unknown config keys: {sorted(unknown)}"
-            logger.warning(msg, strategy="budget_driven")
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="budget_driven",
+                unknown_keys=sorted(unknown),
+            )
             raise ValueError(msg)
 
         thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
         if thresholds is not None:
-            self._validate_thresholds(thresholds)
+            try:
+                self._validate_thresholds(thresholds)
+            except TypeError as exc:
+                raise ValueError(str(exc)) from exc
 
         transition = config.get(_KEY_TRANSITION_THRESHOLD)
         if transition is not None and (
@@ -314,7 +322,12 @@ class BudgetDrivenStrategy:
                 f"'{_KEY_TRANSITION_THRESHOLD}' must be a number "
                 f"in (0, 100], got {transition!r}"
             )
-            logger.warning(msg, strategy="budget_driven")
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="budget_driven",
+                key=_KEY_TRANSITION_THRESHOLD,
+                value=transition,
+            )
             raise ValueError(msg)
 
     # -- Private helpers -------------------------------------------------------
@@ -327,7 +340,12 @@ class BudgetDrivenStrategy:
                 f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
                 f"got {type(thresholds).__name__}"
             )
-            logger.warning(msg, strategy="budget_driven")
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="budget_driven",
+                key=_KEY_BUDGET_THRESHOLDS,
+                got_type=type(thresholds).__name__,
+            )
             raise TypeError(msg)
         if len(thresholds) > _MAX_THRESHOLD_COUNT:
             msg = (
@@ -335,7 +353,13 @@ class BudgetDrivenStrategy:
                 f"{_MAX_THRESHOLD_COUNT} entries, "
                 f"got {len(thresholds)}"
             )
-            logger.warning(msg, strategy="budget_driven")
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="budget_driven",
+                key=_KEY_BUDGET_THRESHOLDS,
+                count=len(thresholds),
+                limit=_MAX_THRESHOLD_COUNT,
+            )
             raise ValueError(msg)
         seen: set[float] = set()
         for t in thresholds:
@@ -346,11 +370,21 @@ class BudgetDrivenStrategy:
                 or not (0 < t <= _MAX_THRESHOLD_PCT)
             ):
                 msg = f"Each budget threshold must be a number in (0, 100], got {t!r}"
-                logger.warning(msg, strategy="budget_driven")
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="budget_driven",
+                    key=_KEY_BUDGET_THRESHOLDS,
+                    value=t,
+                )
                 raise ValueError(msg)
             if t in seen:
                 msg = f"Duplicate budget threshold: {t}"
-                logger.warning(msg, strategy="budget_driven")
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="budget_driven",
+                    key=_KEY_BUDGET_THRESHOLDS,
+                    duplicate=t,
+                )
                 raise ValueError(msg)
             seen.add(t)
 
@@ -391,11 +425,11 @@ class BudgetDrivenStrategy:
                     strategy="budget_driven",
                 )
                 continue
-            if not math.isfinite(t):
+            if not math.isfinite(t) or not (0 < t <= _MAX_THRESHOLD_PCT):
                 logger.warning(
                     SPRINT_CEREMONY_SKIPPED,
                     ceremony=ceremony_name,
-                    reason="non_finite_threshold",
+                    reason="threshold_out_of_range",
                     value=t,
                     strategy="budget_driven",
                 )
