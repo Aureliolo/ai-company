@@ -683,7 +683,7 @@ export default function ComparisonTable({
               {comp.description}
             </p>
             <div className="ct-card-grid">
-              {dimensions.map((dim) => {
+              {visibleDimensions.map((dim) => {
                 const feat = comp.features[dim.key];
                 const support = feat?.support || "none";
                 return (

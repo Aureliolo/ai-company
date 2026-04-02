@@ -82,7 +82,7 @@ categories:
     label: "Developer Tool"
 
 # ---------------------------------------------------------------------------
-# Competitors (47 entries across 5 categories)
+# Competitors (44 entries + SynthOrg across 5 categories)
 # ---------------------------------------------------------------------------
 
 competitors:
@@ -586,32 +586,6 @@ competitors:
       workflow_types: { support: full, note: "DAG multigraphs with branching, looping, parallel, async; YAML serialization" }
       template_system: { support: partial, note: "PredefinedPipeline templates; limited built-in set; no user authoring" }
 
-  - name: "SuperAGI"
-    slug: superagi
-    url: "https://superagi.com/"
-    repo: "https://github.com/TransformerOptimus/SuperAGI"
-    description: "Autonomous AI agent framework with GUI; open-source repo effectively unmaintained since early 2024"
-    license: "MIT"
-    language: "Python"
-    category: multi_agent_framework
-    pricing: open-core
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: partial, note: "Concurrent agents but independent; no inter-agent communication" }
-      task_delegation: { support: partial, note: "Agents break goals into tasks internally; no cross-agent delegation" }
-      memory: { support: partial, note: "Vector store integration (Pinecone, Qdrant, ChromaDB); no organizational memory" }
-      tool_use: { support: full, note: "19+ built-in tool categories (GitHub, Jira, Slack, etc.) and marketplace" }
-      human_in_loop: { support: partial, note: "AgentExecutionPermission approve/reject at each step; basic implementation" }
-      budget_tracking: { support: partial, note: "Simple budget model with amount/cycle; no actual enforcement or tracking" }
-      security_model: { support: partial, note: "JWT auth, API keys, basic RBAC; no audit logging or sandbox" }
-      observability: { support: partial, note: "APM module with analytics and call logs; no structured logging framework" }
-      web_dashboard: { support: full, note: "Next.js GUI for agent creation, monitoring, action console, marketplace" }
-      cli: { support: partial, note: "cli2.py setup script; not a feature-rich CLI" }
-      production_ready: { support: none, note: "Last release v0.0.14 (Jan 2024); effectively abandoned; open vulnerabilities" }
-      workflow_types: { support: partial, note: "ReAct-style loops; no Kanban, sprints, or structured workflows" }
-      template_system: { support: partial, note: "AgentTemplate model for config presets; limited scope" }
-
   # ==========================================================================
   # Virtual Org Simulators
   # ==========================================================================
@@ -666,32 +640,6 @@ competitors:
       cli: { support: partial, note: "metagpt command with basic args; not full-featured" }
       production_ready: { support: none, note: "v0.8.2 (pre-1.0); known RCE vulns; no sandboxing; Python 3.9-3.11 only" }
       workflow_types: { support: partial, note: "Fixed SOP pipeline (requirements -> code); not configurable workflow types" }
-      template_system: { support: none, note: "" }
-
-  - name: "GPT Pilot"
-    slug: gpt-pilot
-    url: "https://www.pythagora.ai"
-    repo: "https://github.com/Pythagora-io/gpt-pilot"
-    description: "AI code generation tool with specialized agent pipeline; open-source repo no longer maintained"
-    license: "FSL-1.1-MIT"
-    language: "Python"
-    category: virtual_org
-    pricing: depends
-    self_hosted: "true"
-    features:
-      org_structure: { support: partial, note: "Named pipeline agents (Product Owner, Architect, Developer, etc.); sequential, not org" }
-      multi_agent: { support: partial, note: "Multiple agents in fixed linear pipeline; no autonomous collaboration" }
-      task_delegation: { support: partial, note: "Orchestrator routes through predetermined sequence; no dynamic assignment" }
-      memory: { support: partial, note: "SQLite/PostgreSQL for project state and history; no semantic memory" }
-      tool_use: { support: partial, note: "Shell commands, file read/write; no tool registry or MCP" }
-      human_in_loop: { support: full, note: "Core design: developer reviews code, answers questions at each step" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "" }
-      observability: { support: partial, note: "Basic telemetry with runtime metrics; opt-out available" }
-      web_dashboard: { support: none, note: "" }
-      cli: { support: full, note: "Full CLI for creating, listing, loading, resuming projects" }
-      production_ready: { support: none, note: "No longer maintained (Nov 2025); team pivoted to commercial Pythagora" }
-      workflow_types: { support: partial, note: "Single sequential pipeline (spec -> code -> debug)" }
       template_system: { support: none, note: "" }
 
   - name: "Inngest AgentKit"
@@ -931,6 +879,32 @@ competitors:
       production_ready: { support: partial, note: "Cloud platform beta (v0.6.53); self-hosting beta" }
       workflow_types: { support: partial, note: "Visual block-based DAGs with trigger scheduling; no named methodologies" }
       template_system: { support: partial, note: "Marketplace with pre-built agents; no inheritance" }
+
+  - name: "Motia"
+    slug: motia
+    url: "https://motia.dev"
+    repo: "https://github.com/MotiaDev/motia"
+    description: "Code-first backend framework unifying APIs, background jobs, workflows, and AI agent orchestration"
+    license: "ELv2"
+    language: "Rust"
+    category: workflow_engine
+    pricing: depends
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Event-driven multi-agent via queued messages between Steps; no agent primitives" }
+      task_delegation: { support: partial, note: "Steps enqueue to topics; no explicit delegation protocol or routing" }
+      memory: { support: partial, note: "Persistent key-value state across Steps; no semantic or long-term agent memory" }
+      tool_use: { support: partial, note: "AI Steps use LLM tool calling; no built-in registry, sandbox, or MCP" }
+      human_in_loop: { support: partial, note: "Achievable via webhook pauses; no built-in approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Basic auth helpers for HTTP/WebSocket; no RBAC or audit logging" }
+      observability: { support: full, note: "Structured logging, distributed tracing, real-time log streaming, state inspection" }
+      web_dashboard: { support: partial, note: "Workbench (iii-console) for flow viz, logs, tracing; local dev tool" }
+      cli: { support: full, note: "CLI for scaffolding (create), dev server with hot-reload, builds, engine mgmt" }
+      production_ready: { support: partial, note: "v1.0-RC; Docker supported; Motia Cloud exists; framework pre-stable" }
+      workflow_types: { support: full, note: "HTTP triggers, cron, queue async, state-change reactive, streaming, retry/DLQ" }
+      template_system: { support: partial, note: "CLI starter templates (TS, Python, mixed); no runtime template packs" }
 
   # ==========================================================================
   # Commercial Platforms
@@ -1300,55 +1274,3 @@ competitors:
       production_ready: { support: partial, note: "Type-safe Pydantic, streaming, async; Docker/FastAPI patterns in docs" }
       workflow_types: { support: partial, note: "Sequential pipelines, parallel via asyncio; no workflow definition language" }
       template_system: { support: none, note: "" }
-
-  - name: "ControlFlow"
-    slug: controlflow
-    url: "https://controlflow.ai"
-    repo: "https://github.com/PrefectHQ/ControlFlow"
-    description: "Task-centric agentic AI workflow framework built on Prefect 3.0 (archived March 2026; merged into Marvin)"
-    license: "Apache-2.0"
-    language: "Python"
-    category: workflow_engine
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: full, note: "Multiple agents via round-robin, random, moderated, delegation strategies" }
-      task_delegation: { support: full, note: "Automatic dependency resolution and dynamic planning; agents delegate control" }
-      memory: { support: partial, note: "Pluggable providers (Chroma, LanceDB, pgvector); still evolving at archive time" }
-      tool_use: { support: full, note: "Built-in tools for code, filesystem, web, user input; custom Python functions" }
-      human_in_loop: { support: partial, note: "interactive=True for mid-workflow input; basic, not full approval gates" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "" }
-      observability: { support: partial, note: "Native Prefect 3.0 integration for flow/task tracking" }
-      web_dashboard: { support: partial, note: "Prefect 3.0 dashboard shows flow runs; not ControlFlow-specific" }
-      cli: { support: partial, note: "Basic dev utilities and Textual TUI; limited scope" }
-      production_ready: { support: partial, note: "Built on Prefect 3.0 infra; archived at v0.12.1 with no further maintenance" }
-      workflow_types: { support: partial, note: "Sequential and dependent DAGs with dynamic planning; no named patterns" }
-      template_system: { support: none, note: "" }
-
-  - name: "Motia"
-    slug: motia
-    url: "https://motia.dev"
-    repo: "https://github.com/MotiaDev/motia"
-    description: "Code-first backend framework unifying APIs, background jobs, workflows, and AI agent orchestration"
-    license: "ELv2"
-    language: "Rust"
-    category: workflow_engine
-    pricing: depends
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: partial, note: "Event-driven multi-agent via queued messages between Steps; no agent primitives" }
-      task_delegation: { support: partial, note: "Steps enqueue to topics; no explicit delegation protocol or routing" }
-      memory: { support: partial, note: "Persistent key-value state across Steps; no semantic or long-term agent memory" }
-      tool_use: { support: partial, note: "AI Steps use LLM tool calling; no built-in registry, sandbox, or MCP" }
-      human_in_loop: { support: partial, note: "Achievable via webhook pauses; no built-in approval gates" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: partial, note: "Basic auth helpers for HTTP/WebSocket; no RBAC or audit logging" }
-      observability: { support: full, note: "Structured logging, distributed tracing, real-time log streaming, state inspection" }
-      web_dashboard: { support: partial, note: "Workbench (iii-console) for flow viz, logs, tracing; local dev tool" }
-      cli: { support: full, note: "CLI for scaffolding (create), dev server with hot-reload, builds, engine mgmt" }
-      production_ready: { support: partial, note: "v1.0-RC; Docker supported; Motia Cloud exists; framework pre-stable" }
-      workflow_types: { support: full, note: "HTTP triggers, cron, queue async, state-change reactive, streaming, retry/DLQ" }
-      template_system: { support: partial, note: "CLI starter templates (TS, Python, mixed); no runtime template packs" }
