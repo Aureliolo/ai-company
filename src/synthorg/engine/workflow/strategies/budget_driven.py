@@ -14,6 +14,7 @@ the budget module (cost tracking, quota degradation).
   sprint auto-transition (default: 100.0).
 """
 
+import math
 from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.workflow.ceremony_policy import (
@@ -153,14 +154,16 @@ class BudgetDrivenStrategy:
             _KEY_TRANSITION_THRESHOLD,
             _DEFAULT_TRANSITION_THRESHOLD_PCT,
         )
-        # Defensive type check -- validate_strategy_config should have
-        # caught this, but sprint-level config may bypass validation.
-        if isinstance(raw_threshold, bool) or not isinstance(
-            raw_threshold, int | float
+        # Defensive type + range check -- validate_strategy_config should
+        # have caught this, but sprint-level config may bypass validation.
+        if (
+            isinstance(raw_threshold, bool)
+            or not isinstance(raw_threshold, int | float)
+            or not (0 < raw_threshold <= _MAX_THRESHOLD_PCT)
         ):
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_transition_threshold_type",
+                reason="invalid_transition_threshold",
                 value=raw_threshold,
                 fallback=_DEFAULT_TRANSITION_THRESHOLD_PCT,
                 strategy="budget_driven",
@@ -384,6 +387,15 @@ class BudgetDrivenStrategy:
                     SPRINT_CEREMONY_SKIPPED,
                     ceremony=ceremony_name,
                     reason="invalid_threshold_element",
+                    value=t,
+                    strategy="budget_driven",
+                )
+                continue
+            if not math.isfinite(t):
+                logger.warning(
+                    SPRINT_CEREMONY_SKIPPED,
+                    ceremony=ceremony_name,
+                    reason="non_finite_threshold",
                     value=t,
                     strategy="budget_driven",
                 )
