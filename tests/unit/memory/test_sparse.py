@@ -177,27 +177,47 @@ class TestEncode:
 
 @pytest.mark.unit
 class TestSparseProperties:
-    @given(text=st.text(min_size=1, alphabet=st.characters(categories=("L",))))
+    @given(
+        text=st.text(
+            min_size=1,
+            alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
+        )
+    )
     @settings(max_examples=50)
     def test_encoding_is_deterministic(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         assert tokenizer.encode(text) == tokenizer.encode(text)
 
-    @given(text=st.text(min_size=1, alphabet=st.characters(categories=("L",))))
+    @given(
+        text=st.text(
+            min_size=1,
+            alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
+        )
+    )
     @settings(max_examples=50)
     def test_non_empty_alpha_produces_non_empty_vector(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
         assert not vec.is_empty
 
-    @given(text=st.text(min_size=1, alphabet=st.characters(categories=("L",))))
+    @given(
+        text=st.text(
+            min_size=1,
+            alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
+        )
+    )
     @settings(max_examples=50)
     def test_indices_always_sorted(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
         assert list(vec.indices) == sorted(vec.indices)
 
-    @given(text=st.text(min_size=1, alphabet=st.characters(categories=("L",))))
+    @given(
+        text=st.text(
+            min_size=1,
+            alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
+        )
+    )
     @settings(max_examples=50)
     def test_values_always_positive(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
@@ -205,7 +225,12 @@ class TestSparseProperties:
         if not vec.is_empty:
             assert all(v > 0 for v in vec.values)
 
-    @given(text=st.text(min_size=1, alphabet=st.characters(categories=("L",))))
+    @given(
+        text=st.text(
+            min_size=1,
+            alphabet=st.characters(categories=("L",)),  # type: ignore[arg-type]
+        )
+    )
     @settings(max_examples=50)
     def test_indices_always_non_negative(self, text: str) -> None:
         tokenizer = BM25Tokenizer(remove_stop_words=False)

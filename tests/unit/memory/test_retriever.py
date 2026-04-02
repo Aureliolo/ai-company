@@ -19,6 +19,7 @@ from synthorg.memory.injection import (
     MemoryInjectionStrategy,
 )
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
+from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.providers.enums import MessageRole
@@ -648,7 +649,7 @@ class TestHybridSearchPipeline:
             sparse_entries=(sparse_entry,),
         )
         config = MemoryRetrievalConfig(
-            fusion_strategy="rrf",
+            fusion_strategy=FusionStrategy.RRF,
             min_relevance=0.0,
         )
         strategy = ContextInjectionStrategy(
@@ -672,7 +673,7 @@ class TestHybridSearchPipeline:
         backend = _make_backend((entry,))
         # No retrieve_sparse on this mock
         config = MemoryRetrievalConfig(
-            fusion_strategy="rrf",
+            fusion_strategy=FusionStrategy.RRF,
             min_relevance=0.0,
         )
         strategy = ContextInjectionStrategy(
@@ -698,7 +699,7 @@ class TestHybridSearchPipeline:
         )
         backend = _make_sparse_backend(dense_entries=(entry,))
         config = MemoryRetrievalConfig(
-            fusion_strategy="rrf",
+            fusion_strategy=FusionStrategy.RRF,
             min_relevance=0.99,  # Very high threshold
         )
         strategy = ContextInjectionStrategy(
@@ -724,7 +725,7 @@ class TestHybridSearchPipeline:
             side_effect=MemoryRetrievalError("sparse broken"),
         )
         config = MemoryRetrievalConfig(
-            fusion_strategy="rrf",
+            fusion_strategy=FusionStrategy.RRF,
             min_relevance=0.0,
         )
         strategy = ContextInjectionStrategy(
@@ -746,7 +747,7 @@ class TestHybridSearchPipeline:
         entry = _make_entry(content="linear path", relevance_score=0.9)
         backend = _make_backend((entry,))
         config = MemoryRetrievalConfig(
-            fusion_strategy="linear",
+            fusion_strategy=FusionStrategy.LINEAR,
             min_relevance=0.0,
         )
         strategy = ContextInjectionStrategy(
@@ -775,7 +776,7 @@ class TestHybridSearchPipeline:
             sparse_entries=(entry,),
         )
         config = MemoryRetrievalConfig(
-            fusion_strategy="rrf",
+            fusion_strategy=FusionStrategy.RRF,
             min_relevance=0.0,
         )
         strategy = ContextInjectionStrategy(

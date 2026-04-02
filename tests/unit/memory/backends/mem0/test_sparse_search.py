@@ -235,7 +235,7 @@ class TestScoredPointsToEntries:
         bad.id = "mem-002"
         bad.score = 0.5
         # Payload that triggers an exception in _point_to_entry
-        bad.payload = None  # type: ignore[assignment]
+        bad.payload = None
 
         entries = scored_points_to_entries([good, bad], NotBlankStr("agent-1"))
 

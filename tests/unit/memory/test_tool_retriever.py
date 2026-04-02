@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.core.enums import MemoryCategory
-from synthorg.memory.injection import MemoryInjectionStrategy
+from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
@@ -40,7 +40,10 @@ def _make_backend(
 
 
 def _tool_config() -> MemoryRetrievalConfig:
-    return MemoryRetrievalConfig(strategy="tool_based", min_relevance=0.0)
+    return MemoryRetrievalConfig(
+        strategy=InjectionStrategy.TOOL_BASED,
+        min_relevance=0.0,
+    )
 
 
 # ── Protocol compliance ──────────────────────────────────────────
