@@ -434,8 +434,9 @@ class TestLifecycleHooks:
             await strategy.on_task_completed(sprint, "t-2", 3.0, ctx)
 
         # Baseline now set: 3 tasks / 20 seconds = 0.15 tasks/sec
-        assert strategy._baseline_rate is not None
-        assert strategy._baseline_rate == pytest.approx(3.0 / 20.0)
+        baseline = strategy._baseline_rate
+        assert baseline is not None
+        assert baseline == pytest.approx(3.0 / 20.0)
 
     @pytest.mark.unit
     async def test_baseline_frozen_after_establishment(self) -> None:
