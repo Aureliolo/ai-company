@@ -111,6 +111,26 @@ def list_packs() -> tuple[PackInfo, ...]:
     return tuple(info for _, info in sorted(seen.items()))
 
 
+def _validate_pack_name(name: str) -> str:
+    """Normalize and validate a pack name, rejecting path traversal.
+
+    Returns:
+        Normalized (lowercase, stripped) name.
+
+    Raises:
+        TemplateNotFoundError: If the name contains path separators.
+    """
+    name_clean = name.strip().lower()
+    if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
+        msg = f"Invalid pack name {name!r}: must not contain path separators"
+        logger.warning(TEMPLATE_PACK_LOAD_NOT_FOUND, pack_name=name)
+        raise TemplateNotFoundError(
+            msg,
+            locations=(ConfigLocation(file_path=f"<pack:{name}>"),),
+        )
+    return name_clean
+
+
 def load_pack(name: str) -> LoadedTemplate:
     """Load a template pack by name: user directory first, then builtins.
 
@@ -123,17 +143,8 @@ def load_pack(name: str) -> LoadedTemplate:
     Raises:
         TemplateNotFoundError: If no pack with *name* exists.
     """
-    name_clean = name.strip().lower()
+    name_clean = _validate_pack_name(name)
     logger.debug(TEMPLATE_PACK_LOAD_START, pack_name=name_clean)
-
-    # Sanitize to prevent path traversal (OS-independent).
-    if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
-        msg = f"Invalid pack name {name!r}: must not contain path separators"
-        logger.warning(TEMPLATE_PACK_LOAD_NOT_FOUND, pack_name=name)
-        raise TemplateNotFoundError(
-            msg,
-            locations=(ConfigLocation(file_path=f"<pack:{name}>"),),
-        )
 
     # Try user directory first.
     if _USER_PACKS_DIR.is_dir():

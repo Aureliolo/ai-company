@@ -1,7 +1,7 @@
 """Template packs controller -- listing and live application."""
 
 import json
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -27,6 +27,11 @@ from synthorg.observability.events.template import (
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.templates.errors import TemplateNotFoundError
 from synthorg.templates.pack_loader import PackInfo, list_packs, load_pack
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from synthorg.templates.schema import TemplateDepartmentConfig
 
 logger = get_logger(__name__)
 
@@ -98,6 +103,48 @@ async def _read_setting_list(
         return []
 
 
+def _deduplicate_departments(
+    pack_name: str,
+    pack_depts: Sequence[TemplateDepartmentConfig],
+    current_depts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return pack departments that don't conflict with existing ones."""
+    existing_names = {str(d.get("name", "")).lower() for d in current_depts}
+    if not pack_depts:
+        return []
+    raw: list[dict[str, Any]] = json.loads(
+        departments_to_json(pack_depts),
+    )
+    new_depts = [d for d in raw if str(d.get("name", "")).lower() not in existing_names]
+    if len(new_depts) < len(raw):
+        logger.warning(
+            TEMPLATE_PACK_APPLY_ERROR,
+            pack_name=pack_name,
+            action="departments_skipped",
+            skipped=len(raw) - len(new_depts),
+        )
+    return new_depts
+
+
+async def _persist_merged_config(
+    app_state: AppState,
+    agents: list[dict[str, Any]],
+    departments: list[dict[str, Any]],
+) -> None:
+    """Write merged agents and departments to settings."""
+    settings_svc = app_state.settings_service
+    await settings_svc.set(
+        "company",
+        "agents",
+        json.dumps(agents),
+    )
+    await settings_svc.set(
+        "company",
+        "departments",
+        json.dumps(departments),
+    )
+
+
 # ---- Controller -----------------------------------------------------------
 
 
@@ -134,9 +181,6 @@ class TemplatePackController(Controller):
     ) -> ApiResponse[ApplyTemplatePackResponse]:
         """Apply a template pack to the running organization.
 
-        Loads the pack, expands its agents and departments, and
-        appends them to the current company configuration.
-
         Args:
             data: Pack name and optional variables.
             state: Application state.
@@ -150,7 +194,6 @@ class TemplatePackController(Controller):
             pack_name=data.pack_name,
         )
 
-        # Load and validate the pack.
         try:
             loaded = load_pack(data.pack_name)
         except TemplateNotFoundError as exc:
@@ -162,52 +205,20 @@ class TemplatePackController(Controller):
             msg = f"Template pack {data.pack_name!r} not found"
             raise NotFoundError(msg) from exc
 
-        # Expand pack agents into persistable dicts.
         pack_agents = expand_template_agents(loaded.template)
-
-        # Read current state.
         current_agents = await _read_setting_list(app_state, "agents")
-        current_depts = await _read_setting_list(
+        current_depts = await _read_setting_list(app_state, "departments")
+
+        new_depts = _deduplicate_departments(
+            data.pack_name,
+            loaded.template.departments,
+            current_depts,
+        )
+
+        await _persist_merged_config(
             app_state,
-            "departments",
-        )
-
-        # Merge departments (skip existing by name).
-        existing_dept_names = {str(d.get("name", "")).lower() for d in current_depts}
-        if loaded.template.departments:
-            new_depts_raw: list[dict[str, Any]] = json.loads(
-                departments_to_json(loaded.template.departments),
-            )
-        else:
-            new_depts_raw = []
-        new_depts = [
-            d
-            for d in new_depts_raw
-            if str(d.get("name", "")).lower() not in existing_dept_names
-        ]
-        if len(new_depts) < len(new_depts_raw):
-            skipped = len(new_depts_raw) - len(new_depts)
-            logger.warning(
-                TEMPLATE_PACK_APPLY_ERROR,
-                pack_name=data.pack_name,
-                action="departments_skipped",
-                skipped=skipped,
-            )
-
-        # Persist.
-        merged_agents = current_agents + pack_agents
-        merged_depts = current_depts + new_depts
-
-        settings_svc = app_state.settings_service
-        await settings_svc.set(
-            "company",
-            "agents",
-            json.dumps(merged_agents),
-        )
-        await settings_svc.set(
-            "company",
-            "departments",
-            json.dumps(merged_depts),
+            current_agents + pack_agents,
+            current_depts + new_depts,
         )
 
         logger.info(
