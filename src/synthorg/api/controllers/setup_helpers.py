@@ -620,3 +620,102 @@ def load_template_safe(template_name: str) -> LoadedTemplate:
             error=str(exc),
         )
         raise ApiValidationError(msg) from exc
+
+
+async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
+    """Extract model IDs from provider configs for embedding selection.
+
+    Best-effort: returns an empty tuple if config resolver is not
+    available or provider configs cannot be read.
+    """
+    if not app_state.has_config_resolver:
+        return ()
+    try:
+        configs = await app_state.config_resolver.get_provider_configs()
+        ids: list[str] = [
+            str(model.id) for pc in configs.values() for model in pc.models
+        ]
+        return tuple(ids)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.debug(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="collect_model_ids",
+            exc_info=True,
+        )
+        return ()
+
+
+async def auto_select_embedder(
+    *,
+    settings_svc: SettingsService,
+    available_model_ids: tuple[str, ...],
+    provider_preset_name: str | None = None,
+    has_gpu: bool | None = None,
+) -> None:
+    """Auto-select an embedding model and persist the choice.
+
+    Best-effort: logs a warning but does not raise on failure.
+    Called during setup completion after providers are validated.
+
+    Args:
+        settings_svc: Settings service for persisting the selection.
+        available_model_ids: Model IDs discovered from providers.
+        provider_preset_name: Provider preset for tier inference.
+        has_gpu: Whether the host has a GPU.
+    """
+    from synthorg.memory.embedding.selector import (  # noqa: PLC0415
+        infer_deployment_tier,
+        select_embedding_model,
+    )
+    from synthorg.observability.events.memory import (  # noqa: PLC0415
+        MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+        MEMORY_EMBEDDER_AUTO_SELECTED,
+    )
+
+    tier = infer_deployment_tier(
+        provider_preset_name,
+        has_gpu=has_gpu,
+    )
+    ranking = select_embedding_model(
+        available_model_ids,
+        deployment_tier=tier,
+    )
+    if ranking is None:
+        # Try without tier filter as fallback.
+        ranking = select_embedding_model(available_model_ids)
+    if ranking is None:
+        logger.warning(
+            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+            available_models=len(available_model_ids),
+            tier=tier.value,
+            reason="no LMEB-ranked model in available models",
+        )
+        return
+    logger.info(
+        MEMORY_EMBEDDER_AUTO_SELECTED,
+        model_id=ranking.model_id,
+        tier=tier.value,
+        overall_score=ranking.overall,
+        dims=ranking.output_dims,
+    )
+    try:
+        await settings_svc.set(
+            "memory",
+            "embedder_model",
+            ranking.model_id,
+        )
+        await settings_svc.set(
+            "memory",
+            "embedder_dims",
+            str(ranking.output_dims),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            MEMORY_EMBEDDER_AUTO_SELECT_FAILED,
+            reason="failed to persist embedder settings",
+            exc_info=True,
+        )

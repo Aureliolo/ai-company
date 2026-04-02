@@ -14,6 +14,7 @@ from pydantic import (
 
 from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern, WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.config import EmbedderOverrideConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
 
@@ -302,6 +303,21 @@ class TemplateMetadata(BaseModel):
         return self
 
 
+class TemplateMemoryConfig(BaseModel):
+    """Template-level memory configuration overrides.
+
+    Attributes:
+        embedder: Optional embedder override for the template.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    embedder: EmbedderOverrideConfig | None = Field(
+        default=None,
+        description="Optional embedder override",
+    )
+
+
 class CompanyTemplate(BaseModel):
     """A complete company template definition.
 
@@ -328,6 +344,7 @@ class CompanyTemplate(BaseModel):
         escalation_paths: Cross-department escalation path definitions.
         extends: Parent template name for inheritance (``None`` for
             standalone templates).
+        memory: Memory configuration overrides (e.g. embedder settings).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -383,6 +400,10 @@ class CompanyTemplate(BaseModel):
     uses_packs: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Pack names to compose into this template",
+    )
+    memory: TemplateMemoryConfig = Field(
+        default_factory=TemplateMemoryConfig,
+        description="Memory configuration overrides.",
     )
 
     @field_validator("extends", mode="before")

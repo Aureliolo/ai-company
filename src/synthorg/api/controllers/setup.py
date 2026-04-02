@@ -28,6 +28,9 @@ from synthorg.api.controllers.setup_helpers import (
     auto_create_template_agents as _auto_create_template_agents,
 )
 from synthorg.api.controllers.setup_helpers import (
+    auto_select_embedder,
+)
+from synthorg.api.controllers.setup_helpers import (
     check_has_agents as _check_has_agents,
 )
 from synthorg.api.controllers.setup_helpers import (
@@ -44,6 +47,9 @@ from synthorg.api.controllers.setup_helpers import (
 )
 from synthorg.api.controllers.setup_helpers import (
     check_setup_not_complete as _check_setup_not_complete,
+)
+from synthorg.api.controllers.setup_helpers import (
+    collect_model_ids as _collect_model_ids,
 )
 from synthorg.api.controllers.setup_helpers import (
     persist_company_settings as _persist_company_settings,
@@ -96,6 +102,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
     SETUP_COMPANY_CREATED,
+    SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETED,
     SETUP_NAME_LOCALES_LISTED,
     SETUP_NAME_LOCALES_SAVED,
@@ -744,6 +751,25 @@ class SetupController(Controller):
             msg = "At least one provider must be configured before completing setup"
             logger.warning(SETUP_NO_PROVIDERS)
             raise ApiValidationError(msg)
+
+        # Auto-select embedding model from configured providers.
+        # Best-effort: does not block setup completion on failure.
+        # TODO(#1001): forward provider_preset_name and has_gpu from
+        # the setup context so tier inference uses real hardware info.
+        try:
+            model_ids = await _collect_model_ids(app_state)
+            await auto_select_embedder(
+                settings_svc=settings_svc,
+                available_model_ids=model_ids,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                SETUP_COMPLETE_CHECK_ERROR,
+                check="auto_select_embedder",
+                exc_info=True,
+            )
 
         await settings_svc.set("api", "setup_complete", "true")
 

@@ -5,7 +5,7 @@ The ``build_mem0_config_dict`` function produces the dict that Mem0's
 ``Memory.from_config()`` expects.
 """
 
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -15,6 +15,8 @@ from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_CONFIG_INVALID,
+    MEMORY_EMBEDDER_CHECKPOINT_ACTIVE,
+    MEMORY_EMBEDDER_CHECKPOINT_MISSING,
 )
 
 logger = get_logger(__name__)
@@ -23,18 +25,13 @@ logger = get_logger(__name__)
 class EmbeddingFineTuneConfig(BaseModel):
     """Optional domain-specific embedding fine-tuning configuration.
 
-    Note: checkpoint lookup is not yet implemented in the Mem0
-    adapter -- this config prepares the data model for the
-    fine-tuning pipeline.
+    When ``enabled`` is ``True`` and ``checkpoint_path`` is set, the
+    Mem0 adapter uses the checkpoint path as the model identifier
+    instead of the base ``Mem0EmbedderConfig.model``.  The embedding
+    provider must serve the fine-tuned model under this identifier.
 
-    When checkpoint lookup is implemented, the memory backend will
-    look for a fine-tuned model checkpoint at ``checkpoint_path``
-    during initialization.  If found, the fine-tuned model will
-    override the base ``Mem0EmbedderConfig.model``.  If not found,
-    the base model will be used with a logged warning.
-
-    Fine-tuning itself runs offline via a separate pipeline, not
-    during backend initialization.  See
+    Fine-tuning itself runs offline via the ``POST /admin/memory/fine-tune``
+    endpoint (see ``MemoryAdminController``).  See
     ``docs/reference/embedding-evaluation.md`` for the full
     pipeline design.
 
@@ -170,24 +167,6 @@ class Mem0EmbedderConfig(BaseModel):
         description="Optional fine-tuning configuration (None by default)",
     )
 
-    @model_validator(mode="after")
-    def _reject_unimplemented_fine_tune(self) -> Self:
-        """Reject fine_tune.enabled until checkpoint lookup is implemented."""
-        if self.fine_tune is not None and self.fine_tune.enabled:
-            msg = (
-                "fine_tune.enabled is not yet supported: checkpoint "
-                "override is not implemented in the Mem0 adapter"
-            )
-            logger.warning(
-                MEMORY_BACKEND_CONFIG_INVALID,
-                model="Mem0EmbedderConfig",
-                field="fine_tune.enabled",
-                enabled=True,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
-
 
 class Mem0BackendConfig(BaseModel):
     """Mem0-specific backend configuration.
@@ -255,8 +234,48 @@ class Mem0BackendConfig(BaseModel):
         return self
 
 
+def _resolve_effective_model(embedder: Mem0EmbedderConfig) -> str:
+    """Resolve the effective model identifier.
+
+    When fine-tuning is enabled and a checkpoint path exists on disk,
+    the checkpoint path is used as the model identifier.  If the
+    checkpoint is missing, falls back to the base model with a
+    warning.  Otherwise, the base model is returned.
+
+    Args:
+        embedder: Embedder configuration.
+
+    Returns:
+        The model identifier to pass to the Mem0 SDK.
+    """
+    ft = embedder.fine_tune
+    if ft is not None and ft.enabled:
+        if ft.checkpoint_path is None:  # pragma: no cover -- guaranteed by validator
+            return ft.base_model or embedder.model
+        checkpoint = Path(ft.checkpoint_path)
+        if not checkpoint.exists():
+            fallback = ft.base_model or embedder.model
+            logger.warning(
+                MEMORY_EMBEDDER_CHECKPOINT_MISSING,
+                checkpoint_path=ft.checkpoint_path,
+                base_model=fallback,
+                reason="checkpoint not found on disk, falling back to base model",
+            )
+            return fallback
+        logger.info(
+            MEMORY_EMBEDDER_CHECKPOINT_ACTIVE,
+            checkpoint_path=ft.checkpoint_path,
+            base_model=ft.base_model,
+        )
+        return ft.checkpoint_path
+    return embedder.model
+
+
 def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
     """Build the dict that ``Memory.from_config()`` expects.
+
+    When fine-tuning is enabled, the checkpoint path is used as the
+    model identifier instead of the base model.
 
     Args:
         config: Mem0 backend configuration.
@@ -265,6 +284,7 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
         Configuration dict suitable for ``Memory.from_config()``.
     """
     base_path = PurePosixPath(config.data_dir)
+    effective_model = _resolve_effective_model(config.embedder)
     return {
         "vector_store": {
             "provider": "qdrant",
@@ -277,7 +297,7 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
         "embedder": {
             "provider": config.embedder.provider,
             "config": {
-                "model": config.embedder.model,
+                "model": effective_model,
             },
         },
         "history_db_path": str(base_path / "history.db"),

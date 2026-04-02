@@ -90,6 +90,12 @@ jobs:
           # only invoked during development and CI linting. GPL copyleft does
           # not apply to the project output. The action cannot distinguish
           # tool deps from runtime deps, so they need per-package exemptions.
+          #
+          # Fine-tune optional dep group (torch, sentence-transformers) and
+          # transitive CUDA/NVIDIA deps. Optional -- only installed via
+          # synthorg[fine-tune]. License metadata missing from PyPI for NVIDIA
+          # CUDA packages (proprietary, freely redistributable). torch is
+          # BSD-style. scikit-learn has compound BSD-3-Clause AND scancode tag.
           allow-dependencies-licenses: >-
             pkg:pypi/mem0ai@1.0.9,
             pkg:pypi/numpy@2.4.4,
@@ -113,5 +119,25 @@ jobs:
             pkg:golang/github.com/alfatraining/structtag@1.0.0,
             pkg:golang/github.com/fatih/structtag@1.2.0,
             pkg:npm/json-schema-typed@8.0.2,
-            pkg:npm/victory-vendor@37.3.6
+            pkg:npm/victory-vendor@37.3.6,
+            pkg:pypi/scikit-learn@1.8.0,
+            pkg:pypi/torch@2.11.0,
+            pkg:pypi/cuda-bindings@13.2.0,
+            pkg:pypi/cuda-pathfinder@1.5.0,
+            pkg:pypi/cuda-toolkit@13.0.2,
+            pkg:pypi/nvidia-cublas@13.1.0.3,
+            pkg:pypi/nvidia-cuda-cupti@13.0.85,
+            pkg:pypi/nvidia-cuda-nvrtc@13.0.88,
+            pkg:pypi/nvidia-cuda-runtime@13.0.96,
+            pkg:pypi/nvidia-cudnn-cu13@9.19.0.56,
+            pkg:pypi/nvidia-cufft@12.0.0.61,
+            pkg:pypi/nvidia-cufile@1.15.1.6,
+            pkg:pypi/nvidia-curand@10.4.0.35,
+            pkg:pypi/nvidia-cusolver@12.0.4.66,
+            pkg:pypi/nvidia-cusparse@12.6.3.3,
+            pkg:pypi/nvidia-cusparselt-cu13@0.8.0,
+            pkg:pypi/nvidia-nccl-cu13@2.28.9,
+            pkg:pypi/nvidia-nvjitlink@13.0.88,
+            pkg:pypi/nvidia-nvshmem-cu13@3.4.5,
+            pkg:pypi/nvidia-nvtx@13.0.85
           comment-summary-in-pr: always

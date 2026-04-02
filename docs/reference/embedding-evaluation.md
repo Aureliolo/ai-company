@@ -214,12 +214,13 @@ single GPU.
 
 Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
 (see [Memory Design Spec](../design/memory.md#embedding-model-selection))
-stores the configuration. Planned initialization behavior (not yet implemented in the Mem0 adapter):
+stores the configuration. Initialization behavior in the Mem0 adapter:
 
-1. If `fine_tune.enabled` and checkpoint exists at `fine_tune.checkpoint_path`: use fine-tuned model
-2. If `fine_tune.enabled` but no checkpoint: log warning, use base model
-3. If `fine_tune.enabled` is `False` (default): use base model, no checkpoint check
+1. If `fine_tune.enabled` and `checkpoint_path` is set: the checkpoint path is used as the model
+   identifier passed to the Mem0 SDK (the embedding provider must serve the fine-tuned model)
+2. If `fine_tune.enabled` is `False` (default): the base model is used, no checkpoint check
 
+The pipeline is triggered via `POST /admin/memory/fine-tune` (see `MemoryAdminController`).
 This follows the project's pattern of disabled-by-default optional features
 (cf. `DualModeConfig` in consolidation).
 

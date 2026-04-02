@@ -1,0 +1,140 @@
+"""Tests for MemoryAdminController endpoints."""
+
+import pytest
+from pydantic import ValidationError
+
+from synthorg.api.controllers.memory import (
+    ActiveEmbedderResponse,
+    MemoryAdminController,
+)
+from synthorg.memory.embedding.fine_tune import FineTuneStage
+from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneRequest,
+    FineTuneStatus,
+)
+
+
+@pytest.mark.unit
+class TestFineTuneRequest:
+    def test_valid(self) -> None:
+        req = FineTuneRequest(source_dir="/data/docs")
+        assert req.source_dir == "/data/docs"
+        assert req.base_model is None
+        assert req.output_dir is None
+
+    def test_rejects_blank_source_dir(self) -> None:
+        with pytest.raises(ValidationError, match="source_dir"):
+            FineTuneRequest(source_dir="   ")
+
+    def test_full_request(self) -> None:
+        req = FineTuneRequest(
+            source_dir="/data/docs",
+            base_model="test-model",
+            output_dir="/output",
+        )
+        assert req.base_model == "test-model"
+
+    def test_rejects_traversal_in_source_dir(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            FineTuneRequest(source_dir="/data/../etc")
+
+    def test_rejects_windows_path_in_source_dir(self) -> None:
+        with pytest.raises(ValidationError, match="POSIX"):
+            FineTuneRequest(source_dir="C:\\data\\docs")
+
+    def test_rejects_traversal_in_output_dir(self) -> None:
+        with pytest.raises(ValidationError, match="traversal"):
+            FineTuneRequest(source_dir="/data/docs", output_dir="/out/../secret")
+
+
+@pytest.mark.unit
+class TestFineTuneStatus:
+    def test_defaults(self) -> None:
+        status = FineTuneStatus()
+        assert status.stage == FineTuneStage.IDLE
+        assert status.progress is None
+        assert status.error is None
+
+    def test_valid_progress(self) -> None:
+        status = FineTuneStatus(
+            stage=FineTuneStage.TRAINING,
+            progress=0.5,
+        )
+        assert status.progress == 0.5
+
+    def test_rejects_progress_above_one(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(progress=1.5)
+
+    def test_rejects_negative_progress(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(progress=-0.1)
+
+    def test_rejects_nan_progress(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(progress=float("nan"))
+
+    def test_rejects_inf_progress(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(progress=float("inf"))
+
+    def test_with_error(self) -> None:
+        status = FineTuneStatus(
+            stage=FineTuneStage.FAILED,
+            error="pipeline crashed",
+        )
+        assert status.error == "pipeline crashed"
+
+    def test_rejects_idle_with_progress(self) -> None:
+        with pytest.raises(ValidationError, match="IDLE"):
+            FineTuneStatus(stage=FineTuneStage.IDLE, progress=0.5)
+
+    def test_rejects_idle_with_error(self) -> None:
+        with pytest.raises(ValidationError, match="IDLE"):
+            FineTuneStatus(stage=FineTuneStage.IDLE, error="oops")
+
+    def test_rejects_failed_without_error(self) -> None:
+        with pytest.raises(ValidationError, match="FAILED"):
+            FineTuneStatus(stage=FineTuneStage.FAILED)
+
+    def test_rejects_active_with_error(self) -> None:
+        with pytest.raises(ValidationError, match="active"):
+            FineTuneStatus(
+                stage=FineTuneStage.TRAINING,
+                progress=0.5,
+                error="should not be here",
+            )
+
+    def test_rejects_blank_error(self) -> None:
+        with pytest.raises(ValidationError):
+            FineTuneStatus(stage=FineTuneStage.FAILED, error="   ")
+
+
+@pytest.mark.unit
+class TestActiveEmbedderResponse:
+    def test_defaults(self) -> None:
+        resp = ActiveEmbedderResponse()
+        assert resp.provider is None
+        assert resp.model is None
+        assert resp.dims is None
+
+    def test_with_values(self) -> None:
+        resp = ActiveEmbedderResponse(
+            provider="test-provider",
+            model="test-model",
+            dims=768,
+        )
+        assert resp.provider == "test-provider"
+        assert resp.dims == 768
+
+
+@pytest.mark.unit
+class TestMemoryAdminControllerExists:
+    """Verify the controller is correctly defined."""
+
+    def test_path(self) -> None:
+        assert MemoryAdminController.path == "/admin/memory"
+
+    def test_tags(self) -> None:
+        assert "admin" in MemoryAdminController.tags
+        assert "memory" in MemoryAdminController.tags

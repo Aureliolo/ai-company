@@ -115,18 +115,20 @@ class TestMem0EmbedderConfigFineTune:
         assert config.fine_tune is not None
         assert config.fine_tune.enabled is False
 
-    def test_rejects_enabled_fine_tune(self) -> None:
-        """fine_tune.enabled=True is not yet supported."""
-        with pytest.raises(ValidationError, match="not yet supported"):
-            Mem0EmbedderConfig(
-                provider="test-provider",
-                model="test-embedding-001",
-                fine_tune=EmbeddingFineTuneConfig(
-                    enabled=True,
-                    checkpoint_path="/models/checkpoint",
-                    base_model="test-embedding-001",
-                ),
-            )
+    def test_accepts_enabled_fine_tune(self) -> None:
+        """fine_tune.enabled=True is supported after checkpoint wiring."""
+        config = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+            fine_tune=EmbeddingFineTuneConfig(
+                enabled=True,
+                checkpoint_path="/models/checkpoint",
+                base_model="test-embedding-001",
+            ),
+        )
+        assert config.fine_tune is not None
+        assert config.fine_tune.enabled is True
+        assert config.fine_tune.checkpoint_path == "/models/checkpoint"
 
 
 @pytest.mark.unit
@@ -238,6 +240,58 @@ class TestBuildMem0ConfigDict:
         assert result["embedder"]["config"]["model"] == "test-embedding-001"
         assert result["history_db_path"] == "/data/memory/history.db"
         assert result["version"] == "v1.1"
+
+    def test_uses_checkpoint_when_fine_tune_enabled(self) -> None:
+        from unittest.mock import patch
+
+        embedder = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+            fine_tune=EmbeddingFineTuneConfig(
+                enabled=True,
+                checkpoint_path="/models/fine-tuned/v1",
+                base_model="test-embedding-001",
+            ),
+        )
+        config = Mem0BackendConfig(embedder=embedder)
+        with patch("synthorg.memory.backends.mem0.config.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            result = build_mem0_config_dict(config)
+        assert result["embedder"]["config"]["model"] == "/models/fine-tuned/v1"
+
+    def test_falls_back_when_checkpoint_missing(self) -> None:
+        embedder = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+            fine_tune=EmbeddingFineTuneConfig(
+                enabled=True,
+                checkpoint_path="/nonexistent/checkpoint/v1",
+                base_model="test-base-model-v2",
+            ),
+        )
+        config = Mem0BackendConfig(embedder=embedder)
+        result = build_mem0_config_dict(config)
+        # Falls back to ft.base_model, not embedder.model.
+        assert result["embedder"]["config"]["model"] == "test-base-model-v2"
+
+    def test_uses_base_model_when_fine_tune_disabled(self) -> None:
+        embedder = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+            fine_tune=EmbeddingFineTuneConfig(enabled=False),
+        )
+        config = Mem0BackendConfig(embedder=embedder)
+        result = build_mem0_config_dict(config)
+        assert result["embedder"]["config"]["model"] == "test-embedding-001"
+
+    def test_uses_base_model_when_fine_tune_none(self) -> None:
+        embedder = Mem0EmbedderConfig(
+            provider="test-provider",
+            model="test-embedding-001",
+        )
+        config = Mem0BackendConfig(embedder=embedder)
+        result = build_mem0_config_dict(config)
+        assert result["embedder"]["config"]["model"] == "test-embedding-001"
 
     def test_custom_config(self) -> None:
         config = Mem0BackendConfig(
