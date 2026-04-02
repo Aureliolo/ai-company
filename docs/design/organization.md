@@ -404,6 +404,47 @@ After merging, agent names are deduplicated: if parent and child auto-generation
 produces the same name, later occurrences receive a numeric suffix (e.g.,
 ``"Kenji Matsuda 2"``).
 
+### Template Packs
+
+Packs are small, focused template fragments (same schema as full templates)
+that can be applied additively to a running org or composed into templates
+via the `uses_packs` field.
+
+**Built-in packs** (in `src/synthorg/templates/packs/`):
+
+| Pack | Agents | Description |
+|------|--------|-------------|
+| `security-team` | Security Engineer, Security Operations | Threat modeling and compliance |
+| `data-team` | Data Analyst, Data Engineer, ML Engineer | Data analytics pipeline |
+| `qa-pipeline` | QA Lead, QA Engineer, Automation Engineer | Quality assurance |
+| `creative-marketing` | Content Writer, Brand Strategist | Content and brand |
+| `design-team` | UX Designer, UX Researcher | Design and user research |
+
+**User packs** live in `~/.synthorg/template-packs/` (YAML files). User packs
+override built-in packs of the same name.
+
+**Composition via `uses_packs`:**
+
+```yaml
+template:
+  name: "Full Company"
+  extends: "startup"
+  uses_packs:
+    - "security-team"
+    - "qa-pipeline"
+```
+
+Resolution order: `extends` parent is merged first, then each pack in
+`uses_packs` order, then the template's own fields override last. Circular
+pack dependencies are detected and raise `TemplateRenderError`.
+
+**Live application:**
+
+The `POST /api/v1/template-packs/apply` endpoint applies a pack to a running
+org -- adding its agents and departments to the existing config. Department
+names are deduplicated (case-insensitive); agent names are deduplicated by
+name.
+
 ---
 
 ## Company Builder

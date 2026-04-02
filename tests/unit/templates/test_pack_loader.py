@@ -46,9 +46,9 @@ class TestLoadPack:
         with pytest.raises(TemplateNotFoundError, match="no-such-pack"):
             load_pack("no-such-pack")
 
-    @pytest.mark.parametrize("name", ["../etc/passwd", "foo/bar", "a\\b"])
-    def test_path_traversal_rejected(self, name: str) -> None:
-        with pytest.raises(TemplateNotFoundError, match="path separators"):
+    @pytest.mark.parametrize("name", ["../etc/passwd", "foo/bar", "a\\b", ".hidden"])
+    def test_invalid_name_rejected(self, name: str) -> None:
+        with pytest.raises(TemplateNotFoundError, match="must match"):
             load_pack(name)
 
     def test_case_insensitive(self) -> None:

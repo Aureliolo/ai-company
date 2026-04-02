@@ -499,15 +499,22 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         result["extends"] = data["extends"]
     if "uses_packs" in data:
         raw_packs = data["uses_packs"]
-        if isinstance(raw_packs, str):
-            msg = "Template field 'uses_packs' must be a list, not a string"
+        if raw_packs is None:
+            pass  # Treat explicit null as "no packs".
+        elif (
+            isinstance(raw_packs, str)
+            or not isinstance(raw_packs, (list, tuple))
+            or not all(isinstance(p, str) for p in raw_packs)
+        ):
+            msg = "Template field 'uses_packs' must be a list of strings"
             logger.warning(
                 TEMPLATE_LOAD_STRUCTURE_ERROR,
                 source="template.uses_packs",
                 error=msg,
             )
             raise TypeError(msg)
-        result["uses_packs"] = tuple(raw_packs)
+        else:
+            result["uses_packs"] = tuple(raw_packs)
     return result
 
 

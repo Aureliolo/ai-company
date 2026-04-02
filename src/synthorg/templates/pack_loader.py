@@ -9,6 +9,7 @@ the ``synthorg.templates.packs`` package, and user packs live in
 ``~/.synthorg/template-packs/``.
 """
 
+import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -33,6 +34,8 @@ from synthorg.templates.loader import LoadedTemplate
 logger = get_logger(__name__)
 
 _USER_PACKS_DIR = Path.home() / ".synthorg" / "template-packs"
+
+_PACK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_\-]*$")
 
 BUILTIN_PACKS: MappingProxyType[str, str] = MappingProxyType(
     {
@@ -67,6 +70,17 @@ class PackInfo:
     agent_count: int = 0
     department_count: int = 0
 
+    def __post_init__(self) -> None:  # noqa: D105
+        if not self.name or not self.name.strip():
+            msg = "PackInfo.name must not be blank"
+            raise ValueError(msg)
+        if self.agent_count < 0:
+            msg = "agent_count must be non-negative"
+            raise ValueError(msg)
+        if self.department_count < 0:
+            msg = "department_count must be non-negative"
+            raise ValueError(msg)
+
 
 def list_builtin_packs() -> tuple[str, ...]:
     """Return names of all built-in packs.
@@ -85,17 +99,18 @@ def list_packs() -> tuple[PackInfo, ...]:
     Returns:
         Sorted tuple of :class:`PackInfo` objects.
     """
-    seen: dict[str, PackInfo] = {}
-
-    # User packs (higher priority).
-    _collect_user_packs(seen)
+    seen: dict[str, PackInfo] = _collect_user_packs()
 
     # Built-in packs (lower priority).
     for name in sorted(BUILTIN_PACKS):
         if name not in seen:
             try:
                 loaded = _load_builtin(name)
-                seen[name] = _pack_info_from_loaded(name, loaded, "builtin")
+                seen[name] = _pack_info_from_loaded(
+                    name,
+                    loaded,
+                    "builtin",
+                )
             except (
                 TemplateRenderError,
                 TemplateValidationError,
@@ -112,17 +127,18 @@ def list_packs() -> tuple[PackInfo, ...]:
 
 
 def _validate_pack_name(name: str) -> str:
-    """Normalize and validate a pack name, rejecting path traversal.
+    """Normalize and validate a pack name via allowlist regex.
 
     Returns:
         Normalized (lowercase, stripped) name.
 
     Raises:
-        TemplateNotFoundError: If the name contains path separators.
+        TemplateNotFoundError: If the name does not match the
+            allowlist pattern ``[a-z0-9][a-z0-9_-]*``.
     """
     name_clean = name.strip().lower()
-    if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
-        msg = f"Invalid pack name {name!r}: must not contain path separators"
+    if not _PACK_NAME_RE.match(name_clean):
+        msg = f"Invalid pack name {name!r}: must match [a-z0-9][a-z0-9_-]*"
         logger.warning(TEMPLATE_PACK_LOAD_NOT_FOUND, pack_name=name)
         raise TemplateNotFoundError(
             msg,
@@ -142,21 +158,40 @@ def load_pack(name: str) -> LoadedTemplate:
 
     Raises:
         TemplateNotFoundError: If no pack with *name* exists.
+        TemplateRenderError: If the pack YAML cannot be read or parsed.
+        TemplateValidationError: If the parsed pack fails schema
+            validation.
     """
     name_clean = _validate_pack_name(name)
     logger.debug(TEMPLATE_PACK_LOAD_START, pack_name=name_clean)
 
-    # Try user directory first.
+    # Try user directory first; fall back to builtin on failure.
     if _USER_PACKS_DIR.is_dir():
         user_path = _USER_PACKS_DIR / f"{name_clean}.yaml"
         if user_path.is_file():
-            result = _load_from_file(user_path)
-            logger.debug(
-                TEMPLATE_PACK_LOAD_SUCCESS,
-                pack_name=name_clean,
-                source="user",
-            )
-            return result
+            try:
+                result = _load_from_file(user_path)
+            except (
+                TemplateRenderError,
+                TemplateValidationError,
+                OSError,
+            ) as exc:
+                if name_clean in BUILTIN_PACKS:
+                    logger.warning(
+                        TEMPLATE_PACK_LOAD_NOT_FOUND,
+                        pack_name=name_clean,
+                        action="user_pack_failed_fallback_builtin",
+                        error=str(exc),
+                    )
+                else:
+                    raise
+            else:
+                logger.debug(
+                    TEMPLATE_PACK_LOAD_SUCCESS,
+                    pack_name=name_clean,
+                    source="user",
+                )
+                return result
 
     # Fall back to builtins.
     if name_clean in BUILTIN_PACKS:
@@ -204,12 +239,26 @@ def _pack_info_from_loaded(
     )
 
 
-def _collect_user_packs(seen: dict[str, PackInfo]) -> None:
-    """Scan user packs directory and populate *seen*."""
+def _collect_user_packs() -> dict[str, PackInfo]:
+    """Scan user packs directory and return discovered packs.
+
+    Returns:
+        Dict of normalized pack name to :class:`PackInfo`.
+    """
+    seen: dict[str, PackInfo] = {}
     if not _USER_PACKS_DIR.is_dir():
-        return
+        return seen
     for path in sorted(p for p in _USER_PACKS_DIR.glob("*.yaml") if p.is_file()):
-        name = path.stem
+        name = path.stem.strip().lower()
+        if not _PACK_NAME_RE.match(name):
+            logger.warning(
+                TEMPLATE_PACK_LIST,
+                pack_path=str(path),
+                action="skip_invalid_name",
+            )
+            continue
+        if name in seen:
+            continue  # First file wins for case-duplicate stems.
         try:
             loaded = _load_from_file(path)
             seen[name] = _pack_info_from_loaded(name, loaded, "user")
@@ -224,11 +273,12 @@ def _collect_user_packs(seen: dict[str, PackInfo]) -> None:
                 action="skip_invalid",
                 error=str(exc),
             )
+    return seen
 
 
 def _load_builtin(name: str) -> LoadedTemplate:
     """Load a built-in pack by name."""
-    # Import here to avoid circular dependency at module level.
+    # circular: pack_loader -> loader -> pack_loader
     from synthorg.templates.loader import (  # noqa: PLC0415
         _parse_template_yaml,
     )
@@ -266,6 +316,7 @@ def _load_builtin(name: str) -> LoadedTemplate:
 
 def _load_from_file(path: Path) -> LoadedTemplate:
     """Load a pack from a file path."""
+    # circular: pack_loader -> loader -> pack_loader
     from synthorg.templates.loader import (  # noqa: PLC0415
         _parse_template_yaml,
     )

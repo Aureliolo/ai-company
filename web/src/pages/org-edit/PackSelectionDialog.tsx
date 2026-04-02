@@ -18,6 +18,52 @@ export interface PackSelectionDialogProps {
   disabled?: boolean
 }
 
+interface PackListItemProps {
+  pack: PackInfoResponse
+  disabled: boolean
+  busy: boolean
+  applying: string | null
+  onApply: (name: string) => void
+}
+
+function PackListItem({ pack, disabled, busy, applying, onApply }: PackListItemProps) {
+  return (
+    <button
+      type="button"
+      disabled={disabled || busy}
+      onClick={() => onApply(pack.name)}
+      className={cn(
+        'w-full rounded-lg border border-border p-card text-left transition-colors',
+        'hover:border-accent hover:bg-card/50',
+        'disabled:opacity-50 disabled:cursor-not-allowed',
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground truncate">
+            {pack.display_name}
+          </p>
+          <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+            {pack.description}
+          </p>
+        </div>
+        {applying === pack.name && (
+          <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
+        )}
+      </div>
+      <div className="flex items-center gap-2 mt-2">
+        <StatPill label="Agents" value={pack.agent_count} />
+        <StatPill label="Depts" value={pack.department_count} />
+        {pack.source === 'user' && (
+          <span className="text-[10px] text-text-secondary bg-card rounded px-1.5 py-0.5">
+            custom
+          </span>
+        )}
+      </div>
+    </button>
+  )
+}
+
 export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelectionDialogProps) {
   const [packs, setPacks] = useState<readonly PackInfoResponse[]>([])
   const [loading, setLoading] = useState(false)
@@ -25,6 +71,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
   const [error, setError] = useState<string | null>(null)
   const addToast = useToastStore((s) => s.add)
 
+  // Track open transitions via ref so the effect only fires on changes.
   const prevOpenRef = useRef(open)
   if (open && !prevOpenRef.current) {
     setLoading(true)
@@ -66,8 +113,16 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
           variant: 'success',
           title: `Added ${result.agents_added} agent(s) and ${result.departments_added} department(s)`,
         })
-        await useCompanyStore.getState().fetchCompanyData()
         onOpenChange(false)
+        // Refresh company data separately -- apply already succeeded.
+        try {
+          await useCompanyStore.getState().fetchCompanyData()
+        } catch {
+          addToast({
+            variant: 'warning',
+            title: 'Pack applied but failed to refresh data. Reload the page.',
+          })
+        }
       } catch (err) {
         setError(getErrorMessage(err))
       } finally {
@@ -130,39 +185,13 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
             <StaggerGroup className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {packs.map((pack) => (
                 <StaggerItem key={pack.name}>
-                  <button
-                    type="button"
-                    disabled={disabled || busy}
-                    onClick={() => handleApply(pack.name)}
-                    className={cn(
-                      'w-full rounded-lg border border-border p-3 text-left transition-colors',
-                      'hover:border-accent hover:bg-card/50',
-                      'disabled:opacity-50 disabled:cursor-not-allowed',
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {pack.display_name}
-                        </p>
-                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
-                          {pack.description}
-                        </p>
-                      </div>
-                      {applying === pack.name && (
-                        <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <StatPill label="Agents" value={pack.agent_count} />
-                      <StatPill label="Depts" value={pack.department_count} />
-                      {pack.source === 'user' && (
-                        <span className="text-[10px] text-text-secondary bg-card rounded px-1.5 py-0.5">
-                          custom
-                        </span>
-                      )}
-                    </div>
-                  </button>
+                  <PackListItem
+                    pack={pack}
+                    disabled={disabled ?? false}
+                    busy={busy}
+                    applying={applying}
+                    onApply={handleApply}
+                  />
                 </StaggerItem>
               ))}
             </StaggerGroup>

@@ -25,6 +25,7 @@ from synthorg.config.utils import deep_merge, to_float
 from synthorg.core.enums import WorkflowType
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
+    TEMPLATE_PACK_CIRCULAR,
     TEMPLATE_PACK_MERGE_START,
     TEMPLATE_PACK_MERGE_SUCCESS,
     TEMPLATE_RENDER_JINJA2_ERROR,
@@ -36,7 +37,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
 )
 from synthorg.templates._inheritance import (
-    _deduplicate_merged_agent_names,
+    deduplicate_merged_agent_names,
     render_parent_config,
 )
 from synthorg.templates._preset_resolution import resolve_agent_personality
@@ -183,6 +184,7 @@ def _render_to_dict(
         base_config = _resolve_packs(
             base_config,
             template.uses_packs,
+            variables=vars_dict,
             locales=locales,
             _chain=_chain,
             custom_presets=custom_presets,
@@ -191,8 +193,7 @@ def _render_to_dict(
     # Merge child on top of base (child wins).
     if base_config:
         result = merge_template_configs(base_config, child_config)
-        _deduplicate_merged_agent_names(result)
-        return result
+        return deduplicate_merged_agent_names(result)
 
     return child_config
 
@@ -201,6 +202,7 @@ def _resolve_packs(
     base_config: dict[str, Any],
     pack_names: tuple[str, ...],
     *,
+    variables: dict[str, Any] | None = None,
     locales: list[str] | None = None,
     _chain: frozenset[str] = frozenset(),
     custom_presets: Mapping[str, dict[str, Any]] | None = None,
@@ -215,17 +217,34 @@ def _resolve_packs(
         base_config: Accumulated config (from extends parent, or
             empty dict for standalone templates).
         pack_names: Pack names in declaration order.
+        variables: Caller/template variables to thread into pack
+            rendering so parameterized packs resolve correctly.
         locales: Faker locale codes for auto-name generation.
         _chain: Already-seen template identifiers.
         custom_presets: Optional custom preset mapping.
 
     Returns:
         Merged config dict with all packs applied.
+
+    Raises:
+        TemplateRenderError: If a pack is not found, fails to render,
+            or a circular pack dependency is detected.
     """
     from synthorg.templates.pack_loader import load_pack  # noqa: PLC0415
 
     result = base_config
     for pack_name in pack_names:
+        if pack_name in _chain:
+            logger.error(
+                TEMPLATE_PACK_CIRCULAR,
+                pack_name=pack_name,
+                chain=sorted(_chain),
+            )
+            msg = (
+                f"Circular pack dependency: {pack_name!r} is already "
+                f"in the resolution chain {sorted(_chain)}"
+            )
+            raise TemplateRenderError(msg)
         logger.info(
             TEMPLATE_PACK_MERGE_START,
             pack_name=pack_name,
@@ -233,7 +252,7 @@ def _resolve_packs(
         pack_loaded = load_pack(pack_name)
         pack_config = _render_to_dict(
             pack_loaded,
-            None,
+            variables,
             locales=locales,
             _chain=_chain | {pack_name},
             custom_presets=custom_presets,

@@ -1531,7 +1531,6 @@ export interface PackInfoResponse {
 
 export interface ApplyTemplatePackRequest {
   readonly pack_name: string
-  readonly variables?: Record<string, unknown>
 }
 
 export interface ApplyTemplatePackResponse {

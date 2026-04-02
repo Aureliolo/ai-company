@@ -11,12 +11,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_INHERIT_CIRCULAR,
     TEMPLATE_INHERIT_DEPTH_EXCEEDED,
-    TEMPLATE_INHERIT_MERGE_ERROR,
-    TEMPLATE_INHERIT_RESOLVE_START,
-    TEMPLATE_INHERIT_RESOLVE_SUCCESS,
 )
 from synthorg.templates.errors import TemplateInheritanceError
-from synthorg.templates.merge import merge_template_configs
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -44,81 +40,6 @@ logger = get_logger(__name__)
 
 # Maximum inheritance chain depth.
 _MAX_INHERITANCE_DEPTH = 10
-
-
-def resolve_inheritance(  # noqa: PLR0913
-    *,
-    child_config: dict[str, Any],
-    loaded: LoadedTemplate,
-    vars_dict: dict[str, Any],
-    locales: list[str] | None = None,
-    _chain: frozenset[str],
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    render_to_dict_fn: _RenderToDictFn,
-) -> dict[str, Any]:
-    """Resolve template inheritance for a child config.
-
-    Loads and renders the parent, detects circular dependencies and
-    depth violations, then merges parent + child.
-
-    Args:
-        child_config: Already-rendered child config dict.
-        loaded: The child's :class:`LoadedTemplate`.
-        vars_dict: Child's resolved variables.
-        locales: Faker locale codes for auto-name generation.
-        _chain: Already-visited parent names for circular detection.
-        custom_presets: Optional custom preset mapping.
-        render_to_dict_fn: Callback to ``_render_to_dict``.
-
-    Returns:
-        Merged config dict (parent + child).
-
-    Raises:
-        TemplateInheritanceError: On circular chains or depth overflow.
-    """
-    if loaded.template.extends is None:
-        msg = (
-            f"resolve_inheritance called for {loaded.source_name!r} "
-            "but template has no 'extends' -- caller contract violated"
-        )
-        logger.error(
-            TEMPLATE_INHERIT_MERGE_ERROR,
-            action="resolve_no_extends",
-            template=loaded.source_name,
-        )
-        raise TemplateInheritanceError(msg)
-    parent_name: str = loaded.template.extends
-    child_id = loaded.source_name
-
-    logger.info(
-        TEMPLATE_INHERIT_RESOLVE_START,
-        child=child_id,
-        parent=parent_name,
-    )
-
-    _validate_inheritance_chain(child_id, parent_name, _chain)
-
-    merged = _render_and_merge_parent(
-        parent_name,
-        child_id,
-        child_config,
-        vars_dict,
-        _chain,
-        locales=locales,
-        custom_presets=custom_presets,
-        render_to_dict_fn=render_to_dict_fn,
-    )
-
-    # Deduplicate agent names that may collide across parent/child
-    # expansion passes (each pass auto-generates names independently).
-    _deduplicate_merged_agent_names(merged)
-
-    logger.info(
-        TEMPLATE_INHERIT_RESOLVE_SUCCESS,
-        child=child_id,
-        parent=parent_name,
-    )
-    return merged
 
 
 def _validate_inheritance_chain(
@@ -166,9 +87,9 @@ def render_parent_config(  # noqa: PLR0913
 ) -> dict[str, Any]:
     """Load and render a parent template, returning its config dict.
 
-    Unlike ``_render_and_merge_parent``, this does **not** merge with
-    a child config.  Used by the renderer when pack resolution needs
-    the parent config as a separate base before layering packs.
+    Does **not** merge with a child config.  Used by the renderer to
+    obtain the parent config dict without merging, enabling the caller
+    to layer packs between parent and child before the final merge.
 
     Args:
         parent_name: Parent template name.
@@ -205,50 +126,30 @@ def render_parent_config(  # noqa: PLR0913
     )
 
 
-def _render_and_merge_parent(  # noqa: PLR0913
-    parent_name: str,
-    child_id: str,
-    child_config: dict[str, Any],
-    vars_dict: dict[str, Any],
-    _chain: frozenset[str],
-    *,
-    locales: list[str] | None = None,
-    custom_presets: Mapping[str, dict[str, Any]] | None = None,
-    render_to_dict_fn: _RenderToDictFn,
-) -> dict[str, Any]:
-    """Load, render, and merge a parent template with a child config."""
-    parent_config = render_parent_config(
-        parent_name=parent_name,
-        child_id=child_id,
-        vars_dict=vars_dict,
-        _chain=_chain,
-        locales=locales,
-        custom_presets=custom_presets,
-        render_to_dict_fn=render_to_dict_fn,
-    )
-    return merge_template_configs(parent_config, child_config)
-
-
-def _deduplicate_merged_agent_names(merged: dict[str, Any]) -> None:
+def deduplicate_merged_agent_names(merged: dict[str, Any]) -> dict[str, Any]:
     """Ensure agent names are unique after merging parent + child.
 
     Parent and child agent names are auto-generated independently, so
     collisions can occur.  This mirrors the per-pass deduplication in
     ``_expand_single_agent`` but operates on the post-merge agent list.
 
-    Mutates ``merged`` in place.
+    Returns a new dict with a rebuilt agents list.
 
     Args:
-        merged: Post-merge config dict; its ``agents`` list is modified
-            directly.
+        merged: Post-merge config dict.
+
+    Returns:
+        New config dict with deduplicated agent names.
     """
     agents = merged.get("agents")
     if not agents:
-        return
+        return merged
     used: set[str] = set()
+    new_agents: list[dict[str, Any]] = []
     for agent in agents:
         name = agent.get("name", "")
         if not name:
+            new_agents.append(agent)
             continue
         if name in used:
             base = name
@@ -256,8 +157,11 @@ def _deduplicate_merged_agent_names(merged: dict[str, Any]) -> None:
             while name in used:
                 name = f"{base} {counter}"
                 counter += 1
-            agent["name"] = name
+            new_agents.append({**agent, "name": name})
+        else:
+            new_agents.append(agent)
         used.add(name)
+    return {**merged, "agents": new_agents}
 
 
 def collect_parent_variables(

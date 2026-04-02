@@ -1,5 +1,6 @@
 """Template packs controller -- listing and live application."""
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -8,10 +9,8 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.controllers.setup_agents import (
-    departments_to_json,
-    expand_template_agents,
-)
+from synthorg.api.controllers.setup_agents import expand_template_agents
+from synthorg.api.controllers.setup_helpers import AGENT_LOCK as _AGENT_LOCK
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
@@ -19,6 +18,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
+    TEMPLATE_PACK_APPLY_DEPT_SKIPPED,
     TEMPLATE_PACK_APPLY_ERROR,
     TEMPLATE_PACK_APPLY_START,
     TEMPLATE_PACK_APPLY_SUCCESS,
@@ -59,10 +59,6 @@ class ApplyTemplatePackRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     pack_name: NotBlankStr = Field(description="Pack to apply")
-    variables: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Optional variable overrides",
-    )
 
 
 class ApplyTemplatePackResponse(BaseModel):
@@ -70,7 +66,7 @@ class ApplyTemplatePackResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    pack_name: str
+    pack_name: NotBlankStr
     agents_added: int = Field(ge=0)
     departments_added: int = Field(ge=0)
 
@@ -95,12 +91,55 @@ async def _read_setting_list(
     app_state: AppState,
     key: str,
 ) -> list[dict[str, Any]]:
-    """Read a JSON list setting from the company namespace."""
+    """Read a JSON list setting from the company namespace.
+
+    Returns:
+        Parsed list, or ``[]`` if the setting is missing or empty.
+
+    Raises:
+        NotFoundError: If the stored JSON is corrupted.
+    """
     try:
         entry = await app_state.settings_service.get("company", key)
-        return json.loads(entry.value) if entry.value else []
     except SettingNotFoundError:
+        logger.debug(
+            TEMPLATE_PACK_APPLY_START,
+            key=key,
+            action="setting_not_found_default_empty",
+        )
         return []
+    if not entry.value:
+        return []
+    try:
+        result: list[dict[str, Any]] = json.loads(entry.value)
+    except json.JSONDecodeError as exc:
+        logger.exception(
+            TEMPLATE_PACK_APPLY_ERROR,
+            key=key,
+            error=str(exc),
+            action="corrupt_setting_json",
+        )
+        msg = f"Setting 'company/{key}' contains invalid JSON"
+        raise NotFoundError(msg) from exc
+    return result
+
+
+def _serialize_departments(
+    pack_depts: Sequence[TemplateDepartmentConfig],
+) -> list[dict[str, Any]]:
+    """Serialize pack departments preserving all fields."""
+    result: list[dict[str, Any]] = []
+    for dept in pack_depts:
+        entry: dict[str, Any] = {
+            "name": dept.name,
+            "budget_percent": dept.budget_percent,
+        }
+        if dept.head_role:
+            entry["head_role"] = dept.head_role
+        if dept.reporting_lines:
+            entry["reporting_lines"] = list(dept.reporting_lines)
+        result.append(entry)
+    return result
 
 
 def _deduplicate_departments(
@@ -112,36 +151,82 @@ def _deduplicate_departments(
     existing_names = {str(d.get("name", "")).lower() for d in current_depts}
     if not pack_depts:
         return []
-    raw: list[dict[str, Any]] = json.loads(
-        departments_to_json(pack_depts),
-    )
+    raw = _serialize_departments(pack_depts)
     new_depts = [d for d in raw if str(d.get("name", "")).lower() not in existing_names]
     if len(new_depts) < len(raw):
         logger.warning(
-            TEMPLATE_PACK_APPLY_ERROR,
+            TEMPLATE_PACK_APPLY_DEPT_SKIPPED,
             pack_name=pack_name,
-            action="departments_skipped",
             skipped=len(raw) - len(new_depts),
         )
     return new_depts
 
 
-async def _persist_merged_config(
+def _deduplicate_agents(
+    pack_agents: list[dict[str, Any]],
+    current_agents: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return pack agents not already present (by name)."""
+    existing = {str(a.get("name", "")).lower() for a in current_agents}
+    return [a for a in pack_agents if str(a.get("name", "")).lower() not in existing]
+
+
+async def _apply_pack_to_settings(
     app_state: AppState,
-    agents: list[dict[str, Any]],
-    departments: list[dict[str, Any]],
-) -> None:
-    """Write merged agents and departments to settings."""
-    settings_svc = app_state.settings_service
-    await settings_svc.set(
-        "company",
-        "agents",
-        json.dumps(agents),
-    )
-    await settings_svc.set(
-        "company",
-        "departments",
-        json.dumps(departments),
+    data: ApplyTemplatePackRequest,
+) -> ApplyTemplatePackResponse:
+    """Core pack application logic under the agent lock.
+
+    Args:
+        app_state: Application state.
+        data: Request with pack name.
+
+    Returns:
+        Summary of agents and departments added.
+
+    Raises:
+        NotFoundError: If the pack is not found.
+    """
+    try:
+        loaded = await asyncio.to_thread(load_pack, data.pack_name)
+    except TemplateNotFoundError as exc:
+        logger.warning(
+            TEMPLATE_PACK_APPLY_ERROR,
+            pack_name=data.pack_name,
+            error=str(exc),
+        )
+        msg = f"Template pack {data.pack_name!r} not found"
+        raise NotFoundError(msg) from exc
+
+    pack_agents = expand_template_agents(loaded.template)
+
+    async with _AGENT_LOCK:
+        current_agents = await _read_setting_list(app_state, "agents")
+        current_depts = await _read_setting_list(app_state, "departments")
+
+        new_agents = _deduplicate_agents(pack_agents, current_agents)
+        new_depts = _deduplicate_departments(
+            data.pack_name,
+            loaded.template.departments,
+            current_depts,
+        )
+
+        settings_svc = app_state.settings_service
+        await settings_svc.set(
+            "company",
+            "agents",
+            json.dumps(current_agents + new_agents),
+        )
+        await settings_svc.set(
+            "company",
+            "departments",
+            json.dumps(current_depts + new_depts),
+        )
+
+    return ApplyTemplatePackResponse(
+        pack_name=data.pack_name,
+        agents_added=len(new_agents),
+        departments_added=len(new_depts),
     )
 
 
@@ -163,7 +248,7 @@ class TemplatePackController(Controller):
         Returns:
             Pack info envelope.
         """
-        packs = list_packs()
+        packs = await asyncio.to_thread(list_packs)
         logger.info(TEMPLATE_PACK_LIST, count=len(packs))
         return ApiResponse(
             data=tuple(_pack_info_to_response(p) for p in packs),
@@ -182,55 +267,25 @@ class TemplatePackController(Controller):
         """Apply a template pack to the running organization.
 
         Args:
-            data: Pack name and optional variables.
+            data: Pack name.
             state: Application state.
 
         Returns:
             Summary of agents and departments added.
+
+        Raises:
+            NotFoundError: If the requested pack does not exist.
         """
         app_state: AppState = state.app_state
         logger.info(
             TEMPLATE_PACK_APPLY_START,
             pack_name=data.pack_name,
         )
-
-        try:
-            loaded = load_pack(data.pack_name)
-        except TemplateNotFoundError as exc:
-            logger.warning(
-                TEMPLATE_PACK_APPLY_ERROR,
-                pack_name=data.pack_name,
-                error=str(exc),
-            )
-            msg = f"Template pack {data.pack_name!r} not found"
-            raise NotFoundError(msg) from exc
-
-        pack_agents = expand_template_agents(loaded.template)
-        current_agents = await _read_setting_list(app_state, "agents")
-        current_depts = await _read_setting_list(app_state, "departments")
-
-        new_depts = _deduplicate_departments(
-            data.pack_name,
-            loaded.template.departments,
-            current_depts,
-        )
-
-        await _persist_merged_config(
-            app_state,
-            current_agents + pack_agents,
-            current_depts + new_depts,
-        )
-
+        result = await _apply_pack_to_settings(app_state, data)
         logger.info(
             TEMPLATE_PACK_APPLY_SUCCESS,
             pack_name=data.pack_name,
-            agents_added=len(pack_agents),
-            departments_added=len(new_depts),
+            agents_added=result.agents_added,
+            departments_added=result.departments_added,
         )
-        return ApiResponse(
-            data=ApplyTemplatePackResponse(
-                pack_name=data.pack_name,
-                agents_added=len(pack_agents),
-                departments_added=len(new_depts),
-            ),
-        )
+        return ApiResponse(data=result)

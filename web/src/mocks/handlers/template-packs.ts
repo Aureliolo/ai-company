@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { PackInfoResponse } from '@/api/types'
-import { apiSuccess } from './helpers'
+import { apiError, apiSuccess } from './helpers'
 
 const mockPacks: readonly PackInfoResponse[] = [
   {
@@ -56,10 +56,7 @@ export const templatePacksList = [
     const body = (await request.json()) as { pack_name: string }
     const pack = mockPacks.find((p) => p.name === body.pack_name)
     if (!pack) {
-      return HttpResponse.json(
-        { success: false, data: null, error: 'Pack not found', error_detail: null },
-        { status: 404 },
-      )
+      return HttpResponse.json(apiError('Pack not found'), { status: 404 })
     }
     return HttpResponse.json(
       apiSuccess({

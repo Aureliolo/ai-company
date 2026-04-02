@@ -11,8 +11,8 @@ import pytest
 from synthorg.config.schema import RootConfig
 from synthorg.core.enums import CompanyType
 from synthorg.templates._inheritance import (
-    _deduplicate_merged_agent_names,
     collect_parent_variables,
+    deduplicate_merged_agent_names,
 )
 from synthorg.templates.errors import TemplateInheritanceError, TemplateRenderError
 from synthorg.templates.loader import load_template, load_template_file
@@ -355,22 +355,22 @@ class TestDeduplicateMergedAgentNames:
     def test_empty_agents(self) -> None:
         """No agents key is a no-op."""
         merged: dict[str, Any] = {}
-        _deduplicate_merged_agent_names(merged)
-        assert "agents" not in merged
+        result = deduplicate_merged_agent_names(merged)
+        assert "agents" not in result
 
     def test_empty_list(self) -> None:
         """Empty agents list is a no-op."""
         merged: dict[str, Any] = {"agents": []}
-        _deduplicate_merged_agent_names(merged)
-        assert merged["agents"] == []
+        result = deduplicate_merged_agent_names(merged)
+        assert result["agents"] == []
 
     def test_no_duplicates(self) -> None:
         """Unique names are unchanged."""
         merged: dict[str, Any] = {
             "agents": [{"name": "Alice"}, {"name": "Bob"}],
         }
-        _deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in merged["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in result["agents"]]
         assert names == ["Alice", "Bob"]
 
     def test_single_duplicate(self) -> None:
@@ -378,8 +378,8 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "Alice"}, {"name": "Alice"}],
         }
-        _deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in merged["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in result["agents"]]
         assert names == ["Alice", "Alice 2"]
 
     def test_triple_duplicate(self) -> None:
@@ -387,8 +387,8 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": "A"}, {"name": "A"}, {"name": "A"}],
         }
-        _deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in merged["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in result["agents"]]
         assert names == ["A", "A 2", "A 3"]
 
     def test_empty_names_skipped(self) -> None:
@@ -396,8 +396,8 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"name": ""}, {"name": ""}, {"name": "Alice"}],
         }
-        _deduplicate_merged_agent_names(merged)
-        names = [a["name"] for a in merged["agents"]]
+        result = deduplicate_merged_agent_names(merged)
+        names = [a["name"] for a in result["agents"]]
         assert names == ["", "", "Alice"]
 
     def test_missing_name_key_skipped(self) -> None:
@@ -405,9 +405,18 @@ class TestDeduplicateMergedAgentNames:
         merged: dict[str, Any] = {
             "agents": [{"role": "Dev"}, {"name": "Alice"}],
         }
-        _deduplicate_merged_agent_names(merged)
-        assert "name" not in merged["agents"][0]
-        assert merged["agents"][1]["name"] == "Alice"
+        result = deduplicate_merged_agent_names(merged)
+        assert "name" not in result["agents"][0]
+        assert result["agents"][1]["name"] == "Alice"
+
+    def test_does_not_mutate_input(self) -> None:
+        """Original dict is not mutated."""
+        merged: dict[str, Any] = {
+            "agents": [{"name": "Alice"}, {"name": "Alice"}],
+        }
+        result = deduplicate_merged_agent_names(merged)
+        assert result is not merged
+        assert [a["name"] for a in merged["agents"]] == ["Alice", "Alice"]
 
 
 # ── TestNamelessDepartmentMerge ─────────────────────────────────

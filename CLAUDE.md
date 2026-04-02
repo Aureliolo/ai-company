@@ -86,7 +86,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config)
+  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config), template packs (list + live-apply)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
   budget/         # Cost tracking, budget enforcement, quota degradation (including synchronous peek for routing-time selector hints), CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
@@ -101,7 +101,7 @@ src/synthorg/
   providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing, routing/ (strategy-based model routing, multi-provider resolution with ModelCandidateSelector protocol, QuotaAwareSelector, CheapestSelector)
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
-  templates/      # Pre-built company templates (inheritance tree), template merge engine, personality presets, preset discovery/CRUD service, model requirements, tier-to-model matching, locale-aware name generation, workflow config rendering
+  templates/      # Pre-built company templates (inheritance tree), template merge engine, personality presets, preset discovery/CRUD service, model requirements, tier-to-model matching, locale-aware name generation, workflow config rendering, pack_loader (additive team packs), packs/ (built-in pack YAMLs), uses_packs composition
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory, invocation tracking
 
 web/src/          # React 19 dashboard (see web/CLAUDE.md for full structure)

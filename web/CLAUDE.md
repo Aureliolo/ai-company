@@ -23,7 +23,7 @@ npm --prefix web run storybook:build       # Storybook production build
 
 ```text
 web/src/
-  api/            # Axios client, endpoint modules (19 domains), shared types
+  api/            # Axios client, endpoint modules (20 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact/project data composition)
   lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader
