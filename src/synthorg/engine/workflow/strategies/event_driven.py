@@ -401,7 +401,8 @@ class EventDrivenStrategy:
                 strategy="event_driven",
             )
             return self._debounce_default
-        return raw
+        result: int = raw
+        return result
 
     def _increment(self, event_name: str) -> None:
         """Increment the global event counter for the given event."""
