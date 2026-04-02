@@ -158,7 +158,7 @@ Hooks run automatically on `git commit` and `git push`. To run all hooks manuall
 uv run pre-commit run --all-files
 ```
 
-Key hooks include: ruff (lint + format), gitleaks (secret detection), commitizen (commit message format), mypy (type check, pre-push), and unit tests (pre-push). See [Developer Setup](../getting_started.md#pre-commit-hooks) for the full hook table.
+Key hooks include: ruff (lint + format), gitleaks (secret detection), commitizen (commit message format), mypy (affected modules, pre-push), and unit tests (affected modules, pre-push). See [Developer Setup](../getting_started.md#pre-commit-hooks) for the full hook table.
 
 If a hook fails:
 

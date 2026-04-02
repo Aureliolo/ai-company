@@ -50,7 +50,7 @@ Install the Git hooks so code quality checks run automatically on each commit:
 uv run pre-commit install
 ```
 
-This installs hooks for both `pre-commit` and `commit-msg` stages. To run all hooks manually against the entire codebase:
+This installs hooks for `pre-commit`, `commit-msg`, and `pre-push` stages. To run all hooks manually against the entire codebase:
 
 ```bash
 uv run pre-commit run --all-files
@@ -69,6 +69,10 @@ uv run pre-commit run --all-files
 | ruff (check + format) | Lint and format Python code |
 | gitleaks | Detect hardcoded secrets |
 | commitizen | Enforce conventional commit message format |
+| mypy (pre-push) | Type-check affected modules |
+| pytest (pre-push) | Run unit tests for affected modules |
+| golangci-lint + go vet (pre-push) | Lint/vet Go CLI code (conditional on `cli/**/*.go`) |
+| eslint-web (pre-push) | Lint web dashboard (conditional on `web/src/**`) |
 
 ## Quality Checks
 
