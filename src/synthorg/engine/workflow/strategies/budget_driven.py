@@ -404,11 +404,20 @@ class BudgetDrivenStrategy:
         Returns a deduplicated list of valid numeric thresholds,
         or ``None`` if the config is missing or entirely invalid.
         """
-        if not raw or not isinstance(raw, list):
+        if not raw:
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 ceremony=ceremony_name,
                 reason="no_budget_thresholds",
+                strategy="budget_driven",
+            )
+            return None
+        if not isinstance(raw, list):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                reason="invalid_budget_thresholds",
+                value=raw,
                 strategy="budget_driven",
             )
             return None
