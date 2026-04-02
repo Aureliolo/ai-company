@@ -49,12 +49,28 @@ class TestGenerateTrainingData:
 
 @pytest.mark.unit
 class TestMineHardNegatives:
+    async def test_rejects_blank_training_data_path(self) -> None:
+        with pytest.raises(ValueError, match="training_data_path"):
+            await mine_hard_negatives(
+                training_data_path="   ",
+                base_model="test-model",
+                output_dir="/output",
+            )
+
     async def test_rejects_blank_base_model(self) -> None:
         with pytest.raises(ValueError, match="base_model"):
             await mine_hard_negatives(
                 training_data_path="/data",
                 base_model="   ",
                 output_dir="/output",
+            )
+
+    async def test_rejects_blank_output_dir(self) -> None:
+        with pytest.raises(ValueError, match="output_dir"):
+            await mine_hard_negatives(
+                training_data_path="/data",
+                base_model="test-model",
+                output_dir="   ",
             )
 
     async def test_raises_not_implemented(self) -> None:
@@ -68,6 +84,30 @@ class TestMineHardNegatives:
 
 @pytest.mark.unit
 class TestContrastiveFineTune:
+    async def test_rejects_blank_training_data_path(self) -> None:
+        with pytest.raises(ValueError, match="training_data_path"):
+            await contrastive_fine_tune(
+                training_data_path="   ",
+                base_model="test-model",
+                output_dir="/output",
+            )
+
+    async def test_rejects_blank_base_model(self) -> None:
+        with pytest.raises(ValueError, match="base_model"):
+            await contrastive_fine_tune(
+                training_data_path="/data",
+                base_model="   ",
+                output_dir="/output",
+            )
+
+    async def test_rejects_blank_output_dir(self) -> None:
+        with pytest.raises(ValueError, match="output_dir"):
+            await contrastive_fine_tune(
+                training_data_path="/data",
+                base_model="test-model",
+                output_dir="   ",
+            )
+
     async def test_rejects_zero_epochs(self) -> None:
         with pytest.raises(ValueError, match="epochs"):
             await contrastive_fine_tune(

@@ -97,7 +97,7 @@ src/synthorg/
   core/           # Shared domain models, base classes, resilience config
   engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop, workspace/ (git worktree isolation, merge orchestration, semantic conflict detection), workflow/ (Kanban board, Agile sprints, WIP limits, sprint lifecycle, velocity tracking, ceremony scheduling, strategies/ (pluggable scheduling strategies), velocity_calculators/ (pluggable velocity calculators))
   hr/             # Hiring, firing, onboarding, agent registry, performance tracking, activity timeline, activity event types, cost event redaction, career history, promotion/demotion
-  memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
+  memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation, embedding/ (LMEB-ranked model selection, embedder config resolution, fine-tuning pipeline)
   persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project + preset repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, log shipping (syslog, HTTP), compressed archival, events/
   providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing, routing/ (strategy-based model routing, multi-provider resolution with ModelCandidateSelector protocol, QuotaAwareSelector, CheapestSelector)

@@ -376,6 +376,10 @@ Key findings:
         training_data_dir: NotBlankStr | None = None
     ```
 
+    When `enabled=True`, both `checkpoint_path` and `base_model` are required
+    (enforced by model validation).  Path traversal (`..`) and Windows-style
+    paths are rejected to prevent container path escapes.
+
     A future `FineTuningPipeline` protocol would formalize the four stages:
 
     ```python

@@ -40,6 +40,11 @@ def _require_not_blank(value: str, name: str) -> None:
     """Raise ``ValueError`` if *value* is blank."""
     if not value.strip():
         msg = f"{name} must not be blank"
+        logger.warning(
+            "memory.fine_tune.validation_failed",
+            field=name,
+            reason=msg,
+        )
         raise ValueError(msg)
 
 

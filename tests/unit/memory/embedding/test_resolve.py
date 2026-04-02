@@ -109,6 +109,27 @@ class TestResolveEmbedderConfig:
         assert result.provider == "yaml-prov"
         assert result.model == top.model_id
 
+    def test_settings_override_beats_yaml_override(self) -> None:
+        """When both settings and YAML override exist, settings wins."""
+        yaml_override = EmbedderOverrideConfig(
+            provider="yaml-prov",
+            model="yaml-model",
+            dims=768,
+        )
+        settings_override = EmbedderOverrideConfig(
+            provider="settings-prov",
+            model="settings-model",
+            dims=512,
+        )
+        config = CompanyMemoryConfig(embedder=yaml_override)
+        result = resolve_embedder_config(
+            config,
+            settings_override=settings_override,
+        )
+        assert result.provider == "settings-prov"
+        assert result.model == "settings-model"
+        assert result.dims == 512
+
     def test_default_provider_from_ranking(self) -> None:
         """When no provider override, provider defaults to model_id."""
         top = LMEB_RANKINGS[0]

@@ -13,6 +13,9 @@ from synthorg.memory.embedding.rankings import (
     DeploymentTier,
     EmbeddingModelRanking,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Provider preset names that indicate local/self-hosted deployment.
 _LOCAL_PRESETS: frozenset[str] = frozenset(

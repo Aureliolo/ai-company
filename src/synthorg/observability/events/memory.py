@@ -76,3 +76,10 @@ MEMORY_EMBEDDER_AUTO_SELECTED: Final[str] = "memory.embedder.auto_selected"
 MEMORY_EMBEDDER_AUTO_SELECT_FAILED: Final[str] = "memory.embedder.auto_select_failed"
 MEMORY_EMBEDDER_CHECKPOINT_ACTIVE: Final[str] = "memory.embedder.checkpoint_active"
 MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_missing"
+
+# ── Fine-tuning pipeline ─────────────────────────────────────────
+
+MEMORY_FINE_TUNE_REQUESTED: Final[str] = "memory.fine_tune.requested"
+MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
+    "memory.embedder.settings_read_failed"
+)

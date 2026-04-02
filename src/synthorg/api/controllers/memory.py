@@ -16,6 +16,10 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneStatus,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.memory import (
+    MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+    MEMORY_FINE_TUNE_REQUESTED,
+)
 
 logger = get_logger(__name__)
 
@@ -48,7 +52,7 @@ class MemoryAdminController(Controller):
         """
         _ = state  # reserved for future state access
         logger.info(
-            "memory.fine_tune.requested",
+            MEMORY_FINE_TUNE_REQUESTED,
             source_dir=data.source_dir,
             base_model=data.base_model,
         )
@@ -113,8 +117,11 @@ class MemoryAdminController(Controller):
                     "model": model_sv.value,
                     "dims": int(dims_sv.value) if dims_sv.value else None,
                 }
+            except MemoryError, RecursionError:
+                raise
             except Exception:
-                logger.debug(
-                    "memory.embedder.settings_read_failed",
+                logger.warning(
+                    MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
+                    exc_info=True,
                 )
         return ApiResponse(data=result)

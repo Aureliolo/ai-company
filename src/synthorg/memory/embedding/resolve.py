@@ -43,9 +43,9 @@ def _merge_override(
     if override is None:
         return auto_provider, auto_model, auto_dims
     return (
-        override.provider or auto_provider,
-        override.model or auto_model,
-        override.dims or auto_dims,
+        override.provider if override.provider is not None else auto_provider,
+        override.model if override.model is not None else auto_model,
+        override.dims if override.dims is not None else auto_dims,
     )
 
 

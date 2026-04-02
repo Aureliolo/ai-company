@@ -127,7 +127,14 @@ async def _collect_model_ids(app_state: AppState) -> tuple[str, ...]:
             str(model.id) for pc in configs.values() for model in pc.models
         ]
         return tuple(ids)
+    except MemoryError, RecursionError:
+        raise
     except Exception:
+        logger.debug(
+            SETUP_COMPLETE_CHECK_ERROR,
+            check="collect_model_ids",
+            exc_info=True,
+        )
         return ()
 
 
@@ -781,6 +788,7 @@ class SetupController(Controller):
             logger.warning(
                 SETUP_COMPLETE_CHECK_ERROR,
                 check="auto_select_embedder",
+                exc_info=True,
             )
 
         await settings_svc.set("api", "setup_complete", "true")
