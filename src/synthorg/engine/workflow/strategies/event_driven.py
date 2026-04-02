@@ -123,22 +123,7 @@ class EventDrivenStrategy:
             )
             return False
 
-        raw_debounce = config.get(_KEY_DEBOUNCE, self._debounce_default)
-        if (
-            isinstance(raw_debounce, bool)
-            or not isinstance(raw_debounce, int)
-            or raw_debounce < 1
-        ):
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                ceremony=ceremony.name,
-                reason="invalid_debounce",
-                value=raw_debounce,
-                fallback=self._debounce_default,
-                strategy="event_driven",
-            )
-            raw_debounce = self._debounce_default
-        debounce: int = raw_debounce
+        debounce = self._resolve_debounce(config, ceremony.name)
         global_count = self._event_counts.get(on_event, 0)
         last_fire_at = self._ceremony_last_fire_at.get(ceremony.name, 0)
         events_since_fire = global_count - last_fire_at
@@ -393,6 +378,25 @@ class EventDrivenStrategy:
                     raise ValueError(msg)
 
     # -- Private helpers -------------------------------------------------------
+
+    def _resolve_debounce(
+        self,
+        config: Mapping[str, Any],
+        ceremony_name: str,
+    ) -> int:
+        """Resolve debounce value with type validation."""
+        raw = config.get(_KEY_DEBOUNCE, self._debounce_default)
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                reason="invalid_debounce",
+                value=raw,
+                fallback=self._debounce_default,
+                strategy="event_driven",
+            )
+            return self._debounce_default
+        return raw
 
     def _increment(self, event_name: str) -> None:
         """Increment the global event counter for the given event."""
