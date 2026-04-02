@@ -147,6 +147,29 @@ export default function ComparisonTable({
     };
   }, [hiddenColumns, fullWidth]);
 
+  // -- Escape key to exit full-width mode --
+  useEffect(() => {
+    if (!fullWidth) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullWidth(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [fullWidth]);
+
+  // -- Close column picker on outside click --
+  const pickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showColumnPicker) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowColumnPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showColumnPicker]);
+
   // -- Visible dimensions --
   const visibleDimensions = useMemo(
     () => dimensions.filter((d) => !hiddenColumns.has(d.key)),
@@ -227,6 +250,9 @@ export default function ComparisonTable({
 
     return [...synthorg, ...rest];
   }, [filtered, sortBy, categoryMap]);
+
+  // -- Whether any filter is active (for SynthOrg "pinned" badge) --
+  const hasActiveFilter = !!(categoryFilter || licenseFilter || featureFilter || search.trim());
 
   // -- Handlers --
   const handleSort = useCallback(
@@ -390,7 +416,7 @@ export default function ComparisonTable({
               )}
             </button>
             {showColumnPicker && (
-              <div className="ct-column-picker" role="menu">
+              <div className="ct-column-picker" role="menu" ref={pickerRef}>
                 {dimensions.map((dim) => (
                   <label key={dim.key} className="ct-column-option">
                     <input
@@ -531,6 +557,11 @@ export default function ComparisonTable({
                               {comp.name}
                             </span>
                           )}
+                          {comp.is_synthorg && hasActiveFilter && (
+                            <span className="ct-pinned-badge" title="Always shown for comparison">
+                              pinned
+                            </span>
+                          )}
                         </div>
                       </th>
                       <td>
@@ -633,6 +664,11 @@ export default function ComparisonTable({
                 ) : (
                   <span className={`ct-card-name ${comp.is_synthorg ? "ct-name-synthorg" : ""}`}>
                     {comp.name}
+                  </span>
+                )}
+                {comp.is_synthorg && hasActiveFilter && (
+                  <span className="ct-pinned-badge" title="Always shown for comparison">
+                    pinned
                   </span>
                 )}
               </div>

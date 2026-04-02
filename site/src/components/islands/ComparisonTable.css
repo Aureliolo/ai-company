@@ -154,6 +154,18 @@
   color: var(--ct-accent);
 }
 
+.ct-pinned-badge {
+  font-size: 0.5625rem;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--ct-text-muted) 15%, transparent);
+  color: var(--ct-text-muted);
+  margin-left: 0.375rem;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Column picker dropdown */
 .ct-column-picker-wrap {
   position: relative;
@@ -631,5 +643,9 @@
   .ct-expand-btn svg,
   .ct-filter-btn {
     transition: none;
+  }
+
+  .ct-scroll-hint {
+    animation: none;
   }
 }

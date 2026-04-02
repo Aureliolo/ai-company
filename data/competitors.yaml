@@ -8,7 +8,6 @@
 #   full    - first-class, documented feature
 #   partial - exists but limited, community plugin, or experimental
 #   none    - not supported
-#   planned - on public roadmap but not shipped
 #
 # Pricing values:
 #   free             - no cost, permissive license (MIT, Apache-2.0)
@@ -80,13 +79,9 @@ categories:
     label: "Commercial Platform"
   - key: developer_tool
     label: "Developer Tool"
-  - key: research
-    label: "Research"
-  - key: protocol
-    label: "Protocol / Standard"
 
 # ---------------------------------------------------------------------------
-# Competitors (53 entries across 7 categories)
+# Competitors (47 entries across 5 categories)
 # ---------------------------------------------------------------------------
 
 competitors:
@@ -910,6 +905,32 @@ competitors:
       workflow_types: { support: partial, note: "Visual DAG flows with sequential/branching; no Kanban/Agile" }
       template_system: { support: partial, note: "Starter project JSONs; community templates; no inheritance" }
 
+  - name: "AutoGPT"
+    slug: autogpt
+    url: "https://agpt.co"
+    repo: "https://github.com/Significant-Gravitas/AutoGPT"
+    description: "Platform for building and deploying continuous AI agents via a low-code visual block editor"
+    license: "PolyForm-Shield-1.0.0"
+    language: "Python"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Agent Blocks for hierarchical graphs; no inter-agent negotiation" }
+      task_delegation: { support: partial, note: "Parent agents invoke sub-agents via Blocks; no dynamic routing" }
+      memory: { support: partial, note: "Short-term context; long-term via vector DB mentioned but limited evidence" }
+      tool_use: { support: full, note: "Block integrations, MCP server discovery, E2B sandbox, browser automation" }
+      human_in_loop: { support: partial, note: "CoPilot chat interaction; no formal approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Docker and E2B sandboxing; no RBAC or audit logging" }
+      observability: { support: partial, note: "Monitoring dashboard mentioned; limited detail" }
+      web_dashboard: { support: full, note: "React/TS frontend with visual builder, workflow editor, marketplace" }
+      cli: { support: partial, note: "Legacy Python CLI for classic agent; no platform CLI" }
+      production_ready: { support: partial, note: "Cloud platform beta (v0.6.53); self-hosting beta" }
+      workflow_types: { support: partial, note: "Visual block-based DAGs with trigger scheduling; no named methodologies" }
+      template_system: { support: partial, note: "Marketplace with pre-built agents; no inheritance" }
+
   # ==========================================================================
   # Commercial Platforms
   # ==========================================================================
@@ -1330,193 +1351,3 @@ competitors:
       production_ready: { support: partial, note: "v1.0-RC; Docker supported; Motia Cloud exists; framework pre-stable" }
       workflow_types: { support: full, note: "HTTP triggers, cron, queue async, state-change reactive, streaming, retry/DLQ" }
       template_system: { support: partial, note: "CLI starter templates (TS, Python, mixed); no runtime template packs" }
-
-  # ==========================================================================
-  # Research
-  # ==========================================================================
-
-  - name: "Generative Agents"
-    slug: generative-agents
-    url: "https://arxiv.org/abs/2304.03442"
-    repo: "https://github.com/joonspk-research/generative_agents"
-    description: "Stanford research framework simulating believable human behavior with memory streams and reflection"
-    license: "Apache-2.0"
-    language: "Python"
-    category: research
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: partial, note: "Agents have schedules, locations, relationships; no formal hierarchy" }
-      multi_agent: { support: full, note: "3 to 25+ agents in shared environment with emergent social interactions" }
-      task_delegation: { support: none, note: "" }
-      memory: { support: full, note: "Pioneered memory streams: time-weighted retrieval, importance scoring, reflection" }
-      tool_use: { support: none, note: "" }
-      human_in_loop: { support: none, note: "" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "" }
-      observability: { support: partial, note: "Debug mode; simulation replay/compression tools" }
-      web_dashboard: { support: partial, note: "Django browser interface for Smallville map visualization" }
-      cli: { support: none, note: "" }
-      production_ready: { support: none, note: "Research prototype; last meaningful commit July 2023" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: partial, note: "Two base simulation templates (3-agent, 25-agent) with CSV customization" }
-
-  - name: "AgentVerse"
-    slug: agentverse
-    url: "https://github.com/OpenBMB/AgentVerse"
-    repo: "https://github.com/OpenBMB/AgentVerse"
-    description: "Python framework for multi-agent task-solving and simulation with dynamic role assignment"
-    license: "Apache-2.0"
-    language: "Python"
-    category: research
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: full, note: "Task-solving and simulation frameworks with multiple collaborating agents" }
-      task_delegation: { support: partial, note: "Pipeline coordination (recruiter, solver, executor, evaluator); no flexible delegation" }
-      memory: { support: partial, note: "Chat history, summary, vector store; basic implementations" }
-      tool_use: { support: partial, note: "BMTools and ToolServer integration; limited to specific task types" }
-      human_in_loop: { support: none, note: "" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "" }
-      observability: { support: none, note: "" }
-      web_dashboard: { support: partial, note: "Gradio GUI for simulation visualization and playback" }
-      cli: { support: partial, note: "agentverse-simulation and agentverse-tasksolving CLI commands" }
-      production_ready: { support: none, note: "Research-oriented (ICLR 2024); last commit Sep 2024" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: partial, note: "Pre-built task scenarios; no user-facing template system" }
-
-  - name: "AutoGPT"
-    slug: autogpt
-    url: "https://agpt.co"
-    repo: "https://github.com/Significant-Gravitas/AutoGPT"
-    description: "Platform for building and deploying continuous AI agents via a low-code visual block editor"
-    license: "PolyForm-Shield-1.0.0"
-    language: "Python"
-    category: workflow_engine
-    pricing: open-core
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: partial, note: "Agent Blocks for hierarchical graphs; no inter-agent negotiation" }
-      task_delegation: { support: partial, note: "Parent agents invoke sub-agents via Blocks; no dynamic routing" }
-      memory: { support: partial, note: "Short-term context; long-term via vector DB mentioned but limited evidence" }
-      tool_use: { support: full, note: "Block integrations, MCP server discovery, E2B sandbox, browser automation" }
-      human_in_loop: { support: partial, note: "CoPilot chat interaction; no formal approval gates" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: partial, note: "Docker and E2B sandboxing; no RBAC or audit logging" }
-      observability: { support: partial, note: "Monitoring dashboard mentioned; limited detail" }
-      web_dashboard: { support: full, note: "React/TS frontend with visual builder, workflow editor, marketplace" }
-      cli: { support: partial, note: "Legacy Python CLI for classic agent; no platform CLI" }
-      production_ready: { support: partial, note: "Cloud platform beta (v0.6.53); self-hosting beta" }
-      workflow_types: { support: partial, note: "Visual block-based DAGs with trigger scheduling; no named methodologies" }
-      template_system: { support: partial, note: "Marketplace with pre-built agents; no inheritance" }
-
-  - name: "BabyAGI"
-    slug: babyagi
-    url: "https://babyagi.org/"
-    repo: "https://github.com/yoheinakajima/babyagi"
-    description: "Experimental self-building autonomous agent; rebooted as function-registration framework (functionz)"
-    license: "MIT"
-    language: "Python"
-    category: research
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: none, note: "" }
-      task_delegation: { support: partial, note: "Function dependency graphs; no delegation between agents" }
-      memory: { support: partial, note: "Original used vector DB; functionz stores function metadata and logs" }
-      tool_use: { support: partial, note: "Function registration with dependencies; no MCP or tool registry" }
-      human_in_loop: { support: none, note: "" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "README: not meant for production use" }
-      observability: { support: partial, note: "Function execution logging (inputs, outputs, timing)" }
-      web_dashboard: { support: partial, note: "Flask dashboard for function management and dependency viz" }
-      cli: { support: none, note: "" }
-      production_ready: { support: none, note: "README: not meant for production use" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: partial, note: "Pre-loaded function packs (ai_generator, code_writing)" }
-
-  # ==========================================================================
-  # Protocols / Standards
-  # ==========================================================================
-
-  - name: "Model Context Protocol"
-    slug: mcp
-    url: "https://modelcontextprotocol.io"
-    repo: "https://github.com/modelcontextprotocol/modelcontextprotocol"
-    description: "Open protocol standardizing how LLM applications connect to external data sources and tools"
-    license: "MIT"
-    language: "Protocol"
-    category: protocol
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: planned, note: "Agent-to-agent coordination on 2026 Q3 roadmap" }
-      task_delegation: { support: none, note: "" }
-      memory: { support: none, note: "" }
-      tool_use: { support: full, note: "Core primitive: servers expose tools via structured JSON-RPC" }
-      human_in_loop: { support: partial, note: "Tool invocations require user approval in compliant clients; elicitation primitive" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: partial, note: "OAuth 2.1 for HTTP transport; enterprise auth planned Q2 2026" }
-      observability: { support: partial, note: "Structured logging conventions; third-party monitoring integrations" }
-      web_dashboard: { support: none, note: "" }
-      cli: { support: none, note: "" }
-      production_ready: { support: partial, note: "Adopted by all major LLM providers; 97M monthly SDK downloads; enterprise features on roadmap" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: partial, note: "Prompts primitive for reusable prompt templates" }
-
-  - name: "Agent2Agent Protocol"
-    slug: a2a
-    url: "https://a2a-protocol.org"
-    repo: "https://github.com/a2aproject/A2A"
-    description: "Open protocol for communication and interoperability between opaque AI agents using JSON-RPC over HTTP"
-    license: "Apache-2.0"
-    language: "Protocol"
-    category: protocol
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: partial, note: "Defines agent discovery and communication; does not orchestrate" }
-      task_delegation: { support: partial, note: "Task object with lifecycle states; delegation logic left to implementations" }
-      memory: { support: none, note: "" }
-      tool_use: { support: none, note: "Treats agents as opaque; tool invocation out of scope (complementary to MCP)" }
-      human_in_loop: { support: partial, note: "input-required task state for pausing for human input" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: partial, note: "OpenAPI auth schemes, HTTPS/TLS required; authorization left to implementations" }
-      observability: { support: partial, note: "Recommends trace IDs and OTEL; implementation-side guidance" }
-      web_dashboard: { support: none, note: "" }
-      cli: { support: none, note: "" }
-      production_ready: { support: partial, note: "v0.3 spec; official SDKs in 5 languages; used in Google Cloud Agent Engine; pre-1.0" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: none, note: "" }
-
-  - name: "Agent Protocol"
-    slug: agent-protocol
-    url: "https://agentprotocol.ai/"
-    repo: "https://github.com/agi-inc/agent-protocol"
-    description: "OpenAPI-based REST API spec for a common HTTP interface across AI agents"
-    license: "MIT"
-    language: "Protocol"
-    category: protocol
-    pricing: free
-    self_hosted: "true"
-    features:
-      org_structure: { support: none, note: "" }
-      multi_agent: { support: none, note: "" }
-      task_delegation: { support: partial, note: "Task creation and step execution endpoints; no multi-level delegation" }
-      memory: { support: none, note: "" }
-      tool_use: { support: none, note: "" }
-      human_in_loop: { support: none, note: "" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "User auth listed as future roadmap" }
-      observability: { support: none, note: "" }
-      web_dashboard: { support: none, note: "" }
-      cli: { support: none, note: "" }
-      production_ready: { support: partial, note: "v1 spec stable; Python/JS SDKs; last release April 2024; appears stalled" }
-      workflow_types: { support: none, note: "" }
-      template_system: { support: none, note: "" }
