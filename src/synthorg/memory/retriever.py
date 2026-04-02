@@ -378,8 +378,22 @@ class ContextInjectionStrategy:
         dense_personal, dense_shared = dense_task.result()
         sparse_personal, sparse_shared = sparse_task.result()
 
-        dense_list = dense_personal + dense_shared
-        sparse_list = sparse_personal + sparse_shared
+        # Merge personal + shared by relevance score so RRF rank
+        # reflects relevance, not personal-before-shared ordering.
+        dense_list = tuple(
+            sorted(
+                dense_personal + dense_shared,
+                key=lambda e: e.relevance_score or 0.0,
+                reverse=True,
+            )
+        )
+        sparse_list = tuple(
+            sorted(
+                sparse_personal + sparse_shared,
+                key=lambda e: e.relevance_score or 0.0,
+                reverse=True,
+            )
+        )
 
         if not dense_list and not sparse_list:
             return ()
