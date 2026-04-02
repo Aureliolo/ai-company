@@ -569,6 +569,32 @@ class FakePersonalityPresetRepository:
         return len(self._presets)
 
 
+class FakeWorkflowDefinitionRepository:
+    """In-memory workflow definition repository for tests."""
+
+    def __init__(self) -> None:
+        self._definitions: dict[str, Any] = {}
+
+    async def save(self, definition: Any) -> None:
+        self._definitions[definition.id] = definition
+
+    async def get(self, definition_id: str) -> Any | None:
+        return self._definitions.get(definition_id)
+
+    async def list_definitions(
+        self,
+        *,
+        workflow_type: Any = None,
+    ) -> tuple[Any, ...]:
+        result = list(self._definitions.values())
+        if workflow_type is not None:
+            result = [d for d in result if d.workflow_type == workflow_type]
+        return tuple(result)
+
+    async def delete(self, definition_id: str) -> bool:
+        return self._definitions.pop(definition_id, None) is not None
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -576,6 +602,7 @@ class FakePersistenceBackend:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._custom_presets = FakePersonalityPresetRepository()
+        self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -682,6 +709,10 @@ class FakePersistenceBackend:
     @property
     def custom_presets(self) -> FakePersonalityPresetRepository:
         return self._custom_presets
+
+    @property
+    def workflow_definitions(self) -> FakeWorkflowDefinitionRepository:
+        return self._workflow_definitions
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

@@ -365,6 +365,24 @@ class _FakePersonalityPresetRepository:
         return 0
 
 
+class _FakeWorkflowDefinitionRepository:
+    async def save(self, definition: object) -> None:
+        pass
+
+    async def get(self, definition_id: NotBlankStr) -> object | None:
+        return None
+
+    async def list_definitions(
+        self,
+        *,
+        workflow_type: object = None,
+    ) -> tuple[()]:
+        return ()
+
+    async def delete(self, definition_id: NotBlankStr) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -453,6 +471,10 @@ class _FakeBackend:
     @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
+
+    @property
+    def workflow_definitions(self) -> _FakeWorkflowDefinitionRepository:
+        return _FakeWorkflowDefinitionRepository()
 
     async def get_setting(self, key: str) -> str | None:
         return None

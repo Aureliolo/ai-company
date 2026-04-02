@@ -48,11 +48,13 @@ def _wf(
         "created_by": "test",
     }
     defaults.update(kwargs)
-    return WorkflowDefinition(nodes=nodes, edges=edges, **defaults)
+    return WorkflowDefinition.model_validate(
+        {"nodes": nodes, "edges": edges, **defaults},
+    )
 
 
-def _parse_yaml(yaml_str: str) -> dict:
-    return yaml.safe_load(yaml_str)
+def _parse_yaml(yaml_str: str) -> dict[str, object]:
+    return yaml.safe_load(yaml_str)  # type: ignore[no-any-return]
 
 
 # ── Sequential pipeline ────────────────────────────────────────

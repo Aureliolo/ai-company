@@ -30,6 +30,7 @@ _EXPECTED_TABLES = {
     "artifacts",
     "projects",
     "custom_presets",
+    "workflow_definitions",
 }
 
 _EXPECTED_INDEXES = {
