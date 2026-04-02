@@ -653,6 +653,10 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_BRIDGE_CREATED` | Ceremony config bridged to meeting type |
 | `SPRINT_CEREMONY_POLICY_RESOLVED` | 3-level policy resolution completed |
 | `SPRINT_CEREMONY_STRATEGY_CHANGED` | Strategy change detected between sprints |
+| `VELOCITY_TASK_DRIVEN_NO_TASK_COUNT` | VelocityRecord has no task_completion_count for task-driven calculation |
+| `VELOCITY_CALENDAR_NO_DURATION` | CalendarVelocityCalculator received a record with zero duration_days (defensive) |
+| `VELOCITY_MULTI_NO_TASK_COUNT` | MultiDimensionalVelocityCalculator: no task_completion_count |
+| `VELOCITY_MULTI_NO_DURATION` | MultiDimensionalVelocityCalculator received a record with zero duration_days (defensive) |
 
 ---
 

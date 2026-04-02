@@ -190,6 +190,14 @@ def evaluate_task_trigger(  # noqa: PLR0911
                 value=raw_threshold,
             )
             return False
+        if raw_threshold <= 0 or raw_threshold > MAX_SPRINT_PCT:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                trigger=trigger,
+                reason="invalid_sprint_percentage_bounds",
+                value=raw_threshold,
+            )
+            return False
         return has_tasks and pct >= (raw_threshold / MAX_SPRINT_PCT)
 
     logger.warning(

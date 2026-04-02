@@ -539,24 +539,19 @@ class TestValidateStrategyConfig:
             strategy.validate_strategy_config({"every_n_completions": 0})
 
     @pytest.mark.unit
-    def test_invalid_sprint_percentage_over_100(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param(0, id="zero"),
+            pytest.param(-10, id="negative"),
+            pytest.param(101, id="over_100"),
+        ],
+    )
+    def test_invalid_sprint_percentage(self, value: int) -> None:
+        """Out-of-range sprint_percentage values are rejected."""
         strategy = HybridStrategy()
         with pytest.raises(ValueError, match="between"):
-            strategy.validate_strategy_config({"sprint_percentage": 101})
-
-    @pytest.mark.unit
-    def test_invalid_sprint_percentage_zero(self) -> None:
-        """Zero sprint_percentage is rejected (must be > 0)."""
-        strategy = HybridStrategy()
-        with pytest.raises(ValueError, match="between"):
-            strategy.validate_strategy_config({"sprint_percentage": 0})
-
-    @pytest.mark.unit
-    def test_invalid_sprint_percentage_negative(self) -> None:
-        """Negative sprint_percentage is rejected."""
-        strategy = HybridStrategy()
-        with pytest.raises(ValueError, match="between"):
-            strategy.validate_strategy_config({"sprint_percentage": -10})
+            strategy.validate_strategy_config({"sprint_percentage": value})
 
     @pytest.mark.unit
     def test_invalid_duration_days_range(self) -> None:
@@ -604,7 +599,7 @@ class TestLifecycleHooks:
 
         # Fire to create tracked state.
         ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
-        strategy.should_fire_ceremony(ceremony, sprint, ctx)
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
 
         # Activate new sprint.
         await strategy.on_sprint_activated(sprint, SprintConfig())
@@ -619,7 +614,7 @@ class TestLifecycleHooks:
         sprint = make_sprint()
 
         ctx = make_context(elapsed_seconds=SECONDS_PER_DAY)
-        strategy.should_fire_ceremony(ceremony, sprint, ctx)
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
 
         await strategy.on_sprint_deactivated()
 
