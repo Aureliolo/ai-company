@@ -361,54 +361,57 @@ class EventDrivenStrategy:
             )
             raise ValueError(msg)
 
-        on_event = config.get(_KEY_ON_EVENT)
-        if on_event is not None and (not isinstance(on_event, str) or not on_event):
-            msg = f"'{_KEY_ON_EVENT}' must be a non-empty string"
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="event_driven",
-                key=_KEY_ON_EVENT,
-                value=on_event,
-            )
-            raise ValueError(msg)
-
-        transition_event = config.get(_KEY_TRANSITION_EVENT)
-        if transition_event is not None and (
-            not isinstance(transition_event, str) or not transition_event
-        ):
-            msg = f"'{_KEY_TRANSITION_EVENT}' must be a non-empty string"
-            logger.warning(
-                SPRINT_STRATEGY_CONFIG_INVALID,
-                strategy="event_driven",
-                key=_KEY_TRANSITION_EVENT,
-                value=transition_event,
-            )
-            raise ValueError(msg)
-
-        for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
-            value = config.get(key)
-            if value is not None:
-                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                    msg = f"'{key}' must be a positive integer, got {value!r}"
-                    logger.warning(
-                        SPRINT_STRATEGY_CONFIG_INVALID,
-                        strategy="event_driven",
-                        key=key,
-                        value=value,
-                    )
-                    raise ValueError(msg)
-                if value > _MAX_DEBOUNCE:
-                    msg = f"'{key}' must be <= {_MAX_DEBOUNCE}, got {value!r}"
-                    logger.warning(
-                        SPRINT_STRATEGY_CONFIG_INVALID,
-                        strategy="event_driven",
-                        key=key,
-                        value=value,
-                        limit=_MAX_DEBOUNCE,
-                    )
-                    raise ValueError(msg)
+        self._validate_string_key(config, _KEY_ON_EVENT)
+        self._validate_string_key(config, _KEY_TRANSITION_EVENT)
+        self._validate_debounce_keys(config)
 
     # -- Private helpers -------------------------------------------------------
+
+    @staticmethod
+    def _validate_string_key(
+        config: Mapping[str, Any],
+        key: str,
+    ) -> None:
+        """Validate that *key* is a non-empty string if present."""
+        value = config.get(key)
+        if value is not None and (not isinstance(value, str) or not value):
+            msg = f"'{key}' must be a non-empty string"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="event_driven",
+                key=key,
+                value=value,
+            )
+            raise ValueError(msg)
+
+    @staticmethod
+    def _validate_debounce_keys(
+        config: Mapping[str, Any],
+    ) -> None:
+        """Validate debounce and debounce_default if present."""
+        for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
+            value = config.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                msg = f"'{key}' must be a positive integer, got {value!r}"
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="event_driven",
+                    key=key,
+                    value=value,
+                )
+                raise ValueError(msg)
+            if value > _MAX_DEBOUNCE:
+                msg = f"'{key}' must be <= {_MAX_DEBOUNCE}, got {value!r}"
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="event_driven",
+                    key=key,
+                    value=value,
+                    limit=_MAX_DEBOUNCE,
+                )
+                raise ValueError(msg)
 
     def _resolve_debounce(
         self,
