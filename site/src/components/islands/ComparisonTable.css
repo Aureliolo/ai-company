@@ -270,6 +270,18 @@
   font-size: 0.8125rem;
 }
 
+.ct-detail-description {
+  grid-column: 1 / -1;
+}
+
+.ct-repo-link {
+  color: var(--ct-accent);
+}
+
+.ct-card-name-link {
+  text-decoration: none;
+}
+
 .ct-detail-item {
   display: flex;
   flex-direction: column;

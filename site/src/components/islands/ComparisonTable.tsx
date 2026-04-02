@@ -443,7 +443,7 @@ export default function ComparisonTable({
                     >
                       <td colSpan={4 + dimensions.length}>
                         <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
-                          <div className="ct-detail-item" style={{ gridColumn: "1 / -1" }}>
+                          <div className="ct-detail-item ct-detail-description">
                             <span className="ct-detail-label">Description</span>
                             <span className="ct-detail-value">
                               {comp.description}
@@ -454,7 +454,7 @@ export default function ComparisonTable({
                                     href={comp.repo}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    style={{ color: "var(--ct-accent)" }}
+                                    className="ct-repo-link"
                                   >
                                     Repository
                                   </a>
@@ -500,10 +500,9 @@ export default function ComparisonTable({
                 {comp.url ? (
                   <a
                     href={comp.url}
-                    className={`ct-card-name ${comp.is_synthorg ? "ct-name-synthorg" : ""}`}
+                    className={`ct-card-name ct-card-name-link ${comp.is_synthorg ? "ct-name-synthorg" : ""}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ textDecoration: "none" }}
                   >
                     {comp.name}
                   </a>
