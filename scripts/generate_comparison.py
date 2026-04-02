@@ -29,6 +29,22 @@ SUPPORT_ICONS = {
     "planned": "\u23f2",  # timer clock
 }
 
+# Pricing display labels
+PRICING_LABELS = {
+    "free": "Free",
+    "free-restrictive": "Free (copyleft)",
+    "depends": "Depends",
+    "open-core": "Open-core",
+    "paid": "Paid",
+}
+
+# Self-hosted display labels
+SELF_HOSTED_LABELS = {
+    "true": "\u2714",
+    "false": "-",
+    "partial": "~",
+}
+
 # Thematic groupings for splitting the table
 TABLE_GROUPS = [
     {
@@ -207,6 +223,10 @@ def _competitor_row(
 
     cat_label = _category_label(categories, comp.get("category", ""))
     license_val = comp.get("license", "")
+    pricing_raw = comp.get("pricing", "")
+    pricing_val = PRICING_LABELS.get(pricing_raw, pricing_raw)
+    self_hosted_raw = comp.get("self_hosted", "")
+    self_hosted_val = SELF_HOSTED_LABELS.get(self_hosted_raw, self_hosted_raw)
     features = comp.get("features", {})
 
     dim_cells = []
@@ -216,7 +236,8 @@ def _competitor_row(
         dim_cells.append(_support_icon(support))
 
     return (
-        f"| {name_cell} | {cat_label} | {license_val} | " + " | ".join(dim_cells) + " |"
+        f"| {name_cell} | {cat_label} | {license_val}"
+        f" | {pricing_val} | {self_hosted_val} | " + " | ".join(dim_cells) + " |"
     )
 
 
@@ -232,9 +253,13 @@ def _thematic_tables(
         lines.append("")
 
         dim_headers = [_dimension_label(dimensions, k) for k in group["keys"]]
-        header = "| Framework | Category | License | " + " | ".join(dim_headers) + " |"
+        header = (
+            "| Framework | Category | License | Pricing | Self-Hosted | "
+            + " | ".join(dim_headers)
+            + " |"
+        )
         separator = (
-            "|:----------|:---------|:--------|"
+            "|:----------|:---------|:--------|:--------|:-----------:|"
             + "|".join([":---:" for _ in group["keys"]])
             + "|"
         )

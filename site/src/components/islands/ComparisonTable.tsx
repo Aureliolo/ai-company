@@ -30,6 +30,8 @@ export interface Competitor {
   license: string;
   language: string;
   category: string;
+  pricing?: string;
+  self_hosted?: string;
   is_synthorg?: boolean;
   features: Record<string, FeatureEntry>;
 }
