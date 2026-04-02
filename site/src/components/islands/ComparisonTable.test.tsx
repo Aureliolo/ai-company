@@ -155,7 +155,8 @@ describe("ComparisonTable", () => {
     renderTable();
     const table = screen.getByTestId("ct-table-wrap");
     const sortBtn = within(table).getByText("Framework");
-    const header = sortBtn.closest("th")!;
+    const header = sortBtn.closest("th");
+    expect(header).not.toBeNull();
     expect(header).toHaveAttribute("aria-sort", "ascending");
     fireEvent.click(sortBtn);
     expect(header).toHaveAttribute("aria-sort", "descending");

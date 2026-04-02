@@ -520,13 +520,7 @@ export default function ComparisonTable({
                 <span className="ct-license">{comp.license}</span>
               </div>
             </div>
-            <p
-              style={{
-                fontSize: "0.8125rem",
-                color: "var(--ct-text-secondary)",
-                marginBottom: "0.75rem",
-              }}
-            >
+            <p className="ct-card-description">
               {comp.description}
             </p>
             <div className="ct-card-grid">

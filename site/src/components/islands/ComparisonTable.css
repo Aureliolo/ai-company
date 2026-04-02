@@ -6,8 +6,8 @@
   --ct-support-planned: #38bdf8;
   --ct-bg-surface: #0f0f1a;
   --ct-bg-row-hover: #13131f;
-  --ct-bg-synthorg: rgba(124, 58, 237, 0.08);
-  --ct-bg-expanded: rgba(124, 58, 237, 0.04);
+  --ct-bg-synthorg: color-mix(in srgb, var(--ct-accent) 8%, transparent);
+  --ct-bg-expanded: color-mix(in srgb, var(--ct-accent) 4%, transparent);
   --ct-text-primary: #e2e8f0;
   --ct-text-secondary: #94a3b8;
   --ct-text-muted: #64748b;
@@ -57,7 +57,7 @@
 .ct-filter-btn[data-active="true"] {
   border-color: var(--ct-accent);
   color: var(--ct-accent);
-  background: rgba(124, 58, 237, 0.1);
+  background: color-mix(in srgb, var(--ct-accent) 10%, transparent);
 }
 
 .ct-search {
@@ -187,7 +187,7 @@
 }
 
 .ct-table tr[data-synthorg="true"]:hover td {
-  background: rgba(124, 58, 237, 0.12);
+  background: color-mix(in srgb, var(--ct-accent) 12%, transparent);
 }
 
 /* Support icons */
@@ -331,7 +331,7 @@
 }
 
 .ct-card[data-synthorg="true"] {
-  border-color: rgba(124, 58, 237, 0.3);
+  border-color: color-mix(in srgb, var(--ct-accent) 30%, transparent);
   background: var(--ct-bg-synthorg);
 }
 
@@ -352,6 +352,12 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.ct-card-description {
+  font-size: 0.8125rem;
+  color: var(--ct-text-secondary);
+  margin-bottom: 0.75rem;
 }
 
 .ct-card-grid {
