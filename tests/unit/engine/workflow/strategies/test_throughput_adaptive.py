@@ -537,25 +537,27 @@ class TestValidateStrategyConfig:
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
-        ("config", "exc_type", "match"),
+        ("config", "match"),
         [
-            ({"velocity_drop_threshold_pct": "abc"}, TypeError, "numeric"),
-            ({"velocity_drop_threshold_pct": True}, TypeError, "numeric"),
-            ({"velocity_drop_threshold_pct": 0}, ValueError, "between 1.0 and 100.0"),
-            ({"velocity_drop_threshold_pct": 101}, ValueError, "between 1.0 and 100.0"),
-            ({"velocity_drop_threshold_pct": -5}, ValueError, "between 1.0 and 100.0"),
-            ({"velocity_spike_threshold_pct": "abc"}, TypeError, "numeric"),
-            ({"velocity_spike_threshold_pct": True}, TypeError, "numeric"),
-            ({"velocity_spike_threshold_pct": 0}, ValueError, "between 1.0 and 100.0"),
-            ({"velocity_spike_threshold_pct": 101}, ValueError, "between 1.0 and 100"),
-            ({"measurement_window_tasks": 1}, ValueError, "between 2 and 100,"),
-            ({"measurement_window_tasks": 101}, ValueError, "between 2 and 100,"),
-            ({"measurement_window_tasks": 3.5}, TypeError, "integer"),
-            ({"measurement_window_tasks": True}, TypeError, "integer"),
-            ({"on_drop": 1}, TypeError, "boolean"),
-            ({"on_drop": "true"}, TypeError, "boolean"),
-            ({"on_spike": 0}, TypeError, "boolean"),
-            ({"on_spike": "false"}, TypeError, "boolean"),
+            ({"velocity_drop_threshold_pct": "abc"}, "numeric"),
+            ({"velocity_drop_threshold_pct": True}, "numeric"),
+            ({"velocity_drop_threshold_pct": 0}, "between 1.0 and 100.0"),
+            ({"velocity_drop_threshold_pct": 101}, "between 1.0 and 100.0"),
+            ({"velocity_drop_threshold_pct": -5}, "between 1.0 and 100.0"),
+            ({"velocity_spike_threshold_pct": "abc"}, "numeric"),
+            ({"velocity_spike_threshold_pct": True}, "numeric"),
+            ({"velocity_spike_threshold_pct": 0}, "between 1.0 and 100.0"),
+            ({"velocity_spike_threshold_pct": 101}, "between 1.0 and 100"),
+            ({"measurement_window_tasks": 1}, "between 2 and 100,"),
+            ({"measurement_window_tasks": 101}, "between 2 and 100,"),
+            ({"measurement_window_tasks": 3.5}, "integer"),
+            ({"measurement_window_tasks": True}, "integer"),
+            ({"on_drop": 1}, "boolean"),
+            ({"on_drop": "true"}, "boolean"),
+            ({"on_spike": 0}, "boolean"),
+            ({"on_spike": "false"}, "boolean"),
+            ({"velocity_drop_threshold_pct": float("nan")}, "between 1.0 and 100"),
+            ({"velocity_drop_threshold_pct": float("inf")}, "between 1.0 and 100"),
         ],
         ids=[
             "drop_string",
@@ -575,16 +577,17 @@ class TestValidateStrategyConfig:
             "on_drop_string",
             "on_spike_int",
             "on_spike_string",
+            "drop_nan",
+            "drop_inf",
         ],
     )
     def test_invalid_config_rejected(
         self,
         config: dict[str, object],
-        exc_type: type[Exception],
         match: str,
     ) -> None:
         strategy = ThroughputAdaptiveStrategy()
-        with pytest.raises(exc_type, match=match):
+        with pytest.raises(ValueError, match=match):
             strategy.validate_strategy_config(config)
 
     @pytest.mark.unit
@@ -597,3 +600,141 @@ class TestValidateStrategyConfig:
                 "velocity_spike_threshold_pct": 75.3,
             }
         )
+
+
+class TestEdgeTriggering:
+    """Edge-triggered anomaly detection."""
+
+    @pytest.mark.unit
+    async def test_sustained_drop_fires_once(self) -> None:
+        """Sustained velocity drop fires ceremony only on first detection."""
+        strategy = ThroughputAdaptiveStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(drop_pct=30, window_size=3)
+        await strategy.on_sprint_activated(sprint, config)
+
+        ceremony = _make_ceremony()
+        ctx = make_context()
+
+        # Establish baseline + cause drop
+        with patch("time.monotonic") as mock_mono:
+            for i in range(3):
+                mock_mono.return_value = 100.0 + i * 10.0
+                await strategy.on_task_completed(sprint, f"t-{i}", 3.0, ctx)
+            for i in range(3):
+                mock_mono.return_value = 200.0 + i * 50.0
+                await strategy.on_task_completed(sprint, f"t-{i + 3}", 3.0, ctx)
+
+        # First evaluation fires
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        # Sustained drop -- should NOT fire again
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+    @pytest.mark.unit
+    async def test_recovery_then_new_drop_refires(self) -> None:
+        """After recovery from drop, a new drop fires again."""
+        strategy = ThroughputAdaptiveStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(drop_pct=30, window_size=3)
+        await strategy.on_sprint_activated(sprint, config)
+
+        ceremony = _make_ceremony()
+        ctx = make_context()
+
+        with patch("time.monotonic") as mock_mono:
+            # Establish baseline: 3 tasks in 20s
+            for i in range(3):
+                mock_mono.return_value = 100.0 + i * 10.0
+                await strategy.on_task_completed(sprint, f"t-{i}", 3.0, ctx)
+
+            # Drop: 3 tasks in 150s
+            for i in range(3):
+                mock_mono.return_value = 200.0 + i * 50.0
+                await strategy.on_task_completed(sprint, f"t-{i + 3}", 3.0, ctx)
+
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+        with patch("time.monotonic") as mock_mono:
+            # Recover: 3 tasks in 20s (normal pace)
+            for i in range(3):
+                mock_mono.return_value = 400.0 + i * 10.0
+                await strategy.on_task_completed(sprint, f"t-{i + 6}", 3.0, ctx)
+
+        # Rate recovered -- no longer in anomaly
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+        with patch("time.monotonic") as mock_mono:
+            # New drop: 3 tasks in 150s
+            for i in range(3):
+                mock_mono.return_value = 500.0 + i * 50.0
+                await strategy.on_task_completed(sprint, f"t-{i + 9}", 3.0, ctx)
+
+        # New drop detected -- fires again
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+
+    @pytest.mark.unit
+    async def test_sustained_spike_fires_once(self) -> None:
+        """Sustained velocity spike fires ceremony only on first detection."""
+        strategy = ThroughputAdaptiveStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(spike_pct=50, window_size=3)
+        await strategy.on_sprint_activated(sprint, config)
+
+        ceremony = _make_ceremony(on_spike=True, on_drop=False)
+        ctx = make_context()
+
+        with patch("time.monotonic") as mock_mono:
+            for i in range(3):
+                mock_mono.return_value = 100.0 + i * 10.0
+                await strategy.on_task_completed(sprint, f"t-{i}", 3.0, ctx)
+            for i in range(3):
+                mock_mono.return_value = 200.0 + i * 3.33
+                await strategy.on_task_completed(sprint, f"t-{i + 3}", 3.0, ctx)
+
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+
+class TestBoundaryInputs:
+    """Boundary input tests for coverage gaps."""
+
+    @pytest.mark.unit
+    async def test_resolve_bool_fallback_in_ceremony_eval(self) -> None:
+        """Non-bool on_drop value falls back to True default."""
+        strategy = ThroughputAdaptiveStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(drop_pct=30, window_size=3)
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Non-bool on_drop -- should fall back to True
+        ceremony = SprintCeremonyConfig(
+            name="standup",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            policy_override=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.THROUGHPUT_ADAPTIVE,
+                strategy_config={"on_drop": "yes"},
+            ),
+        )
+        ctx = make_context()
+
+        with patch("time.monotonic") as mock_mono:
+            for i in range(3):
+                mock_mono.return_value = 100.0 + i * 10.0
+                await strategy.on_task_completed(sprint, f"t-{i}", 3.0, ctx)
+            for i in range(3):
+                mock_mono.return_value = 200.0 + i * 50.0
+                await strategy.on_task_completed(sprint, f"t-{i + 3}", 3.0, ctx)
+
+        # on_drop="yes" falls back to default True -- fires on drop
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+
+    @pytest.mark.unit
+    def test_default_transition_threshold_fires(self) -> None:
+        """Default transition_threshold (None -> 1.0) works at 100%."""
+        strategy = ThroughputAdaptiveStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()  # transition_threshold defaults to None
+        ctx = make_context(sprint_pct=1.0, total_tasks=10)
+        result = strategy.should_transition_sprint(sprint, config, ctx)
+        assert result is SprintStatus.IN_REVIEW

@@ -441,22 +441,21 @@ class TestValidateStrategyConfig:
 
     @pytest.mark.unit
     @pytest.mark.parametrize(
-        ("config", "exc_type", "match"),
+        ("config", "match"),
         [
-            ({"on_external": ""}, ValueError, "non-empty string"),
-            ({"on_external": 123}, ValueError, "non-empty string"),
-            ({"on_external": True}, ValueError, "non-empty string"),
-            ({"on_external": "x" * 200}, ValueError, "<= 128"),
-            ({"transition_event": ""}, ValueError, "non-empty string"),
-            ({"transition_event": 42}, ValueError, "non-empty string"),
-            ({"transition_event": "x" * 200}, ValueError, "<= 128"),
-            ({"sources": "not_a_list"}, TypeError, "must be a list"),
-            ({"sources": [42]}, TypeError, "must be a dict"),
-            ({"sources": [{"no_type": "x"}]}, ValueError, "must have a 'type'"),
-            ({"sources": [{"type": "invalid"}]}, ValueError, "must be one of"),
+            ({"on_external": ""}, "non-empty string"),
+            ({"on_external": 123}, "non-empty string"),
+            ({"on_external": True}, "non-empty string"),
+            ({"on_external": "x" * 200}, "<= 128"),
+            ({"transition_event": ""}, "non-empty string"),
+            ({"transition_event": 42}, "non-empty string"),
+            ({"transition_event": "x" * 200}, "<= 128"),
+            ({"sources": "not_a_list"}, "must be a list"),
+            ({"sources": [42]}, "must be a dict"),
+            ({"sources": [{"no_type": "x"}]}, "must have a 'type'"),
+            ({"sources": [{"type": "invalid"}]}, "must be one of"),
             (
                 {"sources": [{"type": "webhook"}] * 21},
-                ValueError,
                 "at most 20",
             ),
         ],
@@ -478,9 +477,122 @@ class TestValidateStrategyConfig:
     def test_invalid_config_rejected(
         self,
         config: dict[str, object],
-        exc_type: type[Exception],
         match: str,
     ) -> None:
         strategy = ExternalTriggerStrategy()
-        with pytest.raises(exc_type, match=match):
+        with pytest.raises(ValueError, match=match):
             strategy.validate_strategy_config(config)
+
+
+class TestEdgeTriggering:
+    """Edge-triggered matching semantics."""
+
+    @pytest.mark.unit
+    async def test_buffered_event_fires_once_per_occurrence(self) -> None:
+        """Same buffered event does not re-fire on repeated evaluation."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(sprint, "pr_merged", {})
+
+        ceremony = _make_ceremony(on_external="pr_merged")
+        ctx = make_context()
+
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        # Second evaluation without new event -- should NOT fire
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+    @pytest.mark.unit
+    async def test_new_occurrence_re_enables_firing(self) -> None:
+        """A new on_external_event call re-enables the ceremony."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(sprint, "pr_merged", {})
+        ceremony = _make_ceremony(on_external="pr_merged")
+        ctx = make_context()
+
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+        # New occurrence
+        await strategy.on_external_event(sprint, "pr_merged", {})
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
+    @pytest.mark.unit
+    async def test_context_events_always_fire(self) -> None:
+        """Context events are one-shot by nature -- always fire."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        ceremony = _make_ceremony(on_external="pr_merged")
+        ctx = make_context(external_events=("pr_merged",))
+
+        # Context events fire every time they appear
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+
+    @pytest.mark.unit
+    async def test_different_ceremonies_fire_independently(self) -> None:
+        """Two ceremonies matching the same event fire independently."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(sprint, "pr_merged", {})
+
+        ceremony_a = _make_ceremony(name="review", on_external="pr_merged")
+        ceremony_b = _make_ceremony(name="retro", on_external="pr_merged")
+        ctx = make_context()
+
+        assert strategy.should_fire_ceremony(ceremony_a, sprint, ctx) is True
+        assert strategy.should_fire_ceremony(ceremony_b, sprint, ctx) is True
+        # Both consumed -- neither fires again
+        assert strategy.should_fire_ceremony(ceremony_a, sprint, ctx) is False
+        assert strategy.should_fire_ceremony(ceremony_b, sprint, ctx) is False
+
+
+class TestBoundaryInputs:
+    """Boundary input tests for coverage gaps."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "event_name",
+        [None, 123, ["list"]],
+        ids=["none", "int", "list"],
+    )
+    async def test_on_external_event_rejects_non_string(
+        self,
+        event_name: object,
+    ) -> None:
+        """Non-string event names are rejected without buffering."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(sprint, event_name, {})  # type: ignore[arg-type]
+        assert len(strategy._received_events) == 0
+
+    @pytest.mark.unit
+    async def test_on_sprint_activated_with_strategy_config_none(self) -> None:
+        """on_sprint_activated handles strategy_config=None gracefully."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EXTERNAL_TRIGGER,
+                strategy_config=None,
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, config)
+        assert len(strategy._sources) == 0
+        assert len(strategy._received_events) == 0

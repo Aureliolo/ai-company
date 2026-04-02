@@ -16,6 +16,8 @@ real-world development workflows.
   auto-transition.
 """
 
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.engine.workflow.ceremony_policy import (
@@ -66,22 +68,30 @@ _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
 _MAX_EVENT_NAME_LEN: int = 128
 _MAX_SOURCES: int = 20
 _MAX_RECEIVED_EVENTS: int = 256
+_MAX_LOG_VALUE_LEN: int = 64
 _VALID_SOURCE_TYPES: frozenset[str] = frozenset({"webhook", "git_event"})
 
 
 class ExternalTriggerStrategy:
     """Ceremony scheduling strategy driven by external signals.
 
-    Ceremonies fire when a matching external event is received -- via
-    ``context.external_events`` or the ``on_external_event`` lifecycle
-    hook.  Event source registration is declarative (validated and
-    stored, but transport integration is handled externally).
+    Ceremonies fire when a matching external event is received --
+    either via ``context.external_events`` (checked at evaluation
+    time) or the ``on_external_event`` lifecycle hook (buffered for
+    later evaluation).  Event source registration is declarative
+    (validated and stored, but transport integration is handled
+    externally).
+
+    Matching is **edge-triggered**: each buffered event occurrence
+    fires a ceremony at most once.  New occurrences of the same
+    event (via ``on_external_event``) re-enable firing.
 
     This is a **stateful strategy** -- lifecycle hooks manage event
     subscriptions and buffered events per sprint.
     """
 
     __slots__ = (
+        "_ceremony_last_fired_counts",
         "_event_counts",
         "_received_events",
         "_sources",
@@ -90,7 +100,8 @@ class ExternalTriggerStrategy:
     def __init__(self) -> None:
         self._received_events: set[str] = set()
         self._event_counts: dict[str, int] = {}
-        self._sources: tuple[dict[str, Any], ...] = ()
+        self._ceremony_last_fired_counts: dict[str, int] = {}
+        self._sources: tuple[MappingProxyType[str, Any], ...] = ()
 
     # -- Core evaluation -------------------------------------------------------
 
@@ -188,6 +199,7 @@ class ExternalTriggerStrategy:
         """
         self._received_events.clear()
         self._event_counts.clear()
+        self._ceremony_last_fired_counts.clear()
 
         strategy_config = (
             config.ceremony_policy.strategy_config
@@ -198,7 +210,9 @@ class ExternalTriggerStrategy:
         raw_sources = strategy_config.get(_KEY_SOURCES)
         if isinstance(raw_sources, list):
             self._sources = tuple(
-                dict(entry) for entry in raw_sources if isinstance(entry, dict)
+                MappingProxyType(copy.deepcopy(entry))
+                for entry in raw_sources
+                if isinstance(entry, dict)
             )
         else:
             self._sources = ()
@@ -221,6 +235,7 @@ class ExternalTriggerStrategy:
             )
         self._received_events.clear()
         self._event_counts.clear()
+        self._ceremony_last_fired_counts.clear()
         self._sources = ()
 
     async def on_task_completed(
@@ -324,7 +339,8 @@ class ExternalTriggerStrategy:
             config: Strategy config to validate.
 
         Raises:
-            ValueError: If the config contains invalid keys or values.
+            ValueError: If the config contains invalid keys, values,
+                or wrongly-typed entries.
         """
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
@@ -338,7 +354,10 @@ class ExternalTriggerStrategy:
 
         self._validate_string_key(config, _KEY_ON_EXTERNAL)
         self._validate_string_key(config, _KEY_TRANSITION_EVENT)
-        self._validate_sources(config)
+        try:
+            self._validate_sources(config)
+        except TypeError as exc:
+            raise ValueError(str(exc)) from exc
 
     # -- Private helpers -------------------------------------------------------
 
@@ -348,27 +367,53 @@ class ExternalTriggerStrategy:
         event_name: str,
         context_events: tuple[str, ...],
     ) -> bool:
-        """Check context events and received buffer for a match."""
-        for source_label, events in (
-            ("context", context_events),
-            ("received_buffer", self._received_events),
-        ):
-            if event_name in events:
-                logger.info(
-                    SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED,
-                    ceremony=ceremony_name,
-                    event_name=event_name,
-                    source=source_label,
-                    strategy="external_trigger",
-                )
-                logger.info(
-                    SPRINT_CEREMONY_TRIGGERED,
-                    ceremony=ceremony_name,
-                    reason="external_event",
-                    strategy="external_trigger",
-                )
-                return True
+        """Check context events and received buffer for a new match.
+
+        Context events are inherently one-shot (rebuilt each
+        evaluation).  Buffered events use edge-triggered matching
+        via count comparison -- each ``on_external_event`` call
+        increments the count, and a ceremony only fires when the
+        count has increased since its last fire.
+        """
+        # Context events: one-shot by nature
+        if event_name in context_events:
+            self._log_match(ceremony_name, event_name, "context")
+            return True
+
+        # Received buffer: edge-triggered via count comparison
+        current_count = self._event_counts.get(event_name, 0)
+        if current_count == 0:
+            return False
+
+        key = f"{ceremony_name}:{event_name}"
+        last_count = self._ceremony_last_fired_counts.get(key, 0)
+        if current_count > last_count:
+            self._ceremony_last_fired_counts[key] = current_count
+            self._log_match(ceremony_name, event_name, "received_buffer")
+            return True
+
         return False
+
+    def _log_match(
+        self,
+        ceremony_name: str,
+        event_name: str,
+        source: str,
+    ) -> None:
+        """Log an external event match and ceremony trigger."""
+        logger.info(
+            SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED,
+            ceremony=ceremony_name,
+            event_name=event_name,
+            source=source,
+            strategy="external_trigger",
+        )
+        logger.info(
+            SPRINT_CEREMONY_TRIGGERED,
+            ceremony=ceremony_name,
+            reason="external_event",
+            strategy="external_trigger",
+        )
 
     @staticmethod
     def _is_valid_event_name(value: object) -> bool:
@@ -394,11 +439,18 @@ class ExternalTriggerStrategy:
             or len(value) > _MAX_EVENT_NAME_LEN
         ):
             msg = f"'{key}' must be a non-empty string (<= {_MAX_EVENT_NAME_LEN} chars)"
+            safe_value: object
+            if not isinstance(value, str):
+                safe_value = type(value).__name__
+            elif len(value) > _MAX_LOG_VALUE_LEN:
+                safe_value = value[:_MAX_LOG_VALUE_LEN] + "..."
+            else:
+                safe_value = value
             logger.warning(
                 SPRINT_STRATEGY_CONFIG_INVALID,
                 strategy="external_trigger",
                 key=key,
-                value=value,
+                value=safe_value,
             )
             raise ValueError(msg)
 
@@ -428,34 +480,39 @@ class ExternalTriggerStrategy:
             )
             raise ValueError(msg)
         for i, entry in enumerate(sources):
-            if not isinstance(entry, dict):
-                msg = f"sources[{i}] must be a dict"
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="external_trigger",
-                    key=f"sources[{i}]",
-                    value=type(entry).__name__,
-                )
-                raise TypeError(msg)
-            source_type = entry.get("type")
-            if source_type is None:
-                msg = f"sources[{i}] must have a 'type' key"
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="external_trigger",
-                    key=f"sources[{i}].type",
-                    value=None,
-                )
-                raise ValueError(msg)
-            if source_type not in _VALID_SOURCE_TYPES:
-                msg = (
-                    f"sources[{i}].type must be one of "
-                    f"{sorted(_VALID_SOURCE_TYPES)}, got {source_type!r}"
-                )
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="external_trigger",
-                    key=f"sources[{i}].type",
-                    value=source_type,
-                )
-                raise ValueError(msg)
+            ExternalTriggerStrategy._validate_single_source(i, entry)
+
+    @staticmethod
+    def _validate_single_source(index: int, entry: object) -> None:
+        """Validate a single source entry (type + structure)."""
+        if not isinstance(entry, dict):
+            msg = f"sources[{index}] must be a dict"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="external_trigger",
+                key=f"sources[{index}]",
+                value=type(entry).__name__,
+            )
+            raise TypeError(msg)
+        source_type = entry.get("type")
+        if source_type is None:
+            msg = f"sources[{index}] must have a 'type' key"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="external_trigger",
+                key=f"sources[{index}].type",
+                value=None,
+            )
+            raise ValueError(msg)
+        if source_type not in _VALID_SOURCE_TYPES:
+            msg = (
+                f"sources[{index}].type must be one of "
+                f"{sorted(_VALID_SOURCE_TYPES)}, got {source_type!r}"
+            )
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="external_trigger",
+                key=f"sources[{index}].type",
+                value=source_type,
+            )
+            raise ValueError(msg)

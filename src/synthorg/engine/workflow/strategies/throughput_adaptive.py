@@ -21,6 +21,7 @@ Like an automated burndown chart monitor.
   (default: False).
 """
 
+import math
 import time
 from collections import deque
 from typing import TYPE_CHECKING, Any
@@ -88,9 +89,14 @@ class ThroughputAdaptiveStrategy:
     """Ceremony scheduling strategy based on throughput rate anomalies.
 
     Tracks task completion timestamps in a rolling window and
-    establishes a baseline rate from the first full window.  Ceremonies
-    fire when the current rate drops or spikes beyond configured
-    thresholds relative to the baseline.
+    establishes a baseline rate from the first full window.  The
+    baseline is frozen after the first full window and remains
+    fixed for the sprint's duration -- all anomaly thresholds are
+    relative to this initial rate.
+
+    Anomaly detection is **edge-triggered**: a ceremony fires only
+    on the transition into an anomaly state (drop or spike), not
+    on every evaluation while the anomaly persists.
 
     This is a **stateful strategy** -- lifecycle hooks maintain internal
     rate-tracking state that is reset per sprint.
@@ -101,6 +107,7 @@ class ThroughputAdaptiveStrategy:
         "_blocked_count",
         "_completion_timestamps",
         "_drop_threshold_pct",
+        "_last_anomaly_state",
         "_spike_threshold_pct",
         "_window_size",
     )
@@ -112,6 +119,7 @@ class ThroughputAdaptiveStrategy:
         self._baseline_rate: float | None = None
         self._blocked_count: int = 0
         self._drop_threshold_pct: float = _DEFAULT_DROP_THRESHOLD_PCT
+        self._last_anomaly_state: dict[str, str | None] = {}
         self._spike_threshold_pct: float = _DEFAULT_SPIKE_THRESHOLD_PCT
         self._window_size: int = _DEFAULT_WINDOW_SIZE
 
@@ -154,66 +162,85 @@ class ThroughputAdaptiveStrategy:
         if current_rate is None:
             return False
 
-        if on_drop and self._check_velocity_drop(ceremony.name, current_rate):
+        # Determine current anomaly state
+        is_drop = on_drop and self._is_velocity_drop(current_rate)
+        is_spike = on_spike and self._is_velocity_spike(current_rate)
+
+        current_state: str | None = None
+        if is_drop:
+            current_state = "drop"
+        elif is_spike:
+            current_state = "spike"
+
+        # Edge-triggered: fire only on transition into anomaly
+        last_state = self._last_anomaly_state.get(ceremony.name)
+        self._last_anomaly_state[ceremony.name] = current_state
+
+        if current_state is not None and current_state != last_state:
+            self._log_anomaly_trigger(
+                ceremony.name,
+                current_rate,
+                current_state,
+            )
             return True
 
-        return on_spike and self._check_velocity_spike(ceremony.name, current_rate)
+        return False
 
-    def _check_velocity_drop(
-        self,
-        ceremony_name: str,
-        current_rate: float,
-    ) -> bool:
-        """Check if velocity has dropped beyond the threshold."""
+    def _is_velocity_drop(self, current_rate: float) -> bool:
+        """Return True if velocity has dropped beyond the threshold."""
         if self._baseline_rate is None or self._baseline_rate <= 0:
             return False
         drop_pct = ((self._baseline_rate - current_rate) / self._baseline_rate) * 100.0
-        if drop_pct < self._drop_threshold_pct:
-            return False
-        logger.info(
-            SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
-            ceremony=ceremony_name,
-            baseline_rate=self._baseline_rate,
-            current_rate=current_rate,
-            drop_pct=round(drop_pct, 1),
-            threshold_pct=self._drop_threshold_pct,
-            strategy="throughput_adaptive",
-        )
-        logger.info(
-            SPRINT_CEREMONY_TRIGGERED,
-            ceremony=ceremony_name,
-            reason="velocity_drop",
-            strategy="throughput_adaptive",
-        )
-        return True
+        return drop_pct >= self._drop_threshold_pct
 
-    def _check_velocity_spike(
-        self,
-        ceremony_name: str,
-        current_rate: float,
-    ) -> bool:
-        """Check if velocity has spiked beyond the threshold."""
+    def _is_velocity_spike(self, current_rate: float) -> bool:
+        """Return True if velocity has spiked beyond the threshold."""
         if self._baseline_rate is None or self._baseline_rate <= 0:
             return False
         spike_pct = ((current_rate - self._baseline_rate) / self._baseline_rate) * 100.0
-        if spike_pct < self._spike_threshold_pct:
-            return False
-        logger.info(
-            SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
-            ceremony=ceremony_name,
-            baseline_rate=self._baseline_rate,
-            current_rate=current_rate,
-            spike_pct=round(spike_pct, 1),
-            threshold_pct=self._spike_threshold_pct,
-            strategy="throughput_adaptive",
-        )
+        return spike_pct >= self._spike_threshold_pct
+
+    def _log_anomaly_trigger(
+        self,
+        ceremony_name: str,
+        current_rate: float,
+        anomaly_type: str,
+    ) -> None:
+        """Log a velocity anomaly detection and ceremony trigger."""
+        if self._baseline_rate is None or self._baseline_rate <= 0:
+            return  # pragma: no cover -- defensive
+        if anomaly_type == "drop":
+            drop_pct = (
+                (self._baseline_rate - current_rate) / self._baseline_rate
+            ) * 100.0
+            logger.info(
+                SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
+                ceremony=ceremony_name,
+                baseline_rate=self._baseline_rate,
+                current_rate=current_rate,
+                drop_pct=round(drop_pct, 1),
+                threshold_pct=self._drop_threshold_pct,
+                strategy="throughput_adaptive",
+            )
+        else:
+            spike_pct = (
+                (current_rate - self._baseline_rate) / self._baseline_rate
+            ) * 100.0
+            logger.info(
+                SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
+                ceremony=ceremony_name,
+                baseline_rate=self._baseline_rate,
+                current_rate=current_rate,
+                spike_pct=round(spike_pct, 1),
+                threshold_pct=self._spike_threshold_pct,
+                strategy="throughput_adaptive",
+            )
         logger.info(
             SPRINT_CEREMONY_TRIGGERED,
             ceremony=ceremony_name,
-            reason="velocity_spike",
+            reason=f"velocity_{anomaly_type}",
             strategy="throughput_adaptive",
         )
-        return True
 
     def should_transition_sprint(
         self,
@@ -288,12 +315,14 @@ class ThroughputAdaptiveStrategy:
         self._completion_timestamps = deque(maxlen=self._window_size)
         self._baseline_rate = None
         self._blocked_count = 0
+        self._last_anomaly_state = {}
 
     async def on_sprint_deactivated(self) -> None:
         """Clear all internal state."""
         self._completion_timestamps = deque(maxlen=_DEFAULT_WINDOW_SIZE)
         self._baseline_rate = None
         self._blocked_count = 0
+        self._last_anomaly_state = {}
         self._drop_threshold_pct = _DEFAULT_DROP_THRESHOLD_PCT
         self._spike_threshold_pct = _DEFAULT_SPIKE_THRESHOLD_PCT
         self._window_size = _DEFAULT_WINDOW_SIZE
@@ -334,6 +363,11 @@ class ThroughputAdaptiveStrategy:
         task_id: str,  # noqa: ARG002
     ) -> None:
         """Increment blocked task counter (informational).
+
+        Blocked tasks indirectly reduce throughput (fewer
+        completions), so the rate calculation already captures
+        the effect.  This counter is retained for observability
+        and potential future use in anomaly weighting.
 
         Args:
             sprint: Current sprint state.
@@ -377,7 +411,8 @@ class ThroughputAdaptiveStrategy:
             config: Strategy config to validate.
 
         Raises:
-            ValueError: If the config contains invalid keys or values.
+            ValueError: If the config contains invalid keys, values,
+                or wrongly-typed entries.
         """
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
@@ -389,11 +424,14 @@ class ThroughputAdaptiveStrategy:
             )
             raise ValueError(msg)
 
-        self._validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
-        self._validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
-        self._validate_window_key(config)
-        self._validate_bool_key(config, _KEY_ON_DROP)
-        self._validate_bool_key(config, _KEY_ON_SPIKE)
+        try:
+            self._validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
+            self._validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
+            self._validate_window_key(config)
+            self._validate_bool_key(config, _KEY_ON_DROP)
+            self._validate_bool_key(config, _KEY_ON_SPIKE)
+        except TypeError as exc:
+            raise ValueError(str(exc)) from exc
 
     # -- Private helpers -------------------------------------------------------
 
@@ -467,7 +505,9 @@ class ThroughputAdaptiveStrategy:
                 strategy="throughput_adaptive",
             )
             return default
-        if not (_MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT):
+        if not math.isfinite(value) or not (
+            _MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT
+        ):
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
                 reason="threshold_out_of_range",
@@ -525,7 +565,9 @@ class ThroughputAdaptiveStrategy:
                 value=value,
             )
             raise TypeError(msg)
-        if not (_MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT):
+        if not math.isfinite(value) or not (
+            _MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT
+        ):
             msg = (
                 f"'{key}' must be between "
                 f"{_MIN_THRESHOLD_PCT} and {_MAX_THRESHOLD_PCT}, "
