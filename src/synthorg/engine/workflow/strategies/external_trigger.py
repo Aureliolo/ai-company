@@ -211,6 +211,16 @@ class ExternalTriggerStrategy:
 
         raw_sources = strategy_config.get(_KEY_SOURCES)
         if isinstance(raw_sources, list):
+            bad_indices = [
+                i for i, entry in enumerate(raw_sources) if not isinstance(entry, dict)
+            ]
+            if bad_indices:
+                logger.warning(
+                    SPRINT_CEREMONY_SKIPPED,
+                    reason="non_dict_source_entries",
+                    indices=bad_indices,
+                    strategy="external_trigger",
+                )
             self._sources = tuple(
                 MappingProxyType(copy.deepcopy(entry))
                 for entry in raw_sources

@@ -68,10 +68,11 @@ _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
         _KEY_VELOCITY_DROP_THRESHOLD_PCT,
         _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
         _KEY_MEASUREMENT_WINDOW_TASKS,
-        _KEY_ON_DROP,
-        _KEY_ON_SPIKE,
     }
 )
+
+# Per-ceremony keys (read via get_ceremony_config, not sprint-level config).
+_KNOWN_CEREMONY_KEYS: frozenset[str] = frozenset({_KEY_ON_DROP, _KEY_ON_SPIKE})
 
 # -- Defaults ------------------------------------------------------------------
 
@@ -443,8 +444,6 @@ class ThroughputAdaptiveStrategy:
             self._validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
             self._validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
             self._validate_window_key(config)
-            self._validate_bool_key(config, _KEY_ON_DROP)
-            self._validate_bool_key(config, _KEY_ON_SPIKE)
         except TypeError as exc:
             raise ValueError(str(exc)) from exc
 
