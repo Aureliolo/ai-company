@@ -10,10 +10,8 @@ Foundational modules (core, config, observability) are imported by nearly every
 other module, so changes to them trigger a full test run. Same for any
 ``conftest.py`` and top-level source files (``__init__.py``, ``constants.py``).
 
-Exit codes:
-    0 -- tests passed (or nothing to run)
-    1 -- tests failed
-    2 -- git command failure (fail-closed: could not determine changes)
+Exit codes match pytest: 0 (passed/nothing to run), 1 (failures), etc.
+Git command failures fall back to running the full unit suite.
 """
 
 import re

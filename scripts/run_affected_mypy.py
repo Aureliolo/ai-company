@@ -10,10 +10,8 @@ Foundational modules (core, config, observability) trigger a full mypy run
 because they define types imported across the entire codebase. The ``.mypy_cache/``
 directory keeps subsequent full runs fast with warm cache.
 
-Exit codes:
-    0 -- type-check passed (or nothing to check)
-    1 -- type errors found
-    2 -- git command failure (fail-closed: could not determine changes)
+Exit codes match mypy: 0 (no errors/nothing to check), 1 (type errors found), etc.
+Git command failures fall back to running full mypy on ``src/`` and ``tests/``.
 """
 
 import re
