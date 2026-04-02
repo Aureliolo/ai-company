@@ -1,5 +1,6 @@
 """Tests for the template pack loader."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -54,7 +55,7 @@ class TestLoadPack:
         loaded = load_pack("Security-Team")
         assert loaded.template.metadata.name == "Security Team"
 
-    def test_user_override(self, tmp_path: pytest.TempPathFactory) -> None:
+    def test_user_override(self, tmp_path: Path) -> None:
         """User pack overrides builtin of the same name."""
         user_yaml = """\
 template:
@@ -72,7 +73,7 @@ template:
       model: "medium"
       department: "security"
 """
-        pack_file = tmp_path / "security-team.yaml"  # type: ignore[union-attr]
+        pack_file = tmp_path / "security-team.yaml"
         pack_file.write_text(user_yaml, encoding="utf-8")
 
         with patch(
