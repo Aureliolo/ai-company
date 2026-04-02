@@ -162,29 +162,44 @@ class ThroughputAdaptiveStrategy:
         if current_rate is None:
             return False
 
-        # Determine current anomaly state
-        is_drop = on_drop and self._is_velocity_drop(current_rate)
-        is_spike = on_spike and self._is_velocity_spike(current_rate)
-
-        current_state: str | None = None
-        if is_drop:
-            current_state = "drop"
-        elif is_spike:
-            current_state = "spike"
-
-        # Edge-triggered: fire only on transition into anomaly
-        last_state = self._last_anomaly_state.get(ceremony.name)
-        self._last_anomaly_state[ceremony.name] = current_state
-
-        if current_state is not None and current_state != last_state:
+        state = self._determine_anomaly_state(
+            current_rate,
+            on_drop=on_drop,
+            on_spike=on_spike,
+        )
+        if self._update_and_check_edge_trigger(ceremony.name, state):
             self._log_anomaly_trigger(
                 ceremony.name,
                 current_rate,
-                current_state,
+                state,  # type: ignore[arg-type]  # guaranteed non-None
             )
             return True
 
         return False
+
+    def _determine_anomaly_state(
+        self,
+        current_rate: float,
+        *,
+        on_drop: bool,
+        on_spike: bool,
+    ) -> str | None:
+        """Classify the current rate as drop, spike, or normal."""
+        if on_drop and self._is_velocity_drop(current_rate):
+            return "drop"
+        if on_spike and self._is_velocity_spike(current_rate):
+            return "spike"
+        return None
+
+    def _update_and_check_edge_trigger(
+        self,
+        ceremony_name: str,
+        new_state: str | None,
+    ) -> bool:
+        """Return True only on transition into a non-None anomaly state."""
+        last_state = self._last_anomaly_state.get(ceremony_name)
+        self._last_anomaly_state[ceremony_name] = new_state
+        return new_state is not None and new_state != last_state
 
     def _is_velocity_drop(self, current_rate: float) -> bool:
         """Return True if velocity has dropped beyond the threshold."""

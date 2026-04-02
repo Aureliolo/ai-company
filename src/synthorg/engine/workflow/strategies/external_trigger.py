@@ -174,6 +174,8 @@ class ExternalTriggerStrategy:
             return SprintStatus.IN_REVIEW
 
         if transition_event in self._received_events:
+            # One-shot: consume so repeated evaluations don't re-fire
+            self._received_events.discard(transition_event)
             logger.info(
                 SPRINT_AUTO_TRANSITION,
                 transition_event=transition_event,
