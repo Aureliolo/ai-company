@@ -148,6 +148,8 @@ convention = "google"
     "T20",     # print allowed in CLI scripts
     "E501",    # long lines in embedded HTML templates
     "PLC0415", # deferred imports in scripts
+    "S603",    # subprocess calls expected in hook scripts
+    "S607",    # partial executable paths (git, pytest, mypy)
 ]
 
 [tool.ruff.lint.isort]

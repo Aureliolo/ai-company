@@ -64,16 +64,16 @@ repos:
         files: ^tests/.*\.py$
 
       - id: mypy
-        name: mypy type-check
-        entry: uv run python -m mypy src/ tests/
+        name: mypy type-check (affected modules)
+        entry: uv run python scripts/run_affected_mypy.py
         language: system
         files: ^(src/|tests/).*\.py$
         pass_filenames: false
         stages: [pre-push]
 
       - id: pytest-unit
-        name: pytest unit tests
-        entry: uv run python -m pytest tests/ -m unit -n auto -q
+        name: pytest unit tests (affected modules)
+        entry: uv run python scripts/run_affected_tests.py
         language: system
         files: ^(src/|tests/).*\.py$
         pass_filenames: false
