@@ -189,3 +189,27 @@ class TestBudgetVelocityCalculator:
         records = [_make_record(budget_consumed=10.0)]
         metrics = calc.rolling_average(records, window=0)
         assert metrics.primary_value == 0.0
+
+    @pytest.mark.unit
+    def test_rolling_average_sprints_averaged_counts_valid_only(self) -> None:
+        calc = BudgetVelocityCalculator()
+        records = [
+            _make_record(
+                sprint_number=1,
+                points_completed=30.0,
+                budget_consumed=10.0,
+            ),
+            _make_record(
+                sprint_number=2,
+                points_completed=40.0,
+                budget_consumed=None,
+            ),
+            _make_record(
+                sprint_number=3,
+                points_completed=50.0,
+                budget_consumed=10.0,
+            ),
+        ]
+        metrics = calc.rolling_average(records, window=3)
+        # 3 records in window, but only 2 have valid budget
+        assert metrics.secondary["sprints_averaged"] == 2.0

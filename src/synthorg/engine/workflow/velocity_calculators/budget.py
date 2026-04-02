@@ -96,11 +96,13 @@ class BudgetVelocityCalculator:
         recent = records[-window:]
         total_pts = 0.0
         total_budget = 0.0
+        valid_count = 0
         for r in recent:
             budget = r.budget_consumed
             if budget is not None and budget > 0.0:
                 total_pts += r.story_points_completed
                 total_budget += budget
+                valid_count += 1
         if total_budget == 0.0:
             return VelocityMetrics(
                 primary_value=0.0,
@@ -111,7 +113,7 @@ class BudgetVelocityCalculator:
             primary_unit=_UNIT,
             secondary={
                 "total_budget_consumed": total_budget,
-                "sprints_averaged": float(len(recent)),
+                "sprints_averaged": float(valid_count),
             },
         )
 
