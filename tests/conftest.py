@@ -43,8 +43,7 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
     if start is None:
         return
     elapsed = time.monotonic() - start
-    markers = {m.name for m in item.iter_markers()}
-    if "unit" in markers and elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT:
+    if item.get_closest_marker("unit") and elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT:
         pytest.fail(
             f"Unit test exceeded {_UNIT_TEST_WALL_CLOCK_LIMIT}s "
             f"wall-clock limit ({elapsed:.1f}s). This usually means "
