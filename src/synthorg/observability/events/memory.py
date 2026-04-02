@@ -92,3 +92,8 @@ MEMORY_SPARSE_UPSERT_COMPLETE: Final[str] = "memory.sparse.upsert_complete"
 MEMORY_SPARSE_UPSERT_FAILED: Final[str] = "memory.sparse.upsert_failed"
 MEMORY_SPARSE_SEARCH_COMPLETE: Final[str] = "memory.sparse.search_complete"
 MEMORY_SPARSE_SEARCH_FAILED: Final[str] = "memory.sparse.search_failed"
+
+# -- Query reformulation ------------------------------------------------------
+
+MEMORY_REFORMULATION_FAILED: Final[str] = "memory.reformulation.failed"
+MEMORY_SUFFICIENCY_CHECK_FAILED: Final[str] = "memory.sufficiency_check.failed"

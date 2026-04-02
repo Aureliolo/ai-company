@@ -198,6 +198,8 @@ class Mem0MemoryBackend:
                         qdrant,
                         self._mem0_config.collection_name,
                     )
+                except builtins.MemoryError, RecursionError:
+                    raise
                 except Exception as exc:
                     logger.warning(
                         MEMORY_SPARSE_UPSERT_FAILED,
@@ -227,6 +229,7 @@ class Mem0MemoryBackend:
                 return
             logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
             self._client = None
+            self._qdrant_client = None
             self._connected = False
             logger.info(MEMORY_BACKEND_DISCONNECTED, backend="mem0")
 
@@ -376,6 +379,42 @@ class Mem0MemoryBackend:
             )
             raise error_cls(msg)
 
+    # ── Sparse helpers ─────────────────────────────────────────────
+
+    async def _try_sparse_upsert(
+        self,
+        agent_id: NotBlankStr,
+        memory_id: NotBlankStr,
+        content: str,
+    ) -> None:
+        """Upsert a BM25 sparse vector (non-fatal on failure).
+
+        Skips silently if sparse search is disabled or the encoder
+        is unavailable.  Re-raises ``builtins.MemoryError`` and
+        ``RecursionError``.
+        """
+        if self._sparse_encoder is None or self._qdrant_client is None:
+            return
+        try:
+            sparse_vec = self._sparse_encoder.encode(content)
+            await asyncio.to_thread(
+                upsert_sparse_vector,
+                self._qdrant_client,
+                self._mem0_config.collection_name,
+                str(memory_id),
+                sparse_vec,
+            )
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEMORY_SPARSE_UPSERT_FAILED,
+                agent_id=agent_id,
+                memory_id=memory_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
     # ── CRUD Operations ───────────────────────────────────────────
 
     async def store(
@@ -435,27 +474,7 @@ class Mem0MemoryBackend:
             msg = f"Failed to store memory: {exc}"
             raise MemoryStoreError(msg) from exc
         else:
-            # Upsert sparse vector (non-fatal on failure).
-            if self._sparse_encoder is not None and self._qdrant_client is not None:
-                try:
-                    sparse_vec = self._sparse_encoder.encode(request.content)
-                    await asyncio.to_thread(
-                        upsert_sparse_vector,
-                        self._qdrant_client,
-                        self._mem0_config.collection_name,
-                        str(memory_id),
-                        sparse_vec,
-                    )
-                except builtins.MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    logger.warning(
-                        MEMORY_SPARSE_UPSERT_FAILED,
-                        agent_id=agent_id,
-                        memory_id=memory_id,
-                        error=str(exc),
-                        error_type=type(exc).__name__,
-                    )
+            await self._try_sparse_upsert(agent_id, memory_id, request.content)
             logger.info(
                 MEMORY_ENTRY_STORED,
                 agent_id=agent_id,

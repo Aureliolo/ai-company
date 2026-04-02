@@ -365,11 +365,6 @@ class ContextInjectionStrategy:
         Returns:
             Fused, filtered, and truncated memories.
         """
-        dense_personal: tuple[MemoryEntry, ...] = ()
-        dense_shared: tuple[MemoryEntry, ...] = ()
-        sparse_personal: tuple[MemoryEntry, ...] = ()
-        sparse_shared: tuple[MemoryEntry, ...] = ()
-
         dense_coro = self._fetch_memories(agent_id=agent_id, query=query)
         sparse_coro = self._fetch_sparse_memories(
             agent_id=agent_id,
@@ -423,11 +418,11 @@ class ContextInjectionStrategy:
         Returns:
             Tuple of (personal_sparse, shared_sparse).
         """
-        if not hasattr(self._backend, "retrieve_sparse"):
+        if not getattr(self._backend, "supports_sparse_search", False):
             return (), ()
 
         personal_coro = _safe_call(
-            self._backend.retrieve_sparse(agent_id, query),
+            self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
             source="sparse_personal",
             agent_id=agent_id,
         )
@@ -436,10 +431,10 @@ class ContextInjectionStrategy:
         if (
             self._config.include_shared
             and shared_store is not None
-            and hasattr(shared_store, "retrieve_sparse")
+            and getattr(shared_store, "supports_sparse_search", False)
         ):
             shared_coro = _safe_call(
-                shared_store.retrieve_sparse(query, exclude_agent=agent_id),
+                shared_store.retrieve_sparse(query, exclude_agent=agent_id),  # type: ignore[attr-defined]
                 source="sparse_shared",
                 agent_id=agent_id,
             )

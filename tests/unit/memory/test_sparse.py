@@ -38,6 +38,18 @@ class TestSparseVector:
         with pytest.raises(ValueError, match="values must be positive"):
             SparseVector(indices=(1,), values=(0.0,))
 
+    def test_negative_indices_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-negative"):
+            SparseVector(indices=(-1,), values=(1.0,))
+
+    def test_unsorted_indices_rejected(self) -> None:
+        with pytest.raises(ValueError, match="sorted"):
+            SparseVector(indices=(5, 3), values=(1.0, 2.0))
+
+    def test_duplicate_indices_rejected(self) -> None:
+        with pytest.raises(ValueError, match="sorted"):
+            SparseVector(indices=(3, 3), values=(1.0, 2.0))
+
     def test_is_empty(self) -> None:
         assert SparseVector(indices=(), values=()).is_empty
         assert not SparseVector(indices=(1,), values=(1.0,)).is_empty

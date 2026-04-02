@@ -46,7 +46,7 @@ def _tool_config() -> MemoryRetrievalConfig:
     )
 
 
-# ── Protocol compliance ──────────────────────────────────────────
+# -- Protocol compliance ---------------------------------------------------
 
 
 @pytest.mark.unit
@@ -66,7 +66,7 @@ class TestToolBasedProtocol:
         assert strategy.strategy_name == "tool_based"
 
 
-# ── prepare_messages ─────────────────────────────────────────────
+# -- prepare_messages -------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -98,7 +98,7 @@ class TestPrepareMessages:
         assert result == ()
 
 
-# ── get_tool_definitions ─────────────────────────────────────────
+# -- get_tool_definitions ---------------------------------------------------
 
 
 @pytest.mark.unit
@@ -153,7 +153,7 @@ class TestToolDefinitions:
         assert "memory_id" in props
 
 
-# ── handle_tool_call ─────────────────────────────────────────────
+# -- handle_tool_call -------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -237,7 +237,7 @@ class TestHandleToolCall:
         )
         assert "no memories found" in result.lower()
 
-    async def test_search_error_returns_message(self) -> None:
+    async def test_search_error_returns_generic_message(self) -> None:
         from synthorg.memory.errors import MemoryRetrievalError
 
         backend = _make_backend()
@@ -253,4 +253,80 @@ class TestHandleToolCall:
             arguments={"query": "will fail"},
             agent_id="agent-1",
         )
-        assert "error" in result.lower()
+        assert "unavailable" in result.lower()
+        # Must NOT leak internal error details
+        assert "db down" not in result
+
+    async def test_search_empty_query_returns_error(self) -> None:
+        strategy = ToolBasedInjectionStrategy(
+            backend=_make_backend(),
+            config=_tool_config(),
+        )
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": ""},
+            agent_id="agent-1",
+        )
+        assert "non-empty" in result.lower()
+
+    async def test_search_with_categories(self) -> None:
+        entry = _make_entry(content="categorized memory")
+        backend = _make_backend((entry,))
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),
+        )
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={
+                "query": "test",
+                "categories": ["episodic", "semantic"],
+            },
+            agent_id="agent-1",
+        )
+        assert isinstance(result, str)
+        # Verify categories were passed to the query
+        call_args = backend.retrieve.call_args
+        query = call_args[0][1]
+        assert query.categories is not None
+        assert MemoryCategory.EPISODIC in query.categories
+
+    async def test_recall_empty_memory_id_returns_error(self) -> None:
+        strategy = ToolBasedInjectionStrategy(
+            backend=_make_backend(),
+            config=_tool_config(),
+        )
+        result = await strategy.handle_tool_call(
+            tool_name="recall_memory",
+            arguments={"memory_id": ""},
+            agent_id="agent-1",
+        )
+        assert "memory_id is required" in result.lower()
+
+    async def test_search_system_error_propagates(self) -> None:
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(side_effect=MemoryError)
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),
+        )
+        with pytest.raises(MemoryError):
+            await strategy.handle_tool_call(
+                tool_name="search_memory",
+                arguments={"query": "test"},
+                agent_id="agent-1",
+            )
+
+    async def test_recall_system_error_propagates(self) -> None:
+        backend = _make_backend()
+        backend.get = AsyncMock(side_effect=RecursionError)
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),
+        )
+        with pytest.raises(RecursionError):
+            await strategy.handle_tool_call(
+                tool_name="recall_memory",
+                arguments={"memory_id": "mem-1"},
+                agent_id="agent-1",
+            )

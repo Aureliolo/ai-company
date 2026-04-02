@@ -345,7 +345,7 @@ class TestAdapterSparseIntegration:
             query,
         )
 
-        assert len(entries) >= 0  # May be filtered by post-filters
+        assert len(entries) > 0
 
     async def test_retrieve_sparse_when_disabled_returns_empty(self) -> None:
         config = Mem0BackendConfig(

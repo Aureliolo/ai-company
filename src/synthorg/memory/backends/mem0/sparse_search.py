@@ -6,6 +6,7 @@ dense vectors, and sparse-only retrieval.  Qdrant's ``Modifier.IDF``
 applies IDF scoring server-side -- only term frequencies are stored.
 """
 
+import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -191,22 +192,37 @@ def scored_points_to_entries(
         Tuple of memory entries with relevance scores set.
     """
     entries: list[MemoryEntry] = []
+    skipped = 0
     for point in points:
         try:
             entry = _point_to_entry(point, agent_id)
             entries.append(entry)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception:
+            skipped += 1
             logger.warning(
                 MEMORY_SPARSE_SEARCH_FAILED,
                 point_id=str(getattr(point, "id", "unknown")),
                 reason="malformed payload",
                 exc_info=True,
             )
+    if skipped > 0 and not entries:
+        logger.error(
+            MEMORY_SPARSE_SEARCH_FAILED,
+            reason="all points skipped -- possible code bug in _point_to_entry",
+            total_points=len(points),
+            skipped=skipped,
+        )
     return tuple(entries)
 
 
 def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
-    """Convert a single Qdrant point to a MemoryEntry."""
+    """Convert a single Qdrant point to a MemoryEntry.
+
+    Raises:
+        ValueError: If the point has no usable content.
+    """
     from synthorg.core.enums import MemoryCategory  # noqa: PLC0415
 
     payload = point.payload
@@ -216,6 +232,11 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     try:
         category = MemoryCategory(category_str)
     except ValueError:
+        logger.debug(
+            MEMORY_SPARSE_SEARCH_FAILED,
+            point_id=str(getattr(point, "id", "unknown")),
+            reason=f"invalid category {category_str!r}, defaulting to EPISODIC",
+        )
         category = MemoryCategory.EPISODIC
 
     confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
@@ -224,18 +245,28 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     tags = tuple(NotBlankStr(t) for t in tags_raw if t and str(t).strip())
 
     content = payload.get("data") or payload.get("memory", "")
-    created_str = payload.get("created_at")
-    created_at = (
-        datetime.fromisoformat(created_str) if created_str else datetime.now(UTC)
-    )
+    if not content:
+        msg = "empty content in Qdrant payload"
+        raise ValueError(msg)
 
-    score = min(1.0, max(0.0, float(point.score))) if point.score else None
+    created_str = payload.get("created_at")
+    if created_str:
+        created_at = datetime.fromisoformat(created_str)
+    else:
+        logger.debug(
+            MEMORY_SPARSE_SEARCH_FAILED,
+            point_id=str(getattr(point, "id", "unknown")),
+            reason="missing created_at, using epoch as sentinel",
+        )
+        created_at = datetime(1970, 1, 1, tzinfo=UTC)
+
+    score = min(1.0, max(0.0, float(point.score))) if point.score is not None else None
 
     return MemoryEntry(
         id=NotBlankStr(str(point.id)),
         agent_id=agent_id,
         category=category,
-        content=NotBlankStr(content) if content else NotBlankStr("(empty)"),
+        content=NotBlankStr(content),
         metadata=MemoryMetadata(
             confidence=confidence,
             source=NotBlankStr(source) if source else None,

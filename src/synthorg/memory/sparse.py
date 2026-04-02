@@ -104,8 +104,8 @@ class SparseVector(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_lengths_and_values(self) -> Self:
-        """Validate indices/values length match and value positivity."""
+    def _validate_structure(self) -> Self:
+        """Validate length match, sorted indices, non-negative, positive values."""
         if len(self.indices) != len(self.values):
             msg = (
                 f"indices and values must have equal length, "
@@ -114,6 +114,15 @@ class SparseVector(BaseModel):
             raise ValueError(msg)
         if self.values and any(v <= 0 for v in self.values):
             msg = "values must be positive (> 0)"
+            raise ValueError(msg)
+        if self.indices and any(idx < 0 for idx in self.indices):
+            msg = "indices must be non-negative"
+            raise ValueError(msg)
+        _min_for_sort_check = 2
+        if len(self.indices) >= _min_for_sort_check and any(
+            a >= b for a, b in zip(self.indices, self.indices[1:], strict=False)
+        ):
+            msg = "indices must be sorted in strictly ascending order"
             raise ValueError(msg)
         return self
 

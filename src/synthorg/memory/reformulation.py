@@ -5,9 +5,14 @@ and sufficiency checking.  Used by ``ToolBasedInjectionStrategy`` to
 iteratively improve retrieval quality.
 """
 
+import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.memory import (
+    MEMORY_REFORMULATION_FAILED,
+    MEMORY_SUFFICIENCY_CHECK_FAILED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -25,7 +30,8 @@ _REFORMULATE_PROMPT = (
     "- Including specific identifiers if implied\n"
     "- Broadening or narrowing scope as needed\n\n"
     "Original query: {query}\n"
-    "Current results ({count} entries):\n{results}\n\n"
+    "Current results ({count} entries):\n"
+    "<retrieved_memories>\n{results}\n</retrieved_memories>\n\n"
     "Respond with ONLY the rewritten query, nothing else."
 )
 
@@ -33,7 +39,8 @@ _SUFFICIENCY_PROMPT = (
     "You are evaluating whether retrieval results sufficiently answer "
     "a query. Respond with exactly one word: SUFFICIENT or INSUFFICIENT.\n\n"
     "Query: {query}\n"
-    "Results ({count} entries):\n{results}\n\n"
+    "Results ({count} entries):\n"
+    "<retrieved_memories>\n{results}\n</retrieved_memories>\n\n"
     "Are these results sufficient to answer the query?"
 )
 
@@ -100,6 +107,8 @@ class LLMQueryReformulator:
             and returns the LLM response text.
     """
 
+    __slots__ = ("_completion_fn",)
+
     def __init__(
         self,
         *,
@@ -128,9 +137,11 @@ class LLMQueryReformulator:
                 results=_format_results_summary(results),
             )
             response = await self._completion_fn(prompt)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
-                "memory.reformulation.failed",
+                MEMORY_REFORMULATION_FAILED,
                 original_query=original_query,
                 error=str(exc),
                 exc_info=True,
@@ -150,6 +161,8 @@ class LLMSufficiencyChecker:
         completion_fn: Async callable that takes a prompt string
             and returns the LLM response text.
     """
+
+    __slots__ = ("_completion_fn",)
 
     def __init__(
         self,
@@ -182,10 +195,14 @@ class LLMSufficiencyChecker:
                 results=_format_results_summary(results),
             )
             response = await self._completion_fn(prompt)
+            # .split() tokenizes on whitespace so "INSUFFICIENT" does
+            # not match "SUFFICIENT" -- they are distinct tokens.
             return "SUFFICIENT" in response.upper().split()
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
-                "memory.sufficiency_check.failed",
+                MEMORY_SUFFICIENCY_CHECK_FAILED,
                 query=query,
                 error=str(exc),
                 exc_info=True,

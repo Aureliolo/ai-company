@@ -164,6 +164,24 @@ class MemoryRetrievalConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_reformulation_strategy_consistency(self) -> Self:
+        """Warn when reformulation is enabled with a non-TOOL_BASED strategy."""
+        if (
+            self.query_reformulation_enabled
+            and self.strategy != InjectionStrategy.TOOL_BASED
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="query_reformulation_enabled",
+                value=self.query_reformulation_enabled,
+                reason=(
+                    "query_reformulation_enabled is ignored when "
+                    "strategy is not tool_based"
+                ),
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_supported_strategy(self) -> Self:
         """Reject strategies that are not yet implemented."""
         _supported = {InjectionStrategy.CONTEXT, InjectionStrategy.TOOL_BASED}

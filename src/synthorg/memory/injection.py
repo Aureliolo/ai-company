@@ -3,12 +3,13 @@
 Defines the pluggable ``MemoryInjectionStrategy`` protocol that
 controls *how* memories reach agents during execution.  Three
 strategies are planned (context injection, tool-based, self-editing);
-this module provides the protocol and enums for all, while only
-``ContextInjectionStrategy`` (in ``synthorg.memory.retriever``)
-is implemented in this release.
+this module provides the protocol and enums for all.
+``ContextInjectionStrategy`` (in ``synthorg.memory.retriever``) and
+``ToolBasedInjectionStrategy`` (in ``synthorg.memory.tool_retriever``)
+are implemented.
 
 ``TokenEstimator`` is a local structural protocol that avoids a
-``memory → engine`` import cycle (``PromptTokenEstimator`` lives in
+``memory -> engine`` import cycle (``PromptTokenEstimator`` lives in
 ``engine/prompt.py``).  Any object with ``estimate_tokens(str) -> int``
 satisfies it automatically.
 """
@@ -26,13 +27,13 @@ class InjectionStrategy(StrEnum):
 
     Attributes:
         CONTEXT: Pre-execution context injection (implemented).
-        TOOL_BASED: On-demand via agent tools (future).
+        TOOL_BASED: On-demand via agent tools (implemented).
         SELF_EDITING: Structured read/write memory blocks (future).
     """
 
     CONTEXT = "context"
-    TOOL_BASED = "tool_based"
-    SELF_EDITING = "self_editing"
+    TOOL_BASED = "tool_based"  # implemented
+    SELF_EDITING = "self_editing"  # future
 
 
 class InjectionPoint(StrEnum):

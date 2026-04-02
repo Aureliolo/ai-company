@@ -692,15 +692,24 @@ class TestHybridSearchPipeline:
 
     async def test_rrf_min_relevance_after_fusion(self) -> None:
         """Post-RRF min_relevance filter excludes low-scoring entries."""
-        entry = _make_entry(
+        high = _make_entry(
+            entry_id="high-1",
+            content="high score",
+            relevance_score=0.9,
+        )
+        low = _make_entry(
             entry_id="low-1",
             content="low score",
             relevance_score=0.1,
         )
-        backend = _make_sparse_backend(dense_entries=(entry,))
+        # Dense has both; sparse has only high. RRF ranks high above low.
+        backend = _make_sparse_backend(
+            dense_entries=(high, low),
+            sparse_entries=(high,),
+        )
         config = MemoryRetrievalConfig(
             fusion_strategy=FusionStrategy.RRF,
-            min_relevance=0.99,  # Very high threshold
+            min_relevance=0.5,
         )
         strategy = ContextInjectionStrategy(
             backend=backend,
@@ -711,11 +720,10 @@ class TestHybridSearchPipeline:
             query_text="query",
             token_budget=5000,
         )
-        # Single entry in single list gets RRF score of 1.0 after
-        # min-max normalization, so it should pass even a 0.99 threshold.
-        # But if there were multiple entries, low ones would be filtered.
-        # This verifies the filter runs after fusion.
-        assert isinstance(result, tuple)
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "high score" in content
 
     async def test_rrf_sparse_error_degrades_to_dense(self) -> None:
         """Sparse search failure degrades gracefully to dense-only."""
