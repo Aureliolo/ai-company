@@ -9,6 +9,18 @@
 #   partial - exists but limited, community plugin, or experimental
 #   none    - not supported
 #   planned - on public roadmap but not shipped
+#
+# Pricing values:
+#   free             - no cost, permissive license (MIT, Apache-2.0)
+#   free-restrictive - no cost but copyleft license (AGPL, GPL)
+#   depends          - free for most use cases, license restrictions apply (BSL, ELv2, FSL, SUL)
+#   open-core        - free OSS core with paid commercial features/hosting
+#   paid             - requires payment (SaaS, subscription, enterprise)
+#
+# Self-hosted values:
+#   "true"    - can run entirely on your own infrastructure
+#   "false"   - cloud/SaaS only, no self-hosting option
+#   "partial" - self-hosting available but with reduced features vs cloud
 
 meta:
   last_updated: "2026-04-02"
@@ -73,25 +85,32 @@ categories:
   - key: protocol
     label: "Protocol / Standard"
 
-# -- Competitors --
-# Initial set. Add new entries following the structure of existing entries.
-# Adding more competitors is tracked in GitHub issue #993.
+# ---------------------------------------------------------------------------
+# Competitors (53 entries across 7 categories)
+# ---------------------------------------------------------------------------
 
 competitors:
+
+  # ==========================================================================
+  # Multi-Agent Frameworks
+  # ==========================================================================
+
   - name: "SynthOrg"
     slug: synthorg
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
-    description: "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company"
+    description: "Framework for building synthetic organizations; autonomous AI agents orchestrated as a virtual company"
     license: "BUSL-1.1"
     language: "Python"
     category: multi_agent_framework
+    pricing: depends
+    self_hosted: "true"
     is_synthorg: true
     features:
       org_structure: { support: full, note: "Departments, hierarchy, 8 seniority levels, reporting lines, HR" }
       multi_agent: { support: full, note: "Auction, role-based, load-balanced assignment; conflict resolution" }
       task_delegation: { support: full, note: "DAG decomposition, 6 routing strategies, delegation chains" }
-      memory: { support: full, note: "5 memory types, pluggable backends, cross-lifecycle persistence" }
+      memory: { support: full, note: "Mem0 backend (sole implementation); pluggable architecture, 5 memory types, cross-session persistence" }
       tool_use: { support: full, note: "MCP protocol, sandbox isolation, invocation tracking" }
       human_in_loop: { support: full, note: "Approval gates, review workflows, 5 autonomy tiers" }
       budget_tracking: { support: full, note: "Per-token, per-agent, hierarchical cascades, CFO optimization" }
@@ -99,102 +118,1408 @@ competitors:
       observability: { support: full, note: "Structured logging, correlation tracking, log shipping, redaction" }
       web_dashboard: { support: full, note: "React 19 real-time dashboard with org chart, tasks, budgets" }
       cli: { support: full, note: "Go binary with cosign verification, cross-platform" }
-      production_ready: { support: partial, note: "Docker images, CI/CD, cosign + SLSA; API not yet stable (pre-alpha)" }
+      production_ready: { support: partial, note: "Docker + CI/CD + cosign + SLSA provenance; pre-alpha, API unstable, no production deployments yet" }
       workflow_types: { support: full, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking" }
       template_system: { support: full, note: "9 archetypes, personality presets, locale-aware name generation" }
 
   - name: "CrewAI"
     slug: crewai
-    url: "https://www.crewai.com"
+    url: "https://crewai.com"
     repo: "https://github.com/crewAIInc/crewAI"
-    description: "Framework for orchestrating role-playing AI agents"
+    description: "Python framework for orchestrating role-playing autonomous AI agents in crews"
     license: "MIT"
     language: "Python"
     category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "partial"
     features:
-      org_structure: { support: partial, note: "Roles and goals per agent, flat crew structure" }
-      multi_agent: { support: full, note: "Crew-based orchestration with role-playing" }
-      task_delegation: { support: full, note: "Sequential and hierarchical task execution" }
-      memory: { support: partial, note: "Short-term and long-term memory via plugins" }
-      tool_use: { support: full, note: "Function calling, custom tools, LangChain tools" }
-      human_in_loop: { support: partial, note: "Human input step available" }
-      budget_tracking: { support: none, note: "" }
-      security_model: { support: none, note: "" }
-      observability: { support: partial, note: "Verbose logging mode" }
-      web_dashboard: { support: partial, note: "CrewAI+ platform (commercial)" }
-      cli: { support: partial, note: "CLI for project scaffolding" }
-      production_ready: { support: partial, note: "pip install, no Docker images" }
-      workflow_types: { support: partial, note: "Sequential and hierarchical processes" }
-      template_system: { support: none, note: "" }
+      org_structure: { support: partial, note: "Hierarchical manager-worker processes and role-based agents; no persistent org model" }
+      multi_agent: { support: full, note: "Crews with role, goal, backstory; sequential and hierarchical processes" }
+      task_delegation: { support: full, note: "allow_delegation flag; hierarchical manager distributes tasks; allowed_agents scoping" }
+      memory: { support: full, note: "Unified Memory with hierarchical scopes, LanceDB backend, consolidation" }
+      tool_use: { support: full, note: "100+ built-in tools, custom tools, MCP bridge, task-level scoping" }
+      human_in_loop: { support: full, note: "Task-level human_input flag, @human_feedback decorator, webhook async HITL" }
+      budget_tracking: { support: partial, note: "Token usage events; cost visibility via AMP dashboard or third-party; no OSS enforcement" }
+      security_model: { support: partial, note: "Task-level tool scoping, guardrails; sandboxing and PII masking require enterprise AMP" }
+      observability: { support: partial, note: "Verbose logging in OSS; full tracing requires AMP or third-party integrations" }
+      web_dashboard: { support: partial, note: "AMP Control Plane (commercial add-on); not part of OSS" }
+      cli: { support: full, note: "create, run, train, test, replay, chat, deploy, traces commands" }
+      production_ready: { support: partial, note: "OSS stable and widely used; production features (tracing, RBAC, SOC2) require AMP" }
+      workflow_types: { support: partial, note: "Sequential and hierarchical processes; Flows for event-driven; consensual planned" }
+      template_system: { support: partial, note: "YAML config scaffolding; marketplace crew templates; no OSS template library" }
 
   - name: "AutoGen"
     slug: autogen
     url: "https://microsoft.github.io/autogen/"
     repo: "https://github.com/microsoft/autogen"
-    description: "Multi-agent conversation framework by Microsoft"
+    description: "Multi-agent conversation framework by Microsoft, now in maintenance mode (merging into Microsoft Agent Framework)"
     license: "MIT"
     language: "Python"
     category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
     features:
       org_structure: { support: none, note: "" }
-      multi_agent: { support: full, note: "Conversation-driven multi-agent group chats" }
-      task_delegation: { support: partial, note: "GroupChat manager selects next speaker" }
-      memory: { support: partial, note: "Teachable agents, context persistence" }
-      tool_use: { support: full, note: "Function calling, code execution" }
-      human_in_loop: { support: full, note: "Human proxy agent, termination conditions" }
+      multi_agent: { support: full, note: "RoundRobinGroupChat, SelectorGroupChat, Swarm, GraphFlow, AgentTool" }
+      task_delegation: { support: full, note: "Handoff pattern with delegate tools; hierarchical supervisor-worker teams" }
+      memory: { support: full, note: "ListMemory, ChromaDB, Redis, Mem0 backends; persistent cross-session retrieval" }
+      tool_use: { support: full, note: "Tool registration, MCP via McpWorkbench, Docker code execution" }
+      human_in_loop: { support: full, note: "UserProxyAgent for approval and feedback; custom input functions" }
       budget_tracking: { support: none, note: "" }
-      security_model: { support: partial, note: "Code execution sandboxing (Docker)" }
-      observability: { support: partial, note: "Logging, AgentOps integration" }
-      web_dashboard: { support: partial, note: "AutoGen Studio (experimental)" }
+      security_model: { support: partial, note: "Docker-based code execution sandboxing; no audit logging or trust levels" }
+      observability: { support: partial, note: "OpenTelemetry tracing; no built-in dashboard, requires external backends" }
+      web_dashboard: { support: partial, note: "AutoGen Studio (prototyping GUI); explicitly not production-ready" }
       cli: { support: none, note: "" }
-      production_ready: { support: partial, note: "PyPI package, no official Docker images" }
-      workflow_types: { support: partial, note: "Sequential, group chat, nested chats" }
-      template_system: { support: none, note: "" }
+      production_ready: { support: partial, note: "Core APIs stable; Studio not production-ready; project in maintenance mode" }
+      workflow_types: { support: full, note: "GraphFlow (DAG with branching, loops, parallelism), GroupChat, Swarm" }
+      template_system: { support: partial, note: "Studio gallery of preset team/agent configs; no core framework templates" }
 
   - name: "LangGraph"
     slug: langgraph
-    url: "https://langchain-ai.github.io/langgraph/"
+    url: "https://www.langchain.com/langgraph"
     repo: "https://github.com/langchain-ai/langgraph"
-    description: "Graph-based multi-agent state machine framework"
+    description: "Low-level graph-based orchestration framework for stateful multi-actor LLM applications"
     license: "MIT"
     language: "Python"
     category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "partial"
     features:
       org_structure: { support: none, note: "" }
-      multi_agent: { support: full, note: "Graph-based agent orchestration with shared state" }
-      task_delegation: { support: partial, note: "Graph nodes can delegate to sub-graphs" }
-      memory: { support: full, note: "Checkpointing, persistent state across runs" }
-      tool_use: { support: full, note: "LangChain tool ecosystem, function calling" }
-      human_in_loop: { support: full, note: "Interrupt nodes, approval steps, breakpoints" }
+      multi_agent: { support: full, note: "Graph nodes, supervisor pattern, hierarchical teams, agent-as-tool composition" }
+      task_delegation: { support: full, note: "Supervisor delegates to workers; multi-level hierarchies; tool-based delegation" }
+      memory: { support: full, note: "Short-term and long-term memory with checkpointing; SQLite and PostgreSQL backends" }
+      tool_use: { support: full, note: "LangChain tool abstractions; native function calling" }
+      human_in_loop: { support: full, note: "First-class interrupt/resume; state inspection and modification at any point" }
       budget_tracking: { support: none, note: "" }
       security_model: { support: none, note: "" }
-      observability: { support: full, note: "LangSmith integration, tracing" }
-      web_dashboard: { support: partial, note: "LangGraph Platform (commercial)" }
-      cli: { support: partial, note: "LangGraph CLI for deployment" }
-      production_ready: { support: partial, note: "LangGraph Platform for production hosting" }
-      workflow_types: { support: full, note: "Arbitrary graph workflows, cycles, branching" }
-      template_system: { support: partial, note: "Prebuilt ReAct agent, starter templates" }
+      observability: { support: partial, note: "Trace data emitted; primary UI (LangSmith) is commercial; OSS alternatives integrate via OTEL" }
+      web_dashboard: { support: partial, note: "LangGraph Studio (commercial desktop IDE); Agent Chat UI is OSS but limited" }
+      cli: { support: full, note: "langgraph-cli: scaffolding (new), dev server, Docker build, deployment" }
+      production_ready: { support: partial, note: "Core library v1.1 (stable); production hosting requires commercial LangGraph Platform" }
+      workflow_types: { support: full, note: "DAGs, cyclic graphs, sequential, parallel, conditional, subgraphs; Graph + Functional API" }
+      template_system: { support: partial, note: "langgraph new starter templates; limited set; no inheritance or composition" }
+
+  - name: "OpenAI Agents SDK"
+    slug: openai-agents-sdk
+    url: "https://openai.github.io/openai-agents-python/"
+    repo: "https://github.com/openai/openai-agents-python"
+    description: "Lightweight framework for building multi-agent workflows with handoffs, tool use, and guardrails"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Handoffs and agents-as-tools for multi-agent orchestration; triage agents" }
+      task_delegation: { support: full, note: "Handoffs transfer control to specialists; agents-as-tools for bounded subtasks" }
+      memory: { support: partial, note: "Sessions with in-memory and SQLite backends; no long-term semantic memory" }
+      tool_use: { support: full, note: "Function tools, MCP servers, hosted tools (search, code interpreter), agents-as-tools" }
+      human_in_loop: { support: full, note: "Built-in approval flow with interruptions, per-tool needs_approval, sticky decisions" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Input/output guardrails with tripwire; tool guardrails; no RBAC or audit logging" }
+      observability: { support: full, note: "Built-in tracing with spans; OpenAI Traces dashboard; custom trace processors" }
+      web_dashboard: { support: partial, note: "OpenAI Traces dashboard (commercial platform feature); no self-hosted dashboard" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Actively maintained (v0.13.x); no built-in deployment tooling or container images" }
+      workflow_types: { support: partial, note: "Handoffs, agents-as-tools, chaining, loops, parallel; no formal workflow definitions" }
+      template_system: { support: none, note: "" }
+
+  - name: "Semantic Kernel"
+    slug: semantic-kernel
+    url: "https://learn.microsoft.com/en-us/semantic-kernel/"
+    repo: "https://github.com/microsoft/semantic-kernel"
+    description: "Microsoft SDK for building and orchestrating AI agents and multi-agent systems in C#, Python, and Java"
+    license: "MIT"
+    language: "C#"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Sequential, concurrent, handoff, group chat, magentic orchestration patterns" }
+      task_delegation: { support: full, note: "Handoff orchestration; triage agents route to specialists; A2A protocol support" }
+      memory: { support: full, note: "GA vector store abstractions; Azure AI Search, Elasticsearch, Chroma, in-memory connectors" }
+      tool_use: { support: full, note: "Native code plugins, OpenAPI specs, MCP bridge, Handlebars/Liquid prompt templates" }
+      human_in_loop: { support: full, note: "Process Framework idle-until-human; IFunctionInvocationFilter for approval gates" }
+      budget_tracking: { support: partial, note: "Token usage via OpenTelemetry; per-request token budget limits; no cost accounting system" }
+      security_model: { support: partial, note: "Function invocation filters for permission validation; no built-in RBAC or audit log" }
+      observability: { support: full, note: "Native OpenTelemetry; distributed traces, metrics, structured telemetry" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: full, note: "Stable since 1.0 GA; Agent Framework RC (Feb 2026); used in Azure AI Foundry" }
+      workflow_types: { support: full, note: "Process Framework for deterministic workflows; sequential, concurrent, handoff, group chat" }
+      template_system: { support: full, note: "Semantic Kernel prompt template syntax, Handlebars, and Liquid templates" }
+
+  - name: "Google ADK"
+    slug: google-adk
+    url: "https://google.github.io/adk-docs/"
+    repo: "https://github.com/google/adk-python"
+    description: "Open-source code-first toolkit for building multi-agent AI systems, optimized for Gemini but model-agnostic"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Parent-child agent trees, LLM-driven delegation, agent transfer, A2A support" }
+      task_delegation: { support: full, note: "LLM-driven dynamic routing, agent transfer between siblings/parent/sub-agents" }
+      memory: { support: partial, note: "Session state (in-memory, DB, Firestore); long-term memory only via Vertex AI Memory Bank (paid)" }
+      tool_use: { support: full, note: "Built-in tools, custom functions, MCP bridge, agents-as-tools" }
+      human_in_loop: { support: full, note: "RequireConfirmation pauses execution for human approval before sensitive operations" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Tool confirmation for sensitive ops; no built-in rule engine or audit log" }
+      observability: { support: full, note: "Native OpenTelemetry; Datadog, Dynatrace, Arize, LangWatch integrations" }
+      web_dashboard: { support: partial, note: "Built-in dev UI (adk web) for testing and trace viewing; development only" }
+      cli: { support: full, note: "CLI for running agents, chat, evaluations, deploy to Cloud Run and Vertex" }
+      production_ready: { support: partial, note: "Deployable via Vertex AI or Cloud Run; OSS requires self-managed infrastructure" }
+      workflow_types: { support: full, note: "SequentialAgent, ParallelAgent, LoopAgent, plus LLM-driven dynamic routing" }
+      template_system: { support: partial, note: "Sample agents in adk-samples repo; no built-in template engine" }
+
+  - name: "PydanticAI"
+    slug: pydanticai
+    url: "https://ai.pydantic.dev/"
+    repo: "https://github.com/pydantic/pydantic-ai"
+    description: "Type-safe Python agent framework with structured outputs, dependency injection, and OpenTelemetry observability"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "partial"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Agents delegate via tool calls and graph control flow; no built-in orchestration layer" }
+      task_delegation: { support: partial, note: "Parent agents invoke children through tool functions; no task queue or assignment system" }
+      memory: { support: none, note: "" }
+      tool_use: { support: full, note: "Decorator-based tools, auto schema generation, MCP client and server, deferred approval" }
+      human_in_loop: { support: full, note: "Deferred tools with static and conditional approval; pause/resume execution" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Tool approval gates; no dedicated security rule engine or audit log" }
+      observability: { support: partial, note: "Native OpenTelemetry built-in; full dashboard requires commercial Pydantic Logfire" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "v1.76.0 Production/Stable on PyPI; durable execution requires external services" }
+      workflow_types: { support: partial, note: "pydantic-graph provides async state machines; not a general workflow engine" }
+      template_system: { support: partial, note: "AgentSpec for YAML/JSON agent definitions with Handlebars templating" }
+
+  - name: "CAMEL"
+    slug: camel-ai
+    url: "https://www.camel-ai.org"
+    repo: "https://github.com/camel-ai/camel"
+    description: "Multi-agent framework for role-playing societies, workforce coordination, and large-scale agent simulations"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: partial, note: "Workforce module with coordinator/worker topology; no persistent org chart or departments" }
+      multi_agent: { support: full, note: "Role-playing societies, workforce coordination, OASIS million-agent simulations" }
+      task_delegation: { support: full, note: "Coordinator decomposes tasks via task agent; assigns subtasks with dependency tracking" }
+      memory: { support: full, note: "ChatHistoryMemory, VectorDBMemory, LongtermAgentMemory with configurable retrieval" }
+      tool_use: { support: full, note: "50+ toolkits including search, code execution, browser, terminal, MCP bridge" }
+      human_in_loop: { support: partial, note: "HumanToolkit for consultation and approval; deeper routing requires HumanLayer" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Docker sandbox, LLMGuardRuntime risk scoring; no access control or audit logging" }
+      observability: { support: partial, note: "JSON logging; agent tracking relies on third-party AgentOps" }
+      web_dashboard: { support: partial, note: "Separate Streamlit UI repo; experimental, not part of core" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Active development (v0.2.90); used in research; no deployment guides" }
+      workflow_types: { support: partial, note: "Workforce supports parallel and sequential with dependencies; no formal workflow engine" }
+      template_system: { support: none, note: "" }
+
+  - name: "smolagents"
+    slug: smolagents
+    url: "https://huggingface.co/docs/smolagents"
+    repo: "https://github.com/huggingface/smolagents"
+    description: "Minimal Python library by Hugging Face for building code-generating and tool-calling AI agents"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Hierarchical managed_agents; limited to tree hierarchies, no peer communication" }
+      task_delegation: { support: partial, note: "Manager agents call managed agents by name; no task queuing or load balancing" }
+      memory: { support: partial, note: "In-memory per-run AgentMemory; no persistent long-term or cross-run memory" }
+      tool_use: { support: full, note: "@tool decorator, MCP server integration, LangChain import, Hub sharing" }
+      human_in_loop: { support: partial, note: "Step callbacks can interrupt for user review; no built-in approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Multiple sandbox options (E2B, Docker, Pyodide); no RBAC or audit logging" }
+      observability: { support: partial, note: "OpenTelemetry via SmolagentsInstrumentor; no built-in structured logging" }
+      web_dashboard: { support: partial, note: "GradioUI for chat interaction; not a monitoring dashboard" }
+      cli: { support: partial, note: "smolagent and webagent CLI commands; no project management" }
+      production_ready: { support: partial, note: "Sandbox execution, OTEL tracing; API explicitly marked experimental" }
+      workflow_types: { support: partial, note: "ReAct loop with planning intervals; no DAG or structured workflows" }
+      template_system: { support: none, note: "" }
+
+  - name: "AG2"
+    slug: ag2
+    url: "https://ag2.ai"
+    repo: "https://github.com/ag2ai/ag2"
+    description: "Community fork of AutoGen v0.2 for building conversational multi-agent systems"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "GroupChat, Swarm, sequential chats, nested chats, AutoPattern speaker selection" }
+      task_delegation: { support: partial, note: "GroupChat manager selects speakers; nested chats for delegation; no task decomposition" }
+      memory: { support: partial, note: "No built-in long-term memory; Mem0 and Zep as external plugins" }
+      tool_use: { support: full, note: "Function/tool registration, code execution (Docker, Jupyter), MCP support" }
+      human_in_loop: { support: full, note: "ALWAYS/NEVER/TERMINATE modes; Beta adds on_human_input middleware" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Docker isolation, shell injection prevention, key redaction; no RBAC" }
+      observability: { support: partial, note: "OpenTelemetry tracing; no first-party dashboard, requires external backends" }
+      web_dashboard: { support: partial, note: "AutoGen Studio drag-and-drop UI; explicitly not production-ready" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Beta redesign targets production; Studio not production-ready" }
+      workflow_types: { support: partial, note: "Sequential, group chat, swarm, nested; no Kanban or sprint" }
+      template_system: { support: none, note: "" }
+
+  - name: "Agno"
+    slug: agno
+    url: "https://www.agno.com"
+    repo: "https://github.com/agno-agi/agno"
+    description: "Python framework for AI agent teams and workflows with FastAPI runtime (AgentOS)"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Teams with coordinate, route, broadcast, tasks modes; nested teams" }
+      task_delegation: { support: full, note: "Team leader decomposes goals, delegates, synthesizes results" }
+      memory: { support: full, note: "MemoryManager with optimization; per-session/user; knowledge bases with vector stores" }
+      tool_use: { support: full, note: "100+ integrations, MCP bridge, custom tool decorator, pre/post hooks" }
+      human_in_loop: { support: full, note: "requires_confirmation on tools and workflow steps; approval workflows" }
+      budget_tracking: { support: partial, note: "Token usage and cost metrics per run/session; no enforcement" }
+      security_model: { support: partial, note: "Guardrails (PII, prompt injection, moderation); no RBAC or trust model" }
+      observability: { support: full, note: "Native tracing, run metrics, tool call viz; MLflow and Langfuse integrations" }
+      web_dashboard: { support: partial, note: "OSS agent-ui (Next.js); hosted control plane at os.agno.com" }
+      cli: { support: partial, note: "agno-cli for basic agent interaction; not a full management CLI" }
+      production_ready: { support: full, note: "Stateless FastAPI runtime, 50+ API endpoints, horizontal scaling" }
+      workflow_types: { support: full, note: "Steps, Loops, Parallel, Conditions, Router; CEL expressions; pause/resume" }
+      template_system: { support: partial, note: "Cookbook examples and reference apps; no built-in template engine" }
+
+  - name: "Letta"
+    slug: letta
+    url: "https://www.letta.com"
+    repo: "https://github.com/letta-ai/letta"
+    description: "Platform for building stateful AI agents with persistent memory (formerly MemGPT)"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Multi-agent messaging (async, sync, broadcast); supervisor-worker teams" }
+      task_delegation: { support: full, note: "Supervisor-worker with tag-based routing for inter-agent delegation" }
+      memory: { support: full, note: "Tiered: core in-context, archival long-term, recall; agents self-manage via tools" }
+      tool_use: { support: full, note: "Custom Python tools, Composio, MCP bridge, E2B sandboxing, tool rules" }
+      human_in_loop: { support: full, note: "Per-tool approval; approve/deny with reasoning; sync and streaming" }
+      budget_tracking: { support: partial, note: "Token tracking per step; Cloud dashboards; no enforcement in OSS" }
+      security_model: { support: partial, note: "Password auth, E2B sandboxing; no RBAC or audit logging in OSS" }
+      observability: { support: partial, note: "Step-level metadata; Cloud dashboards; OTEL via third-party OpenLIT" }
+      web_dashboard: { support: full, note: "Agent Development Environment (ADE) for creating, testing, monitoring" }
+      cli: { support: full, note: "Letta Code CLI for terminal agent interaction with skills and subagents" }
+      production_ready: { support: partial, note: "Docker + PostgreSQL; lacks RBAC and enterprise security in OSS" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: full, note: "Agent templates with versioning, memory variables, system prompt presets" }
+
+  - name: "Agency Swarm"
+    slug: agency-swarm
+    url: "https://agency-swarm.ai/"
+    repo: "https://github.com/VRSEN/agency-swarm"
+    description: "Python framework for multi-agent applications using organizational role metaphors"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: partial, note: "Organizational role metaphors (CEO, Developer); no formal org chart" }
+      multi_agent: { support: full, note: "Directional communication flows; shared instructions; configurable patterns" }
+      task_delegation: { support: full, note: "send_message with directional communication_flows governing delegation" }
+      memory: { support: partial, note: "Thread persistence via callbacks; no semantic memory or knowledge base" }
+      tool_use: { support: full, note: "Pydantic tools, @function_tool, ToolFactory for OpenAPI, MCP integration" }
+      human_in_loop: { support: partial, note: "Guardrails; copilot_demo web UI; no formal approval gates" }
+      budget_tracking: { support: partial, note: "Token and cost tracking in responses (v1.6.0); no enforcement" }
+      security_model: { support: partial, note: "Guardrails, APP_TOKEN auth; no RBAC or audit logging" }
+      observability: { support: partial, note: "Usage payload; delegates to OpenAI Tracing, Langfuse, AgentOps" }
+      web_dashboard: { support: partial, note: "copilot_demo() basic UI; commercial Agencii Platform is separate" }
+      cli: { support: partial, note: "Python TUI with agent switching; not a standalone binary" }
+      production_ready: { support: partial, note: "FastAPI deployment with persistence; no containerization guidance" }
+      workflow_types: { support: partial, note: "Directional communication flows; no formal workflow engine" }
+      template_system: { support: partial, note: "Single starter template; no agency configuration library" }
+
+  - name: "Mastra"
+    slug: mastra
+    url: "https://mastra.ai"
+    repo: "https://github.com/mastra-ai/mastra"
+    description: "TypeScript framework for AI agents and workflows with memory, MCP, and local studio"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Supervisor agents coordinate subagents with delegation hooks and scoring" }
+      task_delegation: { support: full, note: "Supervisor-to-subagent with onDelegationStart/Complete hooks" }
+      memory: { support: full, note: "Message history, observational, working, semantic recall; configurable backends" }
+      tool_use: { support: full, note: "Custom tools, MCP authoring/consumption, registry, isolated testing" }
+      human_in_loop: { support: full, note: "Workflow suspend/resume with snapshots; approval gates; HTTP resumption" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Guardrails (prompt injection, PII, moderation); no trust levels" }
+      observability: { support: full, note: "Tracing, logging, metrics; Langfuse, Datadog, OTEL integrations" }
+      web_dashboard: { support: full, note: "Mastra Studio local UI for chat, workflow viz, tool testing, evals" }
+      cli: { support: partial, note: "npm create mastra scaffolding and build/dev; not standalone" }
+      production_ready: { support: partial, note: "Multi-cloud deployable; Mastra Cloud beta; no supply chain security" }
+      workflow_types: { support: full, note: "Sequential, parallel, branching, loops, mapping, nested, suspend/resume" }
+      template_system: { support: partial, note: "Starter templates for common use cases; no composable inheritance" }
+
+  - name: "Langroid"
+    slug: langroid
+    url: "https://langroid.github.io/langroid/"
+    repo: "https://github.com/langroid/langroid"
+    description: "Actor-model-inspired Python multi-agent framework with hierarchical task delegation"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Hierarchical task trees, sub-task delegation, round-robin, DAG topologies" }
+      task_delegation: { support: full, note: "Tasks wrap agents; recursive sub-task composition via add_sub_task" }
+      memory: { support: partial, note: "Vector-store RAG (Qdrant, Chroma, LanceDB, etc.); no cross-session agent memory" }
+      tool_use: { support: full, note: "ToolMessage mechanism, OpenAI function calling, MCP integration, built-in tools" }
+      human_in_loop: { support: partial, note: "Interactive loops where user is a responder; no formal approval gates" }
+      budget_tracking: { support: partial, note: "max_cost and max_tokens caps on Task.run(); no ongoing budget enforcement" }
+      security_model: { support: partial, note: "Code-injection protection; no RBAC, audit logging, or trust levels" }
+      observability: { support: partial, note: "Detailed interaction logs with provenance tracking; HTML logger (v0.57.0)" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Used in production (Nullify); Docker image; no deployment guides" }
+      workflow_types: { support: partial, note: "Hierarchical task trees, fan-out; no named workflow patterns" }
+      template_system: { support: none, note: "" }
+
+  - name: "Strands Agents"
+    slug: strands-agents
+    url: "https://strandsagents.com/"
+    repo: "https://github.com/strands-agents/sdk-python"
+    description: "AWS open-source model-driven SDK for building AI agents with tool use and multi-agent orchestration"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Graph, Swarm, Workflow, Agents-as-Tools patterns; cyclic/acyclic graphs" }
+      task_delegation: { support: full, note: "Agents-as-Tools for hierarchical delegation; Graph for conditional routing" }
+      memory: { support: partial, note: "Session managers (file, S3); no long-term semantic memory in SDK" }
+      tool_use: { support: full, note: "@tool decorator, MCP integration, community tools package, hot-reloading" }
+      human_in_loop: { support: full, note: "Interrupt system via BeforeToolCallEvent hooks; pause/resume mid-execution" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Hooks-based validation; guardrails require Bedrock (commercial)" }
+      observability: { support: full, note: "OpenTelemetry traces, metrics, logs; CloudWatch, Datadog, Arize, MLflow" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: partial, note: "Agent-builder CLI for dev and tool testing with hot-reload; not full management" }
+      production_ready: { support: full, note: "v1.0 (v1.34.1); 14M+ downloads; Lambda, Fargate, EKS, Docker" }
+      workflow_types: { support: full, note: "Graph (DAG + cyclic), Swarm, Workflow (pipeline), Agents-as-Tools; composable" }
+      template_system: { support: none, note: "" }
+
+  - name: "BeeAI Framework"
+    slug: beeai-framework
+    url: "https://beeai.dev"
+    repo: "https://github.com/i-am-bee/beeai-framework"
+    description: "Python and TypeScript framework for multi-agent systems under the Linux Foundation"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "HandoffTool for delegation; AgentWorkflow for sequential multi-agent pipelines" }
+      task_delegation: { support: full, note: "HandoffTool routes tasks to specialist agents; workflow step chaining" }
+      memory: { support: partial, note: "In-memory only (sliding window, token-based, summarize); no persistent backend" }
+      tool_use: { support: full, note: "10+ built-in tools, custom tools, MCP server integration, Python sandbox" }
+      human_in_loop: { support: partial, note: "AskPermissionRequirement for tool confirmation; no broader approval workflow" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Code execution sandbox; no trust levels, audit logging, or policy engine" }
+      observability: { support: partial, note: "OTEL/OpenInference tracing via separate package; event emitter; no dashboards" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Caching, serialization, error recovery; pre-1.0 (v0.1.79), no stable API" }
+      workflow_types: { support: partial, note: "Sequential, nested, multi-agent workflows; no DAG engine or Kanban" }
+      template_system: { support: partial, note: "Mustache-based prompt templates; no organizational templates" }
+
+  - name: "Haystack"
+    slug: haystack
+    url: "https://haystack.deepset.ai/"
+    repo: "https://github.com/deepset-ai/haystack"
+    description: "Open-source AI orchestration framework for modular pipelines and agent workflows"
+    license: "Apache-2.0"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "ComponentTool for coordinator-to-sub-agent delegation; no coordination protocol" }
+      task_delegation: { support: partial, note: "Coordinator delegates via ComponentTool; implicit via LLM tool selection" }
+      memory: { support: partial, note: "InMemoryChatMessageStore; Mem0 integration; no unified cross-agent memory" }
+      tool_use: { support: full, note: "Tool class, @tool decorator, ComponentTool, PipelineTool, MCP via Hayhooks" }
+      human_in_loop: { support: full, note: "BlockingConfirmationStrategy with AlwaysAsk/NeverAsk/AskOnce policies" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Content moderation via Llama Guard/Granite Guardian; governance is Enterprise only" }
+      observability: { support: partial, note: "OTEL and Datadog hooks; LoggingTracer; dashboard is Enterprise only" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: partial, note: "Hayhooks CLI for deploying pipelines as REST APIs; not general management" }
+      production_ready: { support: full, note: "Used by Apple, Netflix, Airbus; Kubernetes guides; active since 2019" }
+      workflow_types: { support: full, note: "DAG multigraphs with branching, looping, parallel, async; YAML serialization" }
+      template_system: { support: partial, note: "PredefinedPipeline templates; limited built-in set; no user authoring" }
+
+  - name: "SuperAGI"
+    slug: superagi
+    url: "https://superagi.com/"
+    repo: "https://github.com/TransformerOptimus/SuperAGI"
+    description: "Autonomous AI agent framework with GUI; open-source repo effectively unmaintained since early 2024"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Concurrent agents but independent; no inter-agent communication" }
+      task_delegation: { support: partial, note: "Agents break goals into tasks internally; no cross-agent delegation" }
+      memory: { support: partial, note: "Vector store integration (Pinecone, Qdrant, ChromaDB); no organizational memory" }
+      tool_use: { support: full, note: "19+ built-in tool categories (GitHub, Jira, Slack, etc.) and marketplace" }
+      human_in_loop: { support: partial, note: "AgentExecutionPermission approve/reject at each step; basic implementation" }
+      budget_tracking: { support: partial, note: "Simple budget model with amount/cycle; no actual enforcement or tracking" }
+      security_model: { support: partial, note: "JWT auth, API keys, basic RBAC; no audit logging or sandbox" }
+      observability: { support: partial, note: "APM module with analytics and call logs; no structured logging framework" }
+      web_dashboard: { support: full, note: "Next.js GUI for agent creation, monitoring, action console, marketplace" }
+      cli: { support: partial, note: "cli2.py setup script; not a feature-rich CLI" }
+      production_ready: { support: none, note: "Last release v0.0.14 (Jan 2024); effectively abandoned; open vulnerabilities" }
+      workflow_types: { support: partial, note: "ReAct-style loops; no Kanban, sprints, or structured workflows" }
+      template_system: { support: partial, note: "AgentTemplate model for config presets; limited scope" }
+
+  # ==========================================================================
+  # Virtual Org Simulators
+  # ==========================================================================
 
   - name: "ChatDev"
     slug: chatdev
-    url: "https://chatdev.ai"
+    url: "https://chatdev.ai/"
     repo: "https://github.com/OpenBMB/ChatDev"
-    description: "Virtual software company with CEO, CTO, and developer roles"
+    description: "Multi-agent platform using YAML-defined DAG workflows for software development and task automation"
     license: "Apache-2.0"
     language: "Python"
     category: virtual_org
+    pricing: free
+    self_hosted: "true"
     features:
-      org_structure: { support: full, note: "Full software company simulation (CEO, CTO, programmer, reviewer, tester)" }
-      multi_agent: { support: full, note: "Role-playing multi-agent collaboration" }
-      task_delegation: { support: full, note: "Phase-based waterfall delegation (design, coding, testing)" }
-      memory: { support: partial, note: "Experience pool for cross-task learning" }
-      tool_use: { support: partial, note: "Code execution, file system access" }
-      human_in_loop: { support: partial, note: "Human review between phases" }
+      org_structure: { support: partial, note: "v1.0 had CEO/CTO/Programmer roles; v2.0 uses user-defined roles via YAML" }
+      multi_agent: { support: full, note: "DAG-based workflows with agent, model, python, human, subgraph node types" }
+      task_delegation: { support: partial, note: "DAG edges define static task flow; no dynamic runtime delegation" }
+      memory: { support: full, note: "SimpleMemory (FAISS), FileMemory (document KBs), BlackboardMemory (append-only)" }
+      tool_use: { support: full, note: "Custom Python tools, MCP bridge support" }
+      human_in_loop: { support: partial, note: "Human nodes in workflow DAGs; Launch UI feedback; no approval gates" }
+      budget_tracking: { support: partial, note: "Displays estimated cost after completion; no enforcement or limits" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "WebSocket node state streaming; structured logs in logs/ directory" }
+      web_dashboard: { support: full, note: "Vue 3 console with visual workflow canvas, execution monitoring, tutorials" }
+      cli: { support: partial, note: "Python SDK (chatdev 0.1.0); Makefile commands; no dedicated CLI binary" }
+      production_ready: { support: partial, note: "Docker Compose available; no HA, scaling, or production hardening docs" }
+      workflow_types: { support: full, note: "YAML DAGs with branching, looping, subgraphs, conditional routing, parallel" }
+      template_system: { support: full, note: "Pre-built templates in yaml_instance/ (data viz, 3D, game, research)" }
+
+  - name: "MetaGPT"
+    slug: metagpt
+    url: "https://docs.deepwisdom.ai/"
+    repo: "https://github.com/FoundationAgents/MetaGPT"
+    description: "Multi-agent framework that assigns software company roles coordinated via standardized operating procedures"
+    license: "MIT"
+    language: "Python"
+    category: virtual_org
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: partial, note: "Fixed software company roles (PM, architect, engineer) via SOPs; not configurable" }
+      multi_agent: { support: full, note: "Agents communicate through shared message pool with role-based subscriptions" }
+      task_delegation: { support: full, note: "SOP-driven pipeline: PRD -> design -> tasks -> code; artifacts flow between roles" }
+      memory: { support: partial, note: "Short-term message memory; optional RAG (Faiss/ChromaDB); no persistent agent memory" }
+      tool_use: { support: partial, note: "Data Interpreter uses notebook, browser, shell; no general tool registry or MCP" }
+      human_in_loop: { support: partial, note: "is_human=True for terminal input; single-line only, no structured approval" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "Unsandboxed exec(); multiple open RCE vulnerabilities" }
+      observability: { support: none, note: "" }
+      web_dashboard: { support: none, note: "OSS is CLI/library only; Atoms (commercial) has web UI separately" }
+      cli: { support: partial, note: "metagpt command with basic args; not full-featured" }
+      production_ready: { support: none, note: "v0.8.2 (pre-1.0); known RCE vulns; no sandboxing; Python 3.9-3.11 only" }
+      workflow_types: { support: partial, note: "Fixed SOP pipeline (requirements -> code); not configurable workflow types" }
+      template_system: { support: none, note: "" }
+
+  - name: "GPT Pilot"
+    slug: gpt-pilot
+    url: "https://www.pythagora.ai"
+    repo: "https://github.com/Pythagora-io/gpt-pilot"
+    description: "AI code generation tool with specialized agent pipeline; open-source repo no longer maintained"
+    license: "FSL-1.1-MIT"
+    language: "Python"
+    category: virtual_org
+    pricing: depends
+    self_hosted: "true"
+    features:
+      org_structure: { support: partial, note: "Named pipeline agents (Product Owner, Architect, Developer, etc.); sequential, not org" }
+      multi_agent: { support: partial, note: "Multiple agents in fixed linear pipeline; no autonomous collaboration" }
+      task_delegation: { support: partial, note: "Orchestrator routes through predetermined sequence; no dynamic assignment" }
+      memory: { support: partial, note: "SQLite/PostgreSQL for project state and history; no semantic memory" }
+      tool_use: { support: partial, note: "Shell commands, file read/write; no tool registry or MCP" }
+      human_in_loop: { support: full, note: "Core design: developer reviews code, answers questions at each step" }
       budget_tracking: { support: none, note: "" }
       security_model: { support: none, note: "" }
-      observability: { support: partial, note: "Chat and phase logging" }
-      web_dashboard: { support: partial, note: "Visualizer for agent interactions" }
-      cli: { support: partial, note: "Python CLI entry point" }
-      production_ready: { support: none, note: "Research project, not production-oriented" }
-      workflow_types: { support: partial, note: "Waterfall phases (design, coding, testing)" }
-      template_system: { support: partial, note: "Company structure templates, role presets" }
+      observability: { support: partial, note: "Basic telemetry with runtime metrics; opt-out available" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: full, note: "Full CLI for creating, listing, loading, resuming projects" }
+      production_ready: { support: none, note: "No longer maintained (Nov 2025); team pivoted to commercial Pythagora" }
+      workflow_types: { support: partial, note: "Single sequential pipeline (spec -> code -> debug)" }
+      template_system: { support: none, note: "" }
+
+  # ==========================================================================
+  # Workflow Engines
+  # ==========================================================================
+
+  - name: "Temporal"
+    slug: temporal
+    url: "https://temporal.io"
+    repo: "https://github.com/temporalio/temporal"
+    description: "Durable execution platform for reliable distributed applications with automatic state persistence and failure recovery"
+    license: "MIT"
+    language: "Go"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Multi-agent patterns documented but no native agent abstraction; users implement agents as activities" }
+      task_delegation: { support: full, note: "Task Queues with worker polling, sticky execution, priority, rate limiting" }
+      memory: { support: partial, note: "Durable workflow state (Event History); no semantic/vector memory" }
+      tool_use: { support: partial, note: "Activities as tool invocation; MCP bridge examples exist; no built-in registry" }
+      human_in_loop: { support: full, note: "First-class Signal and Update APIs; durable timers for approval pauses" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: full, note: "mTLS, pluggable Authorizer, API keys, SAML/SSO, namespace RBAC, SOC 2 Type 2" }
+      observability: { support: full, note: "Prometheus metrics, OpenTelemetry tracing, structured logging, Grafana" }
+      web_dashboard: { support: full, note: "Temporal Web UI: workflow listing, history timeline, namespace management" }
+      cli: { support: full, note: "Temporal CLI: workflow ops, namespace/schedule management, comprehensive" }
+      production_ready: { support: full, note: "Used at scale (Snap, Netflix, Stripe); v1.30.x; Cloud 99.99% SLA" }
+      workflow_types: { support: full, note: "Sequential, parallel, child workflows, cron, Nexus, saga/compensation" }
+      template_system: { support: partial, note: "Sample repos per SDK language; no built-in template marketplace" }
+
+  - name: "Inngest AgentKit"
+    slug: inngest-agentkit
+    url: "https://www.inngest.com"
+    repo: "https://github.com/inngest/agent-kit"
+    description: "TypeScript framework for multi-agent networks with state-based routing and durable execution"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: multi_agent_framework
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Networks combining agents with shared state and configurable routers" }
+      task_delegation: { support: partial, note: "Router determines agent; no sub-task decomposition or delegation chains" }
+      memory: { support: partial, note: "Network state (key-value shared); long-term requires external Mem0" }
+      tool_use: { support: full, note: "createTool() API, MCP server integration, multi-step tools" }
+      human_in_loop: { support: partial, note: "waitForEvent() pattern for approval; not a standalone AgentKit primitive" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Inngest signing keys, replay prevention, E2E encryption; no agent-level security" }
+      observability: { support: partial, note: "Inngest Dev Server traces; Cloud adds waterfall views; no standalone OTEL" }
+      web_dashboard: { support: partial, note: "Inngest Cloud/Dev Server dashboards; no AgentKit-specific UI" }
+      cli: { support: partial, note: "inngest dev for local development; no AgentKit-specific CLI" }
+      production_ready: { support: partial, note: "Pre-1.0 (v0.13.x); relies on Inngest platform for durability" }
+      workflow_types: { support: partial, note: "Agent networks with deterministic and LLM routing; no Kanban/sprint" }
+      template_system: { support: none, note: "" }
+
+  - name: "n8n"
+    slug: n8n
+    url: "https://n8n.io"
+    repo: "https://github.com/n8n-io/n8n"
+    description: "Visual workflow automation platform with native AI agent nodes and 400+ integrations"
+    license: "SUL-1.0"
+    language: "TypeScript"
+    category: workflow_engine
+    pricing: depends
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "AI Agent Tool node for orchestrator-to-sub-agent delegation; agents are workflow nodes" }
+      task_delegation: { support: partial, note: "Orchestrator delegates to sub-agents via visual wiring; not dynamic runtime" }
+      memory: { support: partial, note: "Window/buffer/vector memory via LangChain; Redis, Postgres, MongoDB backends" }
+      tool_use: { support: full, note: "400+ integration nodes as tools; MCP client; $fromAI() for dynamic params" }
+      human_in_loop: { support: full, note: "Built-in human review step; approval via Slack, Gmail, Teams, Telegram" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "RBAC (Pro+), SSO, 2FA, credential encryption; RBAC not in Community edition" }
+      observability: { support: partial, note: "Execution history, winston logging, /healthz and /metrics; Enterprise log streaming" }
+      web_dashboard: { support: full, note: "Visual node-based editor, execution history, credential management, version history" }
+      cli: { support: partial, note: "CLI for server start/stop, import/export, node management; ops-focused" }
+      production_ready: { support: full, note: "Queue mode with Redis, PostgreSQL, Docker, air-gapped; n8n Cloud managed option" }
+      workflow_types: { support: partial, note: "Visual DAG workflows with triggers, webhooks, cron; no Kanban/Agile" }
+      template_system: { support: full, note: "9000+ community templates; official library; one-click import" }
+
+  - name: "Dify"
+    slug: dify
+    url: "https://dify.ai"
+    repo: "https://github.com/langgenius/dify"
+    description: "Open-source platform for building LLM applications with visual workflow editor and agent capabilities"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Agent Node with pluggable strategies (CoT, ToT, GoT); no inter-agent delegation" }
+      task_delegation: { support: partial, note: "Workflow nodes chain LLM calls; no agent-to-agent hierarchy" }
+      memory: { support: partial, note: "Conversation variables (v0.7+); RAG knowledge retrieval; no persistent agent memory" }
+      tool_use: { support: full, note: "50+ built-in tools, custom tools, MCP bridge, plugin marketplace" }
+      human_in_loop: { support: full, note: "Native Human Input node (v1.13) pauses for review, editing, routing" }
+      budget_tracking: { support: partial, note: "Token usage tracking with input/output counts; no per-agent enforcement" }
+      security_model: { support: partial, note: "Workspace RBAC and API key auth in OSS; SSO/MFA enterprise-only" }
+      observability: { support: full, note: "Built-in log monitoring; Langfuse, Opik, Arize Phoenix integrations" }
+      web_dashboard: { support: full, note: "Visual workflow editor, prompt IDE, app management, LLMOps monitoring" }
+      cli: { support: partial, note: "CLI for plugin development (init, package, publish); not app management" }
+      production_ready: { support: full, note: "Docker Compose + Kubernetes (Helm); active releases (v1.13.3); enterprise use" }
+      workflow_types: { support: full, note: "Visual DAGs with conditional branching, parallel, loops, iterations" }
+      template_system: { support: full, note: "Template Marketplace with one-click adoption; DSL export/import" }
+
+  - name: "Restack"
+    slug: restack
+    url: "https://www.restack.io/"
+    repo: "https://github.com/restackio"
+    description: "Event-driven agent and workflow framework built on Temporal and Kubernetes"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Child workflows and event-based agent communication; no coordination protocols" }
+      task_delegation: { support: partial, note: "Child workflow spawning and event routing; no task decomposition" }
+      memory: { support: partial, note: "Event handler state; execution persistence via continueAsNew; no semantic memory" }
+      tool_use: { support: full, note: "MCP integration, custom function decorators, RAG support" }
+      human_in_loop: { support: partial, note: "Agent pauses via events for approval; not a first-class abstracted feature" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Encryption, SOC 2, SAML/SSO, RBAC; enterprise features require commercial" }
+      observability: { support: full, note: "Developer UI with workflow viz, step tracing, replay/time-travel, OTEL" }
+      web_dashboard: { support: full, note: "Developer UI at localhost:5233 for agents, workflows, scheduling, inspection" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Kubernetes-native, Temporal durability, retries; enterprise features require commercial" }
+      workflow_types: { support: full, note: "Long-running workflows, child workflows, cron, rate-limited queues" }
+      template_system: { support: partial, note: "GitHub boilerplate repo; no built-in template library" }
+
+  - name: "Flyte"
+    slug: flyte
+    url: "https://flyte.org"
+    repo: "https://github.com/flyteorg/flyte"
+    description: "Kubernetes-native workflow orchestrator for data, ML, and AI pipelines"
+    license: "Apache-2.0"
+    language: "Go"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Flyte 2.0 orchestrates LLM agents as tasks; agents are stateless gRPC connectors" }
+      task_delegation: { support: partial, note: "DAGs with task dependencies and dynamic branching; no agent-to-agent delegation" }
+      memory: { support: none, note: "" }
+      tool_use: { support: partial, note: "Agent framework provides extensible connectors (Spark, Snowflake); not LLM tool-calling" }
+      human_in_loop: { support: full, note: "Built-in approve(), wait_for_input(), sleep() workflow nodes" }
+      budget_tracking: { support: partial, note: "Resource usage metrics (CPU, GPU); Union.ai adds cost dashboards" }
+      security_model: { support: partial, note: "RBAC with project/domain isolation, multi-tenancy; advanced RBAC is Union.ai only" }
+      observability: { support: full, note: "Prometheus, Grafana dashboards, task-level logs, timeline view, data lineage" }
+      web_dashboard: { support: full, note: "FlyteConsole: workflow viz, execution monitoring, logs, launch plan management" }
+      cli: { support: full, note: "flytectl (Go) and pyflyte (Python) for registration, execution, management" }
+      production_ready: { support: full, note: "Linux Foundation project; used by LinkedIn, Spotify; multi-cloud Helm charts" }
+      workflow_types: { support: full, note: "Static DAGs, dynamic workflows, map tasks, conditional branching, subworkflows" }
+      template_system: { support: partial, note: "Launch plans as parameterized templates; no domain-specific library" }
+
+  - name: "Flowise"
+    slug: flowise
+    url: "https://flowiseai.com"
+    repo: "https://github.com/FlowiseAI/Flowise"
+    description: "Visual drag-and-drop platform for building LLM chatflows and multi-agent workflows"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Agentflow V2: supervisor/worker delegation, branching, loops, shared state" }
+      task_delegation: { support: full, note: "Supervisor decomposes and delegates to worker agents with aggregation" }
+      memory: { support: partial, note: "Buffer, summary, Redis, DynamoDB, Zep memory; no long-term organizational memory" }
+      tool_use: { support: full, note: "100+ integrations, custom tools, MCP client/server nodes" }
+      human_in_loop: { support: full, note: "Human Input nodes pause with checkpoint persistence; review checkpoints" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "API key auth, credential encryption, rate limiting; RBAC/SSO enterprise only" }
+      observability: { support: partial, note: "Prometheus, Grafana, OTEL export; detailed tracing requires external tools" }
+      web_dashboard: { support: full, note: "React visual editor with canvas, marketplace, credential management, logs" }
+      cli: { support: partial, note: "npx flowise start for server; not full management CLI" }
+      production_ready: { support: partial, note: "PostgreSQL, S3, Redis queue mode, Docker; reported memory leaks under load" }
+      workflow_types: { support: full, note: "Chatflow, Assistant, Agentflow: sequential, branching, loops, supervisor" }
+      template_system: { support: full, note: "Built-in marketplace with pre-built templates; one-click import" }
+
+  - name: "Langflow"
+    slug: langflow
+    url: "https://www.langflow.org"
+    repo: "https://github.com/langflow-ai/langflow"
+    description: "Visual drag-and-drop platform for building LLM agent workflows with MCP and API export"
+    license: "MIT"
+    language: "Python"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Multi-agent flows with sequential chaining and CrewAI integration" }
+      task_delegation: { support: partial, note: "Primary agent calls sub-agents as tools; no autonomous routing" }
+      memory: { support: partial, note: "Chat memory per session; no long-term organizational memory" }
+      tool_use: { support: full, note: "Extensive component library, MCP bridge, custom Python tools" }
+      human_in_loop: { support: partial, note: "Interactive playground for testing; no approval gates in execution" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "JWT/API key auth; limited OSS RBAC; multiple critical CVEs in 2025-2026" }
+      observability: { support: partial, note: "Prometheus, traces feature (v1.8+); deeper tracing via external integrations" }
+      web_dashboard: { support: full, note: "Visual drag-and-drop flow builder with component sidebar and playground" }
+      cli: { support: partial, note: "Python CLI for server management and DB migration; requires Python env" }
+      production_ready: { support: partial, note: "Kubernetes Helm, PostgreSQL, Docker; critical CVEs raise concerns" }
+      workflow_types: { support: partial, note: "Visual DAG flows with sequential/branching; no Kanban/Agile" }
+      template_system: { support: partial, note: "Starter project JSONs; community templates; no inheritance" }
+
+  # ==========================================================================
+  # Commercial Platforms
+  # ==========================================================================
+
+  - name: "LangSmith"
+    slug: langsmith
+    url: "https://smith.langchain.com"
+    repo: "none"
+    description: "Commercial platform for observability, evaluation, and deployment of LLM agents (LangChain ecosystem)"
+    license: "Proprietary"
+    language: "Python"
+    category: commercial_platform
+    pricing: paid
+    self_hosted: "partial"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Multi-agent via open-source LangGraph; platform hosts and monitors" }
+      task_delegation: { support: partial, note: "Delegation via LangGraph patterns; platform provides infrastructure" }
+      memory: { support: partial, note: "Checkpoint persistence for graph state; long-term via BaseStore (Postgres, Redis)" }
+      tool_use: { support: full, note: "Function calling, MCP server/client; deployed agents expose MCP endpoints" }
+      human_in_loop: { support: full, note: "interrupt() pauses for human review/edit/approval; integrated in Studio" }
+      budget_tracking: { support: partial, note: "Token usage and cost per trace with dashboards; no enforcement or caps" }
+      security_model: { support: full, note: "SOC 2 Type II, RBAC, ABAC (Enterprise), audit logs, SSO, self-hosted option" }
+      observability: { support: full, note: "Trace trees, custom dashboards, alerting, AI-powered trace analysis" }
+      web_dashboard: { support: full, note: "Trace inspection, monitoring, eval management, prompt hub, LangGraph Studio" }
+      cli: { support: full, note: "langgraph-cli and langsmith-cli for dev, builds, deployment, traces" }
+      production_ready: { support: full, note: "GA since 2024; Cloud, hybrid, self-hosted; autoscaling; ~400 companies" }
+      workflow_types: { support: full, note: "DAGs, cyclic graphs, state machines, parallel, interrupt/resume via LangGraph" }
+      template_system: { support: partial, note: "Starter templates for common patterns; no composable system" }
+
+  - name: "Amazon Bedrock Agents"
+    slug: bedrock-agents
+    url: "https://aws.amazon.com/bedrock/agents/"
+    repo: "none"
+    description: "AWS managed service for building and orchestrating autonomous AI agents on serverless infrastructure"
+    license: "Proprietary"
+    language: "Python"
+    category: commercial_platform
+    pricing: paid
+    self_hosted: "false"
+    features:
+      org_structure: { support: partial, note: "Hierarchical multi-agent teams (3 layers deep); no formal org modeling" }
+      multi_agent: { support: full, note: "GA multi-agent with supervisor and supervisor-with-routing modes" }
+      task_delegation: { support: full, note: "Supervisor decomposes, routes to collaborators, orchestrates parallel execution" }
+      memory: { support: full, note: "Short-term session, long-term persistent, episodic memory via AgentCore Memory" }
+      tool_use: { support: full, note: "Action groups, knowledge bases, code interpreter, MCP gateway, cloud browser" }
+      human_in_loop: { support: full, note: "Return of control; user confirmation before actions" }
+      budget_tracking: { support: partial, note: "AWS Cost Explorer tags, CloudWatch metrics; no per-agent enforcement" }
+      security_model: { support: full, note: "AgentCore Policy (Cedar), Guardrails, AgentCore Identity, IAM, encryption" }
+      observability: { support: full, note: "AgentCore Observability, CloudWatch dashboards, reasoning traces, evaluations" }
+      web_dashboard: { support: full, note: "AWS Console for agent creation, config, testing, monitoring" }
+      cli: { support: full, note: "AWS CLI bedrock-agent and bedrock-agentcore command groups" }
+      production_ready: { support: full, note: "Serverless managed; auto-scaling; IAM; compliance certs; enterprise governance" }
+      workflow_types: { support: partial, note: "ReAct orchestration; multi-agent modes; Step Functions for advanced" }
+      template_system: { support: partial, note: "Agent Blueprints (CDK templates); not a first-class template marketplace" }
+
+  - name: "Vertex AI Agent Builder"
+    slug: vertex-ai-agent-builder
+    url: "https://cloud.google.com/products/agent-builder"
+    repo: "https://github.com/google/adk-python"
+    description: "Google Cloud platform for building and managing AI agents with ADK and managed Agent Engine runtime"
+    license: "Proprietary"
+    language: "Python"
+    category: commercial_platform
+    pricing: paid
+    self_hosted: "false"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "ADK hierarchical agents, LLM-driven delegation, workflow agents" }
+      task_delegation: { support: full, note: "transfer_to_agent, AgentTool wrapping, shared session state" }
+      memory: { support: full, note: "Agent Engine Memory Bank (GA); Sessions (GA) with IAM access control" }
+      tool_use: { support: full, note: "Google Search, Vertex Search, Code Execution, RAG Engine, MCP, 100+ connectors" }
+      human_in_loop: { support: full, note: "ToolConfirmation workflow; graph-based HITL nodes; A2A HITL pattern" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: full, note: "IAM agent identity, VPC-SC, CMEK, HIPAA, Threat Detection, Cloud API Registry" }
+      observability: { support: full, note: "Cloud Trace (OTEL), Cloud Monitoring, Cloud Logging, Agent Engine dashboard" }
+      web_dashboard: { support: full, note: "Agent Designer, Agent Engine dashboard, Agent Garden, ADK Dev UI" }
+      cli: { support: full, note: "ADK CLI (run, web, deploy) plus gcloud CLI for GCP resources" }
+      production_ready: { support: full, note: "Managed Agent Engine (GA); auto-scaling, VPC-SC, CMEK, HIPAA" }
+      workflow_types: { support: full, note: "SequentialAgent, ParallelAgent, LoopAgent; LLM-driven routing; graph-based" }
+      template_system: { support: partial, note: "Agent Garden (preview); Agent Starter Pack with Terraform; no inheritance" }
+
+  - name: "Agentforce"
+    slug: agentforce
+    url: "https://www.salesforce.com/agentforce/"
+    repo: "https://github.com/salesforce/agent-sdk"
+    description: "Salesforce commercial AI agent platform integrated with CRM data and business workflows"
+    license: "Proprietary"
+    language: "Apex"
+    category: commercial_platform
+    pricing: paid
+    self_hosted: "false"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Multi-Agent Orchestration with primary + specialist agents via Atlas Reasoning" }
+      task_delegation: { support: full, note: "Primary delegates based on topic matching; dynamic routing" }
+      memory: { support: full, note: "Two-tier: short-term session + long-term profile graph via Data Cloud" }
+      tool_use: { support: full, note: "Flows, Apex, MuleSoft APIs; MCP client; AgentExchange marketplace, 300+ actions" }
+      human_in_loop: { support: full, note: "Omni-Channel escalation; sentiment/confidence triggers; approval workflows" }
+      budget_tracking: { support: partial, note: "Flex Credits or per-conversation pricing; no agent-level optimization" }
+      security_model: { support: full, note: "Einstein Trust Layer: data masking, zero retention, toxicity detection, audit trail" }
+      observability: { support: full, note: "Agent Analytics, Optimization (reasoning traces), Health Monitoring, OTEL" }
+      web_dashboard: { support: full, note: "Agentforce Studio, Command Center, Agent Builder with testing" }
+      cli: { support: full, note: "sf agent generate/create/preview/test; metadata deploy; DevOps Center" }
+      production_ready: { support: full, note: "GA since Oct 2024; Agentforce 360 GA Jan 2026; enterprise SLAs" }
+      workflow_types: { support: full, note: "Salesforce Flows, Apex, MuleSoft orchestration, Agent Script language" }
+      template_system: { support: full, note: "25+ agent templates, 50+ topics, 300+ actions; industry-specific templates" }
+
+  - name: "Relevance AI"
+    slug: relevance-ai
+    url: "https://relevanceai.com"
+    repo: "none"
+    description: "No-code commercial platform for building and deploying teams of AI agents for business automation"
+    license: "Proprietary"
+    language: "Python"
+    category: commercial_platform
+    pricing: paid
+    self_hosted: "false"
+    features:
+      org_structure: { support: partial, note: "Workforce teams with defined roles and handoff rules; no formal hierarchy" }
+      multi_agent: { support: full, note: "Multi-Agent Systems with coordinated teams, handoffs, routing, escalation" }
+      task_delegation: { support: full, note: "Agents hand off with context; configurable triggers, routing, per-edge approval" }
+      memory: { support: partial, note: "RAG over files, Google Drive, SharePoint; no long-term episodic agent memory" }
+      tool_use: { support: full, note: "No-code tool builder, 1000+ app integrations, custom API calls, webhooks" }
+      human_in_loop: { support: full, note: "Approvals and Escalations with per-edge config, timeout actions, escalation paths" }
+      budget_tracking: { support: partial, note: "Credit system with usage counters and auto top-up; no project-level allocation" }
+      security_model: { support: full, note: "SOC 2 Type II, GDPR, HIPAA, AES-256, RBAC, SSO/MFA, prompt injection protections" }
+      observability: { support: full, note: "LLM judges, analytics dashboards, OTEL streaming, audit logs, Agent Alerts" }
+      web_dashboard: { support: full, note: "Agent builder, workforce designer, knowledge mgmt, analytics, marketplace" }
+      cli: { support: none, note: "" }
+      production_ready: { support: full, note: "SOC 2 Type II; multi-region (US/EU/AU); encrypted backups with failover" }
+      workflow_types: { support: partial, note: "Sequential multi-agent with triggers and handoffs; no Kanban/Agile" }
+      template_system: { support: full, note: "Marketplace with 1000+ agent, tool, and workforce templates" }
+
+  - name: "Julep"
+    slug: julep
+    url: "https://julep.ai"
+    repo: "https://github.com/julep-ai/julep"
+    description: "Open-source serverless AI agent workflow platform; hosted backend shut down Dec 2025, self-host only"
+    license: "Apache-2.0"
+    language: "Python"
+    category: workflow_engine
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Multi-agent sessions with sequential calls; no autonomous coordination" }
+      task_delegation: { support: partial, note: "Sub-workflows via yield step; orchestrator-worker pattern exists" }
+      memory: { support: partial, note: "Session conversation history; document RAG; no standalone long-term memory" }
+      tool_use: { support: full, note: "User-defined, system, integration, and direct API call tools" }
+      human_in_loop: { support: partial, note: "Wait-for-input step pauses execution; no formal approval system" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "AES-256 encrypted secrets; developer-scoped access; no RBAC or audit log" }
+      observability: { support: partial, note: "Log step in workflows; monitoring service; no structured framework" }
+      web_dashboard: { support: none, note: "Hosted dashboard shut down Dec 2025" }
+      cli: { support: full, note: "julep-cli: auth, init, sync, run, logs; YAML project management" }
+      production_ready: { support: partial, note: "Microservices backend with Docker Compose; hosted shut down; self-host only" }
+      workflow_types: { support: full, note: "Sequential, parallel (map-reduce), branching, loops, sub-workflows; 16 step types" }
+      template_system: { support: partial, note: "CLI init templates; Jinja prompt templates; no workflow template library" }
+
+  # ==========================================================================
+  # Developer Tools
+  # ==========================================================================
+
+  - name: "LlamaIndex Workflows"
+    slug: llamaindex-workflows
+    url: "https://www.llamaindex.ai/"
+    repo: "https://github.com/run-llama/llama_index"
+    description: "Event-driven async workflow engine within LlamaIndex for multi-step AI agent processes"
+    license: "MIT"
+    language: "Python"
+    category: developer_tool
+    pricing: open-core
+    self_hosted: "partial"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "AgentWorkflow with handoffs, orchestrator-as-tool, custom planner patterns" }
+      task_delegation: { support: partial, note: "Agent handoffs and tool invocation; no formal task queue or dependency tracking" }
+      memory: { support: partial, note: "Context class for serializable state; no built-in long-term vector memory" }
+      tool_use: { support: full, note: "Tool registry with context access, MCP bridge, function calling" }
+      human_in_loop: { support: full, note: "InputRequiredEvent/HumanResponseEvent with wait_for_event; tool confirmation" }
+      budget_tracking: { support: partial, note: "Token predictors for cost estimation; no runtime enforcement" }
+      security_model: { support: none, note: "" }
+      observability: { support: full, note: "Instrumentation module with spans/events/traces; OTEL; 15+ integrations" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: partial, note: "llamactl for scaffolding, serving, deploying; create-llama for project gen" }
+      production_ready: { support: partial, note: "llama-deploy for microservice deployment; LlamaCloud for managed hosting" }
+      workflow_types: { support: full, note: "Sequential, branching, looping, parallel via event-driven steps" }
+      template_system: { support: partial, note: "llamactl init templates; create-llama scaffolds; no runtime composition" }
+
+  - name: "Composio"
+    slug: composio
+    url: "https://composio.dev"
+    repo: "https://github.com/ComposioHQ/composio"
+    description: "SDK providing 1000+ pre-built tool integrations with managed auth for AI agents"
+    license: "MIT"
+    language: "TypeScript"
+    category: developer_tool
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: none, note: "" }
+      task_delegation: { support: none, note: "" }
+      memory: { support: none, note: "" }
+      tool_use: { support: full, note: "Core product: 1000+ toolkits, managed OAuth, dynamic tool selection, MCP" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Sandboxed execution, managed OAuth, SOC2/ISO 27001; no OSS audit log" }
+      observability: { support: partial, note: "Internal telemetry; CLI logs command; no user-facing dashboard" }
+      web_dashboard: { support: partial, note: "Browser playground for testing tool integrations" }
+      cli: { support: partial, note: "CLI for login, toolkits, triggers, projects; integration-focused" }
+      production_ready: { support: partial, note: "Active (v0.6.8); 27k+ stars; OSS is client for hosted backend" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: none, note: "" }
+
+  - name: "E2B"
+    slug: e2b
+    url: "https://e2b.dev"
+    repo: "https://github.com/e2b-dev/E2B"
+    description: "Open-source infrastructure for running AI-generated code in secure Firecracker microVM sandboxes"
+    license: "Apache-2.0"
+    language: "Python"
+    category: developer_tool
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: none, note: "" }
+      task_delegation: { support: none, note: "" }
+      memory: { support: none, note: "" }
+      tool_use: { support: full, note: "Core product: sandboxes with shell, filesystem, package manager, internet" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: partial, note: "Dashboard usage analytics and cost monitoring; no SDK enforcement" }
+      security_model: { support: full, note: "Firecracker microVM with KVM isolation; enterprise BYOC/on-prem" }
+      observability: { support: partial, note: "Dashboard usage analytics; BYOC metrics; no SDK-level tracing" }
+      web_dashboard: { support: full, note: "OSS dashboard (Next.js 15) for sandbox management, API keys, usage" }
+      cli: { support: full, note: "CLI for template management, sandbox spawning/killing, team switching" }
+      production_ready: { support: full, note: "Per-second billing, 24h sessions (Pro), 8 vCPU/8 GiB; Fortune 100 usage" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: full, note: "Templates define sandbox environments; Build System 2.0; no Dockerfiles needed" }
+
+  - name: "OpenHands"
+    slug: openhands
+    url: "https://openhands.dev"
+    repo: "https://github.com/OpenHands/OpenHands"
+    description: "Open-source platform for AI software development agents that write code, run commands, and browse the web"
+    license: "MIT"
+    language: "Python"
+    category: developer_tool
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "DelegateTool for spawning parallel sub-agents with inherited config" }
+      task_delegation: { support: full, note: "Hierarchical delegation; parent spawns and monitors sub-agents" }
+      memory: { support: partial, note: "Condenser system summarizes history; no persistent cross-session memory in core" }
+      tool_use: { support: full, note: "Registry-based tools; file editing, terminal, browser; MCP; GitHub/GitLab/Slack" }
+      human_in_loop: { support: full, note: "SecurityAnalyzer risk ratings; ConfirmationPolicy gates; CLI approval modes" }
+      budget_tracking: { support: partial, note: "ConversationState tracks cost metadata; Laminar cost per call; no caps" }
+      security_model: { support: partial, note: "LLM SecurityAnalyzer, confirmation policies, Docker sandbox opt-in, secrets masking" }
+      observability: { support: full, note: "OTEL tracing of agent steps, tool calls, LLM calls; Laminar, MLflow, Honeycomb" }
+      web_dashboard: { support: partial, note: "SPA React GUI for running agents locally; RBAC in cloud/enterprise only" }
+      cli: { support: full, note: "Headless mode for CI/CD, JSON output, conversation resume, MCP management" }
+      production_ready: { support: partial, note: "SDK v1.16, FastAPI, Docker, Kubernetes; enterprise features separate license" }
+      workflow_types: { support: partial, note: "Pre-built workflows (PR review, vuln scan, migration); no workflow engine" }
+      template_system: { support: partial, note: "Skill system from markdown; AgentHub templates; no org templates" }
+
+  - name: "Rivet"
+    slug: rivet
+    url: "https://rivet.ironcladapp.com"
+    repo: "https://github.com/Ironclad/rivet"
+    description: "Visual node-based IDE and TypeScript library for building and debugging LLM prompt chains"
+    license: "MIT"
+    language: "TypeScript"
+    category: developer_tool
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Subgraphs and project references for composing agent graphs; no coordination" }
+      task_delegation: { support: partial, note: "Subgraph and external call nodes; no formal task routing" }
+      memory: { support: partial, note: "Vector store and KNN nodes for retrieval; global variables; no cross-session" }
+      tool_use: { support: full, note: "MCP integration, HTTP calls, code nodes, plugin system" }
+      human_in_loop: { support: partial, note: "User Input node pauses in IDE; no production approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "Live debugging with real-time graph viz; execution recordings; no metrics" }
+      web_dashboard: { support: none, note: "Desktop Electron app only; no browser-based UI" }
+      cli: { support: partial, note: "CLI with run and serve commands; Docker image; limited vs IDE" }
+      production_ready: { support: partial, note: "TypeScript library embeddable in Node.js; Docker; no production hardening docs" }
+      workflow_types: { support: partial, note: "Sequential, loops, conditional, race conditions; single-graph paradigm" }
+      template_system: { support: partial, note: "Agent and MCP agent templates (v1.11.0); limited scope" }
+
+  - name: "Vercel AI SDK"
+    slug: vercel-ai-sdk
+    url: "https://ai-sdk.dev"
+    repo: "https://github.com/vercel/ai"
+    description: "TypeScript toolkit for building AI applications and agents with React, Next.js, and streaming-first architecture"
+    license: "Apache-2.0"
+    language: "TypeScript"
+    category: developer_tool
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Subagent pattern via tool calls in SDK 6; no built-in orchestration primitives" }
+      task_delegation: { support: partial, note: "Subagents spawned as tool calls; no hierarchical decomposition" }
+      memory: { support: partial, note: "Stateless by default; MemoryAdapter interface landed; production requires external providers" }
+      tool_use: { support: full, note: "Zod schema tools, MCP client (OAuth, resources, prompts), tool execution approval" }
+      human_in_loop: { support: partial, note: "needsApproval flag in SDK 6; no multi-stage review workflows" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Language model middleware for guardrails; no audit log or policy engine" }
+      observability: { support: partial, note: "OTEL telemetry (experimental); dashboards require third-party (Langfuse, Axiom)" }
+      web_dashboard: { support: partial, note: "DevTools (experimental, local-only) for inspecting LLM calls; not production" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Stable v6.0.x, widely used for chat; agent features newer; no Docker images" }
+      workflow_types: { support: partial, note: "Sequential, parallel, routing, orchestrator-worker documented; no Kanban" }
+      template_system: { support: none, note: "" }
+
+  - name: "Llama Stack"
+    slug: llama-stack
+    url: "https://llamastack.github.io/"
+    repo: "https://github.com/meta-llama/llama-stack"
+    description: "Meta's composable building blocks for LLM apps with unified APIs for inference, agents, safety, and tools"
+    license: "MIT"
+    language: "Python"
+    category: developer_tool
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: none, note: "Single-agent Responses API only; multi-agent requires third-party frameworks" }
+      task_delegation: { support: none, note: "" }
+      memory: { support: partial, note: "Vector stores API for document storage and RAG; no conversational memory" }
+      tool_use: { support: full, note: "Responses API with MCP integration, built-in tools, automatic chaining" }
+      human_in_loop: { support: partial, note: "Tool approval implementable via Responses API; not first-class" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Safety API with Llama Guard, Prompt Guard, Code Scanner shields" }
+      observability: { support: partial, note: "Telemetry API with OTEL, structlog; requires Jaeger for visualization" }
+      web_dashboard: { support: partial, note: "llama-stack-ui optional Next.js playground; not operational dashboard" }
+      cli: { support: partial, note: "llama stack build/run for server management; no agent management" }
+      production_ready: { support: partial, note: "Pluggable providers, Docker distributions, auth/quota middleware; no deployment orchestration" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: partial, note: "YAML distribution templates for provider stack config" }
+
+  - name: "Atomic Agents"
+    slug: atomic-agents
+    url: "https://github.com/BrainBlend-AI/atomic-agents"
+    repo: "https://github.com/BrainBlend-AI/atomic-agents"
+    description: "Lightweight modular Python framework for composable agentic pipelines using Pydantic schemas"
+    license: "MIT"
+    language: "Python"
+    category: developer_tool
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Router and supervisor patterns in docs; no built-in multi-agent runtime" }
+      task_delegation: { support: partial, note: "Manual schema-alignment delegation; not a built-in system" }
+      memory: { support: partial, note: "ChatHistory with FIFO eviction and JSON serialization; no persistent backends" }
+      tool_use: { support: full, note: "BaseTool, Atomic Forge library, MCP connector, CLI tool downloader" }
+      human_in_loop: { support: partial, note: "Hook system can intercept execution; no dedicated approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Docs show patterns for sanitization, PII detection; not shipped framework code" }
+      observability: { support: partial, note: "Hook-based logging patterns; OTEL examples; patterns not shipped library code" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: partial, note: "atomic-assembler TUI for browsing/downloading Forge tools" }
+      production_ready: { support: partial, note: "Type-safe Pydantic, streaming, async; Docker/FastAPI patterns in docs" }
+      workflow_types: { support: partial, note: "Sequential pipelines, parallel via asyncio; no workflow definition language" }
+      template_system: { support: none, note: "" }
+
+  - name: "ControlFlow"
+    slug: controlflow
+    url: "https://controlflow.ai"
+    repo: "https://github.com/PrefectHQ/ControlFlow"
+    description: "Task-centric agentic AI workflow framework built on Prefect 3.0 (archived March 2026; merged into Marvin)"
+    license: "Apache-2.0"
+    language: "Python"
+    category: workflow_engine
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Multiple agents via round-robin, random, moderated, delegation strategies" }
+      task_delegation: { support: full, note: "Automatic dependency resolution and dynamic planning; agents delegate control" }
+      memory: { support: partial, note: "Pluggable providers (Chroma, LanceDB, pgvector); still evolving at archive time" }
+      tool_use: { support: full, note: "Built-in tools for code, filesystem, web, user input; custom Python functions" }
+      human_in_loop: { support: partial, note: "interactive=True for mid-workflow input; basic, not full approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "Native Prefect 3.0 integration for flow/task tracking" }
+      web_dashboard: { support: partial, note: "Prefect 3.0 dashboard shows flow runs; not ControlFlow-specific" }
+      cli: { support: partial, note: "Basic dev utilities and Textual TUI; limited scope" }
+      production_ready: { support: partial, note: "Built on Prefect 3.0 infra; archived at v0.12.1 with no further maintenance" }
+      workflow_types: { support: partial, note: "Sequential and dependent DAGs with dynamic planning; no named patterns" }
+      template_system: { support: none, note: "" }
+
+  - name: "Motia"
+    slug: motia
+    url: "https://motia.dev"
+    repo: "https://github.com/MotiaDev/motia"
+    description: "Code-first backend framework unifying APIs, background jobs, workflows, and AI agent orchestration"
+    license: "ELv2"
+    language: "Rust"
+    category: workflow_engine
+    pricing: depends
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Event-driven multi-agent via queued messages between Steps; no agent primitives" }
+      task_delegation: { support: partial, note: "Steps enqueue to topics; no explicit delegation protocol or routing" }
+      memory: { support: partial, note: "Persistent key-value state across Steps; no semantic or long-term agent memory" }
+      tool_use: { support: partial, note: "AI Steps use LLM tool calling; no built-in registry, sandbox, or MCP" }
+      human_in_loop: { support: partial, note: "Achievable via webhook pauses; no built-in approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Basic auth helpers for HTTP/WebSocket; no RBAC or audit logging" }
+      observability: { support: full, note: "Structured logging, distributed tracing, real-time log streaming, state inspection" }
+      web_dashboard: { support: partial, note: "Workbench (iii-console) for flow viz, logs, tracing; local dev tool" }
+      cli: { support: full, note: "CLI for scaffolding (create), dev server with hot-reload, builds, engine mgmt" }
+      production_ready: { support: partial, note: "v1.0-RC; Docker supported; Motia Cloud exists; framework pre-stable" }
+      workflow_types: { support: full, note: "HTTP triggers, cron, queue async, state-change reactive, streaming, retry/DLQ" }
+      template_system: { support: partial, note: "CLI starter templates (TS, Python, mixed); no runtime template packs" }
+
+  # ==========================================================================
+  # Research
+  # ==========================================================================
+
+  - name: "Generative Agents"
+    slug: generative-agents
+    url: "https://arxiv.org/abs/2304.03442"
+    repo: "https://github.com/joonspk-research/generative_agents"
+    description: "Stanford research framework simulating believable human behavior with memory streams and reflection"
+    license: "Apache-2.0"
+    language: "Python"
+    category: research
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: partial, note: "Agents have schedules, locations, relationships; no formal hierarchy" }
+      multi_agent: { support: full, note: "3 to 25+ agents in shared environment with emergent social interactions" }
+      task_delegation: { support: none, note: "" }
+      memory: { support: full, note: "Pioneered memory streams: time-weighted retrieval, importance scoring, reflection" }
+      tool_use: { support: none, note: "" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "Debug mode; simulation replay/compression tools" }
+      web_dashboard: { support: partial, note: "Django browser interface for Smallville map visualization" }
+      cli: { support: none, note: "" }
+      production_ready: { support: none, note: "Research prototype; last meaningful commit July 2023" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: partial, note: "Two base simulation templates (3-agent, 25-agent) with CSV customization" }
+
+  - name: "AgentVerse"
+    slug: agentverse
+    url: "https://github.com/OpenBMB/AgentVerse"
+    repo: "https://github.com/OpenBMB/AgentVerse"
+    description: "Python framework for multi-agent task-solving and simulation with dynamic role assignment"
+    license: "Apache-2.0"
+    language: "Python"
+    category: research
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Task-solving and simulation frameworks with multiple collaborating agents" }
+      task_delegation: { support: partial, note: "Pipeline coordination (recruiter, solver, executor, evaluator); no flexible delegation" }
+      memory: { support: partial, note: "Chat history, summary, vector store; basic implementations" }
+      tool_use: { support: partial, note: "BMTools and ToolServer integration; limited to specific task types" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: none, note: "" }
+      web_dashboard: { support: partial, note: "Gradio GUI for simulation visualization and playback" }
+      cli: { support: partial, note: "agentverse-simulation and agentverse-tasksolving CLI commands" }
+      production_ready: { support: none, note: "Research-oriented (ICLR 2024); last commit Sep 2024" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: partial, note: "Pre-built task scenarios; no user-facing template system" }
+
+  - name: "AutoGPT"
+    slug: autogpt
+    url: "https://agpt.co"
+    repo: "https://github.com/Significant-Gravitas/AutoGPT"
+    description: "Platform for building and deploying continuous AI agents via a low-code visual block editor"
+    license: "PolyForm-Shield-1.0.0"
+    language: "Python"
+    category: workflow_engine
+    pricing: open-core
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Agent Blocks for hierarchical graphs; no inter-agent negotiation" }
+      task_delegation: { support: partial, note: "Parent agents invoke sub-agents via Blocks; no dynamic routing" }
+      memory: { support: partial, note: "Short-term context; long-term via vector DB mentioned but limited evidence" }
+      tool_use: { support: full, note: "Block integrations, MCP server discovery, E2B sandbox, browser automation" }
+      human_in_loop: { support: partial, note: "CoPilot chat interaction; no formal approval gates" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Docker and E2B sandboxing; no RBAC or audit logging" }
+      observability: { support: partial, note: "Monitoring dashboard mentioned; limited detail" }
+      web_dashboard: { support: full, note: "React/TS frontend with visual builder, workflow editor, marketplace" }
+      cli: { support: partial, note: "Legacy Python CLI for classic agent; no platform CLI" }
+      production_ready: { support: partial, note: "Cloud platform beta (v0.6.53); self-hosting beta" }
+      workflow_types: { support: partial, note: "Visual block-based DAGs with trigger scheduling; no named methodologies" }
+      template_system: { support: partial, note: "Marketplace with pre-built agents; no inheritance" }
+
+  - name: "BabyAGI"
+    slug: babyagi
+    url: "https://babyagi.org/"
+    repo: "https://github.com/yoheinakajima/babyagi"
+    description: "Experimental self-building autonomous agent; rebooted as function-registration framework (functionz)"
+    license: "MIT"
+    language: "Python"
+    category: research
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: none, note: "" }
+      task_delegation: { support: partial, note: "Function dependency graphs; no delegation between agents" }
+      memory: { support: partial, note: "Original used vector DB; functionz stores function metadata and logs" }
+      tool_use: { support: partial, note: "Function registration with dependencies; no MCP or tool registry" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "README: not meant for production use" }
+      observability: { support: partial, note: "Function execution logging (inputs, outputs, timing)" }
+      web_dashboard: { support: partial, note: "Flask dashboard for function management and dependency viz" }
+      cli: { support: none, note: "" }
+      production_ready: { support: none, note: "README: not meant for production use" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: partial, note: "Pre-loaded function packs (ai_generator, code_writing)" }
+
+  # ==========================================================================
+  # Protocols / Standards
+  # ==========================================================================
+
+  - name: "Model Context Protocol"
+    slug: mcp
+    url: "https://modelcontextprotocol.io"
+    repo: "https://github.com/modelcontextprotocol/modelcontextprotocol"
+    description: "Open protocol standardizing how LLM applications connect to external data sources and tools"
+    license: "MIT"
+    language: "Protocol"
+    category: protocol
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: planned, note: "Agent-to-agent coordination on 2026 Q3 roadmap" }
+      task_delegation: { support: none, note: "" }
+      memory: { support: none, note: "" }
+      tool_use: { support: full, note: "Core primitive: servers expose tools via structured JSON-RPC" }
+      human_in_loop: { support: partial, note: "Tool invocations require user approval in compliant clients; elicitation primitive" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "OAuth 2.1 for HTTP transport; enterprise auth planned Q2 2026" }
+      observability: { support: partial, note: "Structured logging conventions; third-party monitoring integrations" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "Adopted by all major LLM providers; 97M monthly SDK downloads; enterprise features on roadmap" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: partial, note: "Prompts primitive for reusable prompt templates" }
+
+  - name: "Agent2Agent Protocol"
+    slug: a2a
+    url: "https://a2a-protocol.org"
+    repo: "https://github.com/a2aproject/A2A"
+    description: "Open protocol for communication and interoperability between opaque AI agents using JSON-RPC over HTTP"
+    license: "Apache-2.0"
+    language: "Protocol"
+    category: protocol
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: partial, note: "Defines agent discovery and communication; does not orchestrate" }
+      task_delegation: { support: partial, note: "Task object with lifecycle states; delegation logic left to implementations" }
+      memory: { support: none, note: "" }
+      tool_use: { support: none, note: "Treats agents as opaque; tool invocation out of scope (complementary to MCP)" }
+      human_in_loop: { support: partial, note: "input-required task state for pausing for human input" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "OpenAPI auth schemes, HTTPS/TLS required; authorization left to implementations" }
+      observability: { support: partial, note: "Recommends trace IDs and OTEL; implementation-side guidance" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "v0.3 spec; official SDKs in 5 languages; used in Google Cloud Agent Engine; pre-1.0" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: none, note: "" }
+
+  - name: "Agent Protocol"
+    slug: agent-protocol
+    url: "https://agentprotocol.ai/"
+    repo: "https://github.com/agi-inc/agent-protocol"
+    description: "OpenAPI-based REST API spec for a common HTTP interface across AI agents"
+    license: "MIT"
+    language: "Protocol"
+    category: protocol
+    pricing: free
+    self_hosted: "true"
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: none, note: "" }
+      task_delegation: { support: partial, note: "Task creation and step execution endpoints; no multi-level delegation" }
+      memory: { support: none, note: "" }
+      tool_use: { support: none, note: "" }
+      human_in_loop: { support: none, note: "" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "User auth listed as future roadmap" }
+      observability: { support: none, note: "" }
+      web_dashboard: { support: none, note: "" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "v1 spec stable; Python/JS SDKs; last release April 2024; appears stalled" }
+      workflow_types: { support: none, note: "" }
+      template_system: { support: none, note: "" }

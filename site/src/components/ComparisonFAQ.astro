@@ -2,7 +2,7 @@
 const faqs = [
   {
     question: "Why not just use CrewAI or AutoGen?",
-    answer: "CrewAI and AutoGen are excellent multi-agent frameworks for building agent crews and conversations. SynthOrg goes further by modeling an entire organization -- with departments, hierarchies, budgets, HR, security policies, and workflow management. If you need agents to chat, use CrewAI. If you need agents to operate as a company, use SynthOrg.",
+    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different niche: modeling entire organizations with departments, budgets, HR, and security policies. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need organizational structure around your agents, SynthOrg is designed for that.",
   },
   {
     question: "How is SynthOrg different from ChatDev or MetaGPT?",
@@ -21,8 +21,20 @@ const faqs = [
     answer: "SynthOrg uses LiteLLM under the hood, supporting 100+ LLM providers out of the box. It adds multi-provider routing, budget-aware model selection, and per-agent cost tracking on top.",
   },
   {
-    question: "How do I evaluate these frameworks for my use case?",
-    answer: "Use the interactive table above to filter by the features that matter most to your project. If you need organizational structure, budget controls, or production infrastructure, SynthOrg is likely the best fit. For simpler multi-agent pipelines, lighter frameworks like CrewAI or PydanticAI may be sufficient.",
+    question: "What about commercial platforms like Bedrock, Vertex, or AgentForce?",
+    answer: "Cloud platforms like Amazon Bedrock Agents, Google Vertex AI Agent Builder, and Salesforce AgentForce offer managed infrastructure, enterprise compliance, and deep ecosystem integration. The trade-off is vendor lock-in and less control. SynthOrg is self-hosted and open-source (BUSL-1.1), giving you full control over your infrastructure, data, and agent behavior -- but you manage the ops yourself. If your organization already lives in AWS, GCP, or Salesforce, their native agent platform may be the pragmatic choice.",
+  },
+  {
+    question: "What license is SynthOrg under and what does it mean?",
+    answer: "SynthOrg uses the Business Source License 1.1 (BUSL-1.1). You can freely use it in production for any purpose that does not compete with SynthOrg as a product. Small organizations building internal tools, automations, or custom agents are free to use it without restriction. The license converts to Apache 2.0 on February 27, 2030, at which point it becomes fully permissive with no conditions.",
+  },
+  {
+    question: "Is this comparison data accurate?",
+    answer: "We research each competitor by reviewing their official documentation, GitHub repository, and recent release notes. Evaluations follow a consistent rubric (full, partial, planned, none) applied equally to SynthOrg and every competitor. That said, frameworks evolve quickly and we may occasionally lag behind. If you spot an inaccuracy, please open a GitHub issue -- we will correct it promptly. Last updated date is shown at the top of the comparison.",
+  },
+  {
+    question: "Why does SynthOrg show 'partial' for production readiness?",
+    answer: "Honesty matters more than marketing. SynthOrg has Docker images (Chainguard distroless), CI/CD with cosign signing and SLSA provenance, backup/restore, and structured logging with redaction. But the API is not yet stable (pre-alpha), there are no known production deployments, and the framework has not been battle-tested at scale. We will upgrade to 'full' when those conditions are met.",
   },
 ];
 ---
