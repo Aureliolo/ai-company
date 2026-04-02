@@ -113,12 +113,12 @@ class EventDrivenStrategy:
             ``True`` if the ceremony should fire.
         """
         config = get_ceremony_config(ceremony)
-        on_event = config.get(_KEY_ON_EVENT)
+        raw_event = config.get(_KEY_ON_EVENT)
 
         if (
-            not isinstance(on_event, str)
-            or not on_event.strip()
-            or len(on_event) > _MAX_EVENT_NAME_LEN
+            not isinstance(raw_event, str)
+            or not raw_event.strip()
+            or len(raw_event) > _MAX_EVENT_NAME_LEN
         ):
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
@@ -128,6 +128,7 @@ class EventDrivenStrategy:
             )
             return False
 
+        on_event = raw_event.strip()
         debounce = self._resolve_debounce(config, ceremony.name)
         global_count = self._event_counts.get(on_event, 0)
         last_fire_at = self._ceremony_last_fire_at.get(ceremony.name, 0)
@@ -181,12 +182,16 @@ class EventDrivenStrategy:
             return None
 
         strategy_config = config.ceremony_policy.strategy_config or {}
-        transition_event = strategy_config.get(_KEY_TRANSITION_EVENT)
-        if not isinstance(transition_event, str) or not transition_event.strip():
+        raw_transition = strategy_config.get(_KEY_TRANSITION_EVENT)
+        if (
+            not isinstance(raw_transition, str)
+            or not raw_transition.strip()
+            or len(raw_transition) > _MAX_EVENT_NAME_LEN
+        ):
             return None
 
         return self._check_transition_event(
-            transition_event,
+            raw_transition.strip(),
             context,
         )
 
@@ -346,7 +351,7 @@ class EventDrivenStrategy:
                 strategy="event_driven",
             )
             return
-        self._increment(event_name)
+        self._increment(event_name.strip())
 
     # -- Metadata --------------------------------------------------------------
 
