@@ -8,6 +8,7 @@
 #   full    - first-class, documented feature
 #   partial - exists but limited, community plugin, or experimental
 #   none    - not supported
+#   planned - on public roadmap but not shipped
 #
 # Pricing values:
 #   free             - no cost, permissive license (MIT, Apache-2.0)
@@ -103,18 +104,18 @@ competitors:
     is_synthorg: true
     features:
       org_structure: { support: full, note: "Departments, hierarchy, 8 seniority levels, reporting lines, HR" }
-      multi_agent: { support: full, note: "Auction, role-based, load-balanced assignment; conflict resolution" }
-      task_delegation: { support: full, note: "DAG decomposition, 6 routing strategies, delegation chains" }
-      memory: { support: partial, note: "Pluggable architecture with sole Mem0 backend; 5 memory types, cross-session persistence; no alternative backends yet" }
-      tool_use: { support: full, note: "MCP protocol, sandbox isolation, invocation tracking" }
-      human_in_loop: { support: full, note: "Approval gates, review workflows, 4 autonomy tiers" }
-      budget_tracking: { support: full, note: "Per-token, per-agent, hierarchical cascades, CFO optimization" }
-      security_model: { support: full, note: "Rule engine + LLM evaluator, progressive trust, audit trail" }
-      observability: { support: full, note: "Structured logging, correlation tracking, log shipping, redaction" }
-      web_dashboard: { support: full, note: "React 19 real-time dashboard with org chart, tasks, budgets" }
-      cli: { support: partial, note: "Go binary for container management and verification; not used for agent orchestration UI" }
-      production_ready: { support: partial, note: "Docker + CI/CD + cosign + SLSA provenance; pre-alpha, API unstable, no production deployments yet" }
-      workflow_types: { support: full, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking" }
+      multi_agent: { support: planned, note: "6 assignment strategies, conflict resolution; working toward multi-project support and formal coordination models" }
+      task_delegation: { support: full, note: "DAG decomposition, 6 assignment strategies, delegation chains" }
+      memory: { support: planned, note: "Pluggable architecture with sole Mem0 backend; 5 memory types; working toward composite backends and alternative storage engines" }
+      tool_use: { support: planned, note: "MCP protocol, sandbox isolation, invocation tracking; 5 built-in tool types; working toward web, DB, terminal, email, analytics, design, deployment tools" }
+      human_in_loop: { support: planned, note: "Approval gates, review workflows, 4 autonomy tiers; working toward two-stage safety classifier" }
+      budget_tracking: { support: planned, note: "Per-token, per-agent, hierarchical cascades, CFO optimization; working toward risk-unit action budgets" }
+      security_model: { support: planned, note: "Rule engine + LLM evaluator, progressive trust, audit trail; working toward hallucination detection and self-healing SSRF" }
+      observability: { support: planned, note: "Structured logging, correlation tracking, log shipping, redaction; working toward notification sink for operator alerts" }
+      web_dashboard: { support: planned, note: "React 19 dashboard with org chart, tasks, budgets; working toward visual workflow editor and ceremony policy UI" }
+      cli: { support: partial, note: "Go binary for container management and verification; not used for agent orchestration" }
+      production_ready: { support: planned, note: "Docker + CI/CD + cosign + SLSA provenance; pre-alpha, API unstable; working toward PostgreSQL persistence backend" }
+      workflow_types: { support: planned, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking; working toward throughput-adaptive and milestone-driven strategies" }
       template_system: { support: full, note: "9 company templates, 23 personality presets, 5 team packs, locale-aware name generation" }
 
   - name: "CrewAI"

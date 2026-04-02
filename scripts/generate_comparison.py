@@ -26,6 +26,7 @@ SUPPORT_ICONS = {
     "full": "\u2714",  # checkmark
     "partial": "~",
     "none": "-",
+    "planned": "\u23f2",  # timer clock
 }
 
 # Pricing display labels
@@ -195,7 +196,8 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "**Legend:**",
         f"{SUPPORT_ICONS['full']} Full support"
         f" | ~ Partial support"
-        f" | {SUPPORT_ICONS['none']} Not supported",
+        f" | {SUPPORT_ICONS['none']} Not supported"
+        f" | {SUPPORT_ICONS['planned']} Planned",
         "",
         '!!! tip "Interactive Version"',
         "    For a filterable, sortable version of this comparison,"
