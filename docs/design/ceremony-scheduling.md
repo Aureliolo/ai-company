@@ -671,6 +671,11 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED` | External-trigger strategy matched an external event to a ceremony |
 | `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED` | External-trigger strategy registered event sources |
 | `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED` | External-trigger strategy cleared event sources |
+| `SPRINT_CEREMONY_MILESTONE_ASSIGNED` | Task assigned to a milestone |
+| `SPRINT_CEREMONY_MILESTONE_UNASSIGNED` | Task removed from a milestone |
+| `SPRINT_CEREMONY_MILESTONE_COMPLETED` | All tasks in a milestone are complete |
+| `SPRINT_CEREMONY_MILESTONE_NOT_READY` | Milestone has no tasks assigned -- cannot fire |
+| `SPRINT_AUTO_TRANSITION_MILESTONE` | Sprint auto-transitioned at a milestone completion |
 
 ---
 
@@ -719,12 +724,18 @@ Event constants in `synthorg.observability.events.workflow`:
 
 > **Note:** Like #971 + #972, the `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies. Scheduler integration is tracked in follow-up work.
 
+### Shipped in #975 + #976 + #980 (Milestone-Driven + Template Defaults + Department Overrides)
+
+- `MilestoneDrivenStrategy` -- ceremony firing when all tasks tagged with a milestone are complete. Milestone-to-task assignment via `on_external_event` (`milestone_assign`/`milestone_unassign`). Edge-triggered (each milestone fires exactly once per sprint). Configurable `transition_milestone` for sprint auto-transition. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
+- Template default ceremony strategy assignments for all 9 builtins (solo_founder/startup/data_team: task_driven, dev_shop/product_team/full_company: hybrid, agency: event_driven, research_lab: throughput_adaptive, consultancy: calendar).
+- Per-department `ceremony_policy` override in `TemplateDepartmentConfig` and `Department` models. Department-level overrides merge field-by-field with project default via `resolve_ceremony_policy()`.
+- Observability event constants (`SPRINT_CEREMONY_MILESTONE_ASSIGNED`, `SPRINT_CEREMONY_MILESTONE_UNASSIGNED`, `SPRINT_CEREMONY_MILESTONE_COMPLETED`, `SPRINT_CEREMONY_MILESTONE_NOT_READY`, `SPRINT_AUTO_TRANSITION_MILESTONE`)
+
+> **Note:** Like #973 + #974, the `CeremonyScheduler` does not yet wire all lifecycle hooks for the milestone-driven strategy. Scheduler integration is tracked in follow-up work.
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.6.0 | #975 | MilestoneStrategy |
-| v0.6.0 | #976 | Template default ceremony strategy assignments |
 | v0.6.1 | #978 | Strategy migration UX (warnings, notifications) |
 | v0.6.1 | #979 | Dashboard UI for ceremony policy settings |
-| v0.6.2 | #980 | Per-department ceremony policy override in template schema |

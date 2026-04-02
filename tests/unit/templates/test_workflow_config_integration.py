@@ -681,3 +681,42 @@ class TestDepartmentCeremonyPolicy:
         dept_by_name = {d.name: d for d in config.departments}
         engineering = dept_by_name["engineering"]
         assert engineering.ceremony_policy is None
+
+    def test_department_ceremony_policy_non_dict_rejected(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        """Scalar ceremony_policy on a department is rejected at load time
+        (Pydantic validates dict type on TemplateDepartmentConfig)."""
+        from synthorg.templates.errors import TemplateValidationError
+
+        yaml_text = """\
+template:
+  name: "Bad Policy"
+  description: "Department with scalar ceremony_policy"
+  version: "1.0.0"
+  company:
+    type: "custom"
+  agents:
+    - role: "Dev"
+      name: "Dev"
+      level: "mid"
+      model: "medium"
+      department: "engineering"
+  departments:
+    - name: "engineering"
+      budget_percent: 100
+      head_role: "Dev"
+      ceremony_policy: "calendar"
+  workflow: "kanban"
+  communication: "event_driven"
+  workflow_config:
+    kanban:
+      wip_limits:
+        - column: "in_progress"
+          limit: 3
+      enforce_wip: false
+"""
+        path = tmp_template_file(yaml_text)
+        with pytest.raises(TemplateValidationError, match="ceremony_policy"):
+            load_template_file(path)

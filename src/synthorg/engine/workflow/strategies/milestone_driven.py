@@ -23,6 +23,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION_MILESTONE,
     SPRINT_CEREMONY_MILESTONE_ASSIGNED,
+    SPRINT_CEREMONY_MILESTONE_COMPLETED,
     SPRINT_CEREMONY_MILESTONE_NOT_READY,
     SPRINT_CEREMONY_MILESTONE_UNASSIGNED,
     SPRINT_CEREMONY_SKIPPED,
@@ -52,6 +53,7 @@ _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
 
 _MAX_MILESTONES: int = 32
 _MAX_NAME_LEN: int = 128
+_MAX_TASKS_PER_MILESTONE: int = 1000
 
 # -- External event names ------------------------------------------------------
 
@@ -129,10 +131,15 @@ class MilestoneDrivenStrategy:
             if tasks <= completed_set:
                 self._fired_milestones.add(milestone_name)
                 logger.info(
+                    SPRINT_CEREMONY_MILESTONE_COMPLETED,
+                    milestone=milestone_name,
+                    task_count=len(tasks),
+                    strategy="milestone_driven",
+                )
+                logger.info(
                     SPRINT_CEREMONY_TRIGGERED,
                     ceremony=ceremony.name,
                     milestone=milestone_name,
-                    task_count=len(tasks),
                     strategy="milestone_driven",
                 )
                 return True
@@ -148,12 +155,13 @@ class MilestoneDrivenStrategy:
     def should_transition_sprint(
         self,
         sprint: Sprint,
-        config: SprintConfig,
+        config: SprintConfig,  # noqa: ARG002
         context: CeremonyEvalContext,  # noqa: ARG002
     ) -> SprintStatus | None:
         """Return IN_REVIEW when the transition milestone is complete.
 
-        Only transitions from ACTIVE status.
+        Only transitions from ACTIVE status.  Uses the cached
+        ``_transition_milestone`` set during ``on_sprint_activated``.
 
         Args:
             sprint: Current sprint state.
@@ -167,17 +175,10 @@ class MilestoneDrivenStrategy:
         if sprint.status is not SprintStatus.ACTIVE:
             return None
 
-        strategy_config = config.ceremony_policy.strategy_config or {}
-        raw_milestone = strategy_config.get(_KEY_TRANSITION_MILESTONE)
-        if (
-            not isinstance(raw_milestone, str)
-            or not raw_milestone.strip()
-            or len(raw_milestone) > _MAX_NAME_LEN
-        ):
+        if self._transition_milestone is None:
             return None
 
-        transition_name = raw_milestone.strip()
-        tasks = self._milestone_tasks.get(transition_name)
+        tasks = self._milestone_tasks.get(self._transition_milestone)
         if not tasks:
             return None
 
@@ -185,7 +186,7 @@ class MilestoneDrivenStrategy:
         if tasks <= completed_set:
             logger.info(
                 SPRINT_AUTO_TRANSITION_MILESTONE,
-                transition_milestone=transition_name,
+                transition_milestone=self._transition_milestone,
                 task_count=len(tasks),
                 strategy="milestone_driven",
             )
@@ -377,7 +378,10 @@ class MilestoneDrivenStrategy:
         milestone = milestone.strip()
         task_id = task_id.strip()
 
-        if milestone not in self._milestones:
+        if (
+            milestone not in self._milestones
+            and milestone != self._transition_milestone
+        ):
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
                 reason="unknown_milestone",
@@ -388,6 +392,17 @@ class MilestoneDrivenStrategy:
 
         if milestone not in self._milestone_tasks:
             self._milestone_tasks[milestone] = set()
+
+        if len(self._milestone_tasks[milestone]) >= _MAX_TASKS_PER_MILESTONE:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="too_many_tasks_in_milestone",
+                milestone=milestone,
+                limit=_MAX_TASKS_PER_MILESTONE,
+                strategy="milestone_driven",
+            )
+            return
+
         self._milestone_tasks[milestone].add(task_id)
 
         logger.debug(

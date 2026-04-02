@@ -673,3 +673,131 @@ class TestValidateStrategyConfig:
         strategy = MilestoneDrivenStrategy()
         with pytest.raises(ValueError, match="<= 128"):
             strategy.validate_strategy_config({"transition_milestone": "x" * 129})
+
+
+class TestTransitionMilestoneOnly:
+    """Test transition_milestone that is not in the milestones list."""
+
+    @pytest.mark.unit
+    async def test_transition_milestone_only_accepts_tasks(self) -> None:
+        """transition_milestone not in milestones list still accepts
+        task assignments and triggers sprint transition."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint(task_count=2, completed_count=2)
+        config = _make_sprint_config(
+            milestones=[],  # no ceremony milestones
+            transition_milestone="release_ready",
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Assign tasks to transition-only milestone
+        for i in range(2):
+            await strategy.on_external_event(
+                sprint,
+                "milestone_assign",
+                {"task_id": f"task-{i}", "milestone": "release_ready"},
+            )
+
+        ctx = make_context()
+        result = strategy.should_transition_sprint(sprint, config, ctx)
+        assert result is SprintStatus.IN_REVIEW
+
+
+class TestAdditionalEdgeCases:
+    """Additional edge case tests for review findings."""
+
+    @pytest.mark.unit
+    async def test_on_sprint_activated_with_strategy_config_none(self) -> None:
+        """on_sprint_activated with strategy_config=None completes
+        without error and leaves milestones empty."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint()
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.MILESTONE_DRIVEN,
+                strategy_config=None,
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, config)
+        assert strategy._milestones == {}
+        assert strategy._transition_milestone is None
+
+    @pytest.mark.unit
+    async def test_assign_whitespace_task_id_ignored(self) -> None:
+        """Whitespace-only task_id in milestone_assign is ignored."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(
+            milestones=[{"name": "alpha", "ceremony": "sprint_review"}],
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "   ", "milestone": "alpha"},
+        )
+        assert strategy._milestone_tasks == {}
+
+    @pytest.mark.unit
+    async def test_assign_whitespace_milestone_ignored(self) -> None:
+        """Whitespace-only milestone in milestone_assign is ignored."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(
+            milestones=[{"name": "alpha", "ceremony": "sprint_review"}],
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "task-0", "milestone": "   "},
+        )
+        assert strategy._milestone_tasks == {}
+
+    @pytest.mark.unit
+    async def test_unassign_invalid_payload_no_error(self) -> None:
+        """milestone_unassign with missing keys does not raise."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(
+            milestones=[{"name": "alpha", "ceremony": "sprint_review"}],
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Missing task_id
+        await strategy.on_external_event(
+            sprint,
+            "milestone_unassign",
+            {"milestone": "alpha"},
+        )
+        # Missing milestone
+        await strategy.on_external_event(
+            sprint,
+            "milestone_unassign",
+            {"task_id": "task-0"},
+        )
+
+    @pytest.mark.unit
+    async def test_on_sprint_activated_skips_malformed_entries(self) -> None:
+        """Malformed milestone entries in config are silently skipped."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint()
+        # Bypass validate_strategy_config by using raw SprintConfig
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.MILESTONE_DRIVEN,
+                strategy_config={
+                    "milestones": [
+                        {"name": "valid", "ceremony": "sprint_review"},
+                        "not_a_dict",
+                        {"name": "", "ceremony": "retro"},
+                        {"ceremony": "retro"},  # missing name
+                    ],
+                },
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, config)
+        # Only the valid entry should be loaded
+        assert strategy._milestones == {"valid": "sprint_review"}
