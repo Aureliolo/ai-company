@@ -294,6 +294,34 @@ class WorkflowType(StrEnum):
     AGILE_KANBAN = "agile_kanban"
 
 
+class WorkflowNodeType(StrEnum):
+    """Node type in a visual workflow definition.
+
+    Each node represents a step or control-flow element in the
+    visual workflow editor.
+    """
+
+    START = "start"
+    END = "end"
+    TASK = "task"
+    AGENT_ASSIGNMENT = "agent_assignment"
+    CONDITIONAL = "conditional"
+    PARALLEL_SPLIT = "parallel_split"
+    PARALLEL_JOIN = "parallel_join"
+
+
+class WorkflowEdgeType(StrEnum):
+    """Edge type connecting nodes in a visual workflow definition.
+
+    Encodes the relationship semantics between workflow nodes.
+    """
+
+    SEQUENTIAL = "sequential"
+    CONDITIONAL_TRUE = "conditional_true"
+    CONDITIONAL_FALSE = "conditional_false"
+    PARALLEL_BRANCH = "parallel_branch"
+
+
 class ArtifactType(StrEnum):
     """Type of produced artifact."""
 

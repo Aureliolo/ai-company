@@ -1,0 +1,41 @@
+import { useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
+import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
+
+export interface WorkflowYamlPreviewProps {
+  yaml: string
+}
+
+export function WorkflowYamlPreview({ yaml }: WorkflowYamlPreviewProps) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  return (
+    <div className="flex flex-col border-t border-border bg-surface">
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+        aria-expanded={!collapsed}
+        aria-controls="yaml-preview-content"
+      >
+        {collapsed ? (
+          <ChevronUp className="size-3.5" aria-hidden="true" />
+        ) : (
+          <ChevronDown className="size-3.5" aria-hidden="true" />
+        )}
+        YAML Preview
+      </button>
+
+      {!collapsed && (
+        <div id="yaml-preview-content" className="h-48 overflow-auto border-t border-border">
+          <LazyCodeMirrorEditor
+            value={yaml}
+            language="yaml"
+            onChange={() => {}}
+            readOnly
+          />
+        </div>
+      )}
+    </div>
+  )
+}

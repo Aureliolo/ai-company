@@ -588,6 +588,57 @@ from synthorg.api.dto_providers import (  # noqa: E402
     to_provider_response,
 )
 
+# ── Workflow definition DTOs ────────────────────────────────────
+
+
+class CreateWorkflowDefinitionRequest(BaseModel):
+    """Payload for creating a new workflow definition.
+
+    Attributes:
+        name: Workflow name.
+        description: Optional description.
+        workflow_type: Target execution topology.
+        nodes: Nodes in the workflow graph (serialized as dicts).
+        edges: Edges connecting nodes (serialized as dicts).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(max_length=256, description="Workflow name")
+    description: str = Field(default="", max_length=4096, description="Description")
+    workflow_type: str = Field(description="Workflow type (e.g. sequential_pipeline)")
+    nodes: tuple[dict[str, object], ...] = Field(description="Workflow nodes")
+    edges: tuple[dict[str, object], ...] = Field(description="Workflow edges")
+
+
+class UpdateWorkflowDefinitionRequest(BaseModel):
+    """Payload for updating an existing workflow definition.
+
+    All fields are optional -- only provided fields are updated.
+
+    Attributes:
+        name: New name.
+        description: New description.
+        workflow_type: New workflow type.
+        nodes: New nodes.
+        edges: New edges.
+        expected_version: Optimistic concurrency guard.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr | None = Field(default=None, max_length=256)
+    description: str | None = Field(default=None, max_length=4096)
+    workflow_type: str | None = None
+    nodes: tuple[dict[str, object], ...] | None = None
+    edges: tuple[dict[str, object], ...] | None = None
+    expected_version: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optimistic concurrency guard",
+    )
+
+
 __all__ = [
     "ApiResponse",
     "ApproveRequest",
@@ -601,6 +652,7 @@ __all__ = [
     "CreateProjectRequest",
     "CreateProviderRequest",
     "CreateTaskRequest",
+    "CreateWorkflowDefinitionRequest",
     "DiscoverModelsResponse",
     "ErrorDetail",
     "PaginatedResponse",
@@ -615,5 +667,6 @@ __all__ = [
     "TransitionTaskRequest",
     "UpdateProviderRequest",
     "UpdateTaskRequest",
+    "UpdateWorkflowDefinitionRequest",
     "to_provider_response",
 ]

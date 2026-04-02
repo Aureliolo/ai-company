@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Users,
   Video,
+  Workflow,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -222,6 +223,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         <div className="flex flex-col gap-1">
           <SidebarNavItem to={ROUTES.AGENTS} icon={Users} label="Agents" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROJECTS} icon={FolderKanban} label="Projects" collapsed={collapsed} />
+          <SidebarNavItem to={ROUTES.WORKFLOW_EDITOR} icon={Workflow} label="Workflows" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.ARTIFACTS} icon={Package} label="Artifacts" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.MESSAGES} icon={MessageSquare} label="Messages" collapsed={collapsed} badge={0} />
           <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />

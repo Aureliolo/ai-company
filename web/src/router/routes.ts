@@ -27,6 +27,8 @@ export const ROUTES = {
   PROJECT_DETAIL: '/projects/:projectId',
   ARTIFACTS: '/artifacts',
   ARTIFACT_DETAIL: '/artifacts/:artifactId',
+  WORKFLOWS: '/workflows',
+  WORKFLOW_EDITOR: '/workflows/editor',
   SETTINGS: '/settings',
   SETTINGS_NAMESPACE: '/settings/:namespace',
   SETTINGS_SINKS: '/settings/observability/sinks',

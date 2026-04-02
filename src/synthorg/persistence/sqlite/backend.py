@@ -64,6 +64,9 @@ from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
 )
+from synthorg.persistence.sqlite.workflow_definition_repo import (
+    SQLiteWorkflowDefinitionRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.config import SQLiteConfig
@@ -103,6 +106,7 @@ class SQLitePersistenceBackend:
         self._agent_states: SQLiteAgentStateRepository | None = None
         self._settings: SQLiteSettingsRepository | None = None
         self._custom_presets: SQLitePersonalityPresetRepository | None = None
+        self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -124,6 +128,7 @@ class SQLitePersistenceBackend:
         self._agent_states = None
         self._settings = None
         self._custom_presets = None
+        self._workflow_definitions = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -195,6 +200,7 @@ class SQLitePersistenceBackend:
         self._agent_states = SQLiteAgentStateRepository(self._db)
         self._settings = SQLiteSettingsRepository(self._db)
         self._custom_presets = SQLitePersonalityPresetRepository(self._db)
+        self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -457,6 +463,18 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._custom_presets, "custom_presets")
+
+    @property
+    def workflow_definitions(self) -> SQLiteWorkflowDefinitionRepository:
+        """Repository for workflow definition persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._workflow_definitions,
+            "workflow_definitions",
+        )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.

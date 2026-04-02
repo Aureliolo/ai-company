@@ -24,6 +24,7 @@ const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
+const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
@@ -112,6 +113,7 @@ export const router = createBrowserRouter([
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
               { path: 'artifacts', element: <ArtifactsPage /> },
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
+              { path: 'workflows/editor', element: <WorkflowEditorPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },

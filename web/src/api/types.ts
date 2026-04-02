@@ -1538,3 +1538,79 @@ export interface ApplyTemplatePackResponse {
   readonly agents_added: number
   readonly departments_added: number
 }
+
+// ── Workflow Definitions ───────────────────────────────────────
+
+export type WorkflowNodeType =
+  | 'start'
+  | 'end'
+  | 'task'
+  | 'agent_assignment'
+  | 'conditional'
+  | 'parallel_split'
+  | 'parallel_join'
+
+export type WorkflowEdgeType =
+  | 'sequential'
+  | 'conditional_true'
+  | 'conditional_false'
+  | 'parallel_branch'
+
+export interface WorkflowNodeData {
+  readonly id: string
+  readonly type: WorkflowNodeType
+  readonly label: string
+  readonly position_x: number
+  readonly position_y: number
+  readonly config: Record<string, unknown>
+}
+
+export interface WorkflowEdgeData {
+  readonly id: string
+  readonly source_node_id: string
+  readonly target_node_id: string
+  readonly type: WorkflowEdgeType
+  readonly label: string | null
+}
+
+export interface WorkflowDefinition {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly workflow_type: string
+  readonly nodes: readonly WorkflowNodeData[]
+  readonly edges: readonly WorkflowEdgeData[]
+  readonly created_by: string
+  readonly created_at: string
+  readonly updated_at: string
+  readonly version: number
+}
+
+export interface CreateWorkflowDefinitionRequest {
+  readonly name: string
+  readonly description?: string
+  readonly workflow_type: string
+  readonly nodes: readonly Record<string, unknown>[]
+  readonly edges: readonly Record<string, unknown>[]
+}
+
+export interface UpdateWorkflowDefinitionRequest {
+  readonly name?: string
+  readonly description?: string
+  readonly workflow_type?: string
+  readonly nodes?: readonly Record<string, unknown>[]
+  readonly edges?: readonly Record<string, unknown>[]
+  readonly expected_version?: number
+}
+
+export interface WorkflowValidationError {
+  readonly code: string
+  readonly message: string
+  readonly node_id: string | null
+  readonly edge_id: string | null
+}
+
+export interface WorkflowValidationResult {
+  readonly valid: boolean
+  readonly errors: readonly WorkflowValidationError[]
+}

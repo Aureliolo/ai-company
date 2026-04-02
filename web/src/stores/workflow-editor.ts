@@ -1,0 +1,423 @@
+/**
+ * Zustand store for the visual workflow editor.
+ *
+ * Manages nodes, edges, selection, undo/redo, validation,
+ * YAML preview, and persistence via the API.
+ */
+
+import { create } from 'zustand'
+import type { Node, Edge, Connection, NodeChange, EdgeChange } from '@xyflow/react'
+import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react'
+import type {
+  WorkflowDefinition,
+  WorkflowValidationResult,
+  WorkflowNodeType,
+} from '@/api/types'
+import {
+  getWorkflow,
+  createWorkflow,
+  updateWorkflow,
+  validateWorkflow,
+  exportWorkflowYaml,
+} from '@/api/endpoints/workflows'
+import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
+
+const MAX_UNDO = 50
+
+interface WorkflowSnapshot {
+  nodes: Node[]
+  edges: Edge[]
+}
+
+export interface WorkflowEditorState {
+  // Data
+  definition: WorkflowDefinition | null
+  nodes: Node[]
+  edges: Edge[]
+
+  // Selection & UI
+  selectedNodeId: string | null
+  dirty: boolean
+  saving: boolean
+  loading: boolean
+  error: string | null
+
+  // Validation
+  validationResult: WorkflowValidationResult | null
+  validating: boolean
+
+  // Undo/redo
+  undoStack: WorkflowSnapshot[]
+  redoStack: WorkflowSnapshot[]
+
+  // YAML preview
+  yamlPreview: string
+
+  // Actions
+  loadDefinition: (id: string) => Promise<void>
+  createDefinition: (name: string, workflowType: string) => Promise<void>
+  saveDefinition: () => Promise<void>
+  addNode: (type: WorkflowNodeType, position: { x: number; y: number }) => void
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void
+  removeNode: (nodeId: string) => void
+  onConnect: (connection: Connection) => void
+  removeEdge: (edgeId: string) => void
+  onNodesChange: (changes: NodeChange[]) => void
+  onEdgesChange: (changes: EdgeChange[]) => void
+  selectNode: (nodeId: string | null) => void
+  undo: () => void
+  redo: () => void
+  validate: () => Promise<void>
+  exportYaml: () => Promise<string>
+  reset: () => void
+}
+
+let nextNodeId = 1
+let nextEdgeId = 1
+
+function generateNodeId(): string {
+  return `node-${nextNodeId++}`
+}
+
+function generateEdgeId(): string {
+  return `edge-${nextEdgeId++}`
+}
+
+function nodeTypeToEdgeType(
+  sourceType: string | undefined,
+  sourceHandle: string | null | undefined,
+): string {
+  if (sourceType === 'conditional') {
+    return sourceHandle === 'true' ? 'conditional' : 'conditional'
+  }
+  if (sourceType === 'parallel_split') return 'sequential'
+  return 'sequential'
+}
+
+function regenerateYaml(nodes: Node[], edges: Edge[], definition: WorkflowDefinition | null): string {
+  return generateYamlPreview(
+    nodes,
+    edges,
+    definition?.name ?? 'Untitled',
+    definition?.workflow_type ?? 'sequential_pipeline',
+  )
+}
+
+export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) => ({
+  definition: null,
+  nodes: [],
+  edges: [],
+  selectedNodeId: null,
+  dirty: false,
+  saving: false,
+  loading: false,
+  error: null,
+  validationResult: null,
+  validating: false,
+  undoStack: [],
+  redoStack: [],
+  yamlPreview: '',
+
+  loadDefinition: async (id: string) => {
+    set({ loading: true, error: null })
+    try {
+      const def = await getWorkflow(id)
+      const nodes: Node[] = def.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: { x: n.position_x, y: n.position_y },
+        data: { label: n.label, config: n.config },
+      }))
+      const edges: Edge[] = def.edges.map((e) => ({
+        id: e.id,
+        source: e.source_node_id,
+        target: e.target_node_id,
+        type: e.type === 'conditional_true' || e.type === 'conditional_false' ? 'conditional' : 'sequential',
+        sourceHandle: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined,
+        data: { edgeType: e.type, branch: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined },
+        label: e.label ?? undefined,
+      }))
+      const yaml = regenerateYaml(nodes, edges, def)
+      set({
+        definition: def,
+        nodes,
+        edges,
+        loading: false,
+        dirty: false,
+        undoStack: [],
+        redoStack: [],
+        yamlPreview: yaml,
+        validationResult: null,
+      })
+    } catch (err) {
+      set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load' })
+    }
+  },
+
+  createDefinition: async (name: string, workflowType: string) => {
+    set({ loading: true, error: null })
+    try {
+      const startId = generateNodeId()
+      const endId = generateNodeId()
+      const def = await createWorkflow({
+        name,
+        workflow_type: workflowType,
+        nodes: [
+          { id: startId, type: 'start', label: 'Start', position_x: 250, position_y: 50, config: {} },
+          { id: endId, type: 'end', label: 'End', position_x: 250, position_y: 400, config: {} },
+        ],
+        edges: [],
+      })
+      const nodes: Node[] = [
+        { id: startId, type: 'start', position: { x: 250, y: 50 }, data: { label: 'Start', config: {} } },
+        { id: endId, type: 'end', position: { x: 250, y: 400 }, data: { label: 'End', config: {} } },
+      ]
+      const yaml = regenerateYaml(nodes, [], def)
+      set({
+        definition: def,
+        nodes,
+        edges: [],
+        loading: false,
+        dirty: false,
+        undoStack: [],
+        redoStack: [],
+        yamlPreview: yaml,
+      })
+    } catch (err) {
+      set({ loading: false, error: err instanceof Error ? err.message : 'Failed to create' })
+    }
+  },
+
+  saveDefinition: async () => {
+    const { definition, nodes, edges } = get()
+    if (!definition) return
+    set({ saving: true, error: null })
+    try {
+      const updatedDef = await updateWorkflow(definition.id, {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.type ?? 'task',
+          label: (n.data as Record<string, unknown>)?.label ?? n.id,
+          position_x: n.position.x,
+          position_y: n.position.y,
+          config: ((n.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {},
+        })),
+        edges: edges.map((e) => ({
+          id: e.id,
+          source_node_id: e.source,
+          target_node_id: e.target,
+          type: (e.data as Record<string, unknown>)?.edgeType ?? 'sequential',
+          label: (e.label as string) ?? null,
+        })),
+        expected_version: definition.version,
+      })
+      set({ definition: updatedDef, saving: false, dirty: false })
+    } catch (err) {
+      set({ saving: false, error: err instanceof Error ? err.message : 'Failed to save' })
+    }
+  },
+
+  addNode: (type: WorkflowNodeType, position: { x: number; y: number }) => {
+    const { nodes, edges, definition } = get()
+    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const id = generateNodeId()
+    const label = type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')
+    const newNode: Node = {
+      id,
+      type,
+      position,
+      data: { label, config: {} },
+    }
+    const newNodes = [...nodes, newNode]
+    const yaml = regenerateYaml(newNodes, edges, definition)
+    set((s) => ({
+      nodes: newNodes,
+      dirty: true,
+      undoStack: [...s.undoStack.slice(-MAX_UNDO + 1), snapshot],
+      redoStack: [],
+      yamlPreview: yaml,
+    }))
+  },
+
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => {
+    const { nodes, edges, definition } = get()
+    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const newNodes = nodes.map((n) =>
+      n.id === nodeId
+        ? { ...n, data: { ...(n.data as Record<string, unknown>), config } }
+        : n,
+    )
+    const yaml = regenerateYaml(newNodes, edges, definition)
+    set((s) => ({
+      nodes: newNodes,
+      dirty: true,
+      undoStack: [...s.undoStack.slice(-MAX_UNDO + 1), snapshot],
+      redoStack: [],
+      yamlPreview: yaml,
+    }))
+  },
+
+  removeNode: (nodeId: string) => {
+    const { nodes, edges, definition } = get()
+    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const newNodes = nodes.filter((n) => n.id !== nodeId)
+    const newEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId)
+    const yaml = regenerateYaml(newNodes, newEdges, definition)
+    set((s) => ({
+      nodes: newNodes,
+      edges: newEdges,
+      dirty: true,
+      selectedNodeId: s.selectedNodeId === nodeId ? null : s.selectedNodeId,
+      undoStack: [...s.undoStack.slice(-MAX_UNDO + 1), snapshot],
+      redoStack: [],
+      yamlPreview: yaml,
+    }))
+  },
+
+  onConnect: (connection: Connection) => {
+    const { nodes, edges, definition } = get()
+    if (!connection.source || !connection.target) return
+    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const sourceNode = nodes.find((n) => n.id === connection.source)
+    const edgeType = nodeTypeToEdgeType(sourceNode?.type, connection.sourceHandle)
+    const isTrueBranch = connection.sourceHandle === 'true'
+    const newEdge: Edge = {
+      id: generateEdgeId(),
+      source: connection.source,
+      target: connection.target,
+      type: edgeType,
+      sourceHandle: connection.sourceHandle ?? undefined,
+      targetHandle: connection.targetHandle ?? undefined,
+      data: {
+        edgeType: sourceNode?.type === 'conditional'
+          ? (isTrueBranch ? 'conditional_true' : 'conditional_false')
+          : sourceNode?.type === 'parallel_split'
+            ? 'parallel_branch'
+            : 'sequential',
+        branch: sourceNode?.type === 'conditional' ? (isTrueBranch ? 'true' : 'false') : undefined,
+      },
+    }
+    const newEdges = [...edges, newEdge]
+    const yaml = regenerateYaml(nodes, newEdges, definition)
+    set((s) => ({
+      edges: newEdges,
+      dirty: true,
+      undoStack: [...s.undoStack.slice(-MAX_UNDO + 1), snapshot],
+      redoStack: [],
+      yamlPreview: yaml,
+    }))
+  },
+
+  removeEdge: (edgeId: string) => {
+    const { nodes, edges, definition } = get()
+    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const newEdges = edges.filter((e) => e.id !== edgeId)
+    const yaml = regenerateYaml(nodes, newEdges, definition)
+    set((s) => ({
+      edges: newEdges,
+      dirty: true,
+      undoStack: [...s.undoStack.slice(-MAX_UNDO + 1), snapshot],
+      redoStack: [],
+      yamlPreview: yaml,
+    }))
+  },
+
+  onNodesChange: (changes: NodeChange[]) => {
+    set((s) => {
+      const newNodes = applyNodeChanges(changes, s.nodes)
+      // Only mark dirty for non-selection changes
+      const hasMoves = changes.some((c) => c.type === 'position' || c.type === 'remove')
+      return {
+        nodes: newNodes,
+        dirty: s.dirty || hasMoves,
+        yamlPreview: hasMoves ? regenerateYaml(newNodes, s.edges, s.definition) : s.yamlPreview,
+      }
+    })
+  },
+
+  onEdgesChange: (changes: EdgeChange[]) => {
+    set((s) => {
+      const newEdges = applyEdgeChanges(changes, s.edges)
+      const hasRemoves = changes.some((c) => c.type === 'remove')
+      return {
+        edges: newEdges,
+        dirty: s.dirty || hasRemoves,
+        yamlPreview: hasRemoves ? regenerateYaml(s.nodes, newEdges, s.definition) : s.yamlPreview,
+      }
+    })
+  },
+
+  selectNode: (nodeId: string | null) => {
+    set({ selectedNodeId: nodeId })
+  },
+
+  undo: () => {
+    const { undoStack, nodes, edges, definition } = get()
+    if (undoStack.length === 0) return
+    const snapshot = undoStack.at(-1)
+    if (!snapshot) return
+    const current: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
+    set({
+      nodes: snapshot.nodes,
+      edges: snapshot.edges,
+      undoStack: undoStack.slice(0, -1),
+      redoStack: [...get().redoStack, current],
+      dirty: true,
+      yamlPreview: yaml,
+    })
+  },
+
+  redo: () => {
+    const { redoStack, nodes, edges, definition } = get()
+    if (redoStack.length === 0) return
+    const snapshot = redoStack.at(-1)
+    if (!snapshot) return
+    const current: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
+    set({
+      nodes: snapshot.nodes,
+      edges: snapshot.edges,
+      redoStack: redoStack.slice(0, -1),
+      undoStack: [...get().undoStack, current],
+      dirty: true,
+      yamlPreview: yaml,
+    })
+  },
+
+  validate: async () => {
+    const { definition } = get()
+    if (!definition) return
+    set({ validating: true })
+    try {
+      const result = await validateWorkflow(definition.id)
+      set({ validationResult: result, validating: false })
+    } catch (err) {
+      set({ validating: false, error: err instanceof Error ? err.message : 'Validation failed' })
+    }
+  },
+
+  exportYaml: async () => {
+    const { definition } = get()
+    if (!definition) return ''
+    return exportWorkflowYaml(definition.id)
+  },
+
+  reset: () => {
+    set({
+      definition: null,
+      nodes: [],
+      edges: [],
+      selectedNodeId: null,
+      dirty: false,
+      saving: false,
+      loading: false,
+      error: null,
+      validationResult: null,
+      validating: false,
+      undoStack: [],
+      redoStack: [],
+      yamlPreview: '',
+    })
+  },
+}))

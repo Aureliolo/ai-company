@@ -1,0 +1,131 @@
+/**
+ * Client-side YAML preview generation.
+ *
+ * Mirrors the backend export logic for live preview in the editor.
+ * Uses js-yaml (already a project dependency).
+ */
+
+import yaml from 'js-yaml'
+import type { Node, Edge } from '@xyflow/react'
+
+interface StepData {
+  id: string
+  type: string
+  [key: string]: unknown
+}
+
+/**
+ * Kahn's algorithm for topological ordering.
+ */
+function topologicalSort(nodeIds: string[], edges: Edge[]): string[] {
+  const inDegree = new Map<string, number>()
+  const adj = new Map<string, string[]>()
+
+  for (const id of nodeIds) {
+    inDegree.set(id, 0)
+    adj.set(id, [])
+  }
+
+  for (const edge of edges) {
+    adj.get(edge.source)?.push(edge.target)
+    inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1)
+  }
+
+  const queue = nodeIds.filter((id) => (inDegree.get(id) ?? 0) === 0)
+  const result: string[] = []
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    result.push(current)
+    for (const neighbor of adj.get(current) ?? []) {
+      const deg = (inDegree.get(neighbor) ?? 1) - 1
+      inDegree.set(neighbor, deg)
+      if (deg === 0) queue.push(neighbor)
+    }
+  }
+
+  return result
+}
+
+/**
+ * Generate a YAML string from the editor's nodes and edges.
+ */
+export function generateYamlPreview(
+  nodes: Node[],
+  edges: Edge[],
+  workflowName: string,
+  workflowType: string,
+): string {
+  const skipTypes = new Set(['start', 'end'])
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+
+  const sorted = topologicalSort(
+    nodes.map((n) => n.id),
+    edges,
+  )
+
+  // Build reverse adjacency (incoming edges per node)
+  const incoming = new Map<string, string[]>()
+  for (const edge of edges) {
+    const list = incoming.get(edge.target) ?? []
+    list.push(edge.source)
+    incoming.set(edge.target, list)
+  }
+
+  // Build outgoing edges per node
+  const outgoing = new Map<string, Edge[]>()
+  for (const edge of edges) {
+    const list = outgoing.get(edge.source) ?? []
+    list.push(edge)
+    outgoing.set(edge.source, list)
+  }
+
+  const steps: StepData[] = []
+
+  for (const nodeId of sorted) {
+    const node = nodeMap.get(nodeId)
+    if (!node || skipTypes.has(node.type ?? '')) continue
+
+    const config = (node.data as Record<string, unknown>)?.config as Record<string, unknown> | undefined
+    const step: StepData = { id: nodeId, type: node.type ?? 'task' }
+
+    // Add config fields based on type
+    if (node.type === 'task' && config) {
+      if (config.title) step.title = config.title
+      if (config.task_type) step.task_type = config.task_type
+      if (config.priority) step.priority = config.priority
+      if (config.complexity) step.complexity = config.complexity
+    } else if (node.type === 'conditional' && config?.condition_expression) {
+      step.condition = config.condition_expression
+    } else if (node.type === 'parallel_split') {
+      const branches = (outgoing.get(nodeId) ?? [])
+        .filter((e) => e.data?.edgeType === 'parallel_branch')
+        .map((e) => e.target)
+      if (branches.length > 0) step.branches = branches
+    } else if (node.type === 'parallel_join') {
+      step.join_strategy = (config?.join_strategy as string) || 'all'
+    } else if (node.type === 'agent_assignment' && config) {
+      if (config.routing_strategy) step.strategy = config.routing_strategy
+      if (config.role_filter) step.role = config.role_filter
+    }
+
+    // Dependencies (skip START/END)
+    const deps = (incoming.get(nodeId) ?? []).filter((srcId) => {
+      const srcNode = nodeMap.get(srcId)
+      return srcNode && !skipTypes.has(srcNode.type ?? '')
+    })
+    if (deps.length > 0) step.depends_on = deps
+
+    steps.push(step)
+  }
+
+  const document = {
+    workflow_definition: {
+      name: workflowName,
+      workflow_type: workflowType,
+      steps,
+    },
+  }
+
+  return yaml.dump(document, { sortKeys: false, noRefs: true })
+}

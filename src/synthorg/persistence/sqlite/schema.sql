@@ -303,3 +303,16 @@ CREATE TABLE IF NOT EXISTS custom_presets (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS workflow_definitions (
+    id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
+    name TEXT NOT NULL CHECK(length(name) > 0),
+    description TEXT NOT NULL DEFAULT '',
+    workflow_type TEXT NOT NULL,
+    nodes TEXT NOT NULL,
+    edges TEXT NOT NULL,
+    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1
+);
