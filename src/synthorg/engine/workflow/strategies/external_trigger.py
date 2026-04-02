@@ -118,39 +118,11 @@ class ExternalTriggerStrategy:
 
         event_name = str(on_external).strip()
 
-        if event_name in context.external_events:
-            logger.info(
-                SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED,
-                ceremony=ceremony.name,
-                event_name=event_name,
-                source="context",
-                strategy="external_trigger",
-            )
-            logger.info(
-                SPRINT_CEREMONY_TRIGGERED,
-                ceremony=ceremony.name,
-                reason="external_event",
-                strategy="external_trigger",
-            )
-            return True
-
-        if event_name in self._received_events:
-            logger.info(
-                SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED,
-                ceremony=ceremony.name,
-                event_name=event_name,
-                source="received_buffer",
-                strategy="external_trigger",
-            )
-            logger.info(
-                SPRINT_CEREMONY_TRIGGERED,
-                ceremony=ceremony.name,
-                reason="external_event",
-                strategy="external_trigger",
-            )
-            return True
-
-        return False
+        return self._match_event(
+            ceremony.name,
+            event_name,
+            context.external_events,
+        )
 
     def should_transition_sprint(
         self,
@@ -370,6 +342,34 @@ class ExternalTriggerStrategy:
 
     # -- Private helpers -------------------------------------------------------
 
+    def _match_event(
+        self,
+        ceremony_name: str,
+        event_name: str,
+        context_events: tuple[str, ...],
+    ) -> bool:
+        """Check context events and received buffer for a match."""
+        for source_label, events in (
+            ("context", context_events),
+            ("received_buffer", self._received_events),
+        ):
+            if event_name in events:
+                logger.info(
+                    SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED,
+                    ceremony=ceremony_name,
+                    event_name=event_name,
+                    source=source_label,
+                    strategy="external_trigger",
+                )
+                logger.info(
+                    SPRINT_CEREMONY_TRIGGERED,
+                    ceremony=ceremony_name,
+                    reason="external_event",
+                    strategy="external_trigger",
+                )
+                return True
+        return False
+
     @staticmethod
     def _is_valid_event_name(value: object) -> bool:
         """Check if a value is a valid external event name."""
@@ -430,14 +430,32 @@ class ExternalTriggerStrategy:
         for i, entry in enumerate(sources):
             if not isinstance(entry, dict):
                 msg = f"sources[{i}] must be a dict"
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="external_trigger",
+                    key=f"sources[{i}]",
+                    value=type(entry).__name__,
+                )
                 raise TypeError(msg)
             source_type = entry.get("type")
             if source_type is None:
                 msg = f"sources[{i}] must have a 'type' key"
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="external_trigger",
+                    key=f"sources[{i}].type",
+                    value=None,
+                )
                 raise ValueError(msg)
             if source_type not in _VALID_SOURCE_TYPES:
                 msg = (
                     f"sources[{i}].type must be one of "
                     f"{sorted(_VALID_SOURCE_TYPES)}, got {source_type!r}"
+                )
+                logger.warning(
+                    SPRINT_STRATEGY_CONFIG_INVALID,
+                    strategy="external_trigger",
+                    key=f"sources[{i}].type",
+                    value=source_type,
                 )
                 raise ValueError(msg)

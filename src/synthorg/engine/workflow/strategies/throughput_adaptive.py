@@ -33,6 +33,7 @@ from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET,
     SPRINT_CEREMONY_THROUGHPUT_COLD_START,
@@ -153,51 +154,66 @@ class ThroughputAdaptiveStrategy:
         if current_rate is None:
             return False
 
-        if on_drop and self._baseline_rate > 0:
-            drop_pct = (
-                (self._baseline_rate - current_rate) / self._baseline_rate
-            ) * 100.0
-            if drop_pct >= self._drop_threshold_pct:
-                logger.info(
-                    SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
-                    ceremony=ceremony.name,
-                    baseline_rate=self._baseline_rate,
-                    current_rate=current_rate,
-                    drop_pct=round(drop_pct, 1),
-                    threshold_pct=self._drop_threshold_pct,
-                    strategy="throughput_adaptive",
-                )
-                logger.info(
-                    SPRINT_CEREMONY_TRIGGERED,
-                    ceremony=ceremony.name,
-                    reason="velocity_drop",
-                    strategy="throughput_adaptive",
-                )
-                return True
+        if on_drop and self._check_velocity_drop(ceremony.name, current_rate):
+            return True
 
-        if on_spike and self._baseline_rate > 0:
-            spike_pct = (
-                (current_rate - self._baseline_rate) / self._baseline_rate
-            ) * 100.0
-            if spike_pct >= self._spike_threshold_pct:
-                logger.info(
-                    SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
-                    ceremony=ceremony.name,
-                    baseline_rate=self._baseline_rate,
-                    current_rate=current_rate,
-                    spike_pct=round(spike_pct, 1),
-                    threshold_pct=self._spike_threshold_pct,
-                    strategy="throughput_adaptive",
-                )
-                logger.info(
-                    SPRINT_CEREMONY_TRIGGERED,
-                    ceremony=ceremony.name,
-                    reason="velocity_spike",
-                    strategy="throughput_adaptive",
-                )
-                return True
+        return on_spike and self._check_velocity_spike(ceremony.name, current_rate)
 
-        return False
+    def _check_velocity_drop(
+        self,
+        ceremony_name: str,
+        current_rate: float,
+    ) -> bool:
+        """Check if velocity has dropped beyond the threshold."""
+        if self._baseline_rate is None or self._baseline_rate <= 0:
+            return False
+        drop_pct = ((self._baseline_rate - current_rate) / self._baseline_rate) * 100.0
+        if drop_pct < self._drop_threshold_pct:
+            return False
+        logger.info(
+            SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
+            ceremony=ceremony_name,
+            baseline_rate=self._baseline_rate,
+            current_rate=current_rate,
+            drop_pct=round(drop_pct, 1),
+            threshold_pct=self._drop_threshold_pct,
+            strategy="throughput_adaptive",
+        )
+        logger.info(
+            SPRINT_CEREMONY_TRIGGERED,
+            ceremony=ceremony_name,
+            reason="velocity_drop",
+            strategy="throughput_adaptive",
+        )
+        return True
+
+    def _check_velocity_spike(
+        self,
+        ceremony_name: str,
+        current_rate: float,
+    ) -> bool:
+        """Check if velocity has spiked beyond the threshold."""
+        if self._baseline_rate is None or self._baseline_rate <= 0:
+            return False
+        spike_pct = ((current_rate - self._baseline_rate) / self._baseline_rate) * 100.0
+        if spike_pct < self._spike_threshold_pct:
+            return False
+        logger.info(
+            SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
+            ceremony=ceremony_name,
+            baseline_rate=self._baseline_rate,
+            current_rate=current_rate,
+            spike_pct=round(spike_pct, 1),
+            threshold_pct=self._spike_threshold_pct,
+            strategy="throughput_adaptive",
+        )
+        logger.info(
+            SPRINT_CEREMONY_TRIGGERED,
+            ceremony=ceremony_name,
+            reason="velocity_spike",
+            strategy="throughput_adaptive",
+        )
+        return True
 
     def should_transition_sprint(
         self,
@@ -230,6 +246,12 @@ class ThroughputAdaptiveStrategy:
         )
 
         if context.sprint_percentage_complete >= threshold:
+            logger.info(
+                SPRINT_AUTO_TRANSITION,
+                sprint_percentage_complete=context.sprint_percentage_complete,
+                threshold=threshold,
+                strategy="throughput_adaptive",
+            )
             return SprintStatus.IN_REVIEW
         return None
 

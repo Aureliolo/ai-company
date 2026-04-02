@@ -56,7 +56,9 @@ from synthorg.engine.workflow.sprint_velocity import (
     record_velocity,
 )
 from synthorg.engine.workflow.strategies import (
+    BudgetDrivenStrategy,
     CalendarStrategy,
+    EventDrivenStrategy,
     ExternalTriggerStrategy,
     HybridStrategy,
     TaskDrivenStrategy,
@@ -78,6 +80,7 @@ __all__ = [
     "STATUS_TO_COLUMN",
     "VALID_COLUMN_TRANSITIONS",
     "VALID_SPRINT_TRANSITIONS",
+    "BudgetDrivenStrategy",
     "CalendarStrategy",
     "CalendarVelocityCalculator",
     "CeremonyEvalContext",
@@ -85,6 +88,7 @@ __all__ = [
     "CeremonyScheduler",
     "CeremonySchedulingStrategy",
     "CeremonyStrategyType",
+    "EventDrivenStrategy",
     "ExternalTriggerStrategy",
     "HybridStrategy",
     "KanbanColumn",

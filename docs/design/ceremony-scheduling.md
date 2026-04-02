@@ -663,6 +663,14 @@ Event constants in `synthorg.observability.events.workflow`:
 | `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED` | Budget-driven strategy skipped an already-fired threshold |
 | `SPRINT_AUTO_TRANSITION_BUDGET` | Sprint auto-transitioned due to budget exhaustion |
 | `VELOCITY_BUDGET_NO_BUDGET_CONSUMED` | BudgetVelocityCalculator: record has None or zero budget_consumed |
+| `SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET` | Throughput-adaptive strategy established baseline rate |
+| `SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED` | Throughput-adaptive strategy detected a velocity drop |
+| `SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED` | Throughput-adaptive strategy detected a velocity spike |
+| `SPRINT_CEREMONY_THROUGHPUT_COLD_START` | Throughput-adaptive strategy in cold start (baseline not yet established) |
+| `SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED` | External-trigger strategy received an external event |
+| `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED` | External-trigger strategy matched an external event to a ceremony |
+| `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED` | External-trigger strategy registered event sources |
+| `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED` | External-trigger strategy cleared event sources |
 
 ---
 
@@ -703,12 +711,18 @@ Event constants in `synthorg.observability.events.workflow`:
 
 > **Note:** The `CeremonyScheduler` does not yet wire all lifecycle hooks (`on_task_added`, `on_task_blocked`, `on_budget_updated`, `on_external_event`). Until scheduler integration is complete, these strategies' event counters will not increment for those event types. Scheduler integration is tracked in follow-up work.
 
+### Implemented in #973 + #974 (Throughput-Adaptive + External-Trigger Strategies, integration pending)
+
+- `ThroughputAdaptiveStrategy` -- ceremony firing when rolling throughput rate drops or spikes beyond configured thresholds (velocity_drop_threshold_pct, velocity_spike_threshold_pct, measurement_window_tasks). Baseline rate established from first full window, frozen per sprint. Default velocity calculator: `TaskDrivenVelocityCalculator`.
+- `ExternalTriggerStrategy` -- ceremony firing on named external signals (webhooks, git events, MCP invocations). Event matching via `context.external_events` and `on_external_event` lifecycle hook buffer. Source registration is declarative. Default velocity calculator: `PointsPerSprintVelocityCalculator`.
+- Observability event constants (`SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET`, `SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED`, `SPRINT_CEREMONY_THROUGHPUT_COLD_START`, `SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED`, `SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED`, `SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED`)
+
+> **Note:** Like #971 + #972, the `CeremonyScheduler` does not yet wire all lifecycle hooks for these strategies. Scheduler integration is tracked in follow-up work.
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.5.9 | #973 | ThroughputAdaptiveStrategy |
-| v0.5.9 | #974 | ExternalTriggerStrategy |
 | v0.6.0 | #975 | MilestoneStrategy |
 | v0.6.0 | #976 | Template default ceremony strategy assignments |
 | v0.6.1 | #978 | Strategy migration UX (warnings, notifications) |

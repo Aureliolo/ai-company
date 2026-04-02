@@ -366,6 +366,45 @@ class TestLifecycleHooks:
 
         assert len(strategy._received_events) == 0
 
+    @pytest.mark.unit
+    async def test_whitespace_stripped_event_matching(self) -> None:
+        """Whitespace-padded events match after stripping."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config()
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Buffer event with leading/trailing whitespace
+        await strategy.on_external_event(sprint, "  pr_merged  ", {})
+
+        # Ceremony with clean name should match stripped buffer
+        ceremony = _make_ceremony(on_external="pr_merged")
+        ctx = make_context()
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
+
+    @pytest.mark.unit
+    async def test_on_sprint_activated_filters_non_dict_sources(self) -> None:
+        """Non-dict entries in sources list are silently filtered."""
+        strategy = ExternalTriggerStrategy()
+        sprint = make_sprint()
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EXTERNAL_TRIGGER,
+                strategy_config={
+                    "sources": [
+                        {"type": "webhook"},
+                        "not_a_dict",
+                        42,
+                        {"type": "git_event"},
+                    ],
+                },
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Only the 2 dict entries should survive
+        assert len(strategy._sources) == 2
+
 
 class TestValidateStrategyConfig:
     """validate_strategy_config() tests."""
@@ -412,6 +451,7 @@ class TestValidateStrategyConfig:
             ({"transition_event": 42}, ValueError, "non-empty string"),
             ({"transition_event": "x" * 200}, ValueError, "<= 128"),
             ({"sources": "not_a_list"}, TypeError, "must be a list"),
+            ({"sources": [42]}, TypeError, "must be a dict"),
             ({"sources": [{"no_type": "x"}]}, ValueError, "must have a 'type'"),
             ({"sources": [{"type": "invalid"}]}, ValueError, "must be one of"),
             (
@@ -429,6 +469,7 @@ class TestValidateStrategyConfig:
             "transition_event_non_string",
             "transition_event_too_long",
             "sources_not_list",
+            "sources_non_dict_entry",
             "sources_no_type",
             "sources_invalid_type",
             "sources_too_many",
