@@ -330,7 +330,7 @@ export default function ComparisonTable({
         <table className="ct-table">
           <thead>
             <tr>
-              <th style={{ width: "2rem" }}></th>
+              <th className="ct-th-expand"></th>
               <th aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
                 <button type="button" className="ct-sort-btn" onClick={() => handleSort("name")}>
                   Framework
@@ -431,7 +431,7 @@ export default function ComparisonTable({
                       const support = feat?.support || "none";
                       const note = feat?.note || "";
                       return (
-                        <td key={dim.key} style={{ textAlign: "center" }}>
+                        <td key={dim.key} className="ct-support-cell">
                           <SupportIcon level={support} note={note} />
                         </td>
                       );

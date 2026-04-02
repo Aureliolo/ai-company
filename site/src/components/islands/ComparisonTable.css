@@ -155,6 +155,14 @@
   color: var(--ct-text-primary);
 }
 
+.ct-th-expand {
+  width: 2rem;
+}
+
+.ct-support-cell {
+  text-align: center;
+}
+
 .ct-table th .sort-arrow {
   display: inline-block;
   margin-left: 0.25rem;
@@ -204,22 +212,22 @@
 
 .ct-support[data-level="full"] {
   color: var(--ct-support-full);
-  background: rgba(16, 185, 129, 0.1);
+  background: color-mix(in srgb, var(--ct-support-full) 10%, transparent);
 }
 
 .ct-support[data-level="partial"] {
   color: var(--ct-support-partial);
-  background: rgba(245, 158, 11, 0.1);
+  background: color-mix(in srgb, var(--ct-support-partial) 10%, transparent);
 }
 
 .ct-support[data-level="none"] {
   color: var(--ct-support-none);
-  background: rgba(100, 116, 139, 0.1);
+  background: color-mix(in srgb, var(--ct-support-none) 10%, transparent);
 }
 
 .ct-support[data-level="planned"] {
   color: var(--ct-support-planned);
-  background: rgba(56, 189, 248, 0.1);
+  background: color-mix(in srgb, var(--ct-support-planned) 10%, transparent);
 }
 
 /* Expand button */

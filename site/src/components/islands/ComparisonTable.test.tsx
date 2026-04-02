@@ -148,6 +148,7 @@ describe("ComparisonTable", () => {
     renderTable();
     const table = screen.getByTestId("ct-table-wrap");
     const header = within(table).getByText("Framework").closest("th");
+    expect(header).not.toBeNull();
     expect(header).toHaveAttribute("aria-sort", "ascending");
   });
 
