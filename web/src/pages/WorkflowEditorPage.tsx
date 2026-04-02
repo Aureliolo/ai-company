@@ -69,34 +69,33 @@ function loadViewport(): { x: number; y: number; zoom: number } | undefined {
 }
 
 function WorkflowEditorInner() {
-  const {
-    nodes,
-    edges,
-    definition,
-    selectedNodeId,
-    dirty,
-    saving,
-    loading,
-    error,
-    validationResult,
-    validating,
-    undoStack,
-    redoStack,
-    yamlPreview,
-    loadDefinition,
-    createDefinition,
-    saveDefinition,
-    addNode,
-    updateNodeConfig,
-    onConnect,
-    onNodesChange,
-    onEdgesChange,
-    selectNode,
-    undo,
-    redo,
-    validate,
-    exportYaml,
-  } = useWorkflowEditorStore()
+  // Individual selectors to avoid unnecessary re-renders
+  const nodes = useWorkflowEditorStore((s) => s.nodes)
+  const edges = useWorkflowEditorStore((s) => s.edges)
+  const definition = useWorkflowEditorStore((s) => s.definition)
+  const selectedNodeId = useWorkflowEditorStore((s) => s.selectedNodeId)
+  const dirty = useWorkflowEditorStore((s) => s.dirty)
+  const saving = useWorkflowEditorStore((s) => s.saving)
+  const loading = useWorkflowEditorStore((s) => s.loading)
+  const error = useWorkflowEditorStore((s) => s.error)
+  const validationResult = useWorkflowEditorStore((s) => s.validationResult)
+  const validating = useWorkflowEditorStore((s) => s.validating)
+  const undoStack = useWorkflowEditorStore((s) => s.undoStack)
+  const redoStack = useWorkflowEditorStore((s) => s.redoStack)
+  const yamlPreview = useWorkflowEditorStore((s) => s.yamlPreview)
+  const loadDefinition = useWorkflowEditorStore((s) => s.loadDefinition)
+  const createDefinition = useWorkflowEditorStore((s) => s.createDefinition)
+  const saveDefinition = useWorkflowEditorStore((s) => s.saveDefinition)
+  const addNode = useWorkflowEditorStore((s) => s.addNode)
+  const updateNodeConfig = useWorkflowEditorStore((s) => s.updateNodeConfig)
+  const onConnect = useWorkflowEditorStore((s) => s.onConnect)
+  const onNodesChange = useWorkflowEditorStore((s) => s.onNodesChange)
+  const onEdgesChange = useWorkflowEditorStore((s) => s.onEdgesChange)
+  const selectNode = useWorkflowEditorStore((s) => s.selectNode)
+  const undo = useWorkflowEditorStore((s) => s.undo)
+  const redo = useWorkflowEditorStore((s) => s.redo)
+  const validate = useWorkflowEditorStore((s) => s.validate)
+  const exportYaml = useWorkflowEditorStore((s) => s.exportYaml)
 
   const addToast = useToastStore((s) => s.add)
   const [searchParams] = useSearchParams()
@@ -104,7 +103,6 @@ function WorkflowEditorInner() {
 
   const defaultViewport = useMemo(() => loadViewport(), [])
 
-  // Load or create on mount
   useEffect(() => {
     if (defId) {
       loadDefinition(defId)
@@ -115,7 +113,6 @@ function WorkflowEditorInner() {
 
   const handleAddNode = useCallback(
     (type: WorkflowNodeType) => {
-      // Place in the center area
       addNode(type, { x: 250 + Math.random() * 100, y: 150 + Math.random() * 200 })
     },
     [addNode],
@@ -135,28 +132,40 @@ function WorkflowEditorInner() {
   const handleExport = useCallback(async () => {
     try {
       const yamlStr = await exportYaml()
-      // Trigger file download
       const blob = new Blob([yamlStr], { type: 'text/yaml' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${definition?.name ?? 'workflow'}.yaml`
+      a.download = `${useWorkflowEditorStore.getState().definition?.name ?? 'workflow'}.yaml`
+      document.body.appendChild(a)
       a.click()
+      a.remove()
       URL.revokeObjectURL(url)
       addToast({ variant: 'success', title: 'YAML exported' })
-    } catch {
-      addToast({ variant: 'error', title: 'Export failed' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Export failed'
+      addToast({ variant: 'error', title: 'Export failed', description: message })
     }
-  }, [exportYaml, definition, addToast])
+  }, [exportYaml, addToast])
 
   const handleSave = useCallback(async () => {
     await saveDefinition()
-    addToast({ variant: 'success', title: 'Workflow saved' })
+    const storeError = useWorkflowEditorStore.getState().error
+    if (!storeError) {
+      addToast({ variant: 'success', title: 'Workflow saved' })
+    }
   }, [saveDefinition, addToast])
 
   const handleValidate = useCallback(async () => {
     await validate()
-  }, [validate])
+    const result = useWorkflowEditorStore.getState().validationResult
+    if (result) {
+      addToast({
+        variant: result.valid ? 'success' : 'warning',
+        title: result.valid ? 'Workflow is valid' : `${result.errors.length} validation error(s)`,
+      })
+    }
+  }, [validate, addToast])
 
   const handleDrawerClose = useCallback(() => selectNode(null), [selectNode])
 

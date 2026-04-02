@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -49,6 +50,8 @@ def _row_to_definition(row: aiosqlite.Row) -> WorkflowDefinition:
     data["edges"] = tuple(
         WorkflowEdge.model_validate(e) for e in json.loads(data["edges"])
     )
+    data["created_at"] = datetime.fromisoformat(data["created_at"])
+    data["updated_at"] = datetime.fromisoformat(data["updated_at"])
     return WorkflowDefinition.model_validate(data)
 
 
@@ -105,8 +108,8 @@ ON CONFLICT(id) DO UPDATE SET
                     nodes_json,
                     edges_json,
                     definition.created_by,
-                    definition.created_at.isoformat(),
-                    definition.updated_at.isoformat(),
+                    definition.created_at.astimezone(UTC).isoformat(),
+                    definition.updated_at.astimezone(UTC).isoformat(),
                     definition.version,
                 ),
             )

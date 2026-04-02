@@ -8,6 +8,7 @@ from litestar import Controller, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
+from pydantic import ValidationError
 
 from synthorg.api.dto import (
     ApiResponse,
@@ -34,7 +35,10 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATED,
     WORKFLOW_DEF_DELETED,
+    WORKFLOW_DEF_INVALID_REQUEST,
+    WORKFLOW_DEF_NOT_FOUND,
     WORKFLOW_DEF_UPDATED,
+    WORKFLOW_DEF_VERSION_CONFLICT,
 )
 
 logger = get_logger(__name__)
@@ -43,28 +47,23 @@ logger = get_logger(__name__)
 def _build_update_fields(
     data: UpdateWorkflowDefinitionRequest,
 ) -> dict[str, object] | Response[ApiResponse[WorkflowDefinition]]:
-    """Build the update dict from the request, or return an error Response."""
+    """Build the update dict from the request, or return error."""
     updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
     if data.name is not None:
         updates["name"] = data.name
     if data.description is not None:
         updates["description"] = data.description
     if data.workflow_type is not None:
-        try:
-            updates["workflow_type"] = WorkflowType(data.workflow_type)
-        except ValueError:
-            valid = ", ".join(e.value for e in WorkflowType)
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid workflow type: {data.workflow_type!r}. "
-                    f"Valid: {valid}",
-                ),
-                status_code=400,
-            )
+        updates["workflow_type"] = data.workflow_type
     if data.nodes is not None:
         try:
             updates["nodes"] = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
-        except (ValueError, Exception) as exc:
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                field="nodes",
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error=f"Invalid nodes: {exc}",
@@ -74,7 +73,12 @@ def _build_update_fields(
     if data.edges is not None:
         try:
             updates["edges"] = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
-        except (ValueError, Exception) as exc:
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                field="edges",
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error=f"Invalid edges: {exc}",
@@ -108,35 +112,34 @@ class WorkflowController(Controller):
         limit: PaginationLimit = 50,
         workflow_type: WorkflowTypeFilter = None,
     ) -> PaginatedResponse[WorkflowDefinition] | Response[ApiResponse[None]]:
-        """List workflow definitions with optional filters.
-
-        Args:
-            state: Application state.
-            offset: Pagination offset.
-            limit: Page size.
-            workflow_type: Filter by workflow type.
-
-        Returns:
-            Paginated list of workflow definitions.
-        """
+        """List workflow definitions with optional filters."""
         parsed_type: WorkflowType | None = None
         if workflow_type is not None:
             try:
                 parsed_type = WorkflowType(workflow_type)
             except ValueError:
                 valid = ", ".join(e.value for e in WorkflowType)
+                logger.warning(
+                    WORKFLOW_DEF_INVALID_REQUEST,
+                    field="workflow_type",
+                    value=workflow_type,
+                )
                 return Response(
                     content=ApiResponse[None](
-                        error=f"Invalid workflow type: {workflow_type!r}. "
-                        f"Valid: {valid}",
+                        error=(
+                            f"Invalid workflow type: {workflow_type!r}. Valid: {valid}"
+                        ),
                     ),
                     status_code=400,
                 )
 
         repo = state.app_state.persistence.workflow_definitions
-        definitions = await repo.list_definitions(workflow_type=parsed_type)
-        page, meta = paginate(definitions, offset=offset, limit=limit)
-        return PaginatedResponse[WorkflowDefinition](data=page, pagination=meta)
+        defs = await repo.list_definitions(workflow_type=parsed_type)
+        page, meta = paginate(defs, offset=offset, limit=limit)
+        return PaginatedResponse[WorkflowDefinition](
+            data=page,
+            pagination=meta,
+        )
 
     @get("/{workflow_id:str}", guards=[require_read_access])
     async def get_workflow(
@@ -144,21 +147,17 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Get a workflow definition by ID.
-
-        Args:
-            state: Application state.
-            workflow_id: Workflow definition identifier.
-
-        Returns:
-            The workflow definition, or 404 if not found.
-        """
+        """Get a workflow definition by ID."""
         repo = state.app_state.persistence.workflow_definitions
         definition = await repo.get(workflow_id)
         if definition is None:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Workflow definition {workflow_id!r} not found",
+                    error="Workflow definition not found",
                 ),
                 status_code=404,
             )
@@ -172,27 +171,7 @@ class WorkflowController(Controller):
         state: State,
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Create a new workflow definition.
-
-        Args:
-            state: Application state.
-            data: Workflow creation payload.
-
-        Returns:
-            Created workflow definition.
-        """
-        try:
-            wf_type = WorkflowType(data.workflow_type)
-        except ValueError:
-            valid = ", ".join(e.value for e in WorkflowType)
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid workflow type: {data.workflow_type!r}. "
-                    f"Valid: {valid}",
-                ),
-                status_code=400,
-            )
-
+        """Create a new workflow definition."""
         now = datetime.now(UTC)
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -201,14 +180,18 @@ class WorkflowController(Controller):
                 id=f"wfdef-{uuid.uuid4().hex[:12]}",
                 name=data.name,
                 description=data.description,
-                workflow_type=wf_type,
+                workflow_type=data.workflow_type,
                 nodes=nodes,
                 edges=edges,
                 created_by="api",
                 created_at=now,
                 updated_at=now,
             )
-        except (ValueError, Exception) as exc:
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error=f"Invalid workflow definition: {exc}",
@@ -232,22 +215,17 @@ class WorkflowController(Controller):
         workflow_id: PathId,
         data: UpdateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Update an existing workflow definition.
-
-        Args:
-            state: Application state.
-            workflow_id: Workflow definition identifier.
-            data: Fields to update.
-
-        Returns:
-            Updated workflow definition, or 404/409 on error.
-        """
+        """Update an existing workflow definition."""
         repo = state.app_state.persistence.workflow_definitions
         existing = await repo.get(workflow_id)
         if existing is None:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Workflow definition {workflow_id!r} not found",
+                    error="Workflow definition not found",
                 ),
                 status_code=404,
             )
@@ -256,10 +234,17 @@ class WorkflowController(Controller):
             data.expected_version is not None
             and data.expected_version != existing.version
         ):
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=workflow_id,
+                expected=data.expected_version,
+                actual=existing.version,
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error=(
-                        f"Version conflict: expected {data.expected_version}, "
+                        f"Version conflict: expected "
+                        f"{data.expected_version}, "
                         f"actual {existing.version}"
                     ),
                 ),
@@ -274,7 +259,11 @@ class WorkflowController(Controller):
 
         try:
             updated = existing.model_copy(update=updates)
-        except (ValueError, Exception) as exc:
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
                     error=f"Invalid update: {exc}",
@@ -299,19 +288,14 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> None:
-        """Delete a workflow definition.
-
-        Args:
-            state: Application state.
-            workflow_id: Workflow definition identifier.
-
-        Returns:
-            204 on success (even if not found).
-        """
+        """Delete a workflow definition."""
         repo = state.app_state.persistence.workflow_definitions
         deleted = await repo.delete(workflow_id)
         if deleted:
-            logger.info(WORKFLOW_DEF_DELETED, definition_id=workflow_id)
+            logger.info(
+                WORKFLOW_DEF_DELETED,
+                definition_id=workflow_id,
+            )
 
     @post("/{workflow_id:str}/validate", guards=[require_read_access])
     async def validate_workflow(
@@ -319,28 +303,26 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> Response[ApiResponse[WorkflowValidationResult]]:
-        """Validate a workflow definition for execution readiness.
-
-        Args:
-            state: Application state.
-            workflow_id: Workflow definition identifier.
-
-        Returns:
-            Validation result with any errors found.
-        """
+        """Validate a workflow definition for execution readiness."""
         repo = state.app_state.persistence.workflow_definitions
         definition = await repo.get(workflow_id)
         if definition is None:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
             return Response(
                 content=ApiResponse[WorkflowValidationResult](
-                    error=f"Workflow definition {workflow_id!r} not found",
+                    error="Workflow definition not found",
                 ),
                 status_code=404,
             )
 
         result = validate_workflow(definition)
         return Response(
-            content=ApiResponse[WorkflowValidationResult](data=result),
+            content=ApiResponse[WorkflowValidationResult](
+                data=result,
+            ),
         )
 
     @post("/{workflow_id:str}/export", guards=[require_read_access])
@@ -349,21 +331,17 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> Response[str] | Response[ApiResponse[None]]:
-        """Export a workflow definition as YAML.
-
-        Args:
-            state: Application state.
-            workflow_id: Workflow definition identifier.
-
-        Returns:
-            YAML string with content-type text/yaml.
-        """
+        """Export a workflow definition as YAML."""
         repo = state.app_state.persistence.workflow_definitions
         definition = await repo.get(workflow_id)
         if definition is None:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
+                definition_id=workflow_id,
+            )
             return Response(
                 content=ApiResponse[None](
-                    error=f"Workflow definition {workflow_id!r} not found",
+                    error="Workflow definition not found",
                 ),
                 status_code=404,
             )
@@ -371,8 +349,14 @@ class WorkflowController(Controller):
         try:
             yaml_str = export_workflow_yaml(definition)
         except ValueError as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=str(exc),
+            )
             return Response(
-                content=ApiResponse[None](error=f"Export failed: {exc}"),
+                content=ApiResponse[None](
+                    error=f"Export failed: {exc}",
+                ),
                 status_code=422,
             )
 

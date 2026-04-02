@@ -47,6 +47,9 @@ function topologicalSort(nodeIds: string[], edges: Edge[]): string[] {
   return result
 }
 
+/** Whether the last topological sort detected a cycle. */
+let lastSortHadCycle = false
+
 /**
  * Generate a YAML string from the editor's nodes and edges.
  */
@@ -59,10 +62,9 @@ export function generateYamlPreview(
   const skipTypes = new Set(['start', 'end'])
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
 
-  const sorted = topologicalSort(
-    nodes.map((n) => n.id),
-    edges,
-  )
+  const allIds = nodes.map((n) => n.id)
+  const sorted = topologicalSort(allIds, edges)
+  lastSortHadCycle = sorted.length < allIds.length
 
   // Build reverse adjacency (incoming edges per node)
   const incoming = new Map<string, string[]>()
@@ -127,5 +129,9 @@ export function generateYamlPreview(
     },
   }
 
-  return yaml.dump(document, { sortKeys: false, noRefs: true })
+  let output = yaml.dump(document, { sortKeys: false, noRefs: true })
+  if (lastSortHadCycle) {
+    output = '# WARNING: Cycle detected -- some nodes omitted from preview\n' + output
+  }
+  return output
 }

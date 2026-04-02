@@ -183,6 +183,50 @@ to customize workflow settings at template instantiation time.
 
 ---
 
+## Workflow Definitions (Visual Editor)
+
+A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph that can be persisted, validated, and exported as YAML for the engine's coordination/decomposition system. This is distinct from the runtime `WorkflowConfig` (Kanban/Sprint settings above).
+
+### Node Types (`WorkflowNodeType`)
+
+| Type | Purpose |
+|------|---------|
+| `start` | Single entry point (exactly one required) |
+| `end` | Single exit point (exactly one required) |
+| `task` | A task step with title, type, priority, complexity, coordination topology |
+| `agent_assignment` | Routing strategy and role filter for agent selection |
+| `conditional` | Boolean branch (true/false outgoing edges) |
+| `parallel_split` | Fan-out to 2+ parallel branches |
+| `parallel_join` | Fan-in with configurable join strategy (all/any) |
+
+### Edge Types (`WorkflowEdgeType`)
+
+| Type | Semantics |
+|------|-----------|
+| `sequential` | Default linear flow |
+| `conditional_true` / `conditional_false` | Boolean branch from conditional nodes |
+| `parallel_branch` | From parallel split to branch targets |
+
+### Validation
+
+`validate_workflow()` checks semantic correctness beyond model-level structural integrity:
+
+- All nodes reachable from START; END reachable from START
+- Conditional nodes must have exactly one TRUE and one FALSE outgoing edge
+- Parallel split nodes need 2+ parallel_branch edges
+- Task nodes require a `title` in config
+- No cycles in the graph
+
+### YAML Export
+
+`export_workflow_yaml()` performs topological sort and emits a flat step list with `depends_on` references, `agent_assignment` config, conditional expressions, and parallel branch/join metadata. START and END nodes are omitted (structural markers only).
+
+### Persistence
+
+`WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 7 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, and export.
+
+---
+
 ## Task Routing & Assignment
 
 Tasks can be assigned through multiple strategies:

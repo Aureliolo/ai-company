@@ -26,6 +26,7 @@ from synthorg.core.enums import (
     Priority,
     TaskStatus,
     TaskType,
+    WorkflowType,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
@@ -606,9 +607,15 @@ class CreateWorkflowDefinitionRequest(BaseModel):
 
     name: NotBlankStr = Field(max_length=256, description="Workflow name")
     description: str = Field(default="", max_length=4096, description="Description")
-    workflow_type: str = Field(description="Workflow type (e.g. sequential_pipeline)")
-    nodes: tuple[dict[str, object], ...] = Field(description="Workflow nodes")
-    edges: tuple[dict[str, object], ...] = Field(description="Workflow edges")
+    workflow_type: WorkflowType = Field(description="Target execution topology")
+    nodes: tuple[dict[str, object], ...] = Field(
+        max_length=500,
+        description="Workflow nodes",
+    )
+    edges: tuple[dict[str, object], ...] = Field(
+        max_length=1000,
+        description="Workflow edges",
+    )
 
 
 class UpdateWorkflowDefinitionRequest(BaseModel):
@@ -629,9 +636,15 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
 
     name: NotBlankStr | None = Field(default=None, max_length=256)
     description: str | None = Field(default=None, max_length=4096)
-    workflow_type: str | None = None
-    nodes: tuple[dict[str, object], ...] | None = None
-    edges: tuple[dict[str, object], ...] | None = None
+    workflow_type: WorkflowType | None = None
+    nodes: tuple[dict[str, object], ...] | None = Field(
+        default=None,
+        max_length=500,
+    )
+    edges: tuple[dict[str, object], ...] | None = Field(
+        default=None,
+        max_length=1000,
+    )
     expected_version: int | None = Field(
         default=None,
         ge=1,

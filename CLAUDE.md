@@ -88,17 +88,17 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config), template packs (list + live-apply), memory admin (fine-tuning pipeline, embedder queries)
+  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config), template packs (list + live-apply), memory admin (fine-tuning pipeline, embedder queries), workflows (visual workflow definition CRUD, validation, YAML export)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
   budget/         # Cost tracking, budget enforcement, quota degradation (including synchronous peek for routing-time selector hints), CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
   communication/  # Message bus, dispatcher, channels, delegation, conflict resolution, meeting/
   config/         # YAML company config loading and validation
   core/           # Shared domain models, base classes, resilience config
-  engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop, workspace/ (git worktree isolation, merge orchestration, semantic conflict detection), workflow/ (Kanban board, Agile sprints, WIP limits, sprint lifecycle, velocity tracking, ceremony scheduling, strategies/ (pluggable scheduling strategies), velocity_calculators/ (pluggable velocity calculators))
+  engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop, workspace/ (git worktree isolation, merge orchestration, semantic conflict detection), workflow/ (Kanban board, Agile sprints, WIP limits, sprint lifecycle, velocity tracking, ceremony scheduling, strategies/ (pluggable scheduling strategies), velocity_calculators/ (pluggable velocity calculators), definition (visual workflow graph model, node/edge types, validation, YAML export))
   hr/             # Hiring, firing, onboarding, agent registry, performance tracking, activity timeline, activity event types, cost event redaction, career history, promotion/demotion, evaluation/ (five-pillar evaluation framework, pluggable pillar scoring strategies, EvaluationConfig)
   memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation, embedding/ (LMEB-ranked model selection, embedder config resolution, fine-tuning pipeline)
-  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project + preset repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
+  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user + artifact + project + preset + workflow definition repositories, artifact content storage (pluggable ArtifactStorageBackend, filesystem impl)
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, log shipping (syslog, HTTP), compressed archival, events/
   providers/      # LLM provider abstraction, presets, model auto-discovery, capabilities, runtime CRUD (management/), provider families, discovery SSRF allowlist, health tracking, active health probing, routing/ (strategy-based model routing, multi-provider resolution with ModelCandidateSelector protocol, QuotaAwareSelector, CheapestSelector)
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/

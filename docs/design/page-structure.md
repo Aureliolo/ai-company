@@ -240,6 +240,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 +-- WORKSPACE (collapsible label)
 |   +-- Agents             [Users]               /agents
 |   +-- Projects           [FolderKanban]        /projects
+|   +-- Workflows          [Workflow]            /workflows/editor
 |   +-- Artifacts          [Package]             /artifacts
 |   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
 |   +-- Meetings           [Video]               /meetings
@@ -297,6 +298,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
+| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 2 edge types, YAML preview, validation) |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |

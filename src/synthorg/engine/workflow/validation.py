@@ -6,11 +6,11 @@ adds *semantic* validation: connectivity, edge-type constraints,
 conditional/parallel correctness, and config completeness.
 """
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -61,7 +61,7 @@ class WorkflowValidationError(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     code: ValidationErrorCode = Field(description="Error code")
-    message: str = Field(description="Human-readable message")
+    message: NotBlankStr = Field(description="Human-readable message")
     node_id: NotBlankStr | None = Field(
         default=None,
         description="Related node ID",
@@ -76,17 +76,22 @@ class WorkflowValidationResult(BaseModel):
     """Result of validating a workflow definition.
 
     Attributes:
-        valid: Whether the workflow passed all checks.
+        valid: Whether the workflow passed all checks (derived).
         errors: Validation errors found (empty when valid).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    valid: bool = Field(description="Whether validation passed")
     errors: tuple[WorkflowValidationError, ...] = Field(
         default=(),
         description="Validation errors",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def valid(self) -> bool:
+        """Whether validation passed (no errors)."""
+        return len(self.errors) == 0
 
 
 def _reachable_from(
@@ -95,9 +100,9 @@ def _reachable_from(
 ) -> frozenset[str]:
     """BFS to find all nodes reachable from *start_id*."""
     visited: set[str] = set()
-    queue = [start_id]
+    queue: deque[str] = deque([start_id])
     while queue:
-        current = queue.pop(0)
+        current = queue.popleft()
         if current in visited:
             continue
         visited.add(current)
@@ -109,23 +114,33 @@ def _has_cycle(
     node_ids: frozenset[str],
     adjacency: dict[str, list[str]],
 ) -> bool:
-    """Detect cycles using DFS coloring (white/gray/black)."""
+    """Detect cycles using iterative DFS coloring (white/gray/black)."""
     white, gray, black = 0, 1, 2
     color: dict[str, int] = dict.fromkeys(node_ids, white)
 
-    def dfs(nid: str) -> bool:
-        color[nid] = gray
-        for neighbor in adjacency.get(nid, []):
-            if neighbor not in color:
-                continue
-            if color[neighbor] == gray:
-                return True
-            if color[neighbor] == white and dfs(neighbor):
-                return True
-        color[nid] = black
-        return False
+    for start in node_ids:
+        if color[start] != white:
+            continue
+        stack: list[tuple[str, int]] = [(start, 0)]
+        color[start] = gray
+        while stack:
+            nid, idx = stack[-1]
+            neighbors = adjacency.get(nid, [])
+            if idx < len(neighbors):
+                stack[-1] = (nid, idx + 1)
+                neighbor = neighbors[idx]
+                if neighbor not in color:
+                    continue
+                if color[neighbor] == gray:
+                    return True
+                if color[neighbor] == white:
+                    color[neighbor] = gray
+                    stack.append((neighbor, 0))
+            else:
+                stack.pop()
+                color[nid] = black
 
-    return any(dfs(nid) for nid in node_ids if color[nid] == white)
+    return False
 
 
 def _check_reachability(
@@ -138,6 +153,7 @@ def _check_reachability(
     end = next(n for n in definition.nodes if n.type == WorkflowNodeType.END)
     reachable = _reachable_from(start.id, adjacency)
 
+    # Flag unreachable nodes (exclude END -- handled separately)
     errors.extend(
         WorkflowValidationError(
             code=ValidationErrorCode.UNREACHABLE_NODE,
@@ -145,7 +161,7 @@ def _check_reachability(
             node_id=node.id,
         )
         for node in definition.nodes
-        if node.id not in reachable
+        if node.id not in reachable and node.type != WorkflowNodeType.END
     )
 
     if end.id not in reachable:
@@ -173,7 +189,7 @@ def _check_conditional_edges(
             errors.append(
                 WorkflowValidationError(
                     code=ValidationErrorCode.CONDITIONAL_MISSING_TRUE,
-                    message=f"Conditional node {node.id!r} missing TRUE branch",
+                    message=(f"Conditional node {node.id!r} missing TRUE branch"),
                     node_id=node.id,
                 )
             )
@@ -181,7 +197,7 @@ def _check_conditional_edges(
             errors.append(
                 WorkflowValidationError(
                     code=ValidationErrorCode.CONDITIONAL_MISSING_FALSE,
-                    message=f"Conditional node {node.id!r} missing FALSE branch",
+                    message=(f"Conditional node {node.id!r} missing FALSE branch"),
                     node_id=node.id,
                 )
             )
@@ -217,7 +233,8 @@ def _check_parallel_splits(
                     code=ValidationErrorCode.SPLIT_TOO_FEW_BRANCHES,
                     message=(
                         f"Parallel split {node.id!r} has {count} "
-                        f"branch(es), needs at least {_MIN_SPLIT_BRANCHES}"
+                        f"branch(es), needs at least "
+                        f"{_MIN_SPLIT_BRANCHES}"
                     ),
                     node_id=node.id,
                 )
@@ -238,7 +255,7 @@ def _check_task_configs(
             errors.append(
                 WorkflowValidationError(
                     code=ValidationErrorCode.TASK_MISSING_TITLE,
-                    message=f"Task node {node.id!r} missing title in config",
+                    message=(f"Task node {node.id!r} missing title in config"),
                     node_id=node.id,
                 )
             )
@@ -264,8 +281,12 @@ def validate_workflow(
 
     errors: list[WorkflowValidationError] = []
     errors.extend(_check_reachability(definition, adjacency))
-    errors.extend(_check_conditional_edges(definition, outgoing_types))
-    errors.extend(_check_parallel_splits(definition, outgoing_types))
+    errors.extend(
+        _check_conditional_edges(definition, outgoing_types),
+    )
+    errors.extend(
+        _check_parallel_splits(definition, outgoing_types),
+    )
     errors.extend(_check_task_configs(definition))
 
     all_ids = frozenset(n.id for n in definition.nodes)
@@ -277,10 +298,7 @@ def validate_workflow(
             )
         )
 
-    result = WorkflowValidationResult(
-        valid=len(errors) == 0,
-        errors=tuple(errors),
-    )
+    result = WorkflowValidationResult(errors=tuple(errors))
 
     if result.valid:
         logger.info(WORKFLOW_DEF_VALIDATED, workflow_id=definition.id)

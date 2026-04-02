@@ -72,15 +72,12 @@ export interface WorkflowEditorState {
   reset: () => void
 }
 
-let nextNodeId = 1
-let nextEdgeId = 1
-
 function generateNodeId(): string {
-  return `node-${nextNodeId++}`
+  return `node-${crypto.randomUUID().slice(0, 8)}`
 }
 
 function generateEdgeId(): string {
-  return `edge-${nextEdgeId++}`
+  return `edge-${crypto.randomUUID().slice(0, 8)}`
 }
 
 function nodeTypeToEdgeType(
@@ -190,7 +187,10 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   saveDefinition: async () => {
     const { definition, nodes, edges } = get()
-    if (!definition) return
+    if (!definition) {
+      set({ error: 'Cannot save: no workflow loaded' })
+      return
+    }
     set({ saving: true, error: null })
     try {
       const updatedDef = await updateWorkflow(definition.id, {
@@ -219,7 +219,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   addNode: (type: WorkflowNodeType, position: { x: number; y: number }) => {
     const { nodes, edges, definition } = get()
-    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const id = generateNodeId()
     const label = type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')
     const newNode: Node = {
@@ -241,7 +241,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => {
     const { nodes, edges, definition } = get()
-    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const newNodes = nodes.map((n) =>
       n.id === nodeId
         ? { ...n, data: { ...(n.data as Record<string, unknown>), config } }
@@ -259,7 +259,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   removeNode: (nodeId: string) => {
     const { nodes, edges, definition } = get()
-    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const newNodes = nodes.filter((n) => n.id !== nodeId)
     const newEdges = edges.filter((e) => e.source !== nodeId && e.target !== nodeId)
     const yaml = regenerateYaml(newNodes, newEdges, definition)
@@ -277,7 +277,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   onConnect: (connection: Connection) => {
     const { nodes, edges, definition } = get()
     if (!connection.source || !connection.target) return
-    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const sourceNode = nodes.find((n) => n.id === connection.source)
     const edgeType = nodeTypeToEdgeType(sourceNode?.type, connection.sourceHandle)
     const isTrueBranch = connection.sourceHandle === 'true'
@@ -310,7 +310,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   removeEdge: (edgeId: string) => {
     const { nodes, edges, definition } = get()
-    const snapshot: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const newEdges = edges.filter((e) => e.id !== edgeId)
     const yaml = regenerateYaml(nodes, newEdges, definition)
     set((s) => ({
@@ -393,13 +393,13 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       const result = await validateWorkflow(definition.id)
       set({ validationResult: result, validating: false })
     } catch (err) {
-      set({ validating: false, error: err instanceof Error ? err.message : 'Validation failed' })
+      set({ validating: false, validationResult: null, error: err instanceof Error ? err.message : 'Validation failed' })
     }
   },
 
   exportYaml: async () => {
     const { definition } = get()
-    if (!definition) return ''
+    if (!definition) throw new Error('Cannot export: no workflow loaded')
     return exportWorkflowYaml(definition.id)
   },
 

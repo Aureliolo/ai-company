@@ -12,13 +12,13 @@ import yaml
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.engine.workflow.definition import WorkflowDefinition
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_EXPORT_FAILED,
     WORKFLOW_DEF_EXPORTED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.engine.workflow.definition import WorkflowDefinition
 
 logger = get_logger(__name__)
 
@@ -83,7 +83,10 @@ _ASSIGNMENT_STEP_MAP = {
 }
 
 
-def _add_task_fields(step: dict[str, Any], config: dict[str, Any]) -> None:
+def _add_task_fields(
+    step: dict[str, Any],
+    config: dict[str, Any],
+) -> None:
     """Copy task-specific config fields into the step dict."""
     for key in _TASK_CONFIG_KEYS:
         if key in config:
@@ -97,7 +100,10 @@ def _add_task_fields(step: dict[str, Any], config: dict[str, Any]) -> None:
         step["agent_assignment"] = assignment
 
 
-def _add_assignment_fields(step: dict[str, Any], config: dict[str, Any]) -> None:
+def _add_assignment_fields(
+    step: dict[str, Any],
+    config: dict[str, Any],
+) -> None:
     """Copy agent assignment fields into the step dict."""
     for key in _ASSIGNMENT_KEYS:
         if key in config:
@@ -137,12 +143,45 @@ def _build_step(
     return step
 
 
+def _build_adjacency_maps(
+    definition: WorkflowDefinition,
+) -> tuple[
+    dict[str, list[str]],
+    dict[str, list[str]],
+    dict[str, list[tuple[str, WorkflowEdgeType]]],
+]:
+    """Build forward, reverse, and typed-outgoing adjacency maps."""
+    adjacency: dict[str, list[str]] = defaultdict(list)
+    reverse_adj: dict[str, list[str]] = defaultdict(list)
+    outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]] = defaultdict(list)
+    for edge in definition.edges:
+        adjacency[edge.source_node_id].append(edge.target_node_id)
+        reverse_adj[edge.target_node_id].append(edge.source_node_id)
+        outgoing[edge.source_node_id].append(
+            (edge.target_node_id, edge.type),
+        )
+    return adjacency, reverse_adj, outgoing
+
+
+def _assemble_document(
+    definition: WorkflowDefinition,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assemble the top-level YAML document structure."""
+    doc: dict[str, Any] = {
+        "workflow_definition": {
+            "name": definition.name,
+            "workflow_type": definition.workflow_type.value,
+            "steps": steps,
+        },
+    }
+    if definition.description:
+        doc["workflow_definition"]["description"] = definition.description
+    return doc
+
+
 def export_workflow_yaml(definition: WorkflowDefinition) -> str:
     """Export a workflow definition as a YAML string.
-
-    The output is a flat list of steps in topological order with
-    dependency references.  START and END nodes are omitted from
-    the steps list (they are structural markers only).
 
     Args:
         definition: A validated workflow definition.
@@ -151,26 +190,17 @@ def export_workflow_yaml(definition: WorkflowDefinition) -> str:
         YAML string representation of the workflow.
 
     Raises:
-        ValueError: If the graph contains a cycle.
+        ValueError: If the graph contains a cycle or YAML
+            serialization fails.
     """
     node_map = {n.id: n for n in definition.nodes}
+    adjacency, reverse_adj, outgoing_edges = _build_adjacency_maps(definition)
 
-    # Build adjacency and reverse adjacency
-    adjacency: dict[str, list[str]] = defaultdict(list)
-    reverse_adj: dict[str, list[str]] = defaultdict(list)
-    outgoing_edges: dict[str, list[tuple[str, WorkflowEdgeType]]] = defaultdict(list)
-
-    for edge in definition.edges:
-        adjacency[edge.source_node_id].append(edge.target_node_id)
-        reverse_adj[edge.target_node_id].append(edge.source_node_id)
-        outgoing_edges[edge.source_node_id].append(
-            (edge.target_node_id, edge.type),
-        )
-
-    # Topological sort
-    all_node_ids = [n.id for n in definition.nodes]
     try:
-        sorted_ids = _topological_sort(all_node_ids, adjacency)
+        sorted_ids = _topological_sort(
+            [n.id for n in definition.nodes],
+            adjacency,
+        )
     except ValueError:
         logger.exception(
             WORKFLOW_DEF_EXPORT_FAILED,
@@ -179,47 +209,44 @@ def export_workflow_yaml(definition: WorkflowDefinition) -> str:
         )
         raise
 
-    # Build steps (skip START and END)
-    skip_types = {WorkflowNodeType.START, WorkflowNodeType.END}
+    skip = {WorkflowNodeType.START, WorkflowNodeType.END}
     steps: list[dict[str, Any]] = []
-
     for node_id in sorted_ids:
         node = node_map[node_id]
-        if node.type in skip_types:
+        if node.type in skip:
             continue
-
         incoming = [
             src
             for src in reverse_adj.get(node_id, [])
-            if node_map[src].type not in skip_types
+            if node_map[src].type not in skip
         ]
-
-        step = _build_step(
-            node_id=node_id,
-            node_type=node.type,
-            config=dict(node.config),
-            incoming_node_ids=incoming,
-            outgoing_edges=outgoing_edges.get(node_id, []),
+        steps.append(
+            _build_step(
+                node_id=node_id,
+                node_type=node.type,
+                config=dict(node.config),
+                incoming_node_ids=incoming,
+                outgoing_edges=outgoing_edges.get(node_id, []),
+            )
         )
-        steps.append(step)
 
-    document: dict[str, Any] = {
-        "workflow_definition": {
-            "name": definition.name,
-            "workflow_type": definition.workflow_type.value,
-            "steps": steps,
-        },
-    }
+    document = _assemble_document(definition, steps)
 
-    if definition.description:
-        document["workflow_definition"]["description"] = definition.description
-
-    result = yaml.dump(
-        document,
-        default_flow_style=False,
-        sort_keys=False,
-        allow_unicode=True,
-    )
+    try:
+        result = yaml.dump(
+            document,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+    except yaml.YAMLError as exc:
+        msg = f"YAML serialization failed: {exc}"
+        logger.exception(
+            WORKFLOW_DEF_EXPORT_FAILED,
+            workflow_id=definition.id,
+            reason="yaml_error",
+        )
+        raise ValueError(msg) from exc
 
     logger.info(
         WORKFLOW_DEF_EXPORTED,

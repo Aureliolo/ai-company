@@ -65,7 +65,10 @@ class WorkflowEdge(BaseModel):
         default=WorkflowEdgeType.SEQUENTIAL,
         description="Edge type",
     )
-    label: str | None = Field(default=None, description="Optional display label")
+    label: NotBlankStr | None = Field(
+        default=None,
+        description="Optional display label",
+    )
 
 
 class WorkflowDefinition(BaseModel):
