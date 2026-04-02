@@ -297,11 +297,6 @@ export default function ComparisonTable({
     setSearch("");
   }, []);
 
-  const hasFilters =
-    categoryFilter !== null ||
-    licenseFilter !== null ||
-    featureFilter !== null ||
-    search.trim() !== "";
 
   // -- Unique categories present in data --
   const availableCategories = useMemo(() => {
@@ -386,7 +381,7 @@ export default function ComparisonTable({
             <option key={dim.key} value={dim.key}>Has {dim.label}</option>
           ))}
         </select>
-        {hasFilters && (
+        {hasActiveFilter && (
           <button className="ct-clear-btn" onClick={clearFilters}>
             Clear
           </button>

@@ -110,8 +110,10 @@ def _load_data() -> dict[str, Any]:
 
 
 def _validate_competitors(competitors: list[Any]) -> None:
-    """Validate required fields on each competitor entry."""
+    """Validate required fields and enum values on each competitor entry."""
     required_keys = {"name", "slug", "category"}
+    valid_pricing = set(PRICING_LABELS)
+    valid_self_hosted = set(SELF_HOSTED_LABELS)
     for i, comp in enumerate(competitors):
         if not isinstance(comp, dict):
             msg = f"Competitor at index {i} is not a mapping"
@@ -120,6 +122,15 @@ def _validate_competitors(competitors: list[Any]) -> None:
         if missing:
             name = comp.get("name", f"<index {i}>")
             msg = f"Competitor '{name}' is missing required keys: {missing}"
+            raise ValueError(msg)
+        name = comp.get("name", f"<index {i}>")
+        pricing = comp.get("pricing")
+        if pricing is not None and pricing not in valid_pricing:
+            msg = f"Competitor '{name}' has invalid pricing: '{pricing}'"
+            raise ValueError(msg)
+        self_hosted = comp.get("self_hosted")
+        if self_hosted is not None and self_hosted not in valid_self_hosted:
+            msg = f"Competitor '{name}' has invalid self_hosted: '{self_hosted}'"
             raise ValueError(msg)
 
 
