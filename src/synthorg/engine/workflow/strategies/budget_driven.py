@@ -414,6 +414,15 @@ class BudgetDrivenStrategy:
                 strategy="budget_driven",
             )
             return None
+        if len(raw) > _MAX_THRESHOLD_COUNT:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony_name,
+                reason="threshold_count_exceeded",
+                value=len(raw),
+                strategy="budget_driven",
+            )
+            return None
         valid: list[float] = []
         for t in raw:
             if isinstance(t, bool) or not isinstance(t, int | float):
