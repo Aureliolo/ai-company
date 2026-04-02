@@ -57,8 +57,10 @@ from synthorg.engine.workflow.sprint_velocity import (
 )
 from synthorg.engine.workflow.strategies import (
     CalendarStrategy,
+    ExternalTriggerStrategy,
     HybridStrategy,
     TaskDrivenStrategy,
+    ThroughputAdaptiveStrategy,
 )
 from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
 from synthorg.engine.workflow.velocity_calculators import (
@@ -83,6 +85,7 @@ __all__ = [
     "CeremonyScheduler",
     "CeremonySchedulingStrategy",
     "CeremonyStrategyType",
+    "ExternalTriggerStrategy",
     "HybridStrategy",
     "KanbanColumn",
     "KanbanConfig",
@@ -95,6 +98,7 @@ __all__ = [
     "SprintStatus",
     "TaskDrivenStrategy",
     "TaskDrivenVelocityCalculator",
+    "ThroughputAdaptiveStrategy",
     "VelocityCalcType",
     "VelocityCalculator",
     "VelocityMetrics",

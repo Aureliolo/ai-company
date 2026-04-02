@@ -1,0 +1,568 @@
+"""Throughput-adaptive ceremony scheduling strategy.
+
+Ceremonies fire when the team's rolling throughput rate changes
+significantly -- not "every N tasks" but "when pace anomaly detected."
+Like an automated burndown chart monitor.
+
+**Config keys** (sprint-level ``ceremony_policy.strategy_config``):
+
+- ``velocity_drop_threshold_pct`` (int/float): fire ceremony when
+  velocity drops this percentage from baseline (default: 30).
+- ``velocity_spike_threshold_pct`` (int/float): fire ceremony when
+  velocity spikes this percentage above baseline (default: 50).
+- ``measurement_window_tasks`` (int): rolling window size for rate
+  calculation (default: 10).
+
+**Config keys** (per-ceremony ``policy_override.strategy_config``):
+
+- ``on_drop`` (bool): fire this ceremony on velocity drop
+  (default: True).
+- ``on_spike`` (bool): fire this ceremony on velocity spike
+  (default: False).
+"""
+
+import time
+from collections import deque
+from typing import TYPE_CHECKING, Any
+
+from synthorg.engine.workflow.ceremony_policy import (
+    CeremonyStrategyType,
+)
+from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
+from synthorg.engine.workflow.velocity_types import VelocityCalcType
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow import (
+    SPRINT_CEREMONY_SKIPPED,
+    SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET,
+    SPRINT_CEREMONY_THROUGHPUT_COLD_START,
+    SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
+    SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
+    SPRINT_CEREMONY_TRIGGERED,
+    SPRINT_STRATEGY_CONFIG_INVALID,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from synthorg.engine.workflow.ceremony_context import CeremonyEvalContext
+    from synthorg.engine.workflow.sprint_config import (
+        SprintCeremonyConfig,
+        SprintConfig,
+    )
+
+logger = get_logger(__name__)
+
+# -- Config keys ---------------------------------------------------------------
+
+_KEY_VELOCITY_DROP_THRESHOLD_PCT: str = "velocity_drop_threshold_pct"
+_KEY_VELOCITY_SPIKE_THRESHOLD_PCT: str = "velocity_spike_threshold_pct"
+_KEY_MEASUREMENT_WINDOW_TASKS: str = "measurement_window_tasks"
+_KEY_ON_DROP: str = "on_drop"
+_KEY_ON_SPIKE: str = "on_spike"
+
+_KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        _KEY_VELOCITY_DROP_THRESHOLD_PCT,
+        _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
+        _KEY_MEASUREMENT_WINDOW_TASKS,
+        _KEY_ON_DROP,
+        _KEY_ON_SPIKE,
+    }
+)
+
+# -- Defaults ------------------------------------------------------------------
+
+_DEFAULT_DROP_THRESHOLD_PCT: float = 30.0
+_DEFAULT_SPIKE_THRESHOLD_PCT: float = 50.0
+_DEFAULT_WINDOW_SIZE: int = 10
+_MIN_WINDOW_SIZE: int = 2
+_MAX_WINDOW_SIZE: int = 100
+_MIN_THRESHOLD_PCT: float = 1.0
+_MAX_THRESHOLD_PCT: float = 100.0
+_DEFAULT_TRANSITION_THRESHOLD: float = 1.0
+
+
+class ThroughputAdaptiveStrategy:
+    """Ceremony scheduling strategy based on throughput rate anomalies.
+
+    Tracks task completion timestamps in a rolling window and
+    establishes a baseline rate from the first full window.  Ceremonies
+    fire when the current rate drops or spikes beyond configured
+    thresholds relative to the baseline.
+
+    This is a **stateful strategy** -- lifecycle hooks maintain internal
+    rate-tracking state that is reset per sprint.
+    """
+
+    __slots__ = (
+        "_baseline_rate",
+        "_blocked_count",
+        "_completion_timestamps",
+        "_drop_threshold_pct",
+        "_spike_threshold_pct",
+        "_window_size",
+    )
+
+    def __init__(self) -> None:
+        self._completion_timestamps: deque[float] = deque(
+            maxlen=_DEFAULT_WINDOW_SIZE,
+        )
+        self._baseline_rate: float | None = None
+        self._blocked_count: int = 0
+        self._drop_threshold_pct: float = _DEFAULT_DROP_THRESHOLD_PCT
+        self._spike_threshold_pct: float = _DEFAULT_SPIKE_THRESHOLD_PCT
+        self._window_size: int = _DEFAULT_WINDOW_SIZE
+
+    # -- Core evaluation -------------------------------------------------------
+
+    def should_fire_ceremony(
+        self,
+        ceremony: SprintCeremonyConfig,
+        sprint: Sprint,  # noqa: ARG002
+        context: CeremonyEvalContext,  # noqa: ARG002
+    ) -> bool:
+        """Return True when throughput anomaly detected for this ceremony.
+
+        Args:
+            ceremony: The ceremony configuration being evaluated.
+            sprint: Current sprint state.
+            context: Evaluation context.
+
+        Returns:
+            ``True`` if the ceremony should fire.
+        """
+        config = get_ceremony_config(ceremony)
+        on_drop = self._resolve_bool(config, _KEY_ON_DROP, default=True)
+        on_spike = self._resolve_bool(config, _KEY_ON_SPIKE, default=False)
+
+        if not on_drop and not on_spike:
+            return False
+
+        if self._baseline_rate is None:
+            logger.debug(
+                SPRINT_CEREMONY_THROUGHPUT_COLD_START,
+                ceremony=ceremony.name,
+                window_size=self._window_size,
+                completions=len(self._completion_timestamps),
+                strategy="throughput_adaptive",
+            )
+            return False
+
+        current_rate = self._compute_current_rate()
+        if current_rate is None:
+            return False
+
+        if on_drop and self._baseline_rate > 0:
+            drop_pct = (
+                (self._baseline_rate - current_rate) / self._baseline_rate
+            ) * 100.0
+            if drop_pct >= self._drop_threshold_pct:
+                logger.info(
+                    SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED,
+                    ceremony=ceremony.name,
+                    baseline_rate=self._baseline_rate,
+                    current_rate=current_rate,
+                    drop_pct=round(drop_pct, 1),
+                    threshold_pct=self._drop_threshold_pct,
+                    strategy="throughput_adaptive",
+                )
+                logger.info(
+                    SPRINT_CEREMONY_TRIGGERED,
+                    ceremony=ceremony.name,
+                    reason="velocity_drop",
+                    strategy="throughput_adaptive",
+                )
+                return True
+
+        if on_spike and self._baseline_rate > 0:
+            spike_pct = (
+                (current_rate - self._baseline_rate) / self._baseline_rate
+            ) * 100.0
+            if spike_pct >= self._spike_threshold_pct:
+                logger.info(
+                    SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED,
+                    ceremony=ceremony.name,
+                    baseline_rate=self._baseline_rate,
+                    current_rate=current_rate,
+                    spike_pct=round(spike_pct, 1),
+                    threshold_pct=self._spike_threshold_pct,
+                    strategy="throughput_adaptive",
+                )
+                logger.info(
+                    SPRINT_CEREMONY_TRIGGERED,
+                    ceremony=ceremony.name,
+                    reason="velocity_spike",
+                    strategy="throughput_adaptive",
+                )
+                return True
+
+        return False
+
+    def should_transition_sprint(
+        self,
+        sprint: Sprint,
+        config: SprintConfig,
+        context: CeremonyEvalContext,
+    ) -> SprintStatus | None:
+        """Return IN_REVIEW when task completion threshold is met.
+
+        Uses the same completion-threshold logic as task-driven -- no
+        anomaly-based transition.  Only transitions from ACTIVE status.
+
+        Args:
+            sprint: Current sprint state.
+            config: Sprint configuration.
+            context: Evaluation context.
+
+        Returns:
+            ``SprintStatus.IN_REVIEW`` if threshold met, else ``None``.
+        """
+        if sprint.status is not SprintStatus.ACTIVE:
+            return None
+        if context.total_tasks_in_sprint == 0:
+            return None
+
+        threshold: float = (
+            config.ceremony_policy.transition_threshold
+            if config.ceremony_policy.transition_threshold is not None
+            else _DEFAULT_TRANSITION_THRESHOLD
+        )
+
+        if context.sprint_percentage_complete >= threshold:
+            return SprintStatus.IN_REVIEW
+        return None
+
+    # -- Lifecycle hooks -------------------------------------------------------
+
+    async def on_sprint_activated(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        config: SprintConfig,
+    ) -> None:
+        """Initialize rate tracking from sprint config.
+
+        Args:
+            sprint: The activated sprint.
+            config: Sprint configuration.
+        """
+        strategy_config = (
+            config.ceremony_policy.strategy_config
+            if config.ceremony_policy.strategy_config is not None
+            else {}
+        )
+
+        self._drop_threshold_pct = self._resolve_threshold(
+            strategy_config,
+            _KEY_VELOCITY_DROP_THRESHOLD_PCT,
+            _DEFAULT_DROP_THRESHOLD_PCT,
+        )
+        self._spike_threshold_pct = self._resolve_threshold(
+            strategy_config,
+            _KEY_VELOCITY_SPIKE_THRESHOLD_PCT,
+            _DEFAULT_SPIKE_THRESHOLD_PCT,
+        )
+        self._window_size = self._resolve_window_size(strategy_config)
+        self._completion_timestamps = deque(maxlen=self._window_size)
+        self._baseline_rate = None
+        self._blocked_count = 0
+
+    async def on_sprint_deactivated(self) -> None:
+        """Clear all internal state."""
+        self._completion_timestamps = deque(maxlen=_DEFAULT_WINDOW_SIZE)
+        self._baseline_rate = None
+        self._blocked_count = 0
+        self._drop_threshold_pct = _DEFAULT_DROP_THRESHOLD_PCT
+        self._spike_threshold_pct = _DEFAULT_SPIKE_THRESHOLD_PCT
+        self._window_size = _DEFAULT_WINDOW_SIZE
+
+    async def on_task_completed(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        task_id: str,  # noqa: ARG002
+        story_points: float,  # noqa: ARG002
+        context: CeremonyEvalContext,  # noqa: ARG002
+    ) -> None:
+        """Record completion timestamp and establish baseline if ready.
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The completed task ID.
+            story_points: Points earned for the task.
+            context: Evaluation context.
+        """
+        self._completion_timestamps.append(time.monotonic())
+
+        if (
+            self._baseline_rate is None
+            and len(self._completion_timestamps) == self._window_size
+        ):
+            self._try_establish_baseline()
+
+    async def on_task_added(
+        self,
+        sprint: Sprint,
+        task_id: str,
+    ) -> None:
+        """No-op."""
+
+    async def on_task_blocked(
+        self,
+        sprint: Sprint,  # noqa: ARG002
+        task_id: str,  # noqa: ARG002
+    ) -> None:
+        """Increment blocked task counter (informational).
+
+        Args:
+            sprint: Current sprint state.
+            task_id: The blocked task ID.
+        """
+        self._blocked_count += 1
+
+    async def on_budget_updated(
+        self,
+        sprint: Sprint,
+        budget_consumed_fraction: float,
+    ) -> None:
+        """No-op."""
+
+    async def on_external_event(
+        self,
+        sprint: Sprint,
+        event_name: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """No-op."""
+
+    # -- Metadata --------------------------------------------------------------
+
+    @property
+    def strategy_type(self) -> CeremonyStrategyType:
+        """Return THROUGHPUT_ADAPTIVE."""
+        return CeremonyStrategyType.THROUGHPUT_ADAPTIVE
+
+    def get_default_velocity_calculator(self) -> VelocityCalcType:
+        """Return TASK_DRIVEN."""
+        return VelocityCalcType.TASK_DRIVEN
+
+    def validate_strategy_config(
+        self,
+        config: Mapping[str, Any],
+    ) -> None:
+        """Validate throughput-adaptive strategy config.
+
+        Args:
+            config: Strategy config to validate.
+
+        Raises:
+            ValueError: If the config contains invalid keys or values.
+        """
+        unknown = set(config) - _KNOWN_CONFIG_KEYS
+        if unknown:
+            msg = f"Unknown config keys: {sorted(unknown)}"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                unknown_keys=sorted(unknown),
+            )
+            raise ValueError(msg)
+
+        self._validate_threshold_key(config, _KEY_VELOCITY_DROP_THRESHOLD_PCT)
+        self._validate_threshold_key(config, _KEY_VELOCITY_SPIKE_THRESHOLD_PCT)
+        self._validate_window_key(config)
+        self._validate_bool_key(config, _KEY_ON_DROP)
+        self._validate_bool_key(config, _KEY_ON_SPIKE)
+
+    # -- Private helpers -------------------------------------------------------
+
+    def _compute_current_rate(self) -> float | None:
+        """Compute current throughput rate from the rolling window.
+
+        Returns:
+            Tasks per second, or ``None`` if rate cannot be computed.
+        """
+        if len(self._completion_timestamps) < _MIN_WINDOW_SIZE:
+            return None
+        time_span = self._completion_timestamps[-1] - self._completion_timestamps[0]
+        if time_span <= 0:
+            return None
+        return len(self._completion_timestamps) / time_span
+
+    def _try_establish_baseline(self) -> None:
+        """Compute and freeze the baseline rate from the first full window."""
+        time_span = self._completion_timestamps[-1] - self._completion_timestamps[0]
+        if time_span <= 0:
+            return
+        self._baseline_rate = self._window_size / time_span
+        logger.info(
+            SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET,
+            baseline_rate=self._baseline_rate,
+            window_size=self._window_size,
+            time_span_seconds=round(time_span, 2),
+            strategy="throughput_adaptive",
+        )
+
+    @staticmethod
+    def _resolve_bool(
+        config: Mapping[str, Any],
+        key: str,
+        *,
+        default: bool,
+    ) -> bool:
+        """Resolve a boolean config value with lenient fallback."""
+        value = config.get(key)
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        logger.warning(
+            SPRINT_CEREMONY_SKIPPED,
+            reason="invalid_bool_config",
+            key=key,
+            value=value,
+            fallback=default,
+            strategy="throughput_adaptive",
+        )
+        return default
+
+    @staticmethod
+    def _resolve_threshold(
+        config: Mapping[str, Any],
+        key: str,
+        default: float,
+    ) -> float:
+        """Resolve a percentage threshold with lenient validation."""
+        value = config.get(key)
+        if value is None:
+            return default
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_threshold",
+                key=key,
+                value=value,
+                fallback=default,
+                strategy="throughput_adaptive",
+            )
+            return default
+        if not (_MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="threshold_out_of_range",
+                key=key,
+                value=value,
+                fallback=default,
+                strategy="throughput_adaptive",
+            )
+            return default
+        result: float = float(value)
+        return result
+
+    @staticmethod
+    def _resolve_window_size(config: Mapping[str, Any]) -> int:
+        """Resolve the measurement window size with lenient validation."""
+        value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
+        if value is None:
+            return _DEFAULT_WINDOW_SIZE
+        if isinstance(value, bool) or not isinstance(value, int):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_window_size",
+                value=value,
+                fallback=_DEFAULT_WINDOW_SIZE,
+                strategy="throughput_adaptive",
+            )
+            return _DEFAULT_WINDOW_SIZE
+        if not (_MIN_WINDOW_SIZE <= value <= _MAX_WINDOW_SIZE):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="window_size_out_of_range",
+                value=value,
+                fallback=_DEFAULT_WINDOW_SIZE,
+                strategy="throughput_adaptive",
+            )
+            return _DEFAULT_WINDOW_SIZE
+        result: int = value
+        return result
+
+    @staticmethod
+    def _validate_threshold_key(
+        config: Mapping[str, Any],
+        key: str,
+    ) -> None:
+        """Validate a percentage threshold key (strict)."""
+        value = config.get(key)
+        if value is None:
+            return
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            msg = f"'{key}' must be numeric, got {type(value).__name__}"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                key=key,
+                value=value,
+            )
+            raise TypeError(msg)
+        if not (_MIN_THRESHOLD_PCT <= value <= _MAX_THRESHOLD_PCT):
+            msg = (
+                f"'{key}' must be between "
+                f"{_MIN_THRESHOLD_PCT} and {_MAX_THRESHOLD_PCT}, "
+                f"got {value}"
+            )
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                key=key,
+                value=value,
+            )
+            raise ValueError(msg)
+
+    @staticmethod
+    def _validate_window_key(config: Mapping[str, Any]) -> None:
+        """Validate measurement_window_tasks key (strict)."""
+        value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
+        if value is None:
+            return
+        if isinstance(value, bool) or not isinstance(value, int):
+            msg = (
+                f"'{_KEY_MEASUREMENT_WINDOW_TASKS}' must be an integer, "
+                f"got {type(value).__name__}"
+            )
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                key=_KEY_MEASUREMENT_WINDOW_TASKS,
+                value=value,
+            )
+            raise TypeError(msg)
+        if not (_MIN_WINDOW_SIZE <= value <= _MAX_WINDOW_SIZE):
+            msg = (
+                f"'{_KEY_MEASUREMENT_WINDOW_TASKS}' must be between "
+                f"{_MIN_WINDOW_SIZE} and {_MAX_WINDOW_SIZE}, got {value}"
+            )
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                key=_KEY_MEASUREMENT_WINDOW_TASKS,
+                value=value,
+            )
+            raise ValueError(msg)
+
+    @staticmethod
+    def _validate_bool_key(
+        config: Mapping[str, Any],
+        key: str,
+    ) -> None:
+        """Validate a boolean config key (strict)."""
+        value = config.get(key)
+        if value is None:
+            return
+        if not isinstance(value, bool):
+            msg = f"'{key}' must be a boolean, got {type(value).__name__}"
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="throughput_adaptive",
+                key=key,
+                value=value,
+            )
+            raise TypeError(msg)
