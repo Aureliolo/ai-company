@@ -16,6 +16,7 @@ from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
@@ -98,7 +99,7 @@ class TaskDrivenStrategy:
         Returns:
             ``True`` if the ceremony should fire.
         """
-        config = self._get_ceremony_config(ceremony)
+        config = get_ceremony_config(ceremony)
         trigger = config.get(_KEY_TRIGGER)
 
         if trigger is None:
@@ -256,15 +257,6 @@ class TaskDrivenStrategy:
             raise ValueError(msg)
 
     # -- Internal helpers ----------------------------------------------
-
-    @staticmethod
-    def _get_ceremony_config(
-        ceremony: SprintCeremonyConfig,
-    ) -> Mapping[str, Any]:
-        """Extract strategy config from a ceremony's policy override."""
-        if ceremony.policy_override is None:
-            return {}
-        return ceremony.policy_override.strategy_config or {}
 
     @staticmethod
     def _evaluate_trigger(

@@ -23,11 +23,14 @@ from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
+    SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED,
     SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET,
+    SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_TRIGGERED,
 )
 
@@ -59,6 +62,9 @@ _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
 )
 
 _DEFAULT_DEBOUNCE: int = 5
+_MAX_DEBOUNCE: int = 10_000
+_MAX_EVENT_NAME_LEN: int = 128
+_MAX_DISTINCT_EVENTS: int = 64
 
 # -- Recognized lifecycle event names -----------------------------------------
 
@@ -74,7 +80,8 @@ class EventDrivenStrategy:
     Ceremonies subscribe to named events (e.g. ``task_completed``,
     ``task_blocked``, or any external event) with a configurable
     debounce count.  A ceremony fires once the debounce threshold is
-    reached, then resets.
+    reached, then the firing baseline advances so the next debounce
+    window begins from the current count.
 
     State is tracked per-sprint and cleared on sprint transitions.
     """
@@ -104,13 +111,34 @@ class EventDrivenStrategy:
         Returns:
             ``True`` if the ceremony should fire.
         """
-        config = self._get_ceremony_config(ceremony)
+        config = get_ceremony_config(ceremony)
         on_event = config.get(_KEY_ON_EVENT)
 
         if on_event is None:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                reason="no_on_event",
+                strategy="event_driven",
+            )
             return False
 
-        debounce: int = config.get(_KEY_DEBOUNCE, self._debounce_default)
+        raw_debounce = config.get(_KEY_DEBOUNCE, self._debounce_default)
+        if (
+            isinstance(raw_debounce, bool)
+            or not isinstance(raw_debounce, int)
+            or raw_debounce < 1
+        ):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                reason="invalid_debounce",
+                value=raw_debounce,
+                fallback=self._debounce_default,
+                strategy="event_driven",
+            )
+            raw_debounce = self._debounce_default
+        debounce: int = raw_debounce
         global_count = self._event_counts.get(on_event, 0)
         last_fire_at = self._ceremony_last_fire_at.get(ceremony.name, 0)
         events_since_fire = global_count - last_fire_at
@@ -145,7 +173,10 @@ class EventDrivenStrategy:
     ) -> SprintStatus | None:
         """Return IN_REVIEW when the configured transition event fires.
 
-        Only transitions from ACTIVE status.
+        Only transitions from ACTIVE status.  Once the transition
+        event has been observed (from external events or internal
+        counters), this method returns ``IN_REVIEW`` on every
+        subsequent call for the remainder of the sprint.
 
         Args:
             sprint: Current sprint state.
@@ -159,29 +190,34 @@ class EventDrivenStrategy:
         if sprint.status is not SprintStatus.ACTIVE:
             return None
 
-        strategy_config = (
-            config.ceremony_policy.strategy_config
-            if config.ceremony_policy.strategy_config is not None
-            else {}
-        )
+        strategy_config = config.ceremony_policy.strategy_config or {}
         transition_event = strategy_config.get(_KEY_TRANSITION_EVENT)
         if transition_event is None:
             return None
 
-        # Check external events in context
+        return self._check_transition_event(
+            transition_event,
+            context,
+        )
+
+    def _check_transition_event(
+        self,
+        transition_event: str,
+        context: CeremonyEvalContext,
+    ) -> SprintStatus | None:
+        """Check if transition event has been observed."""
         if transition_event in context.external_events:
             logger.info(
-                SPRINT_CEREMONY_TRIGGERED,
+                SPRINT_AUTO_TRANSITION,
                 transition_event=transition_event,
                 source="external_events",
                 strategy="event_driven",
             )
             return SprintStatus.IN_REVIEW
 
-        # Check internal event counters
         if self._event_counts.get(transition_event, 0) > 0:
             logger.info(
-                SPRINT_CEREMONY_TRIGGERED,
+                SPRINT_AUTO_TRANSITION,
                 transition_event=transition_event,
                 source="internal_counter",
                 strategy="event_driven",
@@ -212,8 +248,21 @@ class EventDrivenStrategy:
             else {}
         )
         debounce_default = strategy_config.get(_KEY_DEBOUNCE_DEFAULT)
-        if isinstance(debounce_default, int) and not isinstance(debounce_default, bool):
+        if (
+            isinstance(debounce_default, int)
+            and not isinstance(debounce_default, bool)
+            and debounce_default >= 1
+        ):
             self._debounce_default = debounce_default
+        elif debounce_default is not None:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_debounce_default",
+                value=debounce_default,
+                fallback=_DEFAULT_DEBOUNCE,
+                strategy="event_driven",
+            )
+            self._debounce_default = _DEFAULT_DEBOUNCE
         else:
             self._debounce_default = _DEFAULT_DEBOUNCE
 
@@ -335,28 +384,41 @@ class EventDrivenStrategy:
 
         for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
             value = config.get(key)
-            if value is not None and (
-                isinstance(value, bool) or not isinstance(value, int) or value < 1
-            ):
-                msg = f"'{key}' must be a positive integer, got {value!r}"
-                raise ValueError(msg)
+            if value is not None:
+                if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                    msg = f"'{key}' must be a positive integer, got {value!r}"
+                    raise ValueError(msg)
+                if value > _MAX_DEBOUNCE:
+                    msg = f"'{key}' must be <= {_MAX_DEBOUNCE}, got {value!r}"
+                    raise ValueError(msg)
 
     # -- Private helpers -------------------------------------------------------
 
     def _increment(self, event_name: str) -> None:
         """Increment the global event counter for the given event."""
+        if len(event_name) > _MAX_EVENT_NAME_LEN:
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="event_name_too_long",
+                event_name=event_name[:64],
+                strategy="event_driven",
+            )
+            return
+        if (
+            event_name not in self._event_counts
+            and len(self._event_counts) >= _MAX_DISTINCT_EVENTS
+        ):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="too_many_distinct_events",
+                event_name=event_name,
+                limit=_MAX_DISTINCT_EVENTS,
+                strategy="event_driven",
+            )
+            return
         self._event_counts[event_name] = self._event_counts.get(event_name, 0) + 1
         logger.debug(
             SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED,
             event_name=event_name,
             count=self._event_counts[event_name],
         )
-
-    @staticmethod
-    def _get_ceremony_config(
-        ceremony: SprintCeremonyConfig,
-    ) -> Mapping[str, Any]:
-        """Extract strategy config from a ceremony's policy override."""
-        if ceremony.policy_override is None:
-            return {}
-        return ceremony.policy_override.strategy_config or {}

@@ -449,7 +449,7 @@ class VelocityCalculator(Protocol):
 | `CalendarVelocityCalculator` | `pts/day` | calendar |
 | `MultiDimensionalVelocityCalculator` | `pts/sprint` (+ secondary) | hybrid |
 | `BudgetVelocityCalculator` | `pts/EUR` | budget_driven |
-| `PointsPerSprintVelocityCalculator` | `pts/sprint` | event_driven, external_trigger |
+| `PointsPerSprintVelocityCalculator` | `pts/sprint` | event_driven, external_trigger, milestone_driven |
 
 ---
 
@@ -700,6 +700,8 @@ Event constants in `synthorg.observability.events.workflow`:
 - `BudgetDrivenStrategy` -- ceremony firing at cost-consumption thresholds
 - `BudgetVelocityCalculator` -- `pts/EUR` with budget-weighted rolling averages
 - Observability event constants (`SPRINT_CEREMONY_EVENT_DEBOUNCE_NOT_MET`, `SPRINT_CEREMONY_EVENT_COUNTER_INCREMENTED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED`, `SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED`, `SPRINT_AUTO_TRANSITION_BUDGET`, `VELOCITY_BUDGET_NO_BUDGET_CONSUMED`)
+
+> **Note:** These strategies are implemented but the `CeremonyScheduler` does not yet wire all lifecycle hooks (e.g. `on_budget_updated`, `on_external_event`). Scheduler integration is tracked in follow-up work.
 
 ### Follow-up Issues
 

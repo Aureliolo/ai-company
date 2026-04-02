@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
 from synthorg.engine.workflow.velocity_calculators.points_per_sprint import (
     PointsPerSprintVelocityCalculator,
 )
@@ -22,6 +23,15 @@ def _make_record(
         duration_days=14,
         task_completion_count=10,
     )
+
+
+class TestPointsPerSprintVelocityCalculatorProtocol:
+    """Verify PointsPerSprintVelocityCalculator satisfies the protocol."""
+
+    @pytest.mark.unit
+    def test_is_protocol_instance(self) -> None:
+        calc = PointsPerSprintVelocityCalculator()
+        assert isinstance(calc, VelocityCalculator)
 
 
 class TestPointsPerSprintVelocityCalculator:

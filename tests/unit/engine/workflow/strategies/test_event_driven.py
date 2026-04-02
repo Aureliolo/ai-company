@@ -476,3 +476,87 @@ class TestValidateStrategyConfig:
         strategy = EventDrivenStrategy()
         with pytest.raises(ValueError, match="non-empty string"):
             strategy.validate_strategy_config({"transition_event": ""})
+
+    @pytest.mark.unit
+    def test_invalid_on_event_non_string(self) -> None:
+        strategy = EventDrivenStrategy()
+        with pytest.raises(ValueError, match="non-empty string"):
+            strategy.validate_strategy_config({"on_event": 123})
+
+    @pytest.mark.unit
+    def test_invalid_on_event_bool(self) -> None:
+        strategy = EventDrivenStrategy()
+        with pytest.raises(ValueError, match="non-empty string"):
+            strategy.validate_strategy_config({"on_event": True})
+
+    @pytest.mark.unit
+    def test_debounce_exceeds_max(self) -> None:
+        strategy = EventDrivenStrategy()
+        with pytest.raises(ValueError, match="<= 10000"):
+            strategy.validate_strategy_config({"debounce": 10_001})
+
+    @pytest.mark.unit
+    def test_debounce_default_exceeds_max(self) -> None:
+        strategy = EventDrivenStrategy()
+        with pytest.raises(ValueError, match="<= 10000"):
+            strategy.validate_strategy_config({"debounce_default": 10_001})
+
+    @pytest.mark.unit
+    async def test_debounce_default_fallback_on_bool(self) -> None:
+        strategy = EventDrivenStrategy()
+        sprint = make_sprint()
+        config = _make_sprint_config(debounce_default=5)
+        # Activate with valid config first
+        await strategy.on_sprint_activated(sprint, config)
+
+        # Now activate with bool -- should fallback to default
+        bad_config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EVENT_DRIVEN,
+                strategy_config={"debounce_default": True},
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, bad_config)
+        # Verify the debounce_default is the default (5), not True (1)
+        assert strategy._debounce_default == 5
+
+    @pytest.mark.unit
+    async def test_debounce_default_fallback_on_float(self) -> None:
+        strategy = EventDrivenStrategy()
+        sprint = make_sprint()
+        bad_config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EVENT_DRIVEN,
+                strategy_config={"debounce_default": 3.5},
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, bad_config)
+        assert strategy._debounce_default == 5
+
+    @pytest.mark.unit
+    async def test_debounce_default_fallback_on_zero(self) -> None:
+        strategy = EventDrivenStrategy()
+        sprint = make_sprint()
+        bad_config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EVENT_DRIVEN,
+                strategy_config={"debounce_default": 0},
+            ),
+        )
+        await strategy.on_sprint_activated(sprint, bad_config)
+        assert strategy._debounce_default == 5
+
+    @pytest.mark.unit
+    def test_transition_with_strategy_config_none(self) -> None:
+        strategy = EventDrivenStrategy()
+        sprint = make_sprint()
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.EVENT_DRIVEN,
+                strategy_config=None,
+            ),
+        )
+        ctx = make_context()
+        # No transition_event configured -- should return None
+        result = strategy.should_transition_sprint(sprint, config, ctx)
+        assert result is None

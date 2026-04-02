@@ -28,11 +28,12 @@ _UNIT: str = "pts/EUR"
 class BudgetVelocityCalculator:
     """Velocity calculator measuring points per currency unit consumed.
 
-    Primary unit: ``pts/EUR``.
+    Primary unit: ``pts/EUR`` (assumes the default display currency).
 
-    When ``budget_consumed`` is not available or zero,
-    ``primary_value`` is 0.0 (cannot normalize) but
-    ``pts_per_sprint`` is included as a secondary metric.
+    When ``budget_consumed`` is ``None`` or zero, ``primary_value``
+    is 0.0 and only ``pts_per_sprint`` appears in secondary metrics.
+    When budget data is available, secondary metrics also include
+    ``budget_consumed`` and ``completion_ratio``.
     """
 
     __slots__ = ()
@@ -48,11 +49,11 @@ class BudgetVelocityCalculator:
         """
         budget = record.budget_consumed
         if budget is None or budget == 0.0:
-            if budget is None:
-                logger.debug(
-                    VELOCITY_BUDGET_NO_BUDGET_CONSUMED,
-                    sprint_id=record.sprint_id,
-                )
+            logger.debug(
+                VELOCITY_BUDGET_NO_BUDGET_CONSUMED,
+                sprint_id=record.sprint_id,
+                reason="none" if budget is None else "zero",
+            )
             return VelocityMetrics(
                 primary_value=0.0,
                 primary_unit=_UNIT,
@@ -78,8 +79,9 @@ class BudgetVelocityCalculator:
     ) -> VelocityMetrics:
         """Compute rolling average of points-per-EUR.
 
-        Uses the last *window* records.  Records without valid
-        ``budget_consumed`` are excluded from the average.
+        Uses the last *window* records.  Records where
+        ``budget_consumed`` is ``None`` or ``<= 0.0`` are excluded
+        from the average.
 
         Args:
             records: Ordered velocity records (oldest first).

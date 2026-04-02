@@ -20,6 +20,7 @@ from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies._helpers import get_ceremony_config
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
@@ -27,7 +28,6 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
     SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED,
     SPRINT_CEREMONY_SKIPPED,
-    SPRINT_CEREMONY_TRIGGERED,
 )
 
 if TYPE_CHECKING:
@@ -55,6 +55,7 @@ _KNOWN_CONFIG_KEYS: frozenset[str] = frozenset(
 
 _DEFAULT_TRANSITION_THRESHOLD_PCT: float = 100.0
 _MAX_THRESHOLD_PCT: float = 100.0
+_MAX_THRESHOLD_COUNT: int = 20
 
 
 class BudgetDrivenStrategy:
@@ -68,6 +69,11 @@ class BudgetDrivenStrategy:
     catch up quickly without cascading ceremonies in a single cycle).
 
     State is tracked per-sprint and cleared on sprint transitions.
+
+    Note:
+        Unlike the protocol's description of stateless core methods,
+        ``should_fire_ceremony`` mutates internal tracking state on
+        each call (marking thresholds as fired).
     """
 
     __slots__ = ("_fired_thresholds",)
@@ -101,48 +107,33 @@ class BudgetDrivenStrategy:
             This method mutates internal state -- it marks the
             fired threshold as consumed.  It is not a pure predicate.
         """
-        config = self._get_ceremony_config(ceremony)
+        config = get_ceremony_config(ceremony)
         thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
 
         if not thresholds:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                reason="no_budget_thresholds",
+                strategy="budget_driven",
+            )
+            return False
+
+        if not isinstance(thresholds, list):
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                ceremony=ceremony.name,
+                reason="invalid_budget_thresholds_type",
+                strategy="budget_driven",
+            )
             return False
 
         budget_pct = context.budget_consumed_fraction * _MAX_THRESHOLD_PCT
-        fired = self._fired_thresholds.setdefault(ceremony.name, set())
-
-        for threshold in sorted(thresholds):
-            if threshold in fired:
-                logger.debug(
-                    SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
-                    ceremony=ceremony.name,
-                    threshold=threshold,
-                    strategy="budget_driven",
-                )
-                continue
-            if budget_pct >= threshold:
-                fired.add(threshold)
-                logger.info(
-                    SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED,
-                    ceremony=ceremony.name,
-                    threshold=threshold,
-                    budget_pct=budget_pct,
-                    strategy="budget_driven",
-                )
-                logger.info(
-                    SPRINT_CEREMONY_TRIGGERED,
-                    ceremony=ceremony.name,
-                    threshold=threshold,
-                    strategy="budget_driven",
-                )
-                return True
-
-        logger.debug(
-            SPRINT_CEREMONY_SKIPPED,
-            ceremony=ceremony.name,
-            budget_pct=budget_pct,
-            strategy="budget_driven",
+        return self._find_crossed_threshold(
+            ceremony.name,
+            thresholds,
+            budget_pct,
         )
-        return False
 
     def should_transition_sprint(
         self,
@@ -171,10 +162,24 @@ class BudgetDrivenStrategy:
             if config.ceremony_policy.strategy_config is not None
             else {}
         )
-        transition_pct: float = strategy_config.get(
+        raw_threshold = strategy_config.get(
             _KEY_TRANSITION_THRESHOLD,
             _DEFAULT_TRANSITION_THRESHOLD_PCT,
         )
+        # Defensive type check -- validate_strategy_config should have
+        # caught this, but sprint-level config may bypass validation.
+        if isinstance(raw_threshold, bool) or not isinstance(
+            raw_threshold, int | float
+        ):
+            logger.warning(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_transition_threshold_type",
+                value=raw_threshold,
+                fallback=_DEFAULT_TRANSITION_THRESHOLD_PCT,
+                strategy="budget_driven",
+            )
+            raw_threshold = _DEFAULT_TRANSITION_THRESHOLD_PCT
+        transition_pct: float = raw_threshold
         budget_pct = context.budget_consumed_fraction * _MAX_THRESHOLD_PCT
 
         if budget_pct >= transition_pct:
@@ -195,7 +200,10 @@ class BudgetDrivenStrategy:
         sprint: Sprint,  # noqa: ARG002
         config: SprintConfig,  # noqa: ARG002
     ) -> None:
-        """Clear fired-threshold tracking for new sprint.
+        """Reset all fired-threshold tracking for the new sprint cycle.
+
+        Clears tracking across all ceremonies, not only the activated
+        sprint's ceremonies.
 
         Args:
             sprint: The activated sprint.
@@ -303,27 +311,7 @@ class BudgetDrivenStrategy:
 
         thresholds = config.get(_KEY_BUDGET_THRESHOLDS)
         if thresholds is not None:
-            if not isinstance(thresholds, list):
-                msg = (
-                    f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
-                    f"got {type(thresholds).__name__}"
-                )
-                raise ValueError(msg)
-            seen: set[float] = set()
-            for t in thresholds:
-                if (
-                    isinstance(t, bool)
-                    or not isinstance(t, int | float)
-                    or not (0 < t <= _MAX_THRESHOLD_PCT)
-                ):
-                    msg = (
-                        f"Each budget threshold must be a number in (0, 100], got {t!r}"
-                    )
-                    raise ValueError(msg)
-                if t in seen:
-                    msg = f"Duplicate budget threshold: {t}"
-                    raise ValueError(msg)
-                seen.add(t)
+            self._validate_thresholds(thresholds)
 
         transition = config.get(_KEY_TRANSITION_THRESHOLD)
         if transition is not None and (
@@ -340,10 +328,66 @@ class BudgetDrivenStrategy:
     # -- Private helpers -------------------------------------------------------
 
     @staticmethod
-    def _get_ceremony_config(
-        ceremony: SprintCeremonyConfig,
-    ) -> Mapping[str, Any]:
-        """Extract strategy config from a ceremony's policy override."""
-        if ceremony.policy_override is None:
-            return {}
-        return ceremony.policy_override.strategy_config or {}
+    def _validate_thresholds(thresholds: object) -> None:
+        """Validate budget_thresholds list values."""
+        if not isinstance(thresholds, list):
+            msg = (
+                f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
+                f"got {type(thresholds).__name__}"
+            )
+            raise TypeError(msg)
+        if len(thresholds) > _MAX_THRESHOLD_COUNT:
+            msg = (
+                f"'{_KEY_BUDGET_THRESHOLDS}' must not exceed "
+                f"{_MAX_THRESHOLD_COUNT} entries, got {len(thresholds)}"
+            )
+            raise ValueError(msg)
+        seen: set[float] = set()
+        for t in thresholds:
+            # bool is a subclass of int; check first
+            if (
+                isinstance(t, bool)
+                or not isinstance(t, int | float)
+                or not (0 < t <= _MAX_THRESHOLD_PCT)
+            ):
+                msg = f"Each budget threshold must be a number in (0, 100], got {t!r}"
+                raise ValueError(msg)
+            if t in seen:
+                msg = f"Duplicate budget threshold: {t}"
+                raise ValueError(msg)
+            seen.add(t)
+
+    def _find_crossed_threshold(
+        self,
+        ceremony_name: str,
+        thresholds: list[float],
+        budget_pct: float,
+    ) -> bool:
+        """Find and fire the lowest unfired threshold crossed."""
+        fired = self._fired_thresholds.setdefault(ceremony_name, set())
+        for threshold in sorted(thresholds):
+            if threshold in fired:
+                logger.debug(
+                    SPRINT_CEREMONY_BUDGET_THRESHOLD_ALREADY_FIRED,
+                    ceremony=ceremony_name,
+                    threshold=threshold,
+                    strategy="budget_driven",
+                )
+                continue
+            if budget_pct >= threshold:
+                fired.add(threshold)
+                logger.info(
+                    SPRINT_CEREMONY_BUDGET_THRESHOLD_CROSSED,
+                    ceremony=ceremony_name,
+                    threshold=threshold,
+                    budget_pct=budget_pct,
+                    strategy="budget_driven",
+                )
+                return True
+        logger.debug(
+            SPRINT_CEREMONY_SKIPPED,
+            ceremony=ceremony_name,
+            budget_pct=budget_pct,
+            strategy="budget_driven",
+        )
+        return False

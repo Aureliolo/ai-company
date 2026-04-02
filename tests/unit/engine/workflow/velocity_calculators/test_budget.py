@@ -3,6 +3,7 @@
 import pytest
 
 from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
 from synthorg.engine.workflow.velocity_calculators.budget import (
     BudgetVelocityCalculator,
 )
@@ -24,6 +25,15 @@ def _make_record(
         task_completion_count=10,
         budget_consumed=budget_consumed,
     )
+
+
+class TestBudgetVelocityCalculatorProtocol:
+    """Verify BudgetVelocityCalculator satisfies the protocol."""
+
+    @pytest.mark.unit
+    def test_is_protocol_instance(self) -> None:
+        calc = BudgetVelocityCalculator()
+        assert isinstance(calc, VelocityCalculator)
 
 
 class TestBudgetVelocityCalculator:
