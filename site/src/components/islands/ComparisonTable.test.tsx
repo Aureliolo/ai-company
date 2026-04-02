@@ -151,12 +151,13 @@ describe("ComparisonTable", () => {
     expect(header).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("toggles sort direction on header click", () => {
+  it("toggles sort direction on header button click", () => {
     renderTable();
     const table = screen.getByTestId("ct-table-wrap");
-    const header = within(table).getByText("Framework").closest("th")!;
+    const sortBtn = within(table).getByText("Framework");
+    const header = sortBtn.closest("th")!;
     expect(header).toHaveAttribute("aria-sort", "ascending");
-    fireEvent.click(header);
+    fireEvent.click(sortBtn);
     expect(header).toHaveAttribute("aria-sort", "descending");
   });
 

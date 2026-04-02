@@ -124,21 +124,34 @@
 }
 
 .ct-table th {
-  padding: 0.75rem 0.625rem;
+  padding: 0;
   text-align: left;
   font-weight: 600;
   color: var(--ct-text-secondary);
   border-bottom: 1px solid var(--ct-border);
   white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
   position: sticky;
   top: 0;
   background: var(--ct-bg-surface);
   z-index: 1;
 }
 
-.ct-table th:hover {
+.ct-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 0.625rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.ct-sort-btn:hover {
   color: var(--ct-text-primary);
 }
 
@@ -353,6 +366,20 @@
   gap: 0.375rem;
   font-size: 0.8125rem;
   color: var(--ct-text-secondary);
+}
+
+.ct-card-repo {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.ct-card-repo a {
+  color: var(--ct-accent);
+  text-decoration: none;
+}
+
+.ct-card-repo a:hover {
+  text-decoration: underline;
 }
 
 /* Result count */

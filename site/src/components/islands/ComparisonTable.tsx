@@ -331,44 +331,34 @@ export default function ComparisonTable({
           <thead>
             <tr>
               <th style={{ width: "2rem" }}></th>
-              <th
-                onClick={() => handleSort("name")}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("name"); } }}
-                aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
-              >
-                Framework
-                <SortArrow column="name" sortBy={sortBy} />
+              <th aria-sort={sortBy.key === "name" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" className="ct-sort-btn" onClick={() => handleSort("name")}>
+                  Framework
+                  <SortArrow column="name" sortBy={sortBy} />
+                </button>
               </th>
-              <th
-                onClick={() => handleSort("category")}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("category"); } }}
-                aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
-              >
-                Category
-                <SortArrow column="category" sortBy={sortBy} />
+              <th aria-sort={sortBy.key === "category" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" className="ct-sort-btn" onClick={() => handleSort("category")}>
+                  Category
+                  <SortArrow column="category" sortBy={sortBy} />
+                </button>
               </th>
-              <th
-                onClick={() => handleSort("license")}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort("license"); } }}
-                aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
-              >
-                License
-                <SortArrow column="license" sortBy={sortBy} />
+              <th aria-sort={sortBy.key === "license" ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}>
+                <button type="button" className="ct-sort-btn" onClick={() => handleSort("license")}>
+                  License
+                  <SortArrow column="license" sortBy={sortBy} />
+                </button>
               </th>
               {dimensions.map((dim) => (
                 <th
                   key={dim.key}
-                  onClick={() => handleSort(dim.key)}
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(dim.key); } }}
                   aria-sort={sortBy.key === dim.key ? (sortBy.direction === "asc" ? "ascending" : "descending") : "none"}
                   title={dim.description}
                 >
-                  {dim.label}
-                  <SortArrow column={dim.key} sortBy={sortBy} />
+                  <button type="button" className="ct-sort-btn" onClick={() => handleSort(dim.key)}>
+                    {dim.label}
+                    <SortArrow column={dim.key} sortBy={sortBy} />
+                  </button>
                 </th>
               ))}
             </tr>
@@ -545,12 +535,23 @@ export default function ComparisonTable({
                 const support = feat?.support || "none";
                 return (
                   <div key={dim.key} className="ct-card-feature">
-                    <SupportIcon level={support} />
+                    <SupportIcon level={support} note={feat?.note} />
                     <span>{dim.label}</span>
                   </div>
                 );
               })}
             </div>
+            {comp.repo && (
+              <div className="ct-card-repo">
+                <a
+                  href={comp.repo}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Repository
+                </a>
+              </div>
+            )}
           </div>
         ))}
       </div>
