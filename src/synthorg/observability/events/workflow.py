@@ -186,3 +186,20 @@ SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED: str = (
 
 SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED: str = "workflow.sprint.external_source_cleared"
 """External-trigger strategy cleared event sources."""
+
+# -- Milestone-driven strategy events ----------------------------------------
+
+SPRINT_CEREMONY_MILESTONE_ASSIGNED: str = "workflow.sprint.milestone_assigned"
+"""Task assigned to a milestone."""
+
+SPRINT_CEREMONY_MILESTONE_UNASSIGNED: str = "workflow.sprint.milestone_unassigned"
+"""Task removed from a milestone."""
+
+SPRINT_CEREMONY_MILESTONE_COMPLETED: str = "workflow.sprint.milestone_completed"
+"""All tasks in a milestone are complete."""
+
+SPRINT_CEREMONY_MILESTONE_NOT_READY: str = "workflow.sprint.milestone_not_ready"
+"""Milestone has no tasks assigned -- cannot fire."""
+
+SPRINT_AUTO_TRANSITION_MILESTONE: str = "workflow.sprint.auto_transition_milestone"
+"""Sprint auto-transitioned at a milestone completion."""

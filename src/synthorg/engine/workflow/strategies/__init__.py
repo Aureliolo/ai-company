@@ -20,6 +20,9 @@ from synthorg.engine.workflow.strategies.external_trigger import (
 from synthorg.engine.workflow.strategies.hybrid import (
     HybridStrategy,
 )
+from synthorg.engine.workflow.strategies.milestone_driven import (
+    MilestoneDrivenStrategy,
+)
 from synthorg.engine.workflow.strategies.task_driven import (
     TaskDrivenStrategy,
 )
@@ -33,6 +36,7 @@ __all__ = [
     "EventDrivenStrategy",
     "ExternalTriggerStrategy",
     "HybridStrategy",
+    "MilestoneDrivenStrategy",
     "TaskDrivenStrategy",
     "ThroughputAdaptiveStrategy",
 ]
