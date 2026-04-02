@@ -449,6 +449,8 @@ class TestValidateStrategyConfig:
             ({"sources": "not_a_list"}, "must be a list"),
             ({"sources": [42]}, "must be a dict"),
             ({"sources": [{"no_type": "x"}]}, "must have a 'type'"),
+            ({"sources": [{"type": 42}]}, "must be a string"),
+            ({"sources": [{"type": ["list"]}]}, "must be a string"),
             ({"sources": [{"type": "invalid"}]}, "must be one of"),
             (
                 {"sources": [{"type": "webhook"}] * 21},
@@ -463,6 +465,8 @@ class TestValidateStrategyConfig:
             "sources_not_list",
             "sources_non_dict_entry",
             "sources_no_type",
+            "sources_type_int",
+            "sources_type_list",
             "sources_invalid_type",
             "sources_too_many",
         ],

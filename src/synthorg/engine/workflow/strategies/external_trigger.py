@@ -521,6 +521,18 @@ class ExternalTriggerStrategy:
                 value=None,
             )
             raise ValueError(msg)
+        if not isinstance(source_type, str):
+            msg = (
+                f"sources[{index}].type must be a string, "
+                f"got {type(source_type).__name__}"
+            )
+            logger.warning(
+                SPRINT_STRATEGY_CONFIG_INVALID,
+                strategy="external_trigger",
+                key=f"sources[{index}].type",
+                value=type(source_type).__name__,
+            )
+            raise TypeError(msg)
         if source_type not in _VALID_SOURCE_TYPES:
             msg = (
                 f"sources[{index}].type must be one of "
