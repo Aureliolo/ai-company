@@ -330,11 +330,19 @@ class EventDrivenStrategy:
             event_name: Name of the external event.
             payload: Event payload data.
         """
-        if not isinstance(event_name, str) or not event_name.strip():
+        if (
+            not isinstance(event_name, str)
+            or not event_name.strip()
+            or len(event_name) > _MAX_EVENT_NAME_LEN
+        ):
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
                 reason="invalid_external_event_name",
-                value=event_name,
+                value=(
+                    event_name
+                    if isinstance(event_name, str)
+                    else type(event_name).__name__
+                ),
                 strategy="event_driven",
             )
             return
@@ -452,15 +460,12 @@ class EventDrivenStrategy:
         return result
 
     def _increment(self, event_name: str) -> None:
-        """Increment the global event counter for the given event."""
-        if len(event_name) > _MAX_EVENT_NAME_LEN:
-            logger.warning(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="event_name_too_long",
-                event_name=event_name[:64],
-                strategy="event_driven",
-            )
-            return
+        """Increment the global event counter for the given event.
+
+        Callers must validate ``event_name`` before calling.
+        Internal lifecycle hooks pass known constants; external
+        events are validated in ``on_external_event``.
+        """
         if (
             event_name not in self._event_counts
             and len(self._event_counts) >= _MAX_DISTINCT_EVENTS

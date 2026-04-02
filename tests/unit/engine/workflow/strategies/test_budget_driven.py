@@ -198,6 +198,18 @@ class TestShouldFireCeremony:
         ctx = make_context(budget_consumed_fraction=1.0)
         assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
 
+    @pytest.mark.unit
+    def test_no_policy_override_returns_false(self) -> None:
+        strategy = BudgetDrivenStrategy()
+        ceremony = SprintCeremonyConfig(
+            name="standup",
+            protocol=MeetingProtocolType.ROUND_ROBIN,
+            frequency=MeetingFrequency.DAILY,
+        )
+        sprint = make_sprint()
+        ctx = make_context(budget_consumed_fraction=0.50)
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+
 
 class TestShouldTransitionSprint:
     """should_transition_sprint() tests."""
@@ -237,6 +249,20 @@ class TestShouldTransitionSprint:
         ctx = make_context(budget_consumed_fraction=1.0)
         result = strategy.should_transition_sprint(sprint, config, ctx)
         assert result is None
+
+    @pytest.mark.unit
+    def test_transition_with_strategy_config_none(self) -> None:
+        strategy = BudgetDrivenStrategy()
+        sprint = make_sprint()
+        config = SprintConfig(
+            ceremony_policy=CeremonyPolicyConfig(
+                strategy=CeremonyStrategyType.BUDGET_DRIVEN,
+                strategy_config=None,
+            ),
+        )
+        ctx = make_context(budget_consumed_fraction=1.0)
+        result = strategy.should_transition_sprint(sprint, config, ctx)
+        assert result is SprintStatus.IN_REVIEW
 
 
 class TestLifecycleHooks:
@@ -350,30 +376,3 @@ class TestValidateStrategyConfig:
         strategy = BudgetDrivenStrategy()
         with pytest.raises(ValueError, match=match):
             strategy.validate_strategy_config(config)
-
-    @pytest.mark.unit
-    def test_no_policy_override_returns_false(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        ceremony = SprintCeremonyConfig(
-            name="standup",
-            protocol=MeetingProtocolType.ROUND_ROBIN,
-            frequency=MeetingFrequency.DAILY,
-        )
-        sprint = make_sprint()
-        ctx = make_context(budget_consumed_fraction=0.50)
-        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
-
-    @pytest.mark.unit
-    def test_transition_with_strategy_config_none(self) -> None:
-        strategy = BudgetDrivenStrategy()
-        sprint = make_sprint()
-        config = SprintConfig(
-            ceremony_policy=CeremonyPolicyConfig(
-                strategy=CeremonyStrategyType.BUDGET_DRIVEN,
-                strategy_config=None,
-            ),
-        )
-        ctx = make_context(budget_consumed_fraction=1.0)
-        # Default threshold is 100% -- should transition
-        result = strategy.should_transition_sprint(sprint, config, ctx)
-        assert result is SprintStatus.IN_REVIEW
