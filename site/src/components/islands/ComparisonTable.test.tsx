@@ -165,9 +165,8 @@ describe("ComparisonTable", () => {
     renderTable();
     const expandBtn = screen.getByLabelText("Expand SynthOrg details");
     fireEvent.click(expandBtn);
-    const detailContent = document.querySelector(".ct-detail-content")!;
-    expect(detailContent).toBeTruthy();
-    expect(detailContent.textContent).toContain("Virtual org framework");
+    const detail = screen.getByTestId("detail-synthorg");
+    expect(detail.textContent).toContain("Virtual org framework");
     expect(screen.getByLabelText("Collapse SynthOrg details")).toBeInTheDocument();
   });
 

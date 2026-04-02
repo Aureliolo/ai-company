@@ -94,7 +94,7 @@ function SortArrow({
   const active = sortBy.key === column;
   const arrow = active && sortBy.direction === "desc" ? "\u25BC" : "\u25B2";
   return (
-    <span className="sort-arrow" data-active={active ? "true" : "false"}>
+    <span className="sort-arrow" data-active={active ? "true" : "false"} aria-hidden="true">
       {arrow}
     </span>
   );
@@ -442,7 +442,7 @@ export default function ComparisonTable({
                       className="ct-detail-row"
                     >
                       <td colSpan={4 + dimensions.length}>
-                        <div className="ct-detail-content">
+                        <div className="ct-detail-content" data-testid={`detail-${comp.slug}`}>
                           <div className="ct-detail-item" style={{ gridColumn: "1 / -1" }}>
                             <span className="ct-detail-label">Description</span>
                             <span className="ct-detail-value">
@@ -536,7 +536,12 @@ export default function ComparisonTable({
                 return (
                   <div key={dim.key} className="ct-card-feature">
                     <SupportIcon level={support} note={feat?.note} />
-                    <span>{dim.label}</span>
+                    <span>
+                      {dim.label}
+                      {feat?.note && (
+                        <span className="ct-card-note">{feat.note}</span>
+                      )}
+                    </span>
                   </div>
                 );
               })}
