@@ -1,0 +1,284 @@
+"""Tests for EvaluationService orchestrator."""
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from synthorg.core.types import NotBlankStr
+from synthorg.hr.evaluation.config import (
+    EfficiencyConfig,
+    EvaluationConfig,
+    ExperienceConfig,
+    GovernanceConfig,
+    ResilienceConfig,
+)
+from synthorg.hr.evaluation.enums import EvaluationPillar
+from synthorg.hr.evaluation.evaluator import EvaluationService
+from synthorg.hr.performance.tracker import PerformanceTracker
+from tests.unit.hr.evaluation.conftest import make_interaction_feedback
+from tests.unit.hr.performance.conftest import make_task_metric
+
+
+@pytest.fixture
+def tracker() -> PerformanceTracker:
+    return PerformanceTracker()
+
+
+@pytest.fixture
+def service(tracker: PerformanceTracker) -> EvaluationService:
+    return EvaluationService(tracker=tracker)
+
+
+class TestEvaluationService:
+    """EvaluationService orchestration tests."""
+
+    async def test_evaluate_default_config(
+        self,
+        service: EvaluationService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Default config evaluates all 5 pillars."""
+        agent_id = NotBlankStr("agent-001")
+        for i in range(10):
+            await tracker.record_task_metric(
+                make_task_metric(
+                    agent_id="agent-001",
+                    task_id=f"task-{i:03d}",
+                    is_success=i < 8,
+                    quality_score=7.0 + i * 0.2,
+                ),
+            )
+
+        report = await service.evaluate(agent_id)
+        assert report.agent_id == "agent-001"
+        assert len(report.pillar_scores) == 5
+        assert report.overall_score >= 0.0
+        assert report.overall_score <= 10.0
+        assert report.overall_confidence >= 0.0
+        assert report.overall_confidence <= 1.0
+        # All 5 pillars represented.
+        pillars = {ps.pillar for ps in report.pillar_scores}
+        assert pillars == set(EvaluationPillar)
+
+    async def test_evaluate_with_disabled_pillar(
+        self,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Disabled pillar is skipped, weights redistributed."""
+        cfg = EvaluationConfig(
+            experience=ExperienceConfig(enabled=False),
+        )
+        svc = EvaluationService(tracker=tracker, config=cfg)
+        agent_id = NotBlankStr("agent-001")
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001", quality_score=7.0),
+        )
+
+        report = await svc.evaluate(agent_id)
+        assert len(report.pillar_scores) == 4
+        pillars = {ps.pillar for ps in report.pillar_scores}
+        assert EvaluationPillar.EXPERIENCE not in pillars
+        # Weights should sum to ~1.0.
+        weight_sum = sum(w for _, w in report.pillar_weights)
+        assert abs(weight_sum - 1.0) < 0.01
+
+    async def test_evaluate_multiple_pillars_disabled(
+        self,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Multiple disabled pillars -- only enabled ones scored."""
+        cfg = EvaluationConfig(
+            resilience=ResilienceConfig(enabled=False),
+            governance=GovernanceConfig(enabled=False),
+            experience=ExperienceConfig(enabled=False),
+        )
+        svc = EvaluationService(tracker=tracker, config=cfg)
+        agent_id = NotBlankStr("agent-001")
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001", quality_score=8.0),
+        )
+
+        report = await svc.evaluate(agent_id)
+        assert len(report.pillar_scores) == 2
+        pillars = {ps.pillar for ps in report.pillar_scores}
+        assert pillars == {
+            EvaluationPillar.INTELLIGENCE,
+            EvaluationPillar.EFFICIENCY,
+        }
+
+    async def test_efficiency_inline_computation(
+        self,
+        service: EvaluationService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Efficiency pillar is computed inline, not by a strategy."""
+        agent_id = NotBlankStr("agent-001")
+        for i in range(6):
+            await tracker.record_task_metric(
+                make_task_metric(
+                    agent_id="agent-001",
+                    task_id=f"task-{i:03d}",
+                    cost_usd=2.0,
+                    duration_seconds=60.0,
+                    tokens_used=1000,
+                ),
+            )
+
+        report = await service.evaluate(agent_id)
+        eff_scores = [
+            ps
+            for ps in report.pillar_scores
+            if ps.pillar == EvaluationPillar.EFFICIENCY
+        ]
+        assert len(eff_scores) == 1
+        assert eff_scores[0].strategy_name == "inline_efficiency"
+
+    async def test_efficiency_metric_toggles(
+        self,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Efficiency respects metric toggles."""
+        cfg = EvaluationConfig(
+            efficiency=EfficiencyConfig(tokens_enabled=False),
+        )
+        svc = EvaluationService(tracker=tracker, config=cfg)
+        agent_id = NotBlankStr("agent-001")
+        for i in range(6):
+            await tracker.record_task_metric(
+                make_task_metric(
+                    agent_id="agent-001",
+                    task_id=f"task-{i:03d}",
+                    cost_usd=2.0,
+                    duration_seconds=60.0,
+                    tokens_used=1000,
+                ),
+            )
+
+        report = await svc.evaluate(agent_id)
+        eff = next(
+            ps
+            for ps in report.pillar_scores
+            if ps.pillar == EvaluationPillar.EFFICIENCY
+        )
+        assert not any(k == "tokens" for k, _ in eff.breakdown)
+
+    async def test_feedback_recording_and_retrieval(
+        self,
+        service: EvaluationService,
+    ) -> None:
+        fb1 = make_interaction_feedback(agent_id="agent-001")
+        fb2 = make_interaction_feedback(agent_id="agent-002")
+        await service.record_feedback(fb1)
+        await service.record_feedback(fb2)
+
+        all_fb = service.get_feedback()
+        assert len(all_fb) == 2
+
+        agent1_fb = service.get_feedback(agent_id=NotBlankStr("agent-001"))
+        assert len(agent1_fb) == 1
+        assert agent1_fb[0].agent_id == "agent-001"
+
+    async def test_feedback_since_filter(
+        self,
+        service: EvaluationService,
+    ) -> None:
+        now = datetime.now(UTC)
+        old = make_interaction_feedback(
+            agent_id="agent-001",
+            recorded_at=now - timedelta(days=7),
+        )
+        recent = make_interaction_feedback(
+            agent_id="agent-001",
+            recorded_at=now,
+        )
+        await service.record_feedback(old)
+        await service.record_feedback(recent)
+
+        result = service.get_feedback(since=now - timedelta(days=1))
+        assert len(result) == 1
+
+    async def test_report_has_unique_id(
+        self,
+        service: EvaluationService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        agent_id = NotBlankStr("agent-001")
+        await tracker.record_task_metric(
+            make_task_metric(agent_id="agent-001"),
+        )
+        r1 = await service.evaluate(agent_id)
+        r2 = await service.evaluate(agent_id)
+        assert r1.id != r2.id
+
+
+class TestComputeResilienceMetrics:
+    """Tests for the static _compute_resilience_metrics method."""
+
+    def test_empty_records(self) -> None:
+        rm = EvaluationService._compute_resilience_metrics(())
+        assert rm.total_tasks == 0
+        assert rm.failed_tasks == 0
+        assert rm.current_success_streak == 0
+
+    def test_all_successes(self) -> None:
+        now = datetime.now(UTC)
+        records = tuple(
+            make_task_metric(
+                task_id=f"t-{i}",
+                is_success=True,
+                quality_score=8.0,
+                completed_at=now + timedelta(minutes=i),
+            )
+            for i in range(5)
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.total_tasks == 5
+        assert rm.failed_tasks == 0
+        assert rm.recovered_tasks == 0
+        assert rm.current_success_streak == 5
+        assert rm.longest_success_streak == 5
+
+    def test_failure_recovery_pattern(self) -> None:
+        """S S F S S F S -- 2 failures, 2 recoveries."""
+        now = datetime.now(UTC)
+        pattern = [True, True, False, True, True, False, True]
+        records = tuple(
+            make_task_metric(
+                task_id=f"t-{i}",
+                is_success=s,
+                completed_at=now + timedelta(minutes=i),
+            )
+            for i, s in enumerate(pattern)
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.total_tasks == 7
+        assert rm.failed_tasks == 2
+        assert rm.recovered_tasks == 2
+        assert rm.current_success_streak == 1
+        assert rm.longest_success_streak == 2
+
+    def test_quality_stddev_computation(self) -> None:
+        now = datetime.now(UTC)
+        records = tuple(
+            make_task_metric(
+                task_id=f"t-{i}",
+                quality_score=float(score),
+                completed_at=now + timedelta(minutes=i),
+            )
+            for i, score in enumerate([6.0, 8.0, 6.0, 8.0])
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.quality_score_stddev is not None
+        assert rm.quality_score_stddev > 0.0
+
+    def test_quality_stddev_none_with_single_scored(self) -> None:
+        now = datetime.now(UTC)
+        records = (
+            make_task_metric(
+                task_id="t-0",
+                quality_score=7.0,
+                completed_at=now,
+            ),
+        )
+        rm = EvaluationService._compute_resilience_metrics(records)
+        assert rm.quality_score_stddev is None
