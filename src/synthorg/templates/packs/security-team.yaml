@@ -1,0 +1,47 @@
+template:
+  name: "Security Team"
+  description: >-
+    A focused security team with a senior Security Engineer leading
+    threat modeling and architecture review, supported by a Security
+    Operations specialist handling monitoring, incident response, and
+    compliance auditing.
+  version: "1.0.0"
+  min_agents: 2
+  max_agents: 2
+  tags:
+    - "security"
+    - "compliance"
+    - "infosec"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "security"
+      budget_percent: 8
+      head_role: "Security Engineer"
+      reporting_lines:
+        - subordinate: "Security Operations"
+          supervisor: "Security Engineer"
+
+  agents:
+    - role: "Security Engineer"
+      name: ""
+      level: "senior"
+      model:
+        tier: "large"
+        priority: "quality"
+        min_context: 100000
+      personality_preset: "quality_guardian"
+      department: "security"
+    - role: "Security Operations"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "methodical_analyst"
+      department: "security"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

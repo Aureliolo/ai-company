@@ -1,0 +1,53 @@
+template:
+  name: "Data Team"
+  description: >-
+    A three-agent data analytics team with a senior Data Engineer
+    building pipelines, a Data Analyst producing insights and reports,
+    and an ML Engineer developing models. Covers the full data
+    lifecycle from ingestion to prediction.
+  version: "1.0.0"
+  min_agents: 3
+  max_agents: 3
+  tags:
+    - "data"
+    - "analytics"
+    - "machine-learning"
+    - "pipeline"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "data_analytics"
+      budget_percent: 10
+      head_role: "Data Engineer"
+      reporting_lines:
+        - subordinate: "Data Analyst"
+          supervisor: "Data Engineer"
+        - subordinate: "ML Engineer"
+          supervisor: "Data Engineer"
+
+  agents:
+    - role: "Data Analyst"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "methodical_analyst"
+      department: "data_analytics"
+    - role: "Data Engineer"
+      name: ""
+      level: "senior"
+      model: "medium"
+      personality_preset: "pragmatic_builder"
+      department: "data_analytics"
+    - role: "ML Engineer"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "rapid_prototyper"
+      department: "data_analytics"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

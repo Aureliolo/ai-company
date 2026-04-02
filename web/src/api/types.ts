@@ -1516,3 +1516,26 @@ export interface DepartmentEntry {
   readonly autonomy_level?: AutonomyLevel | null
   readonly policies?: Record<string, unknown>
 }
+
+// ── Template Packs ──────────────────────────────────────────
+
+export interface PackInfoResponse {
+  readonly name: string
+  readonly display_name: string
+  readonly description: string
+  readonly source: 'builtin' | 'user'
+  readonly tags: readonly string[]
+  readonly agent_count: number
+  readonly department_count: number
+}
+
+export interface ApplyTemplatePackRequest {
+  readonly pack_name: string
+  readonly variables?: Record<string, unknown>
+}
+
+export interface ApplyTemplatePackResponse {
+  readonly pack_name: string
+  readonly agents_added: number
+  readonly departments_added: number
+}

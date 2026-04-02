@@ -1,0 +1,45 @@
+template:
+  name: "Design Team"
+  description: >-
+    A two-agent design team with a UX Designer creating wireframes,
+    prototypes, and visual designs, and a UX Researcher conducting
+    user interviews, usability testing, and synthesizing research
+    insights to drive design decisions.
+  version: "1.0.0"
+  min_agents: 2
+  max_agents: 2
+  tags:
+    - "design"
+    - "ux"
+    - "user-research"
+    - "prototyping"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "design"
+      budget_percent: 8
+      head_role: "UX Designer"
+      reporting_lines:
+        - subordinate: "UX Researcher"
+          supervisor: "UX Designer"
+
+  agents:
+    - role: "UX Designer"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "rapid_prototyper"
+      department: "design"
+    - role: "UX Researcher"
+      name: ""
+      level: "mid"
+      model: "small"
+      personality_preset: "methodical_analyst"
+      department: "design"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

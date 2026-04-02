@@ -380,6 +380,10 @@ class CompanyTemplate(BaseModel):
         default=None,
         description="Parent template name for inheritance",
     )
+    uses_packs: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Pack names to compose into this template",
+    )
 
     @field_validator("extends", mode="before")
     @classmethod
@@ -399,7 +403,7 @@ class CompanyTemplate(BaseModel):
         zero agents (inheriting all from parent).  The final merged
         result is validated separately.
         """
-        if self.extends is not None:
+        if self.extends is not None or self.uses_packs:
             return self
         count = len(self.agents)
         if count < self.metadata.min_agents:

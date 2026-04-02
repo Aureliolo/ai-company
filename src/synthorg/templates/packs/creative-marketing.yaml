@@ -1,0 +1,45 @@
+template:
+  name: "Creative & Marketing"
+  description: >-
+    A two-agent creative marketing team with a senior Brand Strategist
+    leading campaign planning and brand positioning, supported by a
+    Content Writer producing copy, articles, social media content, and
+    marketing collateral.
+  version: "1.0.0"
+  min_agents: 2
+  max_agents: 2
+  tags:
+    - "creative"
+    - "marketing"
+    - "content"
+    - "brand"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "creative_marketing"
+      budget_percent: 8
+      head_role: "Brand Strategist"
+      reporting_lines:
+        - subordinate: "Content Writer"
+          supervisor: "Brand Strategist"
+
+  agents:
+    - role: "Content Writer"
+      name: ""
+      level: "mid"
+      model: "medium"
+      personality_preset: "team_diplomat"
+      department: "creative_marketing"
+    - role: "Brand Strategist"
+      name: ""
+      level: "senior"
+      model: "medium"
+      personality_preset: "strategic_planner"
+      department: "creative_marketing"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

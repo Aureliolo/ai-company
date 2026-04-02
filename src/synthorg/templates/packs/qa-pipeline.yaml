@@ -1,0 +1,53 @@
+template:
+  name: "QA Pipeline"
+  description: >-
+    A three-agent quality assurance team with a senior QA Lead
+    defining test strategy, a QA Engineer running manual and
+    exploratory testing, and an Automation Engineer building and
+    maintaining automated test suites and CI pipelines.
+  version: "1.0.0"
+  min_agents: 3
+  max_agents: 3
+  tags:
+    - "qa"
+    - "testing"
+    - "automation"
+    - "quality"
+
+  company:
+    type: "custom"
+    autonomy:
+      level: "semi"
+
+  departments:
+    - name: "quality_assurance"
+      budget_percent: 10
+      head_role: "QA Lead"
+      reporting_lines:
+        - subordinate: "QA Engineer"
+          supervisor: "QA Lead"
+        - subordinate: "Automation Engineer"
+          supervisor: "QA Lead"
+
+  agents:
+    - role: "QA Lead"
+      name: ""
+      level: "senior"
+      model: "medium"
+      personality_preset: "quality_guardian"
+      department: "quality_assurance"
+    - role: "QA Engineer"
+      name: ""
+      level: "mid"
+      model: "small"
+      personality_preset: "methodical_analyst"
+      department: "quality_assurance"
+    - role: "Automation Engineer"
+      name: ""
+      level: "mid"
+      model: "small"
+      personality_preset: "pragmatic_builder"
+      department: "quality_assurance"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

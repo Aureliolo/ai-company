@@ -25,6 +25,8 @@ from synthorg.config.utils import deep_merge, to_float
 from synthorg.core.enums import WorkflowType
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
+    TEMPLATE_PACK_MERGE_START,
+    TEMPLATE_PACK_MERGE_SUCCESS,
     TEMPLATE_RENDER_JINJA2_ERROR,
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
@@ -34,7 +36,8 @@ from synthorg.observability.events.template import (
     TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY,
 )
 from synthorg.templates._inheritance import (
-    resolve_inheritance,
+    _deduplicate_merged_agent_names,
+    render_parent_config,
 )
 from synthorg.templates._preset_resolution import resolve_agent_personality
 from synthorg.templates._render_helpers import (
@@ -42,7 +45,7 @@ from synthorg.templates._render_helpers import (
     validate_as_root_config,
 )
 from synthorg.templates.errors import TemplateRenderError
-from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT
+from synthorg.templates.merge import DEFAULT_MERGE_DEPARTMENT, merge_template_configs
 from synthorg.templates.presets import generate_auto_name
 
 # Placeholder provider name resolved by the engine at startup.
@@ -162,20 +165,86 @@ def _render_to_dict(
         preserve_merge_ids=_as_parent,
     )
 
-    # If no inheritance, return child config directly.
-    if template.extends is None:
-        return child_config
+    # Build base config from extends parent (if any).
+    base_config: dict[str, Any] = {}
+    if template.extends is not None:
+        base_config = render_parent_config(
+            parent_name=template.extends,
+            child_id=loaded.source_name,
+            vars_dict=vars_dict,
+            _chain=_chain,
+            locales=locales,
+            custom_presets=custom_presets,
+            render_to_dict_fn=_render_to_dict,
+        )
 
-    # Resolve inheritance chain.
-    return resolve_inheritance(
-        child_config=child_config,
-        loaded=loaded,
-        vars_dict=vars_dict,
-        locales=locales,
-        _chain=_chain,
-        custom_presets=custom_presets,
-        render_to_dict_fn=_render_to_dict,
-    )
+    # Layer packs onto base (after extends, before child).
+    if template.uses_packs:
+        base_config = _resolve_packs(
+            base_config,
+            template.uses_packs,
+            locales=locales,
+            _chain=_chain,
+            custom_presets=custom_presets,
+        )
+
+    # Merge child on top of base (child wins).
+    if base_config:
+        result = merge_template_configs(base_config, child_config)
+        _deduplicate_merged_agent_names(result)
+        return result
+
+    return child_config
+
+
+def _resolve_packs(
+    base_config: dict[str, Any],
+    pack_names: tuple[str, ...],
+    *,
+    locales: list[str] | None = None,
+    _chain: frozenset[str] = frozenset(),
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Merge template packs onto a base config in declaration order.
+
+    Each pack is loaded, rendered to a config dict, and merged onto
+    the accumulated base.  The caller merges the child on top
+    afterward, so the child always wins.
+
+    Args:
+        base_config: Accumulated config (from extends parent, or
+            empty dict for standalone templates).
+        pack_names: Pack names in declaration order.
+        locales: Faker locale codes for auto-name generation.
+        _chain: Already-seen template identifiers.
+        custom_presets: Optional custom preset mapping.
+
+    Returns:
+        Merged config dict with all packs applied.
+    """
+    from synthorg.templates.pack_loader import load_pack  # noqa: PLC0415
+
+    result = base_config
+    for pack_name in pack_names:
+        logger.info(
+            TEMPLATE_PACK_MERGE_START,
+            pack_name=pack_name,
+        )
+        pack_loaded = load_pack(pack_name)
+        pack_config = _render_to_dict(
+            pack_loaded,
+            None,
+            locales=locales,
+            _chain=_chain,
+            custom_presets=custom_presets,
+            _as_parent=True,
+        )
+        result = merge_template_configs(result, pack_config)
+        logger.info(
+            TEMPLATE_PACK_MERGE_SUCCESS,
+            pack_name=pack_name,
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------

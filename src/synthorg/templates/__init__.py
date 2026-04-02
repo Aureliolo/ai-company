@@ -46,6 +46,12 @@ from synthorg.templates.model_requirements import (
     parse_model_requirement,
     resolve_model_requirement,
 )
+from synthorg.templates.pack_loader import (
+    PackInfo,
+    list_builtin_packs,
+    list_packs,
+    load_pack,
+)
 from synthorg.templates.presets import validate_preset_references
 from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import (
@@ -61,6 +67,7 @@ __all__ = [
     "LoadedTemplate",
     "ModelMatch",
     "ModelRequirement",
+    "PackInfo",
     "TemplateAgentConfig",
     "TemplateDepartmentConfig",
     "TemplateError",
@@ -71,8 +78,11 @@ __all__ = [
     "TemplateRenderError",
     "TemplateValidationError",
     "TemplateVariable",
+    "list_builtin_packs",
     "list_builtin_templates",
+    "list_packs",
     "list_templates",
+    "load_pack",
     "load_template",
     "load_template_file",
     "match_all_agents",

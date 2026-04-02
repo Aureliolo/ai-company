@@ -29,6 +29,7 @@ from synthorg.api.controllers.setup_personality import (
     SetupPersonalityController,
 )
 from synthorg.api.controllers.tasks import TaskController
+from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.users import UserController
 from synthorg.api.controllers.ws import ws_handler
 
@@ -56,6 +57,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     SetupPersonalityController,
     PersonalityPresetController,
     BackupController,
+    TemplatePackController,
     UserController,
 )
 
@@ -85,6 +87,7 @@ __all__ = [
     "SetupController",
     "SetupPersonalityController",
     "TaskController",
+    "TemplatePackController",
     "UserController",
     "ws_handler",
 ]

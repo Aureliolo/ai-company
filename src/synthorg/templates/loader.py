@@ -497,6 +497,8 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     }
     if "extends" in data:
         result["extends"] = data["extends"]
+    if "uses_packs" in data:
+        result["uses_packs"] = tuple(data["uses_packs"])
     return result
 
 

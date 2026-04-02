@@ -1,0 +1,180 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Dialog } from 'radix-ui'
+import { Loader2, PackagePlus, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { StatPill } from '@/components/ui/stat-pill'
+import { EmptyState } from '@/components/ui/empty-state'
+import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
+import { listTemplatePacks, applyTemplatePack } from '@/api/endpoints/template-packs'
+import { useToastStore } from '@/stores/toast'
+import { useCompanyStore } from '@/stores/company'
+import { getErrorMessage } from '@/utils/errors'
+import type { PackInfoResponse } from '@/api/types'
+
+export interface PackSelectionDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  disabled?: boolean
+}
+
+export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelectionDialogProps) {
+  const [packs, setPacks] = useState<readonly PackInfoResponse[]>([])
+  const [loading, setLoading] = useState(false)
+  const [applying, setApplying] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const addToast = useToastStore((s) => s.add)
+
+  const prevOpenRef = useRef(open)
+  if (open && !prevOpenRef.current) {
+    setLoading(true)
+    setError(null)
+    setApplying(null)
+  }
+  if (!open && prevOpenRef.current) {
+    setError(null)
+    setApplying(null)
+    setLoading(false)
+  }
+  prevOpenRef.current = open
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    listTemplatePacks()
+      .then((data) => {
+        if (!cancelled) setPacks(data)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  const handleApply = useCallback(
+    async (packName: string) => {
+      setApplying(packName)
+      setError(null)
+      try {
+        const result = await applyTemplatePack({ pack_name: packName })
+        addToast({
+          variant: 'success',
+          title: `Added ${result.agents_added} agent(s) and ${result.departments_added} department(s)`,
+        })
+        await useCompanyStore.getState().fetchCompanyData()
+        onOpenChange(false)
+      } catch (err) {
+        setError(getErrorMessage(err))
+      } finally {
+        setApplying(null)
+      }
+    },
+    [addToast, onOpenChange],
+  )
+
+  const busy = applying !== null
+
+  return (
+    <Dialog.Root open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v) }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <Dialog.Content
+          className={cn(
+            'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
+            'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          )}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <Dialog.Title className="text-base font-semibold text-foreground flex items-center gap-2">
+              <PackagePlus className="size-4 text-accent" />
+              Add Team
+            </Dialog.Title>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="icon" aria-label="Close">
+                <X className="size-4" />
+              </Button>
+            </Dialog.Close>
+          </div>
+
+          <Dialog.Description className="text-sm text-text-secondary mb-4">
+            Select a pre-configured team pack to add to your organization.
+          </Dialog.Description>
+
+          {loading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="size-6 animate-spin text-text-secondary" />
+            </div>
+          )}
+
+          {!loading && error && (
+            <p className="text-xs text-danger py-4">{error}</p>
+          )}
+
+          {!loading && !error && packs.length === 0 && (
+            <EmptyState
+              icon={PackagePlus}
+              title="No packs available"
+              description="No template packs are available at this time."
+            />
+          )}
+
+          {!loading && !error && packs.length > 0 && (
+            <StaggerGroup className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {packs.map((pack) => (
+                <StaggerItem key={pack.name}>
+                  <button
+                    type="button"
+                    disabled={disabled || busy}
+                    onClick={() => handleApply(pack.name)}
+                    className={cn(
+                      'w-full rounded-lg border border-border p-3 text-left transition-colors',
+                      'hover:border-accent hover:bg-card/50',
+                      'disabled:opacity-50 disabled:cursor-not-allowed',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {pack.display_name}
+                        </p>
+                        <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">
+                          {pack.description}
+                        </p>
+                      </div>
+                      {applying === pack.name && (
+                        <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <StatPill label="Agents" value={pack.agent_count} />
+                      <StatPill label="Depts" value={pack.department_count} />
+                      {pack.source === 'user' && (
+                        <span className="text-[10px] text-text-secondary bg-card rounded px-1.5 py-0.5">
+                          custom
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </StaggerItem>
+              ))}
+            </StaggerGroup>
+          )}
+
+          <div className="flex justify-end pt-4">
+            <Dialog.Close asChild>
+              <Button variant="outline" disabled={busy}>Close</Button>
+            </Dialog.Close>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}

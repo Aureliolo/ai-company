@@ -12,7 +12,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, rectSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Building2, Plus } from 'lucide-react'
+import { Building2, PackagePlus, Plus } from 'lucide-react'
 import type {
   CompanyConfig,
   CreateDepartmentRequest,
@@ -28,6 +28,7 @@ import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
+import { PackSelectionDialog } from './PackSelectionDialog'
 
 export interface DepartmentsTabProps {
   config: CompanyConfig | null
@@ -102,6 +103,7 @@ export function DepartmentsTab({
   optimisticReorderDepartments,
 }: DepartmentsTabProps) {
   const [createOpen, setCreateOpen] = useState(false)
+  const [packOpen, setPackOpen] = useState(false)
   const [editDept, setEditDept] = useState<Department | null>(null)
   const [activeDept, setActiveDept] = useState<Department | null>(null)
 
@@ -156,7 +158,11 @@ export function DepartmentsTab({
   if (!config || config.departments.length === 0) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
+            <PackagePlus className="mr-1.5 size-3.5" />
+            Add Team
+          </Button>
           <Button onClick={() => setCreateOpen(true)} disabled={saving}>
             <Plus className="mr-1.5 size-3.5" />
             Add Department
@@ -174,13 +180,18 @@ export function DepartmentsTab({
           onCreate={onCreateDepartment}
           disabled={saving}
         />
+        <PackSelectionDialog open={packOpen} onOpenChange={setPackOpen} disabled={saving} />
       </div>
     )
   }
 
   return (
     <div className="space-y-section-gap">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
+          <PackagePlus className="mr-1.5 size-3.5" />
+          Add Team
+        </Button>
         <Button onClick={() => setCreateOpen(true)} disabled={saving}>
           <Plus className="mr-1.5 size-3.5" />
           Add Department
@@ -236,6 +247,8 @@ export function DepartmentsTab({
         onDelete={onDeleteDepartment}
         saving={saving}
       />
+
+      <PackSelectionDialog open={packOpen} onOpenChange={setPackOpen} disabled={saving} />
     </div>
   )
 }

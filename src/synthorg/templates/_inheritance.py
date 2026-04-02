@@ -100,6 +100,7 @@ def resolve_inheritance(  # noqa: PLR0913
 
     merged = _render_and_merge_parent(
         parent_name,
+        child_id,
         child_config,
         vars_dict,
         _chain,
@@ -153,8 +154,60 @@ def _validate_inheritance_chain(
         raise TemplateInheritanceError(msg)
 
 
+def render_parent_config(  # noqa: PLR0913
+    *,
+    parent_name: str,
+    child_id: str,
+    vars_dict: dict[str, Any],
+    _chain: frozenset[str],
+    locales: list[str] | None = None,
+    custom_presets: Mapping[str, dict[str, Any]] | None = None,
+    render_to_dict_fn: _RenderToDictFn,
+) -> dict[str, Any]:
+    """Load and render a parent template, returning its config dict.
+
+    Unlike ``_render_and_merge_parent``, this does **not** merge with
+    a child config.  Used by the renderer when pack resolution needs
+    the parent config as a separate base before layering packs.
+
+    Args:
+        parent_name: Parent template name.
+        child_id: Source name of the child template (for error
+            messages and circular detection).
+        vars_dict: Child's resolved variables.
+        _chain: Already-visited parent names for circular detection.
+        locales: Faker locale codes for auto-name generation.
+        custom_presets: Optional custom preset mapping.
+        render_to_dict_fn: Callback to ``_render_to_dict``.
+
+    Returns:
+        Rendered parent config dict.
+
+    Raises:
+        TemplateInheritanceError: On circular chains or depth overflow.
+    """
+    from synthorg.templates.loader import load_template  # noqa: PLC0415
+
+    _validate_inheritance_chain(child_id, parent_name, _chain)
+
+    parent_loaded = load_template(parent_name)
+    parent_vars = collect_parent_variables(
+        parent_loaded.template,
+        vars_dict,
+    )
+    return render_to_dict_fn(
+        parent_loaded,
+        parent_vars,
+        locales=locales,
+        _chain=_chain | {parent_name},
+        custom_presets=custom_presets,
+        _as_parent=True,
+    )
+
+
 def _render_and_merge_parent(  # noqa: PLR0913
     parent_name: str,
+    child_id: str,
     child_config: dict[str, Any],
     vars_dict: dict[str, Any],
     _chain: frozenset[str],
@@ -164,20 +217,14 @@ def _render_and_merge_parent(  # noqa: PLR0913
     render_to_dict_fn: _RenderToDictFn,
 ) -> dict[str, Any]:
     """Load, render, and merge a parent template with a child config."""
-    from synthorg.templates.loader import load_template  # noqa: PLC0415
-
-    parent_loaded = load_template(parent_name)
-    parent_vars = collect_parent_variables(
-        parent_loaded.template,
-        vars_dict,
-    )
-    parent_config = render_to_dict_fn(
-        parent_loaded,
-        parent_vars,
+    parent_config = render_parent_config(
+        parent_name=parent_name,
+        child_id=child_id,
+        vars_dict=vars_dict,
+        _chain=_chain,
         locales=locales,
-        _chain=_chain | {parent_name},
         custom_presets=custom_presets,
-        _as_parent=True,
+        render_to_dict_fn=render_to_dict_fn,
     )
     return merge_template_configs(parent_config, child_config)
 

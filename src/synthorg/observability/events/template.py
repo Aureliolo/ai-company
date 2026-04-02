@@ -53,3 +53,14 @@ TEMPLATE_WORKFLOW_CONFIG_UNKNOWN_KEY: Final[str] = (
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"
 TEMPLATE_MODEL_MATCH_SKIPPED: Final[str] = "template.model_match.skipped"
+
+# Template packs
+TEMPLATE_PACK_LOAD_START: Final[str] = "template.pack.load.start"
+TEMPLATE_PACK_LOAD_SUCCESS: Final[str] = "template.pack.load.success"
+TEMPLATE_PACK_LOAD_NOT_FOUND: Final[str] = "template.pack.load.not_found"
+TEMPLATE_PACK_LIST: Final[str] = "template.pack.list"
+TEMPLATE_PACK_MERGE_START: Final[str] = "template.pack.merge.start"
+TEMPLATE_PACK_MERGE_SUCCESS: Final[str] = "template.pack.merge.success"
+TEMPLATE_PACK_APPLY_START: Final[str] = "template.pack.apply.start"
+TEMPLATE_PACK_APPLY_SUCCESS: Final[str] = "template.pack.apply.success"
+TEMPLATE_PACK_APPLY_ERROR: Final[str] = "template.pack.apply.error"
