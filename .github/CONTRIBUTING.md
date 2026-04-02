@@ -85,10 +85,10 @@ uv run ruff format src/ tests/
 ## Running Tests
 
 ```bash
-uv run python -m pytest tests/ -m unit -n auto        # unit tests (fast)
-uv run python -m pytest tests/ -m integration -n auto # integration tests
-uv run python -m pytest tests/ -m e2e -n auto         # end-to-end tests
-uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80  # full suite + coverage
+uv run python -m pytest tests/ -m unit -n 8        # unit tests (fast)
+uv run python -m pytest tests/ -m integration -n 8 # integration tests
+uv run python -m pytest tests/ -m e2e -n 8         # end-to-end tests
+uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80  # full suite + coverage
 ```
 
 All tests must pass and coverage must remain at or above 80%.

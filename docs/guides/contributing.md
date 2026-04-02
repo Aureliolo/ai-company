@@ -126,22 +126,22 @@ SynthOrg uses pytest with three test categories:
 
 ```bash
 # Unit tests (fast, no I/O)
-uv run python -m pytest tests/ -m unit -n auto
+uv run python -m pytest tests/ -m unit -n 8
 
 # Integration tests (may use I/O, databases)
-uv run python -m pytest tests/ -m integration -n auto
+uv run python -m pytest tests/ -m integration -n 8
 
 # E2E tests (full system)
-uv run python -m pytest tests/ -m e2e -n auto
+uv run python -m pytest tests/ -m e2e -n 8
 
 # Full suite with coverage
-uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
+uv run python -m pytest tests/ -n 8 --cov=synthorg --cov-fail-under=80
 ```
 
 ### Testing Rules
 
 - **Coverage**: 80% minimum (enforced in CI)
-- **Parallelism**: always include `-n auto` (pytest-xdist)
+- **Parallelism**: always include `-n 8` (pytest-xdist)
 - **Async**: `asyncio_mode = "auto"` -- no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test (global default)
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
