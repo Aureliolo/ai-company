@@ -152,3 +152,37 @@ SPRINT_AUTO_TRANSITION_BUDGET: str = "workflow.sprint.auto_transition_budget"
 
 VELOCITY_BUDGET_NO_BUDGET_CONSUMED: str = "workflow.velocity.budget_no_budget_consumed"
 """BudgetVelocityCalculator: record has None or zero budget_consumed."""
+
+# -- Throughput-adaptive strategy events --------------------------------------
+
+SPRINT_CEREMONY_THROUGHPUT_BASELINE_SET: str = "workflow.sprint.throughput_baseline_set"
+"""Throughput-adaptive strategy established baseline rate."""
+
+SPRINT_CEREMONY_THROUGHPUT_DROP_DETECTED: str = (
+    "workflow.sprint.throughput_drop_detected"
+)
+"""Throughput-adaptive strategy detected a velocity drop."""
+
+SPRINT_CEREMONY_THROUGHPUT_SPIKE_DETECTED: str = (
+    "workflow.sprint.throughput_spike_detected"
+)
+"""Throughput-adaptive strategy detected a velocity spike."""
+
+SPRINT_CEREMONY_THROUGHPUT_COLD_START: str = "workflow.sprint.throughput_cold_start"
+"""Throughput-adaptive strategy in cold start (baseline not yet established)."""
+
+# -- External-trigger strategy events -----------------------------------------
+
+SPRINT_CEREMONY_EXTERNAL_EVENT_RECEIVED: str = "workflow.sprint.external_event_received"
+"""External-trigger strategy received an external event."""
+
+SPRINT_CEREMONY_EXTERNAL_EVENT_MATCHED: str = "workflow.sprint.external_event_matched"
+"""External-trigger strategy matched an external event to a ceremony."""
+
+SPRINT_CEREMONY_EXTERNAL_SOURCE_REGISTERED: str = (
+    "workflow.sprint.external_source_registered"
+)
+"""External-trigger strategy registered event sources."""
+
+SPRINT_CEREMONY_EXTERNAL_SOURCE_CLEARED: str = "workflow.sprint.external_source_cleared"
+"""External-trigger strategy cleared event sources."""
