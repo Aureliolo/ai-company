@@ -157,7 +157,7 @@ def _run_pytest(paths: list[str]) -> int:
         "-m",
         "unit",
         "-n",
-        "auto",
+        "8",
         "-q",
     ]
     result = subprocess.run(cmd, cwd=_REPO_ROOT, check=False)
