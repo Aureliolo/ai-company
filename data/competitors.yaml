@@ -1,0 +1,201 @@
+# Single source of truth for the SynthOrg comparison page.
+#
+# Consumed by:
+#   - scripts/generate_comparison.py  -> docs/reference/comparison.md
+#   - site/src/pages/compare.astro    -> ComparisonTable React island
+#
+# Support values per dimension:
+#   full    - first-class, documented feature
+#   partial - exists but limited, community plugin, or experimental
+#   none    - not supported
+#   planned - on public roadmap but not shipped
+
+meta:
+  last_updated: "2026-04-02"
+  version: 1
+
+dimensions:
+  - key: org_structure
+    label: "Org Structure"
+    description: "Departments, hierarchy, roles, reporting lines, HR"
+  - key: multi_agent
+    label: "Multi-Agent"
+    description: "Agents collaborating on shared goals"
+  - key: task_delegation
+    label: "Task Delegation"
+    description: "Hierarchical or peer task assignment and decomposition"
+  - key: memory
+    label: "Memory"
+    description: "Long-term memory, state persistence across sessions"
+  - key: tool_use
+    label: "Tool Use"
+    description: "Function calling, MCP, sandboxed execution"
+  - key: human_in_loop
+    label: "Human-in-the-Loop"
+    description: "Approval gates, review stages, autonomy levels"
+  - key: budget_tracking
+    label: "Budget / Cost"
+    description: "Per-agent cost tracking, budget enforcement, optimization"
+  - key: security_model
+    label: "Security"
+    description: "Progressive trust, audit logs, output scanning, policy rules"
+  - key: observability
+    label: "Observability"
+    description: "Structured logging, correlation tracking, redaction"
+  - key: web_dashboard
+    label: "Dashboard"
+    description: "Visual management interface"
+  - key: cli
+    label: "CLI"
+    description: "Native command-line interface"
+  - key: production_ready
+    label: "Production Ready"
+    description: "Docker, health checks, backup/restore, persistence backends"
+  - key: workflow_types
+    label: "Workflows"
+    description: "Kanban, sprints, ceremonies, velocity tracking"
+  - key: template_system
+    label: "Templates"
+    description: "Pre-built configurations, inheritance, personality presets"
+
+categories:
+  - key: multi_agent_framework
+    label: "Multi-Agent Framework"
+  - key: virtual_org
+    label: "Virtual Org Simulator"
+  - key: workflow_engine
+    label: "Workflow Engine"
+  - key: commercial_platform
+    label: "Commercial Platform"
+  - key: developer_tool
+    label: "Developer Tool"
+  - key: research
+    label: "Research"
+  - key: protocol
+    label: "Protocol / Standard"
+
+# -- Competitors --
+# Proof-of-concept entries for pipeline testing.
+# Full population will be done after infrastructure is complete.
+
+competitors:
+  - name: "SynthOrg"
+    slug: synthorg
+    url: "https://synthorg.io"
+    repo: "https://github.com/Aureliolo/synthorg"
+    description: "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company"
+    license: "BUSL-1.1"
+    language: "Python"
+    category: multi_agent_framework
+    is_synthorg: true
+    features:
+      org_structure: { support: full, note: "Departments, hierarchy, 8 seniority levels, reporting lines, HR" }
+      multi_agent: { support: full, note: "Auction, role-based, load-balanced assignment; conflict resolution" }
+      task_delegation: { support: full, note: "DAG decomposition, 6 routing strategies, delegation chains" }
+      memory: { support: full, note: "5 memory types, pluggable backends, cross-lifecycle persistence" }
+      tool_use: { support: full, note: "MCP protocol, sandbox isolation, invocation tracking" }
+      human_in_loop: { support: full, note: "Approval gates, review workflows, 5 autonomy tiers" }
+      budget_tracking: { support: full, note: "Per-token, per-agent, hierarchical cascades, CFO optimization" }
+      security_model: { support: full, note: "Rule engine + LLM evaluator, progressive trust, audit trail" }
+      observability: { support: full, note: "Structured logging, correlation tracking, log shipping, redaction" }
+      web_dashboard: { support: full, note: "React 19 real-time dashboard with org chart, tasks, budgets" }
+      cli: { support: full, note: "Go binary with cosign verification, cross-platform" }
+      production_ready: { support: partial, note: "Docker images, CI/CD, cosign + SLSA; API not yet stable (pre-alpha)" }
+      workflow_types: { support: full, note: "Sequential, parallel, Kanban, Agile sprints, velocity tracking" }
+      template_system: { support: full, note: "9 archetypes, personality presets, locale-aware name generation" }
+
+  - name: "CrewAI"
+    slug: crewai
+    url: "https://www.crewai.com"
+    repo: "https://github.com/crewAIInc/crewAI"
+    description: "Framework for orchestrating role-playing AI agents"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    features:
+      org_structure: { support: partial, note: "Roles and goals per agent, flat crew structure" }
+      multi_agent: { support: full, note: "Crew-based orchestration with role-playing" }
+      task_delegation: { support: full, note: "Sequential and hierarchical task execution" }
+      memory: { support: partial, note: "Short-term and long-term memory via plugins" }
+      tool_use: { support: full, note: "Function calling, custom tools, LangChain tools" }
+      human_in_loop: { support: partial, note: "Human input step available" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "Verbose logging mode" }
+      web_dashboard: { support: partial, note: "CrewAI+ platform (commercial)" }
+      cli: { support: partial, note: "CLI for project scaffolding" }
+      production_ready: { support: partial, note: "pip install, no Docker images" }
+      workflow_types: { support: partial, note: "Sequential and hierarchical processes" }
+      template_system: { support: none, note: "" }
+
+  - name: "AutoGen"
+    slug: autogen
+    url: "https://microsoft.github.io/autogen/"
+    repo: "https://github.com/microsoft/autogen"
+    description: "Multi-agent conversation framework by Microsoft"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Conversation-driven multi-agent group chats" }
+      task_delegation: { support: partial, note: "GroupChat manager selects next speaker" }
+      memory: { support: partial, note: "Teachable agents, context persistence" }
+      tool_use: { support: full, note: "Function calling, code execution" }
+      human_in_loop: { support: full, note: "Human proxy agent, termination conditions" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: partial, note: "Code execution sandboxing (Docker)" }
+      observability: { support: partial, note: "Logging, AgentOps integration" }
+      web_dashboard: { support: partial, note: "AutoGen Studio (experimental)" }
+      cli: { support: none, note: "" }
+      production_ready: { support: partial, note: "PyPI package, no official Docker images" }
+      workflow_types: { support: partial, note: "Sequential, group chat, nested chats" }
+      template_system: { support: none, note: "" }
+
+  - name: "LangGraph"
+    slug: langgraph
+    url: "https://langchain-ai.github.io/langgraph/"
+    repo: "https://github.com/langchain-ai/langgraph"
+    description: "Graph-based multi-agent state machine framework"
+    license: "MIT"
+    language: "Python"
+    category: multi_agent_framework
+    features:
+      org_structure: { support: none, note: "" }
+      multi_agent: { support: full, note: "Graph-based agent orchestration with shared state" }
+      task_delegation: { support: partial, note: "Graph nodes can delegate to sub-graphs" }
+      memory: { support: full, note: "Checkpointing, persistent state across runs" }
+      tool_use: { support: full, note: "LangChain tool ecosystem, function calling" }
+      human_in_loop: { support: full, note: "Interrupt nodes, approval steps, breakpoints" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: full, note: "LangSmith integration, tracing" }
+      web_dashboard: { support: partial, note: "LangGraph Platform (commercial)" }
+      cli: { support: partial, note: "LangGraph CLI for deployment" }
+      production_ready: { support: partial, note: "LangGraph Platform for production hosting" }
+      workflow_types: { support: full, note: "Arbitrary graph workflows, cycles, branching" }
+      template_system: { support: partial, note: "Prebuilt ReAct agent, starter templates" }
+
+  - name: "ChatDev"
+    slug: chatdev
+    url: "https://chatdev.ai"
+    repo: "https://github.com/OpenBMB/ChatDev"
+    description: "Virtual software company with CEO, CTO, and developer roles"
+    license: "Apache-2.0"
+    language: "Python"
+    category: virtual_org
+    features:
+      org_structure: { support: full, note: "Full software company simulation (CEO, CTO, programmer, reviewer, tester)" }
+      multi_agent: { support: full, note: "Role-playing multi-agent collaboration" }
+      task_delegation: { support: full, note: "Phase-based waterfall delegation (design, coding, testing)" }
+      memory: { support: partial, note: "Experience pool for cross-task learning" }
+      tool_use: { support: partial, note: "Code execution, file system access" }
+      human_in_loop: { support: partial, note: "Human review between phases" }
+      budget_tracking: { support: none, note: "" }
+      security_model: { support: none, note: "" }
+      observability: { support: partial, note: "Chat and phase logging" }
+      web_dashboard: { support: partial, note: "Visualizer for agent interactions" }
+      cli: { support: partial, note: "Python CLI entry point" }
+      production_ready: { support: none, note: "Research project, not production-oriented" }
+      workflow_types: { support: partial, note: "Waterfall phases (design, coding, testing)" }
+      template_system: { support: partial, note: "Company structure templates, role presets" }

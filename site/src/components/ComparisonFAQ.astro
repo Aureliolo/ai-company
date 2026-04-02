@@ -1,0 +1,61 @@
+---
+const faqs = [
+  {
+    question: "Why not just use CrewAI or AutoGen?",
+    answer: "CrewAI and AutoGen are excellent multi-agent frameworks for building agent crews and conversations. SynthOrg goes further by modeling an entire organization -- with departments, hierarchies, budgets, HR, security policies, and workflow management. If you need agents to chat, use CrewAI. If you need agents to operate as a company, use SynthOrg.",
+  },
+  {
+    question: "How is SynthOrg different from ChatDev or MetaGPT?",
+    answer: "ChatDev and MetaGPT simulate software companies for code generation. SynthOrg is a general-purpose framework for building any kind of synthetic organization -- not limited to software development. It also includes production infrastructure (Docker, persistence, backup/restore, observability) that research projects typically lack.",
+  },
+  {
+    question: "Is SynthOrg production-ready?",
+    answer: "SynthOrg is in active pre-alpha development. The framework includes production infrastructure (Docker images with Chainguard distroless base, cosign verification, SLSA provenance, backup/restore, structured logging), but the API is not yet stable. We recommend it for experimentation and early adoption.",
+  },
+  {
+    question: "What about LangGraph for complex workflows?",
+    answer: "LangGraph excels at graph-based agent workflows with checkpointing. SynthOrg includes similar workflow capabilities (DAG execution, parallel tasks, Kanban boards, Agile sprints) but adds organizational structure on top -- budget tracking, security policies, role-based delegation, and team coordination that LangGraph leaves to the application layer.",
+  },
+  {
+    question: "Does SynthOrg support my LLM provider?",
+    answer: "SynthOrg uses LiteLLM under the hood, supporting 100+ LLM providers out of the box. It adds multi-provider routing, budget-aware model selection, and per-agent cost tracking on top.",
+  },
+  {
+    question: "How do I evaluate these frameworks for my use case?",
+    answer: "Use the interactive table above to filter by the features that matter most to your project. If you need organizational structure, budget controls, or production infrastructure, SynthOrg is likely the best fit. For simpler multi-agent pipelines, lighter frameworks like CrewAI or PydanticAI may be sufficient.",
+  },
+];
+---
+
+<section class="py-16 px-6" id="faq">
+  <div class="max-w-3xl mx-auto">
+    <h2 class="text-3xl font-bold mb-8 text-center">
+      Frequently Asked Questions
+    </h2>
+
+    <div class="space-y-3">
+      {faqs.map((faq) => (
+        <details class="group border border-white/10 rounded-lg overflow-hidden">
+          <summary class="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-white/5 transition-colors font-medium text-gray-200">
+            {faq.question}
+            <svg
+              class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform shrink-0 ml-4"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
+          <div class="px-6 pb-4 text-gray-400 leading-relaxed">
+            {faq.answer}
+          </div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

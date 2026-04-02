@@ -128,6 +128,7 @@ nav:
   - Reference:
       - reference/research.md
       - reference/standards.md
+      - Framework Comparison: reference/comparison.md
       - Embedding Evaluation: reference/embedding-evaluation.md
       - Error Reference: errors.md
   - Security: security.md

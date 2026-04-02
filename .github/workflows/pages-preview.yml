@@ -5,6 +5,7 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, closed]
     paths:
+      - "data/**"
       - "docs/**"
       - "site/**"
       - "mkdocs.yml"
@@ -113,6 +114,9 @@ jobs:
 
       - name: Export OpenAPI schema
         run: uv run python scripts/export_openapi.py
+
+      - name: Generate comparison page
+        run: uv run python scripts/generate_comparison.py
 
       - name: Build docs
         # TODO: Restore --strict once zensical supports it
