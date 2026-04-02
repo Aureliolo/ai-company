@@ -24,6 +24,7 @@ dependencies = [
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
     "mcp==1.27.0",
     "mem0ai==1.0.10",
+    "mmh3==5.2.1",
     "pydantic==2.12.5",
     "pyjwt[crypto]==2.12.1",
     "pyyaml==6.0.3",

@@ -69,13 +69,23 @@ from synthorg.memory.org import (
 )
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import FusionStrategy, ScoredMemory, fuse_ranked_lists
+from synthorg.memory.reformulation import (
+    LLMQueryReformulator,
+    LLMSufficiencyChecker,
+    QueryReformulator,
+    SufficiencyChecker,
+)
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
+from synthorg.memory.sparse import BM25Tokenizer, SparseVector
+from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 
 __all__ = [
     "ArchivalMode",
     "ArchivalStore",
+    # Hybrid search
+    "BM25Tokenizer",
     "CompanyMemoryConfig",
     "ConsolidationConfig",
     "ConsolidationResult",
@@ -88,6 +98,9 @@ __all__ = [
     "FusionStrategy",
     "InjectionPoint",
     "InjectionStrategy",
+    # Query reformulation
+    "LLMQueryReformulator",
+    "LLMSufficiencyChecker",
     "Mem0EmbedderConfig",
     "Mem0MemoryBackend",
     "MemoryBackend",
@@ -116,12 +129,17 @@ __all__ = [
     "OrgMemoryConfig",
     "OrgMemoryError",
     "OrgMemoryQuery",
+    "QueryReformulator",
     "RetentionEnforcer",
     "SQLiteOrgFactStore",
     "ScoredMemory",
     "SharedKnowledgeStore",
     "SimpleConsolidationStrategy",
+    "SparseVector",
+    "SufficiencyChecker",
     "TokenEstimator",
+    # Tool-based strategy
+    "ToolBasedInjectionStrategy",
     "create_memory_backend",
     "create_org_memory_backend",
     "fuse_ranked_lists",

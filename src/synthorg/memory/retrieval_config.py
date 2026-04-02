@@ -112,6 +112,20 @@ class MemoryRetrievalConfig(BaseModel):
         le=1000,
         description="RRF smoothing constant k (only used with RRF strategy)",
     )
+    query_reformulation_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable agentic query reformulation for TOOL_BASED "
+            "strategy. When True, the tool-based strategy iteratively "
+            "rewrites queries using an LLM for better retrieval."
+        ),
+    )
+    max_reformulation_rounds: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Maximum query reformulation iterations (1-5).",
+    )
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
@@ -150,30 +164,13 @@ class MemoryRetrievalConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_supported_fusion_strategy(self) -> Self:
-        """Reject fusion strategies not yet wired into the retrieval pipeline."""
-        if self.fusion_strategy != FusionStrategy.LINEAR:
-            msg = (
-                f"Fusion strategy {self.fusion_strategy.value!r} is not yet "
-                f"wired into the retrieval pipeline; use "
-                f"fuse_ranked_lists() directly"
-            )
-            logger.warning(
-                CONFIG_VALIDATION_FAILED,
-                field="fusion_strategy",
-                value=self.fusion_strategy.value,
-                reason=msg,
-            )
-            raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
     def _validate_supported_strategy(self) -> Self:
         """Reject strategies that are not yet implemented."""
-        if self.strategy != InjectionStrategy.CONTEXT:
+        _supported = {InjectionStrategy.CONTEXT, InjectionStrategy.TOOL_BASED}
+        if self.strategy not in _supported:
             msg = (
                 f"Strategy {self.strategy.value!r} is not yet implemented; "
-                f"only {InjectionStrategy.CONTEXT.value!r} is supported"
+                f"supported: {sorted(s.value for s in _supported)}"
             )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,

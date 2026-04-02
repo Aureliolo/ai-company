@@ -64,5 +64,12 @@ class TestMemoryExports:
             "create_memory_backend",
             "create_org_memory_backend",
             "fuse_ranked_lists",
+            "BM25Tokenizer",
+            "SparseVector",
+            "ToolBasedInjectionStrategy",
+            "LLMQueryReformulator",
+            "LLMSufficiencyChecker",
+            "QueryReformulator",
+            "SufficiencyChecker",
         }
         assert set(memory_module.__all__) == expected

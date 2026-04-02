@@ -628,14 +628,32 @@ the agent during execution.
     a token budget, and formats memories as `ChatMessage`(s) injected between the system prompt
     and task instruction. The agent passively receives memories.
 
-    **Pipeline:**
+    **Pipeline (Linear -- single-source, default):**
 
-    1. `MemoryBackend.retrieve()` -- fetch candidate memories
-    2. Rank by relevance + recency (Linear, default) or fuse via RRF (algorithms below)
-    3. Filter by `min_relevance` threshold (Linear only -- RRF does not apply this filter)
+    1. `MemoryBackend.retrieve()` -- fetch candidate memories (dense vector search)
+    2. Rank by relevance + recency via linear combination
+    3. Filter by `min_relevance` threshold
     4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content
     5. Greedy token-budget packing
     6. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
+
+    **Pipeline (RRF hybrid search -- multi-source):**
+
+    When `fusion_strategy: rrf` is configured, the pipeline runs both dense and BM25 sparse
+    search in parallel and fuses results:
+
+    1. Dense search via `MemoryBackend.retrieve()` (personal + shared in parallel)
+    2. Sparse BM25 search via `MemoryBackend.retrieve_sparse()` (personal + shared in parallel)
+    3. Fuse via `fuse_ranked_lists()` with configurable `rrf_k` smoothing constant
+    4. Post-RRF `min_relevance` filter on `combined_score`
+    5. Apply `MemoryFilterStrategy` (optional)
+    6. Greedy token-budget packing
+    7. Format as `ChatMessage`
+
+    BM25 sparse vectors are stored alongside dense vectors in Qdrant using a named sparse
+    vector field with `Modifier.IDF` (Qdrant applies IDF server-side). The `BM25Tokenizer`
+    uses murmurhash3 for vocabulary-free token-to-index mapping; only term frequencies are
+    stored. Sparse search is opt-in via `Mem0BackendConfig.sparse_search_enabled`.
 
     Shared memories (from `SharedKnowledgeStore`) are fetched in parallel, merged with personal
     memories (no `personal_boost` for shared), and ranked together.
@@ -678,11 +696,23 @@ the agent during execution.
         design rationale, team decisions, "why not X," cross-repo knowledge. Uses existing
         `MemoryMetadata.tags` and `MemoryQuery.tags` -- zero new models needed.
 
-=== "Tool-Based Retrieval (Future)"
+=== "Tool-Based Retrieval"
 
     The agent has `recall_memory` / `search_memory` tools it calls on-demand during execution.
     The agent actively decides when and what to remember. More token-efficient (only retrieves
     when needed) but consumes tool-call turns and requires agent discipline to invoke.
+
+    Implemented via `ToolBasedInjectionStrategy`. The strategy:
+
+    - Injects a brief system instruction about available memory tools
+    - Exposes `search_memory` (semantic + hybrid search) and `recall_memory` (by ID) tools
+    - Handles retrieval internally (dense + optional sparse with RRF fusion)
+    - Supports optional agentic query reformulation via `QueryReformulator` and
+      `SufficiencyChecker` protocols (LLM-powered, disabled by default)
+
+    **MCP bridge evaluation**: Both context injection and tool-based strategies hold direct
+    `MemoryBackend` references and run in-process. The memory hot path already bypasses MCP
+    by design -- no additional optimization needed.
 
 === "Self-Editing Memory (Future)"
 

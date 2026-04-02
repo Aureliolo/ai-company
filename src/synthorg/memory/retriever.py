@@ -16,7 +16,12 @@ from synthorg.memory.injection import (
     TokenEstimator,
 )
 from synthorg.memory.models import MemoryQuery
-from synthorg.memory.ranking import rank_memories
+from synthorg.memory.ranking import (
+    FusionStrategy,
+    ScoredMemory,
+    fuse_ranked_lists,
+    rank_memories,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FILTER_INIT,
@@ -251,26 +256,16 @@ class ContextInjectionStrategy:
             limit=self._config.max_memories,
         )
 
-        personal_entries, shared_entries = await self._fetch_memories(
-            agent_id=agent_id,
-            query=query,
-        )
-
-        if not personal_entries and not shared_entries:
-            logger.info(
-                MEMORY_RETRIEVAL_SKIPPED,
+        if self._config.fusion_strategy == FusionStrategy.RRF:
+            ranked = await self._execute_rrf_pipeline(
                 agent_id=agent_id,
-                reason="no memories found",
+                query=query,
             )
-            return ()
-
-        now = datetime.now(UTC)
-        ranked = rank_memories(
-            personal_entries,
-            config=self._config,
-            now=now,
-            shared_entries=shared_entries,
-        )
+        else:
+            ranked = await self._execute_linear_pipeline(
+                agent_id=agent_id,
+                query=query,
+            )
 
         if not ranked:
             logger.info(
@@ -315,13 +310,151 @@ class ContextInjectionStrategy:
         logger.info(
             MEMORY_RETRIEVAL_COMPLETE,
             agent_id=agent_id,
-            personal_count=len(personal_entries),
-            shared_count=len(shared_entries),
             ranked_count=len(ranked),
             messages_produced=len(result),
+            fusion_strategy=self._config.fusion_strategy.value,
         )
 
         return result
+
+    async def _execute_linear_pipeline(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        query: MemoryQuery,
+    ) -> tuple[ScoredMemory, ...]:
+        """Run the LINEAR ranking pipeline (dense-only).
+
+        Args:
+            agent_id: Agent identifier.
+            query: Retrieval query.
+
+        Returns:
+            Ranked and filtered memories.
+        """
+        personal_entries, shared_entries = await self._fetch_memories(
+            agent_id=agent_id,
+            query=query,
+        )
+        if not personal_entries and not shared_entries:
+            return ()
+        now = datetime.now(UTC)
+        return rank_memories(
+            personal_entries,
+            config=self._config,
+            now=now,
+            shared_entries=shared_entries,
+        )
+
+    async def _execute_rrf_pipeline(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        query: MemoryQuery,
+    ) -> tuple[ScoredMemory, ...]:
+        """Run the RRF hybrid search pipeline (dense + sparse).
+
+        Fetches dense and sparse results in parallel, merges via
+        ``fuse_ranked_lists()``, and applies ``min_relevance``
+        post-filter (RRF does not filter internally).
+
+        Args:
+            agent_id: Agent identifier.
+            query: Retrieval query.
+
+        Returns:
+            Fused, filtered, and truncated memories.
+        """
+        dense_personal: tuple[MemoryEntry, ...] = ()
+        dense_shared: tuple[MemoryEntry, ...] = ()
+        sparse_personal: tuple[MemoryEntry, ...] = ()
+        sparse_shared: tuple[MemoryEntry, ...] = ()
+
+        dense_coro = self._fetch_memories(agent_id=agent_id, query=query)
+        sparse_coro = self._fetch_sparse_memories(
+            agent_id=agent_id,
+            query=query,
+        )
+        try:
+            async with asyncio.TaskGroup() as tg:
+                dense_task = tg.create_task(dense_coro)
+                sparse_task = tg.create_task(sparse_coro)
+        except* builtins_MemoryError as eg:
+            raise eg.exceptions[0] from eg
+        except* RecursionError as eg:
+            raise eg.exceptions[0] from eg
+
+        dense_personal, dense_shared = dense_task.result()
+        sparse_personal, sparse_shared = sparse_task.result()
+
+        dense_list = dense_personal + dense_shared
+        sparse_list = sparse_personal + sparse_shared
+
+        if not dense_list and not sparse_list:
+            return ()
+
+        ranked = fuse_ranked_lists(
+            (dense_list, sparse_list),
+            k=self._config.rrf_k,
+            max_results=self._config.max_memories,
+        )
+
+        # Post-RRF min_relevance filter (fuse_ranked_lists doesn't filter).
+        return tuple(
+            s for s in ranked if s.combined_score >= self._config.min_relevance
+        )
+
+    async def _fetch_sparse_memories(
+        self,
+        *,
+        agent_id: NotBlankStr,
+        query: MemoryQuery,
+    ) -> tuple[tuple[MemoryEntry, ...], tuple[MemoryEntry, ...]]:
+        """Fetch sparse (BM25) results from the backend.
+
+        Returns empty tuples when the backend does not support
+        sparse search.  Uses the same error isolation pattern as
+        ``_fetch_memories()``.
+
+        Args:
+            agent_id: Agent identifier.
+            query: Retrieval query.
+
+        Returns:
+            Tuple of (personal_sparse, shared_sparse).
+        """
+        if not hasattr(self._backend, "retrieve_sparse"):
+            return (), ()
+
+        personal_coro = _safe_call(
+            self._backend.retrieve_sparse(agent_id, query),
+            source="sparse_personal",
+            agent_id=agent_id,
+        )
+
+        shared_store = self._shared_store
+        if (
+            self._config.include_shared
+            and shared_store is not None
+            and hasattr(shared_store, "retrieve_sparse")
+        ):
+            shared_coro = _safe_call(
+                shared_store.retrieve_sparse(query, exclude_agent=agent_id),
+                source="sparse_shared",
+                agent_id=agent_id,
+            )
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    personal_task = tg.create_task(personal_coro)
+                    shared_task = tg.create_task(shared_coro)
+            except* builtins_MemoryError as eg:
+                raise eg.exceptions[0] from eg
+            except* RecursionError as eg:
+                raise eg.exceptions[0] from eg
+            return personal_task.result(), shared_task.result()
+
+        personal = await personal_coro
+        return personal, ()
 
     async def _fetch_memories(
         self,

@@ -190,6 +190,14 @@ class Mem0BackendConfig(BaseModel):
     embedder: Mem0EmbedderConfig = Field(
         description="Embedder settings",
     )
+    sparse_search_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable BM25 sparse vector search alongside dense retrieval. "
+            "When True, a sparse vector field is added to the Qdrant "
+            "collection and sparse vectors are upserted on store."
+        ),
+    )
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:

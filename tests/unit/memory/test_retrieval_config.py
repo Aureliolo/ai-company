@@ -124,9 +124,11 @@ class TestMemoryRetrievalConfigStrategy:
         c = MemoryRetrievalConfig(strategy=InjectionStrategy.CONTEXT)
         assert c.strategy is InjectionStrategy.CONTEXT
 
-    def test_unsupported_strategy_rejected(self) -> None:
-        with pytest.raises(ValueError, match="not yet implemented"):
-            MemoryRetrievalConfig(strategy=InjectionStrategy.TOOL_BASED)
+    def test_tool_based_strategy_accepted(self) -> None:
+        c = MemoryRetrievalConfig(strategy=InjectionStrategy.TOOL_BASED)
+        assert c.strategy is InjectionStrategy.TOOL_BASED
+
+    def test_self_editing_strategy_rejected(self) -> None:
         with pytest.raises(ValueError, match="not yet implemented"):
             MemoryRetrievalConfig(strategy=InjectionStrategy.SELF_EDITING)
 
@@ -161,12 +163,18 @@ class TestMemoryRetrievalConfigFusion:
         c = MemoryRetrievalConfig()
         assert c.fusion_strategy is FusionStrategy.LINEAR
 
-    def test_rrf_fusion_strategy_rejected(self) -> None:
-        """RRF is not yet wired into the retrieval pipeline."""
-        with pytest.raises(
-            ValidationError, match="not yet wired into the retrieval pipeline"
-        ):
-            MemoryRetrievalConfig(fusion_strategy=FusionStrategy.RRF)
+    def test_rrf_fusion_strategy_accepted(self) -> None:
+        c = MemoryRetrievalConfig(fusion_strategy=FusionStrategy.RRF)
+        assert c.fusion_strategy is FusionStrategy.RRF
+
+    def test_rrf_skips_weight_sum_validation(self) -> None:
+        """RRF does not need relevance + recency weights to sum to 1."""
+        c = MemoryRetrievalConfig(
+            fusion_strategy=FusionStrategy.RRF,
+            relevance_weight=0.5,
+            recency_weight=0.3,
+        )
+        assert c.fusion_strategy is FusionStrategy.RRF
 
     def test_linear_strategy_still_enforces_weight_sum(self) -> None:
         with pytest.raises(ValidationError, match=r"must equal 1\.0"):

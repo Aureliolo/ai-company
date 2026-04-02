@@ -84,3 +84,11 @@ MEMORY_FINE_TUNE_VALIDATION_FAILED: Final[str] = "memory.fine_tune.validation_fa
 MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )
+
+# -- Sparse search -----------------------------------------------------------
+
+MEMORY_SPARSE_FIELD_ENSURED: Final[str] = "memory.sparse.field_ensured"
+MEMORY_SPARSE_UPSERT_COMPLETE: Final[str] = "memory.sparse.upsert_complete"
+MEMORY_SPARSE_UPSERT_FAILED: Final[str] = "memory.sparse.upsert_failed"
+MEMORY_SPARSE_SEARCH_COMPLETE: Final[str] = "memory.sparse.search_complete"
+MEMORY_SPARSE_SEARCH_FAILED: Final[str] = "memory.sparse.search_failed"
