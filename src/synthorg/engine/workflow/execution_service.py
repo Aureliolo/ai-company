@@ -84,6 +84,36 @@ _CONTROL_NODE_TYPES = frozenset(
 )
 
 
+def _find_downstream_task_ids(
+    nid: str,
+    adjacency: dict[str, list[str]],
+    node_map: dict[str, WorkflowNode],
+) -> list[str]:
+    """Walk forward through control nodes to find downstream TASK nodes.
+
+    Used by AGENT_ASSIGNMENT to propagate assignments through
+    intervening control nodes (CONDITIONAL, SPLIT, JOIN, etc.)
+    to reach the actual TASK nodes.  Stops at other
+    AGENT_ASSIGNMENT nodes (which override).
+    """
+    result: list[str] = []
+    visited: set[str] = set()
+    queue: deque[str] = deque(adjacency.get(nid, []))
+    while queue:
+        tid = queue.popleft()
+        if tid in visited:
+            continue
+        visited.add(tid)
+        target_node = node_map[tid]
+        if target_node.type is WorkflowNodeType.TASK:
+            result.append(tid)
+        elif target_node.type is WorkflowNodeType.AGENT_ASSIGNMENT:
+            pass  # Another assignment overrides -- stop propagation
+        elif target_node.type in _CONTROL_NODE_TYPES:
+            queue.extend(adjacency.get(tid, []))
+    return result
+
+
 def _find_upstream_task_ids(
     node_id: str,
     reverse_adj: dict[str, list[str]],
@@ -458,16 +488,25 @@ class WorkflowExecutionService:
         )
 
         # 4. Build and persist execution
+        # If no tasks were created, the workflow is immediately complete
+        if node_task_ids:
+            status = WorkflowExecutionStatus.RUNNING
+            completed_at = None
+        else:
+            status = WorkflowExecutionStatus.COMPLETED
+            completed_at = now
+
         execution = WorkflowExecution(
             id=execution_id,
             definition_id=definition.id,
             definition_version=definition.version,
-            status=WorkflowExecutionStatus.RUNNING,
+            status=status,
             node_executions=tuple(node_exec_map[n.id] for n in definition.nodes),
             activated_by=activated_by,
             project=project,
             created_at=now,
             updated_at=now,
+            completed_at=completed_at,
         )
         await self._execution_repo.save(execution)
 
@@ -608,9 +647,13 @@ class WorkflowExecutionService:
         if node.type is WorkflowNodeType.AGENT_ASSIGNMENT:
             agent_name = node.config.get("agent_name")
             if agent_name:
-                for target_id in adjacency.get(nid, []):
-                    if node_map[target_id].type is WorkflowNodeType.TASK:
-                        pending_assignments[target_id] = str(agent_name)
+                task_targets = _find_downstream_task_ids(
+                    nid,
+                    adjacency,
+                    node_map,
+                )
+                for target_id in task_targets:
+                    pending_assignments[target_id] = str(agent_name)
             else:
                 logger.warning(
                     WORKFLOW_EXEC_NODE_COMPLETED,

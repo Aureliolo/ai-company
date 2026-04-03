@@ -213,13 +213,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._db.rollback()
-            msg = f"Workflow execution {execution.id!r} already exists (duplicate ID)"
+            err_text = str(exc).lower()
+            if "unique" in err_text or "primary key" in err_text:
+                msg = (
+                    f"Workflow execution {execution.id!r} already exists (duplicate ID)"
+                )
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                    execution_id=execution.id,
+                    error=msg,
+                )
+                raise DuplicateRecordError(msg) from exc
+            msg = f"Integrity error saving workflow execution {execution.id!r}: {exc}"
             logger.warning(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                 execution_id=execution.id,
                 error=msg,
             )
-            raise DuplicateRecordError(msg) from exc
+            raise QueryError(msg) from exc
         except sqlite3.Error as exc:
             await self._db.rollback()
             msg = f"Failed to save workflow execution {execution.id!r}"
