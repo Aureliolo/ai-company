@@ -495,6 +495,7 @@ Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025).
 | **Communication** | Email, Slack, notifications | PMs, executives |
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
+| **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
 ### Tool Execution Model
@@ -647,7 +648,7 @@ strings are rejected at config load time -- a typo in `human_approval` list sile
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (~25 leaf types):**
+**Taxonomy (~26 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -660,6 +661,7 @@ budget:spend, budget:exceed
 org:hire, org:fire, org:promote
 db:query, db:mutate, db:admin
 arch:decide
+memory:read
 ```
 
 **Classification:** Static tool metadata. Each `BaseTool` declares its `action_type`. Default

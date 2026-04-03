@@ -91,6 +91,7 @@ class TestRiskClassifierLow:
             ActionType.VCS_READ,
             ActionType.COMMS_INTERNAL,
             ActionType.DB_QUERY,
+            ActionType.MEMORY_READ,
         ],
     )
     def test_low_risk(self, action_type: str) -> None:

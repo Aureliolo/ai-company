@@ -14,6 +14,7 @@ from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools import (
     RecallMemoryTool,
     SearchMemoryTool,
+    _is_error_response,
     create_memory_tools,
     registry_with_memory_tools,
 )
@@ -512,3 +513,96 @@ class TestRegistryWithMemoryTools:
         names = {d.name for d in defs}
         assert "search_memory" in names
         assert "recall_memory" in names
+
+    def test_graceful_degradation_on_duplicate(self) -> None:
+        """Duplicate tool names return original registry instead of crashing."""
+        strategy = _make_strategy()
+        # First augmentation
+        augmented = registry_with_memory_tools(
+            _make_empty_registry(),
+            strategy,
+            agent_id="agent-1",
+        )
+        # Second augmentation with same tools -- would cause duplicate names
+        result = registry_with_memory_tools(
+            augmented,
+            strategy,
+            agent_id="agent-1",
+        )
+        # Should degrade gracefully, returning original
+        assert result is augmented
+
+
+# -- _is_error_response direct tests ----------------------------------------
+
+
+@pytest.mark.unit
+class TestIsErrorResponse:
+    def test_error_prefix_matches(self) -> None:
+        assert _is_error_response("Error: query must be a non-empty string.")
+
+    def test_search_unavailable_matches(self) -> None:
+        assert _is_error_response("Memory search is temporarily unavailable.")
+
+    def test_search_unexpected_matches(self) -> None:
+        assert _is_error_response("Memory search encountered an unexpected error.")
+
+    def test_recall_unavailable_matches(self) -> None:
+        assert _is_error_response("Memory recall is temporarily unavailable.")
+
+    def test_recall_unexpected_matches(self) -> None:
+        assert _is_error_response("Memory recall encountered an unexpected error.")
+
+    def test_not_found_prefix_matches(self) -> None:
+        assert _is_error_response("Memory not found: mem-123")
+
+    def test_no_memories_found_is_not_error(self) -> None:
+        """Successful empty result must NOT be classified as error."""
+        assert not _is_error_response("No memories found.")
+
+    def test_normal_result_is_not_error(self) -> None:
+        assert not _is_error_response("[episodic] (relevance: 0.85) test")
+
+    def test_empty_string_is_not_error(self) -> None:
+        assert not _is_error_response("")
+
+    def test_partial_match_not_error(self) -> None:
+        """'Error occurred' should NOT match -- prefix is 'Error:' with colon."""
+        assert not _is_error_response("Error occurred somewhere")
+
+
+# -- Generic exception path -------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGenericExceptionPath:
+    async def test_search_generic_exception_returns_error(self) -> None:
+        backend = _make_backend()
+        backend.retrieve = AsyncMock(side_effect=RuntimeError("internal boom"))
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),
+        )
+        tool = SearchMemoryTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(arguments={"query": "test"})
+
+        assert result.is_error
+        assert "unexpected error" in result.content.lower()
+        # Must not leak internal error details
+        assert "internal boom" not in result.content
+
+    async def test_recall_generic_exception_returns_error(self) -> None:
+        backend = _make_backend()
+        backend.get = AsyncMock(side_effect=ConnectionError("refused"))
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),
+        )
+        tool = RecallMemoryTool(strategy=strategy, agent_id="agent-1")
+
+        result = await tool.execute(arguments={"memory_id": "mem-1"})
+
+        assert result.is_error
+        assert "unexpected error" in result.content.lower()
+        assert "refused" not in result.content

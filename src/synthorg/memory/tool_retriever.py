@@ -7,7 +7,8 @@ that agents invoke on-demand during execution.  Implements the
 
 import builtins
 import copy
-from typing import TYPE_CHECKING, Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
@@ -31,48 +32,60 @@ logger = get_logger(__name__)
 SEARCH_MEMORY_TOOL_NAME = "search_memory"
 RECALL_MEMORY_TOOL_NAME = "recall_memory"
 
+# Error message constants -- imported by memory/tools.py for error detection.
+ERROR_PREFIX = "Error:"
+SEARCH_UNAVAILABLE = "Memory search is temporarily unavailable."
+SEARCH_UNEXPECTED = "Memory search encountered an unexpected error."
+RECALL_UNAVAILABLE = "Memory recall is temporarily unavailable."
+RECALL_UNEXPECTED = "Memory recall encountered an unexpected error."
+RECALL_NOT_FOUND_PREFIX = "Memory not found:"
+
 _INSTRUCTION = (
     "You have access to memory recall tools. Use search_memory "
     "when you need to recall past context, decisions, or learned "
     "information. Use recall_memory to fetch a specific memory by ID."
 )
 
-SEARCH_MEMORY_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "query": {
-            "type": "string",
-            "description": "Natural language search query.",
+SEARCH_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
+    {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Natural language search query.",
+            },
+            "categories": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional category filter "
+                    "(working, episodic, semantic, procedural, social)."
+                ),
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Maximum results to return (default 10).",
+                "default": 10,
+                "minimum": 1,
+                "maximum": 50,
+            },
         },
-        "categories": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Optional category filter "
-                "(working, episodic, semantic, procedural, social)."
-            ),
-        },
-        "limit": {
-            "type": "integer",
-            "description": "Maximum results to return (default 10).",
-            "default": 10,
-            "minimum": 1,
-            "maximum": 50,
-        },
-    },
-    "required": ["query"],
-}
+        "required": ["query"],
+    }
+)
 
-RECALL_MEMORY_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "memory_id": {
-            "type": "string",
-            "description": "Exact memory ID to recall.",
+RECALL_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
+    {
+        "type": "object",
+        "properties": {
+            "memory_id": {
+                "type": "string",
+                "description": "Exact memory ID to recall.",
+            },
         },
-    },
-    "required": ["memory_id"],
-}
+        "required": ["memory_id"],
+    }
+)
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
@@ -222,12 +235,12 @@ class ToolBasedInjectionStrategy:
                     "Search agent memory for relevant past context, "
                     "decisions, or learned information."
                 ),
-                parameters_schema=copy.deepcopy(SEARCH_MEMORY_SCHEMA),
+                parameters_schema=copy.deepcopy(dict(SEARCH_MEMORY_SCHEMA)),
             ),
             ToolDefinition(
                 name=NotBlankStr(RECALL_MEMORY_TOOL_NAME),
                 description="Recall a specific memory entry by its ID.",
-                parameters_schema=copy.deepcopy(RECALL_MEMORY_SCHEMA),
+                parameters_schema=copy.deepcopy(dict(RECALL_MEMORY_SCHEMA)),
             ),
         )
 
@@ -297,7 +310,7 @@ class ToolBasedInjectionStrategy:
                 error=str(exc),
                 exc_info=True,
             )
-            return "Memory search is temporarily unavailable."
+            return SEARCH_UNAVAILABLE
         except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -306,7 +319,7 @@ class ToolBasedInjectionStrategy:
                 error=str(exc),
                 exc_info=True,
             )
-            return "Memory search encountered an unexpected error."
+            return SEARCH_UNEXPECTED
 
         logger.info(
             MEMORY_RETRIEVAL_COMPLETE,
@@ -324,7 +337,7 @@ class ToolBasedInjectionStrategy:
     ) -> str:
         """Handle a recall_memory tool call."""
         memory_id = arguments.get("memory_id", "")
-        if not memory_id:
+        if not memory_id or not str(memory_id).strip():
             return "Error: memory_id is required."
 
         try:
@@ -342,7 +355,7 @@ class ToolBasedInjectionStrategy:
                 error=str(exc),
                 exc_info=True,
             )
-            return "Memory recall is temporarily unavailable."
+            return RECALL_UNAVAILABLE
         except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -351,7 +364,7 @@ class ToolBasedInjectionStrategy:
                 error=str(exc),
                 exc_info=True,
             )
-            return "Memory recall encountered an unexpected error."
+            return RECALL_UNEXPECTED
 
         if entry is None:
             return f"Memory not found: {memory_id}"

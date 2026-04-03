@@ -12,30 +12,38 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ToolCategory
 from synthorg.memory.tool_retriever import (
+    ERROR_PREFIX,
     RECALL_MEMORY_SCHEMA,
     RECALL_MEMORY_TOOL_NAME,
+    RECALL_NOT_FOUND_PREFIX,
+    RECALL_UNAVAILABLE,
+    RECALL_UNEXPECTED,
     SEARCH_MEMORY_SCHEMA,
     SEARCH_MEMORY_TOOL_NAME,
+    SEARCH_UNAVAILABLE,
+    SEARCH_UNEXPECTED,
     ToolBasedInjectionStrategy,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import MEMORY_RETRIEVAL_START
+from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
+from synthorg.observability.events.tool import TOOL_REGISTRY_BUILT
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
+    from synthorg.core.types import NotBlankStr
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 
-# Prefixes that indicate an error response from the strategy's handler.
+# Error prefixes imported from tool_retriever -- single source of truth.
 _ERROR_PREFIXES = (
-    "Error:",
-    "Memory search is temporarily unavailable.",
-    "Memory recall is temporarily unavailable.",
-    "Memory search encountered an unexpected error.",
-    "Memory recall encountered an unexpected error.",
-    "Memory not found:",
+    ERROR_PREFIX,
+    SEARCH_UNAVAILABLE,
+    SEARCH_UNEXPECTED,
+    RECALL_UNAVAILABLE,
+    RECALL_UNEXPECTED,
+    RECALL_NOT_FOUND_PREFIX,
 )
 
 
@@ -56,13 +64,11 @@ class SearchMemoryTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
-    __slots__ = ("_agent_id", "_strategy")
-
     def __init__(
         self,
         *,
         strategy: ToolBasedInjectionStrategy,
-        agent_id: str,
+        agent_id: NotBlankStr,
     ) -> None:
         super().__init__(
             name=SEARCH_MEMORY_TOOL_NAME,
@@ -70,7 +76,7 @@ class SearchMemoryTool(BaseTool):
                 "Search agent memory for relevant past context, "
                 "decisions, or learned information."
             ),
-            parameters_schema=copy.deepcopy(SEARCH_MEMORY_SCHEMA),
+            parameters_schema=copy.deepcopy(dict(SEARCH_MEMORY_SCHEMA)),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -112,18 +118,16 @@ class RecallMemoryTool(BaseTool):
         agent_id: Agent ID bound to this tool instance.
     """
 
-    __slots__ = ("_agent_id", "_strategy")
-
     def __init__(
         self,
         *,
         strategy: ToolBasedInjectionStrategy,
-        agent_id: str,
+        agent_id: NotBlankStr,
     ) -> None:
         super().__init__(
             name=RECALL_MEMORY_TOOL_NAME,
             description="Recall a specific memory entry by its ID.",
-            parameters_schema=copy.deepcopy(RECALL_MEMORY_SCHEMA),
+            parameters_schema=copy.deepcopy(dict(RECALL_MEMORY_SCHEMA)),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -156,7 +160,7 @@ class RecallMemoryTool(BaseTool):
 def create_memory_tools(
     *,
     strategy: ToolBasedInjectionStrategy,
-    agent_id: str,
+    agent_id: NotBlankStr,
 ) -> tuple[BaseTool, ...]:
     """Create memory tools for a specific agent.
 
@@ -179,7 +183,7 @@ def create_memory_tools(
 def registry_with_memory_tools(
     tool_registry: ToolRegistry,
     strategy: MemoryInjectionStrategy | None,
-    agent_id: str,
+    agent_id: NotBlankStr,
 ) -> ToolRegistry:
     """Build a registry with memory tools added if applicable.
 
@@ -204,12 +208,26 @@ def registry_with_memory_tools(
         ToolRegistry as _ToolRegistry,
     )
 
-    logger.info(
-        MEMORY_RETRIEVAL_START,
-        agent_id=agent_id,
-        tool="registry_augmentation",
-        query_length=0,
+    try:
+        memory_tools = create_memory_tools(
+            strategy=strategy,
+            agent_id=agent_id,
+        )
+        existing = list(tool_registry.all_tools())
+        augmented = _ToolRegistry([*existing, *memory_tools])
+    except Exception as exc:
+        logger.warning(
+            MEMORY_RETRIEVAL_DEGRADED,
+            source="registry_augmentation",
+            agent_id=agent_id,
+            error=str(exc),
+            exc_info=True,
+        )
+        return tool_registry
+
+    logger.debug(
+        TOOL_REGISTRY_BUILT,
+        tool_count=len(augmented),
+        tools=augmented.list_tools(),
     )
-    memory_tools = create_memory_tools(strategy=strategy, agent_id=agent_id)
-    existing = list(tool_registry.all_tools())
-    return _ToolRegistry([*existing, *memory_tools])
+    return augmented

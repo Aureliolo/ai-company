@@ -51,6 +51,7 @@ class TestAccessLevelCategories:
             (ToolAccessLevel.SANDBOXED, ToolCategory.FILE_SYSTEM, True),
             (ToolAccessLevel.SANDBOXED, ToolCategory.CODE_EXECUTION, True),
             (ToolAccessLevel.SANDBOXED, ToolCategory.VERSION_CONTROL, True),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.MEMORY, True),
             (ToolAccessLevel.SANDBOXED, ToolCategory.WEB, False),
             (ToolAccessLevel.SANDBOXED, ToolCategory.TERMINAL, False),
             (ToolAccessLevel.SANDBOXED, ToolCategory.DEPLOYMENT, False),
@@ -60,6 +61,7 @@ class TestAccessLevelCategories:
             (ToolAccessLevel.RESTRICTED, ToolCategory.CODE_EXECUTION, True),
             (ToolAccessLevel.RESTRICTED, ToolCategory.VERSION_CONTROL, True),
             (ToolAccessLevel.RESTRICTED, ToolCategory.WEB, True),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.MEMORY, True),
             (ToolAccessLevel.RESTRICTED, ToolCategory.TERMINAL, False),
             (ToolAccessLevel.RESTRICTED, ToolCategory.ANALYTICS, False),
             # Standard: adds terminal and analytics
@@ -67,6 +69,7 @@ class TestAccessLevelCategories:
             (ToolAccessLevel.STANDARD, ToolCategory.WEB, True),
             (ToolAccessLevel.STANDARD, ToolCategory.TERMINAL, True),
             (ToolAccessLevel.STANDARD, ToolCategory.ANALYTICS, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.MEMORY, True),
             (ToolAccessLevel.STANDARD, ToolCategory.DEPLOYMENT, False),
             (ToolAccessLevel.STANDARD, ToolCategory.DATABASE, False),
             (ToolAccessLevel.STANDARD, ToolCategory.OTHER, False),

@@ -714,6 +714,16 @@ the agent during execution.
       implementations, but iterative reformulation is not yet wired into the tool-based
       strategy's search handler (reserved via `query_reformulation_enabled` config field)
 
+    **ToolRegistry integration**: `SearchMemoryTool` and `RecallMemoryTool` are `BaseTool`
+    subclasses (`memory/tools.py`) that delegate execution to
+    `ToolBasedInjectionStrategy.handle_tool_call()`.  The `registry_with_memory_tools()`
+    factory augments a `ToolRegistry` with these tools when the strategy is
+    `ToolBasedInjectionStrategy`.  `AgentEngine` accepts an optional
+    `memory_injection_strategy` parameter and wires the tools into each agent's registry
+    at execution time.  This ensures memory tools participate in the standard `ToolInvoker`
+    dispatch pipeline, including permission checking (`ToolCategory.MEMORY`), security
+    interceptors, and invocation tracking.
+
     **MCP bridge evaluation**: Both context injection and tool-based strategies hold direct
     `MemoryBackend` references and run in-process. The memory hot path already bypasses MCP
     by design -- no additional optimization needed.
