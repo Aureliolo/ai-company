@@ -259,9 +259,7 @@ def _extract_metadata(
 
     confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
     source_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
-    source = source_raw.strip() if isinstance(source_raw, str) else source_raw
-    if not source:
-        source = None
+    source = source_raw.strip() or None if isinstance(source_raw, str) else None
     tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags")
     if tags_raw is None:
         tags_raw = ()
@@ -278,18 +276,19 @@ def _parse_created_at(
     point_id_str: str,
 ) -> datetime:
     """Parse created_at from payload with fallback to epoch sentinel."""
+    _epoch = datetime(1970, 1, 1, tzinfo=UTC)
     created_str = payload.get("created_at")
-    if not created_str:
+    if not created_str or not isinstance(created_str, str):
         logger.info(
             MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
             point_id=point_id_str,
             field="created_at",
             default="1970-01-01T00:00:00+00:00",
         )
-        return datetime(1970, 1, 1, tzinfo=UTC)
+        return _epoch
     try:
-        return datetime.fromisoformat(created_str)
-    except ValueError:
+        parsed = datetime.fromisoformat(created_str)
+    except ValueError, TypeError:
         logger.info(
             MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
             point_id=point_id_str,
@@ -297,7 +296,11 @@ def _parse_created_at(
             original=created_str,
             default="1970-01-01T00:00:00+00:00",
         )
-        return datetime(1970, 1, 1, tzinfo=UTC)
+        return _epoch
+    # Ensure aware datetime (assume UTC for naive).
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
