@@ -12,7 +12,7 @@ import { useSettingsData } from '@/hooks/useSettingsData'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
-import { STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
+import { CEREMONY_STRATEGY_TYPES, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyChangeWarning } from './StrategyChangeWarning'
@@ -50,19 +50,36 @@ export default function CeremonyPolicyPage() {
     const sc = get('ceremony_strategy_config')
     if (sc) {
       try {
-        config = JSON.parse(sc) as Record<string, unknown>
+        const parsed: unknown = JSON.parse(sc)
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          config = parsed as Record<string, unknown>
+        } else {
+          configParseError = true
+        }
       } catch {
         configParseError = true
       }
     }
 
+    const rawStrategy = get('ceremony_strategy') as string | undefined
+    const strategy: CeremonyStrategyType = (
+      rawStrategy && CEREMONY_STRATEGY_TYPES.includes(rawStrategy as CeremonyStrategyType)
+        ? rawStrategy as CeremonyStrategyType
+        : 'task_driven'
+    )
+
+    const rawThreshold = Number(get('ceremony_transition_threshold') ?? '1.0')
+    const transitionThreshold = Number.isFinite(rawThreshold)
+      ? Math.min(Math.max(rawThreshold, 0.01), 1.0)
+      : 1.0
+
     return {
-      strategy: (get('ceremony_strategy') as CeremonyStrategyType | undefined) ?? 'task_driven' as CeremonyStrategyType,
+      strategy,
       strategyConfig: config,
       velocityCalculator: (get('ceremony_velocity_calculator') as VelocityCalcType | undefined)
-        ?? STRATEGY_DEFAULT_VELOCITY_CALC[(get('ceremony_strategy') as CeremonyStrategyType | undefined) ?? 'task_driven'],
+        ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy],
       autoTransition: get('ceremony_auto_transition') !== 'false',
-      transitionThreshold: Number(get('ceremony_transition_threshold') ?? '1.0'),
+      transitionThreshold,
       configParseError,
     }
   }, [settingsEntries])
@@ -133,7 +150,11 @@ export default function CeremonyPolicyPage() {
     let overridesParseError = false
     if (raw) {
       try {
-        return { overrides: JSON.parse(raw) as Record<string, CeremonyPolicyConfig | null>, overridesParseError }
+        const parsed: unknown = JSON.parse(raw)
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          return { overrides: parsed as Record<string, CeremonyPolicyConfig | null>, overridesParseError }
+        }
+        overridesParseError = true
       } catch {
         overridesParseError = true
       }

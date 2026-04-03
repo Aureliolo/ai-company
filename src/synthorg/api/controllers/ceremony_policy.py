@@ -346,18 +346,21 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
             for key in keys:
                 tg.create_task(_fetch(key))
     except* Exception as eg:
+        for exc in eg.exceptions:
+            if isinstance(exc, (MemoryError, RecursionError)):
+                raise exc from None
         first = eg.exceptions[0]
-        msg = f"Failed to fetch ceremony settings: {first}"
         logger.warning(
             API_SERVICE_UNAVAILABLE,
             service="settings",
             error=str(first),
         )
-        raise ServiceUnavailableError(msg) from first
+        msg = "Failed to fetch ceremony settings"
+        raise ServiceUnavailableError(msg) from None
 
     try:
         return _build_project_policy(data)
-    except (ValueError, json.JSONDecodeError) as exc:
+    except ValueError as exc:
         logger.warning(
             API_SERVICE_UNAVAILABLE,
             service="settings",
@@ -376,7 +379,7 @@ _SETTINGS_NOT_FOUND = _SettingsNotFound()
 
 async def _lookup_dept_override_from_settings(
     app_state: AppState,
-    department_name: str,
+    department_name: NotBlankStr,
 ) -> CeremonyPolicyConfig | None | _SettingsNotFound:
     """Try to find a department override in the settings service.
 
@@ -427,7 +430,7 @@ async def _lookup_dept_override_from_settings(
 
 async def _fetch_department_policy(
     app_state: AppState,
-    department_name: str,
+    department_name: NotBlankStr,
 ) -> CeremonyPolicyConfig | None:
     """Fetch department-level ceremony policy override.
 

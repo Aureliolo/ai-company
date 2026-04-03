@@ -37,23 +37,19 @@ export function DepartmentEditDrawer({
 
   const prevDepartmentRef = useRef<typeof department | undefined>(undefined)
   useEffect(() => {
+    /* eslint-disable @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync */
     if (department !== prevDepartmentRef.current) {
       prevDepartmentRef.current = department
       if (department) {
-        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
         setDisplayName(department.display_name ?? department.name)
-        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
         setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
-        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
         setCeremonyPolicy(department.ceremony_policy ?? null)
-        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
         setSubmitError(null)
       }
-      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
       setDeleteOpen(false)
-      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
       setDeleting(false)
     }
+    /* eslint-enable @eslint-react/set-state-in-effect */
   }, [department])
 
   const handleSave = useCallback(async () => {
