@@ -22,6 +22,10 @@ from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_SPRINT_START,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategy_migration import (
+    StrategyMigrationInfo,
+    detect_strategy_migration,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
@@ -29,6 +33,7 @@ from synthorg.observability.events.workflow import (
     SPRINT_CEREMONY_SCHEDULER_STARTED,
     SPRINT_CEREMONY_SCHEDULER_STOPPED,
     SPRINT_CEREMONY_SKIPPED,
+    SPRINT_CEREMONY_STRATEGY_CHANGED,
     SPRINT_CEREMONY_TRIGGER_FAILED,
     SPRINT_CEREMONY_TRIGGERED,
 )
@@ -122,7 +127,7 @@ class CeremonyScheduler:
         strategy: CeremonySchedulingStrategy,
         *,
         velocity_history: tuple[VelocityRecord, ...] = (),
-    ) -> None:
+    ) -> StrategyMigrationInfo | None:
         """Start tracking ceremonies for the given sprint.
 
         Initializes counters, locks the strategy, and calls the
@@ -138,8 +143,16 @@ class CeremonyScheduler:
             config: Sprint configuration.
             strategy: The ceremony scheduling strategy to use.
             velocity_history: Recent velocity records for context.
+
+        Returns:
+            Migration info if the strategy type changed from the
+            previous sprint, else ``None``.
         """
         async with self._lock:
+            previous_strategy_type = (
+                self._active_strategy.strategy_type if self._active_strategy else None
+            )
+
             if self._running:
                 await self._deactivate_sprint_unlocked()
 
@@ -177,6 +190,23 @@ class CeremonyScheduler:
                 strategy=strategy.strategy_type.value,
                 ceremony_count=len(config.ceremonies),
             )
+
+            migration = detect_strategy_migration(
+                previous_strategy_type,
+                strategy.strategy_type,
+                sprint.id,
+                len(velocity_history),
+            )
+            if migration is not None:
+                logger.info(
+                    SPRINT_CEREMONY_STRATEGY_CHANGED,
+                    sprint_id=sprint.id,
+                    previous_strategy=migration.previous_strategy.value,
+                    new_strategy=migration.new_strategy.value,
+                    velocity_window_reset=migration.velocity_window_reset,
+                    velocity_history_size=migration.velocity_history_size,
+                )
+            return migration
 
     async def deactivate_sprint(self) -> None:
         """Stop tracking the current sprint's ceremonies.

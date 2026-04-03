@@ -88,7 +88,7 @@ SPRINT_CEREMONY_POLICY_RESOLVED: str = "workflow.sprint.ceremony_policy_resolved
 """3-level ceremony policy resolution completed."""
 
 SPRINT_CEREMONY_STRATEGY_CHANGED: str = "workflow.sprint.ceremony_strategy_changed"
-"""Ceremony scheduling strategy changed between sprints.  Reserved for #978."""
+"""Ceremony scheduling strategy changed between sprints."""
 
 SPRINT_CEREMONY_SCHEDULER_START_FAILED: str = (
     "workflow.sprint.ceremony_scheduler_start_failed"

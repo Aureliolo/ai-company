@@ -65,6 +65,11 @@ from synthorg.engine.workflow.strategies import (
     TaskDrivenStrategy,
     ThroughputAdaptiveStrategy,
 )
+from synthorg.engine.workflow.strategy_migration import (
+    StrategyMigrationInfo,
+    detect_strategy_migration,
+    notify_strategy_migration,
+)
 from synthorg.engine.workflow.velocity_calculator import VelocityCalculator
 from synthorg.engine.workflow.velocity_calculators import (
     CalendarVelocityCalculator,
@@ -102,6 +107,7 @@ __all__ = [
     "SprintCeremonyConfig",
     "SprintConfig",
     "SprintStatus",
+    "StrategyMigrationInfo",
     "TaskDrivenStrategy",
     "TaskDrivenVelocityCalculator",
     "ThroughputAdaptiveStrategy",
@@ -117,6 +123,8 @@ __all__ = [
     "ceremony_to_meeting_type",
     "check_wip_limit",
     "complete_task_in_sprint",
+    "detect_strategy_migration",
+    "notify_strategy_migration",
     "record_velocity",
     "remove_task_from_sprint",
     "resolve_ceremony_policy",

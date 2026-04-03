@@ -551,7 +551,7 @@ class CeremonyScheduler:
         self, sprint: Sprint, config: SprintConfig,
         strategy: CeremonySchedulingStrategy,
         *, velocity_history: tuple[VelocityRecord, ...] = (),
-    ) -> None: ...
+    ) -> StrategyMigrationInfo | None: ...
 
     async def deactivate_sprint(self) -> None: ...
 
@@ -733,9 +733,19 @@ Event constants in `synthorg.observability.events.workflow`:
 
 > **Note:** Like #973 + #974, the `CeremonyScheduler` does not yet wire all lifecycle hooks for the milestone-driven strategy. Scheduler integration is tracked in follow-up work.
 
+### Shipped in #978 (Strategy Migration UX)
+
+- `StrategyMigrationInfo` frozen model (sprint_id, previous/new strategy, velocity_window_reset, history size)
+- `detect_strategy_migration()` pure function for change detection
+- `format_migration_warning()` and `format_reorder_prompt()` pure text formatters
+- `notify_strategy_migration()` async best-effort notification via `AgentMessenger`
+- `CeremonyScheduler.activate_sprint()` captures previous strategy type before deactivation, returns `StrategyMigrationInfo | None`
+- `SPRINT_CEREMONY_STRATEGY_CHANGED` event logged on detection
+- Strategy-aware velocity calculator default in `resolve_ceremony_policy()` (`STRATEGY_DEFAULT_VELOCITY_CALC` mapping)
+- Explicit `velocity_calculator` in all 9 builtin template ceremony policies
+
 ### Follow-up Issues
 
 | Version | Issue | Description |
 |---------|-------|-------------|
-| v0.6.1 | #978 | Strategy migration UX (warnings, notifications) |
 | v0.6.1 | #979 | Dashboard UI for ceremony policy settings |
