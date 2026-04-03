@@ -100,11 +100,12 @@ class TestTokenize:
         assert "the" in tokens
         assert "is" in tokens
 
-    def test_unicode_lowercased(self) -> None:
+    def test_unicode_normalization_and_casefold(self) -> None:
         tokenizer = BM25Tokenizer()
-        tokens = tokenizer.tokenize("Uber Strasze")
-        assert "uber" in tokens
-        assert "strasze" in tokens
+        # NFKC normalizes fullwidth A, casefold normalizes ss/sharp-s
+        tokens = tokenizer.tokenize("Strasse STRASSE agent")
+        assert "strasse" in tokens
+        assert "agent" in tokens
 
     def test_numbers_preserved(self) -> None:
         tokenizer = BM25Tokenizer()

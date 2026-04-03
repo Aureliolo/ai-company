@@ -14,6 +14,10 @@ from typing import Self
 import mmh3
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
+
 # Minimal English stop words -- kept small to avoid over-filtering
 # domain-specific content.
 _STOP_WORDS: frozenset[str] = frozenset(

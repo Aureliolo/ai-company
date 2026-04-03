@@ -185,8 +185,12 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_personal_boost_rrf_consistency(self) -> Self:
-        """Warn when personal_boost is set with RRF fusion."""
-        if self.fusion_strategy == FusionStrategy.RRF and self.personal_boost > 0.0:
+        """Warn when personal_boost is explicitly set with RRF fusion."""
+        if (
+            self.fusion_strategy == FusionStrategy.RRF
+            and self.personal_boost > 0.0
+            and "personal_boost" in self.model_fields_set
+        ):
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 field="personal_boost",

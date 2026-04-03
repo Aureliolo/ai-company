@@ -259,6 +259,19 @@ class TestPersonalBoostRRFWarning:
         assert len(events) == 1
         assert "personal_boost" in events[0]["reason"]
 
+    def test_default_personal_boost_with_rrf_no_warning(self) -> None:
+        """Default personal_boost (0.1) should not warn -- only explicit."""
+        with structlog.testing.capture_logs() as cap:
+            c = MemoryRetrievalConfig(fusion_strategy=FusionStrategy.RRF)
+        assert c.personal_boost == 0.1
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "personal_boost"
+        ]
+        assert len(events) == 0
+
     def test_personal_boost_zero_with_rrf_no_warning(self) -> None:
         with structlog.testing.capture_logs() as cap:
             MemoryRetrievalConfig(
