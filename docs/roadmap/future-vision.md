@@ -31,9 +31,7 @@ These features were previously listed as future work and have since been impleme
 - **Workflow execution from graph definitions** -- shipped in v0.6.0 (PR #1040)
 - **Local model management** (Ollama/LM Studio) -- shipped in v0.6.0 (PR #1037)
 - **Ceremony scheduling** (8 strategies) -- shipped across v0.5.5--v0.5.7
-- **Reporting system** -- in progress (v0.6.5)
 - **Agent promotions** -- core promotion/demotion system shipped in v0.5.0
-- **Integration APIs** -- external service integration planned for v0.7
 
 ## Scaling Path
 

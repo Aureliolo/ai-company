@@ -1,0 +1,4 @@
+weights:
+  ldr: 0.25
+  inflation: 0.65
+  ddc: 0.1

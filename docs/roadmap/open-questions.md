@@ -19,10 +19,10 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Context window exhaustion on complex tasks | Medium | **Mitigated**: context budget management tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
+| Context window exhaustion on complex tasks | Medium | **Partially mitigated**: context budget management tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task, auto-downgrade at task boundaries. |
 | Agent quality degradation with cheap models | Medium | Capability-aware prompt profiles (#805) adapt prompts to model tier. Quality gates and minimum model requirements per task type. |
-| Third-party library breaking changes | Medium | All versions pinned (`==`), integration tests, abstraction layers, Dependabot daily updates. |
+| Third-party library breaking changes | Medium | Python deps exact-pinned (`==`), JS deps range-based with lockfiles. Integration tests, abstraction layers, Dependabot daily updates. |
 | Memory retrieval quality | Medium | Hybrid retrieval (dense + BM25 sparse with RRF fusion) shipped. LMEB-guided embedding selection implemented. Optional domain fine-tuning pipeline in progress (#1001). |
 | Agent personality inconsistency | Low | Strong system prompts, personality presets with condensed/minimal variants planned (#805). |
 | WebSocket scaling | Low | In-process channels for Phase 1. Redis pub/sub planned for distributed deployments. |

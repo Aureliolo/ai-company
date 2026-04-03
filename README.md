@@ -18,7 +18,7 @@ SynthOrg is a Python framework for building **synthetic organizations** -- auton
 
 Define your company in YAML. Agents collaborate through a message bus, follow workflows (Kanban, Agile sprints, or custom), track costs against budgets, and produce real artifacts. The framework is provider-agnostic (100+ LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and designed for the full autonomy spectrum -- from human approval on every action to fully autonomous operation.
 
-> **Early access.** Core subsystems are built and tested (13,000+ unit tests, 80%+ coverage). APIs may change between releases. See the [roadmap](docs/roadmap/) for what's next.
+> **Early access.** Core subsystems are built and tested (13,000+ unit tests, 80%+ coverage). APIs may change between releases. See the [roadmap](https://synthorg.io/docs/roadmap/) for what's next.
 
 ## Why SynthOrg?
 
@@ -73,19 +73,19 @@ curl http://localhost:3001/api/v1/health
 
 ## What's Inside
 
-**[Agent Orchestration](docs/design/engine.md)** -- Task decomposition, 6 routing strategies, execution loops (ReAct, Plan-and-Execute, Hybrid, auto-selection by complexity), crash recovery with checkpoint resume, and multi-agent coordination.
+**[Agent Orchestration](https://synthorg.io/docs/design/engine/)** -- Task decomposition, 6 routing strategies, execution loops (ReAct, Plan-and-Execute, Hybrid, auto-selection by complexity), crash recovery with checkpoint resume, and multi-agent coordination.
 
-**[Budget & Cost Management](docs/design/operations.md)** -- Per-agent cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
+**[Budget & Cost Management](https://synthorg.io/docs/design/operations/)** -- Per-agent cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
 
-**[Security & Trust](docs/security.md)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (5 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
+**[Security & Trust](https://synthorg.io/docs/security/)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (5 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
 
-**[Memory](docs/design/memory.md)** -- 5 memory types (episodic, semantic, procedural, working, organizational) with hybrid retrieval, tool-based injection (agents call `search_memory` and `recall_memory` on demand), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
+**[Memory](https://synthorg.io/docs/design/memory/)** -- 5 memory types (episodic, semantic, procedural, working, organizational) with hybrid retrieval, tool-based injection (agents call `search_memory` and `recall_memory` on demand), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
 
-**[Communication](docs/design/communication.md)** -- Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), and meeting protocols (round-robin, position papers, structured phases).
+**[Communication](https://synthorg.io/docs/design/communication/)** -- Message bus, hierarchical delegation with loop prevention, conflict resolution (4 strategies), and meeting protocols (round-robin, position papers, structured phases).
 
-**[Tools & MCP](docs/guides/mcp-tools.md)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
+**[Tools & MCP](https://synthorg.io/docs/guides/mcp-tools/)** -- Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for external tools. Layered sandboxing with subprocess and Docker backends. SSRF prevention with configurable allowlists.
 
-**[Web Dashboard](docs/design/page-structure.md)** -- React 19 + shadcn/ui dashboard with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard. Real-time WebSocket updates.
+**[Web Dashboard](https://synthorg.io/docs/design/page-structure/)** -- React 19 + shadcn/ui dashboard with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard. Real-time WebSocket updates.
 
 **[CLI](https://synthorg.io/get/)** -- Go binary with init, start, stop, status, doctor, config, wipe, cleanup commands. Cosign signature and SLSA provenance verification at pull time.
 
@@ -119,17 +119,17 @@ SynthOrg vs [44 agent frameworks](https://synthorg.io/compare/) across 14 dimens
 
 | Section | What's there |
 |---------|-------------|
-| [User Guide](docs/user_guide.md) | Install, configure, run, customize |
-| [Guides](docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
-| [Design Specification](docs/design/index.md) | Agents, org structure, communication, engine, memory, operations, brand & UX (12 pages) |
-| [Architecture](docs/architecture/index.md) | System overview, tech stack, decision log |
-| [REST API](docs/rest-api.md) | Scalar/OpenAPI reference |
-| [Library Reference](docs/api/index.md) | Auto-generated from docstrings (14 modules) |
-| [Security](docs/security.md) | Application security, container hardening, CI/CD security (8 scanners) |
-| [Licensing](docs/licensing.md) | BSL 1.1 terms, Additional Use Grant, commercial options |
-| [Roadmap](docs/roadmap/) | Current status, open questions, future vision |
+| [User Guide](https://synthorg.io/docs/user_guide/) | Install, configure, run, customize |
+| [Guides](https://synthorg.io/docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
+| [Design Specification](https://synthorg.io/docs/design/) | Agents, org structure, communication, engine, memory, operations, brand & UX (12 pages) |
+| [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
+| [REST API](https://synthorg.io/docs/rest-api/) | Scalar/OpenAPI reference |
+| [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings (14 modules) |
+| [Security](https://synthorg.io/docs/security/) | Application security, container hardening, CI/CD security (8 scanners) |
+| [Licensing](https://synthorg.io/docs/licensing/) | BSL 1.1 terms, Additional Use Grant, commercial options |
+| [Roadmap](https://synthorg.io/docs/roadmap/) | Current status, open questions, future vision |
 
-> **Contributors:** Start with the [Design Specification](docs/design/index.md) before implementing any feature. See [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) for the full design set.
+> **Contributors:** Start with the [Design Specification](https://synthorg.io/docs/design/) before implementing any feature. See [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) for the full design set.
 
 ## License
 

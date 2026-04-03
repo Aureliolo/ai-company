@@ -11,7 +11,7 @@ This tutorial walks you through installing SynthOrg, choosing a template, and ru
 
 ## What You Will Build
 
-You will create a **Solo Founder** organization -- a lean two-agent team designed for rapid prototyping:
+You will create a **Solo Builder** organization -- a lean two-agent team designed for rapid prototyping:
 
 ```mermaid
 graph TD
@@ -100,7 +100,7 @@ On a fresh install, the **setup wizard** appears and walks you through company c
 
 1. **Name your company** -- pick any name (e.g. "My First Org").
 2. **Add an LLM provider** -- enter your provider's API key. Local providers like Ollama are auto-detected.
-3. **Select a template** -- choose **Solo Founder** (the minimal 2-agent template).
+3. **Select a template** -- choose **Solo Builder** (the minimal 2-agent template).
 
 Once the wizard completes, the dashboard loads and you will see:
 
