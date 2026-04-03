@@ -154,12 +154,15 @@ class TestWorkflowExecution:
 
     @pytest.mark.unit
     def test_failed_with_error(self) -> None:
+        now = datetime.now(UTC)
         exe = _make_execution(
             status=WorkflowExecutionStatus.FAILED,
             error="Task creation failed",
+            completed_at=now,
         )
         assert exe.status is WorkflowExecutionStatus.FAILED
         assert exe.error == "Task creation failed"
+        assert exe.completed_at == now
 
     @pytest.mark.unit
     def test_completed_with_timestamp(self) -> None:
@@ -216,3 +219,113 @@ class TestWorkflowExecution:
     def test_nan_rejected_in_definition_version(self) -> None:
         with pytest.raises(ValidationError):
             _make_execution(definition_version=math.nan)
+
+
+# ── Negative cross-field validator tests ─────────────────────────
+
+
+class TestNodeExecutionCrossFieldValidators:
+    """Verify _validate_status_fields rejects invalid combinations."""
+
+    @pytest.mark.unit
+    def test_task_created_without_task_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="task_id is required"):
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.TASK_CREATED,
+            )
+
+    @pytest.mark.unit
+    def test_pending_with_task_id_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="task_id must be None",
+        ):
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.PENDING,
+                task_id="task-abc",
+            )
+
+    @pytest.mark.unit
+    def test_skipped_without_reason_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="skipped_reason is required",
+        ):
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.SKIPPED,
+            )
+
+    @pytest.mark.unit
+    def test_pending_with_skipped_reason_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="skipped_reason must be None",
+        ):
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.PENDING,
+                skipped_reason="spurious reason",
+            )
+
+
+class TestExecutionCrossFieldValidators:
+    """Verify WorkflowExecution cross-field validators."""
+
+    @pytest.mark.unit
+    def test_failed_without_error_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="error is required"):
+            _make_execution(
+                status=WorkflowExecutionStatus.FAILED,
+                completed_at=datetime.now(UTC),
+            )
+
+    @pytest.mark.unit
+    def test_running_with_error_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="error must be None"):
+            _make_execution(
+                status=WorkflowExecutionStatus.RUNNING,
+                error="spurious error",
+            )
+
+    @pytest.mark.unit
+    def test_completed_without_completed_at_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="completed_at is required",
+        ):
+            _make_execution(status=WorkflowExecutionStatus.COMPLETED)
+
+    @pytest.mark.unit
+    def test_pending_with_completed_at_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="completed_at must be None",
+        ):
+            _make_execution(
+                status=WorkflowExecutionStatus.PENDING,
+                completed_at=datetime.now(UTC),
+            )
+
+    @pytest.mark.unit
+    def test_duplicate_node_ids_rejected(self) -> None:
+        nodes = (
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.COMPLETED,
+            ),
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.COMPLETED,
+            ),
+        )
+        with pytest.raises(ValidationError, match="Duplicate node_execution"):
+            _make_execution(node_executions=nodes)

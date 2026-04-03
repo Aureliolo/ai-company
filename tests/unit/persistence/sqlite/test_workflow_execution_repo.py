@@ -131,6 +131,7 @@ class TestSaveAndGet:
         exe = _make_execution(
             status=WorkflowExecutionStatus.FAILED,
             error="Something went wrong",
+            completed_at=datetime.now(UTC),
         )
         await repo.save(exe)
         loaded = await repo.get("wfexec-test001")
@@ -169,6 +170,7 @@ class TestVersionConflict:
                 **exe.model_dump(mode="json"),
                 "version": 2,
                 "status": "completed",
+                "completed_at": datetime.now(UTC).isoformat(),
             },
         )
         await repo.save(updated)
@@ -215,7 +217,11 @@ class TestListByStatus:
             _make_execution("wfexec-001", status=WorkflowExecutionStatus.RUNNING),
         )
         await repo.save(
-            _make_execution("wfexec-002", status=WorkflowExecutionStatus.COMPLETED),
+            _make_execution(
+                "wfexec-002",
+                status=WorkflowExecutionStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
+            ),
         )
         await repo.save(
             _make_execution("wfexec-003", status=WorkflowExecutionStatus.RUNNING),

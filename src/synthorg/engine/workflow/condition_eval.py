@@ -8,20 +8,21 @@ Supported expressions:
 
 - Boolean literals: ``"true"``, ``"false"`` (case-insensitive)
 - Key lookup (truthy): ``"has_budget"`` -- returns ``bool(context[key])``
+  Key lookup on a missing key returns ``False``
+  (``context.get(key)`` is ``None``, which is falsy).
 - Equality: ``"priority == high"`` -- returns ``context[key] == value``
 - Inequality: ``"env != prod"`` -- returns ``context[key] != value``
 - Missing keys return ``False`` (equality) or ``True`` (inequality)
 - Empty or whitespace-only expressions evaluate to ``False``
+
+This function does not raise -- all edge cases (empty expressions,
+missing keys, malformed comparisons) resolve to a boolean.
 """
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-logger = get_logger(__name__)
 
 
 def _eval_comparison(
@@ -39,6 +40,8 @@ def _eval_comparison(
         key, _, value = expr.partition(op)
         key = key.strip()
         value = value.strip()
+        if not key or not value:
+            return False
         ctx_value = context.get(key)
         missing = key not in context
         if op == "!=":
@@ -52,6 +55,11 @@ def evaluate_condition(
     context: Mapping[str, object],
 ) -> bool:
     """Evaluate a condition expression against a context dict.
+
+    This function does not raise -- all edge cases (empty
+    expressions, missing keys, malformed comparisons) resolve
+    to a boolean.  Callers should not rely on exceptions for
+    control flow from this function.
 
     Args:
         expression: The condition expression string.

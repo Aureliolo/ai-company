@@ -140,6 +140,7 @@ async def apply_create(
             project=data.project,
             created_by=data.created_by,
             assigned_to=data.assigned_to,
+            dependencies=data.dependencies,
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )

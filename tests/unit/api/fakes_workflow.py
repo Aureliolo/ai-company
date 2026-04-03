@@ -53,16 +53,22 @@ class FakeWorkflowExecutionRepository:
         self,
         definition_id: str,
     ) -> tuple[WorkflowExecution, ...]:
-        result = [
-            e for e in self._executions.values() if e.definition_id == definition_id
-        ]
+        result = sorted(
+            [e for e in self._executions.values() if e.definition_id == definition_id],
+            key=lambda e: e.updated_at,
+            reverse=True,
+        )
         return tuple(copy.deepcopy(e) for e in result)
 
     async def list_by_status(
         self,
         status: WorkflowExecutionStatus,
     ) -> tuple[WorkflowExecution, ...]:
-        result = [e for e in self._executions.values() if e.status == status]
+        result = sorted(
+            [e for e in self._executions.values() if e.status == status],
+            key=lambda e: e.updated_at,
+            reverse=True,
+        )
         return tuple(copy.deepcopy(e) for e in result)
 
     async def delete(self, execution_id: str) -> bool:

@@ -22,9 +22,12 @@ from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
+    WORKFLOW_EXEC_CANCELLED,
+    WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
+    WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
 )
-from synthorg.persistence.errors import VersionConflictError
+from synthorg.persistence.errors import PersistenceError, VersionConflictError
 
 logger = get_logger(__name__)
 
@@ -34,6 +37,11 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     user = getattr(request, "user", None)
     if user and hasattr(user, "username"):
         return str(user.username)
+    logger.warning(
+        "workflow.execution.username_fallback",
+        note="request has no user or username attribute, using 'api'",
+        path=str(request.url),
+    )
     return "api"
 
 
@@ -84,7 +92,7 @@ class WorkflowExecutionController(Controller):
             raise NotFoundError(msg) from None
         except WorkflowDefinitionInvalidError as exc:
             logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
+                WORKFLOW_EXEC_INVALID_DEFINITION,
                 workflow_id=workflow_id,
                 error=str(exc),
             )
@@ -94,7 +102,7 @@ class WorkflowExecutionController(Controller):
             )
         except WorkflowConditionEvalError as exc:
             logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
+                WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
                 workflow_id=workflow_id,
                 error=str(exc),
             )
@@ -102,15 +110,18 @@ class WorkflowExecutionController(Controller):
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
                 status_code=422,
             )
-        except ValueError as exc:
-            logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
+        except PersistenceError as exc:
+            logger.exception(
+                WORKFLOW_EXEC_INVALID_DEFINITION,
                 workflow_id=workflow_id,
                 error=str(exc),
+                note="persistence failure during activation",
             )
             return Response(
-                content=ApiResponse[WorkflowExecution](error=str(exc)),
-                status_code=422,
+                content=ApiResponse[WorkflowExecution](
+                    error="Workflow activation failed due to a storage error.",
+                ),
+                status_code=500,
             )
 
         return Response(
@@ -129,7 +140,21 @@ class WorkflowExecutionController(Controller):
     ) -> Response[ApiResponse[list[WorkflowExecution]]]:
         """List executions for a workflow definition."""
         service = _build_service(state)
-        executions = await service.list_executions(workflow_id)
+        try:
+            executions = await service.list_executions(workflow_id)
+        except PersistenceError as exc:
+            logger.exception(
+                WORKFLOW_EXEC_NOT_FOUND,
+                workflow_id=workflow_id,
+                error=str(exc),
+                note="persistence failure during list",
+            )
+            return Response(
+                content=ApiResponse[list[WorkflowExecution]](
+                    error="Failed to list workflow executions.",
+                ),
+                status_code=500,
+            )
         return Response(
             content=ApiResponse[list[WorkflowExecution]](
                 data=list(executions),
@@ -179,14 +204,19 @@ class WorkflowExecutionController(Controller):
                 cancelled_by=cancelled_by,
             )
         except WorkflowExecutionNotFoundError:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                execution_id=execution_id,
+            )
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
-        except WorkflowExecutionError as exc:
-            return Response(
-                content=ApiResponse[WorkflowExecution](error=str(exc)),
-                status_code=409,
+        except (WorkflowExecutionError, VersionConflictError) as exc:
+            logger.warning(
+                WORKFLOW_EXEC_CANCELLED,
+                execution_id=execution_id,
+                error=str(exc),
+                note="cancel conflict",
             )
-        except VersionConflictError as exc:
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
                 status_code=409,

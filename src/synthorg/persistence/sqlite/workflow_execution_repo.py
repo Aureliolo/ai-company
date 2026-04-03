@@ -49,11 +49,10 @@ _MAX_LIST_ROWS: int = 10_000
 """Safety cap on list query results pending pagination support."""
 
 
-def _parse_row_timestamps(data: dict[str, object]) -> dict[str, object]:
+def _parse_row_timestamps(data: dict[str, object]) -> None:
     """Parse ISO timestamps and ensure timezone awareness.
 
-    Returns:
-        The same dict with parsed datetime values.
+    Mutates ``data`` in-place.
     """
     for field in ("created_at", "updated_at"):
         dt = datetime.fromisoformat(str(data[field]))
@@ -65,7 +64,6 @@ def _parse_row_timestamps(data: dict[str, object]) -> dict[str, object]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         data["completed_at"] = dt
-    return data
 
 
 def _deserialize_node_executions(
@@ -109,7 +107,13 @@ def _deserialize_row(
         )
         _parse_row_timestamps(data)
         return WorkflowExecution.model_validate(data)
-    except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
+    except (
+        TypeError,
+        ValueError,
+        ValidationError,
+        json.JSONDecodeError,
+        KeyError,
+    ) as exc:
         msg = f"Failed to deserialize workflow execution {context_id!r}"
         logger.exception(
             PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
@@ -135,27 +139,59 @@ class SQLiteWorkflowExecutionRepository:
         self._db = db
 
     async def save(self, execution: WorkflowExecution) -> None:
-        """Persist a workflow execution via upsert.
+        """Persist a workflow execution (insert or update).
 
-        The upsert enforces optimistic concurrency: updates only
-        succeed when the existing row's version is exactly one
-        behind the incoming version.
+        Uses explicit create/update branches rather than upsert
+        to avoid version-conflict misclassification.
 
         Args:
             execution: Workflow execution model to persist.
 
         Raises:
+            DuplicateRecordError: If inserting a duplicate ID.
             VersionConflictError: If optimistic concurrency check fails.
             QueryError: If the database operation fails.
         """
-        node_executions_json = json.dumps(
+        if execution.version == 1:
+            await self._insert(execution)
+        else:
+            await self._update(execution)
+        logger.info(
+            PERSISTENCE_WORKFLOW_EXEC_SAVED,
+            execution_id=execution.id,
+        )
+
+    def _serialize_execution(
+        self,
+        execution: WorkflowExecution,
+    ) -> tuple[object, ...]:
+        """Build the parameter tuple for insert/update SQL."""
+        node_json = json.dumps(
             [ne.model_dump(mode="json") for ne in execution.node_executions],
         )
-        completed_at_iso = (
+        completed_iso = (
             execution.completed_at.astimezone(UTC).isoformat()
             if execution.completed_at is not None
             else None
         )
+        return (
+            execution.id,
+            execution.definition_id,
+            execution.definition_version,
+            execution.status.value,
+            node_json,
+            execution.activated_by,
+            execution.project,
+            execution.created_at.astimezone(UTC).isoformat(),
+            execution.updated_at.astimezone(UTC).isoformat(),
+            completed_iso,
+            execution.error,
+            execution.version,
+        )
+
+    async def _insert(self, execution: WorkflowExecution) -> None:
+        """Insert a new workflow execution row."""
+        params = self._serialize_execution(execution)
         try:
             cursor = await self._db.execute(
                 """\
@@ -163,47 +199,11 @@ INSERT INTO workflow_executions
     (id, definition_id, definition_version, status, node_executions,
      activated_by, project, created_at, updated_at, completed_at,
      error, version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    status=excluded.status,
-    node_executions=excluded.node_executions,
-    updated_at=excluded.updated_at,
-    completed_at=excluded.completed_at,
-    error=excluded.error,
-    version=excluded.version
-WHERE workflow_executions.version = excluded.version - 1""",
-                (
-                    execution.id,
-                    execution.definition_id,
-                    execution.definition_version,
-                    execution.status.value,
-                    node_executions_json,
-                    execution.activated_by,
-                    execution.project,
-                    execution.created_at.astimezone(UTC).isoformat(),
-                    execution.updated_at.astimezone(UTC).isoformat(),
-                    completed_at_iso,
-                    execution.error,
-                    execution.version,
-                ),
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                params,
             )
             if cursor.rowcount == 0:
-                await self._db.rollback()
-                if execution.version > 1:
-                    msg = (
-                        f"Version conflict saving workflow execution"
-                        f" {execution.id!r}: expected version"
-                        f" {execution.version - 1}, not found"
-                    )
-                    logger.warning(
-                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
-                        execution_id=execution.id,
-                        error=msg,
-                    )
-                    raise VersionConflictError(msg)
-                msg = (
-                    f"Workflow execution {execution.id!r} already exists (duplicate ID)"
-                )
+                msg = f"Workflow execution {execution.id!r} already exists"
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
@@ -211,7 +211,17 @@ WHERE workflow_executions.version = excluded.version - 1""",
                 )
                 raise DuplicateRecordError(msg)
             await self._db.commit()
+        except sqlite3.IntegrityError as exc:
+            await self._db.rollback()
+            msg = f"Workflow execution {execution.id!r} already exists (duplicate ID)"
+            logger.warning(
+                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                execution_id=execution.id,
+                error=msg,
+            )
+            raise DuplicateRecordError(msg) from exc
         except sqlite3.Error as exc:
+            await self._db.rollback()
             msg = f"Failed to save workflow execution {execution.id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
@@ -219,10 +229,47 @@ WHERE workflow_executions.version = excluded.version - 1""",
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.info(
-            PERSISTENCE_WORKFLOW_EXEC_SAVED,
-            execution_id=execution.id,
-        )
+
+    async def _update(self, execution: WorkflowExecution) -> None:
+        """Update an existing workflow execution with version check."""
+        params = self._serialize_execution(execution)
+        try:
+            cursor = await self._db.execute(
+                """\
+UPDATE workflow_executions SET
+    definition_id=?, definition_version=?, status=?,
+    node_executions=?, activated_by=?, project=?,
+    created_at=?, updated_at=?, completed_at=?,
+    error=?, version=?
+WHERE id = ? AND version = ?""",
+                (
+                    *params[1:],  # skip id (it's in WHERE)
+                    execution.id,
+                    execution.version - 1,
+                ),
+            )
+            if cursor.rowcount == 0:
+                msg = (
+                    f"Version conflict saving workflow execution"
+                    f" {execution.id!r}: expected version"
+                    f" {execution.version - 1}, not found"
+                )
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                    execution_id=execution.id,
+                    error=msg,
+                )
+                raise VersionConflictError(msg)
+            await self._db.commit()
+        except sqlite3.Error as exc:
+            await self._db.rollback()
+            msg = f"Failed to save workflow execution {execution.id!r}"
+            logger.exception(
+                PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                execution_id=execution.id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def get(
         self,
@@ -289,8 +336,8 @@ WHERE workflow_executions.version = excluded.version - 1""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE definition_id = ?"
-                f" ORDER BY updated_at DESC LIMIT {_MAX_LIST_ROWS}",
-                (definition_id,),
+                " ORDER BY updated_at DESC LIMIT ?",
+                (definition_id, _MAX_LIST_ROWS),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:
@@ -331,8 +378,8 @@ WHERE workflow_executions.version = excluded.version - 1""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
-                f" ORDER BY updated_at DESC LIMIT {_MAX_LIST_ROWS}",
-                (status.value,),
+                " ORDER BY updated_at DESC LIMIT ?",
+                (status.value, _MAX_LIST_ROWS),
             )
             rows = await cursor.fetchall()
         except sqlite3.Error as exc:

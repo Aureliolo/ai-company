@@ -23,6 +23,7 @@ __all__ = [
     "make_split_node",
     "make_start_node",
     "make_task_node",
+    "make_task_node_full",
     "make_workflow",
 ]
 

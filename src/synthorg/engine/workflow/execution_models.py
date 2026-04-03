@@ -127,7 +127,7 @@ class WorkflowExecution(BaseModel):
         default=None,
         description="Completion timestamp",
     )
-    error: str | None = Field(
+    error: NotBlankStr | None = Field(
         default=None,
         description="Error message when FAILED",
     )
@@ -140,6 +140,19 @@ class WorkflowExecution(BaseModel):
     @model_validator(mode="after")
     def _validate_status_fields(self) -> Self:
         """Enforce cross-field invariants between status and optional fields."""
+        terminal = {
+            WorkflowExecutionStatus.COMPLETED,
+            WorkflowExecutionStatus.FAILED,
+            WorkflowExecutionStatus.CANCELLED,
+        }
+        if self.status in terminal:
+            if self.completed_at is None:
+                msg = "completed_at is required when status is terminal"
+                raise ValueError(msg)
+        elif self.completed_at is not None:
+            msg = "completed_at must be None when status is not terminal"
+            raise ValueError(msg)
+
         if self.status is WorkflowExecutionStatus.FAILED:
             if self.error is None:
                 msg = "error is required when status is FAILED"

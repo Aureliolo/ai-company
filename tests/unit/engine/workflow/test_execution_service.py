@@ -271,12 +271,10 @@ class TestActivateSequential:
         task_a_id = nmap["task-a"].task_id
         assert task_a_id is not None
 
-        # Second task should depend on the first
+        # Second task should depend on the first via CreateTaskData.dependencies
         data_b, _ = task_engine.created_tasks[1]
-        # The dependency is the task_id of the first created task
-        # (verified by checking the CreateTaskData doesn't have deps --
-        # deps are set on the Task model, not CreateTaskData)
         assert data_b.title == "Step B"
+        assert task_a_id in data_b.dependencies
 
 
 class TestActivateParallel:
@@ -333,6 +331,13 @@ class TestActivateParallel:
         assert nmap["task-a"].status is WorkflowNodeExecutionStatus.TASK_CREATED
         assert nmap["task-b"].status is WorkflowNodeExecutionStatus.TASK_CREATED
         assert nmap["task-c"].status is WorkflowNodeExecutionStatus.TASK_CREATED
+
+        # task-c should depend on both parallel branches
+        task_a_id = nmap["task-a"].task_id
+        task_b_id = nmap["task-b"].task_id
+        data_c, _ = task_engine.created_tasks[2]
+        assert task_a_id in data_c.dependencies
+        assert task_b_id in data_c.dependencies
 
 
 class TestActivateConditional:
@@ -603,6 +608,7 @@ class TestCancelExecution:
             cancelled_by="admin",
         )
         assert cancelled.status is WorkflowExecutionStatus.CANCELLED
+        assert cancelled.completed_at is not None
 
     @pytest.mark.unit
     async def test_cancel_not_found(

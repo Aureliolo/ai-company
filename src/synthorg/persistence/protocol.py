@@ -67,6 +67,7 @@ class PersistenceBackend(Protocol):
         projects: Repository for Project persistence.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
+        workflow_executions: Repository for workflow execution persistence.
     """
 
     async def connect(self) -> None:

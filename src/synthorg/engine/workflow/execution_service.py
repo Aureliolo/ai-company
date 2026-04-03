@@ -71,7 +71,7 @@ _TASK_TYPE_MAP: dict[str, TaskType] = {t.value: t for t in TaskType}
 _PRIORITY_MAP: dict[str, Priority] = {p.value: p for p in Priority}
 _COMPLEXITY_MAP: dict[str, Complexity] = {c.value: c for c in Complexity}
 
-# Node types that are not TASK nodes (control flow only)
+# Node types that produce no concrete task (control flow and metadata)
 _CONTROL_NODE_TYPES = frozenset(
     {
         WorkflowNodeType.START,
@@ -95,7 +95,9 @@ def _find_upstream_task_ids(
 
     Skips through control nodes (START, END, AGENT_ASSIGNMENT,
     CONDITIONAL, PARALLEL_SPLIT, PARALLEL_JOIN) to find the actual
-    TASK predecessors.
+    TASK predecessors.  Skipped nodes are excluded entirely.
+    TASK nodes that have not yet produced a task ID (not in
+    ``node_task_ids``) are also excluded.
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -220,6 +222,16 @@ def _process_conditional_node(  # noqa: PLR0913
     else:
         taken, untaken = false_target, true_target
 
+    if true_target is None or false_target is None:
+        logger.warning(
+            WORKFLOW_EXEC_CONDITION_EVALUATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note="conditional node missing true or false edge",
+            true_target=true_target,
+            false_target=false_target,
+        )
+
     if untaken is not None and taken is not None:
         skipped_nodes.update(
             _find_skipped_nodes(untaken, taken, adjacency),
@@ -230,6 +242,53 @@ def _process_conditional_node(  # noqa: PLR0913
         node_type=node.type,
         status=WorkflowNodeExecutionStatus.COMPLETED,
     )
+
+
+def _parse_task_config(
+    config: dict[str, object],
+    node: WorkflowNode,
+    execution_id: str,
+    nid: str,
+) -> tuple[str, str, TaskType, Priority, Complexity]:
+    """Parse TASK node config into validated task parameters.
+
+    Returns:
+        A 5-tuple of (title, description, task_type, priority, complexity).
+    """
+    title = str(config.get("title", node.label))
+    description = str(config.get("description", f"Task from workflow node {nid}"))
+
+    raw_type = str(config.get("task_type", "development"))
+    task_type = _TASK_TYPE_MAP.get(raw_type, TaskType.DEVELOPMENT)
+    if raw_type not in _TASK_TYPE_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized task_type {raw_type!r}, using development",
+        )
+
+    raw_priority = str(config.get("priority", "medium"))
+    priority = _PRIORITY_MAP.get(raw_priority, Priority.MEDIUM)
+    if raw_priority not in _PRIORITY_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized priority {raw_priority!r}, using medium",
+        )
+
+    raw_complexity = str(config.get("complexity", "medium"))
+    complexity = _COMPLEXITY_MAP.get(raw_complexity, Complexity.MEDIUM)
+    if raw_complexity not in _COMPLEXITY_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized complexity {raw_complexity!r}, using medium",
+        )
+
+    return title, description, task_type, priority, complexity
 
 
 async def _process_task_node(  # noqa: PLR0913
@@ -265,39 +324,12 @@ async def _process_task_node(  # noqa: PLR0913
         A ``WorkflowNodeExecution`` in TASK_CREATED status.
     """
     config = dict(node.config)
-    title = str(config.get("title", node.label))
-    description = f"Task from workflow node {nid}"
-
-    raw_type = str(config.get("task_type", "development"))
-    task_type = _TASK_TYPE_MAP.get(raw_type, TaskType.DEVELOPMENT)
-    if raw_type not in _TASK_TYPE_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized task_type {raw_type!r}, using development",
-        )
-
-    raw_priority = str(config.get("priority", "medium"))
-    priority = _PRIORITY_MAP.get(raw_priority, Priority.MEDIUM)
-    if raw_priority not in _PRIORITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized priority {raw_priority!r}, using medium",
-        )
-
-    raw_complexity = str(config.get("complexity", "medium"))
-    complexity = _COMPLEXITY_MAP.get(raw_complexity, Complexity.MEDIUM)
-    if raw_complexity not in _COMPLEXITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized complexity {raw_complexity!r}, using medium",
-        )
-
+    title, description, task_type, priority, complexity = _parse_task_config(
+        config,
+        node,
+        execution_id,
+        nid,
+    )
     assigned_to = pending_assignments.pop(nid, None)
     upstream_ids = _find_upstream_task_ids(
         nid,
@@ -391,6 +423,9 @@ class WorkflowExecutionService:
                 validation.
             WorkflowConditionEvalError: If a condition expression
                 cannot be evaluated.
+            PersistenceError: If the execution cannot be persisted.
+            WorkflowExecutionError: If an unhandled node type is
+                encountered.
         """
         ctx = dict(context) if context else {}
 
@@ -495,13 +530,7 @@ class WorkflowExecutionService:
         Returns:
             A 2-tuple of (node_exec_map, node_task_ids).
         """
-        node_exec_map: dict[str, WorkflowNodeExecution] = {
-            nid: WorkflowNodeExecution(
-                node_id=nid,
-                node_type=node_map[nid].type,
-            )
-            for nid in sorted_ids
-        }
+        node_exec_map: dict[str, WorkflowNodeExecution] = {}
         node_task_ids: dict[str, str] = {}
         skipped_nodes: set[str] = set()
         pending_assignments: dict[str, str] = {}
@@ -580,9 +609,15 @@ class WorkflowExecutionService:
             agent_name = node.config.get("agent_name")
             if agent_name:
                 for target_id in adjacency.get(nid, []):
-                    pending_assignments[target_id] = str(
-                        agent_name,
-                    )
+                    if node_map[target_id].type is WorkflowNodeType.TASK:
+                        pending_assignments[target_id] = str(agent_name)
+            else:
+                logger.warning(
+                    WORKFLOW_EXEC_NODE_COMPLETED,
+                    execution_id=execution_id,
+                    node_id=nid,
+                    note="AGENT_ASSIGNMENT node has no agent_name",
+                )
             logger.debug(
                 WORKFLOW_EXEC_NODE_COMPLETED,
                 execution_id=execution_id,
@@ -606,7 +641,10 @@ class WorkflowExecutionService:
                 execution_id,
             )
 
-        # WorkflowNodeType.TASK
+        if node.type is not WorkflowNodeType.TASK:
+            msg = f"Unhandled node type {node.type.value!r} for node {nid!r}"
+            raise WorkflowExecutionError(msg)
+
         return await _process_task_node(
             nid,
             node,
@@ -687,12 +725,19 @@ class WorkflowExecutionService:
                 f"Cannot cancel execution {execution_id!r}"
                 f" in terminal status {execution.status.value!r}"
             )
+            logger.warning(
+                WORKFLOW_EXEC_CANCELLED,
+                execution_id=execution_id,
+                error=msg,
+            )
             raise WorkflowExecutionError(msg)
 
+        now = datetime.now(UTC)
         cancelled = execution.model_copy(
             update={
                 "status": WorkflowExecutionStatus.CANCELLED,
-                "updated_at": datetime.now(UTC),
+                "updated_at": now,
+                "completed_at": now,
                 "version": execution.version + 1,
             }
         )
