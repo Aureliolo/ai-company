@@ -61,6 +61,7 @@ from synthorg.engine.workflow.strategies import (
     EventDrivenStrategy,
     ExternalTriggerStrategy,
     HybridStrategy,
+    MilestoneDrivenStrategy,
     TaskDrivenStrategy,
     ThroughputAdaptiveStrategy,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "KanbanColumn",
     "KanbanConfig",
     "KanbanWipLimit",
+    "MilestoneDrivenStrategy",
     "MultiDimensionalVelocityCalculator",
     "ResolvedCeremonyPolicy",
     "Sprint",

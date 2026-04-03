@@ -1,8 +1,10 @@
 """Milestone-driven ceremony scheduling strategy.
 
 Ceremonies fire at semantic project milestones rather than task counts
-or time.  Milestones are defined as tags on tasks, managed via
-``on_external_event`` lifecycle hooks.
+or time.  Milestone definitions (which ceremonies they trigger) come
+from ``ceremony_policy.strategy_config``.  Task membership within
+milestones is managed at runtime via ``on_external_event`` lifecycle
+hooks (``milestone_assign`` / ``milestone_unassign`` events).
 
 **Config keys** (sprint-level ``ceremony_policy.strategy_config``):
 
@@ -97,10 +99,6 @@ class MilestoneDrivenStrategy:
     ) -> bool:
         """Check if a milestone mapped to this ceremony is complete.
 
-        A milestone is complete when it has at least one assigned task
-        and all assigned tasks appear in ``sprint.completed_task_ids``.
-        Each milestone fires exactly once (edge-triggered).
-
         Args:
             ceremony: The ceremony being evaluated.
             sprint: Current sprint state.
@@ -114,34 +112,11 @@ class MilestoneDrivenStrategy:
         for milestone_name, ceremony_name in self._milestones.items():
             if ceremony_name != ceremony.name:
                 continue
-
-            tasks = self._milestone_tasks.get(milestone_name)
-            if not tasks:
-                logger.debug(
-                    SPRINT_CEREMONY_MILESTONE_NOT_READY,
-                    ceremony=ceremony.name,
-                    milestone=milestone_name,
-                    strategy="milestone_driven",
-                )
-                continue
-
-            if milestone_name in self._fired_milestones:
-                continue
-
-            if tasks <= completed_set:
-                self._fired_milestones.add(milestone_name)
-                logger.info(
-                    SPRINT_CEREMONY_MILESTONE_COMPLETED,
-                    milestone=milestone_name,
-                    task_count=len(tasks),
-                    strategy="milestone_driven",
-                )
-                logger.info(
-                    SPRINT_CEREMONY_TRIGGERED,
-                    ceremony=ceremony.name,
-                    milestone=milestone_name,
-                    strategy="milestone_driven",
-                )
+            if self._evaluate_milestone(
+                milestone_name,
+                ceremony.name,
+                completed_set,
+            ):
                 return True
 
         logger.debug(
@@ -152,6 +127,57 @@ class MilestoneDrivenStrategy:
         )
         return False
 
+    def _evaluate_milestone(
+        self,
+        milestone_name: str,
+        ceremony_name: str,
+        completed_set: set[str],
+    ) -> bool:
+        """Evaluate whether a single milestone should fire.
+
+        A milestone is complete when it has at least one assigned task
+        and all assigned tasks appear in the completed set.  Each
+        milestone fires exactly once (edge-triggered).
+
+        Args:
+            milestone_name: Name of the milestone.
+            ceremony_name: Name of the mapped ceremony.
+            completed_set: Set of completed task IDs.
+
+        Returns:
+            ``True`` if the milestone fired.
+        """
+        tasks = self._milestone_tasks.get(milestone_name)
+        if not tasks:
+            logger.debug(
+                SPRINT_CEREMONY_MILESTONE_NOT_READY,
+                ceremony=ceremony_name,
+                milestone=milestone_name,
+                strategy="milestone_driven",
+            )
+            return False
+
+        if milestone_name in self._fired_milestones:
+            return False
+
+        if tasks <= completed_set:
+            self._fired_milestones.add(milestone_name)
+            logger.info(
+                SPRINT_CEREMONY_MILESTONE_COMPLETED,
+                milestone=milestone_name,
+                task_count=len(tasks),
+                strategy="milestone_driven",
+            )
+            logger.info(
+                SPRINT_CEREMONY_TRIGGERED,
+                ceremony=ceremony_name,
+                milestone=milestone_name,
+                strategy="milestone_driven",
+            )
+            return True
+
+        return False
+
     def should_transition_sprint(
         self,
         sprint: Sprint,
@@ -160,8 +186,9 @@ class MilestoneDrivenStrategy:
     ) -> SprintStatus | None:
         """Return IN_REVIEW when the transition milestone is complete.
 
-        Only transitions from ACTIVE status.  Uses the cached
-        ``_transition_milestone`` set during ``on_sprint_activated``.
+        Only transitions from ACTIVE status.  Uses the
+        ``_transition_milestone`` parsed during
+        ``on_sprint_activated``.
 
         Args:
             sprint: Current sprint state.
@@ -223,13 +250,17 @@ class MilestoneDrivenStrategy:
             for entry in raw_milestones:
                 if not isinstance(entry, dict):
                     continue
+                if len(self._milestones) >= _MAX_MILESTONES:
+                    break
                 name = entry.get("name")
                 ceremony = entry.get("ceremony")
                 if (
                     isinstance(name, str)
                     and name.strip()
+                    and len(name) <= _MAX_NAME_LEN
                     and isinstance(ceremony, str)
                     and ceremony.strip()
+                    and len(ceremony) <= _MAX_NAME_LEN
                 ):
                     self._milestones[name.strip()] = ceremony.strip()
 
@@ -342,6 +373,8 @@ class MilestoneDrivenStrategy:
 
         Raises:
             ValueError: If the config contains invalid keys or values.
+            TypeError: If ``milestones`` is not a list or an entry
+                is not a mapping.
         """
         unknown = set(config) - _KNOWN_CONFIG_KEYS
         if unknown:
@@ -390,10 +423,9 @@ class MilestoneDrivenStrategy:
             )
             return
 
-        if milestone not in self._milestone_tasks:
-            self._milestone_tasks[milestone] = set()
+        tasks = self._milestone_tasks.setdefault(milestone, set())
 
-        if len(self._milestone_tasks[milestone]) >= _MAX_TASKS_PER_MILESTONE:
+        if task_id not in tasks and len(tasks) >= _MAX_TASKS_PER_MILESTONE:
             logger.warning(
                 SPRINT_CEREMONY_SKIPPED,
                 reason="too_many_tasks_in_milestone",
@@ -403,13 +435,14 @@ class MilestoneDrivenStrategy:
             )
             return
 
-        self._milestone_tasks[milestone].add(task_id)
+        tasks.add(task_id)
 
-        logger.debug(
+        logger.info(
             SPRINT_CEREMONY_MILESTONE_ASSIGNED,
             task_id=task_id,
             milestone=milestone,
-            task_count=len(self._milestone_tasks[milestone]),
+            task_count=len(tasks),
+            strategy="milestone_driven",
         )
 
     def _handle_unassign(self, payload: Mapping[str, Any]) -> None:
@@ -422,6 +455,11 @@ class MilestoneDrivenStrategy:
             or not isinstance(milestone, str)
             or not milestone.strip()
         ):
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="invalid_milestone_unassign_payload",
+                strategy="milestone_driven",
+            )
             return
 
         milestone = milestone.strip()
@@ -430,11 +468,12 @@ class MilestoneDrivenStrategy:
         tasks = self._milestone_tasks.get(milestone)
         if tasks is not None:
             tasks.discard(task_id)
-            logger.debug(
+            logger.info(
                 SPRINT_CEREMONY_MILESTONE_UNASSIGNED,
                 task_id=task_id,
                 milestone=milestone,
                 remaining=len(tasks),
+                strategy="milestone_driven",
             )
 
     @staticmethod
@@ -467,31 +506,12 @@ class MilestoneDrivenStrategy:
 
         seen_names: set[str] = set()
         for i, entry in enumerate(raw):
-            if not isinstance(entry, dict):
-                msg = f"'milestones[{i}]' must be a mapping"
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="milestone_driven",
-                    index=i,
-                )
-                raise TypeError(msg)
-
-            _validate_milestone_string(entry, "name", i)
-            _validate_milestone_string(entry, "ceremony", i)
-
-            name = entry["name"].strip()
-            if name in seen_names:
-                msg = f"Duplicate milestone name: {name!r}"
-                logger.warning(
-                    SPRINT_STRATEGY_CONFIG_INVALID,
-                    strategy="milestone_driven",
-                    duplicate=name,
-                )
-                raise ValueError(msg)
-            seen_names.add(name)
+            _validate_single_milestone(entry, i, seen_names)
 
     @staticmethod
-    def _validate_transition_milestone(config: Mapping[str, Any]) -> None:
+    def _validate_transition_milestone(
+        config: Mapping[str, Any],
+    ) -> None:
         """Validate the ``transition_milestone`` config key."""
         raw = config.get(_KEY_TRANSITION_MILESTONE)
         if raw is None:
@@ -509,8 +529,8 @@ class MilestoneDrivenStrategy:
 
         if len(raw) > _MAX_NAME_LEN:
             msg = (
-                f"'transition_milestone' must be <= {_MAX_NAME_LEN} chars, "
-                f"got {len(raw)}"
+                f"'transition_milestone' must be <= "
+                f"{_MAX_NAME_LEN} chars, got {len(raw)}"
             )
             logger.warning(
                 SPRINT_STRATEGY_CONFIG_INVALID,
@@ -520,6 +540,36 @@ class MilestoneDrivenStrategy:
                 limit=_MAX_NAME_LEN,
             )
             raise ValueError(msg)
+
+
+def _validate_single_milestone(
+    entry: object,
+    index: int,
+    seen_names: set[str],
+) -> None:
+    """Validate a single milestone entry in the config list."""
+    if not isinstance(entry, dict):
+        msg = f"'milestones[{index}]' must be a mapping"
+        logger.warning(
+            SPRINT_STRATEGY_CONFIG_INVALID,
+            strategy="milestone_driven",
+            index=index,
+        )
+        raise TypeError(msg)
+
+    _validate_milestone_string(entry, "name", index)
+    _validate_milestone_string(entry, "ceremony", index)
+
+    name = entry["name"].strip()
+    if name in seen_names:
+        msg = f"Duplicate milestone name: {name!r}"
+        logger.warning(
+            SPRINT_STRATEGY_CONFIG_INVALID,
+            strategy="milestone_driven",
+            duplicate=name,
+        )
+        raise ValueError(msg)
+    seen_names.add(name)
 
 
 def _validate_milestone_string(
@@ -541,8 +591,8 @@ def _validate_milestone_string(
 
     if len(value) > _MAX_NAME_LEN:
         msg = (
-            f"'milestones[{index}].{key}' must be <= {_MAX_NAME_LEN} chars, "
-            f"got {len(value)}"
+            f"'milestones[{index}].{key}' must be <= "
+            f"{_MAX_NAME_LEN} chars, got {len(value)}"
         )
         logger.warning(
             SPRINT_STRATEGY_CONFIG_INVALID,
