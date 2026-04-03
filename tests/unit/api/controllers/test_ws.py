@@ -10,6 +10,7 @@ from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers.ws import (
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
+    _channel_allowed,
     _handle_message,
 )
 from synthorg.api.guards import _READ_ROLES, HumanRole
@@ -489,3 +490,96 @@ class TestWsTicketAuth:
         require_password_changed(connection, MagicMock())
         # Reaching here without PermissionDeniedException confirms
         # the guard passes through for WS scope with no user.
+
+
+@pytest.mark.unit
+class TestChannelAllowed:
+    """Tests for _channel_allowed server-side access control."""
+
+    def test_user_channel_allowed_for_owner(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="owner",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        assert _channel_allowed("user:u1", user) is True
+
+    def test_user_channel_denied_for_non_owner(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u2",
+            username="other",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        assert _channel_allowed("user:u1", user) is False
+
+    def test_budget_channel_allowed_for_ceo(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="ceo",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        assert _channel_allowed("budget", user) is True
+
+    def test_budget_channel_denied_for_observer(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="observer",
+            role=HumanRole.OBSERVER,
+            auth_method=AuthMethod.JWT,
+        )
+        assert _channel_allowed("budget", user) is False
+
+    def test_normal_channel_allowed_for_all(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="observer",
+            role=HumanRole.OBSERVER,
+            auth_method=AuthMethod.JWT,
+        )
+        assert _channel_allowed("tasks", user) is True
+
+
+@pytest.mark.unit
+class TestSubscribeAccessControl:
+    """Tests for subscribe channel filtering based on user identity."""
+
+    def test_own_user_channel_accepted(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="owner",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+        result = _handle_message(
+            json.dumps({"action": "subscribe", "channels": ["user:u1"]}),
+            subscribed,
+            filters,
+            user,
+        )
+        data = json.loads(result)
+        assert "user:u1" in data["channels"]
+        assert "user:u1" in subscribed
+
+    def test_other_user_channel_silently_dropped(self) -> None:
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="owner",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+        )
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+        result = _handle_message(
+            json.dumps({"action": "subscribe", "channels": ["user:u2"]}),
+            subscribed,
+            filters,
+            user,
+        )
+        data = json.loads(result)
+        assert "user:u2" not in data["channels"]
+        assert "user:u2" not in subscribed

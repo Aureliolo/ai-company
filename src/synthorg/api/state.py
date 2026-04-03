@@ -441,6 +441,11 @@ class AppState:
         return self._ticket_store
 
     @property
+    def has_session_store(self) -> bool:
+        """Check whether the session store is configured."""
+        return self._session_store is not None
+
+    @property
     def session_store(self) -> SessionStore:
         """Return the JWT session store."""
         return self._require_service(
@@ -453,8 +458,18 @@ class AppState:
 
         Args:
             store: Configured session store.
+
+        Raises:
+            RuntimeError: If the session store has already been set.
         """
+        if self._session_store is not None:
+            msg = "session_store is already configured"
+            raise RuntimeError(msg)
         self._session_store = store
+        logger.info(
+            "app.state.session_store_set",
+            note="Session store configured",
+        )
 
     @property
     def user_presence(self) -> UserPresence:

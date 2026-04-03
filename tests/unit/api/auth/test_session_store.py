@@ -172,6 +172,7 @@ class TestSessionStoreList:
         await store.create(
             _make_session(
                 session_id="s2",
+                created_at=_NOW - timedelta(hours=2),
                 expires_at=_NOW - timedelta(hours=1),
             ),
         )
@@ -271,6 +272,7 @@ class TestSessionStoreCleanup:
         await store.create(
             _make_session(
                 session_id="expired",
+                created_at=_NOW - timedelta(hours=2),
                 expires_at=_NOW - timedelta(hours=1),
             ),
         )
@@ -289,6 +291,7 @@ class TestSessionStoreCleanup:
         await store.create(
             _make_session(
                 session_id="expired",
+                created_at=_NOW - timedelta(hours=2),
                 expires_at=_NOW - timedelta(hours=1),
             ),
         )
@@ -317,17 +320,3 @@ class TestSessionStoreLoadRevoked:
         assert store2.is_revoked("sess-1") is False
         await store2.load_revoked()
         assert store2.is_revoked("sess-1") is True
-
-
-class TestSessionStoreUpdateLastActive:
-    async def test_update_last_active(
-        self,
-        store: SessionStore,
-    ) -> None:
-        await store.create(_make_session())
-        new_time = _NOW + timedelta(minutes=5)
-        await store.update_last_active("sess-1", new_time)
-
-        session = await store.get("sess-1")
-        assert session is not None
-        assert session.last_active_at == new_time

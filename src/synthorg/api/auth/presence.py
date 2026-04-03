@@ -31,6 +31,11 @@ class UserPresence:
             user_id: The connecting user's ID.
         """
         self._counts[user_id] = self._counts.get(user_id, 0) + 1
+        logger.debug(
+            "user.presence.connect",
+            user_id=user_id,
+            count=self._counts[user_id],
+        )
 
     def disconnect(self, user_id: str) -> None:
         """Record a WebSocket disconnection for a user.
@@ -41,8 +46,18 @@ class UserPresence:
         count = self._counts.get(user_id, 0) - 1
         if count <= 0:
             self._counts.pop(user_id, None)
+            logger.debug(
+                "user.presence.disconnect",
+                user_id=user_id,
+                count=0,
+            )
         else:
             self._counts[user_id] = count
+            logger.debug(
+                "user.presence.disconnect",
+                user_id=user_id,
+                count=count,
+            )
 
     def is_online(self, user_id: str) -> bool:
         """Check whether a user has at least one open connection.

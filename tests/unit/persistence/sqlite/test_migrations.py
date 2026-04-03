@@ -61,7 +61,7 @@ _EXPECTED_INDEXES = {
     "idx_ae_verdict",
     "idx_ae_risk_level",
     "idx_api_keys_user_id",
-    "idx_sessions_user_id",
+    "idx_sessions_user_revoked_expires",
     "idx_sessions_expires_at",
     "idx_cp_execution_id",
     "idx_cp_task_id",

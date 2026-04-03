@@ -601,6 +601,10 @@ class FakePersistenceBackend:
     async def disconnect(self) -> None:
         self._connected = False
 
+    def get_db(self) -> object:
+        msg = "FakePersistenceBackend does not expose a real DB"
+        raise NotImplementedError(msg)
+
     async def health_check(self) -> bool:
         return self._connected
 
@@ -715,11 +719,24 @@ class FakeSettingsRepository:
         result = [(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())]
         return tuple(result)
 
-    async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
+    async def set(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+        updated_at: str,
+        *,
+        expected_updated_at: str | None = None,
+    ) -> bool:
+        if expected_updated_at is not None:
+            current = self._store.get((namespace, key))
+            if current is None or current[1] != expected_updated_at:
+                return False
         self._store = {
             **self._store,
             (namespace, key): (value, updated_at),
         }
+        return True
 
     async def delete(self, namespace: str, key: str) -> bool:
         if (namespace, key) in self._store:

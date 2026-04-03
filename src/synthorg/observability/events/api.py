@@ -84,6 +84,7 @@ API_USER_LISTED: Final[str] = "api.user.listed"
 
 # Session management
 API_SESSION_CREATED: Final[str] = "api.session.created"
+API_SESSION_CREATE_FAILED: Final[str] = "api.session.create_failed"
 API_SESSION_REVOKED: Final[str] = "api.session.revoked"
 API_SESSION_LISTED: Final[str] = "api.session.listed"
 API_SESSION_CLEANUP: Final[str] = "api.session.cleanup"

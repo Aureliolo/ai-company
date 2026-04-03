@@ -103,6 +103,7 @@ class TestJWT:
             "username": user.username,
             "role": user.role.value,
             "must_change_password": False,
+            "jti": "expired-jti",
             "iat": datetime.now(UTC) - timedelta(hours=2),
             "exp": datetime.now(UTC) - timedelta(hours=1),
         }

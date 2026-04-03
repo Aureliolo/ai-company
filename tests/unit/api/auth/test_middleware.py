@@ -58,6 +58,7 @@ def _build_app(
         def __init__(self) -> None:
             self.auth_service = auth_service
             self.persistence = persistence
+            self.has_session_store = False
 
     app = Litestar(
         route_handlers=[protected_route, public_route],
@@ -419,6 +420,7 @@ class TestAuthMiddlewareSystemUser:
                 "sub": "system",
                 "iss": "synthorg-cli",
                 "aud": "synthorg-backend",
+                "jti": "sys-jti-1",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },
@@ -463,6 +465,7 @@ class TestAuthMiddlewareSystemUser:
                     "sub": "system",
                     "iss": "synthorg-cli",
                     "aud": "synthorg-backend",
+                    "jti": "sys-jti-3",
                     "iat": now,
                     "exp": now + timedelta(seconds=60),
                 },
@@ -599,6 +602,7 @@ class TestAuthMiddlewareSystemUser:
                 "iss": "synthorg-cli",
                 "aud": "synthorg-backend",
                 "pwd_sig": "stale-signature-",
+                "jti": "sys-jti-2",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },

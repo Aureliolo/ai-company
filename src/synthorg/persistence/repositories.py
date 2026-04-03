@@ -743,7 +743,9 @@ class SettingsRepository(Protocol):
         key: NotBlankStr,
         value: str,
         updated_at: str,
-    ) -> None:
+        *,
+        expected_updated_at: str | None = None,
+    ) -> bool:
         """Upsert a setting value.
 
         Args:
@@ -751,6 +753,12 @@ class SettingsRepository(Protocol):
             key: Setting key within the namespace.
             value: Setting value as a string.
             updated_at: ISO 8601 timestamp of the change.
+            expected_updated_at: When provided, the row is only
+                updated if the current ``updated_at`` matches
+                (atomic compare-and-swap).
+
+        Returns:
+            ``True`` if the write succeeded.
 
         Raises:
             PersistenceError: If the operation fails.

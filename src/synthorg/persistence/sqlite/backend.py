@@ -180,6 +180,17 @@ class SQLitePersistenceBackend:
         limit = int(self._config.journal_size_limit)
         await self._db.execute(f"PRAGMA journal_size_limit={limit}")
 
+    def get_db(self) -> aiosqlite.Connection:
+        """Return the shared database connection.
+
+        Raises:
+            PersistenceConnectionError: If not yet connected.
+        """
+        if self._db is None:
+            msg = "Database not connected"
+            raise PersistenceConnectionError(msg)
+        return self._db
+
     def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101

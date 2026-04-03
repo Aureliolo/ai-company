@@ -14,7 +14,9 @@ from synthorg.api.errors import (
     ForbiddenError,
     NotFoundError,
     ServiceUnavailableError,
+    SessionRevokedError,
     UnauthorizedError,
+    VersionConflictError,
     category_title,
     category_type_uri,
 )
@@ -172,6 +174,18 @@ class TestApiErrorMetadata:
                 ErrorCategory.INTERNAL,
                 ErrorCode.SERVICE_UNAVAILABLE,
                 True,
+            ),
+            (
+                VersionConflictError,
+                ErrorCategory.CONFLICT,
+                ErrorCode.VERSION_CONFLICT,
+                False,
+            ),
+            (
+                SessionRevokedError,
+                ErrorCategory.AUTH,
+                ErrorCode.SESSION_REVOKED,
+                False,
             ),
         ],
     )

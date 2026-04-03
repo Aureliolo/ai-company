@@ -1,8 +1,9 @@
 """Optimistic concurrency via ETag / If-Match.
 
-Provides utilities for computing weak ETags from resource state
+Provides utilities for computing strong ETags from resource state
 and validating ``If-Match`` request headers to detect concurrent
-modification conflicts.
+modification conflicts.  Strong ETags are required for
+``If-Match`` per RFC 7232 / RFC 9110.
 """
 
 import hashlib
@@ -17,23 +18,23 @@ logger = get_logger(__name__)
 
 
 def compute_etag(value: str, updated_at: str) -> str:
-    """Compute a weak ETag from value and timestamp.
+    """Compute a strong ETag from value and timestamp.
 
-    Uses SHA-256 truncated to 16 hex characters, prefixed with
-    ``W/`` per RFC 7232 (weak validator -- the representation
-    may vary by encoding).
+    Uses SHA-256 truncated to 16 hex characters.  Strong ETags
+    are required for ``If-Match`` precondition checks per
+    RFC 7232 / RFC 9110.
 
     Args:
         value: Resource value (e.g. setting value, config JSON).
         updated_at: Last-modified timestamp string.
 
     Returns:
-        Weak ETag string like ``W/"a1b2c3d4e5f6g7h8"``.
+        Strong ETag string like ``"a1b2c3d4e5f67890"``.
     """
     digest = hashlib.sha256(
         f"{value}:{updated_at}".encode(),
     ).hexdigest()[:16]
-    return f'W/"{digest}"'
+    return f'"{digest}"'
 
 
 def check_if_match(

@@ -58,10 +58,14 @@ class SessionStore:
     async def load_revoked(self) -> None:
         """Load revoked session IDs from SQLite into memory.
 
-        Call once at startup to restore revocation state.
+        Call once at startup to restore revocation state.  Only
+        loads sessions that have not yet expired -- expired JWTs
+        are rejected by the decoder regardless of revocation.
         """
+        now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
-            "SELECT session_id FROM sessions WHERE revoked = 1",
+            "SELECT session_id FROM sessions WHERE revoked = 1 AND expires_at > ?",
+            (now,),
         )
         rows = await cursor.fetchall()
         self._revoked = {row["session_id"] for row in rows}
@@ -179,8 +183,11 @@ class SessionStore:
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user.
 
-        Updates first, then re-queries to capture any sessions
-        created between the UPDATE and the in-memory sync.
+        After the UPDATE, re-queries to collect all revoked
+        session IDs for in-memory set synchronization (the
+        UPDATE only returns a count, not the affected IDs).
+        Only non-expired sessions are loaded into the
+        in-memory set.
 
         Args:
             user_id: The user whose sessions to revoke.
@@ -197,10 +204,11 @@ class SessionStore:
         if count == 0:
             return 0
 
-        # Re-query to get the authoritative revoked set.
+        now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
-            "SELECT session_id FROM sessions WHERE user_id = ? AND revoked = 1",
-            (user_id,),
+            "SELECT session_id FROM sessions "
+            "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
+            (user_id, now),
         )
         rows = await cursor.fetchall()
         self._revoked.update(row["session_id"] for row in rows)
@@ -252,20 +260,3 @@ class SessionStore:
         self._revoked -= ids
         logger.debug(API_SESSION_CLEANUP, removed=len(ids))
         return len(ids)
-
-    async def update_last_active(
-        self,
-        session_id: str,
-        timestamp: datetime,
-    ) -> None:
-        """Update the last-active timestamp for a session.
-
-        Args:
-            session_id: The JWT ``jti`` claim.
-            timestamp: The new last-active timestamp.
-        """
-        await self._db.execute(
-            "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
-            (timestamp.isoformat(), session_id),
-        )
-        await self._db.commit()

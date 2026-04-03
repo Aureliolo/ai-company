@@ -5,6 +5,7 @@ authentication, and the top-level ``ApiConfig`` that aggregates
 them all.
 """
 
+import ipaddress
 from enum import StrEnum
 from typing import Self
 
@@ -176,6 +177,17 @@ class ServerConfig(BaseModel):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_empty_tls(cls, data: dict[str, object]) -> dict[str, object]:
+        """Normalize empty-string TLS paths to ``None``."""
+        if isinstance(data, dict):
+            for key in ("ssl_certfile", "ssl_keyfile", "ssl_ca_certs"):
+                val = data.get(key)
+                if isinstance(val, str) and not val.strip():
+                    data[key] = None
+        return data
+
     @model_validator(mode="after")
     def _validate_tls_pair(self) -> Self:
         """Require both cert and key when either is set."""
@@ -192,6 +204,17 @@ class ServerConfig(BaseModel):
         if has_ca and not has_cert:
             msg = "ssl_certfile is required when ssl_ca_certs is set"
             raise ValueError(msg)
+
+        # Validate trusted_proxies as valid IP/CIDR entries.
+        for entry in self.trusted_proxies:
+            try:
+                ipaddress.ip_network(entry, strict=False)
+            except ValueError:
+                msg = (
+                    f"Invalid trusted_proxies entry: {entry!r} "
+                    f"(must be an IP address or CIDR notation)"
+                )
+                raise ValueError(msg) from None
 
         if (
             self.host == "0.0.0.0"  # noqa: S104

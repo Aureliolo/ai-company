@@ -14,6 +14,9 @@ from synthorg.api.channels import (
     CHANNEL_SYSTEM,
     CHANNEL_TASKS,
     create_channels_plugin,
+    extract_user_id,
+    is_user_channel,
+    user_channel,
 )
 
 
@@ -47,3 +50,24 @@ class TestChannels:
         # Arbitrary channels are enabled for dynamic user:{id} channels.
         assert plugin._arbitrary_channels_allowed is True
         assert set(plugin._channels) == set(ALL_CHANNELS)
+
+
+@pytest.mark.unit
+class TestUserChannelHelpers:
+    def test_user_channel_returns_prefixed(self) -> None:
+        assert user_channel("abc") == "user:abc"
+
+    def test_is_user_channel_true(self) -> None:
+        assert is_user_channel("user:abc") is True
+
+    def test_is_user_channel_false(self) -> None:
+        assert is_user_channel("tasks") is False
+
+    def test_extract_user_id_valid(self) -> None:
+        assert extract_user_id("user:abc") == "abc"
+
+    def test_extract_user_id_non_user_channel(self) -> None:
+        assert extract_user_id("tasks") is None
+
+    def test_extract_user_id_empty_suffix(self) -> None:
+        assert extract_user_id("user:") == ""

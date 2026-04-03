@@ -219,8 +219,8 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
         # Session cleanup also runs every iteration.
         try:
-            if app_state._session_store is not None:  # noqa: SLF001
-                await app_state._session_store.cleanup_expired()  # noqa: SLF001
+            if app_state.has_session_store:
+                await app_state.session_store.cleanup_expired()
         except MemoryError, RecursionError:
             raise
         except Exception:

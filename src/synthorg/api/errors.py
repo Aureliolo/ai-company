@@ -202,8 +202,8 @@ class ConflictError(ApiError):
 class VersionConflictError(ApiError):
     """Raised when an ETag/If-Match version check fails (409).
 
-    Used for optimistic concurrency control on settings,
-    company config, and agent modification endpoints.
+    Used for ETag/If-Match optimistic concurrency checks --
+    currently on settings endpoints.
     """
 
     default_message: ClassVar[str] = "Version conflict"
@@ -223,6 +223,22 @@ class ForbiddenError(ApiError):
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=403)
+
+
+class SessionRevokedError(ApiError):
+    """Raised when a revoked session token is used (401).
+
+    Gives clients a distinct error code (``SESSION_REVOKED``) so
+    they can show a "you were logged out" message instead of a
+    generic auth failure.
+    """
+
+    default_message: ClassVar[str] = "Session has been revoked"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.SESSION_REVOKED
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=401)
 
 
 class UnauthorizedError(ApiError):

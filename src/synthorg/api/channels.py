@@ -117,7 +117,8 @@ def publish_ws_event(
     Args:
         request: The incoming Litestar request.
         event_type: Classification of the event.
-        channel: Target channel name (must be in ``ALL_CHANNELS``).
+        channel: Target channel name (shared channels from
+            ``ALL_CHANNELS`` or dynamic ``user:{id}`` channels).
         payload: Event-specific data.
     """
     channels_plugin = get_channels_plugin(request)

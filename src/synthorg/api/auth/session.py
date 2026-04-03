@@ -1,6 +1,8 @@
 """Session domain model for JWT session tracking."""
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, model_validator
 
 from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -19,9 +21,10 @@ class Session(BaseModel):
         username: Owner's login name (denormalized for display).
         role: Owner's role at session creation time.
         ip_address: Client IP at login time.
-        user_agent: Client User-Agent header at login time.
+        user_agent: Client User-Agent header at login time
+            (capped at 512 characters).
         created_at: Session creation timestamp.
-        last_active_at: Last request timestamp (debounced).
+        last_active_at: Last request timestamp.
         expires_at: JWT expiry timestamp.
         revoked: Whether the session has been revoked.
     """
@@ -38,3 +41,11 @@ class Session(BaseModel):
     last_active_at: AwareDatetime
     expires_at: AwareDatetime
     revoked: bool = False
+
+    @model_validator(mode="after")
+    def _validate_temporal_ordering(self) -> Self:
+        """Ensure ``created_at <= expires_at``."""
+        if self.created_at > self.expires_at:
+            msg = "created_at must not be after expires_at"
+            raise ValueError(msg)
+        return self

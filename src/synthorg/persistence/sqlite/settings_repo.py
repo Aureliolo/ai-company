@@ -102,17 +102,44 @@ class SQLiteSettingsRepository:
         key: NotBlankStr,
         value: str,
         updated_at: str,
-    ) -> None:
-        """Upsert a setting."""
+        *,
+        expected_updated_at: str | None = None,
+    ) -> bool:
+        """Upsert a setting.
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key.
+            value: Serialized setting value.
+            updated_at: New ``updated_at`` timestamp.
+            expected_updated_at: When provided, enforces atomic
+                compare-and-swap -- the row is only updated if
+                the current ``updated_at`` matches.
+
+        Returns:
+            ``True`` if the write succeeded, ``False`` if the
+            compare-and-swap condition was not met.
+        """
         try:
-            await self._db.execute(
-                "INSERT INTO settings (namespace, key, value, updated_at) "
-                "VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(namespace, key) DO UPDATE SET "
-                "value=excluded.value, updated_at=excluded.updated_at",
-                (namespace, key, value, updated_at),
-            )
-            await self._db.commit()
+            if expected_updated_at is not None:
+                cursor = await self._db.execute(
+                    "UPDATE settings SET value = ?, updated_at = ? "
+                    "WHERE namespace = ? AND key = ? "
+                    "AND updated_at = ?",
+                    (value, updated_at, namespace, key, expected_updated_at),
+                )
+                await self._db.commit()
+                if cursor.rowcount == 0:
+                    return False
+            else:
+                await self._db.execute(
+                    "INSERT INTO settings (namespace, key, value, updated_at) "
+                    "VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(namespace, key) DO UPDATE SET "
+                    "value=excluded.value, updated_at=excluded.updated_at",
+                    (namespace, key, value, updated_at),
+                )
+                await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to set setting {namespace}/{key}"
             logger.exception(
@@ -127,6 +154,7 @@ class SQLiteSettingsRepository:
             namespace=namespace,
             key=key,
         )
+        return True
 
     async def delete(
         self,

@@ -164,11 +164,27 @@ async def _check_setting_etag(
     app_state: AppState,
     namespace: str,
     key: str,
-) -> None:
-    """Validate If-Match header against current setting ETag."""
+) -> str | None:
+    """Validate If-Match header against current setting ETag.
+
+    Args:
+        request: Incoming request with optional ``If-Match`` header.
+        app_state: Application state for settings lookup.
+        namespace: Setting namespace.
+        key: Setting key.
+
+    Returns:
+        The current ``updated_at`` value when ``If-Match`` is
+        present (used for atomic compare-and-swap), or ``None``
+        when no ``If-Match`` header is provided.
+
+    Raises:
+        NotFoundException: If the setting does not exist.
+        VersionConflictError: If the ETag does not match.
+    """
     if_match = request.headers.get("if-match")
     if not if_match:
-        return
+        return None
     try:
         current = await app_state.settings_service.get_entry(
             namespace,
@@ -181,6 +197,7 @@ async def _check_setting_etag(
         current.updated_at or "",
     )
     check_if_match(if_match, current_etag, f"{namespace}:{key}")
+    return current.updated_at or ""
 
 
 class SettingsController(Controller):
@@ -314,13 +331,19 @@ class SettingsController(Controller):
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
 
-        await _check_setting_etag(request, app_state, namespace, key)
+        expected_updated_at = await _check_setting_etag(
+            request,
+            app_state,
+            namespace,
+            key,
+        )
 
         try:
             entry = await app_state.settings_service.set(
                 namespace,
                 key,
                 data.value,
+                expected_updated_at=expected_updated_at,
             )
         except SettingNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc

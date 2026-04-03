@@ -4,7 +4,7 @@ Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.hr.persistence_protocol import (
@@ -95,6 +95,17 @@ class PersistenceBackend(Protocol):
 
         Raises:
             MigrationError: If a migration fails.
+        """
+        ...
+
+    def get_db(self) -> Any:
+        """Return the underlying database connection.
+
+        Returns:
+            The raw database connection object (backend-specific).
+
+        Raises:
+            PersistenceConnectionError: If not yet connected.
         """
         ...
 

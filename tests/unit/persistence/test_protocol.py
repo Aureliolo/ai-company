@@ -401,6 +401,10 @@ class _FakeBackend:
     async def migrate(self) -> None:
         pass
 
+    def get_db(self) -> object:
+        msg = "Not supported"
+        raise NotImplementedError(msg)
+
     @property
     def is_connected(self) -> bool:
         return True

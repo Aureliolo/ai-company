@@ -24,15 +24,16 @@ class TestComputeEtag:
         etag2 = compute_etag("hello", "2026-01-02T00:00:00Z")
         assert etag1 != etag2
 
-    def test_weak_etag_format(self) -> None:
+    def test_strong_etag_format(self) -> None:
         etag = compute_etag("test", "2026-01-01T00:00:00Z")
-        assert etag.startswith('W/"')
+        assert etag.startswith('"')
         assert etag.endswith('"')
+        assert not etag.startswith('W/"')
 
     def test_etag_length(self) -> None:
         etag = compute_etag("test", "2026-01-01T00:00:00Z")
-        # W/" + 16 hex chars + "
-        assert len(etag) == 20
+        # " + 16 hex chars + "
+        assert len(etag) == 18
 
 
 class TestCheckIfMatch:

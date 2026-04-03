@@ -463,13 +463,23 @@ class SettingsService:
         self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
         logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
-    async def set(self, namespace: str, key: str, value: str) -> SettingEntry:
+    async def set(
+        self,
+        namespace: str,
+        key: str,
+        value: str,
+        *,
+        expected_updated_at: str | None = None,
+    ) -> SettingEntry:
         """Validate and persist a setting value.
 
         Args:
             namespace: Setting namespace.
             key: Setting key.
             value: New value as a string.
+            expected_updated_at: When provided, enforces atomic
+                compare-and-swap -- raises ``VersionConflictError``
+                if the current ``updated_at`` does not match.
 
         Returns:
             The updated setting entry.
@@ -479,6 +489,8 @@ class SettingsService:
             SettingValidationError: If the value fails validation.
             SettingsEncryptionError: If the setting is sensitive and
                 no encryptor is available.
+            VersionConflictError: If ``expected_updated_at`` is
+                provided and does not match the current value.
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
@@ -516,12 +528,20 @@ class SettingsService:
 
         # Persist
         updated_at = _now_iso()
-        await self._repository.set(
+        written = await self._repository.set(
             NotBlankStr(namespace),
             NotBlankStr(key),
             store_value,
             updated_at,
+            expected_updated_at=expected_updated_at,
         )
+        if not written:
+            from synthorg.api.errors import (  # noqa: PLC0415
+                VersionConflictError,
+            )
+
+            msg = f"Concurrent modification on {namespace}/{key}"
+            raise VersionConflictError(msg)
 
         self._invalidate_cache(namespace, key)
 
