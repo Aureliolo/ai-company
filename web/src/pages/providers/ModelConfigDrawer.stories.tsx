@@ -53,8 +53,20 @@ export const Default: Story = {
   args: { model: baseModel, open: true },
 }
 
-export const EmptyParams: Story = {
-  args: { model: { ...baseModel, local_params: null }, open: true },
+export const AllNullParams: Story = {
+  args: {
+    model: {
+      ...baseModel,
+      local_params: {
+        num_ctx: null,
+        num_gpu_layers: null,
+        num_threads: null,
+        num_batch: null,
+        repeat_penalty: null,
+      },
+    },
+    open: true,
+  },
 }
 
 export const WithExistingParams: Story = {

@@ -33,6 +33,35 @@ class TestPullProgressEvent:
         assert evt.error is None
         assert evt.done is False
 
+    def test_error_requires_done(self) -> None:
+        """Error events must be terminal (done=True)."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="error events must be terminal"):
+            PullProgressEvent(status="failed", error="something broke")
+
+    def test_error_with_done_is_valid(self) -> None:
+        evt = PullProgressEvent(
+            status="failed",
+            error="something broke",
+            done=True,
+        )
+        assert evt.error == "something broke"
+        assert evt.done is True
+
+    def test_completed_cannot_exceed_total(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(
+            ValidationError,
+            match="completed_bytes cannot exceed",
+        ):
+            PullProgressEvent(
+                status="pulling",
+                total_bytes=100,
+                completed_bytes=200,
+            )
+
 
 class TestGetLocalModelManager:
     def test_ollama_returns_manager(self) -> None:

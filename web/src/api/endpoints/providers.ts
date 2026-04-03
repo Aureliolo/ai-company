@@ -135,6 +135,7 @@ function processSseLines(
         if (state.currentEvent === 'error' || parsed.error) {
           const errorMsg = parsed.error ?? parsed.status ?? 'Pull failed'
           state.currentEvent = ''
+          onProgress(parsed)
           throw new Error(errorMsg)
         }
         onProgress(parsed)

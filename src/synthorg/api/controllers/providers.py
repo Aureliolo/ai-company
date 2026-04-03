@@ -52,6 +52,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MODEL_CAPABILITIES_LOOKUP_FAILED,
+    API_MODEL_OPERATION_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
@@ -754,8 +755,9 @@ class ProviderController(Controller):
             raise NotFoundError(str(exc)) from exc
         except RuntimeError as exc:
             logger.exception(
-                API_SSE_PULL_MODEL_FAILED,
+                API_MODEL_OPERATION_FAILED,
                 resource="model",
+                operation="delete",
                 name=model_id,
                 provider=name,
                 error=str(exc),
@@ -824,8 +826,9 @@ class ProviderController(Controller):
         if model is None:
             msg = f"Model {model_id!r} missing from updated config"
             logger.error(
-                API_VALIDATION_FAILED,
+                API_MODEL_OPERATION_FAILED,
                 resource="model",
+                operation="config_update",
                 name=model_id,
                 provider=name,
                 error=msg,

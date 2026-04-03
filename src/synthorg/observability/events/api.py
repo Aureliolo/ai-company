@@ -62,6 +62,7 @@ API_WS_AUTH_STAGE: Final[str] = "api.ws.auth_stage"
 
 # SSE streaming
 API_SSE_PULL_MODEL_FAILED: Final[str] = "api.sse.pull_model_failed"
+API_MODEL_OPERATION_FAILED: Final[str] = "api.model.operation_failed"
 API_OPENAPI_SCHEMA_ENHANCED: Final[str] = "api.openapi.schema_enhanced"
 API_RESOURCE_CONFLICT: Final[str] = "api.resource.conflict"
 API_VALIDATION_FAILED: Final[str] = "api.validation.failed"

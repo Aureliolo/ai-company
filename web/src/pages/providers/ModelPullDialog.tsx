@@ -3,6 +3,7 @@ import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
+import { LiveRegion } from '@/components/ui/live-region'
 import { useProvidersStore } from '@/stores/providers'
 import { Download } from 'lucide-react'
 
@@ -90,14 +91,16 @@ export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialog
                   variant="linear"
                 />
               </div>
-              <p className="text-center text-sm text-text-secondary truncate">
-                {statusText}
-              </p>
-              {pullProgress?.error && (
-                <p className="text-center text-sm text-danger">
-                  {pullProgress.error}
+              <LiveRegion>
+                <p className="text-center text-sm text-text-secondary truncate">
+                  {statusText}
                 </p>
-              )}
+                {pullProgress?.error && (
+                  <p className="text-center text-sm text-danger">
+                    {pullProgress.error}
+                  </p>
+                )}
+              </LiveRegion>
               <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={handleCancel}>
                   Cancel

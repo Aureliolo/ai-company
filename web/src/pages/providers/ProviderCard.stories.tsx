@@ -54,7 +54,7 @@ export const Down: Story = { args: { provider: baseProvider, health: { ...health
 export const NoHealth: Story = { args: { provider: baseProvider, health: null } }
 export const LocalProvider: Story = {
   args: {
-    provider: { ...baseProvider, name: 'ollama-local', litellm_provider: 'ollama', auth_type: 'none', base_url: 'http://localhost:11434', models: [], has_api_key: false },
+    provider: { ...baseProvider, name: 'ollama-local', litellm_provider: 'ollama', auth_type: 'none', base_url: 'http://localhost:11434', models: [], has_api_key: false, supports_model_pull: true, supports_model_delete: true, supports_model_config: true },
     health: null,
   },
 }

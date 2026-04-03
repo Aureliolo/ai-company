@@ -89,7 +89,10 @@ export default function ProviderDetailPage() {
           }}
           testingConnection={testingConnection}
           onRefresh={() => {
-            useProvidersStore.getState().discoverModels(decodedName)
+            useProvidersStore.getState().discoverModels(
+              decodedName,
+              provider.preset_name ?? undefined,
+            )
           }}
           refreshing={discoveringModels}
           onPullModel={() => setPullOpen(true)}

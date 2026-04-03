@@ -60,7 +60,7 @@ export const PullError: Story = {
   decorators: [
     (Story) => {
       useProvidersStore.setState({
-        pullingModel: true,
+        pullingModel: false,
         pullProgress: {
           status: 'Error',
           progress_percent: 0,

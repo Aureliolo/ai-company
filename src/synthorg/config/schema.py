@@ -43,7 +43,15 @@ logger = get_logger(__name__)
 
 
 class LocalModelParams(BaseModel):
-    """Per-model launch parameters for local providers."""
+    """Per-model launch parameters for local providers.
+
+    Attributes:
+        num_ctx: Context window size override in tokens.
+        num_gpu_layers: Number of layers to offload to GPU (0 = CPU only).
+        num_threads: CPU thread count for inference.
+        num_batch: Batch size for prompt processing.
+        repeat_penalty: Repetition penalty multiplier (1.0 = disabled).
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
@@ -134,6 +142,9 @@ class ProviderConfig(BaseModel):
         subscription: Subscription and quota configuration.
         degradation: Degradation strategy when quota exhausted.
         family: Provider family for cross-validation grouping.
+        preset_name: Name of the preset used to create this provider
+            (if any).  Used to resolve local model management
+            capabilities.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
