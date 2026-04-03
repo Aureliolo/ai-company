@@ -18,7 +18,6 @@ import {
   createWorkflow,
   updateWorkflow,
   validateWorkflowDraft,
-  exportWorkflowYaml,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 import { getErrorMessage } from '@/utils/errors'
@@ -194,12 +193,23 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       set({ error: 'Cannot save: no workflow loaded' })
       return
     }
+    // Validate types before saving -- abort with error if any are missing
+    const badNodes = nodes.filter((n) => !n.type)
+    const badEdges = edges.filter((e) => !(e.data as Record<string, unknown>)?.edgeType)
+    if (badNodes.length > 0 || badEdges.length > 0) {
+      const parts: string[] = []
+      if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
+      if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
+      set({ error: `Cannot save -- ${parts.join('; ')}. Remove and re-add the affected items.` })
+      return
+    }
+
     set({ saving: true, error: null })
     try {
       const updatedDef = await updateWorkflow(definition.id, {
         nodes: nodes.map((n) => ({
           id: n.id,
-          type: n.type ?? 'task',
+          type: n.type!,
           label: (n.data as Record<string, unknown>)?.label ?? n.id,
           position_x: n.position.x,
           position_y: n.position.y,
@@ -209,7 +219,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)?.edgeType ?? 'sequential',
+          type: (e.data as Record<string, unknown>)!.edgeType as string,
           label: (e.label as string) ?? null,
         })),
         expected_version: definition.version,
@@ -441,10 +451,9 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   },
 
   exportYaml: async () => {
-    const { definition, dirty, yamlPreview } = get()
+    const { definition, yamlPreview } = get()
     if (!definition) throw new Error('Cannot export: no workflow loaded')
-    if (dirty) return yamlPreview
-    return exportWorkflowYaml(definition.id)
+    return yamlPreview
   },
 
   reset: () => {
