@@ -422,6 +422,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
         variant: 'success',
         title: `Model "${modelName}" pulled successfully`,
       })
+      await get().fetchProviders()
       const detail = get().selectedProvider
       if (detail?.name === name) {
         await get().fetchProviderDetail(name)
@@ -439,8 +440,8 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     } finally {
       if (_pullAbortController === controller) {
         _pullAbortController = null
+        set({ pullingModel: false })
       }
-      set({ pullingModel: false })
     }
   },
 
@@ -458,6 +459,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
         variant: 'success',
         title: `Model "${modelId}" deleted`,
       })
+      await get().fetchProviders()
       const detail = get().selectedProvider
       if (detail?.name === name) {
         await get().fetchProviderDetail(name)

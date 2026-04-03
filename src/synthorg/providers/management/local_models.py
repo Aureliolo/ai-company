@@ -101,8 +101,9 @@ class LocalModelManager(Protocol):
             model_name: Model identifier to delete.
 
         Raises:
-            ValueError: If the model does not exist or the delete
-                request fails.
+            ValueError: If the model does not exist (HTTP 404).
+            RuntimeError: If the delete request fails due to an
+                upstream HTTP error or transport failure.
         """
         ...
 
@@ -297,8 +298,10 @@ class OllamaModelManager:
             model_name: Model name/tag to delete.
 
         Raises:
-            ValueError: If the model does not exist or the delete
-                request fails.
+            ValueError: If the model does not exist (HTTP 404).
+            RuntimeError: If the delete request fails due to an
+                upstream HTTP error (status >= 400, non-404) or a
+                transport failure (``httpx.HTTPError``).
         """
         url = f"{self._base_url}/api/delete"
         client = self._client or httpx.AsyncClient()

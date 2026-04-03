@@ -40,7 +40,12 @@ from synthorg.api.dto_providers import (
     UpdateModelConfigRequest,
     to_provider_model_response,
 )
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
+from synthorg.api.errors import (
+    ApiError,
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
@@ -64,6 +69,18 @@ from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
 
 logger = get_logger(__name__)
+
+
+def _sse_error(msg: str) -> dict[str, object]:
+    """Build a PullProgressEvent-shaped error dict for SSE."""
+    return {
+        "status": msg,
+        "progress_percent": None,
+        "total_bytes": None,
+        "completed_bytes": None,
+        "error": msg,
+        "done": True,
+    }
 
 
 async def _enrich_with_usage(
@@ -647,31 +664,19 @@ class ProviderController(Controller):
                 async for event in svc.pull_model(name, data.model_name):
                     yield {
                         "event": "complete" if event.done else "progress",
-                        "data": _json.dumps(
-                            event.model_dump(exclude_none=True),
-                        ),
+                        "data": _json.dumps(event.model_dump()),
                     }
             except ProviderNotFoundError:
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        {
-                            "status": f"Provider {name!r} not found",
-                            "error": f"Provider {name!r} not found",
-                            "done": True,
-                        }
+                        _sse_error(f"Provider {name!r} not found"),
                     ),
                 }
             except ProviderValidationError as exc:
                 yield {
                     "event": "error",
-                    "data": _json.dumps(
-                        {
-                            "status": str(exc),
-                            "error": str(exc),
-                            "done": True,
-                        }
-                    ),
+                    "data": _json.dumps(_sse_error(str(exc))),
                 }
             except asyncio.CancelledError:
                 raise
@@ -688,11 +693,9 @@ class ProviderController(Controller):
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        {
-                            "status": f"Internal error: {type(exc).__name__}",
-                            "error": f"Internal error: {type(exc).__name__}",
-                            "done": True,
-                        }
+                        _sse_error(
+                            f"Internal error: {type(exc).__name__}",
+                        ),
                     ),
                 }
 
@@ -744,14 +747,14 @@ class ProviderController(Controller):
             )
             raise NotFoundError(str(exc)) from exc
         except RuntimeError as exc:
-            logger.warning(
-                API_VALIDATION_FAILED,
+            logger.exception(
+                API_SSE_PULL_MODEL_FAILED,
                 resource="model",
                 name=model_id,
                 provider=name,
                 error=str(exc),
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ApiError(str(exc)) from exc
 
     @put(
         "/{name:str}/models/{model_id:path}/config",
@@ -821,5 +824,5 @@ class ProviderController(Controller):
                 provider=name,
                 error=msg,
             )
-            raise ApiValidationError(msg)
+            raise ApiError(msg)
         return ApiResponse(data=to_provider_model_response(model))
