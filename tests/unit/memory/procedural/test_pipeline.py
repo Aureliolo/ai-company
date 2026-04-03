@@ -16,14 +16,21 @@ from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, Tu
 from synthorg.engine.recovery import RecoveryResult
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.memory.models import MemoryStoreRequest
-from synthorg.memory.procedural.models import ProceduralMemoryProposal
+from synthorg.memory.procedural.models import (
+    ProceduralMemoryConfig,
+    ProceduralMemoryProposal,
+)
 from synthorg.memory.procedural.pipeline import (
     _build_payload,
     _format_procedural_content,
+    _slugify,
+    _try_build_payload,
     materialize_skill_md,
     propose_procedural_memory,
 )
 from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_MEMORY_ERROR,
+    PROCEDURAL_MEMORY_SKILL_MD,
     PROCEDURAL_MEMORY_SKIPPED,
     PROCEDURAL_MEMORY_START,
     PROCEDURAL_MEMORY_STORE_FAILED,
@@ -121,7 +128,7 @@ def _make_identity() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -438,9 +445,11 @@ class TestMaterializeSkillMd:
         assert path.suffix == ".md"
 
         content = path.read_text(encoding="utf-8")
-        assert "---" in content
+        assert content.startswith("---\n")
+        # yaml.safe_dump produces multiline frontmatter
         assert "trigger:" in content
         assert "confidence: 0.85" in content
+        assert "source: failure:task-001" in content
         assert "## Action" in content
         assert "## Execution Steps" in content
         assert "1. Step one" in content
@@ -458,3 +467,225 @@ class TestMaterializeSkillMd:
 
         content = path.read_text(encoding="utf-8")
         assert "## Execution Steps" not in content
+
+
+# -- propose_procedural_memory: config with skill_md_directory -----------
+
+
+@pytest.mark.unit
+class TestProposeWithSkillMdConfig:
+    async def test_propose_with_skill_md_config(self, tmp_path: Any) -> None:
+        """When config has skill_md_directory, SKILL.md is written."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(return_value=_make_proposal())
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="mem-010")
+        config = ProceduralMemoryConfig(
+            skill_md_directory=str(tmp_path),
+        )
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with structlog.testing.capture_logs() as logs:
+            result = await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+                config=config,
+            )
+
+        assert result == "mem-010"
+        # SKILL.md file should exist in the directory
+        md_files = list(tmp_path.glob("SKILL-*.md"))
+        assert len(md_files) == 1
+        events = [entry["event"] for entry in logs]
+        assert PROCEDURAL_MEMORY_SKILL_MD in events
+
+    async def test_skill_md_write_failure_still_returns_memory_id(
+        self,
+        tmp_path: Any,
+    ) -> None:
+        """Filesystem error in materialize does not prevent memory_id return."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(return_value=_make_proposal())
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="mem-011")
+        # Use an invalid directory path to trigger a write error
+        config = ProceduralMemoryConfig(
+            skill_md_directory="/\x00invalid-path",
+        )
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with structlog.testing.capture_logs() as logs:
+            result = await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+                config=config,
+            )
+
+        # Memory ID is still returned despite SKILL.md failure
+        assert result == "mem-011"
+        events = [entry["event"] for entry in logs]
+        assert PROCEDURAL_MEMORY_STORED in events
+
+
+# -- proposer exception handling -----------------------------------------
+
+
+@pytest.mark.unit
+class TestProposerExceptionHandling:
+    async def test_proposer_exception_returns_none(self) -> None:
+        """RuntimeError from proposer.propose is caught, returns None."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(side_effect=RuntimeError("boom"))
+        backend = AsyncMock()
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with structlog.testing.capture_logs() as logs:
+            result = await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+            )
+
+        assert result is None
+        events = [entry["event"] for entry in logs]
+        assert PROCEDURAL_MEMORY_SKIPPED in events
+
+    async def test_memory_error_from_proposer_propagates(self) -> None:
+        """MemoryError from proposer.propose is never swallowed."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(side_effect=MemoryError("oom"))
+        backend = AsyncMock()
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with pytest.raises(MemoryError):
+            await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+            )
+
+
+# -- RecursionError propagation ------------------------------------------
+
+
+@pytest.mark.unit
+class TestRecursionErrorPropagation:
+    async def test_recursion_error_propagates_from_store(self) -> None:
+        """RecursionError from backend.store is never swallowed."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(return_value=_make_proposal())
+        backend = AsyncMock()
+        backend.store = AsyncMock(side_effect=RecursionError("stack overflow"))
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with pytest.raises(RecursionError):
+            await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+            )
+
+
+# -- _slugify edge cases --------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSlugifyEdgeCases:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("", ""),
+            ("!!!@@@###", ""),
+            ("hello world", "hello-world"),
+            ("UPPER-case", "upper-case"),
+            ("\u00e9\u00e0\u00fc", ""),  # unicode-only (non-ASCII stripped)
+            ("a" * 200, "a" * 80),  # truncated to 80
+            ("---leading---", "leading"),
+        ],
+        ids=[
+            "empty",
+            "all-special-chars",
+            "spaces",
+            "uppercase",
+            "unicode-only",
+            "very-long",
+            "leading-trailing-dashes",
+        ],
+    )
+    def test_slugify(self, text: str, expected: str) -> None:
+        assert _slugify(text) == expected
+
+
+# -- _try_build_payload error handling ------------------------------------
+
+
+@pytest.mark.unit
+class TestTryBuildPayload:
+    async def test_payload_build_error_logs_and_returns_none(self) -> None:
+        """Payload build failure logs PROCEDURAL_MEMORY_ERROR."""
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+        # Monkey-patch to force an error in _build_payload
+        object.__setattr__(
+            recovery.task_execution.task,
+            "title",
+            "",
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            result = await _try_build_payload(
+                execution,
+                recovery,
+                "agent-001",
+                "task-pipe-001",
+            )
+
+        assert result is None
+        events = [entry["event"] for entry in logs]
+        assert PROCEDURAL_MEMORY_ERROR in events
+
+
+# -- sanitization applied to error message --------------------------------
+
+
+@pytest.mark.unit
+class TestSanitizationApplied:
+    def test_sanitization_applied_to_error_message(self) -> None:
+        """Error message with a file path is sanitized in payload."""
+        execution = _make_execution_result()
+        recovery = _make_recovery_result(
+            error_message="Failed at /home/user/secret/file.py",
+        )
+
+        payload = _build_payload(execution, recovery)
+
+        # File path should be redacted
+        assert "/home/user/secret/file.py" not in payload.error_message
+        assert "[REDACTED_PATH]" in payload.error_message

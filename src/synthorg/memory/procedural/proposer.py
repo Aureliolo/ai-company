@@ -68,7 +68,12 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
     try:
         parsed = json.loads(candidate)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.debug(
+            PROCEDURAL_MEMORY_SKIPPED,
+            reason="json_parse_error",
+            detail=str(exc),
+        )
         return None
 
     if not isinstance(parsed, dict):
@@ -122,6 +127,13 @@ class ProceduralMemoryProposer:
         self._completion_config = CompletionConfig(
             temperature=config.temperature,
             max_tokens=config.max_tokens,
+        )
+        logger.debug(
+            PROCEDURAL_MEMORY_PROPOSED,
+            model=config.model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            min_confidence=config.min_confidence,
         )
 
     async def propose(

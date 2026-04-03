@@ -206,6 +206,7 @@ class CompanyMemoryConfig(BaseModel):
         retrieval: Memory retrieval pipeline settings.
         consolidation: Memory consolidation settings.
         embedder: Optional embedder override (``None`` = auto-select).
+        procedural: Procedural memory auto-generation settings.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

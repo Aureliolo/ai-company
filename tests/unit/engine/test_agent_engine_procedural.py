@@ -30,7 +30,7 @@ def _make_identity() -> AgentIdentity:
         name="Test Agent",
         role="Developer",
         department="Engineering",
-        model=ModelConfig(provider="test-provider", model_id="test-model-001"),
+        model=ModelConfig(provider="test-provider", model_id="test-small-001"),
         hiring_date=date(2026, 1, 1),
     )
 
@@ -102,7 +102,7 @@ def _make_provider() -> AsyncMock:
             content=_VALID_PROPOSAL_CONTENT,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0),
-            model="test-model-001",
+            model="test-small-001",
         ),
     )
     return provider
@@ -251,7 +251,11 @@ class TestAgentEngineProcedural:
         assert result is not None
 
     async def test_no_procedural_memory_when_disabled(self) -> None:
-        """No procedural memory when config.enabled is False."""
+        """No procedural memory when config.enabled is False.
+
+        Verifies the proposer is never constructed (not just that
+        store is not called).
+        """
         identity = _make_identity()
         provider = _make_provider()
         memory_backend = AsyncMock()
@@ -266,6 +270,9 @@ class TestAgentEngineProcedural:
             procedural_memory_config=config,
             memory_backend=memory_backend,
         )
+
+        # Proposer should not be constructed when disabled
+        assert engine._procedural_proposer is None
 
         error_result = _make_error_execution_result(identity)
 

@@ -7,7 +7,7 @@ the configuration model for the procedural memory pipeline.
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import TaskType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -34,6 +34,11 @@ class FailureAnalysisPayload(BaseModel):
         retry_count: Previous retry attempts for this task.
         max_retries: Maximum allowed retries.
         can_reassign: Whether the task can be reassigned.
+        error_category: Classified error category (e.g. provider,
+            tool, budget).  Defaults to ``"unknown"`` when no
+            classification is available.
+        missing_capability: What capability the agent lacked,
+            if identifiable.  ``None`` when not determinable.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -55,6 +60,14 @@ class FailureAnalysisPayload(BaseModel):
     retry_count: int = Field(ge=0, description="Previous retry attempts")
     max_retries: int = Field(ge=0, description="Maximum allowed retries")
     can_reassign: bool = Field(description="Whether task can be reassigned")
+    error_category: NotBlankStr = Field(
+        default="unknown",
+        description="Classified error category",
+    )
+    missing_capability: NotBlankStr | None = Field(
+        default=None,
+        description="What capability the agent lacked",
+    )
 
     @model_validator(mode="after")
     def _validate_retry_bounds(self) -> Self:
@@ -73,21 +86,22 @@ class ProceduralMemoryProposal(BaseModel):
 
     Encodes three-tier progressive disclosure:
 
-    * **Discovery** (``discovery``, ~100 tokens): concise summary
-      for retrieval ranking.
+    * **Discovery** (``discovery``, max 600 chars / ~100 tokens):
+      concise summary for retrieval ranking.
     * **Activation** (``condition`` + ``action`` + ``rationale``):
       when/what/why for the agent to act on.
     * **Execution** (``execution_steps``): ordered steps the agent
       should follow when applying this knowledge.
 
     Attributes:
-        discovery: Short summary for retrieval ranking.
+        discovery: Short summary for retrieval ranking (max 600 chars).
         condition: When to apply this procedural knowledge.
         action: What to do differently next time.
         rationale: Why this approach helps.
-        execution_steps: Ordered steps for applying the knowledge.
+        execution_steps: Ordered steps for applying the knowledge
+            (max 50 steps).
         confidence: Proposer's confidence in the proposal (0.0-1.0).
-        tags: Semantic tags for filtering.
+        tags: Semantic tags for filtering (max 20 tags).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -110,6 +124,7 @@ class ProceduralMemoryProposal(BaseModel):
     )
     execution_steps: tuple[NotBlankStr, ...] = Field(
         default=(),
+        max_length=50,
         description="Ordered steps for applying the knowledge",
     )
     confidence: float = Field(
@@ -119,17 +134,18 @@ class ProceduralMemoryProposal(BaseModel):
     )
     tags: tuple[NotBlankStr, ...] = Field(
         default=(),
-        max_length=20,
         description="Semantic tags for filtering",
     )
 
-    @model_validator(mode="after")
-    def _deduplicate_tags(self) -> Self:
-        """Remove duplicate tags while preserving order."""
-        unique = tuple(dict.fromkeys(self.tags))
-        if len(unique) != len(self.tags):
-            object.__setattr__(self, "tags", unique)
-        return self
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _deduplicate_tags(cls, v: object) -> object:
+        """Deduplicate tags before max_length validation."""
+        if isinstance(v, list | tuple):
+            deduped = tuple(dict.fromkeys(v))
+            max_tags = 20
+            return deduped if len(deduped) <= max_tags else deduped[:max_tags]
+        return v
 
 
 class ProceduralMemoryConfig(BaseModel):
@@ -179,7 +195,7 @@ class ProceduralMemoryConfig(BaseModel):
         le=1.0,
         description="Discard proposals below this confidence",
     )
-    skill_md_directory: str | None = Field(
+    skill_md_directory: NotBlankStr | None = Field(
         default=None,
         description=(
             "Directory for SKILL.md file materialization. "

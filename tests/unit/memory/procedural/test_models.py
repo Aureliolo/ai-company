@@ -105,6 +105,38 @@ class TestFailureAnalysisPayload:
         p = _make_payload(retry_count=2, max_retries=2)
         assert p.retry_count == 2
 
+    def test_error_category_default(self) -> None:
+        p = _make_payload()
+        assert p.error_category == "unknown"
+
+    def test_error_category_custom(self) -> None:
+        p = _make_payload(error_category="provider")
+        assert p.error_category == "provider"
+
+    def test_error_category_empty_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_payload(error_category="")
+
+    def test_error_category_whitespace_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_payload(error_category="   ")
+
+    def test_missing_capability_default_none(self) -> None:
+        p = _make_payload()
+        assert p.missing_capability is None
+
+    def test_missing_capability_set(self) -> None:
+        p = _make_payload(missing_capability="code_review")
+        assert p.missing_capability == "code_review"
+
+    def test_missing_capability_empty_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_payload(missing_capability="")
+
+    def test_missing_capability_whitespace_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_payload(missing_capability="   ")
+
 
 # -- ProceduralMemoryProposal -----------------------------------------
 
@@ -171,6 +203,27 @@ class TestProceduralMemoryProposal:
         with pytest.raises(ValidationError):
             _make_proposal(discovery="x" * 601)
 
+    def test_execution_steps_max_50(self) -> None:
+        steps = tuple(f"Step {i}" for i in range(51))
+        with pytest.raises(ValidationError):
+            _make_proposal(execution_steps=steps)
+
+    def test_execution_steps_at_50_accepted(self) -> None:
+        steps = tuple(f"Step {i}" for i in range(50))
+        p = _make_proposal(execution_steps=steps)
+        assert len(p.execution_steps) == 50
+
+    def test_tags_capped_at_20(self) -> None:
+        tags = tuple(f"tag-{i}" for i in range(25))
+        p = _make_proposal(tags=tags)
+        assert len(p.tags) == 20
+
+    def test_tags_dedup_before_cap(self) -> None:
+        """Duplicates are removed before the 20-tag cap is applied."""
+        tags = tuple(f"tag-{i % 5}" for i in range(25))
+        p = _make_proposal(tags=tags)
+        assert len(p.tags) == 5
+
 
 # -- ProceduralMemoryConfig --------------------------------------------
 
@@ -230,3 +283,11 @@ class TestProceduralMemoryConfig:
     def test_skill_md_directory(self) -> None:
         c = ProceduralMemoryConfig(skill_md_directory="/var/data/skills")
         assert c.skill_md_directory == "/var/data/skills"
+
+    def test_skill_md_directory_empty_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ProceduralMemoryConfig(skill_md_directory="")
+
+    def test_skill_md_directory_whitespace_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ProceduralMemoryConfig(skill_md_directory="   ")

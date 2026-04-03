@@ -90,7 +90,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_RESUME_START,
 )
 from synthorg.observability.events.procedural_memory import (
-    PROCEDURAL_MEMORY_DISABLED,
+    PROCEDURAL_MEMORY_ERROR,
 )
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import MessageRole
@@ -325,7 +325,11 @@ class AgentEngine:
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
         self._procedural_proposer: ProceduralMemoryProposer | None = None
-        if procedural_memory_config is not None and memory_backend is not None:
+        if (
+            procedural_memory_config is not None
+            and procedural_memory_config.enabled
+            and memory_backend is not None
+        ):
             self._procedural_proposer = ProceduralMemoryProposer(
                 provider=provider,
                 config=procedural_memory_config,
@@ -607,7 +611,9 @@ class AgentEngine:
             approval_store=self._approval_store,
         )
         recovery_result: RecoveryResult | None = None
+        failed_result: ExecutionResult | None = None
         if execution_result.termination_reason == TerminationReason.ERROR:
+            failed_result = execution_result
             pre_recovery_ctx = execution_result.context
             pre_recovery_status = (
                 pre_recovery_ctx.task_execution.status
@@ -679,7 +685,7 @@ class AgentEngine:
                     exc_info=True,
                 )
         await self._try_procedural_memory(
-            execution_result,
+            failed_result or execution_result,
             recovery_result,
             agent_id,
             task_id,
@@ -695,22 +701,12 @@ class AgentEngine:
     ) -> None:
         """Run procedural memory pipeline (non-critical, never fatal).
 
-        Skips silently when the proposer is not configured, the config
-        is disabled, or no recovery occurred.
+        Skips silently when the proposer is not configured or no
+        recovery occurred (non-error terminations).
         """
-        if self._procedural_proposer is None:
+        if self._procedural_proposer is None or recovery_result is None:
             return
-        if (
-            self._procedural_memory_config is None
-            or not self._procedural_memory_config.enabled
-        ):
-            logger.debug(
-                PROCEDURAL_MEMORY_DISABLED,
-                agent_id=agent_id,
-                task_id=task_id,
-            )
-            return
-        if self._memory_backend is None or recovery_result is None:
+        if self._memory_backend is None:  # pragma: no cover -- guarded by __init__
             return
         try:
             await propose_procedural_memory(
@@ -726,7 +722,7 @@ class AgentEngine:
             raise
         except Exception as exc:
             logger.warning(
-                EXECUTION_ENGINE_ERROR,
+                PROCEDURAL_MEMORY_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
                 error=f"procedural memory failed: {type(exc).__name__}: {exc}",

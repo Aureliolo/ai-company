@@ -8,11 +8,14 @@ and optionally materializes a SKILL.md file.
 import re
 from pathlib import Path
 
+import yaml
+
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
 from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
 from synthorg.engine.sanitization import sanitize_message
+from synthorg.memory.filter import NON_INFERABLE_TAG
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
@@ -23,7 +26,9 @@ from synthorg.memory.procedural.proposer import ProceduralMemoryProposer  # noqa
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_MEMORY_ERROR,
     PROCEDURAL_MEMORY_PAYLOAD_BUILT,
+    PROCEDURAL_MEMORY_SKILL_MD,
     PROCEDURAL_MEMORY_SKIPPED,
     PROCEDURAL_MEMORY_START,
     PROCEDURAL_MEMORY_STORE_FAILED,
@@ -46,8 +51,8 @@ def _build_payload(
     task execution and context snapshot.
 
     The ``error_message`` is sanitized via ``sanitize_message`` to
-    strip file paths, URLs, and non-printable characters before it
-    reaches the proposer LLM.
+    strip file paths, URLs, and non-printable characters (truncated
+    to 200 characters) before it reaches the proposer LLM.
 
     Args:
         execution_result: Completed execution result with turn records.
@@ -129,11 +134,26 @@ def materialize_skill_md(
     Returns:
         Path to the written file.
     """
-    slug = _slugify(proposal.discovery[:60])
-    filename = f"SKILL-{task_id}-{slug}.md"
+    slug = _slugify(proposal.discovery[:60]) or "skill"
+    safe_task_id = _slugify(task_id) or "task"
+    filename = f"SKILL-{safe_task_id}-{slug}.md"
     path = Path(directory) / filename
 
-    tags_str = ", ".join(proposal.tags) if proposal.tags else ""
+    frontmatter: dict[str, object] = {
+        "name": slug,
+        "description": proposal.discovery,
+        "trigger": proposal.condition,
+        "confidence": proposal.confidence,
+        "tags": list(proposal.tags),
+        "source": f"failure:{task_id}",
+    }
+    fm_text = yaml.safe_dump(
+        frontmatter,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+    ).rstrip("\n")
+
     steps_block = ""
     if proposal.execution_steps:
         lines = "\n".join(
@@ -142,14 +162,7 @@ def materialize_skill_md(
         steps_block = f"\n## Execution Steps\n\n{lines}\n"
 
     content = (
-        "---\n"
-        f"name: {slug}\n"
-        f"description: {proposal.discovery}\n"
-        f"trigger: {proposal.condition}\n"
-        f"confidence: {proposal.confidence}\n"
-        f"tags: [{tags_str}]\n"
-        f"source: failure:{task_id}\n"
-        "---\n\n"
+        f"---\n{fm_text}\n---\n\n"
         f"# {proposal.discovery}\n\n"
         f"## Condition\n\n{proposal.condition}\n\n"
         f"## Action\n\n{proposal.action}\n\n"
@@ -160,6 +173,104 @@ def materialize_skill_md(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return path
+
+
+async def _try_build_payload(
+    execution_result: ExecutionResult,
+    recovery_result: RecoveryResult,
+    agent_id: str,
+    task_id: str,
+) -> FailureAnalysisPayload | None:
+    """Build payload with error handling (never fatal)."""
+    try:
+        payload = _build_payload(execution_result, recovery_result)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PROCEDURAL_MEMORY_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            error=f"payload construction failed: {type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+        return None
+    logger.debug(
+        PROCEDURAL_MEMORY_PAYLOAD_BUILT,
+        agent_id=agent_id,
+        task_id=task_id,
+        turn_count=payload.turn_count,
+        tool_count=len(payload.tool_calls_made),
+    )
+    return payload
+
+
+async def _store_and_materialize(
+    proposal: ProceduralMemoryProposal,
+    agent_id: str,
+    task_id: str,
+    memory_backend: MemoryBackend,
+    config: ProceduralMemoryConfig | None,
+) -> NotBlankStr | None:
+    """Store procedural memory and optionally materialize SKILL.md."""
+    content = _format_procedural_content(proposal)
+    tags = (NON_INFERABLE_TAG, *proposal.tags)
+    request = MemoryStoreRequest(
+        category=MemoryCategory.PROCEDURAL,
+        content=content,
+        metadata=MemoryMetadata(
+            source=f"failure:{task_id}",
+            confidence=proposal.confidence,
+            tags=tags,
+        ),
+    )
+    try:
+        memory_id = await memory_backend.store(agent_id, request)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            PROCEDURAL_MEMORY_STORE_FAILED,
+            agent_id=agent_id,
+            task_id=task_id,
+            error=f"{type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
+        return None
+
+    logger.info(
+        PROCEDURAL_MEMORY_STORED,
+        agent_id=agent_id,
+        task_id=task_id,
+        memory_id=memory_id,
+        confidence=proposal.confidence,
+    )
+
+    if config is not None and config.skill_md_directory is not None:
+        try:
+            skill_path = materialize_skill_md(
+                proposal,
+                task_id,
+                config.skill_md_directory,
+            )
+            logger.info(
+                PROCEDURAL_MEMORY_SKILL_MD,
+                agent_id=agent_id,
+                task_id=task_id,
+                path=str(skill_path),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PROCEDURAL_MEMORY_SKILL_MD,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"SKILL.md write failed: {type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
+
+    return memory_id
 
 
 async def propose_procedural_memory(  # noqa: PLR0913
@@ -185,7 +296,9 @@ async def propose_procedural_memory(  # noqa: PLR0913
         task_id: Failed task identifier.
         proposer: LLM-based proposer instance.
         memory_backend: Backend for storing the procedural memory.
-        config: Optional config for SKILL.md materialization.
+        config: Optional config.  Only ``skill_md_directory`` is used
+            here; other fields are consumed by the proposer at
+            construction time.
 
     Returns:
         Memory ID or ``None``.
@@ -196,29 +309,29 @@ async def propose_procedural_memory(  # noqa: PLR0913
         task_id=task_id,
     )
 
+    payload = await _try_build_payload(
+        execution_result,
+        recovery_result,
+        agent_id,
+        task_id,
+    )
+    if payload is None:
+        return None
+
     try:
-        payload = _build_payload(execution_result, recovery_result)
+        proposal = await proposer.propose(payload)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
         logger.warning(
-            PROCEDURAL_MEMORY_STORE_FAILED,
+            PROCEDURAL_MEMORY_SKIPPED,
             agent_id=agent_id,
             task_id=task_id,
-            error=f"payload construction failed: {type(exc).__name__}: {exc}",
+            reason="proposer_failed",
+            error=f"{type(exc).__name__}: {exc}",
             exc_info=True,
         )
         return None
-
-    logger.debug(
-        PROCEDURAL_MEMORY_PAYLOAD_BUILT,
-        agent_id=agent_id,
-        task_id=task_id,
-        turn_count=payload.turn_count,
-        tool_count=len(payload.tool_calls_made),
-    )
-
-    proposal = await proposer.propose(payload)
 
     if proposal is None:
         logger.info(
@@ -229,53 +342,10 @@ async def propose_procedural_memory(  # noqa: PLR0913
         )
         return None
 
-    content = _format_procedural_content(proposal)
-    tags = ("non-inferable", *proposal.tags)
-    request = MemoryStoreRequest(
-        category=MemoryCategory.PROCEDURAL,
-        content=content,
-        metadata=MemoryMetadata(
-            source=f"failure:{task_id}",
-            confidence=proposal.confidence,
-            tags=tags,
-        ),
+    return await _store_and_materialize(
+        proposal,
+        agent_id,
+        task_id,
+        memory_backend,
+        config,
     )
-
-    try:
-        memory_id = await memory_backend.store(agent_id, request)
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            PROCEDURAL_MEMORY_STORE_FAILED,
-            agent_id=agent_id,
-            task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
-            exc_info=True,
-        )
-        return None
-
-    logger.info(
-        PROCEDURAL_MEMORY_STORED,
-        agent_id=agent_id,
-        task_id=task_id,
-        memory_id=memory_id,
-        confidence=proposal.confidence,
-    )
-
-    # Materialize SKILL.md file when configured.
-    if config is not None and config.skill_md_directory is not None:
-        try:
-            materialize_skill_md(proposal, task_id, config.skill_md_directory)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                PROCEDURAL_MEMORY_STORE_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"SKILL.md write failed: {type(exc).__name__}: {exc}",
-                exc_info=True,
-            )
-
-    return memory_id
