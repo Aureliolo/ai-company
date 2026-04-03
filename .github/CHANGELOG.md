@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/Aureliolo/synthorg/compare/v0.5.9...v0.6.0) (2026-04-03)
+
+
+### Features
+
+* dashboard UI for ceremony policy settings ([#1038](https://github.com/Aureliolo/synthorg/issues/1038)) ([865554c](https://github.com/Aureliolo/synthorg/commit/865554cb8fb1ac4384be0994d45ba566357cc926)), closes [#979](https://github.com/Aureliolo/synthorg/issues/979)
+* implement tool-based memory retrieval injection strategy ([#1039](https://github.com/Aureliolo/synthorg/issues/1039)) ([329270e](https://github.com/Aureliolo/synthorg/commit/329270e7c9d07e25af5816073e9a243e88fbaffd)), closes [#207](https://github.com/Aureliolo/synthorg/issues/207)
+* local model management for Ollama and LM Studio ([#1037](https://github.com/Aureliolo/synthorg/issues/1037)) ([e1b14d3](https://github.com/Aureliolo/synthorg/commit/e1b14d39aee4b1bead327bf395342c89d7fb4e43)), closes [#1030](https://github.com/Aureliolo/synthorg/issues/1030)
+* workflow execution -- instantiate tasks from WorkflowDefinition ([#1040](https://github.com/Aureliolo/synthorg/issues/1040)) ([e9235e3](https://github.com/Aureliolo/synthorg/commit/e9235e3da4d23b08062c7e4bdf860eb5780ac963)), closes [#1004](https://github.com/Aureliolo/synthorg/issues/1004)
+
+
+### Maintenance
+
+* shared Hypothesis failure DB + deterministic CI profile ([#1041](https://github.com/Aureliolo/synthorg/issues/1041)) ([901ae92](https://github.com/Aureliolo/synthorg/commit/901ae92ced6704c1d89c28948c619cee357e72db))
+
 ## [0.5.9](https://github.com/Aureliolo/synthorg/compare/v0.5.8...v0.5.9) (2026-04-03)
 
 
