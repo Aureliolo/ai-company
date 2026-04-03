@@ -205,6 +205,15 @@ class OllamaModelManager:
                 )
                 continue
 
+            if not isinstance(data, dict):
+                logger.warning(
+                    PROVIDER_MODEL_PULL_FAILED,
+                    provider="ollama",
+                    model=model_name,
+                    error=f"Non-object JSON in stream: {line[:200]!r}",
+                )
+                continue
+
             event = self._parse_pull_line(data, model_name)
             yield event
             if event.done:

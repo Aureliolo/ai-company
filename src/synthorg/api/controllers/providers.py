@@ -662,8 +662,14 @@ class ProviderController(Controller):
         async def _event_stream() -> AsyncIterator[dict[str, str]]:
             try:
                 async for event in svc.pull_model(name, data.model_name):
+                    if event.done and event.error:
+                        event_type = "error"
+                    elif event.done:
+                        event_type = "complete"
+                    else:
+                        event_type = "progress"
                     yield {
-                        "event": "complete" if event.done else "progress",
+                        "event": event_type,
                         "data": _json.dumps(event.model_dump()),
                     }
             except ProviderNotFoundError:

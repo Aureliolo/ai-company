@@ -405,6 +405,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
         name,
         modelName,
         (event) => {
+          if (controller.signal.aborted) return
           if (event.error) lastError = event.error
           set({ pullProgress: event })
         },
