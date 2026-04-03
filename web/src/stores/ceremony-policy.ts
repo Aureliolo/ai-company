@@ -9,7 +9,7 @@ import type {
 import { getErrorMessage } from '@/utils/errors'
 
 interface CeremonyPolicyState {
-  /** Resolved project-level policy with field origins. */
+  /** Resolved ceremony policy with field origins (may include department overlay). */
   resolvedPolicy: ResolvedCeremonyPolicyResponse | null
   /** Currently active (locked) strategy in the running sprint. */
   activeStrategy: ActiveCeremonyStrategy | null
@@ -17,8 +17,12 @@ interface CeremonyPolicyState {
   departmentPolicies: ReadonlyMap<string, CeremonyPolicyConfig | null>
   /** Whether the initial fetch is in progress. */
   loading: boolean
-  /** Error from the most recent fetch. */
+  /** Error from the most recent resolved policy fetch. */
   error: string | null
+  /** Error from the most recent active strategy fetch. */
+  activeStrategyError: string | null
+  /** Error from the most recent per-department fetch (keyed by dept name). */
+  departmentErrors: ReadonlyMap<string, string>
   /** Whether a save operation is in progress. */
   saving: boolean
   /** Error from the most recent save attempt. */
@@ -42,6 +46,8 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
   departmentPolicies: new Map(),
   loading: false,
   error: null,
+  activeStrategyError: null,
+  departmentErrors: new Map(),
   saving: false,
   saveError: null,
 
@@ -56,11 +62,12 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
   },
 
   fetchActiveStrategy: async () => {
+    set({ activeStrategyError: null })
     try {
       const active = await ceremonyApi.getActiveStrategy()
       set({ activeStrategy: active })
     } catch (err) {
-      set({ error: getErrorMessage(err) })
+      set({ activeStrategyError: getErrorMessage(err) })
     }
   },
 
@@ -70,9 +77,14 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
       const current = get().departmentPolicies
       const updated = new Map(current)
       updated.set(name, policy)
-      set({ departmentPolicies: updated })
+      // Clear any previous error for this department
+      const errors = new Map(get().departmentErrors)
+      errors.delete(name)
+      set({ departmentPolicies: updated, departmentErrors: errors })
     } catch (err) {
-      set({ error: getErrorMessage(err) })
+      const errors = new Map(get().departmentErrors)
+      errors.set(name, getErrorMessage(err))
+      set({ departmentErrors: errors })
     }
   },
 

@@ -38,5 +38,7 @@ export function StrategyConfigPanel({
       return <ExternalTriggerConfig config={config} onChange={onChange} disabled={disabled} />
     case 'milestone_driven':
       return <MilestoneDrivenConfig config={config} onChange={onChange} disabled={disabled} />
+    default:
+      return null
   }
 }

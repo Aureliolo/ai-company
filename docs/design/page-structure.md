@@ -189,11 +189,13 @@ Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES`
 
 The **observability namespace** includes a dedicated **Sinks** sub-page (`/settings/observability/sinks`) for managing log sink configuration. The sinks page displays all active sinks (console and file) as cards showing identifier, log level, format, rotation policy, and routing prefixes. Operators can edit sink overrides and define custom sinks with a test-before-save workflow.
 
+The **coordination namespace** includes a dedicated **Ceremony Policy** sub-page (`/settings/coordination/ceremony-policy`) for managing ceremony scheduling configuration. The page displays strategy selection (8 strategy types with descriptions and velocity unit indicator), strategy-specific config panels, auto-transition toggle and threshold, department overrides with inherit/override toggles, per-ceremony overrides, and a strategy change warning banner.
+
 The **backup namespace** will include backup management CRUD (trigger, list, restore, delete) in a future iteration, consolidating the BackupController under the Settings page. The current implementation covers backup configuration settings only (schedule, retention, path).
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
 
-**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
+**API endpoints**: `GET /settings/_schema`, `GET /settings/_schema/{ns}`, `GET /settings`, `GET /settings/{ns}`, `GET /settings/{ns}/{key}`, `PUT /settings/{ns}/{key}`, `DELETE /settings/{ns}/{key}`, `GET /settings/observability/sinks`, `POST /settings/observability/sinks/_test`, `GET /ceremony-policy`, `GET /ceremony-policy/resolved?department=`, `GET /ceremony-policy/active`, `GET /departments/{name}/ceremony-policy`, `PUT /departments/{name}/ceremony-policy`, `DELETE /departments/{name}/ceremony-policy`, `POST /admin/backups`, `GET /admin/backups`, `GET /admin/backups/{id}`, `DELETE /admin/backups/{id}`, `POST /admin/backups/restore`
 **WS channels**: `system` (restart-required notifications)
 
 #### Documentation (`/docs/`)
@@ -331,6 +333,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
+| `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection, department overrides, per-ceremony overrides |
 | `/docs/` | Documentation | Static MkDocs HTML served by nginx (bypasses React Router) |
 | `*` | 404 Not Found | Catch-all |
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowLeft, Loader2, Settings, Timer } from 'lucide-react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType, Department, VelocityCalcType } from '@/api/types'
@@ -7,6 +7,7 @@ import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SectionCard } from '@/components/ui/section-card'
 import { PolicySourceBadge } from '@/components/ui/policy-source-badge'
 import { useSettingsStore } from '@/stores/settings'
+import { useSettingsData } from '@/hooks/useSettingsData'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
@@ -21,6 +22,10 @@ import { CeremonyListPanel } from './CeremonyListPanel'
 
 export default function CeremonyPolicyPage() {
   const addToast = useToastStore((s) => s.add)
+
+  // Ensure settings are fetched (handles deep-link arrival)
+  useSettingsData()
+
   const settingsEntries = useSettingsStore((s) => s.entries)
   const updateSetting = useSettingsStore((s) => s.updateSetting)
 
@@ -28,6 +33,8 @@ export default function CeremonyPolicyPage() {
   const activeStrategy = useCeremonyPolicyStore((s) => s.activeStrategy)
   const loading = useCeremonyPolicyStore((s) => s.loading)
   const storeError = useCeremonyPolicyStore((s) => s.error)
+  const activeStrategyError = useCeremonyPolicyStore((s) => s.activeStrategyError)
+  const storeSaveError = useCeremonyPolicyStore((s) => s.saveError)
   const fetchResolvedPolicy = useCeremonyPolicyStore((s) => s.fetchResolvedPolicy)
   const fetchActiveStrategy = useCeremonyPolicyStore((s) => s.fetchActiveStrategy)
 
@@ -38,12 +45,13 @@ export default function CeremonyPolicyPage() {
     )?.value
 
     let config: Record<string, unknown> = {}
+    let configParseError = false
     const sc = get('ceremony_strategy_config')
     if (sc) {
       try {
         config = JSON.parse(sc) as Record<string, unknown>
       } catch {
-        console.warn('Failed to parse ceremony_strategy_config setting')
+        configParseError = true
       }
     }
 
@@ -53,10 +61,13 @@ export default function CeremonyPolicyPage() {
       velocityCalculator: (get('ceremony_velocity_calculator') as VelocityCalcType | undefined) ?? 'task_driven' as VelocityCalcType,
       autoTransition: get('ceremony_auto_transition') !== 'false',
       transitionThreshold: Number(get('ceremony_transition_threshold') ?? '1.0'),
+      configParseError,
     }
   }, [settingsEntries])
 
-  // Local form state for project-level policy (initialized from settings)
+  // Local form state for project-level policy (initialized from settings).
+  // Re-synced when settingsSnapshot changes (e.g. deep-link fetch or WS update).
+  const prevSnapshotRef = useRef(settingsSnapshot)
   const [strategy, setStrategy] = useState<CeremonyStrategyType>(settingsSnapshot.strategy)
   const [strategyConfig, setStrategyConfig] = useState<Record<string, unknown>>(settingsSnapshot.strategyConfig)
   const [velocityCalculator, setVelocityCalculator] = useState<VelocityCalcType>(settingsSnapshot.velocityCalculator)
@@ -64,25 +75,54 @@ export default function CeremonyPolicyPage() {
   const [transitionThreshold, setTransitionThreshold] = useState(settingsSnapshot.transitionThreshold)
   const [saving, setSaving] = useState(false)
 
+  if (prevSnapshotRef.current !== settingsSnapshot) {
+    prevSnapshotRef.current = settingsSnapshot
+    setStrategy(settingsSnapshot.strategy)
+    setStrategyConfig(settingsSnapshot.strategyConfig)
+    setVelocityCalculator(settingsSnapshot.velocityCalculator)
+    setAutoTransition(settingsSnapshot.autoTransition)
+    setTransitionThreshold(settingsSnapshot.transitionThreshold)
+  }
+
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
   const [deptLoadError, setDeptLoadError] = useState(false)
 
   // Per-ceremony overrides (from ceremony_policy_overrides setting)
-  const initialCeremonyOverrides = useMemo(() => {
+  const ceremonyOverridesSnapshot = useMemo(() => {
     const raw = settingsEntries.find(
       (e) => e.definition.namespace === 'coordination' && e.definition.key === 'ceremony_policy_overrides',
     )?.value
+    let overridesParseError = false
     if (raw) {
       try {
-        return JSON.parse(raw) as Record<string, CeremonyPolicyConfig | null>
+        return { overrides: JSON.parse(raw) as Record<string, CeremonyPolicyConfig | null>, overridesParseError }
       } catch {
-        console.warn('Failed to parse ceremony_policy_overrides setting')
+        overridesParseError = true
       }
     }
-    return {} as Record<string, CeremonyPolicyConfig | null>
+    return { overrides: {} as Record<string, CeremonyPolicyConfig | null>, overridesParseError }
   }, [settingsEntries])
-  const [ceremonyOverrides, setCeremonyOverrides] = useState<Record<string, CeremonyPolicyConfig | null>>(initialCeremonyOverrides)
+  const prevOverridesRef = useRef(ceremonyOverridesSnapshot)
+  const [ceremonyOverrides, setCeremonyOverrides] = useState<Record<string, CeremonyPolicyConfig | null>>(ceremonyOverridesSnapshot.overrides)
+
+  if (prevOverridesRef.current !== ceremonyOverridesSnapshot) {
+    prevOverridesRef.current = ceremonyOverridesSnapshot
+    setCeremonyOverrides(ceremonyOverridesSnapshot.overrides)
+  }
+
+  // Show toasts for JSON parse failures (outside useMemo to avoid side effects in memos)
+  useEffect(() => {
+    if (settingsSnapshot.configParseError) {
+      addToast({ variant: 'warning', title: 'Failed to parse ceremony_strategy_config setting' })
+    }
+  }, [settingsSnapshot.configParseError, addToast])
+
+  useEffect(() => {
+    if (ceremonyOverridesSnapshot.overridesParseError) {
+      addToast({ variant: 'warning', title: 'Failed to parse ceremony_policy_overrides setting' })
+    }
+  }, [ceremonyOverridesSnapshot.overridesParseError, addToast])
 
   // Derive ceremony names from overrides + common ceremony names
   const ceremonyNames = useMemo(() => {
@@ -153,7 +193,6 @@ export default function CeremonyPolicyPage() {
   const handleStrategyChange = useCallback((s: CeremonyStrategyType) => {
     setStrategy(s)
     setVelocityCalculator(STRATEGY_DEFAULT_VELOCITY_CALC[s])
-    setStrategyConfig({})
   }, [])
 
   return (
@@ -183,6 +222,12 @@ export default function CeremonyPolicyPage() {
         {!loading && storeError && (
           <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             Failed to load ceremony policy: {storeError}
+          </div>
+        )}
+
+        {!loading && activeStrategyError && (
+          <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
+            Failed to load active strategy: {activeStrategyError}
           </div>
         )}
 
@@ -233,6 +278,12 @@ export default function CeremonyPolicyPage() {
                     resolvedPolicy={resolvedPolicy}
                   />
                 </div>
+
+                {storeSaveError && (
+                  <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
+                    Save failed: {storeSaveError}
+                  </div>
+                )}
 
                 <div className="flex justify-end pt-2">
                   <Button onClick={handleSave} disabled={saving}>

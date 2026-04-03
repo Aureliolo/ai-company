@@ -20,7 +20,7 @@ export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenC
             .split(',')
             .map((s) => Number(s.trim()))
             .filter((n) => Number.isFinite(n) && n > 0 && n <= 100)
-          onChange({ ...config, budget_thresholds: parsed })
+          if (Array.isArray(parsed)) onChange({ ...config, budget_thresholds: parsed })
         }}
         disabled={disabled}
         hint="Comma-separated budget percentages that trigger ceremonies (e.g. 25, 50, 75)"
@@ -30,7 +30,7 @@ export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenC
         label="Transition Threshold (%)"
         type="number"
         value={String(transitionPct)}
-        onChange={(e) => onChange({ ...config, transition_threshold: Number(e.target.value) })}
+        onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, transition_threshold: val }) }}
         disabled={disabled}
         hint="Budget percentage that triggers sprint auto-transition (1-100)"
       />

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType, VelocityCalcType } from '@/api/types'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SelectField } from '@/components/ui/select-field'
@@ -35,6 +35,13 @@ export function DepartmentCeremonyOverride({
 }: DepartmentCeremonyOverrideProps) {
   const hasOverride = policy != null && Object.keys(policy).length > 0
   const [expanded, setExpanded] = useState(hasOverride)
+  const prevHasOverrideRef = useRef(hasOverride)
+
+  // Sync expanded state when override status changes externally
+  if (prevHasOverrideRef.current !== hasOverride) {
+    prevHasOverrideRef.current = hasOverride
+    setExpanded(hasOverride)
+  }
 
   const handleInheritChange = useCallback(
     (inherit: boolean) => {
@@ -64,6 +71,7 @@ export function DepartmentCeremonyOverride({
       <button
         type="button"
         aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse ceremony policy' : 'Expand ceremony policy'}
         onClick={() => setExpanded(!expanded)}
         className="text-xs font-semibold uppercase tracking-wider text-text-muted hover:text-foreground"
       >
@@ -91,7 +99,7 @@ export function DepartmentCeremonyOverride({
               <SelectField
                 label="Velocity Calculator"
                 options={VELOCITY_OPTIONS}
-                value={policy?.velocity_calculator ?? 'task_driven'}
+                value={policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[policy?.strategy ?? 'task_driven']}
                 onChange={(v) => onChange({ ...policy, velocity_calculator: v as VelocityCalcType })}
                 disabled={disabled}
               />

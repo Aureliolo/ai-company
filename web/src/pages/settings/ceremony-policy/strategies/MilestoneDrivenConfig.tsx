@@ -9,8 +9,8 @@ export interface MilestoneDrivenConfigProps {
 }
 
 export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneDrivenConfigProps) {
-  const milestones = config.milestones ?? []
   const transitionMilestone = (config.transition_milestone as string) ?? ''
+  const [rawJson, setRawJson] = useState(() => JSON.stringify(config.milestones ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   return (
@@ -21,10 +21,16 @@ export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneD
           JSON array of milestone definitions with name and ceremony fields
         </p>
         <LazyCodeMirrorEditor
-          value={JSON.stringify(milestones, null, 2)}
+          value={rawJson}
           onChange={(val) => {
+            setRawJson(val)
             try {
-              onChange({ ...config, milestones: JSON.parse(val) })
+              const parsed: unknown = JSON.parse(val)
+              if (!Array.isArray(parsed)) {
+                setJsonError('Must be a JSON array')
+                return
+              }
+              onChange({ ...config, milestones: parsed })
               setJsonError(null)
             } catch {
               setJsonError('Invalid JSON')
@@ -32,6 +38,7 @@ export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneD
           }}
           language="json"
           readOnly={disabled}
+          aria-label="Milestones JSON"
           className="max-h-48"
         />
         {jsonError && (

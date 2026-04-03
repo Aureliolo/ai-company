@@ -37,7 +37,7 @@ export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfi
           label="Every N Completions"
           type="number"
           value={String(everyN)}
-          onChange={(e) => onChange({ ...config, every_n_completions: Number(e.target.value) })}
+          onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, every_n_completions: val }) }}
           disabled={disabled}
           hint="Fire after every N task completions (min: 1)"
         />
@@ -48,7 +48,7 @@ export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfi
           label="Sprint Percentage"
           type="number"
           value={String(pct)}
-          onChange={(e) => onChange({ ...config, sprint_percentage: Number(e.target.value) })}
+          onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, sprint_percentage: val }) }}
           disabled={disabled}
           hint="Fire when this percentage of tasks complete (1-100)"
         />

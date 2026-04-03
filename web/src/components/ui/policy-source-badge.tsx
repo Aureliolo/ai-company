@@ -22,7 +22,7 @@ export function PolicySourceBadge({ source, className }: PolicySourceBadgeProps)
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider',
+        'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider',
         SOURCE_STYLES[source],
         className,
       )}

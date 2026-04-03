@@ -86,6 +86,8 @@ _r.register(
         default="task_driven",
         description="Ceremony scheduling strategy for sprint ceremonies",
         group="Ceremony Policy",
+        # Must be kept in sync with CeremonyStrategyType members;
+        # test_ceremony_settings.py verifies this.
         enum_values=(
             "task_driven",
             "calendar",
@@ -121,6 +123,8 @@ _r.register(
         default="task_driven",
         description="Velocity calculator for sprint metrics",
         group="Ceremony Policy",
+        # Must be kept in sync with VelocityCalcType members;
+        # test_ceremony_settings.py verifies this.
         enum_values=(
             "task_driven",
             "calendar",

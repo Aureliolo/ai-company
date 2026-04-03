@@ -1,12 +1,14 @@
 """Tests for ceremony policy setting definitions.
 
-Verifies that the 6 ceremony-related settings are registered in the
+Verifies that the 7 ceremony-related settings are registered in the
 coordination namespace with correct types and constraints.
 """
 
 import pytest
 
 import synthorg.settings.definitions  # noqa: F401 -- trigger registration
+from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
+from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.settings.enums import SettingLevel, SettingType
 from synthorg.settings.registry import SettingsRegistry, get_registry
 
@@ -112,3 +114,19 @@ class TestCeremonySettingsRegistered:
         defn = registry.get("coordination", "ceremony_strategy")
         assert defn is not None
         assert defn.yaml_path == "workflow.sprint.ceremony_policy.strategy"
+
+    def test_ceremony_strategy_enum_values_match_strenum(
+        self, registry: SettingsRegistry
+    ) -> None:
+        """Verify ceremony_strategy enum_values match CeremonyStrategyType."""
+        defn = registry.get("coordination", "ceremony_strategy")
+        assert defn is not None
+        assert set(defn.enum_values) == {m.value for m in CeremonyStrategyType}
+
+    def test_ceremony_velocity_calculator_enum_values_match_strenum(
+        self, registry: SettingsRegistry
+    ) -> None:
+        """Verify velocity_calculator enum_values match VelocityCalcType."""
+        defn = registry.get("coordination", "ceremony_velocity_calculator")
+        assert defn is not None
+        assert set(defn.enum_values) == {m.value for m in VelocityCalcType}

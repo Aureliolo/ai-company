@@ -51,7 +51,7 @@ function CeremonyRow({
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
-      onOverrideChange(name, { ...policy, strategy: s, strategy_config: {} })
+      onOverrideChange(name, { ...policy, strategy: s })
     },
     [name, policy, onOverrideChange],
   )

@@ -9,8 +9,8 @@ export interface ExternalTriggerConfigProps {
 }
 
 export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTriggerConfigProps) {
-  const sources = config.sources ?? []
   const transitionEvent = (config.transition_event as string) ?? ''
+  const [rawJson, setRawJson] = useState(() => JSON.stringify(config.sources ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 
   return (
@@ -21,10 +21,12 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
           JSON array of source definitions (e.g. webhook, git_event)
         </p>
         <LazyCodeMirrorEditor
-          value={JSON.stringify(sources, null, 2)}
+          value={rawJson}
           onChange={(val) => {
+            setRawJson(val)
             try {
-              onChange({ ...config, sources: JSON.parse(val) })
+              const parsed: unknown = JSON.parse(val)
+              onChange({ ...config, sources: parsed })
               setJsonError(null)
             } catch {
               setJsonError('Invalid JSON')
@@ -32,6 +34,7 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
           }}
           language="json"
           readOnly={disabled}
+          aria-label="Sources JSON"
           className="max-h-48"
         />
         {jsonError && (

@@ -27,6 +27,7 @@ export function InheritToggle({
         id={id}
         role="switch"
         type="button"
+        aria-label="Override"
         aria-checked={!inherit}
         onClick={() => onChange(!inherit)}
         disabled={disabled}

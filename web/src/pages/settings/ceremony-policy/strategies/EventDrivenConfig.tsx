@@ -16,7 +16,7 @@ export function EventDrivenConfig({ config, onChange, disabled }: EventDrivenCon
         label="Default Debounce"
         type="number"
         value={String(debounceDefault)}
-        onChange={(e) => onChange({ ...config, debounce_default: Number(e.target.value) })}
+        onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, debounce_default: val }) }}
         disabled={disabled}
         hint="Events required before firing (1-10000)"
       />

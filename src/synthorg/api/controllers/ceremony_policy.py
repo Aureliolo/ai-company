@@ -1,14 +1,16 @@
 """Ceremony policy controller -- query and resolve ceremony policies."""
 
+import asyncio
 import json
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Annotated, Any, Self
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
@@ -125,6 +127,75 @@ class ActiveCeremonyStrategyResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────
 
 
+def _parse_strategy(raw: str | None) -> CeremonyStrategyType | None:
+    """Parse a ceremony strategy from its raw setting value."""
+    if not raw:
+        return None
+    try:
+        return CeremonyStrategyType(raw)
+    except ValueError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.build",
+            error=f"Invalid ceremony_strategy: {raw!r}",
+        )
+        raise
+
+
+def _parse_strategy_config(raw: str | None) -> dict[str, Any] | None:
+    """Parse strategy config JSON from its raw setting value."""
+    if not raw or raw == "{}":
+        return None
+    try:
+        return json.loads(raw)  # type: ignore[no-any-return]
+    except json.JSONDecodeError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.build",
+            error="Malformed ceremony_strategy_config JSON",
+        )
+        raise
+
+
+def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
+    """Parse a velocity calculator type from its raw setting value."""
+    if not raw:
+        return None
+    try:
+        return VelocityCalcType(raw)
+    except ValueError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.build",
+            error=f"Invalid ceremony_velocity_calculator: {raw!r}",
+        )
+        raise
+
+
+def _parse_auto_transition(raw: str | None) -> bool | None:
+    """Parse auto-transition boolean from its raw setting value."""
+    if raw is None:
+        return None
+    if not raw:
+        return None
+    return raw.lower() == "true"
+
+
+def _parse_transition_threshold(raw: str | None) -> float | None:
+    """Parse transition threshold from its raw setting value."""
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.build",
+            error=f"Invalid ceremony_transition_threshold: {raw!r}",
+        )
+        raise
+
+
 def _build_project_policy(
     settings_data: Mapping[str, str],
 ) -> CeremonyPolicyConfig:
@@ -141,69 +212,22 @@ def _build_project_policy(
         ValueError: If a setting value cannot be parsed (e.g. invalid
             enum member, malformed JSON, non-numeric threshold).
     """
-    strategy: CeremonyStrategyType | None = None
-    strategy_raw = settings_data.get("ceremony_strategy")
-    if strategy_raw:
-        try:
-            strategy = CeremonyStrategyType(strategy_raw)
-        except ValueError:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="ceremony_policy.build",
-                error=f"Invalid ceremony_strategy: {strategy_raw!r}",
-            )
-            raise
-
-    strategy_config: dict[str, Any] | None = None
-    config_raw = settings_data.get("ceremony_strategy_config")
-    if config_raw and config_raw != "{}":
-        try:
-            strategy_config = json.loads(config_raw)
-        except json.JSONDecodeError:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="ceremony_policy.build",
-                error="Malformed ceremony_strategy_config JSON",
-            )
-            raise
-
-    velocity_calculator: VelocityCalcType | None = None
-    vel_raw = settings_data.get("ceremony_velocity_calculator")
-    if vel_raw:
-        try:
-            velocity_calculator = VelocityCalcType(vel_raw)
-        except ValueError:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="ceremony_policy.build",
-                error=f"Invalid ceremony_velocity_calculator: {vel_raw!r}",
-            )
-            raise
-
-    auto_transition: bool | None = None
-    auto_raw = settings_data.get("ceremony_auto_transition")
-    if auto_raw:
-        auto_transition = auto_raw.lower() == "true"
-
-    transition_threshold: float | None = None
-    threshold_raw = settings_data.get("ceremony_transition_threshold")
-    if threshold_raw:
-        try:
-            transition_threshold = float(threshold_raw)
-        except ValueError:
-            logger.warning(
-                API_REQUEST_ERROR,
-                endpoint="ceremony_policy.build",
-                error=f"Invalid ceremony_transition_threshold: {threshold_raw!r}",
-            )
-            raise
-
     return CeremonyPolicyConfig(
-        strategy=strategy,
-        strategy_config=strategy_config,
-        velocity_calculator=velocity_calculator,
-        auto_transition=auto_transition,
-        transition_threshold=transition_threshold,
+        strategy=_parse_strategy(
+            settings_data.get("ceremony_strategy"),
+        ),
+        strategy_config=_parse_strategy_config(
+            settings_data.get("ceremony_strategy_config"),
+        ),
+        velocity_calculator=_parse_velocity_calculator(
+            settings_data.get("ceremony_velocity_calculator"),
+        ),
+        auto_transition=_parse_auto_transition(
+            settings_data.get("ceremony_auto_transition"),
+        ),
+        transition_threshold=_parse_transition_threshold(
+            settings_data.get("ceremony_transition_threshold"),
+        ),
     )
 
 
@@ -293,10 +317,60 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         "ceremony_transition_threshold",
     )
     data: dict[str, str] = {}
-    for key in keys:
+
+    async def _fetch(key: str) -> None:
         entry = await settings.get("coordination", key)
         data[key] = entry.value
+
+    async with asyncio.TaskGroup() as tg:
+        for key in keys:
+            tg.create_task(_fetch(key))
+
     return _build_project_policy(data)
+
+
+_SETTINGS_NOT_FOUND = object()
+
+
+async def _lookup_dept_override_from_settings(
+    app_state: AppState,
+    department_name: str,
+) -> CeremonyPolicyConfig | None | object:
+    """Try to find a department override in the settings service.
+
+    Returns:
+        ``CeremonyPolicyConfig`` if found, ``None`` if explicitly
+        inheriting, or the sentinel ``_SETTINGS_NOT_FOUND`` if the
+        settings service is unavailable or the department has no
+        settings-based override.
+    """
+    if not app_state.has_settings_service:
+        return _SETTINGS_NOT_FOUND
+    try:
+        entry = await app_state.settings_service.get(
+            "coordination",
+            "dept_ceremony_policies",
+        )
+        policies = json.loads(entry.value)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.debug(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.fetch_dept",
+            error="Settings lookup failed, falling back to config",
+            exc_info=True,
+        )
+        return _SETTINGS_NOT_FOUND
+
+    if not isinstance(policies, dict) or department_name not in policies:
+        return _SETTINGS_NOT_FOUND
+    val = policies[department_name]
+    if val is None:
+        return None
+    if isinstance(val, dict):
+        return CeremonyPolicyConfig.model_validate(val)
+    return _SETTINGS_NOT_FOUND
 
 
 async def _fetch_department_policy(
@@ -305,8 +379,12 @@ async def _fetch_department_policy(
 ) -> CeremonyPolicyConfig | None:
     """Fetch department-level ceremony policy override.
 
+    Checks settings-based overrides first (written by the department
+    ceremony policy PUT endpoint), then falls back to the config
+    resolver's ``ceremony_policy`` field.
+
     Args:
-        app_state: Application state with config resolver.
+        app_state: Application state.
         department_name: Department name to look up.
 
     Returns:
@@ -314,7 +392,16 @@ async def _fetch_department_policy(
 
     Raises:
         NotFoundError: If the department does not exist.
+        ServiceUnavailableError: If required services are unavailable.
     """
+    result = await _lookup_dept_override_from_settings(
+        app_state,
+        department_name,
+    )
+    if result is not _SETTINGS_NOT_FOUND:
+        return result  # type: ignore[return-value]
+
+    # Fall back to config-based ceremony_policy
     if not app_state.has_config_resolver:
         msg = "Config resolver not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="config_resolver")
@@ -372,7 +459,10 @@ class CeremonyPolicyController(Controller):
     async def get_resolved_policy(
         self,
         state: State,
-        department: str | None = None,
+        department: Annotated[
+            NotBlankStr | None,
+            Parameter(max_length=128),
+        ] = None,
     ) -> ApiResponse[ResolvedCeremonyPolicyResponse]:
         """Return the fully resolved ceremony policy with field origins.
 
@@ -425,8 +515,7 @@ class CeremonyPolicyController(Controller):
         response = ActiveCeremonyStrategyResponse()
 
         if scheduler is not None and scheduler.running:
-            strategy = scheduler.active_strategy
-            sprint = scheduler.active_sprint
+            strategy, sprint = await scheduler.get_active_info()
             if strategy is not None and sprint is not None:
                 response = ActiveCeremonyStrategyResponse(
                     strategy=strategy.strategy_type,

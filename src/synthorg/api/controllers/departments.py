@@ -460,7 +460,7 @@ async def _load_dept_policies_json(
             "coordination",
             "dept_ceremony_policies",
         )
-        return json.loads(entry.value)  # type: ignore[no-any-return]
+        parsed = json.loads(entry.value)
     except MemoryError, RecursionError:
         raise
     except Exception:
@@ -473,6 +473,18 @@ async def _load_dept_policies_json(
         if raise_on_error:
             raise
         return {}
+
+    if not isinstance(parsed, dict):
+        msg = f"dept_ceremony_policies is not a dict: {type(parsed).__name__}"
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.load",
+            error=msg,
+        )
+        if raise_on_error:
+            raise ServiceUnavailableError(msg)
+        return {}
+    return parsed
 
 
 async def _save_dept_policies_json(
@@ -502,7 +514,7 @@ async def _save_dept_policies_json(
 
 async def _get_dept_ceremony_override(
     app_state: AppState,
-    department_name: str,
+    department_name: NotBlankStr,
 ) -> dict[str, Any] | None:
     """Get the ceremony policy override for a department.
 
@@ -518,11 +530,20 @@ async def _get_dept_ceremony_override(
 
     Raises:
         NotFoundError: If the department does not exist.
+        ServiceUnavailableError: If the settings service is not
+            available or the JSON blob is unreadable.
     """
-    # Check settings-based overrides first
-    policies = await _load_dept_policies_json(app_state)
+    # Check settings-based overrides first (raise on error to
+    # surface service failures instead of silently showing "inherit")
+    policies = await _load_dept_policies_json(
+        app_state,
+        raise_on_error=True,
+    )
     if department_name in policies:
         val = policies[department_name]
+        # None sentinel means "explicitly inheriting"
+        if val is None:
+            return None
         return val if isinstance(val, dict) else None
 
     # Fall back to config-based ceremony_policy
@@ -543,9 +564,12 @@ async def _get_dept_ceremony_override(
     raise NotFoundError(msg)
 
 
+_dept_policy_lock = asyncio.Lock()
+
+
 async def _set_dept_ceremony_override(
     app_state: AppState,
-    department_name: str,
+    department_name: NotBlankStr,
     policy: dict[str, Any],
 ) -> None:
     """Set the ceremony policy override for a department.
@@ -560,30 +584,40 @@ async def _set_dept_ceremony_override(
             blob cannot be loaded (prevents data loss from
             writing over unreadable state).
     """
-    policies = await _load_dept_policies_json(
-        app_state,
-        raise_on_error=True,
-    )
-    policies[department_name] = copy.deepcopy(policy)
-    await _save_dept_policies_json(app_state, policies)
+    async with _dept_policy_lock:
+        policies = await _load_dept_policies_json(
+            app_state,
+            raise_on_error=True,
+        )
+        policies[department_name] = copy.deepcopy(policy)
+        await _save_dept_policies_json(app_state, policies)
 
 
 async def _clear_dept_ceremony_override(
     app_state: AppState,
-    department_name: str,
+    department_name: NotBlankStr,
 ) -> None:
     """Clear the ceremony policy override for a department.
+
+    Persists a ``None`` sentinel so the department explicitly
+    inherits the project-level policy, even if the config YAML
+    defines a ``ceremony_policy`` for the department.
 
     Args:
         app_state: Application state.
         department_name: Department name.
+
+    Raises:
+        ServiceUnavailableError: If the settings service or JSON
+            blob cannot be loaded.
     """
-    policies = await _load_dept_policies_json(
-        app_state,
-        raise_on_error=True,
-    )
-    policies.pop(department_name, None)
-    await _save_dept_policies_json(app_state, policies)
+    async with _dept_policy_lock:
+        policies = await _load_dept_policies_json(
+            app_state,
+            raise_on_error=True,
+        )
+        policies[department_name] = None
+        await _save_dept_policies_json(app_state, policies)
 
 
 # ── Controller ────────────────────────────────────────────────
@@ -756,11 +790,11 @@ class DepartmentController(Controller):
 
         # Validate policy data via Pydantic
         try:
-            CeremonyPolicyConfig.model_validate(data)
+            validated = CeremonyPolicyConfig.model_validate(data)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            msg = f"Invalid ceremony policy: {exc}"
+            msg = "Invalid ceremony policy data"
             logger.warning(
                 API_REQUEST_ERROR,
                 endpoint="departments.ceremony_policy.update",
@@ -768,15 +802,17 @@ class DepartmentController(Controller):
             )
             raise ApiValidationError(msg) from exc
 
+        clean_data = validated.model_dump(mode="json", exclude_none=True)
+
         # Merge into the dept_ceremony_policies JSON setting
-        await _set_dept_ceremony_override(app_state, name, data)
+        await _set_dept_ceremony_override(app_state, name, clean_data)
 
         logger.info(
             API_CEREMONY_POLICY_DEPT_UPDATED,
             department=name,
-            strategy=data.get("strategy"),
+            strategy=clean_data.get("strategy"),
         )
-        return ApiResponse(data=data)
+        return ApiResponse(data=clean_data)
 
     @delete(
         "/{name:str}/ceremony-policy",

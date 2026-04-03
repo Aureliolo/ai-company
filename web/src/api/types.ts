@@ -1686,7 +1686,6 @@ export interface ResolvedCeremonyPolicyResponse {
   readonly transition_threshold: ResolvedPolicyField<number>
 }
 
-export interface ActiveCeremonyStrategy {
-  readonly strategy: CeremonyStrategyType | null
-  readonly sprint_id: string | null
-}
+export type ActiveCeremonyStrategy =
+  | { readonly strategy: CeremonyStrategyType; readonly sprint_id: string }
+  | { readonly strategy: null; readonly sprint_id: null }

@@ -7,6 +7,7 @@ import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { CEREMONY_STRATEGY_LABELS } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 import { StrategyPicker } from './StrategyPicker'
+import { StrategyConfigPanel } from './StrategyConfigPanel'
 import { PolicyFieldsPanel } from './PolicyFieldsPanel'
 
 export interface DepartmentOverridesPanelProps {
@@ -20,37 +21,48 @@ function DepartmentRow({ dept }: { dept: Department }) {
   const updatePolicy = useCeremonyPolicyStore((s) => s.updateDepartmentPolicy)
   const clearPolicy = useCeremonyPolicyStore((s) => s.clearDepartmentPolicy)
   const saving = useCeremonyPolicyStore((s) => s.saving)
+  const saveError = useCeremonyPolicyStore((s) => s.saveError)
+  const departmentError = useCeremonyPolicyStore((s) => s.departmentErrors.get(dept.name))
 
   useEffect(() => {
     fetchPolicy(dept.name)
   }, [dept.name, fetchPolicy])
 
   const hasOverride = policy != null && Object.keys(policy).length > 0
-  const strategy = policy?.strategy ?? 'task_driven'
+  // Local draft for new overrides (defers API call until explicit save via strategy/field changes)
+  const [localDraft, setLocalDraft] = useState<CeremonyPolicyConfig | null>(null)
+  const isEditing = hasOverride || localDraft != null
+  const effectivePolicy = policy ?? localDraft
+  const strategy = effectivePolicy?.strategy ?? 'task_driven'
 
   const handleInheritChange = useCallback(
     (inherit: boolean) => {
       if (inherit) {
+        setLocalDraft(null)
         clearPolicy(dept.name)
       } else {
-        updatePolicy(dept.name, { strategy: 'task_driven' })
+        // Show editing form without persisting immediately
+        setLocalDraft({ strategy: 'task_driven' })
       }
     },
-    [dept.name, clearPolicy, updatePolicy],
+    [dept.name, clearPolicy],
   )
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
-      updatePolicy(dept.name, { ...policy, strategy: s, strategy_config: {} })
+      const data = { ...effectivePolicy, strategy: s }
+      updatePolicy(dept.name, data)
+      setLocalDraft(null)
     },
-    [dept.name, policy, updatePolicy],
+    [dept.name, effectivePolicy, updatePolicy],
   )
 
   const handlePolicyFieldChange = useCallback(
     (field: keyof CeremonyPolicyConfig, value: unknown) => {
-      updatePolicy(dept.name, { ...policy, [field]: value })
+      updatePolicy(dept.name, { ...effectivePolicy, [field]: value })
+      setLocalDraft(null)
     },
-    [dept.name, policy, updatePolicy],
+    [dept.name, effectivePolicy, updatePolicy],
   )
 
   const Chevron = expanded ? ChevronDown : ChevronRight
@@ -66,7 +78,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
         <Chevron className="size-3.5 text-text-muted" />
         <span className="flex-1 text-sm font-medium">{dept.display_name ?? dept.name}</span>
         <span className="text-xs text-text-muted">
-          {hasOverride
+          {isEditing
             ? CEREMONY_STRATEGY_LABELS[strategy as CeremonyStrategyType]
             : 'Inherit'}
         </span>
@@ -74,23 +86,36 @@ function DepartmentRow({ dept }: { dept: Department }) {
 
       {expanded && (
         <div className="space-y-3 px-3 pb-3">
+          {departmentError && (
+            <p className="text-xs text-danger">{departmentError}</p>
+          )}
+          {saveError && (
+            <p className="text-xs text-danger">Save failed: {saveError}</p>
+          )}
+
           <InheritToggle
-            inherit={!hasOverride}
+            inherit={!isEditing}
             onChange={handleInheritChange}
             disabled={saving}
           />
 
-          {hasOverride && (
+          {isEditing && (
             <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
               <StrategyPicker
                 value={strategy as CeremonyStrategyType}
                 onChange={handleStrategyChange}
                 disabled={saving}
               />
+              <StrategyConfigPanel
+                strategy={strategy as CeremonyStrategyType}
+                config={(effectivePolicy?.strategy_config ?? {}) as Record<string, unknown>}
+                onChange={(c) => handlePolicyFieldChange('strategy_config', c)}
+                disabled={saving}
+              />
               <PolicyFieldsPanel
-                velocityCalculator={policy?.velocity_calculator ?? 'task_driven'}
-                autoTransition={policy?.auto_transition ?? true}
-                transitionThreshold={policy?.transition_threshold ?? 1.0}
+                velocityCalculator={effectivePolicy?.velocity_calculator ?? 'task_driven'}
+                autoTransition={effectivePolicy?.auto_transition ?? true}
+                transitionThreshold={effectivePolicy?.transition_threshold ?? 1.0}
                 onVelocityCalculatorChange={(v) => handlePolicyFieldChange('velocity_calculator', v)}
                 onAutoTransitionChange={(v) => handlePolicyFieldChange('auto_transition', v)}
                 onTransitionThresholdChange={(v) => handlePolicyFieldChange('transition_threshold', v)}
