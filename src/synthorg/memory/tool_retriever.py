@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_SEARCH_TOOL = "search_memory"
-_RECALL_TOOL = "recall_memory"
+SEARCH_MEMORY_TOOL_NAME = "search_memory"
+RECALL_MEMORY_TOOL_NAME = "recall_memory"
 
 _INSTRUCTION = (
     "You have access to memory recall tools. Use search_memory "
@@ -37,7 +37,7 @@ _INSTRUCTION = (
     "information. Use recall_memory to fetch a specific memory by ID."
 )
 
-_SEARCH_MEMORY_SCHEMA: dict[str, Any] = {
+SEARCH_MEMORY_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "query": {
@@ -63,7 +63,7 @@ _SEARCH_MEMORY_SCHEMA: dict[str, Any] = {
     "required": ["query"],
 }
 
-_RECALL_MEMORY_SCHEMA: dict[str, Any] = {
+RECALL_MEMORY_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "memory_id": {
@@ -217,17 +217,17 @@ class ToolBasedInjectionStrategy:
         """
         return (
             ToolDefinition(
-                name=NotBlankStr(_SEARCH_TOOL),
+                name=NotBlankStr(SEARCH_MEMORY_TOOL_NAME),
                 description=(
                     "Search agent memory for relevant past context, "
                     "decisions, or learned information."
                 ),
-                parameters_schema=copy.deepcopy(_SEARCH_MEMORY_SCHEMA),
+                parameters_schema=copy.deepcopy(SEARCH_MEMORY_SCHEMA),
             ),
             ToolDefinition(
-                name=NotBlankStr(_RECALL_TOOL),
+                name=NotBlankStr(RECALL_MEMORY_TOOL_NAME),
                 description="Recall a specific memory entry by its ID.",
-                parameters_schema=copy.deepcopy(_RECALL_MEMORY_SCHEMA),
+                parameters_schema=copy.deepcopy(RECALL_MEMORY_SCHEMA),
             ),
         )
 
@@ -250,9 +250,9 @@ class ToolBasedInjectionStrategy:
         Raises:
             ValueError: If ``tool_name`` is not recognized.
         """
-        if tool_name == _SEARCH_TOOL:
+        if tool_name == SEARCH_MEMORY_TOOL_NAME:
             return await self._handle_search(arguments, agent_id)
-        if tool_name == _RECALL_TOOL:
+        if tool_name == RECALL_MEMORY_TOOL_NAME:
             return await self._handle_recall(arguments, agent_id)
         msg = f"Unknown tool: {tool_name!r}"
         raise ValueError(msg)
@@ -273,7 +273,7 @@ class ToolBasedInjectionStrategy:
         logger.info(
             MEMORY_RETRIEVAL_START,
             agent_id=agent_id,
-            tool=_SEARCH_TOOL,
+            tool=SEARCH_MEMORY_TOOL_NAME,
             query_length=len(query_text),
         )
 
@@ -292,7 +292,7 @@ class ToolBasedInjectionStrategy:
         except DomainMemoryError as exc:
             logger.warning(
                 MEMORY_RETRIEVAL_DEGRADED,
-                source=_SEARCH_TOOL,
+                source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
                 error=str(exc),
                 exc_info=True,
@@ -301,7 +301,7 @@ class ToolBasedInjectionStrategy:
         except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
-                source=_SEARCH_TOOL,
+                source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
                 error=str(exc),
                 exc_info=True,
@@ -311,7 +311,7 @@ class ToolBasedInjectionStrategy:
         logger.info(
             MEMORY_RETRIEVAL_COMPLETE,
             agent_id=agent_id,
-            tool=_SEARCH_TOOL,
+            tool=SEARCH_MEMORY_TOOL_NAME,
             ranked_count=len(entries),
         )
 
@@ -337,7 +337,7 @@ class ToolBasedInjectionStrategy:
         except DomainMemoryError as exc:
             logger.warning(
                 MEMORY_RETRIEVAL_DEGRADED,
-                source=_RECALL_TOOL,
+                source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
                 error=str(exc),
                 exc_info=True,
@@ -346,7 +346,7 @@ class ToolBasedInjectionStrategy:
         except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
-                source=_RECALL_TOOL,
+                source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
                 error=str(exc),
                 exc_info=True,

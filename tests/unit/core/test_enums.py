@@ -114,8 +114,8 @@ class TestEnumMemberCounts:
         }
         assert {sp.value for sp in SkillPattern} == expected
 
-    def test_action_type_has_25_members(self) -> None:
-        assert len(ActionType) == 25
+    def test_action_type_has_26_members(self) -> None:
+        assert len(ActionType) == 26
 
 
 # ── String Values ──────────────────────────────────────────────────

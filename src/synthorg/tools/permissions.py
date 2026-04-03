@@ -59,6 +59,7 @@ class ToolPermissionChecker:
                         ToolCategory.FILE_SYSTEM,
                         ToolCategory.CODE_EXECUTION,
                         ToolCategory.VERSION_CONTROL,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 ToolAccessLevel.RESTRICTED: frozenset(
@@ -67,6 +68,7 @@ class ToolPermissionChecker:
                         ToolCategory.CODE_EXECUTION,
                         ToolCategory.VERSION_CONTROL,
                         ToolCategory.WEB,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 ToolAccessLevel.STANDARD: frozenset(
@@ -77,6 +79,7 @@ class ToolPermissionChecker:
                         ToolCategory.WEB,
                         ToolCategory.TERMINAL,
                         ToolCategory.ANALYTICS,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 # all categories -- new ToolCategory members are auto-included;
