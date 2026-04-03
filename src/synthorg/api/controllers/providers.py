@@ -1,11 +1,17 @@
 """Provider controller -- CRUD, connection testing, and presets."""
 
+import asyncio
+import json as _json
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
@@ -30,19 +36,28 @@ from synthorg.api.dto_discovery import (
 )
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
+    PullModelRequest,
+    UpdateModelConfigRequest,
     to_provider_model_response,
 )
-from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
+from synthorg.api.errors import (
+    ApiError,
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_MODEL_CAPABILITIES_LOOKUP_FAILED,
+    API_MODEL_OPERATION_FAILED,
     API_PROVIDER_HEALTH_QUERIED,
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
+    API_SSE_PULL_MODEL_FAILED,
     API_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
@@ -55,6 +70,18 @@ from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 from synthorg.providers.probing import probe_preset_urls
 
 logger = get_logger(__name__)
+
+
+def _sse_error(msg: str) -> dict[str, object]:
+    """Build a PullProgressEvent-shaped error dict for SSE."""
+    return {
+        "status": msg,
+        "progress_percent": None,
+        "total_bytes": None,
+        "completed_bytes": None,
+        "error": msg,
+        "done": True,
+    }
 
 
 async def _enrich_with_usage(
@@ -115,14 +142,7 @@ class ProviderController(Controller):
         self,
         state: State,  # noqa: ARG002
     ) -> ApiResponse[tuple[ProviderPreset, ...]]:
-        """List all available provider presets.
-
-        Args:
-            state: Application state.
-
-        Returns:
-            Preset list envelope.
-        """
+        """List all available provider presets."""
         return ApiResponse(data=list_presets())
 
     @post(
@@ -135,17 +155,6 @@ class ProviderController(Controller):
         data: ProbePresetRequest,
     ) -> ApiResponse[ProbePresetResponse]:
         """Probe a preset's candidate URLs for reachability.
-
-        Tries each candidate URL in priority order and returns the
-        first one that responds, along with the number of models
-        discovered.
-
-        Args:
-            state: Application state (injected by Litestar, unused).
-            data: Probe request with preset name.
-
-        Returns:
-            Probe result envelope.
 
         Raises:
             ApiValidationError: If the preset is unknown.
@@ -180,14 +189,7 @@ class ProviderController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, ProviderResponse]]:
-        """List all configured providers (secrets stripped).
-
-        Args:
-            state: Application state.
-
-        Returns:
-            Provider responses envelope.
-        """
+        """List all configured providers (secrets stripped)."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
         safe = {name: to_provider_response(p) for name, p in providers.items()}
@@ -203,13 +205,6 @@ class ProviderController(Controller):
         name: PathName,
     ) -> ApiResponse[ProviderResponse]:
         """Get a provider by name (secrets stripped).
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider response envelope.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -233,13 +228,6 @@ class ProviderController(Controller):
         name: PathName,
     ) -> ApiResponse[tuple[ProviderModelResponse, ...]]:
         """List models for a provider with runtime capabilities.
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider models enriched with capability flags.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -284,19 +272,7 @@ class ProviderController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[ProviderHealthSummary]:
-        """Get provider health summary.
-
-        Returns health status, error rate, average response time,
-        call count, total tokens, and total cost for the last 24
-        hours.  Token and cost totals are enriched from the cost
-        tracker when available.
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider health summary envelope.
+        """Get provider health summary (enriched with cost data).
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -343,8 +319,13 @@ class ProviderController(Controller):
                 validation.
         """
         app_state: AppState = state.app_state
+        # Strip preset_name from external requests -- only
+        # create_from_preset may set it (capability flag injection).
+        safe_data = data.model_copy(update={"preset_name": None})
         try:
-            config = await app_state.provider_management.create_provider(data)
+            config = await app_state.provider_management.create_provider(
+                safe_data,
+            )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
                 API_RESOURCE_CONFLICT,
@@ -652,3 +633,205 @@ class ProviderController(Controller):
                 from_attributes=True,
             ),
         )
+
+    # ── Local model management ───────────────────────────────
+
+    @post(
+        "/{name:str}/models/pull",
+        guards=[require_ceo_or_manager],
+        media_type="text/event-stream",
+    )
+    async def pull_model(
+        self,
+        state: State,
+        name: PathName,
+        data: PullModelRequest,
+    ) -> ServerSentEvent:
+        """Pull a model on a local provider (SSE streaming).
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Pull request with model name.
+
+        Returns:
+            SSE stream of pull progress events.
+        """
+        app_state: AppState = state.app_state
+        svc = app_state.provider_management
+
+        async def _event_stream() -> AsyncIterator[dict[str, str]]:
+            try:
+                async for event in svc.pull_model(name, data.model_name):
+                    if event.done and event.error:
+                        event_type = "error"
+                    elif event.done:
+                        event_type = "complete"
+                    else:
+                        event_type = "progress"
+                    yield {
+                        "event": event_type,
+                        "data": _json.dumps(event.model_dump()),
+                    }
+            except ProviderNotFoundError:
+                yield {
+                    "event": "error",
+                    "data": _json.dumps(
+                        _sse_error(f"Provider {name!r} not found"),
+                    ),
+                }
+            except ProviderValidationError as exc:
+                yield {
+                    "event": "error",
+                    "data": _json.dumps(_sse_error(str(exc))),
+                }
+            except asyncio.CancelledError:
+                raise
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    API_SSE_PULL_MODEL_FAILED,
+                    provider=name,
+                    model=data.model_name,
+                    error=str(exc),
+                    error_type=type(exc).__qualname__,
+                )
+                yield {
+                    "event": "error",
+                    "data": _json.dumps(
+                        _sse_error(
+                            f"Internal error: {type(exc).__name__}",
+                        ),
+                    ),
+                }
+
+        return ServerSentEvent(content=_event_stream())
+
+    @delete(
+        "/{name:str}/models/{model_id:path}",
+        guards=[require_ceo_or_manager],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_model(
+        self,
+        state: State,
+        name: PathName,
+        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
+    ) -> None:
+        """Delete a model from a local provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            model_id: Model identifier (may contain colons).
+        """
+        app_state: AppState = state.app_state
+        try:
+            await app_state.provider_management.delete_model(name, model_id)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error=str(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
+        except ValueError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="model",
+                name=model_id,
+                provider=name,
+            )
+            raise NotFoundError(str(exc)) from exc
+        except RuntimeError as exc:
+            logger.exception(
+                API_MODEL_OPERATION_FAILED,
+                resource="model",
+                operation="delete",
+                name=model_id,
+                provider=name,
+                error=str(exc),
+            )
+            raise ApiError(str(exc)) from exc
+
+    @put(
+        "/{name:str}/models/{model_id:path}/config",
+        guards=[require_ceo_or_manager],
+    )
+    async def update_model_config(
+        self,
+        state: State,
+        name: PathName,
+        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
+        data: UpdateModelConfigRequest,
+    ) -> ApiResponse[ProviderModelResponse]:
+        """Update per-model launch parameters for a local provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            model_id: Model identifier.
+            data: New launch parameters.
+
+        Returns:
+            Updated model response.
+        """
+        app_state: AppState = state.app_state
+        try:
+            updated = await app_state.provider_management.update_model_config(
+                name,
+                model_id,
+                data.local_params,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            exc_msg = str(exc)
+            if "not found" in exc_msg:
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="model",
+                    name=model_id,
+                    provider=name,
+                )
+                raise NotFoundError(exc_msg) from exc
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                model=model_id,
+                error=exc_msg,
+            )
+            raise ApiValidationError(exc_msg) from exc
+        model = next(
+            (m for m in updated.models if m.id == model_id),
+            None,
+        )
+        if model is None:
+            msg = f"Model {model_id!r} missing from updated config"
+            logger.error(
+                API_MODEL_OPERATION_FAILED,
+                resource="model",
+                operation="config_update",
+                name=model_id,
+                provider=name,
+                error=msg,
+            )
+            raise ApiError(msg)
+        return ApiResponse(data=to_provider_model_response(model))

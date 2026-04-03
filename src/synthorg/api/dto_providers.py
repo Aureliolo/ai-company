@@ -9,7 +9,10 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
+from synthorg.config.schema import (  # noqa: TC001
+    LocalModelParams,
+    ProviderModelConfig,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
 from synthorg.providers.enums import AuthType
@@ -28,6 +31,7 @@ class ProviderModelResponse(BaseModel):
         cost_per_1k_output: Cost per 1k output tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
+        local_params: Per-model launch parameters for local providers.
         supports_tools: Whether the model supports tool/function calling.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
@@ -60,6 +64,10 @@ class ProviderModelResponse(BaseModel):
         gt=0,
         le=300_000,
         description="Estimated median latency in ms",
+    )
+    local_params: LocalModelParams | None = Field(
+        default=None,
+        description="Per-model launch parameters for local providers",
     )
     supports_tools: bool = Field(
         default=False,
@@ -154,6 +162,7 @@ class CreateProviderRequest(BaseModel):
     custom_header_name: NotBlankStr | None = None
     custom_header_value: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] = ()
+    preset_name: NotBlankStr | None = None
 
     @field_validator("name")
     @classmethod
@@ -271,6 +280,10 @@ class ProviderResponse(BaseModel):
         has_custom_header: Whether a custom auth header is configured.
         has_subscription_token: Whether a subscription token is set.
         tos_accepted_at: ISO timestamp of ToS acceptance (or ``None``).
+        preset_name: Preset used to create this provider (if any).
+        supports_model_pull: Whether pulling models is supported.
+        supports_model_delete: Whether deleting models is supported.
+        supports_model_config: Whether per-model config is supported.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -289,6 +302,10 @@ class ProviderResponse(BaseModel):
     oauth_client_id: NotBlankStr | None = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
+    preset_name: NotBlankStr | None = None
+    supports_model_pull: bool = False
+    supports_model_delete: bool = False
+    supports_model_config: bool = False
 
 
 class CreateFromPresetRequest(BaseModel):
@@ -371,6 +388,8 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
     Strips all secrets and provides boolean credential indicators.
+    Resolves local model management capabilities from the preset
+    when ``preset_name`` is set.
 
     Args:
         config: Provider configuration (may contain secrets).
@@ -378,11 +397,14 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     Returns:
         Safe response DTO with secrets stripped.
     """
+    from synthorg.providers.presets import get_preset  # noqa: PLC0415
+
     tos_str = (
         config.tos_accepted_at.isoformat()
         if config.tos_accepted_at is not None
         else None
     )
+    preset = get_preset(config.preset_name) if config.preset_name else None
     return ProviderResponse(
         driver=config.driver,
         litellm_provider=config.litellm_provider,
@@ -405,6 +427,10 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         oauth_client_id=config.oauth_client_id,
         oauth_scope=config.oauth_scope,
         custom_header_name=config.custom_header_name,
+        preset_name=config.preset_name,
+        supports_model_pull=preset.supports_model_pull if preset else False,
+        supports_model_delete=preset.supports_model_delete if preset else False,
+        supports_model_config=preset.supports_model_config if preset else False,
     )
 
 
@@ -434,6 +460,7 @@ def to_provider_model_response(
         cost_per_1k_output=config.cost_per_1k_output,
         max_context=config.max_context,
         estimated_latency_ms=config.estimated_latency_ms,
+        local_params=config.local_params,
         supports_tools=(
             capabilities.supports_tools if capabilities is not None else False
         ),
@@ -444,3 +471,47 @@ def to_provider_model_response(
             capabilities.supports_streaming if capabilities is not None else True
         ),
     )
+
+
+# ── Local model management DTOs ──────────────────────────────
+
+
+_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9._:/@-]+$")
+
+
+class PullModelRequest(BaseModel):
+    """Payload for pulling a model on a local provider.
+
+    Attributes:
+        model_name: Model identifier to pull (e.g. ``"test-local-001:latest"``).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    model_name: NotBlankStr = Field(
+        max_length=256,
+        description="Model name/tag to pull",
+    )
+
+    @field_validator("model_name")
+    @classmethod
+    def _validate_model_name(cls, v: str) -> str:
+        if not _MODEL_NAME_RE.match(v):
+            msg = (
+                "model_name must contain only alphanumeric characters, "
+                "dots, underscores, colons, slashes, hyphens, and @"
+            )
+            raise ValueError(msg)
+        return v
+
+
+class UpdateModelConfigRequest(BaseModel):
+    """Payload for updating per-model launch parameters.
+
+    Attributes:
+        local_params: New launch parameters for the model.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    local_params: LocalModelParams

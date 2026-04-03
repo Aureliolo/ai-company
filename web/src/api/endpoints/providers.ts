@@ -6,11 +6,13 @@ import type {
   CreateProviderRequest,
   DiscoverModelsResponse,
   DiscoveryPolicyResponse,
+  LocalModelParams,
   ProbePresetResponse,
   ProviderConfig,
   ProviderHealthSummary,
   ProviderModelResponse,
   ProviderPreset,
+  PullProgressEvent,
   RemoveAllowlistEntryRequest,
   TestConnectionRequest,
   TestConnectionResponse,
@@ -110,5 +112,131 @@ export async function addAllowlistEntry(data: AddAllowlistEntryRequest): Promise
 
 export async function removeAllowlistEntry(data: RemoveAllowlistEntryRequest): Promise<DiscoveryPolicyResponse> {
   const response = await apiClient.post<ApiResponse<DiscoveryPolicyResponse>>('/providers/discovery-policy/remove-entry', data)
+  return unwrap(response)
+}
+
+/** Encode a model ID for use in URL paths, preserving `/` for :path params. */
+function encodeModelIdPath(modelId: string): string {
+  return modelId.split('/').map(encodeURIComponent).join('/')
+}
+
+/** Process buffered SSE lines, dispatching events to the callback. */
+function processSseLines(
+  lines: string[],
+  state: { currentEvent: string },
+  onProgress: (event: PullProgressEvent) => void,
+): void {
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      state.currentEvent = line.slice(7).trim()
+    } else if (line.startsWith('data: ')) {
+      try {
+        const parsed = JSON.parse(line.slice(6)) as PullProgressEvent
+        if (state.currentEvent === 'error' || parsed.error) {
+          const errorMsg = parsed.error ?? parsed.status ?? 'Pull failed'
+          state.currentEvent = ''
+          onProgress(parsed)
+          throw new Error(errorMsg)
+        }
+        onProgress(parsed)
+      } catch (err) {
+        state.currentEvent = ''
+        if (err instanceof SyntaxError) {
+          console.warn('[SSE] Malformed JSON in pull stream line')
+          continue
+        }
+        if (err instanceof Error) throw err
+      }
+      state.currentEvent = ''
+    }
+  }
+}
+
+/**
+ * Pull a model on a local provider via SSE streaming.
+ *
+ * Uses fetch + ReadableStream because the endpoint is POST-based
+ * and EventSource only supports GET.
+ */
+export async function pullModel(
+  name: string,
+  modelName: string,
+  onProgress: (event: PullProgressEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const baseUrl = apiClient.defaults.baseURL ?? ''
+  const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
+  const token = localStorage.getItem('auth_token')
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ model_name: modelName }),
+    signal,
+  })
+
+  if (!response.ok || !response.body) {
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token_expires_at')
+      localStorage.removeItem('auth_must_change_password')
+    }
+    throw new Error(`Pull failed: HTTP ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let receivedDone = false
+  const sseState = { currentEvent: '' }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    processSseLines(lines, sseState, (event) => {
+      if (event.done) receivedDone = true
+      onProgress(event)
+    })
+  }
+
+  // Process any remaining data in the buffer after the stream ends
+  buffer += decoder.decode()
+  if (buffer.trim()) {
+    const trailing = buffer.split('\n')
+    processSseLines(trailing, sseState, (event) => {
+      if (event.done) receivedDone = true
+      onProgress(event)
+    })
+  }
+
+  if (!receivedDone) {
+    throw new Error('Pull stream ended without completion event')
+  }
+}
+
+export async function deleteModel(name: string, modelId: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}`,
+  )
+  unwrapVoid(response)
+}
+
+export async function updateModelConfig(
+  name: string,
+  modelId: string,
+  params: LocalModelParams,
+): Promise<ProviderModelResponse> {
+  const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
+    { local_params: params },
+  )
   return unwrap(response)
 }

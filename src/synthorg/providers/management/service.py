@@ -25,6 +25,8 @@ from synthorg.observability.events.provider import (
     PROVIDER_DELETED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+    PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
+    PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
     PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
@@ -56,8 +58,14 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.url_utils import is_self_url, redact_url
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from synthorg.api.state import AppState
-    from synthorg.config.schema import RootConfig
+    from synthorg.config.schema import LocalModelParams, RootConfig
+    from synthorg.providers.management.local_models import (
+        LocalModelManager,
+        PullProgressEvent,
+    )
     from synthorg.providers.routing.router import ModelRouter
     from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
@@ -98,21 +106,11 @@ class ProviderManagementService:
         )
 
     async def list_providers(self) -> dict[str, ProviderConfig]:
-        """List all configured providers.
-
-        Returns:
-            Provider configurations keyed by name.
-        """
+        """List all configured providers keyed by name."""
         return await self._config_resolver.get_provider_configs()
 
     async def get_provider(self, name: str) -> ProviderConfig:
         """Get a single provider by name.
-
-        Args:
-            name: Provider name.
-
-        Returns:
-            The provider configuration.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -131,16 +129,9 @@ class ProviderManagementService:
     ) -> ProviderConfig:
         """Create a new provider.
 
-        Args:
-            request: Create provider request with config fields.
-
-        Returns:
-            The created provider configuration.
-
         Raises:
-            ProviderAlreadyExistsError: If a provider with this name
-                already exists.
-            ProviderValidationError: If the config fails validation.
+            ProviderAlreadyExistsError: If name is taken.
+            ProviderValidationError: If config fails validation.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
@@ -172,13 +163,6 @@ class ProviderManagementService:
         request: UpdateProviderRequest,
     ) -> ProviderConfig:
         """Update an existing provider.
-
-        Args:
-            name: Provider name to update.
-            request: Partial update request.
-
-        Returns:
-            The updated provider configuration.
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
@@ -242,16 +226,6 @@ class ProviderManagementService:
     ) -> TestConnectionResponse:
         """Test connectivity to a provider.
 
-        Builds a temporary driver and sends a minimal completion
-        request.  The driver is not registered in AppState.
-
-        Args:
-            name: Provider name.
-            request: Test connection request (includes optional model selection).
-
-        Returns:
-            Connection test result with latency or error.
-
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
@@ -277,16 +251,7 @@ class ProviderManagementService:
         config: ProviderConfig,
         model_id: str,
     ) -> TestConnectionResponse:
-        """Execute the actual connection test probe.
-
-        Args:
-            name: Provider name.
-            config: Provider configuration.
-            model_id: Model ID to test.
-
-        Returns:
-            Connection test result.
-        """
+        """Execute the actual connection test probe."""
         try:
             return await self._probe_provider(name, config, model_id)
         except ProviderError as exc:
@@ -325,16 +290,7 @@ class ProviderManagementService:
         config: ProviderConfig,
         model_id: str,
     ) -> TestConnectionResponse:
-        """Send a minimal completion request to verify connectivity.
-
-        Args:
-            name: Provider name for logging.
-            config: Provider configuration.
-            model_id: Model to test with.
-
-        Returns:
-            Successful connection test response.
-        """
+        """Send a minimal completion request to verify connectivity."""
         from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
@@ -364,17 +320,6 @@ class ProviderManagementService:
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
-        The request's ``auth_type`` overrides the preset default when
-        provided.  When the effective auth type is ``AuthType.NONE``
-        and a base URL is available but no models are given, attempts
-        auto-discovery before creating the provider.
-
-        Args:
-            request: Preset-based creation request.
-
-        Returns:
-            The created provider configuration.
-
         Raises:
             ProviderValidationError: If the preset is unknown.
             ProviderAlreadyExistsError: If the name is taken.
@@ -391,6 +336,10 @@ class ProviderManagementService:
 
         if request.models is not None:
             models = request.models
+        elif preset.auth_type == AuthType.NONE:
+            # Local providers: skip static LiteLLM DB, rely on live
+            # discovery in _maybe_discover_preset_models below.
+            models = preset.default_models
         else:
             litellm_models = models_from_litellm(preset.litellm_provider)
             models = litellm_models or preset.default_models
@@ -423,6 +372,7 @@ class ProviderManagementService:
             tos_accepted=request.tos_accepted,
             base_url=base_url,
             models=models,
+            preset_name=preset.name,
         )
         return await self.create_provider(create_request)
 
@@ -434,18 +384,13 @@ class ProviderManagementService:
         *,
         auth_type: AuthType,
     ) -> tuple[ProviderModelConfig, ...]:
-        """Auto-discover models for no-auth presets when none are provided.
-
-        Only attempts discovery when the effective auth type is
-        ``AuthType.NONE``, a base URL is available, and no models were
-        explicitly provided.  The request's ``auth_type`` override is
-        applied before this check.
+        """Auto-discover models for no-auth presets when none given.
 
         Args:
             preset: Resolved preset definition.
             base_url: Provider base URL (may be user-overridden).
             models: Explicitly provided models (may be empty).
-            auth_type: Effective auth type (request override or preset default).
+            auth_type: Effective auth type.
 
         Returns:
             Discovered models if any, otherwise the original models.
@@ -471,16 +416,9 @@ class ProviderManagementService:
     ) -> tuple[ProviderModelConfig, ...]:
         """Discover and update models for an existing provider.
 
-        Queries the provider's endpoint for available models and
-        updates the provider configuration if models are found.
-        Returns an empty tuple without querying if the provider has
-        no ``base_url`` configured.  Auth headers are forwarded when
-        available; discovery proceeds without them otherwise.
-
         Args:
             name: Provider name.
-            preset_hint: Optional preset name hint for endpoint selection.
-                Falls back to port-based inference when not provided.
+            preset_hint: Optional preset name for endpoint selection.
 
         Returns:
             Tuple of discovered model configs (may be empty).
@@ -528,14 +466,7 @@ class ProviderManagementService:
         return discovered
 
     def _is_self_connection(self, base_url: str) -> bool:
-        """Check if a URL points at this backend and log a warning if so.
-
-        Args:
-            base_url: URL to check.
-
-        Returns:
-            True if the URL targets the backend, False otherwise.
-        """
+        """Check if a URL points at this backend; log warning if so."""
         backend_port = self._config.api.server.port
         if is_self_url(base_url, backend_port=backend_port):
             logger.warning(
@@ -547,25 +478,14 @@ class ProviderManagementService:
         return False
 
     async def get_discovery_policy(self) -> ProviderDiscoveryPolicy:
-        """Return the current discovery allowlist policy.
-
-        Returns:
-            Current policy (seeded on first access if needed).
-        """
+        """Return the current discovery allowlist policy."""
         return await self._allowlist.load()
 
     async def add_custom_allowlist_entry(
         self,
         host_port: str,
     ) -> ProviderDiscoveryPolicy:
-        """Add a custom host:port entry to the discovery allowlist.
-
-        Args:
-            host_port: Entry to add (e.g. ``"my-server:8080"``).
-
-        Returns:
-            Updated policy.
-        """
+        """Add a custom host:port to the discovery allowlist."""
         async with self._lock:
             return await self._allowlist.add_entry(host_port)
 
@@ -573,14 +493,7 @@ class ProviderManagementService:
         self,
         host_port: str,
     ) -> ProviderDiscoveryPolicy:
-        """Remove a host:port entry from the discovery allowlist.
-
-        Args:
-            host_port: Entry to remove.
-
-        Returns:
-            Updated policy.
-        """
+        """Remove a host:port from the discovery allowlist."""
         async with self._lock:
             return await self._allowlist.remove_entry(host_port)
 
@@ -592,17 +505,13 @@ class ProviderManagementService:
     ) -> bool:
         """Atomically verify base_url and persist discovered models.
 
-        Holds the service lock for the entire check-then-write to
-        prevent TOCTOU races between re-reading the provider and
-        applying the update.
-
         Args:
             name: Provider name.
-            original_base_url: The base_url that was used for discovery.
-            discovered: Models discovered from the provider endpoint.
+            original_base_url: The base_url used for discovery.
+            discovered: Models discovered from the endpoint.
 
         Returns:
-            True if the models were persisted, False if aborted.
+            True if models were persisted, False if aborted.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
@@ -643,14 +552,11 @@ class ProviderManagementService:
     ) -> None:
         """Validate, persist, and hot-reload providers.
 
-        Build both registry and router before persisting to prevent
-        DB/AppState divergence on build failure.
-
         Args:
             new_providers: Complete new provider dict.
 
         Raises:
-            ProviderValidationError: If registry or router build fails.
+            ProviderValidationError: If build or persist fails.
         """
         # 1. Validate: build registry + router before any I/O
         try:
@@ -686,6 +592,171 @@ class ProviderManagementService:
         self._app_state.swap_provider_registry(registry)
         self._app_state.swap_model_router(router)
 
+    # ── Local model management ───────────────────────────────
+
+    async def _resolve_local_manager(
+        self,
+        name: str,
+        *,
+        capability: str,
+    ) -> tuple[ProviderConfig, LocalModelManager]:
+        """Resolve provider config and local model manager."""
+        from synthorg.providers.management.local_models import (  # noqa: PLC0415
+            get_local_model_manager,
+        )
+
+        config = await self.get_provider(name)
+        preset = get_preset(config.preset_name) if config.preset_name else None
+        cap_attr = f"supports_model_{capability}"
+        if preset is None or not getattr(preset, cap_attr, False):
+            msg = f"Provider {name!r} does not support model {capability}"
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                provider=name,
+                error=msg,
+            )
+            raise ProviderValidationError(msg)
+        if not config.base_url:
+            msg = f"Provider {name!r} has no base URL configured"
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                provider=name,
+                error=msg,
+            )
+            raise ProviderValidationError(msg)
+        manager = get_local_model_manager(
+            config.preset_name,
+            config.base_url,
+        )
+        if manager is None:
+            msg = f"No local model manager for preset {config.preset_name!r}"
+            logger.warning(
+                PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
+                provider=name,
+                preset=config.preset_name,
+            )
+            raise ProviderValidationError(msg)
+        return config, manager
+
+    async def pull_model(
+        self,
+        name: str,
+        model_name: str,
+    ) -> AsyncIterator[PullProgressEvent]:
+        """Pull a model on a local provider.
+
+        Args:
+            name: Provider name.
+            model_name: Model to pull.
+
+        Yields:
+            Pull progress events.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If pull is unsupported.
+        """
+        _, manager = await self._resolve_local_manager(
+            name,
+            capability="pull",
+        )
+        async for event in manager.pull_model(model_name):
+            yield event
+
+    async def delete_model(self, name: str, model_id: str) -> None:
+        """Delete a model from a local provider.
+
+        Args:
+            name: Provider name.
+            model_id: Model identifier to delete.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If delete is unsupported.
+        """
+        _, manager = await self._resolve_local_manager(
+            name,
+            capability="delete",
+        )
+        await manager.delete_model(model_id)
+        try:
+            await self.discover_models_for_provider(name)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                PROVIDER_DISCOVERY_FAILED,
+                provider=name,
+                reason="post_delete_refresh_failed",
+                error=str(exc),
+            )
+
+    async def update_model_config(
+        self,
+        name: str,
+        model_id: str,
+        local_params: LocalModelParams,
+    ) -> ProviderConfig:
+        """Update per-model launch parameters for a local provider.
+
+        Args:
+            name: Provider name.
+            model_id: Model identifier.
+            local_params: New launch parameters.
+
+        Returns:
+            Updated provider configuration.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If config is unsupported or
+                the model is not found.
+        """
+        await self._resolve_local_manager(name, capability="config")
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            config = providers.get(name)
+            if config is None:
+                msg = f"Provider {name!r} not found"
+                logger.warning(
+                    PROVIDER_NOT_FOUND,
+                    provider=name,
+                    error=msg,
+                )
+                raise ProviderNotFoundError(msg)
+            model_idx = next(
+                (i for i, m in enumerate(config.models) if m.id == model_id),
+                None,
+            )
+            if model_idx is None:
+                msg = f"Model {model_id!r} not found in provider {name!r}"
+                logger.warning(
+                    PROVIDER_VALIDATION_FAILED,
+                    provider=name,
+                    model=model_id,
+                    error=msg,
+                )
+                raise ProviderValidationError(msg)
+            updated_model = config.models[model_idx].model_copy(
+                update={"local_params": local_params},
+            )
+            new_models = (
+                *config.models[:model_idx],
+                updated_model,
+                *config.models[model_idx + 1 :],
+            )
+            updated = config.model_copy(
+                update={"models": new_models},
+            )
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+            logger.info(
+                PROVIDER_MODEL_CONFIG_UPDATED,
+                provider=name,
+                model=model_id,
+            )
+            return updated
+
     def _build_router(
         self,
         providers: dict[str, ProviderConfig],
@@ -696,20 +767,11 @@ class ProviderManagementService:
 
         Args:
             providers: Provider configurations.
-            selector: Optional candidate selector for multi-provider
-                model resolution.  Defaults to
-                ``QuotaAwareSelector()``.
+            selector: Optional candidate selector (defaults to
+                ``QuotaAwareSelector()``).
 
         Returns:
             New ModelRouter instance.
-
-        Note:
-            The ``selector`` parameter is an extension point for
-            wiring quota-aware selection from ``QuotaTracker``.
-            Currently the sole caller (``_validate_and_persist``)
-            uses the default; callers may inject a pre-built
-            ``QuotaAwareSelector(provider_quota_available=...)``
-            when quota integration is wired at the service layer.
         """
         from synthorg.providers.routing.router import (  # noqa: PLC0415
             ModelRouter,

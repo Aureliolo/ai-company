@@ -36,6 +36,11 @@ class ProviderPreset(BaseModel):
         candidate_urls: URLs to probe during auto-detection, in priority
             order.  The first reachable URL becomes the base URL.
         default_models: Pre-configured model definitions.
+        supports_model_pull: Whether pulling/downloading models is
+            supported via the provider's management API.
+        supports_model_delete: Whether deleting models is supported.
+        supports_model_config: Whether per-model launch parameter
+            configuration (e.g. context window, GPU layers) is supported.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -54,6 +59,9 @@ class ProviderPreset(BaseModel):
     requires_base_url: bool = False
     candidate_urls: tuple[NotBlankStr, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
+    supports_model_pull: bool = False
+    supports_model_delete: bool = False
+    supports_model_config: bool = False
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:
@@ -219,6 +227,9 @@ _OLLAMA = ProviderPreset(
         "http://localhost:11434",
     ),
     default_models=(),
+    supports_model_pull=True,
+    supports_model_delete=True,
+    supports_model_config=True,
 )
 
 _LM_STUDIO = ProviderPreset(

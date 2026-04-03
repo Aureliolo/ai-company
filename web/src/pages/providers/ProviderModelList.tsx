@@ -1,11 +1,16 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Boxes } from 'lucide-react'
+import { Boxes, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types'
 
 interface ProviderModelRowProps {
   model: ProviderModelResponse
+  supportsDelete: boolean
+  supportsConfig: boolean
+  onDelete?: (modelId: string) => void
+  onConfigure?: (model: ProviderModelResponse) => void
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
@@ -44,7 +49,8 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
   )
 }
 
-function ProviderModelRow({ model }: ProviderModelRowProps) {
+function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onConfigure }: ProviderModelRowProps) {
+  const hasActions = supportsDelete || supportsConfig
   return (
     <tr className="border-b border-border/50 last:border-0">
       <td className="py-2 pr-4 font-mono text-foreground">{model.id}</td>
@@ -58,18 +64,59 @@ function ProviderModelRow({ model }: ProviderModelRowProps) {
       <td className="py-2 pr-4 text-right font-mono text-text-secondary">
         {model.cost_per_1k_input.toFixed(4)}
       </td>
-      <td className="py-2 text-right font-mono text-text-secondary">
+      <td className="py-2 pr-4 text-right font-mono text-text-secondary">
         {model.cost_per_1k_output.toFixed(4)}
       </td>
+      {hasActions && (
+        <td className="py-2 text-right">
+          <div className="flex items-center justify-end gap-1">
+            {supportsConfig && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onConfigure?.(model)}
+                title="Configure"
+                aria-label={`Configure ${model.id}`}
+                className="size-7"
+              >
+                <Settings2 className="size-3.5" />
+              </Button>
+            )}
+            {supportsDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onDelete?.(model.id)}
+                title="Delete"
+                aria-label={`Delete ${model.id}`}
+                className="size-7 text-text-muted hover:bg-danger/10 hover:text-danger"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   )
 }
 
 interface ProviderModelListProps {
   models: readonly ProviderModelResponse[]
+  supportsDelete?: boolean
+  supportsConfig?: boolean
+  onDelete?: (modelId: string) => void
+  onConfigure?: (model: ProviderModelResponse) => void
 }
 
-export function ProviderModelList({ models }: ProviderModelListProps) {
+export function ProviderModelList({
+  models,
+  supportsDelete = false,
+  supportsConfig = false,
+  onDelete,
+  onConfigure,
+}: ProviderModelListProps) {
+  const hasActions = supportsDelete || supportsConfig
   return (
     <SectionCard title="Models" icon={Boxes}>
       {models.length === 0 ? (
@@ -88,12 +135,20 @@ export function ProviderModelList({ models }: ProviderModelListProps) {
                 <th className="pb-2 pr-4 font-medium">Capabilities</th>
                 <th className="pb-2 pr-4 font-medium text-right">Context</th>
                 <th className="pb-2 pr-4 font-medium text-right">Input/1k</th>
-                <th className="pb-2 font-medium text-right">Output/1k</th>
+                <th className="pb-2 pr-4 font-medium text-right">Output/1k</th>
+                {hasActions && <th className="pb-2 font-medium text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {models.map((model) => (
-                <ProviderModelRow key={model.id} model={model} />
+                <ProviderModelRow
+                  key={model.id}
+                  model={model}
+                  supportsDelete={supportsDelete}
+                  supportsConfig={supportsConfig}
+                  onDelete={onDelete}
+                  onConfigure={onConfigure}
+                />
               ))}
             </tbody>
           </table>

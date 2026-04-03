@@ -29,7 +29,7 @@ function PresetOptionCard({
       aria-label={ariaLabel}
       onClick={onClick}
       className={cn(
-        'flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition-all duration-150',
+        'flex flex-col items-center gap-2 rounded-lg border p-card text-center transition-all duration-150',
         'hover:bg-card-hover hover:border-bright',
         selected
           ? 'border-accent bg-accent/5'
@@ -53,7 +53,7 @@ interface PresetPickerProps {
 export function PresetPicker({ presets, selected, onSelect, loading }: PresetPickerProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-3 gap-3 max-[767px]:grid-cols-2">
+      <div className="grid grid-cols-3 gap-grid-gap max-[767px]:grid-cols-2">
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-bg-surface" />
         ))}
@@ -62,7 +62,7 @@ export function PresetPicker({ presets, selected, onSelect, loading }: PresetPic
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3 max-[767px]:grid-cols-2">
+    <div className="grid grid-cols-3 gap-grid-gap max-[767px]:grid-cols-2">
       {presets.map((preset) => (
         <PresetOptionCard
           key={preset.name}

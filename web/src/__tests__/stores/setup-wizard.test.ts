@@ -366,8 +366,12 @@ describe('setup wizard store', () => {
         oauth_client_id: null,
         oauth_scope: null,
         custom_header_name: null,
+        preset_name: null,
+        supports_model_pull: false,
+        supports_model_delete: false,
+        supports_model_config: false,
         base_url: 'https://api.example.com',
-        models: [{ id: 'test-model-001', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 128000, estimated_latency_ms: null }],
+        models: [{ id: 'test-model-001', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 128000, estimated_latency_ms: null, local_params: null }],
       }
       vi.mocked(createFromPreset).mockResolvedValue(mockProvider)
 
@@ -397,12 +401,16 @@ describe('setup wizard store', () => {
         oauth_client_id: null,
         oauth_scope: null,
         custom_header_name: null,
+        preset_name: null,
+        supports_model_pull: false,
+        supports_model_delete: false,
+        supports_model_config: false,
         base_url: 'http://localhost:11434',
         models: [],
       }
       const refreshedProvider = {
         ...emptyProvider,
-        models: [{ id: 'test-model-001', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 128000, estimated_latency_ms: null }],
+        models: [{ id: 'test-model-001', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 128000, estimated_latency_ms: null, local_params: null }],
       }
       vi.mocked(createFromPreset).mockResolvedValue(emptyProvider)
       vi.mocked(discoverModels).mockResolvedValue({ discovered_models: [], provider_name: 'local-provider' })
@@ -447,6 +455,10 @@ describe('setup wizard store', () => {
         oauth_client_id: null,
         oauth_scope: null,
         custom_header_name: null,
+        preset_name: null,
+        supports_model_pull: false,
+        supports_model_delete: false,
+        supports_model_config: false,
         base_url: 'http://localhost:8000',
         models: [],
       }

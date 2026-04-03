@@ -11,6 +11,9 @@ import {
   testConnection as apiTestConnection,
   listPresets,
   discoverModels as apiDiscoverModels,
+  pullModel as apiPullModel,
+  deleteModel as apiDeleteModel,
+  updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -19,11 +22,13 @@ import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
   DiscoverModelsResponse,
+  LocalModelParams,
   ProviderConfig,
   ProviderHealthStatus,
   ProviderHealthSummary,
   ProviderModelResponse,
   ProviderPreset,
+  PullProgressEvent,
   TestConnectionRequest,
   TestConnectionResponse,
   UpdateProviderRequest,
@@ -60,6 +65,11 @@ interface ProvidersState {
   discoveringModels: boolean
   mutating: boolean
 
+  // ── Local model management ──
+  pullingModel: boolean
+  pullProgress: PullProgressEvent | null
+  deletingModel: boolean
+
   // ── Actions ──
   fetchProviders: () => Promise<void>
   fetchProviderDetail: (name: string) => Promise<void>
@@ -76,11 +86,16 @@ interface ProvidersState {
   setHealthFilter: (h: ProviderHealthStatus | null) => void
   setSortBy: (key: ProviderSortKey) => void
   setSortDirection: (dir: 'asc' | 'desc') => void
+  pullModel: (name: string, modelName: string) => Promise<boolean>
+  cancelPull: () => void
+  deleteModel: (name: string, modelId: string) => Promise<boolean>
+  updateModelConfig: (name: string, modelId: string, params: LocalModelParams) => Promise<boolean>
 }
 
 // Track latest request IDs to prevent stale responses
 let _listRequestId = 0
 let _detailRequestName = ''
+let _pullAbortController: AbortController | null = null
 
 export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   // ── Defaults ──
@@ -107,6 +122,9 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   testingConnection: false,
   discoveringModels: false,
   mutating: false,
+  pullingModel: false,
+  pullProgress: null,
+  deletingModel: false,
 
   // ── List actions ──
 
@@ -372,6 +390,114 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
       testConnectionResult: null,
       testingConnection: false,
     })
+  },
+
+  // ── Local model management ──
+
+  pullModel: async (name, modelName) => {
+    _pullAbortController?.abort()
+    const controller = new AbortController()
+    _pullAbortController = controller
+    set({ pullingModel: true, pullProgress: null })
+    let lastError: string | null = null
+    try {
+      await apiPullModel(
+        name,
+        modelName,
+        (event) => {
+          if (controller.signal.aborted) return
+          if (event.error) lastError = event.error
+          set({ pullProgress: event })
+        },
+        controller.signal,
+      )
+      if (lastError) {
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Model pull failed',
+          description: lastError,
+        })
+        return false
+      }
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Model "${modelName}" pulled successfully`,
+      })
+      await get().fetchProviders()
+      const detail = get().selectedProvider
+      if (detail?.name === name) {
+        await get().fetchProviderDetail(name)
+      }
+      return true
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Model pull failed',
+          description: getErrorMessage(err),
+        })
+      }
+      return false
+    } finally {
+      if (_pullAbortController === controller) {
+        _pullAbortController = null
+        set({ pullingModel: false })
+      }
+    }
+  },
+
+  cancelPull: () => {
+    _pullAbortController?.abort()
+    _pullAbortController = null
+    set({ pullingModel: false, pullProgress: null })
+  },
+
+  deleteModel: async (name, modelId) => {
+    set({ deletingModel: true })
+    try {
+      await apiDeleteModel(name, modelId)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Model "${modelId}" deleted`,
+      })
+      await get().fetchProviders()
+      const detail = get().selectedProvider
+      if (detail?.name === name) {
+        await get().fetchProviderDetail(name)
+      }
+      return true
+    } catch (err) {
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to delete model',
+        description: getErrorMessage(err),
+      })
+      return false
+    } finally {
+      set({ deletingModel: false })
+    }
+  },
+
+  updateModelConfig: async (name, modelId, params) => {
+    try {
+      await apiUpdateModelConfig(name, modelId, params)
+      useToastStore.getState().add({
+        variant: 'success',
+        title: `Model "${modelId}" config updated`,
+      })
+      const detail = get().selectedProvider
+      if (detail?.name === name) {
+        await get().fetchProviderDetail(name)
+      }
+      return true
+    } catch (err) {
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Failed to update model config',
+        description: getErrorMessage(err),
+      })
+      return false
+    }
   },
 
   // ── Filter setters ──
