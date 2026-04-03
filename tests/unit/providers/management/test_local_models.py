@@ -167,6 +167,25 @@ class TestOllamaModelManagerPull:
         assert events[0].error is not None
         assert events[0].done is True
 
+    async def test_pull_transport_error(self) -> None:
+        """Transport errors (connection refused, timeout) yield terminal event."""
+        client = AsyncMock(spec=httpx.AsyncClient)
+        client.stream = MagicMock(
+            side_effect=httpx.ConnectError("Connection refused"),
+        )
+        client.aclose = AsyncMock()
+
+        manager = OllamaModelManager(
+            base_url="http://localhost:11434",
+            client=client,
+        )
+        events = [evt async for evt in manager.pull_model("test-model")]
+
+        assert len(events) == 1
+        assert events[0].error is not None
+        assert "Connection refused" in events[0].error
+        assert events[0].done is True
+
     @staticmethod
     def _make_aiter(
         lines: list[str],
@@ -249,6 +268,7 @@ class TestLocalModelParams:
         assert params.num_gpu_layers is None
         assert params.num_threads is None
         assert params.num_batch is None
+        assert params.repeat_penalty is None
 
     def test_positive_validation(self) -> None:
         from pydantic import ValidationError
