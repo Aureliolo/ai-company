@@ -27,13 +27,11 @@ class TestStrategyMigrationInfo:
             sprint_id="sprint-42",
             previous_strategy=CeremonyStrategyType.TASK_DRIVEN,
             new_strategy=CeremonyStrategyType.CALENDAR,
-            velocity_window_reset=True,
             velocity_history_size=5,
         )
         assert info.sprint_id == "sprint-42"
         assert info.previous_strategy is CeremonyStrategyType.TASK_DRIVEN
         assert info.new_strategy is CeremonyStrategyType.CALENDAR
-        assert info.velocity_window_reset is True
         assert info.velocity_history_size == 5
 
     @pytest.mark.unit
@@ -42,11 +40,44 @@ class TestStrategyMigrationInfo:
             sprint_id="sprint-1",
             previous_strategy=CeremonyStrategyType.TASK_DRIVEN,
             new_strategy=CeremonyStrategyType.HYBRID,
-            velocity_window_reset=True,
             velocity_history_size=0,
         )
         with pytest.raises(Exception):  # noqa: B017, PT011
             info.sprint_id = "modified"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_same_strategy_rejected(self) -> None:
+        """Model validator rejects same previous and new strategy."""
+        with pytest.raises(ValueError, match="must differ"):
+            StrategyMigrationInfo(
+                sprint_id="sprint-1",
+                previous_strategy=CeremonyStrategyType.HYBRID,
+                new_strategy=CeremonyStrategyType.HYBRID,
+                velocity_history_size=0,
+            )
+
+    @pytest.mark.unit
+    def test_blank_sprint_id_rejected(self) -> None:
+        with pytest.raises(ValueError, match="at least 1 character"):
+            StrategyMigrationInfo(
+                sprint_id="",
+                previous_strategy=CeremonyStrategyType.TASK_DRIVEN,
+                new_strategy=CeremonyStrategyType.CALENDAR,
+                velocity_history_size=0,
+            )
+
+    @pytest.mark.unit
+    def test_negative_velocity_history_rejected(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match="greater than or equal",
+        ):
+            StrategyMigrationInfo(
+                sprint_id="sprint-1",
+                previous_strategy=CeremonyStrategyType.TASK_DRIVEN,
+                new_strategy=CeremonyStrategyType.CALENDAR,
+                velocity_history_size=-1,
+            )
 
 
 # ── detect_strategy_migration ──────────────────────────────────────
@@ -89,7 +120,7 @@ class TestDetectStrategyMigration:
         assert result.sprint_id == "sprint-3"
         assert result.previous_strategy is CeremonyStrategyType.TASK_DRIVEN
         assert result.new_strategy is CeremonyStrategyType.CALENDAR
-        assert result.velocity_window_reset is True
+
         assert result.velocity_history_size == 5
 
     _ALL_NON_TASK_DRIVEN: ClassVar[list[CeremonyStrategyType]] = [
@@ -197,23 +228,50 @@ class TestNotifyStrategyMigration:
         assert kwargs["priority"] is MessagePriority.HIGH
 
     @pytest.mark.unit
-    async def test_best_effort_swallows_errors(self) -> None:
+    async def test_broadcast_failure_still_sends_reorder(self) -> None:
+        """Broadcast failure does not prevent reorder prompt."""
         messenger = _make_mock_messenger()
         messenger.broadcast = AsyncMock(side_effect=RuntimeError("bus down"))
-        # Should not raise
         await notify_strategy_migration(_sample_info(), messenger)
+        messenger.send_message.assert_called_once()
 
     @pytest.mark.unit
-    async def test_memory_error_propagates(self) -> None:
+    async def test_send_message_failure_swallowed(self) -> None:
+        """send_message failure is swallowed (broadcast succeeds)."""
+        messenger = _make_mock_messenger()
+        messenger.send_message = AsyncMock(
+            side_effect=RuntimeError("channel not found"),
+        )
+        await notify_strategy_migration(_sample_info(), messenger)
+        messenger.broadcast.assert_called_once()
+
+    @pytest.mark.unit
+    async def test_memory_error_from_broadcast_propagates(self) -> None:
         messenger = _make_mock_messenger()
         messenger.broadcast = AsyncMock(side_effect=MemoryError)
         with pytest.raises(MemoryError):
             await notify_strategy_migration(_sample_info(), messenger)
 
     @pytest.mark.unit
-    async def test_recursion_error_propagates(self) -> None:
+    async def test_memory_error_from_send_message_propagates(self) -> None:
+        messenger = _make_mock_messenger()
+        messenger.send_message = AsyncMock(side_effect=MemoryError)
+        with pytest.raises(MemoryError):
+            await notify_strategy_migration(_sample_info(), messenger)
+
+    @pytest.mark.unit
+    async def test_recursion_error_from_broadcast_propagates(self) -> None:
         messenger = _make_mock_messenger()
         messenger.broadcast = AsyncMock(side_effect=RecursionError)
+        with pytest.raises(RecursionError):
+            await notify_strategy_migration(_sample_info(), messenger)
+
+    @pytest.mark.unit
+    async def test_recursion_error_from_send_message_propagates(
+        self,
+    ) -> None:
+        messenger = _make_mock_messenger()
+        messenger.send_message = AsyncMock(side_effect=RecursionError)
         with pytest.raises(RecursionError):
             await notify_strategy_migration(_sample_info(), messenger)
 

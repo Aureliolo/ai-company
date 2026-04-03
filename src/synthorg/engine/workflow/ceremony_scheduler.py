@@ -203,7 +203,6 @@ class CeremonyScheduler:
                     sprint_id=sprint.id,
                     previous_strategy=migration.previous_strategy.value,
                     new_strategy=migration.new_strategy.value,
-                    velocity_window_reset=migration.velocity_window_reset,
                     velocity_history_size=migration.velocity_history_size,
                 )
             return migration

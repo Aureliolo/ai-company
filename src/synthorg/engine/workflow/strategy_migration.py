@@ -6,9 +6,9 @@ a ``StrategyMigrationInfo`` result.  A separate ``notify_strategy_migration()``
 function sends best-effort notifications via the communication system.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -33,14 +33,14 @@ class StrategyMigrationInfo(BaseModel):
     type changes.  The caller uses this to dispatch migration
     notifications via ``notify_strategy_migration()``.
 
+    A strategy change always resets the velocity rolling-average window
+    because each strategy uses a different velocity calculator with
+    different units.
+
     Attributes:
         sprint_id: The sprint being activated.
         previous_strategy: The outgoing strategy type.
         new_strategy: The incoming strategy type.
-        velocity_window_reset: Always ``True`` -- the velocity
-            rolling-average window resets on strategy change because
-            each strategy uses a different velocity calculator with
-            different units.
         velocity_history_size: Number of velocity records from the
             old strategy (retained but no longer used for computed
             metrics).
@@ -57,13 +57,21 @@ class StrategyMigrationInfo(BaseModel):
     new_strategy: CeremonyStrategyType = Field(
         description="The incoming strategy type",
     )
-    velocity_window_reset: bool = Field(
-        description="Whether velocity window resets (always True)",
-    )
     velocity_history_size: int = Field(
         ge=0,
         description="Velocity records from old strategy",
     )
+
+    @model_validator(mode="after")
+    def _strategies_must_differ(self) -> Self:
+        """Validate that previous and new strategies are different."""
+        if self.previous_strategy == self.new_strategy:
+            msg = (
+                f"previous_strategy and new_strategy must differ,"
+                f" got {self.previous_strategy!r} for both"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def detect_strategy_migration(
@@ -96,7 +104,6 @@ def detect_strategy_migration(
         sprint_id=sprint_id,
         previous_strategy=previous_strategy_type,
         new_strategy=new_strategy_type,
-        velocity_window_reset=True,
         velocity_history_size=velocity_history_size,
     )
 
@@ -185,6 +192,7 @@ async def notify_strategy_migration(
             SPRINT_CEREMONY_STRATEGY_CHANGED,
             sprint_id=info.sprint_id,
             note="broadcast notification failed",
+            exc_info=True,
         )
 
     try:
@@ -202,4 +210,5 @@ async def notify_strategy_migration(
             SPRINT_CEREMONY_STRATEGY_CHANGED,
             sprint_id=info.sprint_id,
             note="reorder prompt notification failed",
+            exc_info=True,
         )

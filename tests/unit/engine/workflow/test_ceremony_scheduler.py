@@ -430,7 +430,6 @@ class TestCeremonySchedulerStrategyMigration:
         assert result is not None
         assert result.previous_strategy is CeremonyStrategyType.TASK_DRIVEN
         assert result.new_strategy is CeremonyStrategyType.CALENDAR
-        assert result.velocity_window_reset is True
         assert result.sprint_id == "sprint-1"
 
     @pytest.mark.unit
