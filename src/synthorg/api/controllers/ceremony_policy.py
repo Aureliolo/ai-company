@@ -173,10 +173,26 @@ def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
 
 
 def _parse_auto_transition(raw: str | None) -> bool | None:
-    """Parse auto-transition boolean from its raw setting value."""
-    if not raw:
+    """Parse auto-transition boolean from its raw setting value.
+
+    Raises:
+        ValueError: If the value is not ``"true"`` or ``"false"``
+            (case-insensitive).
+    """
+    if raw is None or raw == "":
         return None
-    return raw.lower() == "true"
+    lowered = raw.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    logger.warning(
+        API_REQUEST_ERROR,
+        endpoint="ceremony_policy.build",
+        error=f"Invalid ceremony_auto_transition: {raw!r}",
+    )
+    msg = f"Invalid ceremony_auto_transition: {raw!r}"
+    raise ValueError(msg)
 
 
 def _parse_transition_threshold(raw: str | None) -> float | None:
@@ -339,7 +355,16 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         )
         raise ServiceUnavailableError(msg) from first
 
-    return _build_project_policy(data)
+    try:
+        return _build_project_policy(data)
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning(
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
+            error=f"Malformed ceremony policy settings: {exc}",
+        )
+        msg = "Malformed ceremony policy settings"
+        raise ServiceUnavailableError(msg) from exc
 
 
 class _SettingsNotFound:

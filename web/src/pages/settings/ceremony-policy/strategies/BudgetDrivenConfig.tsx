@@ -13,7 +13,7 @@ export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenC
   const rawPct = typeof config.transition_threshold === 'number' && Number.isFinite(config.transition_threshold)
     ? config.transition_threshold
     : 100
-  const transitionPct = Math.min(100, Math.max(0, rawPct))
+  const transitionPct = Math.min(100, Math.max(1, rawPct))
 
   return (
     <div className="space-y-3">

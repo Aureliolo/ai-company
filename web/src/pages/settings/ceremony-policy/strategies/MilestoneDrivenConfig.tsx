@@ -9,7 +9,7 @@ export interface MilestoneDrivenConfigProps {
 }
 
 export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneDrivenConfigProps) {
-  const transitionMilestone = (config.transition_milestone as string) ?? ''
+  const transitionMilestone = typeof config.transition_milestone === 'string' ? config.transition_milestone : ''
   const [rawJson, setRawJson] = useState(() => JSON.stringify(config.milestones ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
 

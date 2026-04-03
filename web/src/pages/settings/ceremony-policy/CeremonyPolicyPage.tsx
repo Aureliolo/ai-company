@@ -59,7 +59,8 @@ export default function CeremonyPolicyPage() {
     return {
       strategy: (get('ceremony_strategy') as CeremonyStrategyType | undefined) ?? 'task_driven' as CeremonyStrategyType,
       strategyConfig: config,
-      velocityCalculator: (get('ceremony_velocity_calculator') as VelocityCalcType | undefined) ?? 'task_driven' as VelocityCalcType,
+      velocityCalculator: (get('ceremony_velocity_calculator') as VelocityCalcType | undefined)
+        ?? STRATEGY_DEFAULT_VELOCITY_CALC[(get('ceremony_strategy') as CeremonyStrategyType | undefined) ?? 'task_driven'],
       autoTransition: get('ceremony_auto_transition') !== 'false',
       transitionThreshold: Number(get('ceremony_transition_threshold') ?? '1.0'),
       configParseError,
@@ -142,10 +143,12 @@ export default function CeremonyPolicyPage() {
   const [ceremonyOverrides, setCeremonyOverrides] = useState<Record<string, CeremonyPolicyConfig | null>>(ceremonyOverridesSnapshot.overrides)
 
   // Re-sync ceremony overrides when the settings snapshot changes.
+  // Skip when the user has unsaved edits to avoid clobbering in-progress work.
   useEffect(() => {
+    if (isDirty) return
     // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate external-store sync
     setCeremonyOverrides(ceremonyOverridesSnapshot.overrides)
-  }, [ceremonyOverridesSnapshot.overrides])
+  }, [isDirty, ceremonyOverridesSnapshot.overrides])
 
   // Show toasts for JSON parse failures (outside useMemo to avoid side effects in memos)
   useEffect(() => {
@@ -293,6 +296,7 @@ export default function CeremonyPolicyPage() {
                     <StrategyPicker
                       value={strategy}
                       onChange={handleStrategyChange}
+                      disabled={saving}
                     />
                   </div>
                   {resolvedPolicy && (
@@ -308,6 +312,7 @@ export default function CeremonyPolicyPage() {
                     strategy={strategy}
                     config={strategyConfig}
                     onChange={setStrategyConfig}
+                    disabled={saving}
                   />
                 </div>
 
@@ -320,6 +325,7 @@ export default function CeremonyPolicyPage() {
                     onAutoTransitionChange={setAutoTransition}
                     onTransitionThresholdChange={setTransitionThreshold}
                     resolvedPolicy={resolvedPolicy}
+                    disabled={saving}
                   />
                 </div>
 
@@ -329,8 +335,17 @@ export default function CeremonyPolicyPage() {
                   </div>
                 )}
 
+                {(settingsSnapshot.configParseError || ceremonyOverridesSnapshot.overridesParseError) && (
+                  <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-sm text-warning">
+                    Cannot save -- stored JSON is corrupt. Fix the raw values in the settings code editor before saving.
+                  </div>
+                )}
+
                 <div className="flex justify-end pt-2">
-                  <Button onClick={handleSave} disabled={saving}>
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || settingsSnapshot.configParseError || ceremonyOverridesSnapshot.overridesParseError}
+                  >
                     {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                     Save Policy
                   </Button>

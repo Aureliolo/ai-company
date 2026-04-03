@@ -232,6 +232,28 @@ export default function SettingsPage() {
     [updateSetting, setDirtyValues, entries],
   )
 
+  const getFooterAction = useCallback((ns: SettingNamespace) => {
+    if (ns === 'observability') {
+      return (
+        <SettingsActionCard
+          to={ROUTES.SETTINGS_SINKS}
+          title="Log Sinks"
+          description="Configure log outputs, rotation, and routing"
+        />
+      )
+    }
+    if (ns === 'coordination') {
+      return (
+        <SettingsActionCard
+          to={ROUTES.SETTINGS_CEREMONY_POLICY}
+          title="Ceremony Policy"
+          description="Configure scheduling strategies, velocity, and department overrides"
+        />
+      )
+    }
+    return undefined
+  }, [])
+
   const pruneAdvancedDrafts = useCallback(() => {
     setDirtyValues((prev) => {
       const next = new Map(prev)
@@ -405,19 +427,7 @@ export default function SettingsPage() {
                     hideHeader={effectiveNamespace !== null}
                     changedKeys={changedKeys}
                     highlightQuery={searchQuery}
-                    footerAction={ns === 'observability' ? (
-                      <SettingsActionCard
-                        to={ROUTES.SETTINGS_SINKS}
-                        title="Log Sinks"
-                        description="Configure log outputs, rotation, and routing"
-                      />
-                    ) : ns === 'coordination' ? (
-                      <SettingsActionCard
-                        to={ROUTES.SETTINGS_CEREMONY_POLICY}
-                        title="Ceremony Policy"
-                        description="Configure scheduling strategies, velocity, and department overrides"
-                      />
-                    ) : undefined}
+                    footerAction={getFooterAction(ns)}
                   />
                 </ErrorBoundary>
               </StaggerItem>
