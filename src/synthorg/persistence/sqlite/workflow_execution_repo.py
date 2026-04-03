@@ -32,7 +32,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_SAVED,
 )
-from synthorg.persistence.errors import QueryError, VersionConflictError
+from synthorg.persistence.errors import (
+    DuplicateRecordError,
+    QueryError,
+    VersionConflictError,
+)
 
 logger = get_logger(__name__)
 
@@ -41,9 +45,16 @@ id, definition_id, definition_version, status, node_executions,
 activated_by, project, created_at, updated_at, completed_at,
 error, version"""
 
+_MAX_LIST_ROWS: int = 10_000
+"""Safety cap on list query results pending pagination support."""
 
-def _parse_row_timestamps(data: dict[str, object]) -> None:
-    """Parse ISO timestamps and ensure timezone awareness."""
+
+def _parse_row_timestamps(data: dict[str, object]) -> dict[str, object]:
+    """Parse ISO timestamps and ensure timezone awareness.
+
+    Returns:
+        The same dict with parsed datetime values.
+    """
     for field in ("created_at", "updated_at"):
         dt = datetime.fromisoformat(str(data[field]))
         if dt.tzinfo is None:
@@ -54,6 +65,7 @@ def _parse_row_timestamps(data: dict[str, object]) -> None:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         data["completed_at"] = dt
+    return data
 
 
 def _deserialize_node_executions(
@@ -175,19 +187,29 @@ WHERE workflow_executions.version = excluded.version - 1""",
                     execution.version,
                 ),
             )
-            if cursor.rowcount == 0 and execution.version > 1:
+            if cursor.rowcount == 0:
                 await self._db.rollback()
+                if execution.version > 1:
+                    msg = (
+                        f"Version conflict saving workflow execution"
+                        f" {execution.id!r}: expected version"
+                        f" {execution.version - 1}, not found"
+                    )
+                    logger.warning(
+                        PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
+                        execution_id=execution.id,
+                        error=msg,
+                    )
+                    raise VersionConflictError(msg)
                 msg = (
-                    f"Version conflict saving workflow execution"
-                    f" {execution.id!r}: expected version"
-                    f" {execution.version - 1}, not found"
+                    f"Workflow execution {execution.id!r} already exists (duplicate ID)"
                 )
                 logger.warning(
                     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
                     execution_id=execution.id,
                     error=msg,
                 )
-                raise VersionConflictError(msg)
+                raise DuplicateRecordError(msg)
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to save workflow execution {execution.id!r}"
@@ -267,7 +289,7 @@ WHERE workflow_executions.version = excluded.version - 1""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE definition_id = ?"
-                " ORDER BY updated_at DESC LIMIT 10000",
+                f" ORDER BY updated_at DESC LIMIT {_MAX_LIST_ROWS}",
                 (definition_id,),
             )
             rows = await cursor.fetchall()
@@ -309,7 +331,7 @@ WHERE workflow_executions.version = excluded.version - 1""",
             cursor = await self._db.execute(
                 f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
                 " WHERE status = ?"
-                " ORDER BY updated_at DESC LIMIT 10000",
+                f" ORDER BY updated_at DESC LIMIT {_MAX_LIST_ROWS}",
                 (status.value,),
             )
             rows = await cursor.fetchall()
@@ -351,6 +373,7 @@ WHERE workflow_executions.version = excluded.version - 1""",
             )
             await self._db.commit()
         except sqlite3.Error as exc:
+            await self._db.rollback()
             msg = f"Failed to delete workflow execution {execution_id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED,

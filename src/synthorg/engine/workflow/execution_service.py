@@ -2,8 +2,8 @@
 
 Bridges design-time ``WorkflowDefinition`` blueprints and
 runtime ``Task`` instances by walking the graph in topological
-order, creating concrete tasks for TASK nodes, and respecting
-the dependency topology.
+order, creating concrete tasks for TASK nodes, and wiring
+upstream task dependencies from the graph edges.
 """
 
 from collections import deque
@@ -23,6 +23,7 @@ from synthorg.core.enums import (
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
+    WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -92,8 +93,9 @@ def _find_upstream_task_ids(
 ) -> tuple[str, ...]:
     """Walk backwards to find the nearest upstream TASK node task IDs.
 
-    Skips through control nodes (START, AGENT_ASSIGNMENT, CONDITIONAL,
-    SPLIT, JOIN) to find the actual TASK predecessors.
+    Skips through control nodes (START, END, AGENT_ASSIGNMENT,
+    CONDITIONAL, PARALLEL_SPLIT, PARALLEL_JOIN) to find the actual
+    TASK predecessors.
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -174,9 +176,18 @@ def _process_conditional_node(  # noqa: PLR0913
         WorkflowConditionEvalError: On evaluation failure.
     """
     expr = str(node.config.get("condition_expression", "false"))
+    if not node.config.get("condition_expression"):
+        logger.warning(
+            WORKFLOW_EXEC_CONDITION_EVALUATED,
+            execution_id=execution_id,
+            node_id=nid,
+            expression=expr,
+            result=False,
+            note="missing condition_expression, defaulting to false",
+        )
     try:
         result = evaluate_condition(expr, ctx)
-    except Exception as exc:
+    except (ValueError, TypeError, KeyError) as exc:
         logger.exception(
             WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
             execution_id=execution_id,
@@ -256,21 +267,39 @@ async def _process_task_node(  # noqa: PLR0913
     config = dict(node.config)
     title = str(config.get("title", node.label))
     description = f"Task from workflow node {nid}"
-    task_type = _TASK_TYPE_MAP.get(
-        str(config.get("task_type", "development")),
-        TaskType.DEVELOPMENT,
-    )
-    priority = _PRIORITY_MAP.get(
-        str(config.get("priority", "medium")),
-        Priority.MEDIUM,
-    )
-    complexity = _COMPLEXITY_MAP.get(
-        str(config.get("complexity", "medium")),
-        Complexity.MEDIUM,
-    )
+
+    raw_type = str(config.get("task_type", "development"))
+    task_type = _TASK_TYPE_MAP.get(raw_type, TaskType.DEVELOPMENT)
+    if raw_type not in _TASK_TYPE_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized task_type {raw_type!r}, using development",
+        )
+
+    raw_priority = str(config.get("priority", "medium"))
+    priority = _PRIORITY_MAP.get(raw_priority, Priority.MEDIUM)
+    if raw_priority not in _PRIORITY_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized priority {raw_priority!r}, using medium",
+        )
+
+    raw_complexity = str(config.get("complexity", "medium"))
+    complexity = _COMPLEXITY_MAP.get(raw_complexity, Complexity.MEDIUM)
+    if raw_complexity not in _COMPLEXITY_MAP:
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            execution_id=execution_id,
+            node_id=nid,
+            note=f"unrecognized complexity {raw_complexity!r}, using medium",
+        )
 
     assigned_to = pending_assignments.pop(nid, None)
-    _find_upstream_task_ids(
+    upstream_ids = _find_upstream_task_ids(
         nid,
         reverse_adj,
         node_map,
@@ -286,6 +315,7 @@ async def _process_task_node(  # noqa: PLR0913
         project=project,
         created_by=activated_by,
         assigned_to=assigned_to,
+        dependencies=upstream_ids,
         estimated_complexity=complexity,
     )
 
@@ -636,19 +666,35 @@ class WorkflowExecutionService:
 
         Raises:
             WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If execution is already terminal.
         """
         execution = await self._execution_repo.get(execution_id)
         if execution is None:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                execution_id=execution_id,
+            )
             msg = f"Workflow execution {execution_id!r} not found"
             raise WorkflowExecutionNotFoundError(msg)
 
-        cancelled = WorkflowExecution.model_validate(
-            execution.model_dump()
-            | {
+        terminal_statuses = {
+            WorkflowExecutionStatus.COMPLETED,
+            WorkflowExecutionStatus.FAILED,
+            WorkflowExecutionStatus.CANCELLED,
+        }
+        if execution.status in terminal_statuses:
+            msg = (
+                f"Cannot cancel execution {execution_id!r}"
+                f" in terminal status {execution.status.value!r}"
+            )
+            raise WorkflowExecutionError(msg)
+
+        cancelled = execution.model_copy(
+            update={
                 "status": WorkflowExecutionStatus.CANCELLED,
                 "updated_at": datetime.now(UTC),
                 "version": execution.version + 1,
-            },
+            }
         )
         await self._execution_repo.save(cancelled)
 

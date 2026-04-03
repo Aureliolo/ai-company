@@ -11,12 +11,17 @@ Supported expressions:
 - Equality: ``"priority == high"`` -- returns ``context[key] == value``
 - Inequality: ``"env != prod"`` -- returns ``context[key] != value``
 - Missing keys return ``False`` (equality) or ``True`` (inequality)
+- Empty or whitespace-only expressions evaluate to ``False``
 """
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+logger = get_logger(__name__)
 
 
 def _eval_comparison(
@@ -35,7 +40,7 @@ def _eval_comparison(
         key = key.strip()
         value = value.strip()
         ctx_value = context.get(key)
-        missing = ctx_value is None and key not in context
+        missing = key not in context
         if op == "!=":
             return True if missing else str(ctx_value) != value
         return False if missing else str(ctx_value) == value

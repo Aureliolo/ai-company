@@ -81,6 +81,9 @@ _EXPECTED_INDEXES = {
     "idx_wfe_definition_id",
     "idx_wfe_status",
     "idx_wfe_updated_at",
+    "idx_wfe_definition_updated",
+    "idx_wfe_status_updated",
+    "idx_wfe_project",
 }
 
 

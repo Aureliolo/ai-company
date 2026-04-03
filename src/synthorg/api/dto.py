@@ -665,8 +665,9 @@ class ActivateWorkflowRequest(BaseModel):
     project: NotBlankStr = Field(
         description="Project ID for created tasks",
     )
-    context: dict[str, object] = Field(
+    context: dict[str, str | int | float | bool | None] = Field(
         default_factory=dict,
+        max_length=64,
         description="Runtime context for condition evaluation",
     )
 

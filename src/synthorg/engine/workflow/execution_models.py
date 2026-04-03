@@ -7,8 +7,9 @@ via the ``TaskEngine``.
 """
 
 from datetime import UTC, datetime
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import (
     WorkflowExecutionStatus,
@@ -43,10 +44,30 @@ class WorkflowNodeExecution(BaseModel):
         default=None,
         description="Concrete task ID (TASK nodes only)",
     )
-    skipped_reason: str | None = Field(
+    skipped_reason: NotBlankStr | None = Field(
         default=None,
         description="Reason when status is SKIPPED",
     )
+
+    @model_validator(mode="after")
+    def _validate_status_fields(self) -> Self:
+        """Enforce cross-field invariants between status and optional fields."""
+        if self.status is WorkflowNodeExecutionStatus.TASK_CREATED:
+            if self.task_id is None:
+                msg = "task_id is required when status is TASK_CREATED"
+                raise ValueError(msg)
+        elif self.task_id is not None:
+            msg = "task_id must be None when status is not TASK_CREATED"
+            raise ValueError(msg)
+
+        if self.status is WorkflowNodeExecutionStatus.SKIPPED:
+            if self.skipped_reason is None:
+                msg = "skipped_reason is required when status is SKIPPED"
+                raise ValueError(msg)
+        elif self.skipped_reason is not None:
+            msg = "skipped_reason must be None when status is not SKIPPED"
+            raise ValueError(msg)
+        return self
 
 
 class WorkflowExecution(BaseModel):
@@ -115,3 +136,27 @@ class WorkflowExecution(BaseModel):
         ge=1,
         description="Optimistic concurrency version",
     )
+
+    @model_validator(mode="after")
+    def _validate_status_fields(self) -> Self:
+        """Enforce cross-field invariants between status and optional fields."""
+        if self.status is WorkflowExecutionStatus.FAILED:
+            if self.error is None:
+                msg = "error is required when status is FAILED"
+                raise ValueError(msg)
+        elif self.error is not None:
+            msg = "error must be None when status is not FAILED"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_node_ids(self) -> Self:
+        """Ensure no duplicate node_id values in node_executions."""
+        if not self.node_executions:
+            return self
+        node_ids = [ne.node_id for ne in self.node_executions]
+        if len(node_ids) != len(set(node_ids)):
+            dupes = sorted(v for v in set(node_ids) if node_ids.count(v) > 1)
+            msg = f"Duplicate node_execution node_ids: {dupes}"
+            raise ValueError(msg)
+        return self

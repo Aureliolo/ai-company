@@ -15,6 +15,7 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.engine.errors import (
     WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
+    WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.workflow.execution_models import WorkflowExecution
@@ -23,8 +24,17 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_NOT_FOUND,
 )
+from synthorg.persistence.errors import VersionConflictError
 
 logger = get_logger(__name__)
+
+
+def _extract_username(request: Request[Any, Any, Any]) -> str:
+    """Extract username from the request, falling back to ``"api"``."""
+    user = getattr(request, "user", None)
+    if user and hasattr(user, "username"):
+        return str(user.username)
+    return "api"
 
 
 def _build_service(state: State) -> WorkflowExecutionService:
@@ -56,9 +66,7 @@ class WorkflowExecutionController(Controller):
         data: ActivateWorkflowRequest,
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Activate a workflow definition, creating task instances."""
-        user = getattr(request, "user", None)
-        activated_by = user.username if user and hasattr(user, "username") else "api"
-
+        activated_by = _extract_username(request)
         service = _build_service(state)
         try:
             execution = await service.activate(
@@ -68,14 +76,38 @@ class WorkflowExecutionController(Controller):
                 context=data.context,
             )
         except WorkflowExecutionNotFoundError:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                workflow_id=workflow_id,
+            )
             msg = f"Workflow definition {workflow_id!r} not found"
             raise NotFoundError(msg) from None
         except WorkflowDefinitionInvalidError as exc:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                workflow_id=workflow_id,
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
                 status_code=422,
             )
         except WorkflowConditionEvalError as exc:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                workflow_id=workflow_id,
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                status_code=422,
+            )
+        except ValueError as exc:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                workflow_id=workflow_id,
+                error=str(exc),
+            )
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
                 status_code=422,
@@ -134,19 +166,31 @@ class WorkflowExecutionController(Controller):
     )
     async def cancel_execution(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         execution_id: PathId,
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Cancel a workflow execution."""
+        cancelled_by = _extract_username(request)
         service = _build_service(state)
         try:
             execution = await service.cancel_execution(
                 execution_id,
-                cancelled_by="api",
+                cancelled_by=cancelled_by,
             )
         except WorkflowExecutionNotFoundError:
             msg = f"Workflow execution {execution_id!r} not found"
             raise NotFoundError(msg) from None
+        except WorkflowExecutionError as exc:
+            return Response(
+                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                status_code=409,
+            )
+        except VersionConflictError as exc:
+            return Response(
+                content=ApiResponse[WorkflowExecution](error=str(exc)),
+                status_code=409,
+            )
 
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),

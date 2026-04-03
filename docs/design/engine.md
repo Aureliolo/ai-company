@@ -1,6 +1,6 @@
 ---
 title: Task & Workflow Engine
-description: Task lifecycle, execution loops, routing, orchestration, crash recovery, graceful shutdown, workspace isolation, and workflow definitions.
+description: Task lifecycle, execution loops, routing, orchestration, crash recovery, graceful shutdown, workspace isolation, workflow definitions, and workflow execution.
 ---
 
 # Task & Workflow Engine

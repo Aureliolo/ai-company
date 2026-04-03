@@ -1,5 +1,6 @@
 """Tests for WorkflowExecutionService."""
 
+import copy
 from typing import Any
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from synthorg.core.enums import (
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
     WorkflowDefinitionInvalidError,
+    WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -44,10 +46,11 @@ class FakeDefinitionRepo:
         self._store: dict[str, WorkflowDefinition] = {}
 
     async def save(self, definition: WorkflowDefinition) -> None:
-        self._store[definition.id] = definition
+        self._store[definition.id] = copy.deepcopy(definition)
 
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
-        return self._store.get(definition_id)
+        stored = self._store.get(definition_id)
+        return copy.deepcopy(stored) if stored is not None else None
 
     async def list_definitions(
         self,
@@ -67,10 +70,11 @@ class FakeExecutionRepo:
         self._store: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
-        self._store[execution.id] = execution
+        self._store[execution.id] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:
-        return self._store.get(execution_id)
+        stored = self._store.get(execution_id)
+        return copy.deepcopy(stored) if stored is not None else None
 
     async def list_by_definition(
         self,
@@ -112,6 +116,7 @@ class FakeTaskEngine:
             priority=data.priority,
             project=data.project,
             created_by=data.created_by,
+            dependencies=data.dependencies,
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )
@@ -609,3 +614,32 @@ class TestCancelExecution:
                 "nonexistent",
                 cancelled_by="admin",
             )
+
+    @pytest.mark.unit
+    async def test_cancel_already_cancelled_raises(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+    ) -> None:
+        """Cancelling a terminal execution raises WorkflowExecutionError."""
+        wf = make_workflow(
+            nodes=(
+                make_start_node(),
+                make_task_node_full("task-1", config={"title": "Work"}),
+                make_end_node(),
+            ),
+            edges=(
+                make_edge("e1", "start-1", "task-1"),
+                make_edge("e2", "task-1", "end-1"),
+            ),
+        )
+        await def_repo.save(wf)
+        exe = await service.activate(
+            wf.id,
+            project="proj",
+            activated_by="user",
+        )
+        await service.cancel_execution(exe.id, cancelled_by="admin")
+
+        with pytest.raises(WorkflowExecutionError):
+            await service.cancel_execution(exe.id, cancelled_by="admin")

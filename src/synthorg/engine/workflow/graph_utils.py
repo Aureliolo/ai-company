@@ -81,4 +81,4 @@ def build_adjacency_maps(
         outgoing[edge.source_node_id].append(
             (edge.target_node_id, edge.type),
         )
-    return adjacency, reverse_adj, outgoing
+    return dict(adjacency), dict(reverse_adj), dict(outgoing)

@@ -373,3 +373,12 @@ CREATE INDEX IF NOT EXISTS idx_wfe_status
 
 CREATE INDEX IF NOT EXISTS idx_wfe_updated_at
     ON workflow_executions(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_definition_updated
+    ON workflow_executions(definition_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_status_updated
+    ON workflow_executions(status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_project
+    ON workflow_executions(project);

@@ -80,6 +80,10 @@ class CreateTaskData(BaseModel):
         default=None,
         description="Assignee agent ID",
     )
+    dependencies: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="IDs of tasks this task depends on",
+    )
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,
         description="Complexity estimate",
