@@ -1,5 +1,6 @@
 """Tests for procedural memory integration in the agent engine."""
 
+import json
 from datetime import date
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -81,11 +82,24 @@ def _make_completed_execution_result(
     )
 
 
+_VALID_PROPOSAL_CONTENT = json.dumps(
+    {
+        "discovery": "Break tasks into subtasks when facing timeouts.",
+        "condition": "Task fails due to provider timeout.",
+        "action": "Decompose the task before retrying.",
+        "rationale": "Smaller tasks reduce context pressure.",
+        "execution_steps": ["Analyse failure", "Split into subtasks"],
+        "confidence": 0.85,
+        "tags": ["timeout"],
+    },
+)
+
+
 def _make_provider() -> AsyncMock:
     provider = AsyncMock()
     provider.complete = AsyncMock(
         return_value=CompletionResponse(
-            content="test response",
+            content=_VALID_PROPOSAL_CONTENT,
             finish_reason=FinishReason.STOP,
             usage=TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0),
             model="test-model-001",
@@ -124,8 +138,8 @@ class TestAgentEngineProcedural:
             task_id,
         )
 
-        # Provider should be called for the proposer LLM call
-        assert provider.complete.await_count >= 1
+        # Memory backend should be called (proposer -> store)
+        memory_backend.store.assert_awaited_once()
 
     async def test_no_procedural_memory_for_non_error(self) -> None:
         """Procedural memory skipped for non-ERROR terminations."""

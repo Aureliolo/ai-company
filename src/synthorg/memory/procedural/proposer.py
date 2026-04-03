@@ -10,6 +10,8 @@ import json
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from synthorg.memory.procedural.models import (
     FailureAnalysisPayload,
     ProceduralMemoryConfig,
@@ -37,6 +39,8 @@ _SYSTEM_PROMPT = (
     '- "condition": When this knowledge should be applied.\n'
     '- "action": What to do differently next time.\n'
     '- "rationale": Why this approach helps.\n'
+    '- "execution_steps": Ordered list of concrete steps to follow '
+    '(e.g. ["Step 1", "Step 2"]).\n'
     '- "confidence": Your confidence in this proposal (0.0-1.0).\n'
     '- "tags": List of semantic tags (e.g. ["timeout", "tool_failure"]).\n\n'
     "Respond ONLY with the JSON object, no markdown fences or explanation."
@@ -73,9 +77,14 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
 
 def _build_user_message(payload: FailureAnalysisPayload) -> str:
-    """Format the payload into a user message for the proposer LLM."""
+    """Format the payload into a user message for the proposer LLM.
+
+    Uses structural delimiters to prevent format confusion when
+    task descriptions or error messages contain prompt-like text.
+    """
     tools = ", ".join(payload.tool_calls_made) if payload.tool_calls_made else "none"
     return (
+        "[BEGIN FAILURE CONTEXT]\n"
         f"Task: {payload.task_title}\n"
         f"Description: {payload.task_description}\n"
         f"Type: {payload.task_type.value}\n"
@@ -85,7 +94,8 @@ def _build_user_message(payload: FailureAnalysisPayload) -> str:
         f"Turns completed: {payload.turn_count}\n"
         f"Tools used: {tools}\n"
         f"Retry {payload.retry_count}/{payload.max_retries} "
-        f"(can reassign: {payload.can_reassign})"
+        f"(can reassign: {payload.can_reassign})\n"
+        "[END FAILURE CONTEXT]"
     )
 
 
@@ -153,6 +163,7 @@ class ProceduralMemoryProposer:
                 task_id=payload.task_id,
                 error=str(exc),
                 reason="retryable_provider_error",
+                exc_info=True,
             )
             return None
         except Exception as exc:
@@ -161,6 +172,7 @@ class ProceduralMemoryProposer:
                 task_id=payload.task_id,
                 error=f"{type(exc).__name__}: {exc}",
                 reason="unexpected_error",
+                exc_info=True,
             )
             return None
 
@@ -191,12 +203,13 @@ class ProceduralMemoryProposer:
 
         try:
             proposal = ProceduralMemoryProposal(**data)
-        except Exception as exc:
+        except ValidationError as exc:
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
                 task_id=task_id,
                 error=str(exc),
                 reason="validation_failed",
+                exc_info=True,
             )
             return None
 

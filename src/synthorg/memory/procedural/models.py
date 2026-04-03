@@ -28,8 +28,9 @@ class FailureAnalysisPayload(BaseModel):
         error_message: Error that triggered recovery.
         strategy_type: Recovery strategy used.
         termination_reason: Why the execution loop stopped.
-        turn_count: Number of LLM turns completed before failure.
-        tool_calls_made: Flattened tool names from all turns.
+        turn_count: Number of LLM turns from the context snapshot.
+        tool_calls_made: Flattened tool names from all turns
+            (duplicates preserved -- repeated calls are signal).
         retry_count: Previous retry attempts for this task.
         max_retries: Maximum allowed retries.
         can_reassign: Whether the task can be reassigned.
@@ -55,20 +56,36 @@ class FailureAnalysisPayload(BaseModel):
     max_retries: int = Field(ge=0, description="Maximum allowed retries")
     can_reassign: bool = Field(description="Whether task can be reassigned")
 
+    @model_validator(mode="after")
+    def _validate_retry_bounds(self) -> Self:
+        """Ensure retry_count does not exceed max_retries."""
+        if self.retry_count > self.max_retries:
+            msg = (
+                f"retry_count ({self.retry_count}) exceeds "
+                f"max_retries ({self.max_retries})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ProceduralMemoryProposal(BaseModel):
     """Structured proposal from the proposer LLM.
 
-    Encodes the three-tier progressive disclosure format:
-    ``discovery`` (~100 tokens) for retrieval ranking,
-    ``condition`` + ``action`` + ``rationale`` (<5000 tokens)
-    for activation-level detail.
+    Encodes three-tier progressive disclosure:
+
+    * **Discovery** (``discovery``, ~100 tokens): concise summary
+      for retrieval ranking.
+    * **Activation** (``condition`` + ``action`` + ``rationale``):
+      when/what/why for the agent to act on.
+    * **Execution** (``execution_steps``): ordered steps the agent
+      should follow when applying this knowledge.
 
     Attributes:
-        discovery: Short summary for retrieval ranking (~100 tokens).
+        discovery: Short summary for retrieval ranking.
         condition: When to apply this procedural knowledge.
         action: What to do differently next time.
         rationale: Why this approach helps.
+        execution_steps: Ordered steps for applying the knowledge.
         confidence: Proposer's confidence in the proposal (0.0-1.0).
         tags: Semantic tags for filtering.
     """
@@ -76,16 +93,24 @@ class ProceduralMemoryProposal(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     discovery: NotBlankStr = Field(
+        max_length=600,
         description="Short summary for retrieval ranking",
     )
     condition: NotBlankStr = Field(
+        max_length=2000,
         description="When to apply this knowledge",
     )
     action: NotBlankStr = Field(
+        max_length=2000,
         description="What to do differently next time",
     )
     rationale: NotBlankStr = Field(
+        max_length=2000,
         description="Why this approach helps",
+    )
+    execution_steps: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Ordered steps for applying the knowledge",
     )
     confidence: float = Field(
         ge=0.0,
@@ -94,6 +119,7 @@ class ProceduralMemoryProposal(BaseModel):
     )
     tags: tuple[NotBlankStr, ...] = Field(
         default=(),
+        max_length=20,
         description="Semantic tags for filtering",
     )
 
@@ -117,7 +143,13 @@ class ProceduralMemoryConfig(BaseModel):
         model: Model identifier for the proposer LLM call.
         temperature: Sampling temperature for the proposer.
         max_tokens: Maximum tokens for the proposer response.
-        min_confidence: Discard proposals below this confidence.
+        min_confidence: Discard proposals below this confidence
+            (must be within the same ``[0.0, 1.0]`` range as
+            ``ProceduralMemoryProposal.confidence``).
+        skill_md_directory: Optional directory path for SKILL.md
+            file materialization.  When set, proposals are also
+            written as portable SKILL.md files for git-native
+            versioning.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -137,7 +169,7 @@ class ProceduralMemoryConfig(BaseModel):
         description="Sampling temperature for the proposer",
     )
     max_tokens: int = Field(
-        default=1000,
+        default=1500,
         gt=0,
         description="Maximum tokens for the proposer response",
     )
@@ -146,4 +178,11 @@ class ProceduralMemoryConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Discard proposals below this confidence",
+    )
+    skill_md_directory: str | None = Field(
+        default=None,
+        description=(
+            "Directory for SKILL.md file materialization. "
+            "When set, proposals are written as portable SKILL.md files."
+        ),
     )

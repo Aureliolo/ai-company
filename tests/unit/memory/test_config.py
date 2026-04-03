@@ -284,6 +284,12 @@ class TestCompanyMemoryConfig:
         assert c.embedder is not None
         assert c.embedder.model == "test-model"
 
+    def test_default_includes_procedural_config(self) -> None:
+        c = CompanyMemoryConfig()
+        assert c.procedural is not None
+        assert c.procedural.enabled is True
+        assert c.procedural.model == "example-small-001"
+
     def test_custom_retrieval_config(self) -> None:
         c = CompanyMemoryConfig(
             retrieval=MemoryRetrievalConfig(

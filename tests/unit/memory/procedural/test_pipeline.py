@@ -20,6 +20,7 @@ from synthorg.memory.procedural.models import ProceduralMemoryProposal
 from synthorg.memory.procedural.pipeline import (
     _build_payload,
     _format_procedural_content,
+    materialize_skill_md,
     propose_procedural_memory,
 )
 from synthorg.observability.events.procedural_memory import (
@@ -225,7 +226,7 @@ class TestFormatProceduralContent:
 
 
 @pytest.mark.unit
-class TestProposeProcedualMemory:
+class TestProposeProceduralMemory:
     async def test_happy_path_stores_and_returns_id(self) -> None:
         proposer = AsyncMock()
         proposer.propose = AsyncMock(return_value=_make_proposal())
@@ -351,3 +352,109 @@ class TestProposeProcedualMemory:
 
         request: MemoryStoreRequest = backend.store.call_args[0][1]
         assert request.metadata.confidence == 0.72
+
+    async def test_memory_error_propagates_from_store(self) -> None:
+        """MemoryError from backend.store is never swallowed."""
+        proposer = AsyncMock()
+        proposer.propose = AsyncMock(return_value=_make_proposal())
+        backend = AsyncMock()
+        backend.store = AsyncMock(side_effect=MemoryError("oom"))
+
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+
+        with pytest.raises(MemoryError):
+            await propose_procedural_memory(
+                execution,
+                recovery,
+                agent_id="agent-001",
+                task_id="task-pipe-001",
+                proposer=proposer,
+                memory_backend=backend,
+            )
+
+    async def test_payload_build_failure_returns_none(self) -> None:
+        """If _build_payload raises, pipeline returns None gracefully."""
+        proposer = AsyncMock()
+        backend = AsyncMock()
+
+        # Use an execution result with no turns and a recovery result
+        # whose task has invalid data to trigger a build error.
+        execution = _make_execution_result()
+        recovery = _make_recovery_result()
+        # Monkey-patch to force an error in _build_payload
+        object.__setattr__(
+            recovery.task_execution.task,
+            "title",
+            "",
+        )
+
+        result = await propose_procedural_memory(
+            execution,
+            recovery,
+            agent_id="agent-001",
+            task_id="task-pipe-001",
+            proposer=proposer,
+            memory_backend=backend,
+        )
+        assert result is None
+
+
+# -- _format_procedural_content with execution_steps -------------------
+
+
+@pytest.mark.unit
+class TestFormatWithExecutionSteps:
+    def test_includes_execution_section(self) -> None:
+        proposal = _make_proposal(
+            execution_steps=("Check logs", "Restart service"),
+        )
+        content = _format_procedural_content(proposal)
+
+        assert "[EXECUTION]" in content
+        assert "1. Check logs" in content
+        assert "2. Restart service" in content
+
+    def test_omits_execution_when_empty(self) -> None:
+        proposal = _make_proposal(execution_steps=())
+        content = _format_procedural_content(proposal)
+
+        assert "[EXECUTION]" not in content
+
+
+# -- materialize_skill_md ----------------------------------------------
+
+
+@pytest.mark.unit
+class TestMaterializeSkillMd:
+    def test_writes_skill_md_file(self, tmp_path: Any) -> None:
+        proposal = _make_proposal(
+            execution_steps=("Step one", "Step two"),
+        )
+        path = materialize_skill_md(proposal, "task-001", str(tmp_path))
+
+        assert path.exists()
+        assert path.name.startswith("SKILL-task-001-")
+        assert path.suffix == ".md"
+
+        content = path.read_text(encoding="utf-8")
+        assert "---" in content
+        assert "trigger:" in content
+        assert "confidence: 0.85" in content
+        assert "## Action" in content
+        assert "## Execution Steps" in content
+        assert "1. Step one" in content
+
+    def test_creates_directory_if_missing(self, tmp_path: Any) -> None:
+        nested = tmp_path / "deep" / "nested"
+        proposal = _make_proposal()
+        path = materialize_skill_md(proposal, "task-002", str(nested))
+
+        assert path.exists()
+
+    def test_omits_execution_section_when_no_steps(self, tmp_path: Any) -> None:
+        proposal = _make_proposal(execution_steps=())
+        path = materialize_skill_md(proposal, "task-003", str(tmp_path))
+
+        content = path.read_text(encoding="utf-8")
+        assert "## Execution Steps" not in content

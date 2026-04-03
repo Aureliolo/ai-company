@@ -616,6 +616,58 @@ company_b_backend = create_backend(company_b_config.persistence)
 
 ---
 
+## Procedural Memory Auto-Generation
+
+When an agent fails a task, the engine's post-execution pipeline can automatically
+generate a **procedural memory entry** -- a structured "next time, do X when
+encountering Y" lesson learned. This follows the
+[EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
+the **failed agent** does not write its own lesson; a separate **proposer LLM call**
+analyses the failure.
+
+### Pipeline
+
+1. **Failure analysis payload** (`FailureAnalysisPayload`): Built from
+   `RecoveryResult` + `ExecutionResult`. Includes task metadata, sanitized error
+   message, tool calls made, retry count, and turn count. Deliberately excludes
+   raw conversation messages (privacy boundary).
+
+2. **Proposer LLM call** (`ProceduralMemoryProposer`): A separate completion
+   call with its own system prompt analyses the payload and returns a structured
+   `ProceduralMemoryProposal`.
+
+3. **Three-tier progressive disclosure**:
+     - **Discovery** (~100 tokens): concise summary for retrieval ranking.
+     - **Activation** (condition + action + rationale): when/what/why.
+     - **Execution** (ordered steps): concrete steps for applying the knowledge.
+
+4. **Storage**: The proposal is stored via `MemoryBackend.store()` as a
+   `MemoryCategory.PROCEDURAL` entry with `"non-inferable"` tag for retrieval
+   filtering.
+
+5. **SKILL.md materialization** (optional): When `ProceduralMemoryConfig.skill_md_directory`
+   is set, the proposal is also written as a portable SKILL.md file following the
+   [Agent Skills](https://agentskills.io/) format for git-native versioning.
+
+### Configuration
+
+`ProceduralMemoryConfig` (nested in `CompanyMemoryConfig.procedural`) controls:
+
+- `enabled`: Toggle auto-generation on/off (default: `True`).
+- `model`: Model identifier for the proposer LLM call.
+- `temperature`: Sampling temperature (default: `0.3`).
+- `max_tokens`: Token budget for the proposer response.
+- `min_confidence`: Discard proposals below this threshold (default: `0.5`).
+- `skill_md_directory`: Optional path for SKILL.md file materialization.
+
+### Integration Point
+
+`AgentEngine._try_procedural_memory()` runs after error recovery in
+`_post_execution_pipeline`. It is non-critical: failures are logged at WARNING
+and never block the execution result.
+
+---
+
 ## Memory Injection Strategies
 
 Agent memory reaches agents through pluggable injection strategies behind the

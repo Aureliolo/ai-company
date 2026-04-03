@@ -34,3 +34,6 @@ PROCEDURAL_MEMORY_ERROR: Final[str] = "procedural_memory.error"
 
 PROCEDURAL_MEMORY_DISABLED: Final[str] = "procedural_memory.disabled"
 """Procedural memory generation is disabled in config."""
+
+PROCEDURAL_MEMORY_SKILL_MD: Final[str] = "procedural_memory.skill_md.written"
+"""SKILL.md file materialized from a procedural memory proposal."""

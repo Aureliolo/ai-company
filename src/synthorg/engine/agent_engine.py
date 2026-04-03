@@ -89,6 +89,9 @@ from synthorg.observability.events.execution import (
     EXECUTION_RESUME_FAILED,
     EXECUTION_RESUME_START,
 )
+from synthorg.observability.events.procedural_memory import (
+    PROCEDURAL_MEMORY_DISABLED,
+)
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
@@ -218,8 +221,9 @@ class AgentEngine:
             proposer LLM call analyses failures and stores
             procedural memory entries.
         memory_backend: Optional memory backend for storing
-            procedural memory entries.  Required alongside
-            ``procedural_memory_config``.
+            procedural memory entries.  When omitted, procedural
+            memory generation is silently skipped even if
+            ``procedural_memory_config`` is set.
     """
 
     def __init__(  # noqa: PLR0913
@@ -320,6 +324,12 @@ class AgentEngine:
         self._memory_injection_strategy = memory_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
+        self._procedural_proposer: ProceduralMemoryProposer | None = None
+        if procedural_memory_config is not None and memory_backend is not None:
+            self._procedural_proposer = ProceduralMemoryProposer(
+                provider=provider,
+                config=procedural_memory_config,
+            )
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -561,7 +571,7 @@ class AgentEngine:
             task_id,
         )
 
-    async def _post_execution_pipeline(  # noqa: C901, PLR0913
+    async def _post_execution_pipeline(  # noqa: PLR0913
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -668,37 +678,60 @@ class AgentEngine:
                     error=f"classification failed: {type(exc).__name__}: {exc}",
                     exc_info=True,
                 )
-        # Procedural memory is non-critical -- never destroys a result.
-        if (
-            self._procedural_memory_config is not None
-            and self._procedural_memory_config.enabled
-            and self._memory_backend is not None
-            and recovery_result is not None
-        ):
-            try:
-                proposer = ProceduralMemoryProposer(
-                    provider=self._provider,
-                    config=self._procedural_memory_config,
-                )
-                await propose_procedural_memory(
-                    execution_result,
-                    recovery_result,
-                    agent_id,
-                    task_id,
-                    proposer=proposer,
-                    memory_backend=self._memory_backend,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    EXECUTION_ENGINE_ERROR,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    error=(f"procedural memory failed: {type(exc).__name__}: {exc}"),
-                    exc_info=True,
-                )
+        await self._try_procedural_memory(
+            execution_result,
+            recovery_result,
+            agent_id,
+            task_id,
+        )
         return execution_result
+
+    async def _try_procedural_memory(
+        self,
+        execution_result: ExecutionResult,
+        recovery_result: RecoveryResult | None,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Run procedural memory pipeline (non-critical, never fatal).
+
+        Skips silently when the proposer is not configured, the config
+        is disabled, or no recovery occurred.
+        """
+        if self._procedural_proposer is None:
+            return
+        if (
+            self._procedural_memory_config is None
+            or not self._procedural_memory_config.enabled
+        ):
+            logger.debug(
+                PROCEDURAL_MEMORY_DISABLED,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+            return
+        if self._memory_backend is None or recovery_result is None:
+            return
+        try:
+            await propose_procedural_memory(
+                execution_result,
+                recovery_result,
+                agent_id,
+                task_id,
+                proposer=self._procedural_proposer,
+                memory_backend=self._memory_backend,
+                config=self._procedural_memory_config,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"procedural memory failed: {type(exc).__name__}: {exc}",
+                exc_info=True,
+            )
 
     def _build_and_log_result(
         self,

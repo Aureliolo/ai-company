@@ -97,6 +97,14 @@ class TestFailureAnalysisPayload:
         with pytest.raises(ValidationError):
             _make_payload(turn_count=float("nan"))
 
+    def test_retry_count_exceeds_max_retries_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"retry_count.*exceeds"):
+            _make_payload(retry_count=3, max_retries=2)
+
+    def test_retry_count_equals_max_retries_accepted(self) -> None:
+        p = _make_payload(retry_count=2, max_retries=2)
+        assert p.retry_count == 2
+
 
 # -- ProceduralMemoryProposal -----------------------------------------
 
@@ -150,6 +158,19 @@ class TestProceduralMemoryProposal:
         p = _make_proposal(tags=("api", "api", "timeout"))
         assert p.tags == ("api", "timeout")
 
+    def test_execution_steps_default_empty(self) -> None:
+        p = _make_proposal()
+        assert p.execution_steps == ()
+
+    def test_execution_steps_preserved(self) -> None:
+        steps = ("Check logs", "Restart service")
+        p = _make_proposal(execution_steps=steps)
+        assert p.execution_steps == steps
+
+    def test_discovery_max_length_enforced(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_proposal(discovery="x" * 601)
+
 
 # -- ProceduralMemoryConfig --------------------------------------------
 
@@ -161,8 +182,9 @@ class TestProceduralMemoryConfig:
         assert c.enabled is True
         assert c.model == "example-small-001"
         assert c.temperature == 0.3
-        assert c.max_tokens == 1000
+        assert c.max_tokens == 1500
         assert c.min_confidence == 0.5
+        assert c.skill_md_directory is None
 
     def test_frozen(self) -> None:
         c = ProceduralMemoryConfig()
@@ -204,3 +226,7 @@ class TestProceduralMemoryConfig:
     def test_disabled(self) -> None:
         c = ProceduralMemoryConfig(enabled=False)
         assert c.enabled is False
+
+    def test_skill_md_directory(self) -> None:
+        c = ProceduralMemoryConfig(skill_md_directory="/var/data/skills")
+        assert c.skill_md_directory == "/var/data/skills"

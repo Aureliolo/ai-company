@@ -80,6 +80,7 @@ from synthorg.memory.procedural import (
     ProceduralMemoryConfig,
     ProceduralMemoryProposal,
     ProceduralMemoryProposer,
+    materialize_skill_md,
     propose_procedural_memory,
 )
 from synthorg.memory.protocol import MemoryBackend
@@ -163,5 +164,6 @@ __all__ = [
     "create_memory_backend",
     "create_org_memory_backend",
     "fuse_ranked_lists",
+    "materialize_skill_md",
     "propose_procedural_memory",
 ]
