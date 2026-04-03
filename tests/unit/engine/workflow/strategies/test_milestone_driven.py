@@ -231,6 +231,7 @@ class TestShouldFireCeremony:
 
     @pytest.mark.unit
     async def test_no_policy_override_returns_false(self) -> None:
+        """Milestone fires based on task completion, not policy_override."""
         strategy = MilestoneDrivenStrategy()
         sprint = make_sprint(task_count=2, completed_count=2)
         config = _make_sprint_config(
@@ -238,15 +239,24 @@ class TestShouldFireCeremony:
         )
         await strategy.on_sprint_activated(sprint, config)
 
-        # Ceremony with frequency but no milestone policy_override
+        # Assign tasks so the milestone IS complete
+        for i in range(2):
+            await strategy.on_external_event(
+                sprint,
+                "milestone_assign",
+                {"task_id": f"task-{i}", "milestone": "alpha"},
+            )
+
+        # Ceremony with frequency but no milestone policy_override --
+        # strategy evaluates milestones regardless of policy_override
         ceremony = SprintCeremonyConfig(
             name="sprint_review",
             protocol=MeetingProtocolType.ROUND_ROBIN,
             frequency=MeetingFrequency.BI_WEEKLY,
         )
         ctx = make_context()
-        # No milestone tasks assigned, so False regardless
-        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is False
+        # Milestone is complete, so the strategy fires
+        assert strategy.should_fire_ceremony(ceremony, sprint, ctx) is True
 
 
 class TestShouldTransitionSprint:

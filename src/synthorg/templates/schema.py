@@ -198,6 +198,9 @@ class TemplateDepartmentConfig(BaseModel):
             role used in ``head_role``.
         reporting_lines: Reporting line definitions within this department.
         policies: Department operational policies.
+        ceremony_policy: Per-department ceremony policy override
+            (``dict[str, Any] | None``).  ``None`` inherits the
+            project-level policy.
         remove: Merge directive -- when ``True``, removes matching
             parent department during inheritance.
     """

@@ -585,6 +585,10 @@ class TestBuiltinWorkflowConfigs:
         ("data_team", "task_driven"),
     ]
 
+    def test_strategy_matrix_covers_all_builtins(self) -> None:
+        tested = {row[0] for row in self._EXPECTED_STRATEGIES}
+        assert tested == set(BUILTIN_TEMPLATES)
+
     @pytest.mark.parametrize(
         ("name", "expected_strategy"),
         _EXPECTED_STRATEGIES,

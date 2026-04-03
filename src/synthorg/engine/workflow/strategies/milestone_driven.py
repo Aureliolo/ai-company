@@ -484,15 +484,15 @@ class MilestoneDrivenStrategy:
             )
             return
 
-        tasks.add(task_id)
-
-        logger.info(
-            SPRINT_CEREMONY_MILESTONE_ASSIGNED,
-            task_id=task_id,
-            milestone=milestone,
-            task_count=len(tasks),
-            strategy="milestone_driven",
-        )
+        if task_id not in tasks:
+            tasks.add(task_id)
+            logger.info(
+                SPRINT_CEREMONY_MILESTONE_ASSIGNED,
+                task_id=task_id,
+                milestone=milestone,
+                task_count=len(tasks),
+                strategy="milestone_driven",
+            )
 
     def _handle_unassign(self, payload: Mapping[str, Any]) -> None:
         """Remove a task from a milestone.
@@ -506,7 +506,7 @@ class MilestoneDrivenStrategy:
         task_id, milestone = normalized
 
         tasks = self._milestone_tasks.get(milestone)
-        if tasks is not None:
+        if tasks is not None and task_id in tasks:
             tasks.discard(task_id)
             logger.info(
                 SPRINT_CEREMONY_MILESTONE_UNASSIGNED,
