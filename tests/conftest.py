@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import structlog
-from hypothesis import HealthCheck, Phase, settings
+from hypothesis import HealthCheck, settings
 from hypothesis.database import (
     DirectoryBasedExampleDatabase,
     ExampleDatabase,
@@ -25,6 +25,7 @@ class _WriteOnlyDatabase(ExampleDatabase):
     """
 
     def __init__(self, db: ExampleDatabase) -> None:
+        super().__init__()
         self._db = db
 
     def save(self, key: bytes, value: bytes) -> None:
@@ -34,7 +35,7 @@ class _WriteOnlyDatabase(ExampleDatabase):
         return iter(())
 
     def delete(self, key: bytes, value: bytes) -> None:
-        self._db.delete(key, value)
+        pass  # No-op: shared DB is a failure log, never delete entries
 
     def move(
         self,
@@ -42,7 +43,7 @@ class _WriteOnlyDatabase(ExampleDatabase):
         dest: bytes,
         value: bytes,
     ) -> None:
-        self._db.move(src, dest, value)
+        self._db.save(dest, value)  # Treat as save-to-dest (preserve the entry)
 
 
 # ── Hypothesis shared example database ──────────────────────────
@@ -65,10 +66,10 @@ _local_combined_db = MultiplexedDatabase(_local_db, _shared_db)
 
 settings.register_profile(
     "ci",
-    # CI only runs explicit @example() cases -- fully deterministic.
-    # Random fuzzing happens locally (dev profile) where failures are
-    # captured to the shared DB for analysis.
-    phases=[Phase.explicit],
+    # Deterministic: derandomize=True uses a fixed seed per test function,
+    # so the same 10 examples run every time.  Not random, not skipped.
+    max_examples=10,
+    derandomize=True,
     suppress_health_check=[HealthCheck.too_slow],
 )
 settings.register_profile(
