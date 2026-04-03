@@ -1,5 +1,6 @@
 """Unit tests for system prompt construction."""
 
+from collections.abc import Mapping
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -1191,7 +1192,7 @@ class TestPromptProfileIntegration:
         self,
         sample_agent_with_personality: AgentIdentity,
         tier: str,
-        autonomy_map: dict[SeniorityLevel, str],
+        autonomy_map: Mapping[SeniorityLevel, str],
     ) -> None:
         """Each tier renders the matching autonomy instruction text."""
         result = build_system_prompt(

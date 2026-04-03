@@ -57,7 +57,7 @@ class Authority(BaseModel):
     budget_limit: float = Field(
         default=0.0,
         ge=0.0,
-        description="Maximum spend per task in USD (base currency)",
+        description="Maximum spend per task in base currency units",
     )
 
 

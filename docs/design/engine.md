@@ -708,7 +708,7 @@ each model tier.
 | Profile    | Tier   | Personality          | Org Policies | Acceptance Criteria | Autonomy |
 |------------|--------|----------------------|--------------|---------------------|----------|
 | **full**   | large  | Full behavioral enums | Included    | Nested list         | Full     |
-| **standard** | medium | Description + style + traits | Included | Nested list      | Summary  |
+| **standard** | medium | Description + style + traits | Included | Bullet list      | Summary  |
 | **basic**  | small  | Style keyword only   | Excluded     | Flat semicolon line | Minimal  |
 
 ### Tier Flow

@@ -200,46 +200,35 @@ class TestBuildAgentConfigCustomPresets:
 class TestMatchAndAssignModels:
     """Tests for match_and_assign_models model_tier wiring."""
 
+    @pytest.mark.parametrize(
+        ("tier", "model_id"),
+        [
+            ("large", "test-large-001"),
+            ("small", "test-small-001"),
+        ],
+    )
     @patch("synthorg.templates.model_matcher.match_all_agents")
-    def test_model_tier_included_in_assignment(
+    def test_model_tier_propagated(
         self,
         mock_match: MagicMock,
+        tier: str,
+        model_id: str,
     ) -> None:
         """model_tier from the match is included in the agent model dict."""
         match = MagicMock()
         match.agent_index = 0
         match.provider_name = "test-provider"
-        match.model_id = "test-large-001"
-        match.tier = "large"
+        match.model_id = model_id
+        match.tier = tier
         mock_match.return_value = [match]
 
         agents: list[dict[str, Any]] = [
-            {"name": "Agent-0", "tier": "large"},
+            {"name": "Agent-0", "tier": tier},
         ]
         result = match_and_assign_models(agents, {})
 
         assert len(result) == 1
         model = result[0]["model"]
         assert model["provider"] == "test-provider"
-        assert model["model_id"] == "test-large-001"
-        assert model["model_tier"] == "large"
-
-    @patch("synthorg.templates.model_matcher.match_all_agents")
-    def test_small_tier_propagated(
-        self,
-        mock_match: MagicMock,
-    ) -> None:
-        """Small tier from the match flows into the model dict."""
-        match = MagicMock()
-        match.agent_index = 0
-        match.provider_name = "test-provider"
-        match.model_id = "test-small-001"
-        match.tier = "small"
-        mock_match.return_value = [match]
-
-        agents: list[dict[str, Any]] = [
-            {"name": "Agent-0", "tier": "small"},
-        ]
-        result = match_and_assign_models(agents, {})
-
-        assert result[0]["model"]["model_tier"] == "small"
+        assert model["model_id"] == model_id
+        assert model["model_tier"] == tier
