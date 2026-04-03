@@ -1,5 +1,6 @@
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Boxes, Settings2, Trash2 } from 'lucide-react'
 import type { ProviderModelResponse } from '@/api/types'
@@ -70,26 +71,28 @@ function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onC
         <td className="py-2 text-right">
           <div className="flex items-center justify-end gap-1">
             {supportsConfig && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => onConfigure?.(model)}
-                className="rounded p-1 text-text-muted hover:bg-bg-surface hover:text-foreground transition-colors"
                 title="Configure"
                 aria-label={`Configure ${model.id}`}
+                className="size-7"
               >
                 <Settings2 className="size-3.5" />
-              </button>
+              </Button>
             )}
             {supportsDelete && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => onDelete?.(model.id)}
-                className="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger transition-colors"
                 title="Delete"
                 aria-label={`Delete ${model.id}`}
+                className="size-7 text-text-muted hover:bg-danger/10 hover:text-danger"
               >
                 <Trash2 className="size-3.5" />
-              </button>
+              </Button>
             )}
           </div>
         </td>

@@ -301,8 +301,13 @@ class ProviderController(Controller):
                 validation.
         """
         app_state: AppState = state.app_state
+        # Strip preset_name from external requests -- only
+        # create_from_preset may set it (capability flag injection).
+        safe_data = data.model_copy(update={"preset_name": None})
         try:
-            config = await app_state.provider_management.create_provider(data)
+            config = await app_state.provider_management.create_provider(
+                safe_data,
+            )
         except ProviderAlreadyExistsError as exc:
             logger.warning(
                 API_RESOURCE_CONFLICT,
@@ -738,6 +743,15 @@ class ProviderController(Controller):
                 provider=name,
             )
             raise NotFoundError(str(exc)) from exc
+        except RuntimeError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="model",
+                name=model_id,
+                provider=name,
+                error=str(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
 
     @put(
         "/{name:str}/models/{model_id:path}/config",

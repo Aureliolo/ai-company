@@ -16,7 +16,7 @@ const meta = {
         pullProgress: null,
       })
       return (
-        <div className="min-h-[400px]">
+        <div className="min-h-96">
           <Story />
         </div>
       )
@@ -67,7 +67,7 @@ export const PullError: Story = {
           total_bytes: null,
           completed_bytes: null,
           error: 'Connection refused: unable to reach model registry',
-          done: false,
+          done: true,
         },
       })
       return <Story />

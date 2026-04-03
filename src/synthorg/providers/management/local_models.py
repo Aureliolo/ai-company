@@ -328,7 +328,7 @@ class OllamaModelManager:
                     model=model_name,
                     error=msg,
                 )
-                raise ValueError(msg)
+                raise RuntimeError(msg)
             logger.info(
                 PROVIDER_MODEL_DELETED,
                 provider="ollama",
@@ -342,7 +342,7 @@ class OllamaModelManager:
                 model=model_name,
                 error=msg,
             )
-            raise ValueError(msg) from exc
+            raise RuntimeError(msg) from exc
         finally:
             if owns_client:
                 await client.aclose()
