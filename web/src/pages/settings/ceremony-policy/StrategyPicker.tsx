@@ -1,0 +1,41 @@
+import type { CeremonyStrategyType } from '@/api/types'
+import { SelectField } from '@/components/ui/select-field'
+import {
+  CEREMONY_STRATEGY_DESCRIPTIONS,
+  CEREMONY_STRATEGY_LABELS,
+  CEREMONY_STRATEGY_TYPES,
+} from '@/utils/constants'
+import { VelocityUnitIndicator } from './VelocityUnitIndicator'
+
+const STRATEGY_OPTIONS = CEREMONY_STRATEGY_TYPES.map((s) => ({
+  value: s,
+  label: CEREMONY_STRATEGY_LABELS[s],
+}))
+
+export interface StrategyPickerProps {
+  value: CeremonyStrategyType
+  onChange: (strategy: CeremonyStrategyType) => void
+  disabled?: boolean
+}
+
+export function StrategyPicker({ value, onChange, disabled }: StrategyPickerProps) {
+  return (
+    <div className="space-y-2">
+      <SelectField
+        label="Scheduling Strategy"
+        options={STRATEGY_OPTIONS}
+        value={value}
+        onChange={(v) => {
+          if (CEREMONY_STRATEGY_TYPES.includes(v as CeremonyStrategyType)) {
+            onChange(v as CeremonyStrategyType)
+          }
+        }}
+        disabled={disabled}
+      />
+      <p className="text-xs text-text-secondary">
+        {CEREMONY_STRATEGY_DESCRIPTIONS[value]}
+      </p>
+      <VelocityUnitIndicator strategy={value} />
+    </div>
+  )
+}

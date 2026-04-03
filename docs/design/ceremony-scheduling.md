@@ -747,8 +747,16 @@ Event constants in `synthorg.observability.events.workflow`:
 - Strategy-aware velocity calculator default in `resolve_ceremony_policy()` (`STRATEGY_DEFAULT_VELOCITY_CALC` mapping)
 - Explicit `velocity_calculator` in all 9 builtin template ceremony policies
 
-### Follow-up Issues
+### Shipped in #979 (Dashboard UI)
 
-| Version | Issue | Description |
-|---------|-------|-------------|
-| v0.6.1 | #979 | Dashboard UI for ceremony policy settings |
+- Ceremony policy API controller: project-level policy query, resolved policy with
+  field-level origin tracking, active strategy query
+- Department ceremony-policy endpoints: GET/PUT/DELETE per-department overrides in
+  departments controller
+- 7 ceremony policy settings in coordination namespace (ceremony_strategy,
+  ceremony_strategy_config, ceremony_velocity_calculator, ceremony_auto_transition,
+  ceremony_transition_threshold, dept_ceremony_policies, ceremony_policy_overrides)
+- Ceremony policy settings page at ``/settings/coordination/ceremony-policy`` with
+  project policy editor, department overrides panel, per-ceremony overrides panel
+- Shared UI components: PolicySourceBadge (field origin indicator), InheritToggle
+  (inherit/override switch)

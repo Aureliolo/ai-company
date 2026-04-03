@@ -123,6 +123,27 @@ class CeremonyScheduler:
         """The currently active sprint, or None."""
         return self._active_sprint
 
+    @property
+    def active_strategy(self) -> CeremonySchedulingStrategy | None:
+        """The currently active strategy, or None.
+
+        Note: eventually consistent -- callers needing a consistent
+        (strategy, sprint) pair should use ``get_active_info`` instead.
+        """
+        return self._active_strategy
+
+    async def get_active_info(
+        self,
+    ) -> tuple[CeremonySchedulingStrategy | None, Sprint | None]:
+        """Read active strategy and sprint atomically under the lock.
+
+        Returns:
+            Tuple of (active_strategy, active_sprint), both None when
+            no sprint is running.
+        """
+        async with self._lock:
+            return self._active_strategy, self._active_sprint
+
     async def activate_sprint(
         self,
         sprint: Sprint,

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AuthGuard, GuestGuard, SetupCompleteGuard, SetupGuard } from './guards'
+import { ROUTES } from './routes'
 
 // Lazy-loaded pages
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
@@ -28,6 +29,7 @@ const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
+const CeremonyPolicyPage = lazy(() => import('@/pages/settings/ceremony-policy/CeremonyPolicyPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
 
@@ -116,6 +118,7 @@ export const router = createBrowserRouter([
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
+              { path: ROUTES.SETTINGS_CEREMONY_POLICY.slice(1), element: <CeremonyPolicyPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },
               { path: '*', element: <NotFoundPage /> },
             ],

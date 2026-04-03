@@ -43,8 +43,31 @@ import { SettingsSkeleton } from './settings/SettingsSkeleton'
 import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from './settings/utils'
 
 import { useToastStore } from '@/stores/toast'
+import { ROUTES } from '@/router/routes'
 
 type ViewMode = 'gui' | 'code'
+
+function SettingsActionCard({ to, title, description }: { to: string; title: string; description: string }) {
+  return (
+    <Link
+      to={to}
+      className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+    >
+      <div className="min-w-0 space-y-1">
+        <span className="text-sm font-medium text-foreground">{title}</span>
+        <p className="text-xs text-text-secondary">{description}</p>
+      </div>
+      <div className="w-56 shrink-0">
+        <span
+          className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
+          aria-hidden
+        >
+          Open
+        </span>
+      </div>
+    </Link>
+  )
+}
 
 const NAMESPACE_ICONS: Partial<Record<SettingNamespace, React.ReactNode>> = {
   api: <Globe className="size-4" />,
@@ -208,6 +231,28 @@ export default function SettingsPage() {
     },
     [updateSetting, setDirtyValues, entries],
   )
+
+  const getFooterAction = useCallback((ns: SettingNamespace) => {
+    if (ns === 'observability') {
+      return (
+        <SettingsActionCard
+          to={ROUTES.SETTINGS_SINKS}
+          title="Log Sinks"
+          description="Configure log outputs, rotation, and routing"
+        />
+      )
+    }
+    if (ns === 'coordination') {
+      return (
+        <SettingsActionCard
+          to={ROUTES.SETTINGS_CEREMONY_POLICY}
+          title="Ceremony Policy"
+          description="Configure scheduling strategies, velocity, and department overrides"
+        />
+      )
+    }
+    return undefined
+  }, [])
 
   const pruneAdvancedDrafts = useCallback(() => {
     setDirtyValues((prev) => {
@@ -382,25 +427,7 @@ export default function SettingsPage() {
                     hideHeader={effectiveNamespace !== null}
                     changedKeys={changedKeys}
                     highlightQuery={searchQuery}
-                    footerAction={ns === 'observability' ? (
-                      <Link
-                        to="/settings/observability/sinks"
-                        className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
-                      >
-                        <div className="min-w-0 space-y-1">
-                          <span className="text-sm font-medium text-foreground">Log Sinks</span>
-                          <p className="text-xs text-text-secondary">Configure log outputs, rotation, and routing</p>
-                        </div>
-                        <div className="w-56 shrink-0">
-                          <span
-                            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
-                            aria-hidden
-                          >
-                            Open
-                          </span>
-                        </div>
-                      </Link>
-                    ) : undefined}
+                    footerAction={getFooterAction(ns)}
                   />
                 </ErrorBoundary>
               </StaggerItem>

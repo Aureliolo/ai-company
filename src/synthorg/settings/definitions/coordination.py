@@ -75,3 +75,131 @@ _r.register(
         yaml_path="coordination.base_branch",
     )
 )
+
+# ── Ceremony Policy ──────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_strategy",
+        type=SettingType.ENUM,
+        default="task_driven",
+        description="Ceremony scheduling strategy for sprint ceremonies",
+        group="Ceremony Policy",
+        # Must be kept in sync with CeremonyStrategyType members;
+        # test_ceremony_settings.py verifies this.
+        enum_values=(
+            "task_driven",
+            "calendar",
+            "hybrid",
+            "event_driven",
+            "budget_driven",
+            "throughput_adaptive",
+            "external_trigger",
+            "milestone_driven",
+        ),
+        yaml_path="workflow.sprint.ceremony_policy.strategy",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_strategy_config",
+        type=SettingType.JSON,
+        default="{}",
+        description="Strategy-specific configuration as JSON",
+        group="Ceremony Policy",
+        level=SettingLevel.ADVANCED,
+        yaml_path="workflow.sprint.ceremony_policy.strategy_config",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_velocity_calculator",
+        type=SettingType.ENUM,
+        default="task_driven",
+        description="Velocity calculator for sprint metrics",
+        group="Ceremony Policy",
+        # Must be kept in sync with VelocityCalcType members;
+        # test_ceremony_settings.py verifies this.
+        enum_values=(
+            "task_driven",
+            "calendar",
+            "multi_dimensional",
+            "budget",
+            "points_per_sprint",
+        ),
+        yaml_path="workflow.sprint.ceremony_policy.velocity_calculator",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_auto_transition",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description="Automatically transition sprints when strategy conditions are met",
+        group="Ceremony Policy",
+        yaml_path="workflow.sprint.ceremony_policy.auto_transition",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_transition_threshold",
+        type=SettingType.FLOAT,
+        default="1.0",
+        description=(
+            "Fraction of tasks/time/budget that must be reached "
+            "before auto-transition fires (0.01 to 1.0)"
+        ),
+        group="Ceremony Policy",
+        min_value=0.01,
+        max_value=1.0,
+        yaml_path="workflow.sprint.ceremony_policy.transition_threshold",
+    )
+)
+
+# The next two settings are aggregate JSON blobs managed entirely through the
+# settings service (keyed by department or ceremony name).  They intentionally
+# omit yaml_path because they do not map to a single YAML config path -- the
+# YAML company config stores per-department ceremony_policy inline on each
+# department object, not as a separate top-level blob.
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="dept_ceremony_policies",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Per-department ceremony policy overrides as JSON. "
+            "Keys are department names, values are partial "
+            "CeremonyPolicyConfig objects. Null values inherit "
+            "the project-level policy."
+        ),
+        group="Ceremony Policy",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_policy_overrides",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Per-ceremony policy overrides as JSON. "
+            "Keys are ceremony names, values are partial "
+            "CeremonyPolicyConfig objects. Null values inherit "
+            "the project/department-level policy."
+        ),
+        group="Ceremony Policy",
+        level=SettingLevel.ADVANCED,
+    )
+)
