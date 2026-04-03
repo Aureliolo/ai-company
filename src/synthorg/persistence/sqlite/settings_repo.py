@@ -130,7 +130,19 @@ class SQLiteSettingsRepository:
                 )
                 await self._db.commit()
                 if cursor.rowcount == 0:
-                    return False
+                    if expected_updated_at == "":
+                        # No DB row yet -- try insert.
+                        cursor = await self._db.execute(
+                            "INSERT OR IGNORE INTO settings "
+                            "(namespace, key, value, updated_at) "
+                            "VALUES (?, ?, ?, ?)",
+                            (namespace, key, value, updated_at),
+                        )
+                        await self._db.commit()
+                        if cursor.rowcount == 0:
+                            return False
+                    else:
+                        return False
             else:
                 await self._db.execute(
                     "INSERT INTO settings (namespace, key, value, updated_at) "

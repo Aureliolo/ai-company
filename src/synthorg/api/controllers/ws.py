@@ -648,11 +648,13 @@ def _handle_subscribe(
     ):
         return json.dumps({"error": "Filter bounds exceeded"})
 
-    # Accept shared channels + the user's own user channel.
+    # Accept known channels the user is authorized to receive.
     own_user_ch = user_channel(conn_user.user_id)
     valid: list[str] = []
     for c in channels:
-        if c in _ALL_CHANNELS_SET or c == own_user_ch:
+        if c == own_user_ch or (
+            c in _ALL_CHANNELS_SET and _channel_allowed(c, conn_user)
+        ):
             valid.append(c)
         elif is_user_channel(c):
             logger.warning(

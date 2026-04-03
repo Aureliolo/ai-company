@@ -24,6 +24,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_RESOLVED,
     SETTINGS_VALUE_SET,
+    SETTINGS_VERSION_CONFLICT,
 )
 from synthorg.settings.config_bridge import extract_from_config
 from synthorg.settings.enums import SettingSource, SettingType
@@ -541,7 +542,7 @@ class SettingsService:
             )
 
             logger.warning(
-                SETTINGS_VALIDATION_FAILED,
+                SETTINGS_VERSION_CONFLICT,
                 namespace=namespace,
                 key=key,
                 reason="concurrent_modification",

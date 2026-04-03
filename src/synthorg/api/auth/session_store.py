@@ -195,16 +195,16 @@ class SessionStore:
         Returns:
             Number of sessions revoked.
         """
+        now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
-            "UPDATE sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0",
-            (user_id,),
+            "UPDATE sessions SET revoked = 1 "
+            "WHERE user_id = ? AND revoked = 0 AND expires_at > ?",
+            (user_id, now),
         )
         await self._db.commit()
         count = cursor.rowcount
         if count == 0:
             return 0
-
-        now = datetime.now(UTC).isoformat()
         cursor = await self._db.execute(
             "SELECT session_id FROM sessions "
             "WHERE user_id = ? AND revoked = 1 AND expires_at > ?",
