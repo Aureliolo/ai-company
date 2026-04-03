@@ -219,6 +219,6 @@ def compute_sections(  # noqa: PLR0913
         sections.append(SECTION_TOOLS)
     if company is not None:
         sections.append(SECTION_COMPANY)
-    if context_budget is not None:
+    if context_budget:
         sections.append(SECTION_CONTEXT_BUDGET)
     return tuple(sections)

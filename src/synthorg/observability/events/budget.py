@@ -29,6 +29,7 @@ BUDGET_RESOLVE_MODEL_ERROR: Final[str] = "budget.resolve_model.error"
 
 BUDGET_TIER_RESOLVED: Final[str] = "budget.tier.resolved"
 BUDGET_TIER_CLASSIFY_MISS: Final[str] = "budget.tier.classify_miss"
+BUDGET_TIER_PRESERVED: Final[str] = "budget.tier.preserved"
 
 BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
 

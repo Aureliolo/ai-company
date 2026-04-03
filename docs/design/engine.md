@@ -716,8 +716,11 @@ each model tier.
 1. Template YAML specifies agent tier (`large`/`medium`/`small`)
 2. Model matcher resolves tier to a concrete model, stores `model_tier` in
    `ModelConfig`
-3. Budget auto-downgrade updates `model_tier` when switching to a cheaper model
-4. Engine reads `identity.model.model_tier` and passes to `build_system_prompt()`
+3. Budget auto-downgrade updates `model_tier` when the target alias is a
+   canonical tier name (`large`/`medium`/`small`); non-tier aliases (e.g.
+   `"local-small"`) leave `model_tier` unchanged
+4. Engine reads the preserved or updated `identity.model.model_tier` and passes
+   it to `build_system_prompt()`
 5. Prompt builder resolves `PromptProfile` and adapts template rendering
 
 ### Invariants
