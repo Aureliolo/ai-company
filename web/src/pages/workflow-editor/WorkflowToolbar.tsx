@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import {
   ClipboardList,
+  Copy,
   Download,
   GitBranch,
   Maximize,
@@ -16,7 +17,9 @@ import {
 } from 'lucide-react'
 import { useReactFlow } from '@xyflow/react'
 import { Button } from '@/components/ui/button'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import type { WorkflowNodeType } from '@/api/types'
+import { WorkflowSelector } from './WorkflowSelector'
 
 interface NodePaletteItem {
   type: WorkflowNodeType
@@ -39,6 +42,11 @@ export interface WorkflowToolbarProps {
   onSave: () => void
   onValidate: () => void
   onExport: () => void
+  onSaveAsNew?: () => void
+  onSwitchWorkflow?: (id: string) => void
+  currentWorkflowId?: string | null
+  editorMode?: 'visual' | 'yaml'
+  onEditorModeChange?: (mode: 'visual' | 'yaml') => void
   canUndo: boolean
   canRedo: boolean
   dirty: boolean
@@ -54,6 +62,11 @@ export function WorkflowToolbar({
   onSave,
   onValidate,
   onExport,
+  onSaveAsNew,
+  onSwitchWorkflow,
+  currentWorkflowId,
+  editorMode = 'visual',
+  onEditorModeChange,
   canUndo,
   canRedo,
   dirty,
@@ -67,6 +80,31 @@ export function WorkflowToolbar({
 
   return (
     <div className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1">
+      {/* Workflow selector */}
+      {onSwitchWorkflow && (
+        <div className="border-r border-border pr-2">
+          <WorkflowSelector
+            currentId={currentWorkflowId ?? null}
+            onChange={onSwitchWorkflow}
+          />
+        </div>
+      )}
+
+      {/* Mode toggle */}
+      {onEditorModeChange && (
+        <div className="border-r border-border pr-2">
+          <SegmentedControl
+            value={editorMode}
+            onChange={onEditorModeChange}
+            options={[
+              { value: 'visual' as const, label: 'Visual' },
+              { value: 'yaml' as const, label: 'YAML' },
+            ]}
+            size="sm"
+          />
+        </div>
+      )}
+
       {/* Node palette */}
       <div className="flex items-center gap-0.5 border-r border-border pr-2">
         {NODE_PALETTE.map(({ type, label, icon: Icon }) => (
@@ -167,6 +205,21 @@ export function WorkflowToolbar({
           <Save className="size-4" aria-hidden="true" />
           <span className="text-xs">{saving ? 'Saving...' : 'Save'}</span>
         </Button>
+
+        {onSaveAsNew && (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Save as New"
+            aria-label="Save as new workflow"
+            onClick={onSaveAsNew}
+            disabled={saving}
+            className="gap-1.5"
+          >
+            <Copy className="size-4" aria-hidden="true" />
+            <span className="text-xs">Save as New</span>
+          </Button>
+        )}
       </div>
     </div>
   )

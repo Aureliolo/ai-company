@@ -3,6 +3,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { NODE_CONFIG_SCHEMAS, type ConfigField } from './node-config-schemas'
+import { ConditionExpressionBuilder } from './ConditionExpressionBuilder'
 import type { WorkflowNodeType } from '@/api/types'
 
 interface FieldRendererProps {
@@ -12,6 +13,20 @@ interface FieldRendererProps {
 }
 
 function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
+  if (field.key === 'condition_expression') {
+    return (
+      <div>
+        <span className="mb-1.5 block text-sm font-medium text-foreground">
+          {field.label}
+        </span>
+        <ConditionExpressionBuilder
+          value={value}
+          onChange={(v) => onChange(field.key, v)}
+        />
+      </div>
+    )
+  }
+
   if (field.type === 'select' && field.options) {
     return (
       <SelectField

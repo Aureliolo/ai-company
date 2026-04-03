@@ -20,6 +20,7 @@ import {
   validateWorkflowDraft,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
+import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workflow-editor/copy-paste'
 import { getErrorMessage } from '@/utils/errors'
 
 const MAX_UNDO = 50
@@ -53,6 +54,9 @@ export interface WorkflowEditorState {
   // YAML preview
   yamlPreview: string
 
+  // Clipboard
+  clipboard: ClipboardData | null
+
   // Actions
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
@@ -69,6 +73,8 @@ export interface WorkflowEditorState {
   redo: () => void
   validate: () => Promise<void>
   exportYaml: () => Promise<string>
+  copySelectedNodes: () => void
+  pasteNodes: () => void
   reset: () => void
 }
 
@@ -137,6 +143,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   undoStack: [],
   redoStack: [],
   yamlPreview: '',
+  clipboard: null,
 
   loadDefinition: async (id: string) => {
     set({ loading: true, error: null })
@@ -493,6 +500,32 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     return yamlPreview
   },
 
+  copySelectedNodes: () => {
+    const { nodes, edges } = get()
+    const selectedIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
+    const clipboard = copyNodes(selectedIds, nodes, edges)
+    if (clipboard) set({ clipboard })
+  },
+
+  pasteNodes: () => {
+    const { clipboard, nodes, edges, definition } = get()
+    if (!clipboard) return
+    const pasted = pasteFromClipboard(clipboard)
+    const newNodes = [...nodes.map((n) => ({ ...n, selected: false })), ...pasted.nodes]
+    const newEdges = [...edges, ...pasted.edges]
+    const yamlPreview = definition
+      ? generateYamlPreview(newNodes, newEdges, definition)
+      : ''
+    set({
+      nodes: newNodes,
+      edges: newEdges,
+      dirty: true,
+      yamlPreview,
+      undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), { nodes, edges }],
+      redoStack: [],
+    })
+  },
+
   reset: () => {
     set({
       definition: null,
@@ -508,6 +541,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       undoStack: [],
       redoStack: [],
       yamlPreview: '',
+      clipboard: null,
     })
   },
 }))

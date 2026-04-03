@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { ReactFlow, ReactFlowProvider, Background, MiniMap, type Node } from '@xyflow/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Workflow } from 'lucide-react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
+import { createWorkflow } from '@/api/endpoints/workflows'
+import { ROUTES } from '@/router/routes'
+import { getErrorMessage } from '@/utils/errors'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
 import { useToastStore } from '@/stores/toast'
@@ -22,6 +25,7 @@ import { WorkflowToolbar } from './workflow-editor/WorkflowToolbar'
 import { WorkflowNodeDrawer } from './workflow-editor/WorkflowNodeDrawer'
 import { WorkflowYamlPreview } from './workflow-editor/WorkflowYamlPreview'
 import { WorkflowEditorSkeleton } from './workflow-editor/WorkflowEditorSkeleton'
+import { WorkflowYamlEditor } from './workflow-editor/WorkflowYamlEditor'
 
 const log = createLogger('WorkflowEditor')
 
@@ -100,7 +104,10 @@ function WorkflowEditorInner() {
   const validate = useWorkflowEditorStore((s) => s.validate)
   const exportYaml = useWorkflowEditorStore((s) => s.exportYaml)
 
+  const [editorMode, setEditorMode] = useState<'visual' | 'yaml'>('visual')
+
   const addToast = useToastStore((s) => s.add)
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const defId = searchParams.get('id')
 
@@ -113,6 +120,27 @@ function WorkflowEditorInner() {
       createDefinition('New Workflow', 'sequential_pipeline')
     }
   }, [defId, loadDefinition, createDefinition])
+
+  // Copy/paste keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        // Only handle if not in an input/textarea
+        const tag = (e.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        e.preventDefault()
+        useWorkflowEditorStore.getState().copySelectedNodes()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        const tag = (e.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        e.preventDefault()
+        useWorkflowEditorStore.getState().pasteNodes()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const handleAddNode = useCallback(
     (type: WorkflowNodeType) => {
@@ -183,6 +211,31 @@ function WorkflowEditorInner() {
     [selectedNodeId, updateNodeConfig],
   )
 
+  const handleSwitchWorkflow = useCallback(
+    (id: string) => {
+      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(id)}`)
+    },
+    [navigate],
+  )
+
+  const handleSaveAsNew = useCallback(async () => {
+    try {
+      const state = useWorkflowEditorStore.getState()
+      if (!state.definition) return
+      const created = await createWorkflow({
+        name: `${state.definition.name} (Copy)`,
+        description: state.definition.description || undefined,
+        workflow_type: state.definition.workflow_type,
+        nodes: state.definition.nodes.map((n) => ({ ...n })),
+        edges: state.definition.edges.map((e) => ({ ...e })),
+      })
+      addToast({ variant: 'success', title: 'Saved as new workflow' })
+      navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)
+    } catch (err) {
+      addToast({ variant: 'error', title: 'Save as new failed', description: getErrorMessage(err) })
+    }
+  }, [addToast, navigate])
+
   const handleMoveEnd = useCallback((_event: unknown, viewport: { x: number; y: number; zoom: number }) => {
     saveViewport(viewport)
   }, [])
@@ -215,6 +268,11 @@ function WorkflowEditorInner() {
           onSave={handleSave}
           onValidate={handleValidate}
           onExport={handleExport}
+          onSaveAsNew={handleSaveAsNew}
+          onSwitchWorkflow={handleSwitchWorkflow}
+          currentWorkflowId={defId}
+          editorMode={editorMode}
+          onEditorModeChange={setEditorMode}
           canUndo={undoStack.length > 0}
           canRedo={redoStack.length > 0}
           dirty={dirty}
@@ -224,59 +282,65 @@ function WorkflowEditorInner() {
         />
       </div>
 
-      <div className="relative min-h-0 flex-1 rounded-lg border border-border">
-        <ReactFlow
-          aria-label="Workflow editor canvas"
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          defaultViewport={defaultViewport}
-          fitView={!defaultViewport}
-          fitViewOptions={{ padding: 0.2 }}
-          onMoveEnd={handleMoveEnd}
-          onNodeClick={handleNodeClick}
-          onPaneClick={handlePaneClick}
-          onConnect={onConnect}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          minZoom={0.1}
-          maxZoom={2}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background color="var(--color-border)" gap={24} size={1} />
-          <MiniMap
-            position="bottom-right"
-            pannable
-            zoomable
-            style={{ backgroundColor: 'var(--so-bg-surface)' }}
-            maskColor="var(--so-bg-overlay)"
-            nodeColor={(node) => {
-              switch (node.type) {
-                case 'start':
-                case 'end':
-                  return 'var(--so-accent)'
-                case 'task':
-                  return 'var(--so-info)'
-                case 'conditional':
-                  return 'var(--so-warning)'
-                case 'parallel_split':
-                case 'parallel_join':
-                  return 'var(--so-success)'
-                case 'agent_assignment':
-                  return 'var(--so-purple)'
-                default:
-                  return 'var(--so-text-muted)'
-              }
-            }}
-          />
-        </ReactFlow>
+      {editorMode === 'visual' ? (
+        <>
+          <div className="relative min-h-0 flex-1 rounded-lg border border-border">
+            <ReactFlow
+              aria-label="Workflow editor canvas"
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              defaultViewport={defaultViewport}
+              fitView={!defaultViewport}
+              fitViewOptions={{ padding: 0.2 }}
+              onMoveEnd={handleMoveEnd}
+              onNodeClick={handleNodeClick}
+              onPaneClick={handlePaneClick}
+              onConnect={onConnect}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              selectionOnDrag
+              minZoom={0.1}
+              maxZoom={2}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background color="var(--color-border)" gap={24} size={1} />
+              <MiniMap
+                position="bottom-right"
+                pannable
+                zoomable
+                style={{ backgroundColor: 'var(--so-bg-surface)' }}
+                maskColor="var(--so-bg-overlay)"
+                nodeColor={(node) => {
+                  switch (node.type) {
+                    case 'start':
+                    case 'end':
+                      return 'var(--so-accent)'
+                    case 'task':
+                      return 'var(--so-info)'
+                    case 'conditional':
+                      return 'var(--so-warning)'
+                    case 'parallel_split':
+                    case 'parallel_join':
+                      return 'var(--so-success)'
+                    case 'agent_assignment':
+                      return 'var(--so-purple)'
+                    default:
+                      return 'var(--so-text-muted)'
+                  }
+                }}
+              />
+            </ReactFlow>
+          </div>
 
-        {/* ARIA live region for editor actions */}
-{/* Toast system handles ARIA announcements -- removed empty live region */}
-      </div>
-
-      <WorkflowYamlPreview yaml={yamlPreview} />
+          <WorkflowYamlPreview yaml={yamlPreview} />
+        </>
+      ) : (
+        <div className="min-h-0 flex-1 rounded-lg border border-border">
+          <WorkflowYamlEditor initialYaml={yamlPreview} />
+        </div>
+      )}
 
       <WorkflowNodeDrawer
         open={selectedNode !== null}
