@@ -16,6 +16,7 @@ from synthorg.engine.workflow.sprint_config import (
     SprintConfig,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
+from synthorg.engine.workflow.strategies.calendar import CalendarStrategy
 from synthorg.engine.workflow.strategies.task_driven import (
     TaskDrivenStrategy,
 )
@@ -375,3 +376,157 @@ class TestCeremonySchedulerTaskCompletion:
 
         assert scheduler.running is False
         assert scheduler.active_sprint is None
+
+
+class TestCeremonySchedulerStrategyMigration:
+    """Strategy migration detection via activate_sprint()."""
+
+    @pytest.mark.unit
+    async def test_first_activation_returns_none(self) -> None:
+        """First activation has no previous strategy -- no migration."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            _make_config(),
+            TaskDrivenStrategy(),
+        )
+        assert result is None
+
+    @pytest.mark.unit
+    async def test_same_strategy_returns_none(self) -> None:
+        """Re-activating with the same strategy type -- no migration."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        strategy = TaskDrivenStrategy()
+        await scheduler.activate_sprint(_make_sprint(), config, strategy)
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+        )
+        assert result is None
+
+    @pytest.mark.unit
+    async def test_strategy_change_returns_migration_info(self) -> None:
+        """Changing strategy type returns StrategyMigrationInfo."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+        )
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            CalendarStrategy(),
+        )
+        assert result is not None
+        assert result.previous_strategy is CeremonyStrategyType.TASK_DRIVEN
+        assert result.new_strategy is CeremonyStrategyType.CALENDAR
+        assert result.sprint_id == "sprint-1"
+
+    @pytest.mark.unit
+    async def test_strategy_change_with_velocity_history(self) -> None:
+        """Migration info includes velocity_history_size."""
+        from synthorg.engine.workflow.sprint_velocity import VelocityRecord
+
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        records = (
+            VelocityRecord(
+                sprint_id="s-0",
+                sprint_number=1,
+                story_points_committed=10.0,
+                story_points_completed=8.0,
+                duration_days=7,
+            ),
+        )
+        await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+            velocity_history=records,
+        )
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            CalendarStrategy(),
+            velocity_history=records,
+        )
+        assert result is not None
+        assert result.velocity_history_size == 1
+
+    @pytest.mark.unit
+    async def test_activation_failure_does_not_return_migration(self) -> None:
+        """If activation fails, the exception propagates (no migration info)."""
+
+        class FailingCalendarStrategy(CalendarStrategy):
+            async def on_sprint_activated(
+                self,
+                sprint: Sprint,
+                config: SprintConfig,
+            ) -> None:
+                msg = "calendar activation failed"
+                raise RuntimeError(msg)
+
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+        )
+        with pytest.raises(RuntimeError, match="calendar activation failed"):
+            await scheduler.activate_sprint(
+                _make_sprint(),
+                config,
+                FailingCalendarStrategy(),
+            )
+
+    @pytest.mark.unit
+    async def test_strategy_after_failed_activation_is_cleared(self) -> None:
+        """After a failed activation, the next activation is first-time."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+        )
+
+        class FailingCalendarStrategy(CalendarStrategy):
+            async def on_sprint_activated(
+                self,
+                sprint: Sprint,
+                config: SprintConfig,
+            ) -> None:
+                msg = "fail"
+                raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError):
+            await scheduler.activate_sprint(
+                _make_sprint(),
+                config,
+                FailingCalendarStrategy(),
+            )
+
+        # After failure, next activation is treated as first-time.
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            CalendarStrategy(),
+        )
+        assert result is None

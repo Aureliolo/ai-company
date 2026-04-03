@@ -105,6 +105,7 @@ template:
     sprint:
       ceremony_policy:
         strategy: "task_driven"
+        velocity_calculator: "task_driven"
 
   workflow_handoffs:
     - from_department: "data_analytics"

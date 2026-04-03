@@ -15,6 +15,7 @@ from synthorg.engine.workflow.config import WorkflowConfig
 from synthorg.engine.workflow.kanban_board import KanbanConfig
 from synthorg.engine.workflow.kanban_columns import KanbanColumn
 from synthorg.engine.workflow.sprint_config import SprintConfig
+from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.templates.loader import (
     BUILTIN_TEMPLATES,
     load_template,
@@ -604,6 +605,44 @@ class TestBuiltinWorkflowConfigs:
         config = render_template(loaded)
         policy = config.workflow.sprint.ceremony_policy
         assert policy.strategy == CeremonyStrategyType(expected_strategy)
+
+    # (name, expected_velocity_calculator)
+    _EXPECTED_VELOCITY_CALCS: ClassVar[list[tuple[str, str]]] = [
+        ("solo_founder", "task_driven"),
+        ("startup", "task_driven"),
+        ("dev_shop", "multi_dimensional"),
+        ("product_team", "multi_dimensional"),
+        ("agency", "points_per_sprint"),
+        ("full_company", "multi_dimensional"),
+        ("research_lab", "task_driven"),
+        ("consultancy", "calendar"),
+        ("data_team", "task_driven"),
+    ]
+
+    def test_velocity_calc_matrix_covers_all_builtins(self) -> None:
+        tested = {row[0] for row in self._EXPECTED_VELOCITY_CALCS}
+        assert tested == set(BUILTIN_TEMPLATES)
+
+    @pytest.mark.parametrize(
+        ("name", "expected_calc"),
+        _EXPECTED_VELOCITY_CALCS,
+        ids=[row[0] for row in _EXPECTED_VELOCITY_CALCS],
+    )
+    def test_builtin_ceremony_policy_velocity_calculator(
+        self,
+        name: str,
+        expected_calc: str,
+    ) -> None:
+        """Each builtin template must declare its default velocity calculator."""
+        loaded = load_template(name)
+        # Assert raw template YAML declares the field (not just derived)
+        sprint_cfg = loaded.template.workflow_config.get("sprint", {})
+        ceremony_policy = sprint_cfg.get("ceremony_policy", {})
+        assert ceremony_policy.get("velocity_calculator") == expected_calc
+        # Assert rendered config matches
+        config = render_template(loaded)
+        policy = config.workflow.sprint.ceremony_policy
+        assert policy.velocity_calculator == VelocityCalcType(expected_calc)
 
 
 # ── Department ceremony policy passthrough ───────────────────────
