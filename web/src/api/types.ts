@@ -694,6 +694,7 @@ export interface LocalModelParams {
   num_gpu_layers: number | null
   num_threads: number | null
   num_batch: number | null
+  repeat_penalty: number | null
 }
 
 export interface PullProgressEvent {
@@ -767,6 +768,7 @@ export interface CreateProviderRequest {
   oauth_scope?: string
   custom_header_name?: string
   custom_header_value?: string
+  preset_name?: string
   models?: readonly ProviderModelConfig[]
 }
 

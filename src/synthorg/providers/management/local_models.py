@@ -55,7 +55,7 @@ class PullProgressEvent(BaseModel):
     )
     total_bytes: int | None = Field(default=None, ge=0)
     completed_bytes: int | None = Field(default=None, ge=0)
-    error: str | None = None
+    error: NotBlankStr | None = None
     done: bool = False
 
 
@@ -106,6 +106,63 @@ class OllamaModelManager:
         self._base_url = base_url.rstrip("/")
         self._client = client
 
+    @staticmethod
+    def _parse_pull_line(
+        data: dict[str, object],
+        model_name: str,
+    ) -> PullProgressEvent:
+        """Parse a single JSON line from the pull stream.
+
+        Args:
+            data: Parsed JSON dict from the stream.
+            model_name: Model being pulled (for logging).
+
+        Returns:
+            A progress event derived from the data.
+        """
+        error = data.get("error")
+        if error:
+            logger.warning(
+                PROVIDER_MODEL_PULL_FAILED,
+                provider="ollama",
+                model=model_name,
+                error=error,
+            )
+            return PullProgressEvent(
+                status=str(error),
+                error=str(error),
+                done=True,
+            )
+
+        status = str(data.get("status", "unknown"))
+        total = data.get("total")
+        completed = data.get("completed")
+        progress = None
+        if (
+            isinstance(total, (int, float))
+            and isinstance(completed, (int, float))
+            and total > 0
+        ):
+            progress = min(
+                round((completed / total) * 100, 1),
+                100.0,
+            )
+
+        is_done = status == "success"
+        if is_done:
+            logger.info(
+                PROVIDER_MODEL_PULL_COMPLETED,
+                provider="ollama",
+                model=model_name,
+            )
+        return PullProgressEvent(
+            status=status,
+            progress_percent=progress,
+            total_bytes=total if isinstance(total, int) else None,
+            completed_bytes=(completed if isinstance(completed, int) else None),
+            done=is_done,
+        )
+
     async def pull_model(
         self,
         model_name: str,
@@ -151,53 +208,53 @@ class OllamaModelManager:
                     )
                     return
 
+                got_done = False
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
                     try:
                         data = json.loads(line)
                     except json.JSONDecodeError:
-                        continue
-
-                    error = data.get("error")
-                    if error:
                         logger.warning(
                             PROVIDER_MODEL_PULL_FAILED,
                             provider="ollama",
                             model=model_name,
-                            error=error,
+                            error=f"Malformed JSON in stream: {line[:200]!r}",
                         )
-                        yield PullProgressEvent(
-                            status=str(error),
-                            error=str(error),
-                            done=True,
-                        )
+                        continue
+
+                    event = self._parse_pull_line(data, model_name)
+                    yield event
+                    if event.done:
+                        got_done = True
                         return
 
-                    status = data.get("status", "unknown")
-                    total = data.get("total")
-                    completed = data.get("completed")
-                    progress = None
-                    if total and completed:
-                        progress = min(
-                            round((completed / total) * 100, 1),
-                            100.0,
-                        )
-
-                    is_done = status == "success"
-                    yield PullProgressEvent(
-                        status=status,
-                        progress_percent=progress,
-                        total_bytes=total,
-                        completed_bytes=completed,
-                        done=is_done,
+                if not got_done:
+                    err = "Stream ended without success status"
+                    logger.warning(
+                        PROVIDER_MODEL_PULL_FAILED,
+                        provider="ollama",
+                        model=model_name,
+                        error=err,
                     )
-                    if is_done:
-                        logger.info(
-                            PROVIDER_MODEL_PULL_COMPLETED,
-                            provider="ollama",
-                            model=model_name,
-                        )
+                    yield PullProgressEvent(
+                        status=err,
+                        error=err,
+                        done=True,
+                    )
+        except httpx.HTTPError as exc:
+            err = f"HTTP error during pull: {exc}"
+            logger.warning(
+                PROVIDER_MODEL_PULL_FAILED,
+                provider="ollama",
+                model=model_name,
+                error=err,
+            )
+            yield PullProgressEvent(
+                status=err,
+                error=err,
+                done=True,
+            )
         finally:
             if owns_client:
                 await client.aclose()

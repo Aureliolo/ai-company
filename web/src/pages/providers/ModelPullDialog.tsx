@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { ProgressGauge } from '@/components/ui/progress-gauge'
@@ -15,6 +15,23 @@ export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialog
   const [modelName, setModelName] = useState('')
   const { pullingModel, pullProgress, pullModel, cancelPull } = useProvidersStore()
 
+  const handleCancel = useCallback(() => {
+    if (pullingModel) {
+      cancelPull()
+    } else {
+      onClose()
+    }
+  }, [pullingModel, cancelPull, onClose])
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCancel()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, handleCancel])
+
   if (!open) return null
 
   const handlePull = async () => {
@@ -26,25 +43,23 @@ export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialog
     }
   }
 
-  const handleCancel = () => {
-    if (pullingModel) {
-      cancelPull()
-    } else {
-      onClose()
-    }
-  }
-
   const progressPercent = pullProgress?.progress_percent ?? 0
   const statusText = pullProgress?.status ?? ''
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Pull model"
+    >
       <div className="w-full max-w-md rounded-lg bg-card p-card shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Pull Model</h2>
           <button
             type="button"
             onClick={handleCancel}
+            aria-label="Close"
             className="rounded p-1 text-text-muted hover:bg-bg-surface hover:text-foreground transition-colors"
           >
             <X className="size-4" />

@@ -28,15 +28,27 @@ function ModelConfigForm({
   const [numGpuLayers, setNumGpuLayers] = useState(params?.num_gpu_layers?.toString() ?? '')
   const [numThreads, setNumThreads] = useState(params?.num_threads?.toString() ?? '')
   const [numBatch, setNumBatch] = useState(params?.num_batch?.toString() ?? '')
+  const [repeatPenalty, setRepeatPenalty] = useState(params?.repeat_penalty?.toString() ?? '')
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
     setSaving(true)
+    const parseIntSafe = (val: string): number | null => {
+      if (!val) return null
+      const parsed = parseInt(val, 10)
+      return Number.isNaN(parsed) ? null : parsed
+    }
+    const parseFloatSafe = (val: string): number | null => {
+      if (!val) return null
+      const parsed = parseFloat(val)
+      return Number.isNaN(parsed) ? null : parsed
+    }
     const newParams: LocalModelParams = {
-      num_ctx: numCtx ? parseInt(numCtx, 10) : null,
-      num_gpu_layers: numGpuLayers ? parseInt(numGpuLayers, 10) : null,
-      num_threads: numThreads ? parseInt(numThreads, 10) : null,
-      num_batch: numBatch ? parseInt(numBatch, 10) : null,
+      num_ctx: parseIntSafe(numCtx),
+      num_gpu_layers: parseIntSafe(numGpuLayers),
+      num_threads: parseIntSafe(numThreads),
+      num_batch: parseIntSafe(numBatch),
+      repeat_penalty: parseFloatSafe(repeatPenalty),
     }
     const success = await updateModelConfig(providerName, model.id, newParams)
     setSaving(false)
@@ -44,7 +56,7 @@ function ModelConfigForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex flex-col gap-4">
       <InputField
         label="Context window (num_ctx)"
         value={numCtx}
@@ -72,6 +84,13 @@ function ModelConfigForm({
         onValueChange={setNumBatch}
         placeholder="512"
         hint="Batch size for prompt processing"
+      />
+      <InputField
+        label="Repetition penalty (repeat_penalty)"
+        value={repeatPenalty}
+        onValueChange={setRepeatPenalty}
+        placeholder="1.1"
+        hint="Penalize repeated tokens (1.0 = disabled)"
       />
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>

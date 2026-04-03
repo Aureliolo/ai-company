@@ -1,5 +1,6 @@
 """Provider controller -- CRUD, connection testing, and presets."""
 
+import asyncio
 import json as _json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated
@@ -122,14 +123,7 @@ class ProviderController(Controller):
         self,
         state: State,  # noqa: ARG002
     ) -> ApiResponse[tuple[ProviderPreset, ...]]:
-        """List all available provider presets.
-
-        Args:
-            state: Application state.
-
-        Returns:
-            Preset list envelope.
-        """
+        """List all available provider presets."""
         return ApiResponse(data=list_presets())
 
     @post(
@@ -142,17 +136,6 @@ class ProviderController(Controller):
         data: ProbePresetRequest,
     ) -> ApiResponse[ProbePresetResponse]:
         """Probe a preset's candidate URLs for reachability.
-
-        Tries each candidate URL in priority order and returns the
-        first one that responds, along with the number of models
-        discovered.
-
-        Args:
-            state: Application state (injected by Litestar, unused).
-            data: Probe request with preset name.
-
-        Returns:
-            Probe result envelope.
 
         Raises:
             ApiValidationError: If the preset is unknown.
@@ -187,14 +170,7 @@ class ProviderController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, ProviderResponse]]:
-        """List all configured providers (secrets stripped).
-
-        Args:
-            state: Application state.
-
-        Returns:
-            Provider responses envelope.
-        """
+        """List all configured providers (secrets stripped)."""
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
         safe = {name: to_provider_response(p) for name, p in providers.items()}
@@ -210,13 +186,6 @@ class ProviderController(Controller):
         name: PathName,
     ) -> ApiResponse[ProviderResponse]:
         """Get a provider by name (secrets stripped).
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider response envelope.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -240,13 +209,6 @@ class ProviderController(Controller):
         name: PathName,
     ) -> ApiResponse[tuple[ProviderModelResponse, ...]]:
         """List models for a provider with runtime capabilities.
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider models enriched with capability flags.
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -291,19 +253,7 @@ class ProviderController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[ProviderHealthSummary]:
-        """Get provider health summary.
-
-        Returns health status, error rate, average response time,
-        call count, total tokens, and total cost for the last 24
-        hours.  Token and cost totals are enriched from the cost
-        tracker when available.
-
-        Args:
-            state: Application state.
-            name: Provider name.
-
-        Returns:
-            Provider health summary envelope.
+        """Get provider health summary (enriched with cost data).
 
         Raises:
             NotFoundError: If the provider is not found.
@@ -707,6 +657,22 @@ class ProviderController(Controller):
                     "event": "error",
                     "data": _json.dumps({"error": str(exc)}),
                 }
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    "api.sse.pull_model_failed",
+                    provider=name,
+                    model=data.model_name,
+                    error=str(exc),
+                    error_type=type(exc).__qualname__,
+                )
+                yield {
+                    "event": "error",
+                    "data": _json.dumps(
+                        {"error": f"Internal error: {type(exc).__name__}"},
+                    ),
+                }
 
         return ServerSentEvent(content=_event_stream())
 
@@ -733,10 +699,27 @@ class ProviderController(Controller):
             await app_state.provider_management.delete_model(name, model_id)
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
             raise NotFoundError(msg) from exc
         except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
         except ValueError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="model",
+                name=model_id,
+                provider=name,
+            )
             raise NotFoundError(str(exc)) from exc
 
     @put(
@@ -770,8 +753,26 @@ class ProviderController(Controller):
             )
         except ProviderNotFoundError as exc:
             msg = f"Provider {name!r} not found"
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
             raise NotFoundError(msg) from exc
         except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                name=name,
+                model=model_id,
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
-        model = next(m for m in updated.models if m.id == model_id)
+        model = next(
+            (m for m in updated.models if m.id == model_id),
+            None,
+        )
+        if model is None:
+            msg = f"Model {model_id!r} missing from updated config"
+            raise ApiValidationError(msg)
         return ApiResponse(data=to_provider_model_response(model))

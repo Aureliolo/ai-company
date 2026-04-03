@@ -31,6 +31,7 @@ class ProviderModelResponse(BaseModel):
         cost_per_1k_output: Cost per 1k output tokens.
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
+        local_params: Per-model launch parameters for local providers.
         supports_tools: Whether the model supports tool/function calling.
         supports_vision: Whether the model accepts image inputs.
         supports_streaming: Whether the model supports streaming responses.
@@ -63,6 +64,10 @@ class ProviderModelResponse(BaseModel):
         gt=0,
         le=300_000,
         description="Estimated median latency in ms",
+    )
+    local_params: LocalModelParams | None = Field(
+        default=None,
+        description="Per-model launch parameters for local providers",
     )
     supports_tools: bool = Field(
         default=False,
@@ -451,6 +456,7 @@ def to_provider_model_response(
         cost_per_1k_output=config.cost_per_1k_output,
         max_context=config.max_context,
         estimated_latency_ms=config.estimated_latency_ms,
+        local_params=config.local_params,
         supports_tools=(
             capabilities.supports_tools if capabilities is not None else False
         ),

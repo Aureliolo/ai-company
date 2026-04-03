@@ -75,6 +75,7 @@ function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onC
                 onClick={() => onConfigure?.(model)}
                 className="rounded p-1 text-text-muted hover:bg-bg-surface hover:text-foreground transition-colors"
                 title="Configure"
+                aria-label={`Configure ${model.id}`}
               >
                 <Settings2 className="size-3.5" />
               </button>
@@ -85,6 +86,7 @@ function ProviderModelRow({ model, supportsDelete, supportsConfig, onDelete, onC
                 onClick={() => onDelete?.(model.id)}
                 className="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger transition-colors"
                 title="Delete"
+                aria-label={`Delete ${model.id}`}
               >
                 <Trash2 className="size-3.5" />
               </button>

@@ -168,6 +168,16 @@ export async function pullModel(
       }
     }
   }
+
+  // Process any remaining data in the buffer after the stream ends
+  if (buffer.startsWith('data: ')) {
+    try {
+      const event = JSON.parse(buffer.slice(6)) as PullProgressEvent
+      onProgress(event)
+    } catch {
+      // Skip malformed JSON
+    }
+  }
 }
 
 export async function deleteModel(name: string, modelId: string): Promise<void> {

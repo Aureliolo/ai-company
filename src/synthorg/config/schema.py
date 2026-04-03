@@ -43,39 +43,18 @@ logger = get_logger(__name__)
 
 
 class LocalModelParams(BaseModel):
-    """Per-model launch parameters for local providers.
-
-    Provider-agnostic parameter set covering Ollama and LM Studio.
-    Unused fields are ``None`` (providers ignore unrecognised keys).
-
-    Attributes:
-        num_ctx: Context window size in tokens.
-        num_gpu_layers: Number of GPU layers to offload.
-        num_threads: CPU thread count (Ollama).
-        num_batch: Batch size for prompt processing (Ollama).
-    """
+    """Per-model launch parameters for local providers."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    num_ctx: int | None = Field(
+    num_ctx: int | None = Field(default=None, gt=0)
+    num_gpu_layers: int | None = Field(default=None, ge=0)
+    num_threads: int | None = Field(default=None, gt=0)
+    num_batch: int | None = Field(default=None, gt=0)
+    repeat_penalty: float | None = Field(
         default=None,
-        gt=0,
-        description="Context window size in tokens",
-    )
-    num_gpu_layers: int | None = Field(
-        default=None,
-        ge=0,
-        description="Number of GPU layers to offload",
-    )
-    num_threads: int | None = Field(
-        default=None,
-        gt=0,
-        description="CPU thread count",
-    )
-    num_batch: int | None = Field(
-        default=None,
-        gt=0,
-        description="Batch size for prompt processing",
+        gt=0.0,
+        description="Repetition penalty",
     )
 
 
