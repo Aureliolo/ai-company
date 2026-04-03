@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ class _WriteOnlyDatabase(ExampleDatabase):
     def save(self, key: bytes, value: bytes) -> None:
         self._db.save(key, value)
 
-    def fetch(self, key: bytes):
+    def fetch(self, key: bytes) -> Iterable[bytes]:
         return iter(())
 
     def delete(self, key: bytes, value: bytes) -> None:
