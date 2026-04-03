@@ -3,19 +3,86 @@
 import logging
 import os
 import time
+from pathlib import Path
 
 import pytest
 import structlog
-from hypothesis import HealthCheck, settings
+from hypothesis import HealthCheck, Phase, settings
+from hypothesis.database import (
+    DirectoryBasedExampleDatabase,
+    ExampleDatabase,
+    MultiplexedDatabase,
+)
+
+
+class _WriteOnlyDatabase(ExampleDatabase):
+    """Wraps a database so it only receives writes -- fetch returns nothing.
+
+    Used for the shared failure log: we want to capture every failing
+    example for later analysis, but never replay them automatically
+    (that would block all worktrees until someone fixes the bug).
+    """
+
+    def __init__(self, db: ExampleDatabase) -> None:
+        self._db = db
+
+    def save(self, key: bytes, value: bytes) -> None:
+        self._db.save(key, value)
+
+    def fetch(self, key: bytes):
+        return iter(())
+
+    def delete(self, key: bytes, value: bytes) -> None:
+        self._db.delete(key, value)
+
+    def move(
+        self,
+        src: bytes,
+        dest: bytes,
+        value: bytes,
+    ) -> None:
+        self._db.move(src, dest, value)
+
+
+# ── Hypothesis shared example database ──────────────────────────
+# Failing examples are written to a central directory outside any
+# worktree so they survive worktree deletion.  The shared DB is
+# write-only: failures are logged for analysis but never replayed
+# automatically (that would block all test runs until fixed).
+# Review captured failures with: ls ~/.synthorg/hypothesis-examples/
+_SHARED_HYPOTHESIS_DIR = Path.home() / ".synthorg" / "hypothesis-examples"
+_SHARED_HYPOTHESIS_DIR.mkdir(parents=True, exist_ok=True)
+
+_local_db = DirectoryBasedExampleDatabase(".hypothesis/examples/")
+_shared_db = _WriteOnlyDatabase(
+    DirectoryBasedExampleDatabase(str(_SHARED_HYPOTHESIS_DIR)),
+)
+
+# Dev/local: local DB for Hypothesis replay + shared DB captures
+# failures for analysis without replaying them.
+_local_combined_db = MultiplexedDatabase(_local_db, _shared_db)
 
 settings.register_profile(
     "ci",
-    max_examples=50,
+    # CI only runs explicit @example() cases -- fully deterministic.
+    # Random fuzzing happens locally (dev profile) where failures are
+    # captured to the shared DB for analysis.
+    phases=[Phase.explicit],
     suppress_health_check=[HealthCheck.too_slow],
 )
 settings.register_profile(
     "dev",
     max_examples=1000,
+    database=_local_combined_db,
+)
+settings.register_profile(
+    "fuzz",
+    # Dedicated long-running fuzzing sessions -- run locally or on a
+    # schedule.  High example count + longer deadline to explore deep
+    # input spaces.  Failures captured to shared DB for analysis.
+    max_examples=10_000,
+    deadline=None,
+    database=_local_combined_db,
 )
 # Configure Hypothesis globally for the test session.
 # Override by setting HYPOTHESIS_PROFILE=dev in the environment.
