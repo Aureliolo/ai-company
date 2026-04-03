@@ -1,5 +1,6 @@
 """In-memory fake workflow definition repository for API unit tests."""
 
+import copy
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,10 +15,11 @@ class FakeWorkflowDefinitionRepository:
         self._definitions: dict[str, WorkflowDefinition] = {}
 
     async def save(self, definition: WorkflowDefinition) -> None:
-        self._definitions[definition.id] = definition
+        self._definitions[definition.id] = copy.deepcopy(definition)
 
     async def get(self, definition_id: str) -> WorkflowDefinition | None:
-        return self._definitions.get(definition_id)
+        stored = self._definitions.get(definition_id)
+        return copy.deepcopy(stored) if stored is not None else None
 
     async def list_definitions(
         self,
@@ -27,7 +29,7 @@ class FakeWorkflowDefinitionRepository:
         result = list(self._definitions.values())
         if workflow_type is not None:
             result = [d for d in result if d.workflow_type == workflow_type]
-        return tuple(result)
+        return tuple(copy.deepcopy(d) for d in result)
 
     async def delete(self, definition_id: str) -> bool:
         return self._definitions.pop(definition_id, None) is not None

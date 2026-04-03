@@ -28,7 +28,12 @@ export function WorkflowNodeDrawer({
 
   const handleFieldChange = useCallback(
     (key: string, value: string, fieldType?: string) => {
-      const parsed = fieldType === 'number' && value !== '' ? Number(value) : value
+      let parsed: string | number = value
+      if (fieldType === 'number' && value !== '') {
+        const num = Number(value)
+        if (Number.isFinite(num)) parsed = num
+        else return
+      }
       onConfigChange({ ...config, [key]: parsed })
     },
     [config, onConfigChange],

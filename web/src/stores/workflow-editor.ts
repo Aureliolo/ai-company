@@ -366,10 +366,12 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     const snapshot = undoStack.at(-1)
     if (!snapshot) return
     const current: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
-    const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
+    const restoredNodes = structuredClone(snapshot.nodes)
+    const restoredEdges = structuredClone(snapshot.edges)
+    const yaml = regenerateYaml(restoredNodes, restoredEdges, definition)
     set({
-      nodes: snapshot.nodes,
-      edges: snapshot.edges,
+      nodes: restoredNodes,
+      edges: restoredEdges,
       undoStack: undoStack.slice(0, -1),
       redoStack: [...get().redoStack, current],
       dirty: true,
@@ -383,10 +385,12 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     const snapshot = redoStack.at(-1)
     if (!snapshot) return
     const current: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
-    const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
+    const restoredNodes = structuredClone(snapshot.nodes)
+    const restoredEdges = structuredClone(snapshot.edges)
+    const yaml = regenerateYaml(restoredNodes, restoredEdges, definition)
     set({
-      nodes: snapshot.nodes,
-      edges: snapshot.edges,
+      nodes: restoredNodes,
+      edges: restoredEdges,
       redoStack: redoStack.slice(0, -1),
       undoStack: [...get().undoStack, current],
       dirty: true,

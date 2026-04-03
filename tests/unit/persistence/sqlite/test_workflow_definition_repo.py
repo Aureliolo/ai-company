@@ -167,6 +167,26 @@ class TestSQLiteWorkflowDefinitionRepository:
         assert result.workflow_type == WorkflowType.PARALLEL_EXECUTION
         assert result.version == 2
 
+    async def test_save_rejects_on_version_mismatch(
+        self,
+        repo: SQLiteWorkflowDefinitionRepository,
+    ) -> None:
+        defn_v1 = _make_definition(version=1)
+        await repo.save(defn_v1)
+
+        # Attempt to save version 3 (skipping 2) -- should be rejected
+        defn_v3 = _make_definition(
+            name="Skipped version",
+            version=3,
+        )
+        await repo.save(defn_v3)
+
+        # Original version 1 should still be stored
+        result = await repo.get("wf-001")
+        assert result is not None
+        assert result.version == 1
+        assert result.name == "Test Workflow"
+
     async def test_get_not_found(
         self,
         repo: SQLiteWorkflowDefinitionRepository,

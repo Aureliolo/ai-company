@@ -116,6 +116,8 @@ def _seed(
         created_at=_NOW,
         updated_at=_NOW,
     )
+    # Direct mutation for synchronous test seeding -- bypasses async save()
+    # since Litestar's TestClient runs in a sync context.
     repo = client.app.state.app_state.persistence.workflow_definitions
     repo._definitions[defn.id] = defn
     return defn.id

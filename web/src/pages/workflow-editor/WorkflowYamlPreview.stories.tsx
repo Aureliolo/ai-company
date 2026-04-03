@@ -15,7 +15,7 @@ const sampleYaml = `workflow_definition:
         - task-1
 `
 
-const meta: Meta = {
+const meta: Meta<typeof WorkflowYamlPreview> = {
   title: 'Workflow Editor/YAML Preview',
   component: WorkflowYamlPreview,
   parameters: { layout: 'padded' },
@@ -23,10 +23,10 @@ const meta: Meta = {
 
 export default meta
 
-export const Default: StoryObj = {
+export const Default: StoryObj<typeof WorkflowYamlPreview> = {
   render: () => <WorkflowYamlPreview yaml={sampleYaml} />,
 }
 
-export const Empty: StoryObj = {
+export const Empty: StoryObj<typeof WorkflowYamlPreview> = {
   render: () => <WorkflowYamlPreview yaml="" />,
 }

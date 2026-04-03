@@ -7,7 +7,7 @@ const nodeTypes = { conditional: ConditionalNode }
 function Wrapper({ nodes }: { nodes: Node[] }) {
   return (
     <ReactFlowProvider>
-      <div style={{ width: 300, height: 250 }}>
+      <div className="h-64 w-80">
         <ReactFlow
           nodes={nodes}
           edges={[]}
