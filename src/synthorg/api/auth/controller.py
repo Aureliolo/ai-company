@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Self
 
+import jwt
 from litestar import Controller, Request, Response, delete, get, post
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
@@ -176,21 +177,13 @@ class WsTicketResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    """Active JWT session.
-
-    Attributes:
-        session_id: Unique session identifier (JWT ``jti``).
-        ip_address: Client IP at login time.
-        user_agent: Client User-Agent header at login time.
-        created_at: Session creation timestamp.
-        last_active_at: Last request timestamp.
-        expires_at: JWT expiry timestamp.
-        is_current: Whether this session matches the current request.
-    """
+    """Active JWT session response DTO."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     session_id: NotBlankStr
+    user_id: NotBlankStr
+    username: NotBlankStr
     ip_address: str
     user_agent: str
     created_at: str
@@ -268,51 +261,57 @@ async def _create_session(
     user: User,
     expires_in: int,
 ) -> None:
-    """Create a session record after successful login/setup.
-
-    Best-effort: if the session store is unavailable the login
-    still succeeds (session tracking is an enhancement, not a
-    gate).
-    """
+    """Best-effort session record creation after login/setup."""
     try:
         store = app_state.session_store
+        now = datetime.now(UTC)
+        client = request.client
+        session = Session(
+            session_id=session_id,
+            user_id=user.id,
+            username=user.username,
+            role=user.role,
+            ip_address=client.host if client else "",
+            user_agent=request.headers.get("user-agent", ""),
+            created_at=now,
+            last_active_at=now,
+            expires_at=now + timedelta(seconds=expires_in),
+        )
+        await store.create(session)
+        logger.info(
+            API_SESSION_CREATED,
+            session_id=session_id,
+            user_id=user.id,
+        )
+    except MemoryError, RecursionError:
+        raise
     except Exception:
-        return
-
-    now = datetime.now(UTC)
-    client = request.client
-    session = Session(
-        session_id=session_id,
-        user_id=user.id,
-        username=user.username,
-        role=user.role,
-        ip_address=client.host if client else "",
-        user_agent=request.headers.get("user-agent", ""),
-        created_at=now,
-        last_active_at=now,
-        expires_at=now + timedelta(seconds=expires_in),
-    )
-    await store.create(session)
-    logger.info(
-        API_SESSION_CREATED,
-        session_id=session_id,
-        user_id=user.id,
-    )
+        logger.warning(
+            API_SESSION_CREATED,
+            error="Session creation failed (non-fatal)",
+            session_id=session_id,
+            user_id=user.id,
+            exc_info=True,
+        )
 
 
 def _extract_jti(request: Request[Any, Any, Any]) -> str | None:
-    """Extract the JWT ``jti`` claim from the current request.
-
-    Returns ``None`` if the token cannot be parsed (best-effort).
-    """
-    app_state = request.app.state["app_state"]
+    """Extract the JWT ``jti`` claim from the current request."""
     auth_header = request.headers.get("authorization", "")
     if not auth_header.startswith("Bearer "):
         return None
     token = auth_header[7:]
     try:
+        app_state = request.app.state["app_state"]
         claims = app_state.auth_service.decode_token(token)
+    except jwt.PyJWTError:
+        return None
     except Exception:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="jti_extraction_failed",
+            exc_info=True,
+        )
         return None
     else:
         jti: str | None = claims.get("jti")
@@ -691,11 +690,7 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
         scope: str = "own",
     ) -> Response[ApiResponse[list[SessionResponse]]]:
-        """List active sessions for the current user.
-
-        CEO can pass ``?scope=all`` to list all users' sessions.
-        Default is ``own`` (current user only).
-        """
+        """List active sessions. CEO: ``?scope=all`` for all users."""
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             msg = "Authentication required"
@@ -717,6 +712,8 @@ class AuthController(Controller):
         data = [
             SessionResponse(
                 session_id=s.session_id,
+                user_id=s.user_id,
+                username=s.username,
                 ip_address=s.ip_address,
                 user_agent=s.user_agent,
                 created_at=s.created_at.isoformat(),
@@ -745,11 +742,7 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
         session_id: str,
     ) -> None:
-        """Revoke a specific session (force logout).
-
-        Users can revoke their own sessions. CEO can revoke
-        any session.
-        """
+        """Revoke a session. Own sessions or CEO any."""
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             msg = "Authentication required"
@@ -759,15 +752,12 @@ class AuthController(Controller):
         store = app_state.session_store
 
         session = await store.get(session_id)
-        if session is None:
-            msg = f"Session '{session_id}' not found"
+        # Return 404 for not-found AND not-owned (prevents ID enum).
+        if session is None or (
+            session.user_id != auth_user.user_id and auth_user.role != HumanRole.CEO
+        ):
+            msg = "Session not found"
             raise NotFoundError(msg)
-
-        # Users can only revoke their own sessions unless CEO.
-        if session.user_id != auth_user.user_id and auth_user.role != HumanRole.CEO:
-            raise PermissionDeniedException(
-                detail="Cannot revoke another user's session",
-            )
 
         await store.revoke(session_id)
         logger.info(

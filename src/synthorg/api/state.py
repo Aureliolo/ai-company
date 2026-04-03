@@ -6,6 +6,7 @@ Holds typed references to core services, injected into
 """
 
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
+from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
@@ -93,6 +94,7 @@ class AppState:
         "_task_engine",
         "_ticket_store",
         "_tool_invocation_tracker",
+        "_user_presence",
         "approval_store",
         "config",
         "startup_time",
@@ -165,6 +167,7 @@ class AppState:
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._session_store: SessionStore | None = None
         self._ticket_store = WsTicketStore()
+        self._user_presence = UserPresence()
         self.startup_time = startup_time
 
     def _require_service[T](self, service: T | None, name: str) -> T:
@@ -452,6 +455,11 @@ class AppState:
             store: Configured session store.
         """
         self._session_store = store
+
+    @property
+    def user_presence(self) -> UserPresence:
+        """Return the user presence tracker (always available)."""
+        return self._user_presence
 
     def set_auth_service(self, service: AuthService) -> None:
         """Set the auth service (deferred initialisation).

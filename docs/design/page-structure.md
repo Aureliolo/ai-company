@@ -211,7 +211,7 @@ Not in sidebar navigation.
 
 Full-page authentication. JWT-based. On success, redirects to `/` (Dashboard) or `/setup` if setup is not complete (based on `GET /setup/status`).
 
-**API endpoints**: `POST /auth/setup`, `POST /auth/login`, `GET /setup/status`
+**API endpoints**: `POST /auth/setup`, `POST /auth/login`, `GET /setup/status`, `GET /auth/sessions`, `DELETE /auth/sessions/{session_id}`, `POST /auth/logout`
 
 #### Setup Wizard (`/setup`)
 

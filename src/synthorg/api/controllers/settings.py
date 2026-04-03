@@ -159,6 +159,30 @@ def _validate_namespace(namespace: str) -> None:
         raise NotFoundException(msg)
 
 
+async def _check_setting_etag(
+    request: Request[Any, Any, Any],
+    app_state: AppState,
+    namespace: str,
+    key: str,
+) -> None:
+    """Validate If-Match header against current setting ETag."""
+    if_match = request.headers.get("if-match")
+    if not if_match:
+        return
+    try:
+        current = await app_state.settings_service.get_entry(
+            namespace,
+            key,
+        )
+    except SettingNotFoundError as exc:
+        raise NotFoundException(str(exc)) from exc
+    current_etag = compute_etag(
+        current.value,
+        current.updated_at or "",
+    )
+    check_if_match(if_match, current_etag, f"{namespace}:{key}")
+
+
 class SettingsController(Controller):
     """CRUD for runtime-editable settings with schema introspection."""
 
@@ -286,46 +310,18 @@ class SettingsController(Controller):
         key: PathKey,
         data: UpdateSettingRequest,
     ) -> Response[ApiResponse[SettingEntry]]:
-        """Update a setting value with optimistic concurrency.
-
-        When the ``If-Match`` header is present, the current ETag
-        is checked before updating.  A 409 is returned on mismatch.
-
-        Args:
-            request: Litestar request (for If-Match header).
-            state: Application state.
-            namespace: Setting namespace.
-            key: Setting key.
-            data: Request body with new value.
-
-        Returns:
-            Updated setting entry with new ETag header.
-        """
+        """Update a setting value with optimistic concurrency."""
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
 
-        # Check If-Match for optimistic concurrency.
-        if_match = request.headers.get("if-match")
-        if if_match:
-            try:
-                current = await app_state.settings_service.get_entry(
-                    namespace,
-                    key,
-                )
-            except SettingNotFoundError as exc:
-                raise NotFoundException(str(exc)) from exc
-            current_etag = compute_etag(
-                current.value,
-                current.updated_at or "",
-            )
-            check_if_match(
-                if_match,
-                current_etag,
-                f"{namespace}:{key}",
-            )
+        await _check_setting_etag(request, app_state, namespace, key)
 
         try:
-            entry = await app_state.settings_service.set(namespace, key, data.value)
+            entry = await app_state.settings_service.set(
+                namespace,
+                key,
+                data.value,
+            )
         except SettingNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc
         except SettingValidationError as exc:

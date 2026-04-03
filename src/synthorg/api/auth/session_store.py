@@ -179,34 +179,37 @@ class SessionStore:
     async def revoke_all_for_user(self, user_id: str) -> int:
         """Revoke all active sessions for a user.
 
+        Updates first, then re-queries to capture any sessions
+        created between the UPDATE and the in-memory sync.
+
         Args:
             user_id: The user whose sessions to revoke.
 
         Returns:
             Number of sessions revoked.
         """
-        # Fetch IDs first to update in-memory set.
         cursor = await self._db.execute(
-            "SELECT session_id FROM sessions WHERE user_id = ? AND revoked = 0",
-            (user_id,),
-        )
-        rows = await cursor.fetchall()
-        ids = [row["session_id"] for row in rows]
-        if not ids:
-            return 0
-
-        await self._db.execute(
             "UPDATE sessions SET revoked = 1 WHERE user_id = ? AND revoked = 0",
             (user_id,),
         )
         await self._db.commit()
-        self._revoked.update(ids)
+        count = cursor.rowcount
+        if count == 0:
+            return 0
+
+        # Re-query to get the authoritative revoked set.
+        cursor = await self._db.execute(
+            "SELECT session_id FROM sessions WHERE user_id = ? AND revoked = 1",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        self._revoked.update(row["session_id"] for row in rows)
         logger.info(
             API_SESSION_REVOKED,
             user_id=user_id,
-            count=len(ids),
+            count=count,
         )
-        return len(ids)
+        return count
 
     def is_revoked(self, session_id: str) -> bool:
         """Check whether a session is revoked (sync, O(1)).

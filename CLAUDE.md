@@ -88,7 +88,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/, guards (role-based access control), user management, auto-wiring, lifecycle, bootstrap (agent registry init from config), template packs (list + live-apply), memory admin (fine-tuning pipeline, embedder queries), workflows (visual workflow definition CRUD, validation, YAML export)
+  api/            # Litestar REST + WebSocket API, RFC 9457 errors, setup wizard, personality presets, auth/ (role-based access control, JWT sessions, session store, user presence), guards, user management, auto-wiring, lifecycle, bootstrap (agent registry init from config), template packs (list + live-apply), memory admin (fine-tuning pipeline, embedder queries), optimistic concurrency (ETag/If-Match), TLS config, workflows (visual workflow definition CRUD, validation, YAML export)
   backup/         # Backup/restore orchestrator, scheduler, retention, handlers/
   budget/         # Cost tracking, budget enforcement, quota degradation (including synchronous peek for routing-time selector hints), CFO optimization, trend analysis, budget forecasting, configurable currency formatting
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)

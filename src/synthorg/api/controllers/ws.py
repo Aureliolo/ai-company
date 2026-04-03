@@ -27,10 +27,9 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
-from synthorg.api.auth.presence import UserPresence  # noqa: TC001
 from synthorg.api.channels import (
-    _BUDGET_CHANNELS,
     ALL_CHANNELS,
+    BUDGET_CHANNELS,
     extract_user_id,
     is_user_channel,
     user_channel,
@@ -282,7 +281,7 @@ def _channel_allowed(
     """
     if is_user_channel(channel):
         return extract_user_id(channel) == conn_user.user_id
-    if channel in _BUDGET_CHANNELS:
+    if channel in BUDGET_CHANNELS:
         return conn_user.role in (HumanRole.CEO, HumanRole.MANAGER)
     return True
 
@@ -432,10 +431,7 @@ async def _setup_connection(
 
     # Track presence.
     app_state = socket.app.state["app_state"]
-    if hasattr(app_state, "_user_presence"):
-        presence: UserPresence | None = app_state._user_presence  # noqa: SLF001
-        if presence is not None:
-            presence.connect(user.user_id)
+    app_state.user_presence.connect(user.user_id)
 
     logger.info(
         API_WS_CONNECTED,
@@ -502,10 +498,7 @@ async def ws_handler(
         await channels_plugin.unsubscribe(subscriber)
         # Track presence disconnect.
         app_state = socket.app.state["app_state"]
-        if hasattr(app_state, "_user_presence"):
-            presence: UserPresence | None = app_state._user_presence  # noqa: SLF001
-            if presence is not None:
-                presence.disconnect(user.user_id)
+        app_state.user_presence.disconnect(user.user_id)
         logger.info(API_WS_DISCONNECTED, client=str(socket.client))
 
 

@@ -75,6 +75,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
+    API_SESSION_CLEANUP,
     API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
 )
@@ -216,7 +217,7 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
                 error="Periodic ticket cleanup failed",
                 exc_info=True,
             )
-        # Session cleanup runs every 5 minutes (every 5th iteration).
+        # Session cleanup also runs every iteration.
         try:
             if app_state._session_store is not None:  # noqa: SLF001
                 await app_state._session_store.cleanup_expired()  # noqa: SLF001
@@ -224,7 +225,7 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             raise
         except Exception:
             logger.warning(
-                API_WS_TICKET_CLEANUP,
+                API_SESSION_CLEANUP,
                 error="Periodic session cleanup failed",
                 exc_info=True,
             )

@@ -107,6 +107,7 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 |------|------|-------------|
 | 1000 | `UNAUTHORIZED` | Missing or invalid authentication credentials |
 | 1001 | `FORBIDDEN` | Authenticated but insufficient permissions |
+| 1002 | `SESSION_REVOKED` | Session has been revoked (logged out or force-revoked) |
 
 ### 2xxx -- Validation { #validation }
 
@@ -129,6 +130,7 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 |------|------|-------------|
 | 4000 | `RESOURCE_CONFLICT` | Operation conflicts with current resource state |
 | 4001 | `DUPLICATE_RECORD` | Attempted to create a resource that already exists |
+| 4002 | `VERSION_CONFLICT` | ETag/If-Match mismatch (optimistic concurrency conflict) |
 
 ### 5xxx -- Rate Limit { #rate_limit }
 

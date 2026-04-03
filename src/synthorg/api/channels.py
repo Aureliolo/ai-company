@@ -44,7 +44,7 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
 )
 
 # Channels whose events contain sensitive cost/budget data.
-_BUDGET_CHANNELS: Final[frozenset[str]] = frozenset({CHANNEL_BUDGET})
+BUDGET_CHANNELS: Final[frozenset[str]] = frozenset({CHANNEL_BUDGET})
 
 
 def user_channel(user_id: str) -> str:
@@ -156,9 +156,12 @@ def publish_ws_event(
 def create_channels_plugin() -> ChannelsPlugin:
     """Create the channels plugin with in-memory backend.
 
+    Arbitrary channels are enabled for dynamic ``user:{id}``
+    channels.  Server-side access control in the WS handler
+    restricts which channels each user can subscribe to.
+
     Returns:
-        Configured ``ChannelsPlugin`` with 20-message history
-        per channel and no arbitrary channel creation.
+        Configured ``ChannelsPlugin`` with 20-message history.
     """
     return ChannelsPlugin(
         backend=MemoryChannelsBackend(history=20),

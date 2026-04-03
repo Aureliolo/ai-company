@@ -86,7 +86,6 @@ API_USER_LISTED: Final[str] = "api.user.listed"
 API_SESSION_CREATED: Final[str] = "api.session.created"
 API_SESSION_REVOKED: Final[str] = "api.session.revoked"
 API_SESSION_LISTED: Final[str] = "api.session.listed"
-API_SESSION_EXPIRED: Final[str] = "api.session.expired"
 API_SESSION_CLEANUP: Final[str] = "api.session.cleanup"
 API_SESSION_FORCE_LOGOUT: Final[str] = "api.session.force_logout"
 
@@ -96,8 +95,6 @@ API_NETWORK_EXPOSURE_WARNING: Final[str] = "api.network.exposure_warning"
 
 # Concurrent access
 API_CONCURRENCY_CONFLICT: Final[str] = "api.concurrency.conflict"
-API_CONCURRENCY_ETAG_MATCH: Final[str] = "api.concurrency.etag_match"
 
 # WebSocket user channels
-API_WS_USER_CHANNEL_SUBSCRIBED: Final[str] = "api.ws.user_channel_subscribed"
 API_WS_USER_CHANNEL_DENIED: Final[str] = "api.ws.user_channel_denied"
