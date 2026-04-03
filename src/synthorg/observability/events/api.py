@@ -107,12 +107,6 @@ API_WS_USER_CHANNEL_DENIED: Final[str] = "api.ws.user_channel_denied"
 # Ceremony policy
 API_CEREMONY_POLICY_QUERIED: Final[str] = "api.ceremony_policy.queried"
 API_CEREMONY_POLICY_RESOLVED: Final[str] = "api.ceremony_policy.resolved"
-API_CEREMONY_POLICY_ACTIVE_QUERIED: Final[str] = (
-    "api.ceremony_policy.active_queried"
-)
-API_CEREMONY_POLICY_DEPT_UPDATED: Final[str] = (
-    "api.ceremony_policy.department_updated"
-)
-API_CEREMONY_POLICY_DEPT_CLEARED: Final[str] = (
-    "api.ceremony_policy.department_cleared"
-)
+API_CEREMONY_POLICY_ACTIVE_QUERIED: Final[str] = "api.ceremony_policy.active_queried"
+API_CEREMONY_POLICY_DEPT_UPDATED: Final[str] = "api.ceremony_policy.department_updated"
+API_CEREMONY_POLICY_DEPT_CLEARED: Final[str] = "api.ceremony_policy.department_cleared"
