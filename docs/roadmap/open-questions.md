@@ -8,12 +8,10 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|
-| 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. |
-| 3 | ~~How to handle context window limits for long tasks?~~ | ~~High~~ | **Partially resolved**: context budget management (#416) provides fill tracking, soft indicators, and oldest-turns compaction. Remaining: LLM-based summarization, tiktoken estimator, AgentEngine wiring. |
+| 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. Capability-aware prompt profiles (#805) will add tier-based personality condensation. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
-| 6 | What metrics define "good" agent performance? | Medium | Needed for HR/hiring/firing decisions. |
-| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues vs Redis vs embedded broker. |
-| 10 | What is the minimum viable meeting set? | Low | Standup + planning + review as a starting point? |
+| 6 | What metrics define "good" agent performance? | Medium | Five-pillar evaluation framework (#1017) provides structure; quality scoring Layers 2+3 (#230) will add LLM judge and human override. |
+| 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues for Phase 1; distributed backend (Redis, NATS) planned for Phase 2 (v0.8). |
 
 ---
 
@@ -21,13 +19,13 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Context window exhaustion on complex tasks | Medium | **Partially mitigated**: context budget management (#416) tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
-| Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task. |
-| Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type. |
-| Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers. |
-| Memory retrieval quality | Medium | Mem0 selected as initial backend (see [Decision Log](../architecture/decisions.md)). LMEB evaluation ([arXiv:2603.12572](https://arxiv.org/abs/2603.12572)) shows MTEB scores do not predict memory retrieval quality (Spearman: -0.130). Embedding model selection should be guided by LMEB episodic + procedural scores. Optional domain fine-tuning (+10-27%) via an offline pipeline configured with `EmbeddingFineTuneConfig`. Checkpoint lookup is wired into the Mem0 adapter; pipeline stages (data generation, hard negative mining, contrastive training) are not yet implemented (see #1001). See [Embedding Evaluation](../reference/embedding-evaluation.md). |
-| Agent personality inconsistency | Low | Strong system prompts, few-shot examples, personality tests. |
-| WebSocket scaling | Low | Start local, add Redis pub/sub when needed. |
+| Context window exhaustion on complex tasks | Medium | **Mitigated**: context budget management tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
+| Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task, auto-downgrade at task boundaries. |
+| Agent quality degradation with cheap models | Medium | Capability-aware prompt profiles (#805) adapt prompts to model tier. Quality gates and minimum model requirements per task type. |
+| Third-party library breaking changes | Medium | All versions pinned (`==`), integration tests, abstraction layers, Dependabot daily updates. |
+| Memory retrieval quality | Medium | Hybrid retrieval (dense + BM25 sparse with RRF fusion) shipped. LMEB-guided embedding selection implemented. Optional domain fine-tuning pipeline in progress (#1001). |
+| Agent personality inconsistency | Low | Strong system prompts, personality presets with condensed/minimal variants planned (#805). |
+| WebSocket scaling | Low | In-process channels for Phase 1. Redis pub/sub planned for distributed deployments. |
 
 ---
 
@@ -35,8 +33,9 @@ Numbers are stable identifiers -- resolved questions are removed without renumbe
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Over-engineering the MVP | High | Start with a minimal viable company (3--5 agents), add complexity iteratively. |
-| Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation. |
-| Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. |
-| Data loss on crash | Medium | WAL mode SQLite. `RecoveryStrategy` protocol: fail-and-reassign implemented, checkpoint recovery planned. |
-| Orchestration overhead exceeds productive work | Medium | LLM call analytics: proxy metrics implemented, call categorization and orchestration ratio alerts planned. |
+| Over-engineering the MVP | High | Start with a minimal viable company (3-5 agents), add complexity iteratively. 9 company templates provide tested starting points. |
+| Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation via Pydantic v2 models, setup wizard for guided configuration. |
+| Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. TaskGroup for structured concurrency. |
+| Data loss on crash | Medium | WAL mode SQLite, checkpoint recovery, backup/restore with scheduled retention. |
+| Orchestration overhead exceeds productive work | Medium | LLM call analytics with proxy metrics implemented. Call categorization and orchestration ratio alerts planned. |
+| SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. PostgreSQL backend planned for v0.8 for write-heavy workloads. |

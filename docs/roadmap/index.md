@@ -1,33 +1,60 @@
 # Roadmap
 
-!!! warning "Work in Progress"
-    SynthOrg is under active development and is **not ready for production use**.
-    APIs, configuration formats, and behavior may change without notice.
-
 ## Current Status
 
-SynthOrg is in **early development**. Substantial work has gone into the core subsystems -- provider abstraction, agent engine, security, communication, memory, tools, persistence, observability, and a web dashboard -- but the project has not yet been run end-to-end as a cohesive product.
+SynthOrg is in **active development** at v0.6.x. The core subsystems are built, tested (13,000+ unit tests, 80%+ coverage), and integrated through a REST + WebSocket API, React 19 dashboard, and Go CLI.
 
-What remains is significant: integration testing across subsystem boundaries, wiring the pieces together into coherent workflows, hardening edge cases, and validating that the system works as a whole rather than as isolated modules. The individual subsystems have unit tests and follow a consistent architecture, but the glue between them is incomplete.
+What works today:
 
-Think of it as: the building blocks are shaped, but they haven't been assembled and stress-tested as a structure yet.
+- **Agent engine** with ReAct, Plan-and-Execute, Hybrid execution loops, crash recovery, and task decomposition
+- **Budget & cost management** with per-agent limits, auto-downgrade, spending reports, and anomaly detection
+- **Security** with fail-closed rule engine, 5 autonomy tiers, progressive trust, output scanning, and audit logging
+- **Memory** with hybrid retrieval (dense + BM25 sparse), tool-based injection, procedural memory auto-generation from failures, and consolidation
+- **Communication** with message bus, delegation, conflict resolution, and meeting protocols
+- **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions
+- **Web dashboard** (React 19 + shadcn/ui) with org chart, task board, agent detail, budget tracking, provider management, workflow editor, ceremony policy settings, and setup wizard
+- **CLI** (Go) with init, start, stop, doctor, config, wipe, cleanup, and cosign/SLSA verification
+- **Docker deployment** with Chainguard distroless images, Trivy + Grype scanning, and cosign signatures
+- **Multi-user access** with JWT auth, session management, and concurrent access handling
+- **Local model management** for Ollama and LM Studio (browse, pull, delete, configure launch parameters)
+
+What's not there yet:
+
+- **End-to-end production runs** -- subsystems are integrated but the full autonomous loop (agents receiving work, executing, producing artifacts, iterating) has not been validated as a cohesive product
+- **PostgreSQL persistence** -- SQLite only (planned for v0.8)
+- **Distributed backends** -- message bus, task queue, and persistence are local-process only (planned for v0.8)
+- **Tool ecosystem** -- built-in tools cover file system, git, sandbox, and MCP bridge; web, database, terminal, and other tool categories are planned for v0.7
 
 ## What's Next
 
-Current priorities and in-progress work are tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues). Key areas:
+All work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues) with version labels (`v0.6`, `v0.6.2`, etc.).
 
-- **Integration and end-to-end validation** -- wiring subsystems into working workflows
-- **Security hardening** -- custom policy enforcement, sandbox network isolation
-- **Human interaction layer** -- roles, access control, approval workflows
-- **Production readiness** -- database backend beyond SQLite, runtime configuration, monitoring
+### v0.6 (current) -- Workflows, Memory, Providers
 
-For long-term vision (plugin system, distributed backends, inter-company communication, and more), see [Future Vision](future-vision.md).
+- Capability-aware prompt profiles for model tier adaptation
+- Workflow execution lifecycle (COMPLETED/FAILED transitions)
+- Workflow editor improvements (list page, YAML import, conditionals, minimap, copy/paste)
+- Procedural memory auto-generation from agent failures
+- Quality scoring Layers 2+3 (LLM judge + human override)
+- Fine-tuning pipeline for embedding models
+- Memory consolidation upgrades (LLM Merge, Search-and-Ask)
+- Coordination metrics pipeline
+- Automated reporting system
 
-## Tracking
+### v0.7 -- Tools, Security, Research
 
-All implementation work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues).
+- Sandbox security improvements (auth proxy, gVisor, Chainguard packages)
+- Core tool categories (web, database, terminal/shell)
+- Advanced memory research (GraphRAG, consistency protocols, RL consolidation)
+- Safety classifier for approval gates
+- Hallucination detection
+- Plugin system, benchmarking suite, A2A protocol compatibility
 
-## Further Reading
+### v0.8 -- Production Hardening
 
-- [Open Questions & Risks](open-questions.md) -- unresolved design questions and identified risks
-- [Future Vision](future-vision.md) -- post-MVP features and the scaling path
+- PostgreSQL persistence backend
+- Distributed message bus and task queue
+- Dynamic company scaling
+- Multi-project support
+
+See [Future Vision](future-vision.md) for the longer-term direction and [Open Questions](open-questions.md) for unresolved design decisions.

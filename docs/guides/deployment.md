@@ -26,7 +26,7 @@ graph LR
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
-| **backend** | `ghcr.io/aureliolo/synthorg` | Litestar API server (Chainguard distroless, non-root) |
+| **backend** | `ghcr.io/aureliolo/synthorg-backend` | Litestar API server (Chainguard distroless, non-root) |
 | **web** | `ghcr.io/aureliolo/synthorg-web` | Nginx + React 19 SPA (proxies API and WebSocket) |
 
 ---
