@@ -115,7 +115,7 @@ settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))
 # Disabled for fuzz profile where 10k examples per test routinely
 # exceed the limit.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 8.0  # seconds
-_FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") == "fuzz"
+_FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 _start_key = pytest.StashKey[float]()
 
 
