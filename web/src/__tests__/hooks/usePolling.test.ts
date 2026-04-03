@@ -17,7 +17,7 @@ describe('usePolling', () => {
 
     act(() => { result.current.start() })
 
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('intervalMs must be a finite number >= 100'))
+    expect(consoleSpy).toHaveBeenCalledWith('[usePolling]', expect.stringContaining('intervalMs must be a finite number'))
     expect(result.current.active).toBe(false)
     expect(fn).not.toHaveBeenCalled()
     consoleSpy.mockRestore()

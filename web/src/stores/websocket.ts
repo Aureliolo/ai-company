@@ -12,6 +12,9 @@ import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '
 import { getWsTicket } from '@/api/endpoints/auth'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('ws')
 
 /** Build a stable deduplication key for a subscription (sorted channels + sorted filter keys). */
 function subscriptionKey(channels: WsChannel[], filters?: Record<string, string>): string {
@@ -93,12 +96,12 @@ function estimateByteLength(str: string): number {
 function dispatchEvent(event: WsEvent) {
   channelHandlers.get(event.channel)?.forEach((h) => {
     try { h(event) } catch (err) {
-      console.error('WebSocket channel handler error:', sanitizeForLog(err))
+      log.error('Channel handler error:', err)
     }
   })
   channelHandlers.get('*')?.forEach((h) => {
     try { h(event) } catch (err) {
-      console.error('WebSocket wildcard handler error:', sanitizeForLog(err))
+      log.error('Wildcard handler error:', err)
     }
   })
 }
@@ -109,7 +112,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
   function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer)
     if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      console.error('WebSocket: max reconnection attempts reached')
+      log.error('Max reconnection attempts reached')
       set({ reconnectExhausted: true })
       return
     }
@@ -121,7 +124,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     reconnectTimer = setTimeout(() => {
       if (shouldBeConnected) {
         useWebSocketStore.getState().connect().catch((err) => {
-          console.error('WebSocket reconnect failed:', sanitizeForLog(err))
+          log.error('Reconnect failed:', err)
         })
       }
     }, delay)
@@ -137,7 +140,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       const resp = await getWsTicket()
       ticket = resp.ticket
     } catch (err) {
-      console.error('WebSocket ticket exchange failed:', sanitizeForLog(err))
+      log.error('Ticket exchange failed:', err)
       const isAuthError = err instanceof AxiosError && err.response?.status === 401
       if (shouldBeConnected && !isAuthError) {
         scheduleReconnect()
@@ -163,7 +166,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       try {
         thisSocket.send(JSON.stringify({ action: 'auth', ticket }))
       } catch (err) {
-        console.error('WebSocket auth send failed:', sanitizeForLog(err))
+        log.error('Auth send failed:', err)
         thisSocket.close()
         return
       }
@@ -179,7 +182,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
         try {
           thisSocket.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
         } catch (err) {
-          console.error('WebSocket subscribe send failed (will retry on reconnect):', sanitizeForLog(err))
+          log.error('Subscribe send failed (will retry on reconnect):', err)
         }
       }
     }
@@ -187,19 +190,19 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     thisSocket.onmessage = (event: MessageEvent) => {
       if (typeof event.data !== 'string') return
       if (estimateByteLength(event.data) > WS_MAX_MESSAGE_SIZE) {
-        console.error('WebSocket message exceeds max size, discarding')
+        log.error('Message exceeds max size, discarding')
         return
       }
       let data: unknown
       try {
         data = JSON.parse(event.data)
       } catch (parseErr) {
-        console.error('Failed to parse WebSocket message:', sanitizeForLog(parseErr))
+        log.error('Failed to parse message:', parseErr)
         return
       }
 
       if (typeof data !== 'object' || data === null || Array.isArray(data)) {
-        console.error('WebSocket message is not a JSON object, discarding')
+        log.error('Message is not a JSON object, discarding')
         return
       }
 
@@ -214,14 +217,14 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
       if (msg.error) {
         // Truncate attacker-controlled error value for log injection mitigation
-        console.error('WebSocket error:', sanitizeForLog(msg.error, 200))
+        log.error('Server error:', sanitizeForLog(msg.error, 200))
         return
       }
 
       if (isWsEvent(msg)) {
         dispatchEvent(msg)
       } else {
-        console.warn('WebSocket message failed WsEvent validation, discarding:', {
+        log.warn('Message failed WsEvent validation, discarding:', {
           hasEventType: typeof msg.event_type,
           hasChannel: typeof msg.channel,
           hasTimestamp: typeof msg.timestamp,
@@ -238,7 +241,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
 
       // Auth failures (4001/4003): do not reconnect -- surface error
       if (WS_AUTH_FAILURE_CODES.has(event.code)) {
-        console.error(`WebSocket auth failed (code ${event.code}): ${sanitizeForLog(event.reason, 200)}`)
+        log.error(`Auth failed (code ${event.code}):`, sanitizeForLog(event.reason, 200))
         set({ reconnectExhausted: true })
         return
       }
@@ -249,7 +252,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
     }
 
     thisSocket.onerror = () => {
-      console.error('WebSocket connection error', {
+      log.error('Connection error', {
         url,
         readyState: thisSocket.readyState,
         reconnectAttempts,
@@ -307,7 +310,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       try {
         socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
       } catch (err) {
-        console.error('WebSocket subscribe send failed (queued for replay):', sanitizeForLog(err))
+        log.error('Subscribe send failed (queued for replay):', err)
         if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
           pendingSubscriptions.push({ channels, filters })
         }
@@ -334,7 +337,7 @@ export const useWebSocketStore = create<WebSocketState>()((set) => {
       try {
         socket.send(JSON.stringify({ action: 'unsubscribe', channels }))
       } catch (err) {
-        console.error('WebSocket unsubscribe send failed:', sanitizeForLog(err))
+        log.error('Unsubscribe send failed:', err)
       }
     },
 

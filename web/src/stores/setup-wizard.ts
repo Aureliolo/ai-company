@@ -34,8 +34,11 @@ import {
 } from '@/api/endpoints/providers'
 import type { CreateFromPresetRequest, CreateProviderRequest } from '@/api/types'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { CurrencyCode } from '@/utils/currencies'
+
+const log = createLogger('setup-wizard')
 
 /** Probe all presets and collect results, logging failures. */
 async function runProbeAll(
@@ -53,10 +56,7 @@ async function runProbeAll(
     if (entry.status === 'fulfilled') {
       results[entry.value[0]] = entry.value[1]
     } else {
-      console.error(
-        `setup-wizard: ${label} failed:`,
-        entry.reason,
-      )
+      log.error(`${label} failed:`, entry.reason)
     }
   }
   return results
@@ -391,7 +391,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const templates = await listTemplates()
       set({ templates, templatesLoading: false })
     } catch (err) {
-      console.error('setup-wizard: fetchTemplates failed:', err)
+      log.error('fetchTemplates failed:', err)
       set({ templatesError: getErrorMessage(err), templatesLoading: false })
     }
   },
@@ -458,7 +458,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         companyLoading: false,
       })
     } catch (err) {
-      console.error('setup-wizard: submitCompany failed:', err)
+      log.error('submitCompany failed:', err)
       set({ companyError: getErrorMessage(err), companyLoading: false })
     }
   },
@@ -471,7 +471,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const agents = await getAgents()
       set({ agents: [...agents], agentsLoading: false })
     } catch (err) {
-      console.error('setup-wizard: fetchAgents failed:', err)
+      log.error('fetchAgents failed:', err)
       set({ agentsError: getErrorMessage(err), agentsLoading: false })
     }
   },
@@ -487,7 +487,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      console.error('setup-wizard: updateAgentModel failed:', err)
+      log.error('updateAgentModel failed:', err)
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -500,7 +500,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      console.error('setup-wizard: updateAgentName failed:', err)
+      log.error('updateAgentName failed:', err)
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -513,7 +513,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      console.error('setup-wizard: randomizeAgentName failed:', err)
+      log.error('randomizeAgentName failed:', err)
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -526,7 +526,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      console.error('setup-wizard: updateAgentPersonality failed:', err)
+      log.error('updateAgentPersonality failed:', err)
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -537,7 +537,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const presets = await listPersonalityPresets()
       set({ personalityPresets: [...presets], personalityPresetsLoading: false })
     } catch (err) {
-      console.error('setup-wizard: fetchPersonalityPresets failed:', err)
+      log.error('fetchPersonalityPresets failed:', err)
       set({ personalityPresetsError: getErrorMessage(err), personalityPresetsLoading: false })
     }
   },
@@ -550,7 +550,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const providers = await listProviders()
       set({ providers, providersLoading: false })
     } catch (err) {
-      console.error('setup-wizard: fetchProviders failed:', err)
+      log.error('fetchProviders failed:', err)
       set({ providersError: getErrorMessage(err), providersLoading: false })
     }
   },
@@ -561,7 +561,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const presets = await listPresets()
       set({ presets, presetsLoading: false })
     } catch (err) {
-      console.error('setup-wizard: fetchPresets failed:', err)
+      log.error('fetchPresets failed:', err)
       set({ presetsError: getErrorMessage(err), presetsLoading: false })
     }
   },
@@ -603,10 +603,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
           // Discovery is best-effort; provider was created but
           // user should know models could not be discovered.
           const msg = getErrorMessage(discoveryErr)
-          console.error(
-            'setup-wizard: model discovery failed for',
-            name, msg,
-          )
+          log.error('Model discovery failed for', name, msg)
           set({
             providersError:
               `Provider '${name}' created but model` +
@@ -617,7 +614,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         }
       }
     } catch (err) {
-      console.error('setup-wizard: createProviderFromPreset failed:', getErrorMessage(err))
+      log.error('createProviderFromPreset failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       throw err
     }
@@ -651,7 +648,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
           return refreshed
         } catch (discoveryErr) {
           const msg = getErrorMessage(discoveryErr)
-          console.error('setup-wizard: model discovery failed for', data.name, msg)
+          log.error('Model discovery failed for', data.name, msg)
           set({
             providersError:
               `Provider '${data.name}' created but model ` +
@@ -662,7 +659,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       }
       return provider
     } catch (err) {
-      console.error('setup-wizard: createProviderFromPresetFull failed:', getErrorMessage(err))
+      log.error('createProviderFromPresetFull failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       return null
     }
@@ -677,7 +674,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       }))
       return provider
     } catch (err) {
-      console.error('setup-wizard: createProviderCustom failed:', getErrorMessage(err))
+      log.error('createProviderCustom failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       return null
     }
@@ -688,7 +685,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     try {
       return await testConnection(name)
     } catch (err) {
-      console.error('setup-wizard: testProviderConnection failed:', err)
+      log.error('testProviderConnection failed:', err)
       set({ providersError: getErrorMessage(err) })
       throw err
     }
@@ -701,7 +698,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const results = await runProbeAll(presets, 'probe')
       set({ probeResults: results })
     } catch (err) {
-      console.error('setup-wizard: probeAllPresets failed:', getErrorMessage(err))
+      log.error('probeAllPresets failed:', getErrorMessage(err))
     } finally {
       set({ probing: false })
     }
@@ -714,7 +711,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const results = await runProbeAll(presets, 'reprobe')
       set({ probeResults: results })
     } catch (err) {
-      console.error('setup-wizard: reprobePresets failed:', getErrorMessage(err))
+      log.error('reprobePresets failed:', getErrorMessage(err))
     } finally {
       set({ probing: false })
     }
@@ -736,7 +733,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       await completeSetup()
       set({ completing: false })
     } catch (err) {
-      console.error('setup-wizard: completeSetup failed:', err)
+      log.error('completeSetup failed:', err)
       set({ completionError: getErrorMessage(err), completing: false })
       throw err
     }

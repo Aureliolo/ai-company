@@ -1,4 +1,7 @@
+import { createLogger } from '@/lib/logger'
 import { apiClient, unwrap, unwrapVoid } from '../client'
+
+const log = createLogger('providers-api')
 import type {
   AddAllowlistEntryRequest,
   ApiResponse,
@@ -142,7 +145,7 @@ function processSseLines(
       } catch (err) {
         state.currentEvent = ''
         if (err instanceof SyntaxError) {
-          console.warn('[SSE] Malformed JSON in pull stream line')
+          log.warn('Malformed JSON in pull stream line')
           continue
         }
         if (err instanceof Error) throw err

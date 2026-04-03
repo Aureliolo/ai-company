@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('theme')
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,7 +100,7 @@ export function loadPreferences(): ThemePreferences {
       sidebarMode: isValid(obj.sidebarMode, SIDEBAR_MODES) ? obj.sidebarMode : defaults.sidebarMode,
     }
   } catch (err) {
-    console.warn('[theme] Failed to load preferences, using defaults:', err)
+    log.warn('Failed to load preferences, using defaults:', err)
     return defaults
   }
 }
@@ -106,7 +109,7 @@ function savePreferences(prefs: ThemePreferences): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
   } catch (err) {
-    console.warn('[theme] Failed to save preferences (localStorage may be unavailable):', err)
+    log.warn('Failed to save preferences (localStorage may be unavailable):', err)
   }
 }
 
@@ -167,7 +170,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
   try {
     applyThemeClasses(initial)
   } catch (err) {
-    console.warn('[theme] Failed to apply initial theme classes:', err)
+    log.warn('Failed to apply initial theme classes:', err)
   }
 
   // Listen for reduced-motion changes
@@ -239,7 +242,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
       try {
         localStorage.removeItem(STORAGE_KEY)
       } catch (err) {
-        console.warn('[theme] Failed to clear stored preferences:', err)
+        log.warn('Failed to clear stored preferences:', err)
       }
     },
   }

@@ -10,7 +10,10 @@ import {
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { AlertTriangle, GitBranch, Loader2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
+import { createLogger } from '@/lib/logger'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
+
+const log = createLogger('OrgChart')
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -73,7 +76,7 @@ function saveViewport(viewport: ViewportState) {
   try {
     localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
   } catch (err) {
-    console.warn('[OrgChart] Failed to save viewport:', err)
+    log.warn('Failed to save viewport:', err)
   }
 }
 
@@ -92,7 +95,7 @@ function loadViewport(): ViewportState | undefined {
       return parsed as ViewportState
     }
   } catch (err) {
-    console.warn('[OrgChart] Failed to load viewport:', err)
+    log.warn('Failed to load viewport:', err)
   }
   return undefined
 }

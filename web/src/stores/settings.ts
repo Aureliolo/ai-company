@@ -3,6 +3,9 @@ import { create } from 'zustand'
 import * as settingsApi from '@/api/endpoints/settings'
 import type { SettingDefinition, SettingEntry, SettingNamespace, WsEvent } from '@/api/types'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('settings')
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/
 
@@ -64,17 +67,17 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       const entries = await settingsApi.getNamespaceSettings('budget')
       const currencyEntry = entries.find((e) => e.definition.key === 'currency')
       if (!currencyEntry?.value) {
-        console.warn('[settings] No currency value in budget settings, keeping default')
+        log.warn('No currency value in budget settings, keeping default')
         return
       }
       if (!CURRENCY_PATTERN.test(currencyEntry.value)) {
-        console.warn(`[settings] Invalid currency value: ${currencyEntry.value}, keeping default`)
+        log.warn(`Invalid currency value: ${currencyEntry.value}, keeping default`)
         return
       }
       set({ currency: currencyEntry.value })
     } catch (error) {
-      console.warn(
-        '[settings] Failed to fetch currency, keeping default:',
+      log.warn(
+        'Failed to fetch currency, keeping default:',
         getErrorMessage(error),
       )
     }
@@ -181,7 +184,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       refreshedEntries = await settingsApi.getAllSettings()
     } catch (err) {
       // Reset applied but refetch failed -- UI is stale until next poll cycle
-      console.warn('[settings] Post-reset refetch failed; data will refresh at next poll', err)
+      log.warn('Post-reset refetch failed; data will refresh at next poll', err)
     } finally {
       set((state) => {
         const newSaving = new Set(state.savingKeys)
@@ -206,7 +209,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   updateFromWsEvent: (event) => {
     if (event.channel === 'system') {
       void get().refreshEntries().catch((err) => {
-        console.warn('[settings] WebSocket-triggered refresh failed:', getErrorMessage(err))
+        log.warn('WebSocket-triggered refresh failed:', getErrorMessage(err))
       })
     }
   },

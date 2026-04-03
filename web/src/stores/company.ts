@@ -13,6 +13,9 @@ import {
   reorderAgents as apiReorderAgents,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('company')
 import type {
   AgentConfig,
   CompanyConfig,
@@ -81,7 +84,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
       if (!config) return
       const healthPromises = config.departments.map((dept) =>
         getDepartmentHealth(dept.name).catch((err: unknown) => {
-          console.warn('[CompanyStore] Health fetch failed for dept:', dept.name, err)
+          log.warn('Health fetch failed for dept:', dept.name, err)
           return null
         }),
       )
@@ -107,7 +110,7 @@ export const useCompanyStore = create<CompanyState>()((set, get) => ({
         .catch((err: unknown) => {
           // Errors are set in store state by the respective fetch methods;
           // log for observability in case both swallow the error.
-          console.error('[CompanyStore] WS refresh failed:', getErrorMessage(err))
+          log.error('WS refresh failed:', getErrorMessage(err))
         })
     }
   },

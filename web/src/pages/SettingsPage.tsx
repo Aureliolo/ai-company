@@ -14,7 +14,10 @@ import {
   WifiOff,
 } from 'lucide-react'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
+import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
+
+const log = createLogger('settings')
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -224,7 +227,7 @@ export default function SettingsPage() {
         }
         return failedKeys
       } catch (err) {
-        console.error('[settings] Unexpected error in handleCodeSave:', err)
+        log.error('Unexpected error in handleCodeSave:', err)
         useToastStore.getState().add({ variant: 'error', title: 'Failed to save settings' })
         return new Set(changes.keys())
       }

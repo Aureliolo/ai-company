@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
 import { springDefault, tweenExitFast, tweenFast } from '@/lib/motion'
+
+const log = createLogger('Drawer')
 
 interface DrawerPropsBase {
   open: boolean
@@ -52,7 +55,7 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', conten
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' && !accessibleName) {
-      console.warn('Drawer: either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
+      log.warn('Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
     }
   }, [accessibleName])
 

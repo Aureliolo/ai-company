@@ -1,5 +1,8 @@
 import type { SettingEntry, SettingNamespace } from '@/api/types'
+import { createLogger } from '@/lib/logger'
 import { SETTING_DEPENDENCIES } from '@/utils/constants'
+
+const log = createLogger('settings')
 
 /**
  * Fuzzy subsequence match: returns true if every character of `needle`
@@ -75,7 +78,7 @@ export async function saveSettingsBatch(
   const promises = keys.map((compositeKey) => {
     const slashIdx = compositeKey.indexOf('/')
     if (slashIdx < 1) {
-      console.error(`[settings] Malformed composite key: "${compositeKey}"`)
+      log.error(`Malformed composite key: "${compositeKey}"`)
       return Promise.reject(new Error(`Malformed key: ${compositeKey}`))
     }
     const ns = compositeKey.slice(0, slashIdx) as SettingNamespace
@@ -89,7 +92,7 @@ export async function saveSettingsBatch(
     const compositeKey = keys[i]!
     if (result.status === 'rejected') {
       failedKeys.add(compositeKey)
-      console.error(`[settings] Failed to save "${compositeKey}":`, result.reason)
+      log.error(`Failed to save "${compositeKey}":`, result.reason)
     }
   }
   return failedKeys

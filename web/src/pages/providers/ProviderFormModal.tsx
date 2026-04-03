@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog } from 'radix-ui'
 import { X } from 'lucide-react'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('providers')
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
@@ -225,7 +228,7 @@ export function ProviderFormModal({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
-      console.error('ProviderFormModal: submit failed:', msg)
+      log.error('Submit failed:', msg)
     } finally {
       setSubmitting(false)
     }

@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('approvals')
 import type {
   ApprovalFilters,
   ApprovalResponse,
@@ -149,7 +152,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
         if (pendingTransitions.has(candidate.id)) return
         get().upsertApproval(candidate as unknown as ApprovalResponse)
       } else {
-        console.error('[approvals/ws] Received malformed approval payload, skipping upsert', {
+        log.error('Received malformed approval payload, skipping upsert', {
           id: sanitizeForLog(candidate.id),
           hasTitle: typeof candidate.title === 'string',
           hasStatus: typeof candidate.status === 'string',
@@ -162,7 +165,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     const approvals = get().approvals
     const idx = approvals.findIndex((a) => a.id === id)
     if (idx === -1) {
-      console.warn('[approvals] optimisticApprove: approval not found in store', id)
+      log.warn('optimisticApprove: approval not found in store', id)
       return () => {}
     }
     pendingTransitions.add(id)
@@ -193,7 +196,7 @@ export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
     const approvals = get().approvals
     const idx = approvals.findIndex((a) => a.id === id)
     if (idx === -1) {
-      console.warn('[approvals] optimisticReject: approval not found in store', id)
+      log.warn('optimisticReject: approval not found in store', id)
       return () => {}
     }
     pendingTransitions.add(id)

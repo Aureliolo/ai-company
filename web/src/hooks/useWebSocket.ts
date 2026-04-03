@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
-import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('useWebSocket')
 import type { WsChannel, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 
 /** A binding from a WebSocket channel to an event handler. */
@@ -70,7 +72,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
       } catch (err) {
         if (disposedRef.current) return
         setSetupError('WebSocket connection failed.')
-        console.error('WebSocket connect failed:', sanitizeForLog(err))
+        log.error('Connect failed:', err)
         return
       }
 
@@ -80,7 +82,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         wsStore.subscribe(uniqueChannels, filters)
       } catch (err) {
         setSetupError('WebSocket subscription failed.')
-        console.error('WebSocket subscribe failed:', sanitizeForLog(err))
+        log.error('Subscribe failed:', err)
         return
       }
 
@@ -91,7 +93,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
           wsStore.onChannelEvent(binding.channel, binding.handler)
         } catch (err) {
           setSetupError('WebSocket handler setup failed.')
-          console.error('WebSocket handler wiring failed:', sanitizeForLog(err))
+          log.error('Handler wiring failed:', err)
         }
       }
     }
@@ -100,7 +102,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
       if (!disposedRef.current) {
         setSetupError('WebSocket setup failed unexpectedly.')
       }
-      console.error('WebSocket setup failed:', sanitizeForLog(err))
+      log.error('Setup failed:', err)
     })
 
     return () => {
@@ -112,7 +114,7 @@ export function useWebSocket(options: WebSocketOptions): WebSocketReturn {
         try {
           wsStore.offChannelEvent(binding.channel, binding.handler)
         } catch (err) {
-          console.error('WebSocket handler cleanup failed:', sanitizeForLog(err))
+          log.error('Handler cleanup failed:', err)
         }
       }
     }

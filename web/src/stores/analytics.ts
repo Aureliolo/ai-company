@@ -5,6 +5,9 @@ import { listDepartments, getDepartmentHealth } from '@/api/endpoints/company'
 import { listActivities } from '@/api/endpoints/activities'
 import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('analytics')
 import type {
   ActivityItem,
   BudgetConfig,
@@ -70,7 +73,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
         const deptResult = await listDepartments({ limit: 100 })
         const healthPromises = deptResult.data.map((dept) =>
           getDepartmentHealth(dept.name).catch((err: unknown) => {
-            console.warn(`Failed to fetch health for ${dept.name}:`, err)
+            log.warn(`Failed to fetch health for ${dept.name}:`, err)
             return null
           }),
         )
@@ -79,7 +82,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
           (h): h is DepartmentHealth => h !== null,
         )
       } catch (err) {
-        console.warn('Failed to fetch department list:', err)
+        log.warn('Failed to fetch department list:', err)
       }
 
       const orgHealthPercent = computeOrgHealth(departmentHealths)
@@ -119,7 +122,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
       const item = wsEventToActivityItem(event)
       get().pushActivity(item)
     } catch (err) {
-      console.error('Failed to process WebSocket event:', err)
+      log.error('Failed to process WebSocket event:', err)
     }
   },
 }))

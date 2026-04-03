@@ -1,6 +1,9 @@
 import {
   DEPARTMENT_NAME_VALUES,
 } from '@/api/types'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('dashboard')
 import type {
   ActivityItem,
   BudgetConfig,
@@ -98,8 +101,8 @@ export function computeOrgHealth(departments: readonly DepartmentHealth[]): numb
   if (departments.length === 0) return null
   const valid = departments.filter((d) => Number.isFinite(d.utilization_percent))
   if (valid.length < departments.length) {
-    console.warn(
-      `[dashboard] computeOrgHealth: ${departments.length - valid.length} department(s) had non-finite utilization_percent`,
+    log.warn(
+      `computeOrgHealth: ${departments.length - valid.length} department(s) had non-finite utilization_percent`,
       departments.filter((d) => !Number.isFinite(d.utilization_percent)).map((d) => d.department_name),
     )
   }

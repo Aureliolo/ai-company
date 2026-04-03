@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('useOptimisticUpdate')
 
 /**
  * Perform an optimistic UI update with rollback on failure.
@@ -43,7 +46,7 @@ export function useOptimisticUpdate(): {
       pendingRef.current = false
       setPending(false)
       setError(getErrorMessage(prepareErr))
-      console.error('Optimistic prepare failed:', getErrorMessage(prepareErr))
+      log.error('Optimistic prepare failed:', getErrorMessage(prepareErr))
       return null
     }
 
@@ -56,12 +59,12 @@ export function useOptimisticUpdate(): {
         rollback()
       } catch (rollbackErr) {
         rollbackFailed = true
-        console.error('Rollback failed:', getErrorMessage(rollbackErr))
+        log.error('Rollback failed:', getErrorMessage(rollbackErr))
       }
       const base = getErrorMessage(err)
       const msg = rollbackFailed ? `${base} (UI may be out of sync -- please refresh)` : base
       setError(msg)
-      console.error('Optimistic update failed:', msg)
+      log.error('Optimistic update failed:', msg)
       return null
     } finally {
       pendingRef.current = false

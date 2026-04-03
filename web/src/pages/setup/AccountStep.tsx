@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
+
+const log = createLogger('setup')
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
@@ -30,7 +33,7 @@ export function AccountStep() {
         )
       })
       .catch((err) => {
-        console.error('AccountStep: failed to fetch setup status:', err)
+        log.error('Failed to fetch setup status:', err)
       })
   }, [])
 

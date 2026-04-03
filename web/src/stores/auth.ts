@@ -9,7 +9,10 @@ import { create } from 'zustand'
 import * as authApi from '@/api/endpoints/auth'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
+import { createLogger } from '@/lib/logger'
 import type { HumanRole, UserInfoResponse } from '@/api/types'
+
+const log = createLogger('auth')
 
 // ── Module-scoped internals (not renderable state) ──────────
 
@@ -53,7 +56,7 @@ const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
 function getInitialToken(): string | null {
   if (IS_DEV_AUTH_BYPASS) {
     // UI-only bypass: API calls will receive 401 and trigger logout
-    console.warn('[dev] Auth bypass active -- UI-only, no real backend session')
+    log.warn('Auth bypass active -- UI-only, no real backend session')
     return 'dev-bypass-token'
   }
   const storedToken = localStorage.getItem('auth_token')
@@ -180,11 +183,11 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       } catch (err) {
         // Only clear auth on 401 (invalid/expired token)
         if (isAxiosError(err) && err.response?.status === 401) {
-          console.warn('Session expired or invalid token -- clearing auth')
+          log.warn('Session expired or invalid token -- clearing auth')
           get().clearAuth()
           throw new Error('Session expired. Please log in again.', { cause: err })
         } else {
-          console.error('Failed to fetch user profile:', getErrorMessage(err))
+          log.error('Failed to fetch user profile:', getErrorMessage(err))
           throw err
         }
       }

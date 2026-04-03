@@ -5,7 +5,7 @@ import { listActivities } from '@/api/endpoints/activities'
 import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
-import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
 import { aggregateWeekly, type AggregationPeriod } from '@/utils/budget'
 import type {
   ActivityItem,
@@ -18,6 +18,8 @@ import type {
   TrendsResponse,
   WsEvent,
 } from '@/api/types'
+
+const log = createLogger('budget')
 
 const MAX_BUDGET_ACTIVITIES = 30
 
@@ -104,16 +106,16 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
 
       // Log non-critical failures so degradation is debuggable
       if (forecastR.status === 'rejected') {
-        console.warn('Failed to fetch forecast:', sanitizeForLog(forecastR.reason))
+        log.warn('Failed to fetch forecast:', forecastR.reason)
       }
       if (recordsR.status === 'rejected') {
-        console.warn('Failed to fetch cost records:', sanitizeForLog(recordsR.reason))
+        log.warn('Failed to fetch cost records:', recordsR.reason)
       }
       if (trendsR.status === 'rejected') {
-        console.warn('Failed to fetch trends:', sanitizeForLog(trendsR.reason))
+        log.warn('Failed to fetch trends:', trendsR.reason)
       }
       if (activitiesR.status === 'rejected') {
-        console.warn('Failed to fetch activities:', sanitizeForLog(activitiesR.reason))
+        log.warn('Failed to fetch activities:', activitiesR.reason)
       }
 
       // Agent metadata fetch (separate from main data -- failures degrade display names to raw IDs but don't block rendering)
@@ -130,7 +132,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
           }
         }
       } catch (err) {
-        console.warn('Failed to fetch agent list for name/dept mapping:', sanitizeForLog(err))
+        log.warn('Failed to fetch agent list for name/dept mapping:', err)
       }
 
       set({
@@ -157,7 +159,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
       const overview = await getOverviewMetrics()
       set({ overview })
     } catch (err) {
-      console.warn('Failed to refresh overview (polling):', sanitizeForLog(err))
+      log.warn('Failed to refresh overview (polling):', err)
     }
   },
 
@@ -179,7 +181,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
     } catch (err) {
       // Clear stale data from previous period so chart doesn't mislead
       set({ trends: null })
-      console.warn('Failed to fetch trends:', sanitizeForLog(err))
+      log.warn('Failed to fetch trends:', err)
     }
   },
 
@@ -204,7 +206,7 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         get().fetchOverview()
       }
     } catch (err) {
-      console.error('Failed to process WS event:', { type: event.event_type, channel: event.channel }, sanitizeForLog(err))
+      log.error('Failed to process WS event:', { type: event.event_type, channel: event.channel }, err)
     }
   },
 }))

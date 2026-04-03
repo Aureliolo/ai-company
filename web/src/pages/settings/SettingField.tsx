@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
+import { createLogger } from '@/lib/logger'
 import type { SettingDefinition } from '@/api/types'
+
+const log = createLogger('settings')
 import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
@@ -20,9 +23,9 @@ function parseArrayItems(value: string): string[] {
     if (Array.isArray(parsed)) {
       return parsed.map(String)
     }
-    console.warn('[settings] parseArrayItems: JSON value is not an array, displaying raw')
+    log.warn('parseArrayItems: JSON value is not an array, displaying raw')
   } catch (err) {
-    console.warn('[settings] parseArrayItems: not valid JSON, displaying raw value', err)
+    log.warn('parseArrayItems: not valid JSON, displaying raw value', err)
   }
   return [value]
 }
@@ -80,8 +83,8 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
           if (!re.test(raw))
             return `Must match: ${definition.validator_pattern}`
         } catch (err) {
-          console.warn(
-            '[settings] Invalid validator_pattern for',
+          log.warn(
+            'Invalid validator_pattern for',
             `${definition.namespace}/${definition.key}:`,
             err,
           )

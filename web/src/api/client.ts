@@ -3,8 +3,11 @@
  */
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
+import { createLogger } from '@/lib/logger'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
+
+const log = createLogger('api-client')
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -52,7 +55,7 @@ apiClient.interceptors.response.use(
       import('@/stores/auth').then(({ useAuthStore }) => {
         useAuthStore.getState().logout()
       }).catch((importErr: unknown) => {
-        console.error('Auth store cleanup failed during 401 handling:', importErr)
+        log.error('Auth store cleanup failed during 401 handling:', importErr)
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
           window.location.href = '/login'

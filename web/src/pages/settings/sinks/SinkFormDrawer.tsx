@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react'
+import { createLogger } from '@/lib/logger'
 import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types'
+
+const log = createLogger('sinks')
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
@@ -96,7 +99,7 @@ export function SinkFormDrawer({ open, onClose, sink, isNew, onTest, onSave }: S
       const result = await onTest(payload)
       setTestResult(result)
     } catch (err) {
-      console.error('[sinks] Test config failed:', err)
+      log.error('Test config failed:', err)
       const message = err instanceof Error ? err.message : 'Test request failed'
       setTestResult({ valid: false, error: message })
     } finally {

@@ -3,6 +3,9 @@ import { FocusScope } from '@radix-ui/react-focus-scope'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('CommandPalette')
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
 
@@ -21,7 +24,7 @@ function getRecentIds(): string[] {
       .slice(0, MAX_RECENT)
   } catch (err) {
     if (import.meta.env.DEV) {
-      console.warn('Failed to read recent commands from localStorage:', err)
+      log.warn('Failed to read recent commands from localStorage:', err)
     }
     return []
   }
@@ -111,7 +114,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
         cmd.action()
       } catch (err) {
         if (import.meta.env.DEV) {
-          console.error('Command action failed:', err)
+          log.error('Command action failed:', err)
         }
       }
       close()

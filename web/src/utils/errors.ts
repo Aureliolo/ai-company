@@ -1,7 +1,10 @@
 /** Error utilities and user-friendly messages. */
 
 import axios, { type AxiosError } from 'axios'
+import { createLogger } from '@/lib/logger'
 import type { ErrorDetail } from '@/api/types'
+
+const log = createLogger('errors')
 
 /**
  * Check if an error is an Axios error.
@@ -67,7 +70,7 @@ export function getErrorMessage(error: unknown): string {
     if (msg && msg.length < 200 && !/^\{/.test(msg)) {
       return msg
     }
-    console.warn('Error message suppressed (too long or JSON-shaped):', msg?.slice(0, 300))
+    log.warn('Error message suppressed (too long or JSON-shaped):', msg?.slice(0, 300))
     return 'An unexpected error occurred.'
   }
 

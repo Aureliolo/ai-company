@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('useOrgChartData')
 import type { Node, Edge } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
@@ -65,12 +68,12 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
     companyStore.fetchCompanyData().then(() => {
       if (useCompanyStore.getState().config) {
         companyStore.fetchDepartmentHealths().catch((err: unknown) => {
-          console.warn('[useOrgChartData] fetchDepartmentHealths failed:', err)
+          log.warn('fetchDepartmentHealths failed:', err)
         })
       }
       polling.start()
     }).catch((err: unknown) => {
-      console.warn('[useOrgChartData] fetchCompanyData failed:', err)
+      log.warn('fetchCompanyData failed:', err)
       polling.start()
     })
     return () => polling.stop()

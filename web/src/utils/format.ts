@@ -1,5 +1,9 @@
 /** Formatting utilities for dates, currency, and numbers. */
 
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('format')
+
 /**
  * Format an ISO 8601 date string to a human-readable locale string.
  */
@@ -52,7 +56,7 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
       currency: currencyCode,
     }).format(value)
   } catch (error) {
-    console.error(`[format] Intl.NumberFormat failed for currency "${currencyCode}":`, error)
+    log.error(`Intl.NumberFormat failed for currency "${currencyCode}":`, error)
     const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : THREE_DECIMAL_CURRENCIES.has(currencyCode) ? 3 : 2
     return `${currencyCode} ${value.toFixed(digits)}`
   }
@@ -75,7 +79,7 @@ export function formatCurrencyCompact(value: number, currencyCode: string = 'EUR
       notation: 'compact',
     }).format(value)
   } catch (error) {
-    console.error(`[format] Intl.NumberFormat compact failed for currency "${code}":`, error)
+    log.error(`Intl.NumberFormat compact failed for currency "${code}":`, error)
     return `${code} ${Math.round(value)}`
   }
 }

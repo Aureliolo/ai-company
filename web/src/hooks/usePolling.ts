@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from '@/utils/errors'
-import { sanitizeForLog } from '@/utils/logging'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('usePolling')
 
 const MIN_POLL_INTERVAL = 100
 
@@ -36,7 +38,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
         setError(null)
       } catch (err) {
         setError(getErrorMessage(err))
-        console.error('Polling error:', sanitizeForLog(err))
+        log.error('Polling error:', err)
       }
       scheduleTick(runId)
     }, intervalMs)
@@ -44,7 +46,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
 
   const start = useCallback(() => {
     if (!isValidInterval) {
-      console.error(`usePolling: intervalMs must be a finite number >= ${MIN_POLL_INTERVAL}, got ${intervalMs}`)
+      log.error(`intervalMs must be a finite number >= ${MIN_POLL_INTERVAL}, got ${intervalMs}`)
       return
     }
     if (activeRef.current) return
@@ -58,12 +60,12 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number): {
         await fnRef.current()
       } catch (err) {
         setError(getErrorMessage(err))
-        console.error('Polling error:', sanitizeForLog(err))
+        log.error('Polling error:', err)
       }
       scheduleTick(runId)
     }
     immediate().catch((err) => {
-      console.error('Polling initial run failed:', sanitizeForLog(err))
+      log.error('Polling initial run failed:', err)
     })
   }, [scheduleTick, isValidInterval, intervalMs])
 
