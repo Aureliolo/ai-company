@@ -1,12 +1,14 @@
 """Tests for the procedural memory pipeline (end-to-end)."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 import structlog.testing
 
+from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import MemoryCategory, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext, AgentContextSnapshot
@@ -30,8 +32,8 @@ from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import TokenUsage
 
 
-def _make_task(**overrides: object) -> Task:
-    defaults: dict[str, object] = {
+def _make_task(**overrides: Any) -> Task:
+    defaults: dict[str, Any] = {
         "id": "task-pipe-001",
         "title": "Implement caching layer",
         "description": "Add Redis caching to the API.",
@@ -108,10 +110,10 @@ def _make_execution_result(
     )
 
 
-def _make_identity():
+def _make_identity() -> AgentIdentity:
     from datetime import date
 
-    from synthorg.core.agent import AgentIdentity, ModelConfig
+    from synthorg.core.agent import ModelConfig
 
     return AgentIdentity(
         id=uuid4(),
@@ -123,8 +125,8 @@ def _make_identity():
     )
 
 
-def _make_proposal(**overrides: object) -> ProceduralMemoryProposal:
-    defaults: dict[str, object] = {
+def _make_proposal(**overrides: Any) -> ProceduralMemoryProposal:
+    defaults: dict[str, Any] = {
         "discovery": "Break large tasks into subtasks when facing timeouts.",
         "condition": "Task fails due to provider timeout after multiple turns.",
         "action": "Decompose the task before retrying.",

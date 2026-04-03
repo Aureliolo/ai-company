@@ -1,6 +1,7 @@
 """Tests for the procedural memory proposer (LLM-based analysis)."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -26,8 +27,8 @@ from synthorg.providers.errors import (
 from synthorg.providers.models import CompletionResponse, TokenUsage, ToolCall
 
 
-def _make_payload(**overrides: object) -> FailureAnalysisPayload:
-    defaults: dict[str, object] = {
+def _make_payload(**overrides: Any) -> FailureAnalysisPayload:
+    defaults: dict[str, Any] = {
         "task_id": "task-001",
         "task_title": "Implement auth module",
         "task_description": "Create JWT authentication.",
