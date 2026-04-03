@@ -458,7 +458,7 @@ class ContextInjectionStrategy:
         )
         shared_coro = (
             _safe_call(
-                shared_store.retrieve_sparse(query, exclude_agent=agent_id),  # type: ignore[attr-defined]
+                shared_store.retrieve_sparse(query, exclude_agent=agent_id),  # type: ignore[union-attr]
                 source="sparse_shared",
                 agent_id=agent_id,
             )
