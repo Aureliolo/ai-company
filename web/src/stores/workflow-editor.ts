@@ -230,7 +230,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     const { nodes, edges, definition } = get()
     const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const id = generateNodeId()
-    const label = type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')
+    const label = type.charAt(0).toUpperCase() + type.slice(1).replaceAll('_', ' ')
     const newNode: Node = {
       id,
       type,
