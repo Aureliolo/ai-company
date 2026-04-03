@@ -44,15 +44,20 @@ class TestBuildProjectPolicy:
     def test_defaults_when_empty(self) -> None:
         policy = _build_project_policy({})
         assert policy.strategy is None
-        assert policy.strategy_config == {}
+        assert policy.strategy_config is None
         assert policy.velocity_calculator is None
         assert policy.auto_transition is None
         assert policy.transition_threshold is None
 
-    def test_empty_strategy_config(self) -> None:
+    def test_empty_strategy_config_returns_none(self) -> None:
         data = {"ceremony_strategy_config": "{}"}
         policy = _build_project_policy(data)
-        assert policy.strategy_config == {}
+        assert policy.strategy_config is None
+
+    def test_non_empty_strategy_config(self) -> None:
+        data = {"ceremony_strategy_config": '{"trigger": "sprint_start"}'}
+        policy = _build_project_policy(data)
+        assert policy.strategy_config == {"trigger": "sprint_start"}
 
 
 @pytest.mark.unit

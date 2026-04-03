@@ -177,3 +177,20 @@ _r.register(
         level=SettingLevel.ADVANCED,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="ceremony_policy_overrides",
+        type=SettingType.JSON,
+        default="{}",
+        description=(
+            "Per-ceremony policy overrides as JSON. "
+            "Keys are ceremony names, values are partial "
+            "CeremonyPolicyConfig objects. Null values inherit "
+            "the project/department-level policy."
+        ),
+        group="Ceremony Policy",
+        level=SettingLevel.ADVANCED,
+    )
+)

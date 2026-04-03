@@ -30,7 +30,7 @@ web/src/
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, sinks, providers, artifacts, projects, theme, workflow-editor, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, sinks, providers, artifacts, projects, theme, workflow-editor, ceremony-policy, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
@@ -82,6 +82,8 @@ web/src/
 | `MetadataGrid` | `@/components/ui/metadata-grid` | Key-value metadata grid for detail pages with configurable columns (2/3/4), density-aware spacing |
 | `ProjectStatusBadge` | `@/components/ui/project-status-badge` | Project status dot with optional label (planning/active/on_hold/completed/cancelled, semantic colors) |
 | `ContentTypeBadge` | `@/components/ui/content-type-badge` | MIME content type pill badge with semantic colors (JSON, PDF, Image, Text, etc.) |
+| `PolicySourceBadge` | `@/components/ui/policy-source-badge` | Ceremony policy field source indicator (project/department/default origin pill) |
+| `InheritToggle` | `@/components/ui/inherit-toggle` | Toggle for inheriting vs. overriding a policy field from the parent level |
 
 ### Design Token Rules
 

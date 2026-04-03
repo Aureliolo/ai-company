@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowLeft, Loader2, Settings, Timer } from 'lucide-react'
-import type { CeremonyStrategyType, Department, VelocityCalcType } from '@/api/types'
+import type { CeremonyPolicyConfig, CeremonyStrategyType, Department, VelocityCalcType } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SectionCard } from '@/components/ui/section-card'
@@ -11,11 +11,13 @@ import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
 import { STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
+import { getErrorMessage } from '@/utils/errors'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyChangeWarning } from './StrategyChangeWarning'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
 import { PolicyFieldsPanel } from './PolicyFieldsPanel'
 import { DepartmentOverridesPanel } from './DepartmentOverridesPanel'
+import { CeremonyListPanel } from './CeremonyListPanel'
 
 export default function CeremonyPolicyPage() {
   const addToast = useToastStore((s) => s.add)
@@ -25,6 +27,7 @@ export default function CeremonyPolicyPage() {
   const resolvedPolicy = useCeremonyPolicyStore((s) => s.resolvedPolicy)
   const activeStrategy = useCeremonyPolicyStore((s) => s.activeStrategy)
   const loading = useCeremonyPolicyStore((s) => s.loading)
+  const storeError = useCeremonyPolicyStore((s) => s.error)
   const fetchResolvedPolicy = useCeremonyPolicyStore((s) => s.fetchResolvedPolicy)
   const fetchActiveStrategy = useCeremonyPolicyStore((s) => s.fetchActiveStrategy)
 
@@ -37,7 +40,11 @@ export default function CeremonyPolicyPage() {
     let config: Record<string, unknown> = {}
     const sc = get('ceremony_strategy_config')
     if (sc) {
-      try { config = JSON.parse(sc) as Record<string, unknown> } catch { /* keep default */ }
+      try {
+        config = JSON.parse(sc) as Record<string, unknown>
+      } catch {
+        console.warn('Failed to parse ceremony_strategy_config setting')
+      }
     }
 
     return {
@@ -59,6 +66,32 @@ export default function CeremonyPolicyPage() {
 
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
+  const [deptLoadError, setDeptLoadError] = useState(false)
+
+  // Per-ceremony overrides (from ceremony_policy_overrides setting)
+  const initialCeremonyOverrides = useMemo(() => {
+    const raw = settingsEntries.find(
+      (e) => e.definition.namespace === 'coordination' && e.definition.key === 'ceremony_policy_overrides',
+    )?.value
+    if (raw) {
+      try {
+        return JSON.parse(raw) as Record<string, CeremonyPolicyConfig | null>
+      } catch {
+        console.warn('Failed to parse ceremony_policy_overrides setting')
+      }
+    }
+    return {} as Record<string, CeremonyPolicyConfig | null>
+  }, [settingsEntries])
+  const [ceremonyOverrides, setCeremonyOverrides] = useState<Record<string, CeremonyPolicyConfig | null>>(initialCeremonyOverrides)
+
+  // Derive ceremony names from overrides + common ceremony names
+  const ceremonyNames = useMemo(() => {
+    const names = new Set(Object.keys(ceremonyOverrides))
+    for (const name of ['sprint_planning', 'standup', 'sprint_review', 'retrospective']) {
+      names.add(name)
+    }
+    return [...names].sort()
+  }, [ceremonyOverrides])
 
   // Fetch resolved policy and active strategy on mount
   useEffect(() => {
@@ -66,12 +99,15 @@ export default function CeremonyPolicyPage() {
     fetchActiveStrategy()
   }, [fetchResolvedPolicy, fetchActiveStrategy])
 
-  // Fetch departments
+  // Fetch departments with error handling
   useEffect(() => {
     import('@/api/endpoints/company').then(({ listDepartments }) =>
       listDepartments().then((result) => setDepartments(result.data)),
-    )
-  }, [])
+    ).catch(() => {
+      setDeptLoadError(true)
+      addToast({ variant: 'error', title: 'Failed to load departments' })
+    })
+  }, [addToast])
 
   // Save handler: persist all ceremony settings
   const handleSave = useCallback(async () => {
@@ -83,18 +119,35 @@ export default function CeremonyPolicyPage() {
         updateSetting('coordination', 'ceremony_velocity_calculator', velocityCalculator),
         updateSetting('coordination', 'ceremony_auto_transition', String(autoTransition)),
         updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
+        updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
       ])
       addToast({ variant: 'success', title: 'Ceremony policy saved' })
       fetchResolvedPolicy()
-    } catch {
-      addToast({ variant: 'error', title: 'Failed to save ceremony policy' })
+    } catch (err) {
+      addToast({ variant: 'error', title: 'Failed to save ceremony policy', description: getErrorMessage(err) })
     } finally {
       setSaving(false)
     }
   }, [
     strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold,
-    updateSetting, addToast, fetchResolvedPolicy,
+    ceremonyOverrides, updateSetting, addToast, fetchResolvedPolicy,
   ])
+
+  // Handle per-ceremony override changes
+  const handleCeremonyOverrideChange = useCallback(
+    (name: string, policy: CeremonyPolicyConfig | null) => {
+      setCeremonyOverrides((prev) => {
+        const next = { ...prev }
+        if (policy === null) {
+          delete next[name]
+        } else {
+          next[name] = policy
+        }
+        return next
+      })
+    },
+    [],
+  )
 
   // When strategy changes, update velocity calculator to the strategy default
   const handleStrategyChange = useCallback((s: CeremonyStrategyType) => {
@@ -105,11 +158,12 @@ export default function CeremonyPolicyPage() {
 
   return (
     <ErrorBoundary level="page">
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <div className="mx-auto max-w-3xl space-y-section-gap p-6">
         {/* Header */}
         <div className="flex items-center gap-3">
           <Link
             to={ROUTES.SETTINGS}
+            aria-label="Back to settings"
             className="rounded-md p-1.5 text-text-muted transition-colors hover:bg-card hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
@@ -126,7 +180,13 @@ export default function CeremonyPolicyPage() {
           </div>
         )}
 
-        {!loading && (
+        {!loading && storeError && (
+          <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
+            Failed to load ceremony policy: {storeError}
+          </div>
+        )}
+
+        {!loading && !storeError && (
           <>
             {/* Strategy change warning */}
             {activeStrategy?.strategy && strategy !== activeStrategy.strategy && (
@@ -184,7 +244,17 @@ export default function CeremonyPolicyPage() {
             </SectionCard>
 
             {/* Department overrides */}
-            <DepartmentOverridesPanel departments={departments} />
+            {!deptLoadError && (
+              <DepartmentOverridesPanel departments={departments} />
+            )}
+
+            {/* Per-ceremony overrides */}
+            <CeremonyListPanel
+              overrides={ceremonyOverrides}
+              ceremonyNames={ceremonyNames}
+              onOverrideChange={handleCeremonyOverrideChange}
+              saving={saving}
+            />
           </>
         )}
       </div>

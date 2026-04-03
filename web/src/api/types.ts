@@ -1679,14 +1679,14 @@ export interface ResolvedPolicyField<T = unknown> {
 }
 
 export interface ResolvedCeremonyPolicyResponse {
-  strategy: ResolvedPolicyField<CeremonyStrategyType>
-  strategy_config: ResolvedPolicyField<Record<string, unknown>>
-  velocity_calculator: ResolvedPolicyField<VelocityCalcType>
-  auto_transition: ResolvedPolicyField<boolean>
-  transition_threshold: ResolvedPolicyField<number>
+  readonly strategy: ResolvedPolicyField<CeremonyStrategyType>
+  readonly strategy_config: ResolvedPolicyField<Record<string, unknown>>
+  readonly velocity_calculator: ResolvedPolicyField<VelocityCalcType>
+  readonly auto_transition: ResolvedPolicyField<boolean>
+  readonly transition_threshold: ResolvedPolicyField<number>
 }
 
 export interface ActiveCeremonyStrategy {
-  strategy: CeremonyStrategyType | null
-  sprint_id: string | null
+  readonly strategy: CeremonyStrategyType | null
+  readonly sprint_id: string | null
 }

@@ -63,6 +63,7 @@ export function DepartmentCeremonyOverride({
     <div className="border-t border-border pt-4 space-y-3">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
         className="text-xs font-semibold uppercase tracking-wider text-text-muted hover:text-foreground"
       >

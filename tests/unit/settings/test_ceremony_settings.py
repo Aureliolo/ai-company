@@ -28,6 +28,7 @@ class TestCeremonySettingsRegistered:
             "ceremony_auto_transition",
             "ceremony_transition_threshold",
             "dept_ceremony_policies",
+            "ceremony_policy_overrides",
         ],
     )
     def test_ceremony_setting_exists(
@@ -98,7 +99,7 @@ class TestCeremonySettingsRegistered:
     ) -> None:
         defns = registry.list_namespace("coordination")
         ceremony_defns = [d for d in defns if d.group == "Ceremony Policy"]
-        assert len(ceremony_defns) == 6
+        assert len(ceremony_defns) == 7
 
     def test_ceremony_strategy_default_is_task_driven(
         self, registry: SettingsRegistry

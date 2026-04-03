@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 
@@ -10,6 +11,7 @@ export interface ExternalTriggerConfigProps {
 export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTriggerConfigProps) {
   const sources = config.sources ?? []
   const transitionEvent = (config.transition_event as string) ?? ''
+  const [jsonError, setJsonError] = useState<string | null>(null)
 
   return (
     <div className="space-y-3">
@@ -23,14 +25,18 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
           onChange={(val) => {
             try {
               onChange({ ...config, sources: JSON.parse(val) })
+              setJsonError(null)
             } catch {
-              // Keep current value on invalid JSON
+              setJsonError('Invalid JSON')
             }
           }}
           language="json"
           readOnly={disabled}
           className="max-h-48"
         />
+        {jsonError && (
+          <p className="mt-1 text-xs text-danger">{jsonError}</p>
+        )}
       </div>
 
       <InputField

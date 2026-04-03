@@ -14,7 +14,7 @@ export function StrategyChangeWarning({
   if (currentStrategy === activeStrategy) return null
 
   return (
-    <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-3">
+    <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/5 p-card">
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">

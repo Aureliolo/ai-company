@@ -1,19 +1,21 @@
 """Ceremony policy controller -- query and resolve ceremony policies."""
 
+import json
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyPolicyConfig,
     CeremonyStrategyType,
@@ -25,6 +27,7 @@ from synthorg.observability.events.api import (
     API_CEREMONY_POLICY_ACTIVE_QUERIED,
     API_CEREMONY_POLICY_QUERIED,
     API_CEREMONY_POLICY_RESOLVED,
+    API_REQUEST_ERROR,
     API_RESOURCE_NOT_FOUND,
     API_SERVICE_UNAVAILABLE,
 )
@@ -53,7 +56,9 @@ class ResolvedPolicyField(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    value: Any = Field(description="Resolved field value")
+    value: str | dict[str, Any] | bool | float = Field(
+        description="Resolved field value",
+    )
     source: PolicyFieldOrigin = Field(
         description="Level that provided this value",
     )
@@ -103,10 +108,18 @@ class ActiveCeremonyStrategyResponse(BaseModel):
         default=None,
         description="Active sprint strategy, null if no sprint running",
     )
-    sprint_id: str | None = Field(
+    sprint_id: NotBlankStr | None = Field(
         default=None,
         description="Active sprint ID, null if no sprint running",
     )
+
+    @model_validator(mode="after")
+    def _validate_strategy_sprint_consistency(self) -> Self:
+        """Ensure strategy and sprint_id are both set or both None."""
+        if (self.strategy is None) != (self.sprint_id is None):
+            msg = "strategy and sprint_id must both be set or both be None"
+            raise ValueError(msg)
+        return self
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -123,23 +136,67 @@ def _build_project_policy(
 
     Returns:
         A CeremonyPolicyConfig populated from the settings.
+
+    Raises:
+        ValueError: If a setting value cannot be parsed (e.g. invalid
+            enum member, malformed JSON, non-numeric threshold).
     """
-    import json  # noqa: PLC0415
-
+    strategy: CeremonyStrategyType | None = None
     strategy_raw = settings_data.get("ceremony_strategy")
-    strategy = CeremonyStrategyType(strategy_raw) if strategy_raw else None
+    if strategy_raw:
+        try:
+            strategy = CeremonyStrategyType(strategy_raw)
+        except ValueError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="ceremony_policy.build",
+                error=f"Invalid ceremony_strategy: {strategy_raw!r}",
+            )
+            raise
 
-    config_raw = settings_data.get("ceremony_strategy_config", "{}")
-    strategy_config: dict[str, Any] = json.loads(config_raw) if config_raw else {}
+    strategy_config: dict[str, Any] | None = None
+    config_raw = settings_data.get("ceremony_strategy_config")
+    if config_raw and config_raw != "{}":
+        try:
+            strategy_config = json.loads(config_raw)
+        except json.JSONDecodeError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="ceremony_policy.build",
+                error="Malformed ceremony_strategy_config JSON",
+            )
+            raise
 
+    velocity_calculator: VelocityCalcType | None = None
     vel_raw = settings_data.get("ceremony_velocity_calculator")
-    velocity_calculator = VelocityCalcType(vel_raw) if vel_raw else None
+    if vel_raw:
+        try:
+            velocity_calculator = VelocityCalcType(vel_raw)
+        except ValueError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="ceremony_policy.build",
+                error=f"Invalid ceremony_velocity_calculator: {vel_raw!r}",
+            )
+            raise
 
+    auto_transition: bool | None = None
     auto_raw = settings_data.get("ceremony_auto_transition")
-    auto_transition = auto_raw.lower() == "true" if auto_raw else None
+    if auto_raw:
+        auto_transition = auto_raw.lower() == "true"
 
+    transition_threshold: float | None = None
     threshold_raw = settings_data.get("ceremony_transition_threshold")
-    transition_threshold = float(threshold_raw) if threshold_raw else None
+    if threshold_raw:
+        try:
+            transition_threshold = float(threshold_raw)
+        except ValueError:
+            logger.warning(
+                API_REQUEST_ERROR,
+                endpoint="ceremony_policy.build",
+                error=f"Invalid ceremony_transition_threshold: {threshold_raw!r}",
+            )
+            raise
 
     return CeremonyPolicyConfig(
         strategy=strategy,
@@ -202,8 +259,8 @@ def _build_resolved_response(
     result: dict[str, ResolvedPolicyField] = {}
     for name in fields:
         value = getattr(resolved, name)
-        # Serialize enums to their string value for JSON
-        if hasattr(value, "value"):
+        # Serialize StrEnum members to their string value for JSON
+        if isinstance(value, StrEnum):
             value = value.value
         origin = _determine_field_origin(name, project, department)
         result[name] = ResolvedPolicyField(value=value, source=origin)
@@ -370,10 +427,10 @@ class CeremonyPolicyController(Controller):
         if scheduler is not None and scheduler.running:
             strategy = scheduler.active_strategy
             sprint = scheduler.active_sprint
-            if strategy is not None:
+            if strategy is not None and sprint is not None:
                 response = ActiveCeremonyStrategyResponse(
                     strategy=strategy.strategy_type,
-                    sprint_id=str(sprint.id) if sprint else None,
+                    sprint_id=NotBlankStr(str(sprint.id)),
                 )
 
         logger.debug(
