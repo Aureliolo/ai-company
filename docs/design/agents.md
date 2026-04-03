@@ -111,6 +111,7 @@ Personality is split into two tiers:
         temperature: 0.3
         max_tokens: 8192
         fallback_model: "openrouter/example-medium-001"
+        model_tier: "medium"  # set by model matcher (large/medium/small/null)
       model_requirement:            # original tier/priority from template
         tier: "medium"
         priority: "balanced"

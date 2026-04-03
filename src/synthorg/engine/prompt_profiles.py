@@ -1,34 +1,28 @@
 """Prompt rendering profiles for model tier adaptation.
 
-Maps each :data:`~synthorg.templates.model_requirements.ModelTier` to a
+Maps each :data:`~synthorg.core.types.ModelTier` to a
 :class:`PromptProfile` that controls how verbose and detailed the system
 prompt is.  Smaller/cheaper models receive simpler prompts they can
 follow more reliably; larger models receive the full prompt.
 
 Three built-in profiles:
 
-* **full** (large) -- all sections, full personality, full criteria.
+* **full** (large) -- no profile-driven reductions, full personality,
+  full criteria.
 * **standard** (medium) -- condensed personality, summary autonomy.
 * **basic** (small) -- minimal personality, no org policies,
   simplified acceptance criteria.
 
-Authority and security sections are **never** stripped regardless of
+Authority and identity sections are **never** stripped regardless of
 profile.
 """
 
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import ModelTier  # noqa: TC001
-from synthorg.observability import get_logger
-from synthorg.observability.events.prompt import (
-    PROMPT_PROFILE_DEFAULT,
-    PROMPT_PROFILE_SELECTED,
-)
-
-logger = get_logger(__name__)
+from synthorg.core.types import ModelTier
 
 
 class PromptProfile(BaseModel):
@@ -40,12 +34,14 @@ class PromptProfile(BaseModel):
 
     Attributes:
         tier: The model tier this profile targets.
-        max_personality_tokens: Soft limit on personality section length
-            (reserved for future token-based trimming).
+        max_personality_tokens: Soft limit on personality section length.
+            Not yet consumed by the rendering pipeline -- reserved for
+            future token-based trimming.  Currently serves as an
+            ordering proxy (larger tiers have higher limits).
         include_org_policies: Whether to include the org policies section.
         simplify_acceptance_criteria: Whether to render acceptance
-            criteria as a flat comma-separated line instead of a nested
-            list.
+            criteria as a flat semicolon-separated line instead of a
+            nested list.
         autonomy_detail_level: Level of detail for autonomy instructions
             (``"full"`` | ``"summary"`` | ``"minimal"``).
         personality_mode: How much personality detail to include
@@ -115,6 +111,11 @@ PROMPT_PROFILE_REGISTRY: MappingProxyType[ModelTier, PromptProfile] = MappingPro
 )
 """Read-only mapping from model tier to prompt profile."""
 
+_missing_profiles = set(get_args(ModelTier)) - set(PROMPT_PROFILE_REGISTRY)
+if _missing_profiles:
+    _msg_p = f"Missing prompt profiles for tiers: {sorted(_missing_profiles)}"
+    raise ValueError(_msg_p)
+
 
 def get_prompt_profile(tier: ModelTier | None) -> PromptProfile:
     """Return the built-in prompt profile for a model tier.
@@ -129,14 +130,5 @@ def get_prompt_profile(tier: ModelTier | None) -> PromptProfile:
         The matching ``PromptProfile``.
     """
     if tier is None:
-        logger.debug(PROMPT_PROFILE_DEFAULT)
         return _FULL_PROFILE
-
-    profile = PROMPT_PROFILE_REGISTRY[tier]
-    logger.debug(
-        PROMPT_PROFILE_SELECTED,
-        tier=tier,
-        personality_mode=profile.personality_mode,
-        autonomy_detail_level=profile.autonomy_detail_level,
-    )
-    return profile
+    return PROMPT_PROFILE_REGISTRY[tier]

@@ -462,6 +462,7 @@ class TestResolveModel:
 
         assert result.model.model_id == "test-medium-001"
         assert result.model.provider == "test-provider"
+        assert result.model.model_tier == "medium"
 
     async def test_above_threshold_no_matching_alias_unchanged(self) -> None:
         """Budget above threshold but no matching alias returns unchanged."""
@@ -591,6 +592,7 @@ class TestResolveModel:
 
         # At exactly threshold → downgrade applies (< is strict)
         assert result.model.model_id == "test-medium-001"
+        assert result.model.model_tier == "medium"
 
     async def test_resolved_model_has_no_alias_unchanged(self) -> None:
         """Model in resolver but with no alias returns unchanged."""
@@ -721,6 +723,67 @@ class TestResolveModel:
 
         # Should downgrade to medium, NOT to small
         assert result.model.model_id == "test-medium-001"
+        assert result.model.model_tier == "medium"
+
+    async def test_downgrade_to_non_tier_alias_preserves_existing_tier(
+        self,
+    ) -> None:
+        """Downgrade to non-tier alias preserves the existing model_tier."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("small", "local-small"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                cost_usd=90.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        resolver = _make_resolver(
+            {
+                "test-small-001": _resolved(
+                    model_id="test-small-001",
+                    alias="small",
+                ),
+                "small": _resolved(
+                    model_id="test-small-001",
+                    alias="small",
+                ),
+                "local-small": _resolved(
+                    model_id="test-local-small-001",
+                    provider="local-provider",
+                    alias="local-small",
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity(model_id="test-small-001")
+        # Pre-set model_tier on identity to verify preservation.
+        identity = identity.model_copy(
+            update={
+                "model": identity.model.model_copy(
+                    update={"model_tier": "small"},
+                ),
+            },
+        )
+
+        with _patch_periods():
+            result = await enforcer.resolve_model(identity)
+
+        assert result.model.model_id == "test-local-small-001"
+        assert result.model.provider == "local-provider"
+        # "local-small" is NOT a valid tier -- existing tier should be preserved.
+        assert result.model.model_tier == "small"
 
 
 # ── Budget checker factory ───────────────────────────────────────────

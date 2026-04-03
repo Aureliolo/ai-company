@@ -28,10 +28,25 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost, get_currency_symbol
 from synthorg.engine._prompt_helpers import (
+    SECTION_COMPANY as _SECTION_COMPANY,
+)
+from synthorg.engine._prompt_helpers import (
+    SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
+)
+from synthorg.engine._prompt_helpers import (
+    SECTION_TASK as _SECTION_TASK,
+)
+from synthorg.engine._prompt_helpers import (
+    TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS,
+)
+from synthorg.engine._prompt_helpers import (
     build_core_context as _build_core_context,
 )
 from synthorg.engine._prompt_helpers import (
     build_metadata as _build_metadata,
+)
+from synthorg.engine._prompt_helpers import (
+    compute_sections as _compute_sections,
 )
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
@@ -54,7 +69,6 @@ from synthorg.observability.events.prompt import (
     PROMPT_CUSTOM_TEMPLATE_FAILED,
     PROMPT_CUSTOM_TEMPLATE_LOADED,
     PROMPT_POLICY_VALIDATION_FAILED,
-    PROMPT_PROFILE_DEFAULT,
     PROMPT_PROFILE_SELECTED,
 )
 
@@ -86,7 +100,8 @@ class SystemPrompt(BaseModel):
         template_version: Version of the template that produced this prompt.
         estimated_tokens: Token estimate of the prompt content.
         sections: Names of sections included in the prompt.
-        metadata: Agent identity metadata (agent_id, name, role, department, level).
+        metadata: Agent identity metadata (agent_id, name, role,
+            department, level, and optionally profile_tier).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -105,29 +120,6 @@ class SystemPrompt(BaseModel):
     metadata: dict[str, str] = Field(
         description="Agent identity metadata (string-only values; shallow-frozen)",
     )
-
-
-# ── Section names ────────────────────────────────────────────────
-
-_SECTION_IDENTITY = "identity"
-_SECTION_PERSONALITY = "personality"
-_SECTION_SKILLS = "skills"
-_SECTION_AUTHORITY = "authority"
-_SECTION_ORG_POLICIES = "org_policies"
-_SECTION_AUTONOMY = "autonomy"
-_SECTION_TASK = "task"
-_SECTION_COMPANY = "company"
-_SECTION_TOOLS = "tools"
-_SECTION_CONTEXT_BUDGET = "context_budget"
-
-# Sections trimmed when over token budget, least critical first.
-# Tools section was removed from the default template per D22
-# (non-inferable principle), but custom templates may still render tools.
-_TRIMMABLE_SECTIONS = (
-    _SECTION_COMPANY,
-    _SECTION_TASK,
-    _SECTION_ORG_POLICIES,
-)
 
 
 # ── Public API ───────────────────────────────────────────────────
@@ -186,8 +178,8 @@ def build_system_prompt(  # noqa: PLR0913
 
     profile = get_prompt_profile(model_tier)
     logger.info(
-        PROMPT_PROFILE_SELECTED if model_tier else PROMPT_PROFILE_DEFAULT,
-        tier=model_tier,
+        PROMPT_PROFILE_SELECTED,
+        tier=model_tier or "large",
         personality_mode=profile.personality_mode,
         autonomy_detail_level=profile.autonomy_detail_level,
     )
@@ -421,58 +413,6 @@ def _build_template_context(  # noqa: PLR0913
         context["company_departments"] = None
 
     return context
-
-
-def _compute_sections(  # noqa: PLR0913
-    *,
-    task: Task | None,
-    available_tools: tuple[ToolDefinition, ...] = (),
-    company: Company | None,
-    org_policies: tuple[str, ...] = (),
-    custom_template: bool = False,
-    context_budget: str | None = None,
-    profile: PromptProfile | None = None,
-) -> tuple[str, ...]:
-    """Determine which sections are present in the rendered prompt.
-
-    The default template omits the tools section per D22 (non-inferable
-    principle).  Custom templates may still render tools, so the tools
-    section is tracked when ``available_tools`` is non-empty and a custom
-    template is in use.
-
-    Args:
-        task: Optional task context.
-        available_tools: Tool definitions (tracked for custom templates).
-        company: Optional company context.
-        org_policies: Company-wide policy texts.
-        custom_template: Whether a custom template is being used.
-        context_budget: Formatted context budget indicator string.
-        profile: Prompt profile controlling section inclusion.
-
-    Returns:
-        Tuple of section names that are included.
-    """
-    include_policies = profile.include_org_policies if profile else True
-
-    sections: list[str] = [
-        _SECTION_IDENTITY,
-        _SECTION_PERSONALITY,
-        _SECTION_SKILLS,
-        _SECTION_AUTHORITY,
-    ]
-    if org_policies and include_policies:
-        sections.append(_SECTION_ORG_POLICIES)
-    # Autonomy follows org_policies in the template.
-    sections.append(_SECTION_AUTONOMY)
-    if task is not None:
-        sections.append(_SECTION_TASK)
-    if available_tools and custom_template:
-        sections.append(_SECTION_TOOLS)
-    if company is not None:
-        sections.append(_SECTION_COMPANY)
-    if context_budget is not None:
-        sections.append(_SECTION_CONTEXT_BUDGET)
-    return tuple(sections)
 
 
 def _render_template(template_str: str, context: dict[str, Any]) -> str:

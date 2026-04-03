@@ -2,8 +2,10 @@
 
 Provides the Jinja2 template used by
 :func:`~synthorg.engine.prompt.build_system_prompt`
-to render agent system prompts. The template uses conditional sections that are
-omitted when the corresponding context is absent.
+to render agent system prompts.  The template uses conditional sections that
+are omitted when the corresponding context is absent.  Autonomy instructions
+are provided at three verbosity tiers (full, summary, minimal) to support
+prompt profile adaptation for different model capabilities.
 
 **Non-inferable principle (D22):** The default template omits the
 ``Available Tools`` section because tool definitions are already passed to
@@ -84,16 +86,16 @@ if _missing_levels:
 # ── Condensed autonomy (one sentence per level) ─────────────────
 
 AUTONOMY_SUMMARY: Final[dict[SeniorityLevel, str]] = {
-    SeniorityLevel.JUNIOR: ("Follow instructions carefully and ask when uncertain."),
-    SeniorityLevel.MID: ("Work independently on defined tasks and escalate blockers."),
+    SeniorityLevel.JUNIOR: "Follow instructions carefully and ask when uncertain.",
+    SeniorityLevel.MID: "Work independently on defined tasks and escalate blockers.",
     SeniorityLevel.SENIOR: (
         "Take ownership of your domain and drive tasks to completion."
     ),
-    SeniorityLevel.LEAD: ("Approve and delegate tasks within your team."),
+    SeniorityLevel.LEAD: "Approve and delegate tasks within your team.",
     SeniorityLevel.PRINCIPAL: (
         "Make architectural decisions that affect multiple teams."
     ),
-    SeniorityLevel.DIRECTOR: ("Make strategic decisions with budget authority."),
+    SeniorityLevel.DIRECTOR: "Make strategic decisions with budget authority.",
     SeniorityLevel.VP: (
         "Exercise department-wide authority over strategy and resources."
     ),

@@ -129,8 +129,10 @@ def _build_downgraded_model_config(
 ) -> ModelConfig:
     """Build a new ModelConfig with the downgraded model and provider.
 
-    Sets ``model_tier`` when *target_alias* is a valid tier name
-    (``"large"``, ``"medium"``, ``"small"``).
+    Sets ``model_tier`` to *target_alias* when it is a valid tier name
+    (``"large"``, ``"medium"``, ``"small"``); preserves the current
+    ``model_tier`` otherwise (avoids silent tier erasure when
+    downgrading to a non-tier alias like ``"local-small"``).
     """
     update: dict[str, object] = {
         "provider": target.provider_name,
@@ -138,8 +140,6 @@ def _build_downgraded_model_config(
     }
     if target_alias is not None and target_alias in _VALID_TIERS:
         update["model_tier"] = target_alias
-    else:
-        update["model_tier"] = None
     return current.model_copy(update=update)
 
 

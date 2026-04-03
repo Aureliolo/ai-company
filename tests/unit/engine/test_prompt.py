@@ -26,6 +26,8 @@ from synthorg.engine.prompt import (
 )
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
+    AUTONOMY_MINIMAL,
+    AUTONOMY_SUMMARY,
     PROMPT_TEMPLATE_VERSION,
 )
 from synthorg.engine.token_estimation import DefaultTokenEstimator
@@ -1219,3 +1221,48 @@ class TestPromptProfileIntegration:
         )
 
         assert small.estimated_tokens < large.estimated_tokens
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("tier", "autonomy_map"),
+        [
+            ("large", AUTONOMY_INSTRUCTIONS),
+            ("medium", AUTONOMY_SUMMARY),
+            ("small", AUTONOMY_MINIMAL),
+        ],
+    )
+    def test_autonomy_text_varies_by_tier(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        tier: str,
+        autonomy_map: dict[SeniorityLevel, str],
+    ) -> None:
+        """Each tier renders the matching autonomy instruction text."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier=tier,  # type: ignore[arg-type]
+        )
+        expected = autonomy_map[sample_agent_with_personality.level]
+
+        assert expected in result.content
+
+
+# ── TestBuildCoreContextDefaults ─────────────────────────────────
+
+
+class TestBuildCoreContextDefaults:
+    """Tests for build_core_context profile=None fallback defaults."""
+
+    @pytest.mark.unit
+    def test_none_profile_defaults_to_full(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When profile is None, context uses full-profile defaults."""
+        from synthorg.engine._prompt_helpers import build_core_context
+
+        ctx = build_core_context(sample_agent_with_personality, role=None)
+
+        assert ctx["personality_mode"] == "full"
+        assert ctx["include_org_policies"] is True
+        assert ctx["simplify_acceptance_criteria"] is False

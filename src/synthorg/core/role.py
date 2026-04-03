@@ -8,7 +8,7 @@ from synthorg.core.enums import (
     SeniorityLevel,
     SkillCategory,
 )
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 
 
 class Skill(BaseModel):
@@ -77,7 +77,7 @@ class SeniorityInfo(BaseModel):
     authority_scope: NotBlankStr = Field(
         description="Description of authority at this level",
     )
-    typical_model_tier: NotBlankStr = Field(
+    typical_model_tier: ModelTier = Field(
         description="Recommended model tier",
     )
     cost_tier: NotBlankStr = Field(

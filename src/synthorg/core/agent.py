@@ -158,7 +158,8 @@ class ModelConfig(BaseModel):
         max_tokens: Maximum output tokens.
         fallback_model: Optional fallback model identifier.
         model_tier: Capability tier (``"large"``/``"medium"``/``"small"``)
-            set during model matching. Controls prompt profile selection.
+            set during model matching and updated by budget auto-downgrade.
+            Controls prompt profile selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

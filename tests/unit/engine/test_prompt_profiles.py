@@ -1,14 +1,16 @@
 """Unit tests for prompt profile model and registry."""
 
+from typing import get_args
+
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.types import ModelTier
 from synthorg.engine.prompt_profiles import (
     PROMPT_PROFILE_REGISTRY,
     PromptProfile,
     get_prompt_profile,
 )
-from synthorg.templates.model_requirements import ModelTier
 
 # ── TestPromptProfile ───────────────────────────────────────────
 
@@ -68,25 +70,25 @@ class TestPromptProfile:
         with pytest.raises(ValidationError):
             PromptProfile(tier="large", max_personality_tokens=0)
 
-    def test_valid_autonomy_detail_levels(self) -> None:
+    @pytest.mark.parametrize("level", ["full", "summary", "minimal"])
+    def test_valid_autonomy_detail_levels(self, level: str) -> None:
         """Only full/summary/minimal are accepted."""
-        for level in ("full", "summary", "minimal"):
-            profile = PromptProfile(
-                tier="large",
-                max_personality_tokens=100,
-                autonomy_detail_level=level,
-            )
-            assert profile.autonomy_detail_level == level
+        profile = PromptProfile(
+            tier="large",
+            max_personality_tokens=100,
+            autonomy_detail_level=level,  # type: ignore[arg-type]
+        )
+        assert profile.autonomy_detail_level == level
 
-    def test_valid_personality_modes(self) -> None:
+    @pytest.mark.parametrize("mode", ["full", "condensed", "minimal"])
+    def test_valid_personality_modes(self, mode: str) -> None:
         """Only full/condensed/minimal are accepted."""
-        for mode in ("full", "condensed", "minimal"):
-            profile = PromptProfile(
-                tier="large",
-                max_personality_tokens=100,
-                personality_mode=mode,
-            )
-            assert profile.personality_mode == mode
+        profile = PromptProfile(
+            tier="large",
+            max_personality_tokens=100,
+            personality_mode=mode,  # type: ignore[arg-type]
+        )
+        assert profile.personality_mode == mode
 
 
 # ── TestGetPromptProfile ────────────────────────────────────────
@@ -120,7 +122,7 @@ class TestPromptProfileRegistry:
 
     def test_registry_covers_all_tiers(self) -> None:
         """Registry has entries for all ModelTier values."""
-        expected_tiers = {"large", "medium", "small"}
+        expected_tiers = set(get_args(ModelTier))
         assert set(PROMPT_PROFILE_REGISTRY.keys()) == expected_tiers
 
     def test_registry_is_immutable(self) -> None:

@@ -302,6 +302,10 @@ budget:
     completes on its assigned model. The next task assignment respects the downgrade threshold.
     This prevents quality degradation from mid-thought model switches.
 
+    When a downgrade target alias matches a valid tier name (`large`/`medium`/`small`), the
+    downgraded `ModelConfig` stores the tier in `model_tier`, enabling prompt profile
+    adaptation (see [Prompt Profiles](engine.md#prompt-profiles)).
+
 !!! info "Minimal Configuration"
 
     The only required field is `total_monthly`. All other fields have sensible defaults:

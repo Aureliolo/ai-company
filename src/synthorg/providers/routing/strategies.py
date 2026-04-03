@@ -246,6 +246,7 @@ class RoleBasedStrategy:
         config: RoutingConfig,
     ) -> NoReturn:
         """Raise when all candidates are exhausted."""
+        tier: str = "unknown"
         try:
             tier = get_seniority_info(level).typical_model_tier
         except LookupError:
@@ -254,7 +255,6 @@ class RoleBasedStrategy:
                 level=level.value,
                 reason="seniority level not in catalog",
             )
-            tier = "unknown"
         if config.fallback_chain:
             chain_detail = f"fallback chain exhausted: {list(config.fallback_chain)}"
         else:

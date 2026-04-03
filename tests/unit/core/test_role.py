@@ -142,7 +142,7 @@ class TestSeniorityInfo:
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="tasks",
-                typical_model_tier="",
+                typical_model_tier="",  # type: ignore[arg-type]
                 cost_tier="low",
             )
 
@@ -165,11 +165,11 @@ class TestSeniorityInfo:
             )
 
     def test_whitespace_model_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        with pytest.raises(ValidationError):
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="tasks",
-                typical_model_tier="   ",
+                typical_model_tier="   ",  # type: ignore[arg-type]
                 cost_tier="low",
             )
 
