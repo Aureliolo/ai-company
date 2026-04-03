@@ -74,6 +74,13 @@ async def _safe_call(
     try:
         return await coro
     except builtins.MemoryError, RecursionError:
+        logger.error(
+            MEMORY_RETRIEVAL_DEGRADED,
+            source=source,
+            agent_id=agent_id,
+            error_type="system",
+            exc_info=True,
+        )
         raise
     except memory_errors.MemoryError as exc:
         logger.warning(
@@ -378,18 +385,36 @@ class ContextInjectionStrategy:
         dense_personal, dense_shared = dense_task.result()
         sparse_personal, sparse_shared = sparse_task.result()
 
-        # Merge personal + shared by relevance score so RRF rank
-        # reflects relevance, not personal-before-shared ordering.
+        return self._merge_and_fuse(
+            dense_personal + dense_shared,
+            sparse_personal + sparse_shared,
+        )
+
+    def _merge_and_fuse(
+        self,
+        dense_entries: tuple[MemoryEntry, ...],
+        sparse_entries: tuple[MemoryEntry, ...],
+    ) -> tuple[ScoredMemory, ...]:
+        """Sort modalities by relevance, fuse via RRF, and filter.
+
+        Args:
+            dense_entries: Combined personal + shared dense results.
+            sparse_entries: Combined personal + shared sparse results.
+
+        Returns:
+            Fused, filtered, and truncated memories.
+        """
+        # Sort by relevance so RRF rank reflects quality, not source order.
         dense_list = tuple(
             sorted(
-                dense_personal + dense_shared,
+                dense_entries,
                 key=lambda e: e.relevance_score or 0.0,
                 reverse=True,
             )
         )
         sparse_list = tuple(
             sorted(
-                sparse_personal + sparse_shared,
+                sparse_entries,
                 key=lambda e: e.relevance_score or 0.0,
                 reverse=True,
             )
@@ -428,53 +453,17 @@ class ContextInjectionStrategy:
         Returns:
             Tuple of (personal_sparse, shared_sparse).
         """
-        personal_has_sparse = getattr(
-            self._backend,
-            "supports_sparse_search",
-            False,
-        )
-        shared_store = self._shared_store
-        shared_has_sparse = (
-            self._config.include_shared
-            and shared_store is not None
-            and getattr(shared_store, "supports_sparse_search", False)
-        )
-
-        if not personal_has_sparse and not shared_has_sparse:
+        if not getattr(self._backend, "supports_sparse_search", False):
             return (), ()
 
-        # Build coroutines -- use no-op for missing capabilities.
-        async def _empty() -> tuple[MemoryEntry, ...]:
-            return ()
-
-        personal_coro = (
-            _safe_call(
-                self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
-                source="sparse_personal",
-                agent_id=agent_id,
-            )
-            if personal_has_sparse
-            else _empty()
+        # SharedKnowledgeStore does not yet expose retrieve_sparse,
+        # so shared sparse is disabled until the protocol is extended.
+        personal = await _safe_call(
+            self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
+            source="sparse_personal",
+            agent_id=agent_id,
         )
-        shared_coro = (
-            _safe_call(
-                shared_store.retrieve_sparse(query, exclude_agent=agent_id),  # type: ignore[union-attr]
-                source="sparse_shared",
-                agent_id=agent_id,
-            )
-            if shared_has_sparse
-            else _empty()
-        )
-
-        try:
-            async with asyncio.TaskGroup() as tg:
-                personal_task = tg.create_task(personal_coro)
-                shared_task = tg.create_task(shared_coro)
-        except* builtins.MemoryError as eg:
-            raise eg.exceptions[0] from eg
-        except* RecursionError as eg:
-            raise eg.exceptions[0] from eg
-        return personal_task.result(), shared_task.result()
+        return personal, ()
 
     async def _fetch_memories(
         self,
