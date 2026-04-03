@@ -52,17 +52,20 @@ class _WriteOnlyDatabase(ExampleDatabase):
 # write-only: failures are logged for analysis but never replayed
 # automatically (that would block all test runs until fixed).
 # Review captured failures with: ls ~/.synthorg/hypothesis-examples/
-_SHARED_HYPOTHESIS_DIR = Path.home() / ".synthorg" / "hypothesis-examples"
-_SHARED_HYPOTHESIS_DIR.mkdir(parents=True, exist_ok=True)
-
 _local_db = DirectoryBasedExampleDatabase(".hypothesis/examples/")
-_shared_db = _WriteOnlyDatabase(
-    DirectoryBasedExampleDatabase(str(_SHARED_HYPOTHESIS_DIR)),
-)
 
-# Dev/local: local DB for Hypothesis replay + shared DB captures
-# failures for analysis without replaying them.
-_local_combined_db = MultiplexedDatabase(_local_db, _shared_db)
+try:
+    _shared_dir = Path.home() / ".synthorg" / "hypothesis-examples"
+    _shared_dir.mkdir(parents=True, exist_ok=True)
+    _shared_db: ExampleDatabase = _WriteOnlyDatabase(
+        DirectoryBasedExampleDatabase(str(_shared_dir)),
+    )
+    _local_combined_db = MultiplexedDatabase(_local_db, _shared_db)
+except OSError:
+    # HOME unwritable (containerized CI, read-only filesystem) --
+    # fall back to local-only DB.  Failures still captured in
+    # .hypothesis/examples/ for the duration of this worktree.
+    _local_combined_db = MultiplexedDatabase(_local_db)
 
 settings.register_profile(
     "ci",
