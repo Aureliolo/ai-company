@@ -319,6 +319,15 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     created_at = _parse_created_at(payload, point_id_str)
     score = min(1.0, max(0.0, float(point.score))) if point.score is not None else None
 
+    # Extract expires_at the same way the dense path does.
+    from synthorg.memory.backends.mem0.mappers import (  # noqa: PLC0415
+        parse_mem0_datetime,
+    )
+
+    expires_at = parse_mem0_datetime(
+        metadata_raw.get(f"{_SYNTHORG_PREFIX}expires_at"),
+    )
+
     return MemoryEntry(
         id=NotBlankStr(point_id_str),
         agent_id=agent_id,
@@ -330,6 +339,7 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
             tags=tags,
         ),
         created_at=created_at,
+        expires_at=expires_at,
         relevance_score=score,
     )
 
