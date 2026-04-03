@@ -83,10 +83,24 @@ settings.register_profile(
 settings.register_profile(
     "fuzz",
     # Dedicated long-running fuzzing sessions -- run locally or on a
-    # schedule.  High example count + longer deadline to explore deep
+    # schedule.  High example count + no deadline to explore deep
     # input spaces.  Failures captured to shared DB for analysis.
+    # Suppress health checks so Hypothesis doesn't abandon slow or
+    # heavily-filtered tests before reaching max_examples.
+    # IMPORTANT: also pass --timeout=0 to pytest to disable the
+    # per-test wall-clock limit (the default 30s kills 10k runs).
     max_examples=10_000,
     deadline=None,
+    suppress_health_check=list(HealthCheck),
+    database=_local_combined_db,
+)
+settings.register_profile(
+    "extreme",
+    # Deep overnight fuzzing -- 500k examples per test, no deadline,
+    # no health checks, no seed (true randomness).  Expect hours.
+    max_examples=500_000,
+    deadline=None,
+    suppress_health_check=list(HealthCheck),
     database=_local_combined_db,
 )
 # Configure Hypothesis globally for the test session.
@@ -98,7 +112,10 @@ settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "ci"))
 # teardown) exceeds this threshold.  This catches regressions like
 # backup-service filesystem I/O in fixtures before they snowball
 # into 10-minute test runs.  Integration and e2e tests are exempt.
+# Disabled for fuzz profile where 10k examples per test routinely
+# exceed the limit.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 8.0  # seconds
+_FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 _start_key = pytest.StashKey[float]()
 
 
@@ -115,7 +132,11 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
     if start is None:
         return
     elapsed = time.monotonic() - start
-    if item.get_closest_marker("unit") and elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT:
+    if (
+        not _FUZZ_PROFILE_ACTIVE
+        and item.get_closest_marker("unit")
+        and elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
+    ):
         pytest.fail(
             f"Unit test exceeded {_UNIT_TEST_WALL_CLOCK_LIMIT}s "
             f"wall-clock limit ({elapsed:.1f}s). This usually means "

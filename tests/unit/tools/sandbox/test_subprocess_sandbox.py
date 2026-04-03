@@ -1,6 +1,7 @@
 """Tests for SubprocessSandbox implementation."""
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -307,14 +308,14 @@ class TestExecution:
     ) -> None:
         if os.name == "nt":
             result = await subprocess_sandbox.execute(
-                command="cmd",
-                args=("/c", "ping", "-n", "10", "127.0.0.1"),
+                command=sys.executable,
+                args=("-c", "import time; time.sleep(5)"),
                 timeout=0.5,
             )
         else:
             result = await subprocess_sandbox.execute(
                 command="sleep",
-                args=("10",),
+                args=("2",),
                 timeout=0.5,
             )
         assert result.timed_out

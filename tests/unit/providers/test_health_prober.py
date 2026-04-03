@@ -358,9 +358,12 @@ class TestProberLifecycle:
             side_effect=_counting_get,
         )
 
-        await prober.start()
-        # Wait for the second call deterministically (no timing)
-        await asyncio.wait_for(done_event.wait(), timeout=10)
-        await prober.stop()
+        # Patch the interval so wait_for(stop_event.wait(), timeout=0)
+        # times out instantly between probe cycles instead of waiting 1s.
+        with patch.object(prober, "_interval", 0):
+            await prober.start()
+            # Wait for the second call deterministically (no timing)
+            await asyncio.wait_for(done_event.wait(), timeout=10)
+            await prober.stop()
 
         assert call_count >= 2  # First call failed, loop continued

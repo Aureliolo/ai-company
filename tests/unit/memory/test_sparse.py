@@ -1,7 +1,10 @@
 """Tests for BM25 sparse encoder."""
 
+import re
+import unicodedata
+
 import pytest
-from hypothesis import given
+from hypothesis import assume, example, given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
@@ -204,6 +207,7 @@ class TestSparseProperties:
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         assert tokenizer.encode(text) == tokenizer.encode(text)
 
+    @example(text="\ufc5e")  # Arabic ligature -> combining marks under NFKC
     @given(
         text=st.text(
             min_size=1,
@@ -211,6 +215,16 @@ class TestSparseProperties:
         )
     )
     def test_non_empty_alpha_produces_non_empty_vector(self, text: str) -> None:
+        # Some Unicode letters (e.g. compatibility ligatures) decompose
+        # entirely into combining marks under NFKC, producing no \w
+        # tokens.  The tokenizer correctly returns an empty vector for
+        # these; skip them for the non-empty property assertion.
+        normalized = unicodedata.normalize("NFKC", text).casefold()
+        if not re.search(r"\w", normalized):
+            # Degenerate NFKC input -- verify empty vector instead.
+            tokenizer = BM25Tokenizer(remove_stop_words=False)
+            assert tokenizer.encode(text).is_empty
+            assume(False)
         tokenizer = BM25Tokenizer(remove_stop_words=False)
         vec = tokenizer.encode(text)
         assert not vec.is_empty
