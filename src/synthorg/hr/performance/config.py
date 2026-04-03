@@ -67,6 +67,26 @@ class PerformanceConfig(BaseModel):
         ge=1,
         description="Days to retain LLM calibration records",
     )
+    quality_judge_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model ID for LLM quality judge (None = disabled)",
+    )
+    quality_judge_provider: NotBlankStr | None = Field(
+        default=None,
+        description="Provider name for LLM quality judge (None = auto from model ref)",
+    )
+    quality_ci_weight: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Weight for CI signal in composite quality score",
+    )
+    quality_llm_weight: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Weight for LLM judge in composite quality score",
+    )
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
@@ -75,6 +95,21 @@ class PerformanceConfig(BaseModel):
             msg = (
                 f"improving_threshold ({self.improving_threshold}) must be "
                 f"> declining_threshold ({self.declining_threshold})"
+            )
+            raise ValueError(msg)
+        return self
+
+    _WEIGHT_TOLERANCE: float = 1e-6
+
+    @model_validator(mode="after")
+    def _validate_quality_weights_sum(self) -> Self:
+        """Ensure quality weights sum to 1.0 (within tolerance)."""
+        total = self.quality_ci_weight + self.quality_llm_weight
+        if abs(total - 1.0) > self._WEIGHT_TOLERANCE:
+            msg = (
+                f"quality_ci_weight ({self.quality_ci_weight}) + "
+                f"quality_llm_weight ({self.quality_llm_weight}) = "
+                f"{total}, must sum to 1.0"
             )
             raise ValueError(msg)
         return self

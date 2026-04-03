@@ -67,7 +67,8 @@ from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
-from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
+from synthorg.hr.performance.config import PerformanceConfig
+from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
@@ -489,6 +490,97 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     )
     bootstrap_logging(patched)
     return patched
+
+
+def _build_performance_tracker(
+    *,
+    cost_tracker: CostTracker | None = None,
+    provider_registry: ProviderRegistry | None = None,
+    perf_config: PerformanceConfig | None = None,
+) -> PerformanceTracker:
+    """Build a PerformanceTracker with composite quality strategy.
+
+    Always wires a ``QualityOverrideStore`` (human overrides are free).
+    When ``quality_judge_model`` is set and a matching provider is
+    available, also wires the LLM judge layer.
+
+    Args:
+        cost_tracker: Optional cost tracker for judge cost recording.
+        provider_registry: Provider registry for LLM judge calls.
+        perf_config: Performance configuration (default config if None).
+
+    Returns:
+        Configured performance tracker.
+    """
+    from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
+        CISignalQualityStrategy,
+    )
+    from synthorg.hr.performance.composite_quality_strategy import (  # noqa: PLC0415
+        CompositeQualityStrategy,
+    )
+    from synthorg.hr.performance.quality_override_store import (  # noqa: PLC0415
+        QualityOverrideStore,
+    )
+
+    cfg = perf_config or PerformanceConfig()
+    quality_override_store = QualityOverrideStore()
+    ci_strategy = CISignalQualityStrategy()
+    llm_strategy = None
+
+    # Wire LLM judge if configured and provider is available.
+    if cfg.quality_judge_model is not None and provider_registry is not None:
+        judge_provider_name = cfg.quality_judge_provider
+        if judge_provider_name is not None:
+            try:
+                provider_driver = provider_registry.get(str(judge_provider_name))
+            except KeyError:
+                logger.warning(
+                    API_APP_STARTUP,
+                    note="Quality judge provider not found, LLM judge disabled",
+                    provider=str(judge_provider_name),
+                )
+                provider_driver = None
+        else:
+            # Use first available provider.
+            available = provider_registry.list_providers()
+            if available:
+                provider_driver = provider_registry.get(available[0])
+            else:
+                logger.warning(
+                    API_APP_STARTUP,
+                    note="No providers available, LLM judge disabled",
+                )
+                provider_driver = None
+
+        if provider_driver is not None:
+            from synthorg.hr.performance.llm_judge_quality_strategy import (  # noqa: PLC0415
+                LlmJudgeQualityStrategy,
+            )
+
+            llm_strategy = LlmJudgeQualityStrategy(
+                provider=provider_driver,
+                model=cfg.quality_judge_model,
+                cost_tracker=cost_tracker,
+            )
+            logger.info(
+                API_APP_STARTUP,
+                note="Quality LLM judge configured",
+                model=str(cfg.quality_judge_model),
+            )
+
+    composite = CompositeQualityStrategy(
+        ci_strategy=ci_strategy,
+        llm_strategy=llm_strategy,
+        override_store=quality_override_store,
+        ci_weight=cfg.quality_ci_weight,
+        llm_weight=cfg.quality_llm_weight,
+    )
+
+    return PerformanceTracker(
+        quality_strategy=composite,
+        config=cfg,
+        quality_override_store=quality_override_store,
+    )
 
 
 def create_app(  # noqa: PLR0913, PLR0915

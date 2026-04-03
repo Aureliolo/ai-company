@@ -41,6 +41,9 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.llm_calibration_sampler import (
         LlmCalibrationSampler,
     )
+    from synthorg.hr.performance.quality_override_store import (
+        QualityOverrideStore,
+    )
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.trend_protocol import TrendDetectionStrategy
     from synthorg.hr.performance.window_protocol import MetricsWindowStrategy
@@ -65,6 +68,7 @@ class PerformanceTracker:
         config: Performance tracking configuration.
         sampler: LLM calibration sampler (None = disabled).
         override_store: Collaboration override store (None = disabled).
+        quality_override_store: Quality override store (None = disabled).
     """
 
     def __init__(  # noqa: PLR0913
@@ -77,6 +81,7 @@ class PerformanceTracker:
         config: PerformanceConfig | None = None,
         sampler: LlmCalibrationSampler | None = None,
         override_store: CollaborationOverrideStore | None = None,
+        quality_override_store: QualityOverrideStore | None = None,
     ) -> None:
         cfg = config or PerformanceConfig()
         self._config = cfg
@@ -88,6 +93,7 @@ class PerformanceTracker:
         self._trend_strategy = trend_strategy or self._default_trend(cfg)
         self._sampler = sampler
         self._override_store = override_store
+        self._quality_override_store = quality_override_store
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
         self._background_tasks: set[asyncio.Task[None]] = set()
@@ -431,6 +437,11 @@ class PerformanceTracker:
     def override_store(self) -> CollaborationOverrideStore | None:
         """Return the collaboration override store, if configured."""
         return self._override_store
+
+    @property
+    def quality_override_store(self) -> QualityOverrideStore | None:
+        """Return the quality override store, if configured."""
+        return self._quality_override_store
 
     @property
     def sampler(self) -> LlmCalibrationSampler | None:

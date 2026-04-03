@@ -27,6 +27,7 @@ from synthorg.api.controllers.personalities import (
 )
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
+from synthorg.api.controllers.quality import QualityController
 from synthorg.api.controllers.settings import SettingsController
 from synthorg.api.controllers.setup import SetupController
 from synthorg.api.controllers.setup_personality import (
@@ -70,6 +71,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     TemplatePackController,
     UserController,
     WorkflowController,
+    QualityController,
     WorkflowExecutionController,
 )
 
@@ -97,6 +99,7 @@ __all__ = [
     "PersonalityPresetController",
     "ProjectController",
     "ProviderController",
+    "QualityController",
     "SettingsController",
     "SetupController",
     "SetupPersonalityController",

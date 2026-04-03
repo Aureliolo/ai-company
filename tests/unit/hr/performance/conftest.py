@@ -9,6 +9,7 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     CollaborationOverride,
     LlmCalibrationRecord,
+    QualityOverride,
     TaskMetricRecord,
 )
 
@@ -104,6 +105,26 @@ def make_collaboration_override(  # noqa: PLR0913
 ) -> CollaborationOverride:
     """Build a CollaborationOverride with sensible defaults."""
     return CollaborationOverride(
+        agent_id=NotBlankStr(agent_id),
+        score=score,
+        reason=NotBlankStr(reason),
+        applied_by=NotBlankStr(applied_by),
+        applied_at=applied_at or datetime.now(UTC),
+        expires_at=expires_at,
+    )
+
+
+def make_quality_override(  # noqa: PLR0913
+    *,
+    agent_id: str = "agent-001",
+    score: float = 8.0,
+    reason: str = "Excellent task output quality",
+    applied_by: str = "manager-alice",
+    applied_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> QualityOverride:
+    """Build a QualityOverride with sensible defaults."""
+    return QualityOverride(
         agent_id=NotBlankStr(agent_id),
         score=score,
         reason=NotBlankStr(reason),

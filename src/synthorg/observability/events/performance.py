@@ -23,3 +23,17 @@ PERF_OVERRIDE_SET: Final[str] = "perf.override.set"
 PERF_OVERRIDE_CLEARED: Final[str] = "perf.override.cleared"
 PERF_OVERRIDE_APPLIED: Final[str] = "perf.override.applied"
 PERF_OVERRIDE_EXPIRED: Final[str] = "perf.override.expired"
+
+# ── Quality score overrides ──────────────────────────────────
+PERF_QUALITY_OVERRIDE_SET: Final[str] = "perf.quality_override.set"
+PERF_QUALITY_OVERRIDE_CLEARED: Final[str] = "perf.quality_override.cleared"
+PERF_QUALITY_OVERRIDE_APPLIED: Final[str] = "perf.quality_override.applied"
+PERF_QUALITY_OVERRIDE_EXPIRED: Final[str] = "perf.quality_override.expired"
+
+# ── LLM quality judge ────────────────────────────────────────
+PERF_LLM_JUDGE_STARTED: Final[str] = "perf.llm_judge.started"
+PERF_LLM_JUDGE_COMPLETED: Final[str] = "perf.llm_judge.completed"
+PERF_LLM_JUDGE_FAILED: Final[str] = "perf.llm_judge.failed"
+
+# ── Composite quality scoring ────────────────────────────────
+PERF_COMPOSITE_SCORED: Final[str] = "perf.composite_quality.scored"
