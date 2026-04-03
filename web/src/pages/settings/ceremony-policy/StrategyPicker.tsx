@@ -25,7 +25,11 @@ export function StrategyPicker({ value, onChange, disabled }: StrategyPickerProp
         label="Scheduling Strategy"
         options={STRATEGY_OPTIONS}
         value={value}
-        onChange={(v) => onChange(v as CeremonyStrategyType)}
+        onChange={(v) => {
+          if (CEREMONY_STRATEGY_TYPES.includes(v as CeremonyStrategyType)) {
+            onChange(v as CeremonyStrategyType)
+          }
+        }}
         disabled={disabled}
       />
       <p className="text-xs text-text-secondary">

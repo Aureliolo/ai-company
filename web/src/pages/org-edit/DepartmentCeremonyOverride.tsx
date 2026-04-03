@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType, VelocityCalcType } from '@/api/types'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SelectField } from '@/components/ui/select-field'
@@ -38,10 +38,13 @@ export function DepartmentCeremonyOverride({
   const prevHasOverrideRef = useRef(hasOverride)
 
   // Sync expanded state when override status changes externally
-  if (prevHasOverrideRef.current !== hasOverride) {
-    prevHasOverrideRef.current = hasOverride
-    setExpanded(hasOverride)
-  }
+  useEffect(() => {
+    if (prevHasOverrideRef.current !== hasOverride) {
+      prevHasOverrideRef.current = hasOverride
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+      setExpanded(hasOverride)
+    }
+  }, [hasOverride])
 
   const handleInheritChange = useCallback(
     (inherit: boolean) => {
@@ -64,7 +67,6 @@ export function DepartmentCeremonyOverride({
       onChange({
         ...policy,
         strategy: s,
-        strategy_config: {},
         velocity_calculator: STRATEGY_DEFAULT_VELOCITY_CALC[s],
       })
     },

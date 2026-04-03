@@ -73,7 +73,7 @@ export function PolicyFieldsPanel({
               onChange={(e) => {
                 const val = Number(e.target.value)
                 if (Number.isFinite(val)) {
-                  onTransitionThresholdChange(val)
+                  onTransitionThresholdChange(Math.min(1.0, Math.max(0.01, val)))
                 }
               }}
               disabled={disabled}

@@ -18,8 +18,12 @@ export interface TaskDrivenConfigProps {
 
 export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfigProps) {
   const trigger = typeof config.trigger === 'string' ? config.trigger : ''
-  const everyN = typeof config.every_n_completions === 'number' ? config.every_n_completions : 5
-  const pct = typeof config.sprint_percentage === 'number' ? config.sprint_percentage : 50
+  const everyN = typeof config.every_n_completions === 'number' && Number.isFinite(config.every_n_completions)
+    ? config.every_n_completions
+    : 5
+  const pct = typeof config.sprint_percentage === 'number' && Number.isFinite(config.sprint_percentage)
+    ? config.sprint_percentage
+    : 50
 
   return (
     <div className="space-y-3">

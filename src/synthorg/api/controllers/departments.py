@@ -506,11 +506,25 @@ async def _save_dept_policies_json(
         msg = "Settings service not available"
         logger.warning(API_SERVICE_UNAVAILABLE, service="settings")
         raise ServiceUnavailableError(msg)
-    await app_state.settings_service.set(
-        "coordination",
-        "dept_ceremony_policies",
-        json.dumps(policies, separators=(",", ":")),
-    )
+    try:
+        await app_state.settings_service.set(
+            "coordination",
+            "dept_ceremony_policies",
+            json.dumps(policies, separators=(",", ":")),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="departments.ceremony_policy.save",
+            error="failed to persist dept_ceremony_policies",
+            exc_info=True,
+        )
+        msg = "Failed to save department ceremony policies"
+        raise ServiceUnavailableError(msg) from exc
 
 
 async def _get_dept_ceremony_override(
@@ -585,9 +599,7 @@ async def _get_dept_ceremony_override(
 # dept_ceremony_policies JSON blob.  The asyncio.Lock is sufficient
 # because Litestar runs in a single-process, single-event-loop
 # deployment model -- all concurrent requests share the same loop.
-# If the server moves to multi-worker (e.g. Gunicorn with multiple
-# uvicorn workers), this must be replaced with a settings-service-level
-# compare-and-swap (CAS) operation to prevent cross-worker races.
+# TODO: multi-worker deployment requires settings-service CAS or per-dept keys
 _dept_policy_lock = asyncio.Lock()
 
 

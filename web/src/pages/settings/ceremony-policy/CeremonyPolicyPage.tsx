@@ -84,10 +84,16 @@ export default function CeremonyPolicyPage() {
     transitionThreshold: settingsSnapshot.transitionThreshold,
   }))
   const [saving, setSaving] = useState(false)
+  // Track whether the user has made unsaved edits.  Set to true on any
+  // local form change, cleared on save or when the snapshot re-syncs
+  // successfully (i.e. when the user has not touched the form).
+  const [isDirty, setIsDirty] = useState(false)
 
   // Re-sync form when the underlying settings entries change (deep-link
-  // fetch or WS update).  A single setState avoids the per-field warnings.
+  // fetch or WS update).  Skip when the user has unsaved local edits to
+  // avoid clobbering in-progress work.
   useEffect(() => {
+    if (isDirty) return
     // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate external-store sync
     setForm({
       strategy: settingsSnapshot.strategy,
@@ -97,6 +103,7 @@ export default function CeremonyPolicyPage() {
       transitionThreshold: settingsSnapshot.transitionThreshold,
     })
   }, [
+    isDirty,
     settingsSnapshot.strategy,
     settingsSnapshot.strategyConfig,
     settingsSnapshot.velocityCalculator,
@@ -106,11 +113,11 @@ export default function CeremonyPolicyPage() {
 
   // Convenience destructuring for template readability
   const { strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold } = form
-  const setStrategy = useCallback((s: CeremonyStrategyType) => setForm((prev) => ({ ...prev, strategy: s })), [])
-  const setStrategyConfig = useCallback((c: Record<string, unknown>) => setForm((prev) => ({ ...prev, strategyConfig: c })), [])
-  const setVelocityCalculator = useCallback((v: VelocityCalcType) => setForm((prev) => ({ ...prev, velocityCalculator: v })), [])
-  const setAutoTransition = useCallback((b: boolean) => setForm((prev) => ({ ...prev, autoTransition: b })), [])
-  const setTransitionThreshold = useCallback((t: number) => setForm((prev) => ({ ...prev, transitionThreshold: t })), [])
+  const setStrategy = useCallback((s: CeremonyStrategyType) => { setForm((prev) => ({ ...prev, strategy: s })); setIsDirty(true) }, [])
+  const setStrategyConfig = useCallback((c: Record<string, unknown>) => { setForm((prev) => ({ ...prev, strategyConfig: c })); setIsDirty(true) }, [])
+  const setVelocityCalculator = useCallback((v: VelocityCalcType) => { setForm((prev) => ({ ...prev, velocityCalculator: v })); setIsDirty(true) }, [])
+  const setAutoTransition = useCallback((b: boolean) => { setForm((prev) => ({ ...prev, autoTransition: b })); setIsDirty(true) }, [])
+  const setTransitionThreshold = useCallback((t: number) => { setForm((prev) => ({ ...prev, transitionThreshold: t })); setIsDirty(true) }, [])
 
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
@@ -196,6 +203,7 @@ export default function CeremonyPolicyPage() {
         updateSetting('coordination', 'ceremony_transition_threshold', String(transitionThreshold)),
         updateSetting('coordination', 'ceremony_policy_overrides', JSON.stringify(ceremonyOverrides)),
       ])
+      setIsDirty(false)
       addToast({ variant: 'success', title: 'Ceremony policy saved' })
       fetchResolvedPolicy()
     } catch (err) {
@@ -220,6 +228,7 @@ export default function CeremonyPolicyPage() {
         }
         return next
       })
+      setIsDirty(true)
     },
     [],
   )

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 
@@ -12,6 +12,30 @@ export function MilestoneDrivenConfig({ config, onChange, disabled }: MilestoneD
   const transitionMilestone = (config.transition_milestone as string) ?? ''
   const [rawJson, setRawJson] = useState(() => JSON.stringify(config.milestones ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // Sync rawJson when config.milestones changes externally (e.g. parent reset).
+  // rawJson is intentionally excluded from deps to avoid feedback loops --
+  // we only want to sync when the *prop* changes, not when the user edits.
+  useEffect(() => {
+    const incoming = JSON.stringify(config.milestones ?? [], null, 2)
+    try {
+      const currentParsed = JSON.parse(rawJson)
+      const incomingParsed = config.milestones ?? []
+      if (JSON.stringify(currentParsed) !== JSON.stringify(incomingParsed)) {
+        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+        setRawJson(incoming)
+        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+        setJsonError(null)
+      }
+    } catch {
+      // Current rawJson is invalid -- always sync from prop
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+      setRawJson(incoming)
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+      setJsonError(null)
+    }
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- rawJson intentionally excluded
+  }, [config.milestones])
 
   return (
     <div className="space-y-3">

@@ -8,6 +8,10 @@ import { ThroughputAdaptiveConfig } from './strategies/ThroughputAdaptiveConfig'
 import { ExternalTriggerConfig } from './strategies/ExternalTriggerConfig'
 import { MilestoneDrivenConfig } from './strategies/MilestoneDrivenConfig'
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled strategy: ${String(value)}`)
+}
+
 export interface StrategyConfigPanelProps {
   strategy: CeremonyStrategyType
   config: Record<string, unknown>
@@ -39,6 +43,6 @@ export function StrategyConfigPanel({
     case 'milestone_driven':
       return <MilestoneDrivenConfig config={config} onChange={onChange} disabled={disabled} />
     default:
-      return null
+      return assertNever(strategy)
   }
 }

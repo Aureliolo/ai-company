@@ -4,7 +4,7 @@ import type { CeremonyPolicyConfig, CeremonyStrategyType, Department } from '@/a
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SectionCard } from '@/components/ui/section-card'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
-import { CEREMONY_STRATEGY_LABELS } from '@/utils/constants'
+import { CEREMONY_STRATEGY_LABELS, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
@@ -109,7 +109,7 @@ function DepartmentRow({ dept }: { dept: Department }) {
                 disabled={saving}
               />
               <PolicyFieldsPanel
-                velocityCalculator={effectivePolicy?.velocity_calculator ?? 'task_driven'}
+                velocityCalculator={effectivePolicy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[effectivePolicy?.strategy ?? 'task_driven']}
                 autoTransition={effectivePolicy?.auto_transition ?? true}
                 transitionThreshold={effectivePolicy?.transition_threshold ?? 1.0}
                 onVelocityCalculatorChange={(v) => handlePolicyFieldChange('velocity_calculator', v)}

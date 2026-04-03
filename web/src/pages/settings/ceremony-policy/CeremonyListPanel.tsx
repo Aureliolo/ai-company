@@ -6,6 +6,7 @@ import { SectionCard } from '@/components/ui/section-card'
 import { CEREMONY_STRATEGY_LABELS } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 import { StrategyPicker } from './StrategyPicker'
+import { StrategyConfigPanel } from './StrategyConfigPanel'
 import { PolicyFieldsPanel } from './PolicyFieldsPanel'
 
 export interface CeremonyOverride {
@@ -93,6 +94,12 @@ function CeremonyRow({
               <StrategyPicker
                 value={strategy as CeremonyStrategyType}
                 onChange={handleStrategyChange}
+                disabled={saving}
+              />
+              <StrategyConfigPanel
+                strategy={strategy as CeremonyStrategyType}
+                config={(policy?.strategy_config ?? {}) as Record<string, unknown>}
+                onChange={(c) => onOverrideChange(name, { ...policy, strategy_config: c })}
                 disabled={saving}
               />
               <PolicyFieldsPanel
