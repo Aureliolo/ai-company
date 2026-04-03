@@ -481,6 +481,10 @@ class SettingsService:
             expected_updated_at: When provided, enforces atomic
                 compare-and-swap -- raises ``VersionConflictError``
                 if the current ``updated_at`` does not match.
+                Pass ``""`` (empty string) for first-write semantics
+                when no DB override exists yet (the controller's
+                ``_check_setting_etag`` returns ``""`` for settings
+                that have never been persisted).
 
         Returns:
             The updated setting entry.

@@ -499,7 +499,7 @@ async def ws_handler(
             await channels_plugin.unsubscribe(subscriber)
         except Exception:
             logger.error(
-                API_WS_DISCONNECTED,
+                API_WS_TRANSPORT_ERROR,
                 error="Failed to unsubscribe",
                 client=str(socket.client),
                 exc_info=True,
