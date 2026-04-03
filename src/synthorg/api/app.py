@@ -739,6 +739,19 @@ def create_app(  # noqa: PLR0913, PLR0915
     provider_registry = phase1.provider_registry
     provider_health_tracker = phase1.provider_health_tracker
 
+    # ── Workflow execution observer: react to task completion/failure ──
+    if task_engine is not None and persistence is not None:
+        from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
+            WorkflowExecutionObserver,
+        )
+
+        _wf_observer = WorkflowExecutionObserver(
+            definition_repo=persistence.workflow_definitions,
+            execution_repo=persistence.workflow_executions,
+            task_engine=task_engine,
+        )
+        task_engine.register_observer(_wf_observer)
+
     # ── Meeting auto-wire: orchestrator + scheduler (Phase 1 level) ──
     meeting_wire = auto_wire_meetings(
         effective_config=effective_config,

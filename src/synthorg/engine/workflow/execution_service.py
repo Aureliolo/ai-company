@@ -14,6 +14,7 @@ from uuid import uuid4
 from synthorg.core.enums import (
     Complexity,
     Priority,
+    TaskStatus,
     TaskType,
     WorkflowEdgeType,
     WorkflowExecutionStatus,
@@ -26,7 +27,7 @@ from synthorg.engine.errors import (
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
-from synthorg.engine.task_engine_models import CreateTaskData
+from synthorg.engine.task_engine_models import CreateTaskData, TaskStateChanged
 from synthorg.engine.workflow.condition_eval import evaluate_condition
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
@@ -41,11 +42,15 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_ACTIVATED,
     WORKFLOW_EXEC_CANCELLED,
+    WORKFLOW_EXEC_COMPLETED,
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_CONDITION_EVALUATED,
+    WORKFLOW_EXEC_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
+    WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+    WORKFLOW_EXEC_NODE_TASK_FAILED,
     WORKFLOW_EXEC_NOT_FOUND,
     WORKFLOW_EXEC_TASK_CREATED,
 )
@@ -800,3 +805,226 @@ class WorkflowExecutionService:
         )
 
         return cancelled
+
+    # -- Lifecycle transitions ---------------------------------------------
+
+    async def complete_execution(
+        self,
+        execution_id: str,
+    ) -> WorkflowExecution:
+        """Transition a running execution to COMPLETED.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            The updated execution in COMPLETED status.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If execution is not RUNNING.
+        """
+        execution = await self._load_running(execution_id)
+        now = datetime.now(UTC)
+        completed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.COMPLETED,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await self._execution_repo.save(completed)
+        logger.info(
+            WORKFLOW_EXEC_COMPLETED,
+            execution_id=execution_id,
+        )
+        return completed
+
+    async def fail_execution(
+        self,
+        execution_id: str,
+        *,
+        error: str,
+    ) -> WorkflowExecution:
+        """Transition a running execution to FAILED.
+
+        Args:
+            execution_id: The execution identifier.
+            error: Error message describing the failure.
+
+        Returns:
+            The updated execution in FAILED status.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If execution is not RUNNING.
+        """
+        execution = await self._load_running(execution_id)
+        now = datetime.now(UTC)
+        failed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.FAILED,
+                "error": error,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await self._execution_repo.save(failed)
+        logger.warning(
+            WORKFLOW_EXEC_FAILED,
+            execution_id=execution_id,
+            error=error,
+        )
+        return failed
+
+    async def handle_task_state_changed(
+        self,
+        event: TaskStateChanged,
+    ) -> None:
+        """React to a task state change from the TaskEngine.
+
+        Correlates the task to a running workflow execution and
+        transitions the execution to COMPLETED or FAILED as
+        appropriate.  Silently ignores events for tasks not
+        belonging to any running execution.
+
+        Args:
+            event: The task state change event.
+        """
+        if event.mutation_type != "transition":
+            return
+        if event.new_status not in {
+            TaskStatus.COMPLETED,
+            TaskStatus.FAILED,
+        }:
+            return
+
+        execution = await self._find_execution_by_task(
+            event.task_id,
+        )
+        if execution is None:
+            return
+
+        if event.new_status is TaskStatus.FAILED:
+            updated = _update_node_status(
+                execution,
+                event.task_id,
+                WorkflowNodeExecutionStatus.TASK_FAILED,
+            )
+            await self._execution_repo.save(updated)
+            logger.info(
+                WORKFLOW_EXEC_NODE_TASK_FAILED,
+                execution_id=execution.id,
+                task_id=event.task_id,
+            )
+            await self.fail_execution(
+                execution.id,
+                error=f"Task {event.task_id!r} failed",
+            )
+            return
+
+        # Task completed -- update node and check if all done
+        updated = _update_node_status(
+            execution,
+            event.task_id,
+            WorkflowNodeExecutionStatus.TASK_COMPLETED,
+        )
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
+
+        if _all_tasks_completed(updated):
+            await self._execution_repo.save(updated)
+            await self.complete_execution(execution.id)
+        else:
+            await self._execution_repo.save(updated)
+
+    # -- Private helpers ---------------------------------------------------
+
+    async def _load_running(
+        self,
+        execution_id: str,
+    ) -> WorkflowExecution:
+        """Load an execution and validate it is RUNNING.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If not in RUNNING status.
+        """
+        execution = await self._execution_repo.get(execution_id)
+        if execution is None:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                execution_id=execution_id,
+            )
+            msg = f"Workflow execution {execution_id!r} not found"
+            raise WorkflowExecutionNotFoundError(msg)
+
+        if execution.status is not WorkflowExecutionStatus.RUNNING:
+            msg = (
+                f"Cannot transition execution {execution_id!r}"
+                f" in status {execution.status.value!r}"
+                " (expected 'running')"
+            )
+            raise WorkflowExecutionError(msg)
+
+        return execution
+
+    async def _find_execution_by_task(
+        self,
+        task_id: str,
+    ) -> WorkflowExecution | None:
+        """Find a RUNNING execution containing a node with the task ID."""
+        running = await self._execution_repo.list_by_status(
+            WorkflowExecutionStatus.RUNNING,
+        )
+        for execution in running:
+            for ne in execution.node_executions:
+                if ne.task_id == task_id:
+                    return execution
+        return None
+
+
+def _update_node_status(
+    execution: WorkflowExecution,
+    task_id: str,
+    new_status: WorkflowNodeExecutionStatus,
+) -> WorkflowExecution:
+    """Return a copy with one node's status updated.
+
+    Args:
+        execution: The source execution (not mutated).
+        task_id: Task ID of the node to update.
+        new_status: New status for the matching node.
+
+    Returns:
+        A new ``WorkflowExecution`` with the updated node and
+        bumped ``version`` / ``updated_at``.
+    """
+    updated_nodes = tuple(
+        ne.model_copy(update={"status": new_status}) if ne.task_id == task_id else ne
+        for ne in execution.node_executions
+    )
+    return execution.model_copy(
+        update={
+            "node_executions": updated_nodes,
+            "updated_at": datetime.now(UTC),
+            "version": execution.version + 1,
+        },
+    )
+
+
+def _all_tasks_completed(execution: WorkflowExecution) -> bool:
+    """Check if all non-skipped TASK nodes have completed."""
+    for ne in execution.node_executions:
+        if ne.node_type is not WorkflowNodeType.TASK:
+            continue
+        if ne.status is WorkflowNodeExecutionStatus.SKIPPED:
+            continue
+        if ne.status is not WorkflowNodeExecutionStatus.TASK_COMPLETED:
+            return False
+    return True

@@ -36,6 +36,12 @@ WORKFLOW_EXEC_CONDITION_EVAL_FAILED: Final[str] = (
 )
 """Conditional node expression evaluation failed."""
 
+WORKFLOW_EXEC_NODE_TASK_COMPLETED: Final[str] = "workflow.execution.node_task_completed"
+"""Task linked to a TASK node completed successfully."""
+
+WORKFLOW_EXEC_NODE_TASK_FAILED: Final[str] = "workflow.execution.node_task_failed"
+"""Task linked to a TASK node failed."""
+
 # -- Lifecycle events ---------------------------------------------------------
 
 WORKFLOW_EXEC_COMPLETED: Final[str] = "workflow.execution.completed"
