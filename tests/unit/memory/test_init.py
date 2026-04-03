@@ -71,5 +71,11 @@ class TestMemoryExports:
             "LLMSufficiencyChecker",
             "QueryReformulator",
             "SufficiencyChecker",
+            "FailureAnalysisPayload",
+            "ProceduralMemoryConfig",
+            "ProceduralMemoryProposal",
+            "ProceduralMemoryProposer",
+            "materialize_skill_md",
+            "propose_procedural_memory",
         }
         assert set(memory_module.__all__) == expected

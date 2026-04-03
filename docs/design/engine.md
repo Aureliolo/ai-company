@@ -668,7 +668,13 @@ async run(
       [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
-12. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
+12. **Procedural memory generation** (non-critical) -- when
+    `ProceduralMemoryConfig` is enabled and the execution failed
+    (recovery_result exists), a separate proposer LLM call analyses the
+    failure and stores a `PROCEDURAL` memory entry for future retrieval.
+    Optionally materializes a SKILL.md file. Failures are logged but do
+    not affect the result (see [Memory > Procedural Memory Auto-Generation](memory.md#procedural-memory-auto-generation)).
+13. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
 
 **Error handling:** `MemoryError` and `RecursionError` propagate

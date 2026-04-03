@@ -75,6 +75,14 @@ from synthorg.memory.org import (
     SQLiteOrgFactStore,
     create_org_memory_backend,
 )
+from synthorg.memory.procedural import (
+    FailureAnalysisPayload,
+    ProceduralMemoryConfig,
+    ProceduralMemoryProposal,
+    ProceduralMemoryProposer,
+    materialize_skill_md,
+    propose_procedural_memory,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.memory.ranking import FusionStrategy, ScoredMemory, fuse_ranked_lists
 from synthorg.memory.reformulation import (
@@ -103,6 +111,8 @@ __all__ = [
     "DefaultTokenEstimator",
     "DualModeConsolidationStrategy",
     "EmbedderOverrideConfig",
+    # Procedural memory
+    "FailureAnalysisPayload",
     "FusionStrategy",
     "InjectionPoint",
     "InjectionStrategy",
@@ -137,6 +147,9 @@ __all__ = [
     "OrgMemoryConfig",
     "OrgMemoryError",
     "OrgMemoryQuery",
+    "ProceduralMemoryConfig",
+    "ProceduralMemoryProposal",
+    "ProceduralMemoryProposer",
     "QueryReformulator",
     "RetentionEnforcer",
     "SQLiteOrgFactStore",
@@ -151,4 +164,6 @@ __all__ = [
     "create_memory_backend",
     "create_org_memory_backend",
     "fuse_ranked_lists",
+    "materialize_skill_md",
+    "propose_procedural_memory",
 ]
