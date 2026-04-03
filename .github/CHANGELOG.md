@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.9](https://github.com/Aureliolo/synthorg/compare/v0.5.8...v0.5.9) (2026-04-03)
+
+
+### Features
+
+* ceremony template defaults + strategy migration UX ([#1031](https://github.com/Aureliolo/synthorg/issues/1031)) ([da4a8e1](https://github.com/Aureliolo/synthorg/commit/da4a8e1bd44fb2ee634b5d5c0c5cf74c5c7d3450)), closes [#976](https://github.com/Aureliolo/synthorg/issues/976) [#978](https://github.com/Aureliolo/synthorg/issues/978)
+* hybrid search (dense + BM25 sparse) for memory retrieval pipeline ([#1016](https://github.com/Aureliolo/synthorg/issues/1016)) ([fccac4a](https://github.com/Aureliolo/synthorg/commit/fccac4af9b284a4d0fe1ef7ea2f2ca523476b612)), closes [#694](https://github.com/Aureliolo/synthorg/issues/694)
+* implement network hosting and multi-user access ([#1032](https://github.com/Aureliolo/synthorg/issues/1032)) ([398c378](https://github.com/Aureliolo/synthorg/commit/398c378446e47dc5a2af1d8742e1810d66664420)), closes [#244](https://github.com/Aureliolo/synthorg/issues/244)
+* implement visual workflow editor ([#247](https://github.com/Aureliolo/synthorg/issues/247)) ([#1018](https://github.com/Aureliolo/synthorg/issues/1018)) ([ef5d3c1](https://github.com/Aureliolo/synthorg/commit/ef5d3c1e7de4d8e303c5d55ace5408e9b865c726))
+
 ## [0.5.8](https://github.com/Aureliolo/synthorg/compare/v0.5.7...v0.5.8) (2026-04-03)
 
 
