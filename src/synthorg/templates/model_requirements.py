@@ -11,10 +11,10 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.core.types import (
-    ModelTier as ModelTier,  # noqa: PLC0414 -- re-export for mypy
-)
+from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
+
+__all__ = ["ModelTier"]
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,
     TEMPLATE_MODEL_REQUIREMENT_PARSED,
@@ -179,7 +179,7 @@ def resolve_model_requirement(
     )
 
     merged: dict[str, Any] = {"tier": tier_str.strip().lower()}
-    # Affinity provides defaults; explicit template values override.
+    # Affinity values fill in priority and min_context when available.
     if "priority" in affinity:
         merged["priority"] = affinity["priority"]
     if "min_context" in affinity:

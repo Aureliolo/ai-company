@@ -356,6 +356,8 @@ class AgentIdentity(BaseModel):
         memory: Memory configuration.
         tools: Tool permissions.
         authority: Authority configuration for this agent.
+        autonomy_level: Per-agent autonomy level override (``None`` uses
+            department/company default).
         hiring_date: Date the agent was hired.
         status: Current lifecycle status.
     """

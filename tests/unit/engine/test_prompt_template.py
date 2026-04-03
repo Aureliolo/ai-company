@@ -12,23 +12,6 @@ from synthorg.engine.prompt_template import (
 
 
 @pytest.mark.unit
-class TestAutonomyInstructions:
-    """Tests for AUTONOMY_INSTRUCTIONS coverage and content."""
-
-    def test_all_seniority_levels_covered(self) -> None:
-        assert set(SeniorityLevel) == set(AUTONOMY_INSTRUCTIONS)
-
-    def test_all_values_are_non_empty_strings(self) -> None:
-        for level, instruction in AUTONOMY_INSTRUCTIONS.items():
-            assert isinstance(instruction, str), f"{level} value is not a string"
-            assert instruction.strip(), f"{level} has empty instruction text"
-
-    def test_each_level_produces_different_text(self) -> None:
-        values = list(AUTONOMY_INSTRUCTIONS.values())
-        assert len(values) == len(set(values))
-
-
-@pytest.mark.unit
 class TestDefaultTemplate:
     """Tests for the default Jinja2 system prompt template."""
 
@@ -37,20 +20,30 @@ class TestDefaultTemplate:
         assert DEFAULT_TEMPLATE.strip()
 
 
+_AUTONOMY_MAPS = {
+    "full": AUTONOMY_INSTRUCTIONS,
+    "summary": AUTONOMY_SUMMARY,
+    "minimal": AUTONOMY_MINIMAL,
+}
+
+
 @pytest.mark.unit
-class TestAutonomySummary:
-    """Tests for AUTONOMY_SUMMARY coverage and content."""
+class TestAutonomyMaps:
+    """Tests for all three autonomy instruction maps (full/summary/minimal)."""
 
-    def test_all_seniority_levels_covered(self) -> None:
-        assert set(SeniorityLevel) == set(AUTONOMY_SUMMARY)
+    @pytest.mark.parametrize("label", ["full", "summary", "minimal"])
+    def test_all_seniority_levels_covered(self, label: str) -> None:
+        assert set(SeniorityLevel) == set(_AUTONOMY_MAPS[label])
 
-    def test_all_values_are_non_empty_strings(self) -> None:
-        for level, instruction in AUTONOMY_SUMMARY.items():
+    @pytest.mark.parametrize("label", ["full", "summary", "minimal"])
+    def test_all_values_are_non_empty_strings(self, label: str) -> None:
+        for level, instruction in _AUTONOMY_MAPS[label].items():
             assert isinstance(instruction, str), f"{level} value is not a string"
             assert instruction.strip(), f"{level} has empty instruction text"
 
-    def test_each_level_produces_different_text(self) -> None:
-        values = list(AUTONOMY_SUMMARY.values())
+    @pytest.mark.parametrize("label", ["full", "summary", "minimal"])
+    def test_each_level_produces_different_text(self, label: str) -> None:
+        values = list(_AUTONOMY_MAPS[label].values())
         assert len(values) == len(set(values))
 
     def test_summary_shorter_than_full(self) -> None:
@@ -59,23 +52,6 @@ class TestAutonomySummary:
             assert len(AUTONOMY_SUMMARY[level]) <= len(
                 AUTONOMY_INSTRUCTIONS[level],
             )
-
-
-@pytest.mark.unit
-class TestAutonomyMinimal:
-    """Tests for AUTONOMY_MINIMAL coverage and content."""
-
-    def test_all_seniority_levels_covered(self) -> None:
-        assert set(SeniorityLevel) == set(AUTONOMY_MINIMAL)
-
-    def test_all_values_are_non_empty_strings(self) -> None:
-        for level, instruction in AUTONOMY_MINIMAL.items():
-            assert isinstance(instruction, str), f"{level} value is not a string"
-            assert instruction.strip(), f"{level} has empty instruction text"
-
-    def test_each_level_produces_different_text(self) -> None:
-        values = list(AUTONOMY_MINIMAL.values())
-        assert len(values) == len(set(values))
 
     def test_minimal_shorter_than_summary(self) -> None:
         """Minimal instructions are shorter than summary instructions."""
@@ -87,7 +63,14 @@ class TestAutonomyMinimal:
 
 @pytest.mark.unit
 class TestAutonomyInstructionsGuard:
-    """Tests for the module-level guard that detects missing levels."""
+    """Tests for the detection logic pattern used by module-level guards.
+
+    The actual import-time guards in ``prompt_template.py`` and
+    ``prompt_profiles.py`` run at module load and cannot be re-exercised
+    after import.  This test verifies that the *detection logic* (set
+    subtraction) correctly identifies missing levels, giving confidence
+    that the guards work.
+    """
 
     def test_guard_detects_missing_level(self) -> None:
         incomplete = dict(AUTONOMY_INSTRUCTIONS)

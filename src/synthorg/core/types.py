@@ -8,6 +8,12 @@ from pydantic import AfterValidator, StringConstraints
 ModelTier = Literal["large", "medium", "small"]
 """Model capability tier: large (most capable), medium, small (cheapest)."""
 
+AutonomyDetailLevel = Literal["full", "summary", "minimal"]
+"""Level of autonomy instruction detail in prompt profiles."""
+
+PersonalityMode = Literal["full", "condensed", "minimal"]
+"""Personality section verbosity in prompt profiles."""
+
 
 def _check_not_whitespace(value: str) -> str:
     """Reject whitespace-only strings."""

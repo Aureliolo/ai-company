@@ -165,11 +165,27 @@ class TestSeniorityInfo:
             )
 
     def test_whitespace_model_tier_rejected(self) -> None:
-        with pytest.raises(ValidationError):
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'large', 'medium' or 'small'",
+        ):
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="tasks",
                 typical_model_tier="   ",  # type: ignore[arg-type]
+                cost_tier="low",
+            )
+
+    def test_invalid_model_tier_rejected(self) -> None:
+        """Invalid tier values are rejected by the ModelTier Literal."""
+        with pytest.raises(
+            ValidationError,
+            match="Input should be 'large', 'medium' or 'small'",
+        ):
+            SeniorityInfo(
+                level=SeniorityLevel.JUNIOR,
+                authority_scope="tasks",
+                typical_model_tier="extra-large",  # type: ignore[arg-type]
                 cost_tier="low",
             )
 

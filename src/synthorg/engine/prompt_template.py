@@ -15,67 +15,69 @@ tool details from the API-level definitions.  Custom templates may still
 reference ``{{ tools }}`` when explicitly needed.
 """
 
+from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.enums import SeniorityLevel
 
-# Frozen at "1.0.0" until the app has users -- no caching, snapshots,
-# or migrations depend on this yet.  Bump to a meaningful version when
-# the first production deployment ships.
+# Version tracks incompatible template changes.  Bump when the template
+# structure changes in ways that affect caching, snapshots, or migrations.
 PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
-AUTONOMY_INSTRUCTIONS: Final[dict[SeniorityLevel, str]] = {
-    SeniorityLevel.JUNIOR: (
-        "Follow instructions carefully and precisely. "
-        "Ask clarifying questions when requirements are ambiguous. "
-        "Seek approval before making decisions outside your assigned scope. "
-        "Break tasks into small, verifiable steps and report progress frequently."
-    ),
-    SeniorityLevel.MID: (
-        "Work independently on well-defined tasks. "
-        "Suggest improvements when you identify better approaches. "
-        "Escalate blockers promptly and propose potential solutions. "
-        "Use your judgment for routine decisions within your domain."
-    ),
-    SeniorityLevel.SENIOR: (
-        "Take ownership of your domain and drive tasks to completion. "
-        "Mentor junior team members and review their work. "
-        "Make design decisions within your area of expertise. "
-        "Proactively identify risks and propose mitigations."
-    ),
-    SeniorityLevel.LEAD: (
-        "Approve and delegate tasks within your team. "
-        "Coordinate team efforts and resolve cross-functional blockers. "
-        "Set technical direction for your team's domain. "
-        "Balance quality with delivery timelines."
-    ),
-    SeniorityLevel.PRINCIPAL: (
-        "Make architectural decisions that affect multiple teams. "
-        "Define technical standards and best practices for the organization. "
-        "Guide organization-wide patterns and technology choices. "
-        "Evaluate long-term technical strategy and trade-offs."
-    ),
-    SeniorityLevel.DIRECTOR: (
-        "Make strategic decisions with budget authority. "
-        "Coordinate across teams and departments to align priorities. "
-        "Allocate resources based on organizational goals. "
-        "Balance technical excellence with business objectives."
-    ),
-    SeniorityLevel.VP: (
-        "Exercise department-wide authority over strategy and resources. "
-        "Drive strategic planning and long-term roadmaps. "
-        "Allocate budget and personnel across teams. "
-        "Represent your department in executive decisions."
-    ),
-    SeniorityLevel.C_SUITE: (
-        "Exercise company-wide authority and provide final approvals. "
-        "Set vision and strategic direction for the organization. "
-        "Make high-impact decisions on budget, hiring, and partnerships. "
-        "Coordinate across all departments to achieve company objectives."
-    ),
-}
+AUTONOMY_INSTRUCTIONS: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+    {
+        SeniorityLevel.JUNIOR: (
+            "Follow instructions carefully and precisely. "
+            "Ask clarifying questions when requirements are ambiguous. "
+            "Seek approval before making decisions outside your assigned scope. "
+            "Break tasks into small, verifiable steps and report progress frequently."
+        ),
+        SeniorityLevel.MID: (
+            "Work independently on well-defined tasks. "
+            "Suggest improvements when you identify better approaches. "
+            "Escalate blockers promptly and propose potential solutions. "
+            "Use your judgment for routine decisions within your domain."
+        ),
+        SeniorityLevel.SENIOR: (
+            "Take ownership of your domain and drive tasks to completion. "
+            "Mentor junior team members and review their work. "
+            "Make design decisions within your area of expertise. "
+            "Proactively identify risks and propose mitigations."
+        ),
+        SeniorityLevel.LEAD: (
+            "Approve and delegate tasks within your team. "
+            "Coordinate team efforts and resolve cross-functional blockers. "
+            "Set technical direction for your team's domain. "
+            "Balance quality with delivery timelines."
+        ),
+        SeniorityLevel.PRINCIPAL: (
+            "Make architectural decisions that affect multiple teams. "
+            "Define technical standards and best practices for the organization. "
+            "Guide organization-wide patterns and technology choices. "
+            "Evaluate long-term technical strategy and trade-offs."
+        ),
+        SeniorityLevel.DIRECTOR: (
+            "Make strategic decisions with budget authority. "
+            "Coordinate across teams and departments to align priorities. "
+            "Allocate resources based on organizational goals. "
+            "Balance technical excellence with business objectives."
+        ),
+        SeniorityLevel.VP: (
+            "Exercise department-wide authority over strategy and resources. "
+            "Drive strategic planning and long-term roadmaps. "
+            "Allocate budget and personnel across teams. "
+            "Represent your department in executive decisions."
+        ),
+        SeniorityLevel.C_SUITE: (
+            "Exercise company-wide authority and provide final approvals. "
+            "Set vision and strategic direction for the organization. "
+            "Make high-impact decisions on budget, hiring, and partnerships. "
+            "Coordinate across all departments to achieve company objectives."
+        ),
+    }
+)
 
 _missing_levels = set(SeniorityLevel) - set(AUTONOMY_INSTRUCTIONS)
 if _missing_levels:
@@ -85,24 +87,28 @@ if _missing_levels:
 
 # ── Condensed autonomy (one sentence per level) ─────────────────
 
-AUTONOMY_SUMMARY: Final[dict[SeniorityLevel, str]] = {
-    SeniorityLevel.JUNIOR: "Follow instructions carefully and ask when uncertain.",
-    SeniorityLevel.MID: "Work independently on defined tasks and escalate blockers.",
-    SeniorityLevel.SENIOR: (
-        "Take ownership of your domain and drive tasks to completion."
-    ),
-    SeniorityLevel.LEAD: "Approve and delegate tasks within your team.",
-    SeniorityLevel.PRINCIPAL: (
-        "Make architectural decisions that affect multiple teams."
-    ),
-    SeniorityLevel.DIRECTOR: "Make strategic decisions with budget authority.",
-    SeniorityLevel.VP: (
-        "Exercise department-wide authority over strategy and resources."
-    ),
-    SeniorityLevel.C_SUITE: (
-        "Exercise company-wide authority and provide final approvals."
-    ),
-}
+AUTONOMY_SUMMARY: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+    {
+        SeniorityLevel.JUNIOR: "Follow instructions carefully and ask when uncertain.",
+        SeniorityLevel.MID: (
+            "Work independently on defined tasks and escalate blockers."
+        ),
+        SeniorityLevel.SENIOR: (
+            "Take ownership of your domain and drive tasks to completion."
+        ),
+        SeniorityLevel.LEAD: "Approve and delegate tasks within your team.",
+        SeniorityLevel.PRINCIPAL: (
+            "Make architectural decisions that affect multiple teams."
+        ),
+        SeniorityLevel.DIRECTOR: "Make strategic decisions with budget authority.",
+        SeniorityLevel.VP: (
+            "Exercise department-wide authority over strategy and resources."
+        ),
+        SeniorityLevel.C_SUITE: (
+            "Exercise company-wide authority and provide final approvals."
+        ),
+    }
+)
 
 _missing_summary = set(SeniorityLevel) - set(AUTONOMY_SUMMARY)
 if _missing_summary:
@@ -112,16 +118,18 @@ if _missing_summary:
 
 # ── Minimal autonomy (single phrase per level) ──────────────────
 
-AUTONOMY_MINIMAL: Final[dict[SeniorityLevel, str]] = {
-    SeniorityLevel.JUNIOR: "Execute assigned tasks precisely.",
-    SeniorityLevel.MID: "Work independently within scope.",
-    SeniorityLevel.SENIOR: "Own your domain.",
-    SeniorityLevel.LEAD: "Lead and delegate.",
-    SeniorityLevel.PRINCIPAL: "Set architecture direction.",
-    SeniorityLevel.DIRECTOR: "Direct strategy and resources.",
-    SeniorityLevel.VP: "Drive department strategy.",
-    SeniorityLevel.C_SUITE: "Set company direction.",
-}
+AUTONOMY_MINIMAL: Final[MappingProxyType[SeniorityLevel, str]] = MappingProxyType(
+    {
+        SeniorityLevel.JUNIOR: "Execute assigned tasks precisely.",
+        SeniorityLevel.MID: "Work independently within scope.",
+        SeniorityLevel.SENIOR: "Own your domain.",
+        SeniorityLevel.LEAD: "Lead and delegate.",
+        SeniorityLevel.PRINCIPAL: "Set architecture direction.",
+        SeniorityLevel.DIRECTOR: "Direct strategy and resources.",
+        SeniorityLevel.VP: "Drive department strategy.",
+        SeniorityLevel.C_SUITE: "Set company direction.",
+    }
+)
 
 _missing_minimal = set(SeniorityLevel) - set(AUTONOMY_MINIMAL)
 if _missing_minimal:

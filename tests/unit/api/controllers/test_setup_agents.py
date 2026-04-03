@@ -1,13 +1,14 @@
-"""Tests for expand_template_agents and build_agent_config."""
+"""Tests for expand_template_agents, match_and_assign_models, and build_agent_config."""
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from synthorg.api.controllers.setup_agents import (
     build_agent_config,
     expand_template_agents,
+    match_and_assign_models,
 )
 from synthorg.api.errors import ApiValidationError
 from synthorg.core.enums import CompanyType, SeniorityLevel
@@ -193,3 +194,52 @@ class TestBuildAgentConfigCustomPresets:
         data = self._make_request("nonexistent")
         with pytest.raises(ApiValidationError, match="Unknown personality preset"):
             build_agent_config(data)
+
+
+@pytest.mark.unit
+class TestMatchAndAssignModels:
+    """Tests for match_and_assign_models model_tier wiring."""
+
+    @patch("synthorg.templates.model_matcher.match_all_agents")
+    def test_model_tier_included_in_assignment(
+        self,
+        mock_match: MagicMock,
+    ) -> None:
+        """model_tier from the match is included in the agent model dict."""
+        match = MagicMock()
+        match.agent_index = 0
+        match.provider_name = "test-provider"
+        match.model_id = "test-large-001"
+        match.tier = "large"
+        mock_match.return_value = [match]
+
+        agents: list[dict[str, Any]] = [
+            {"name": "Agent-0", "tier": "large"},
+        ]
+        result = match_and_assign_models(agents, {})
+
+        assert len(result) == 1
+        model = result[0]["model"]
+        assert model["provider"] == "test-provider"
+        assert model["model_id"] == "test-large-001"
+        assert model["model_tier"] == "large"
+
+    @patch("synthorg.templates.model_matcher.match_all_agents")
+    def test_small_tier_propagated(
+        self,
+        mock_match: MagicMock,
+    ) -> None:
+        """Small tier from the match flows into the model dict."""
+        match = MagicMock()
+        match.agent_index = 0
+        match.provider_name = "test-provider"
+        match.model_id = "test-small-001"
+        match.tier = "small"
+        mock_match.return_value = [match]
+
+        agents: list[dict[str, Any]] = [
+            {"name": "Agent-0", "tier": "small"},
+        ]
+        result = match_and_assign_models(agents, {})
+
+        assert result[0]["model"]["model_tier"] == "small"

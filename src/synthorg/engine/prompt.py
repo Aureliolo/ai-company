@@ -55,6 +55,7 @@ from synthorg.engine.prompt_template import (
     DEFAULT_TEMPLATE,
     PROMPT_TEMPLATE_VERSION,
 )
+from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -179,7 +180,9 @@ def build_system_prompt(  # noqa: PLR0913
     profile = get_prompt_profile(model_tier)
     logger.info(
         PROMPT_PROFILE_SELECTED,
-        tier=model_tier or "large",
+        requested_tier=model_tier,
+        selected_tier=profile.tier,
+        defaulted=model_tier is None,
         personality_mode=profile.personality_mode,
         autonomy_detail_level=profile.autonomy_detail_level,
     )
@@ -245,7 +248,8 @@ def build_system_prompt(  # noqa: PLR0913
             agent_name=agent.name,
             error=str(exc),
         )
-        msg = f"Unexpected error building prompt for agent '{agent.name}': {exc}"
+        detail = sanitize_message(str(exc))
+        msg = f"Unexpected error building prompt for agent '{agent.name}': {detail}"
         raise PromptBuildError(msg) from exc
 
     return _log_and_return(agent, result)
@@ -486,7 +490,11 @@ def _trim_sections(  # noqa: PLR0913
 
         if section == _SECTION_COMPANY and company is not None:
             company = None
-        elif section == _SECTION_ORG_POLICIES and org_policies:
+        elif (
+            section == _SECTION_ORG_POLICIES
+            and org_policies
+            and (profile is None or profile.include_org_policies)
+        ):
             org_policies = ()
         elif section == _SECTION_TASK and task is not None:
             task = None

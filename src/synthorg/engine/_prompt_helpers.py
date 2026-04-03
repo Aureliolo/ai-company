@@ -6,9 +6,10 @@ template context, metadata dicts, and section tracking.  Separated to keep
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, get_args
 
 from synthorg.core.enums import SeniorityLevel  # noqa: TC001 -- used in type annotation
+from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
 from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     AUTONOMY_MINIMAL,
@@ -17,12 +18,17 @@ from synthorg.engine.prompt_template import (
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.company import Company
     from synthorg.core.role import Role
+    from synthorg.core.task import Task
     from synthorg.engine.prompt_profiles import PromptProfile
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
-_AUTONOMY_LOOKUP: MappingProxyType[str, dict[SeniorityLevel, str]] = MappingProxyType(
+_AUTONOMY_LOOKUP: MappingProxyType[
+    AutonomyDetailLevel,
+    MappingProxyType[SeniorityLevel, str],
+] = MappingProxyType(
     {
         "full": AUTONOMY_INSTRUCTIONS,
         "summary": AUTONOMY_SUMMARY,
@@ -30,27 +36,56 @@ _AUTONOMY_LOOKUP: MappingProxyType[str, dict[SeniorityLevel, str]] = MappingProx
     },
 )
 
+_expected_detail_levels = set(get_args(AutonomyDetailLevel))
+_missing_detail = _expected_detail_levels - set(_AUTONOMY_LOOKUP)
+if _missing_detail:
+    _msg_d = f"Missing autonomy lookup for detail levels: {sorted(_missing_detail)}"
+    raise ValueError(_msg_d)
+
 # ── Section names ────────────────────────────────────────────────
 
-SECTION_IDENTITY = "identity"
-SECTION_PERSONALITY = "personality"
-SECTION_SKILLS = "skills"
-SECTION_AUTHORITY = "authority"
-SECTION_ORG_POLICIES = "org_policies"
-SECTION_AUTONOMY = "autonomy"
-SECTION_TASK = "task"
-SECTION_COMPANY = "company"
-SECTION_TOOLS = "tools"
-SECTION_CONTEXT_BUDGET = "context_budget"
+SECTION_IDENTITY: Final[str] = "identity"
+SECTION_PERSONALITY: Final[str] = "personality"
+SECTION_SKILLS: Final[str] = "skills"
+SECTION_AUTHORITY: Final[str] = "authority"
+SECTION_ORG_POLICIES: Final[str] = "org_policies"
+SECTION_AUTONOMY: Final[str] = "autonomy"
+SECTION_TASK: Final[str] = "task"
+SECTION_COMPANY: Final[str] = "company"
+SECTION_TOOLS: Final[str] = "tools"
+SECTION_CONTEXT_BUDGET: Final[str] = "context_budget"
 
 # Sections trimmed when over token budget, least critical first.
 # Tools section was removed from the default template per D22
 # (non-inferable principle), but custom templates may still render tools.
-TRIMMABLE_SECTIONS = (
+TRIMMABLE_SECTIONS: Final[tuple[str, ...]] = (
     SECTION_COMPANY,
     SECTION_TASK,
     SECTION_ORG_POLICIES,
 )
+
+
+def _resolve_profile_flags(
+    profile: PromptProfile | None,
+) -> tuple[PersonalityMode, AutonomyDetailLevel, bool, bool]:
+    """Extract rendering flags from profile, falling back to full defaults.
+
+    Returns:
+        ``(personality_mode, autonomy_detail, include_org_policies,
+        simplify_criteria)``.
+    """
+    # Deferred import to avoid circular dependency at module level.
+    from synthorg.engine.prompt_profiles import (  # noqa: PLC0415
+        get_prompt_profile,
+    )
+
+    effective = profile if profile is not None else get_prompt_profile(None)
+    return (
+        effective.personality_mode,
+        effective.autonomy_detail_level,
+        effective.include_org_policies,
+        effective.simplify_acceptance_criteria,
+    )
 
 
 def build_core_context(
@@ -59,7 +94,7 @@ def build_core_context(
     effective_autonomy: EffectiveAutonomy | None = None,
     profile: PromptProfile | None = None,
 ) -> dict[str, Any]:
-    """Build the core (always-present) template variables from agent identity.
+    """Build core template variables from agent identity and profile.
 
     Args:
         agent: Agent identity.
@@ -73,13 +108,9 @@ def build_core_context(
     """
     personality = agent.personality
     authority = agent.authority
-
-    # Profile-derived rendering flags (defaults = full profile).
-    personality_mode = profile.personality_mode if profile else "full"
-    autonomy_detail = profile.autonomy_detail_level if profile else "full"
-    include_org_policies = profile.include_org_policies if profile else True
-    simplify_criteria = profile.simplify_acceptance_criteria if profile else False
-
+    personality_mode, autonomy_detail, include_org_policies, simplify_criteria = (
+        _resolve_profile_flags(profile)
+    )
     autonomy_map = _AUTONOMY_LOOKUP[autonomy_detail]
 
     ctx: dict[str, Any] = {
@@ -143,9 +174,9 @@ def build_metadata(agent: AgentIdentity) -> dict[str, str]:
 
 def compute_sections(  # noqa: PLR0913
     *,
-    task: object | None,
+    task: Task | None,
     available_tools: tuple[ToolDefinition, ...] = (),
-    company: object | None,
+    company: Company | None,
     org_policies: tuple[str, ...] = (),
     custom_template: bool = False,
     context_budget: str | None = None,
@@ -170,7 +201,7 @@ def compute_sections(  # noqa: PLR0913
     Returns:
         Tuple of section names that are included.
     """
-    include_policies = profile.include_org_policies if profile else True
+    _, _, include_policies, _ = _resolve_profile_flags(profile)
 
     sections: list[str] = [
         SECTION_IDENTITY,

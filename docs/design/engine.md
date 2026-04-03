@@ -726,8 +726,10 @@ each model tier.
   profile
 - When `model_tier` is `None` (unknown), the **full** profile is used as a safe
   default
-- Profile selection is logged via `prompt.profile.selected` /
-  `prompt.profile.default` events
+- Profile selection is logged via `prompt.profile.selected` (with
+  `requested_tier`, `selected_tier`, and `defaulted` flag);
+  `prompt.profile.default` is emitted at DEBUG level when falling back
+  to the full profile
 
 ---
 

@@ -18,11 +18,15 @@ profile.
 """
 
 from types import MappingProxyType
-from typing import Literal, get_args
+from typing import get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.types import ModelTier
+from synthorg.core.types import AutonomyDetailLevel, ModelTier, PersonalityMode
+from synthorg.observability import get_logger
+from synthorg.observability.events.prompt import PROMPT_PROFILE_DEFAULT
+
+logger = get_logger(__name__)
 
 
 class PromptProfile(BaseModel):
@@ -36,8 +40,7 @@ class PromptProfile(BaseModel):
         tier: The model tier this profile targets.
         max_personality_tokens: Soft limit on personality section length.
             Not yet consumed by the rendering pipeline -- reserved for
-            future token-based trimming.  Currently serves as an
-            ordering proxy (larger tiers have higher limits).
+            future token-based trimming.
         include_org_policies: Whether to include the org policies section.
         simplify_acceptance_criteria: Whether to render acceptance
             criteria as a flat semicolon-separated line instead of a
@@ -63,11 +66,11 @@ class PromptProfile(BaseModel):
         default=False,
         description="Simplify acceptance criteria to flat list",
     )
-    autonomy_detail_level: Literal["full", "summary", "minimal"] = Field(
+    autonomy_detail_level: AutonomyDetailLevel = Field(
         default="full",
         description="Level of autonomy instruction detail",
     )
-    personality_mode: Literal["full", "condensed", "minimal"] = Field(
+    personality_mode: PersonalityMode = Field(
         default="full",
         description="Personality section verbosity",
     )
@@ -130,5 +133,6 @@ def get_prompt_profile(tier: ModelTier | None) -> PromptProfile:
         The matching ``PromptProfile``.
     """
     if tier is None:
+        logger.debug(PROMPT_PROFILE_DEFAULT, default_tier="large")
         return _FULL_PROFILE
     return PROMPT_PROFILE_REGISTRY[tier]

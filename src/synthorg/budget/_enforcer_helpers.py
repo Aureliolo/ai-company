@@ -140,6 +140,13 @@ def _build_downgraded_model_config(
     }
     if target_alias is not None and target_alias in _VALID_TIERS:
         update["model_tier"] = target_alias
+    elif current.model_tier is not None:
+        logger.debug(
+            BUDGET_DOWNGRADE_APPLIED,
+            note="model_tier preserved (target alias is not a tier name)",
+            current_tier=current.model_tier,
+            target_alias=target_alias,
+        )
     return current.model_copy(update=update)
 
 
