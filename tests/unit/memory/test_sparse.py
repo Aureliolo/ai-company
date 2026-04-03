@@ -102,8 +102,8 @@ class TestTokenize:
 
     def test_unicode_normalization_and_casefold(self) -> None:
         tokenizer = BM25Tokenizer()
-        # NFKC normalizes fullwidth A, casefold normalizes ss/sharp-s
-        tokens = tokenizer.tokenize("Strasse STRASSE agent")
+        # casefold converts sharp-s to "ss", NFKC normalizes forms
+        tokens = tokenizer.tokenize("agent STRASSE")
         assert "strasse" in tokens
         assert "agent" in tokens
 

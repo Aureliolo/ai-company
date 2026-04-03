@@ -462,7 +462,7 @@ class ContextInjectionStrategy:
                 source="sparse_shared",
                 agent_id=agent_id,
             )
-            if shared_has_sparse and shared_store is not None
+            if shared_has_sparse
             else _empty()
         )
 
