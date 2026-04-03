@@ -37,6 +37,10 @@ describe('useAnimationPreset', () => {
           expect(typeof result.current.enableLayout).toBe('boolean')
         },
       ),
+      // renderHook is expensive per iteration; the parameterized test
+      // above already covers all 5 presets individually -- keep this
+      // as a smoke property with low iteration count.
+      { numRuns: 10 },
     )
   })
 

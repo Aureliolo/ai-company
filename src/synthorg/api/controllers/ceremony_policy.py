@@ -342,13 +342,17 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
     return _build_project_policy(data)
 
 
-_SETTINGS_NOT_FOUND = object()
+class _SettingsNotFound:
+    """Sentinel indicating no settings-based override was found."""
+
+
+_SETTINGS_NOT_FOUND = _SettingsNotFound()
 
 
 async def _lookup_dept_override_from_settings(
     app_state: AppState,
     department_name: str,
-) -> CeremonyPolicyConfig | None | object:
+) -> CeremonyPolicyConfig | None | _SettingsNotFound:
     """Try to find a department override in the settings service.
 
     Returns:
@@ -421,8 +425,8 @@ async def _fetch_department_policy(
         app_state,
         department_name,
     )
-    if result is not _SETTINGS_NOT_FOUND:
-        return result  # type: ignore[return-value]
+    if not isinstance(result, _SettingsNotFound):
+        return result
 
     # Fall back to config-based ceremony_policy
     if not app_state.has_config_resolver:
