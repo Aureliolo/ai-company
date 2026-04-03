@@ -137,6 +137,25 @@ class InteractionFeedback(BaseModel):
         description='Origin of the feedback (e.g. "human", "automated")',
     )
 
+    @model_validator(mode="after")
+    def _validate_has_signal(self) -> Self:
+        """Ensure at least one rating or non-blank free_text is present."""
+        has_rating = any(
+            v is not None
+            for v in (
+                self.clarity_rating,
+                self.tone_rating,
+                self.helpfulness_rating,
+                self.trust_rating,
+                self.satisfaction_rating,
+            )
+        )
+        has_text = self.free_text is not None and self.free_text.strip()
+        if not has_rating and not has_text:
+            msg = "Feedback must contain at least one rating or non-blank free_text"
+            raise ValueError(msg)
+        return self
+
 
 class ResilienceMetrics(BaseModel):
     """Derived resilience metrics from task execution records.

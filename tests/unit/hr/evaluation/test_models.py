@@ -107,10 +107,11 @@ class TestInteractionFeedback:
         fb = InteractionFeedback(
             agent_id=NotBlankStr("agent-001"),
             recorded_at=datetime.now(UTC),
+            clarity_rating=0.5,
             source=NotBlankStr("human"),
         )
         with pytest.raises(ValidationError):
-            fb.clarity_rating = 0.5  # type: ignore[misc]
+            fb.clarity_rating = 0.9  # type: ignore[misc]
 
     @pytest.mark.parametrize(
         "field",
@@ -165,14 +166,35 @@ class TestInteractionFeedback:
         fb1 = InteractionFeedback(
             agent_id=NotBlankStr("agent-001"),
             recorded_at=datetime.now(UTC),
+            clarity_rating=0.5,
             source=NotBlankStr("human"),
         )
         fb2 = InteractionFeedback(
             agent_id=NotBlankStr("agent-001"),
             recorded_at=datetime.now(UTC),
+            clarity_rating=0.5,
             source=NotBlankStr("human"),
         )
         assert fb1.id != fb2.id
+
+    def test_empty_feedback_raises(self) -> None:
+        """Feedback with no ratings and no free_text must raise."""
+        with pytest.raises(ValueError, match="at least one rating"):
+            InteractionFeedback(
+                agent_id=NotBlankStr("agent-001"),
+                recorded_at=datetime.now(UTC),
+                source=NotBlankStr("human"),
+            )
+
+    def test_free_text_only_feedback_ok(self) -> None:
+        """Feedback with only free_text (no ratings) is valid."""
+        fb = InteractionFeedback(
+            agent_id=NotBlankStr("agent-001"),
+            recorded_at=datetime.now(UTC),
+            source=NotBlankStr("human"),
+            free_text="Great job!",
+        )
+        assert fb.free_text == "Great job!"
 
 
 # ── ResilienceMetrics ─────────────────────────────────────
