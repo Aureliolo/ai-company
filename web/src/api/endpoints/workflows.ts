@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
+import { apiClient, unwrap, unwrapPaginated, unwrapVoid, type PaginatedResult } from '../client'
 import type {
   ApiResponse,
   CreateWorkflowDefinitionRequest,
@@ -49,7 +49,8 @@ export async function updateWorkflow(
 }
 
 export async function deleteWorkflow(id: string): Promise<void> {
-  await apiClient.delete(`/workflows/${encodeURIComponent(id)}`)
+  const response = await apiClient.delete(`/workflows/${encodeURIComponent(id)}`)
+  unwrapVoid(response)
 }
 
 export async function validateWorkflow(id: string): Promise<WorkflowValidationResult> {

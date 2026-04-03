@@ -34,6 +34,10 @@ class QueryError(PersistenceError):
     """Raised when a query fails due to invalid parameters or backend issues."""
 
 
+class VersionConflictError(QueryError):
+    """Raised when an optimistic concurrency version check fails."""
+
+
 class ArtifactTooLargeError(PersistenceError):
     """Raised when a single artifact exceeds the maximum allowed size."""
 

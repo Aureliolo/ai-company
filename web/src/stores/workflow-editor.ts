@@ -435,8 +435,9 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   },
 
   exportYaml: async () => {
-    const { definition } = get()
+    const { definition, dirty, yamlPreview } = get()
     if (!definition) throw new Error('Cannot export: no workflow loaded')
+    if (dirty) return yamlPreview
     return exportWorkflowYaml(definition.id)
   },
 

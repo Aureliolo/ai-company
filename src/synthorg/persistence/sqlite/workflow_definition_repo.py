@@ -29,7 +29,7 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
     PERSISTENCE_WORKFLOW_DEF_SAVED,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import QueryError, VersionConflictError
 
 logger = get_logger(__name__)
 
@@ -159,7 +159,7 @@ WHERE workflow_definitions.version = excluded.version - 1""",
                     definition_id=definition.id,
                     error=msg,
                 )
-                raise QueryError(msg)
+                raise VersionConflictError(msg)
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"

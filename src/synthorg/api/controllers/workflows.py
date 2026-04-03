@@ -44,7 +44,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_UPDATED,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
-from synthorg.persistence.errors import QueryError
+from synthorg.persistence.errors import VersionConflictError
 
 logger = get_logger(__name__)
 
@@ -284,20 +284,18 @@ class WorkflowController(Controller):
 
         try:
             await repo.save(updated)
-        except QueryError as exc:
-            if "Version conflict" in str(exc):
-                logger.warning(
-                    WORKFLOW_DEF_VERSION_CONFLICT,
-                    definition_id=updated.id,
-                    error=str(exc),
-                )
-                return Response(
-                    content=ApiResponse[WorkflowDefinition](
-                        error=f"Version conflict: {exc}",
-                    ),
-                    status_code=409,
-                )
-            raise
+        except VersionConflictError as exc:
+            logger.warning(
+                WORKFLOW_DEF_VERSION_CONFLICT,
+                definition_id=updated.id,
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowDefinition](
+                    error=f"Version conflict: {exc}",
+                ),
+                status_code=409,
+            )
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
 
         return Response(
