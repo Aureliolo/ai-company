@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType, VelocityCalcType } from '@/api/types'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SelectField } from '@/components/ui/select-field'
@@ -33,26 +33,20 @@ export function DepartmentCeremonyOverride({
   onChange,
   disabled,
 }: DepartmentCeremonyOverrideProps) {
-  const hasOverride = policy != null && Object.keys(policy).length > 0
+  // Whether the department has a non-null policy object (even if empty --
+  // an empty object means "override with defaults").
+  const hasOverride = policy != null
   const [expanded, setExpanded] = useState(hasOverride)
-  const prevHasOverrideRef = useRef(hasOverride)
-
-  // Sync expanded state when override status changes externally
-  useEffect(() => {
-    if (prevHasOverrideRef.current !== hasOverride) {
-      prevHasOverrideRef.current = hasOverride
-      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
-      setExpanded(hasOverride)
-    }
-  }, [hasOverride])
 
   const handleInheritChange = useCallback(
     (inherit: boolean) => {
       if (inherit) {
         onChange(null)
+        setExpanded(false)
       } else {
         // Preserve existing policy fields if available, otherwise start empty
         onChange(policy ?? {})
+        setExpanded(true)
       }
     },
     [onChange, policy],
@@ -64,8 +58,13 @@ export function DepartmentCeremonyOverride({
       if (s === policy?.strategy) {
         return
       }
+      // Clear strategy_config because different strategies have different
+      // config schemas, and this component has no StrategyConfigPanel to
+      // edit it.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure to omit strategy_config
+      const { strategy_config: _omitted, ...rest } = policy ?? {}
       onChange({
-        ...policy,
+        ...rest,
         strategy: s,
         velocity_calculator: STRATEGY_DEFAULT_VELOCITY_CALC[s],
       })

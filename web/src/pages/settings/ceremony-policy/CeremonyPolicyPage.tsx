@@ -208,13 +208,22 @@ export default function CeremonyPolicyPage() {
     fetchActiveStrategy()
   }, [fetchResolvedPolicy, fetchActiveStrategy])
 
-  // Fetch departments with error handling.
+  // Fetch all departments (paginated) with error handling.
   // deptLoading is initialized to true, so we only need to clear it on
   // completion.  The set-state calls below are legitimate async callbacks.
   useEffect(() => {
-    import('@/api/endpoints/company').then(({ listDepartments }) =>
-      listDepartments().then((result) => setDepartments(result.data)),
-    ).catch(() => {
+    import('@/api/endpoints/company').then(async ({ listDepartments }) => {
+      const allDepts: Department[] = []
+      let offset = 0
+      const limit = 200
+      while (true) {
+        const result = await listDepartments({ offset, limit })
+        allDepts.push(...result.data)
+        if (result.data.length < limit) break
+        offset += limit
+      }
+      setDepartments(allDepts)
+    }).catch(() => {
       setDeptLoadError(true)
       addToast({ variant: 'error', title: 'Failed to load departments' })
     }).finally(() => {
