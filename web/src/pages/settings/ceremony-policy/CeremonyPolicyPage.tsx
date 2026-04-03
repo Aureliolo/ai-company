@@ -212,23 +212,33 @@ export default function CeremonyPolicyPage() {
   // deptLoading is initialized to true, so we only need to clear it on
   // completion.  The set-state calls below are legitimate async callbacks.
   useEffect(() => {
-    import('@/api/endpoints/company').then(async ({ listDepartments }) => {
+    let cancelled = false
+    const load = async () => {
       const allDepts: Department[] = []
-      let offset = 0
-      const limit = 200
-      while (true) {
-        const result = await listDepartments({ offset, limit })
-        allDepts.push(...result.data)
-        if (result.data.length < limit) break
-        offset += limit
+      try {
+        const { listDepartments } = await import('@/api/endpoints/company')
+        let offset = 0
+        const limit = 200
+        while (!cancelled) {
+          const result = await listDepartments({ offset, limit })
+          allDepts.push(...result.data)
+          if (result.data.length < limit) break
+          offset += limit
+        }
+      } catch {
+        if (!cancelled) {
+          setDeptLoadError(true)
+          addToast({ variant: 'error', title: 'Failed to load departments' })
+        }
+      } finally {
+        if (!cancelled) {
+          setDepartments(allDepts)
+          setDeptLoading(false)
+        }
       }
-      setDepartments(allDepts)
-    }).catch(() => {
-      setDeptLoadError(true)
-      addToast({ variant: 'error', title: 'Failed to load departments' })
-    }).finally(() => {
-      setDeptLoading(false)
-    })
+    }
+    load()
+    return () => { cancelled = true }
   }, [addToast])
 
   // Save handler: persist all ceremony settings.
