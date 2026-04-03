@@ -62,6 +62,8 @@ from synthorg.engine.task_sync import (
     sync_to_task_engine,
     transition_task_if_needed,
 )
+from synthorg.memory.procedural.pipeline import propose_procedural_memory
+from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
@@ -120,6 +122,8 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
+    from synthorg.memory.procedural.models import ProceduralMemoryConfig
+    from synthorg.memory.protocol import MemoryBackend
     from synthorg.persistence.repositories import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -208,6 +212,14 @@ class AgentEngine:
             When a ``ToolBasedInjectionStrategy`` is provided, memory
             tools (``search_memory``, ``recall_memory``) are registered
             in the ``ToolRegistry`` for each agent execution.
+        procedural_memory_config: Optional configuration for
+            procedural memory auto-generation from agent failures.
+            When set (and ``memory_backend`` is also provided), a
+            proposer LLM call analyses failures and stores
+            procedural memory entries.
+        memory_backend: Optional memory backend for storing
+            procedural memory entries.  Required alongside
+            ``procedural_memory_config``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -237,6 +249,8 @@ class AgentEngine:
         provider_registry: ProviderRegistry | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
+        procedural_memory_config: ProceduralMemoryConfig | None = None,
+        memory_backend: MemoryBackend | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -304,6 +318,8 @@ class AgentEngine:
         self._coordinator = coordinator
         self._tool_invocation_tracker = tool_invocation_tracker
         self._memory_injection_strategy = memory_injection_strategy
+        self._procedural_memory_config = procedural_memory_config
+        self._memory_backend = memory_backend
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -545,7 +561,7 @@ class AgentEngine:
             task_id,
         )
 
-    async def _post_execution_pipeline(  # noqa: PLR0913
+    async def _post_execution_pipeline(  # noqa: C901, PLR0913
         self,
         execution_result: ExecutionResult,
         identity: AgentIdentity,
@@ -580,6 +596,7 @@ class AgentEngine:
             self._task_engine,
             approval_store=self._approval_store,
         )
+        recovery_result: RecoveryResult | None = None
         if execution_result.termination_reason == TerminationReason.ERROR:
             pre_recovery_ctx = execution_result.context
             pre_recovery_status = (
@@ -587,7 +604,7 @@ class AgentEngine:
                 if pre_recovery_ctx.task_execution is not None
                 else None
             )
-            execution_result = await self._apply_recovery(
+            execution_result, recovery_result = await self._apply_recovery(
                 execution_result,
                 identity,
                 agent_id,
@@ -649,6 +666,36 @@ class AgentEngine:
                     agent_id=agent_id,
                     task_id=task_id,
                     error=f"classification failed: {type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+        # Procedural memory is non-critical -- never destroys a result.
+        if (
+            self._procedural_memory_config is not None
+            and self._procedural_memory_config.enabled
+            and self._memory_backend is not None
+            and recovery_result is not None
+        ):
+            try:
+                proposer = ProceduralMemoryProposer(
+                    provider=self._provider,
+                    config=self._procedural_memory_config,
+                )
+                await propose_procedural_memory(
+                    execution_result,
+                    recovery_result,
+                    agent_id,
+                    task_id,
+                    proposer=proposer,
+                    memory_backend=self._memory_backend,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    error=(f"procedural memory failed: {type(exc).__name__}: {exc}"),
                     exc_info=True,
                 )
         return execution_result
@@ -825,19 +872,22 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
-    ) -> ExecutionResult:
+    ) -> tuple[ExecutionResult, RecoveryResult | None]:
         """Invoke the configured recovery strategy on error outcomes.
 
         The default strategy transitions the task to FAILED; checkpoint
         recovery may resume from a persisted checkpoint.  If no strategy
         is set or no task execution exists, returns the result unchanged.
         Recovery failures are logged but never block the error result.
+
+        Returns:
+            Tuple of (updated execution result, recovery result or None).
         """
         if self._recovery_strategy is None:
-            return execution_result
+            return execution_result, None
         ctx = execution_result.context
         if ctx.task_execution is None:
-            return execution_result
+            return execution_result, None
 
         error_msg = execution_result.error_message or "Unknown error"
         try:
@@ -849,7 +899,7 @@ class AgentEngine:
 
             # Checkpoint resume path
             if recovery_result.can_resume:
-                return await self._resume_from_checkpoint(
+                resumed = await self._resume_from_checkpoint(
                     recovery_result,
                     identity,
                     agent_id,
@@ -858,13 +908,15 @@ class AgentEngine:
                     effective_autonomy=effective_autonomy,
                     provider=provider,
                 )
+                return resumed, recovery_result
 
             updated_ctx = ctx.model_copy(
                 update={"task_execution": recovery_result.task_execution},
             )
-            return execution_result.model_copy(
+            updated_result = execution_result.model_copy(
                 update={"context": updated_ctx},
             )
+            return updated_result, recovery_result  # noqa: TRY300
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -874,7 +926,7 @@ class AgentEngine:
                 task_id=task_id,
                 error=f"{type(exc).__name__}: {exc}",
             )
-            return execution_result
+            return execution_result, None
 
     def _validate_checkpoint_json(
         self,
@@ -1515,7 +1567,7 @@ class AgentEngine:
             termination_reason=TerminationReason.ERROR,
             error_message=error_msg,
         )
-        return await self._apply_recovery(
+        result, _ = await self._apply_recovery(
             error_execution,
             identity,
             agent_id,
@@ -1524,3 +1576,4 @@ class AgentEngine:
             effective_autonomy=effective_autonomy,
             provider=provider,
         )
+        return result

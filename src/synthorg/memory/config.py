@@ -15,6 +15,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.config import ConsolidationConfig
+from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -240,6 +241,14 @@ class CompanyMemoryConfig(BaseModel):
         description=(
             "Optional embedder override.  When set, overrides "
             "auto-selection for provider, model, and/or dims."
+        ),
+    )
+    procedural: ProceduralMemoryConfig = Field(
+        default_factory=ProceduralMemoryConfig,
+        description=(
+            "Procedural memory auto-generation settings.  Controls "
+            "whether failure-driven skill proposals are generated, "
+            "which model to use, and quality thresholds."
         ),
     )
 
