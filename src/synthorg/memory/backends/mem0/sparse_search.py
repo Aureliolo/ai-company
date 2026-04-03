@@ -263,7 +263,8 @@ def _extract_metadata(
         )
         category = MemoryCategory.EPISODIC
 
-    confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
+    confidence_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence")
+    confidence = confidence_raw if confidence_raw is not None else 1.0
     source_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
     source = source_raw.strip() or None if isinstance(source_raw, str) else None
     tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags")
