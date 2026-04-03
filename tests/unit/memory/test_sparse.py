@@ -102,10 +102,13 @@ class TestTokenize:
 
     def test_unicode_normalization_and_casefold(self) -> None:
         tokenizer = BM25Tokenizer()
-        # casefold converts sharp-s to "ss", NFKC normalizes forms
-        tokens = tokenizer.tokenize("agent STRASSE")
-        assert "strasse" in tokens
-        assert "agent" in tokens
+        # casefold: sharp-s -> "ss"; NFKC: fullwidth chars normalized
+        tokens_ss = tokenizer.tokenize("Stra\u00dfe agent")
+        assert "strasse" in tokens_ss
+        assert "agent" in tokens_ss
+        # Verify casefold unifies with plain ASCII form
+        tokens_plain = tokenizer.tokenize("STRASSE agent")
+        assert "strasse" in tokens_plain
 
     def test_numbers_preserved(self) -> None:
         tokenizer = BM25Tokenizer()
