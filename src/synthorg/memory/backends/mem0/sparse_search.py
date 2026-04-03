@@ -324,7 +324,13 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
         point_id_str,
     )
 
-    content = payload.get("data") or payload.get("memory", "")
+    data_raw = payload.get("data")
+    mem_raw = payload.get("memory", "")
+    content = (
+        data_raw
+        if isinstance(data_raw, str) and data_raw.strip()
+        else (mem_raw if isinstance(mem_raw, str) and mem_raw.strip() else "")
+    )
     if not content:
         msg = "empty content in Qdrant payload"
         raise ValueError(msg)
