@@ -70,12 +70,23 @@ class QualityOverrideResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    agent_id: NotBlankStr
-    score: float = Field(ge=0.0, le=10.0)
-    reason: NotBlankStr
-    applied_by: NotBlankStr
-    applied_at: AwareDatetime
-    expires_at: AwareDatetime | None
+    agent_id: NotBlankStr = Field(
+        description="Agent whose quality score is overridden",
+    )
+    score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Override score",
+    )
+    reason: NotBlankStr = Field(description="Why the override was applied")
+    applied_by: NotBlankStr = Field(description="Who applied the override")
+    applied_at: AwareDatetime = Field(
+        description="When the override was applied",
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the override expires",
+    )
 
 
 # -- Controller --------------------------------------------------------------

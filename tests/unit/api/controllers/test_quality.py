@@ -207,6 +207,40 @@ class TestClearOverride:
 
 
 @pytest.mark.unit
+class TestQualityRequestBodyValidation:
+    """Request body validation for override endpoint."""
+
+    @pytest.mark.parametrize(
+        ("payload", "reason"),
+        [
+            ({"score": 11.0, "reason": "Test"}, "score above 10"),
+            ({"score": -1.0, "reason": "Test"}, "negative score"),
+            ({"score": 5.0, "reason": ""}, "blank reason"),
+            (
+                {"score": 5.0, "reason": "Test", "expires_in_days": 0},
+                "zero expiration",
+            ),
+            (
+                {"score": 5.0, "reason": "Test", "expires_in_days": 366},
+                "expiration over 365",
+            ),
+        ],
+    )
+    def test_invalid_payloads_rejected(
+        self,
+        quality_client: TestClient[Any],
+        payload: dict[str, object],
+        reason: str,
+    ) -> None:
+        """Invalid request bodies are rejected with 400."""
+        resp = quality_client.post(
+            "/api/v1/agents/agent-001/quality/override",
+            json=payload,
+        )
+        assert resp.status_code == 400, f"Expected 400 for: {reason}"
+
+
+@pytest.mark.unit
 class TestQualityPathParamValidation:
     """Path parameter validation."""
 

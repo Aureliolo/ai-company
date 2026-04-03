@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MAX_SCORE: float = 10.0
+_CONFIDENCE_WITH_CRITERIA: float = 0.8
+_CONFIDENCE_WITHOUT_CRITERIA: float = 0.5
 
 _SYSTEM_PROMPT = """\
 You are evaluating the quality of task completion by an AI agent.
@@ -140,25 +142,33 @@ class LlmJudgeQualityStrategy:
             )
             return _FALLBACK_RESULT
 
-        # Clamp to valid range.
         clamped_score = max(0.0, min(_MAX_SCORE, llm_score))
+        await self._try_record_cost(agent_id, task_id, cost_usd, usage)
+        return self._build_result(
+            agent_id,
+            task_id,
+            clamped_score,
+            cost_usd,
+            acceptance_criteria,
+        )
 
-        # Record cost if tracker is available.
-        if self._cost_tracker is not None:
-            await self._record_cost(
-                agent_id=agent_id,
-                task_id=task_id,
-                cost_usd=cost_usd,
-                usage=usage,
-            )
-
+    def _build_result(
+        self,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
+        clamped_score: float,
+        cost_usd: float,
+        acceptance_criteria: tuple[AcceptanceCriterion, ...],
+    ) -> QualityScoreResult:
+        """Build and log the quality score result."""
         result = QualityScoreResult(
             score=round(clamped_score, 4),
             strategy_name=NotBlankStr(self.name),
             breakdown=(("llm_score", round(clamped_score, 4)),),
-            confidence=0.8 if acceptance_criteria else 0.5,
+            confidence=_CONFIDENCE_WITH_CRITERIA
+            if acceptance_criteria
+            else _CONFIDENCE_WITHOUT_CRITERIA,
         )
-
         logger.info(
             PERF_LLM_JUDGE_COMPLETED,
             agent_id=agent_id,
@@ -167,6 +177,34 @@ class LlmJudgeQualityStrategy:
             cost_usd=cost_usd,
         )
         return result
+
+    async def _try_record_cost(
+        self,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
+        cost_usd: float,
+        usage: tuple[int, int],
+    ) -> None:
+        """Record cost, logging a warning on failure."""
+        if self._cost_tracker is None:
+            return
+        try:
+            await self._record_cost(
+                agent_id=agent_id,
+                task_id=task_id,
+                cost_usd=cost_usd,
+                usage=usage,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PERF_LLM_JUDGE_FAILED,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason="cost_recording_failed",
+                exc_info=True,
+            )
 
     def _build_prompt(
         self,

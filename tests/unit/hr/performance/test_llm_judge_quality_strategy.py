@@ -82,7 +82,7 @@ class TestScoring:
 
         assert result.score == 8.5
         assert result.strategy_name == "llm_judge"
-        assert result.confidence > 0.0
+        assert result.confidence == 0.8
 
     async def test_empty_criteria(self) -> None:
         """Scoring works with no acceptance criteria (lower confidence)."""
@@ -103,7 +103,32 @@ class TestScoring:
         )
 
         assert result.score == 6.0
-        assert result.confidence > 0.0
+        assert result.confidence == 0.5
+
+    async def test_criteria_present_higher_confidence_than_empty(self) -> None:
+        """Criteria present -> higher confidence than empty."""
+        provider = _make_provider()
+        strategy = LlmJudgeQualityStrategy(
+            provider=provider,
+            model=NotBlankStr("test-small-001"),
+        )
+        record = make_task_metric(completed_at=NOW)
+        criteria = (make_acceptance_criterion(),)
+
+        with_criteria = await strategy.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=record,
+            acceptance_criteria=criteria,
+        )
+        without_criteria = await strategy.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=record,
+            acceptance_criteria=(),
+        )
+
+        assert with_criteria.confidence > without_criteria.confidence
 
     async def test_score_clamped_to_range(self) -> None:
         """LLM score outside [0, 10] is clamped."""
@@ -398,3 +423,61 @@ class TestPromptConstruction:
         prompt_text = messages[0].content
         assert "---BEGIN CRITERIA---" in prompt_text
         assert "---END CRITERIA---" in prompt_text
+
+    async def test_braces_in_criteria_escaped(self) -> None:
+        """Curly braces in criteria descriptions are escaped for str.format()."""
+        provider = _make_provider()
+        strategy = LlmJudgeQualityStrategy(
+            provider=provider,
+            model=NotBlankStr("test-small-001"),
+        )
+        record = make_task_metric(completed_at=NOW)
+        criteria = (
+            make_acceptance_criterion(
+                description="Output must be {valid JSON}",
+                met=True,
+            ),
+        )
+
+        await strategy.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=record,
+            acceptance_criteria=criteria,
+        )
+
+        call_args = provider.complete.call_args
+        messages = call_args.kwargs.get("messages") or call_args[0][0]
+        prompt_text = messages[0].content
+        assert "{{valid JSON}}" in prompt_text
+
+
+@pytest.mark.unit
+class TestCostRecordingResilience:
+    """Cost recording failures do not discard valid scores."""
+
+    async def test_cost_failure_does_not_discard_score(self) -> None:
+        """If cost recording fails, the LLM score is still returned."""
+        provider = _make_provider(
+            content='{"score": 8.0, "rationale": "Great work"}',
+        )
+        cost_tracker = MagicMock()
+        cost_tracker.record = AsyncMock(
+            side_effect=RuntimeError("DB unavailable"),
+        )
+        strategy = LlmJudgeQualityStrategy(
+            provider=provider,
+            model=NotBlankStr("test-small-001"),
+            cost_tracker=cost_tracker,
+        )
+        record = make_task_metric(completed_at=NOW)
+
+        result = await strategy.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=record,
+            acceptance_criteria=(),
+        )
+
+        assert result.score == 8.0
+        assert result.confidence > 0.0

@@ -333,8 +333,13 @@ agent_metrics:
        vs acceptance criteria
     3. **On-demand:** Human override via API, highest weight
 
-    Start with Layer 1 only; add layers incrementally. Future strategies: CI-only,
-    LLM-only, human-only.
+    All three layers are implemented via `CompositeQualityStrategy`
+    (configurable CI/LLM weights, human override short-circuits with
+    highest priority).  Human override CRUD is exposed at
+    `/agents/{agent_id}/quality/override`.  Config fields:
+    `quality_judge_model`, `quality_judge_provider`, `quality_ci_weight`,
+    `quality_llm_weight` in `PerformanceConfig`.  Future strategies:
+    CI-only, LLM-only, human-only.
 
     ---
 

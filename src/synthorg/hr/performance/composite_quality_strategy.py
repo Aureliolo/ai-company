@@ -56,6 +56,12 @@ class CompositeQualityStrategy:
         ci_weight: float = 0.4,
         llm_weight: float = 0.6,
     ) -> None:
+        if ci_weight < 0.0 or llm_weight < 0.0:
+            msg = (
+                f"Weights must be non-negative, got "
+                f"ci_weight={ci_weight}, llm_weight={llm_weight}"
+            )
+            raise ValueError(msg)
         self._ci_strategy = ci_strategy
         self._llm_strategy = llm_strategy
         self._override_store = override_store
