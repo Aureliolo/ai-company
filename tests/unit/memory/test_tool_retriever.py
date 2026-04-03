@@ -305,6 +305,7 @@ class TestHandleToolCall:
 
     async def test_search_system_error_propagates(self) -> None:
         backend = _make_backend()
+        # builtins.MemoryError (not synthorg domain MemoryError)
         backend.retrieve = AsyncMock(side_effect=MemoryError)
         strategy = ToolBasedInjectionStrategy(
             backend=backend,

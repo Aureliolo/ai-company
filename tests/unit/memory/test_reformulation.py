@@ -87,6 +87,18 @@ class TestLLMQueryReformulator:
         result = await reformulator.reformulate("query", ())
         assert result is None
 
+    async def test_memory_error_propagates(self) -> None:
+        mock_fn = AsyncMock(side_effect=MemoryError("OOM"))
+        reformulator = LLMQueryReformulator(completion_fn=mock_fn)
+        with pytest.raises(MemoryError):
+            await reformulator.reformulate("query", ())
+
+    async def test_recursion_error_propagates(self) -> None:
+        mock_fn = AsyncMock(side_effect=RecursionError)
+        reformulator = LLMQueryReformulator(completion_fn=mock_fn)
+        with pytest.raises(RecursionError):
+            await reformulator.reformulate("query", ())
+
 
 # ── LLMSufficiencyChecker ────────────────────────────────────────
 
@@ -128,3 +140,15 @@ class TestLLMSufficiencyChecker:
         result = await checker.check_sufficiency("query", ())
         assert result is False
         mock_fn.assert_awaited_once()
+
+    async def test_memory_error_propagates(self) -> None:
+        mock_fn = AsyncMock(side_effect=MemoryError("OOM"))
+        checker = LLMSufficiencyChecker(completion_fn=mock_fn)
+        with pytest.raises(MemoryError):
+            await checker.check_sufficiency("query", ())
+
+    async def test_recursion_error_propagates(self) -> None:
+        mock_fn = AsyncMock(side_effect=RecursionError)
+        checker = LLMSufficiencyChecker(completion_fn=mock_fn)
+        with pytest.raises(RecursionError):
+            await checker.check_sufficiency("query", ())

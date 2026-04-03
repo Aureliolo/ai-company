@@ -89,10 +89,16 @@ class SufficiencyChecker(Protocol):
 
 
 def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format entries as a brief summary for LLM prompts."""
+    """Format up to 10 entries for LLM prompts, truncating at 200 chars."""
     if not entries:
         return "(no results)"
-    parts = [f"- [{e.category.value}] {e.content[:200]}" for e in entries[:10]]
+    _max_len = 200
+    parts: list[str] = []
+    for e in entries[:10]:
+        text = e.content[:_max_len]
+        if len(e.content) > _max_len:
+            text += "..."
+        parts.append(f"- [{e.category.value}] {text}")
     return "\n".join(parts)
 
 

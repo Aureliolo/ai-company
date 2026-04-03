@@ -7,6 +7,14 @@ concrete backends (``Mem0MemoryBackend``), domain models, config
 models, factory, retrieval pipeline, consolidation, org memory, and
 error hierarchy so consumers can import from ``synthorg.memory``
 directly.
+
+Hybrid search: ``BM25Tokenizer``, ``SparseVector``,
+``FusionStrategy``, ``fuse_ranked_lists``.
+
+Tool-based strategy: ``ToolBasedInjectionStrategy``.
+
+Query reformulation: ``QueryReformulator``, ``SufficiencyChecker``,
+``LLMQueryReformulator``, ``LLMSufficiencyChecker``.
 """
 
 from synthorg.memory.backends.mem0 import (

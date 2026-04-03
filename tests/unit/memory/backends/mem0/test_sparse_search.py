@@ -178,6 +178,10 @@ class TestSearchSparse:
 
         call_kwargs = client.query_points.call_args.kwargs
         assert call_kwargs["limit"] == 5
+        assert call_kwargs["using"] == "bm25"
+        # Verify user_id filter is present in the query_filter
+        filter_obj = call_kwargs["query_filter"]
+        assert filter_obj is not None
 
     def test_empty_vector_returns_empty(self) -> None:
         client = MagicMock()
