@@ -46,3 +46,6 @@ WORKFLOW_EXEC_FAILED: Final[str] = "workflow.execution.failed"
 
 WORKFLOW_EXEC_CANCELLED: Final[str] = "workflow.execution.cancelled"
 """Workflow execution cancelled by user."""
+
+WORKFLOW_EXEC_PERSISTENCE_FAILED: Final[str] = "workflow.execution.persistence_failed"
+"""Persistence operation failed during workflow execution."""

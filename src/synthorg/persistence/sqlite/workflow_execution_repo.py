@@ -249,6 +249,7 @@ WHERE id = ? AND version = ?""",
                 ),
             )
             if cursor.rowcount == 0:
+                await self._db.rollback()
                 msg = (
                     f"Version conflict saving workflow execution"
                     f" {execution.id!r}: expected version"

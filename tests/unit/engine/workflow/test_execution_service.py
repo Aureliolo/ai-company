@@ -24,6 +24,7 @@ from synthorg.engine.workflow.execution_models import (
     WorkflowNodeExecution,
 )
 from synthorg.engine.workflow.execution_service import WorkflowExecutionService
+from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
 from tests.unit.engine.workflow.conftest import (
     make_assignment_node,
     make_conditional_node,
@@ -70,6 +71,21 @@ class FakeExecutionRepo:
         self._store: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
+        stored = self._store.get(execution.id)
+        if stored is None:
+            if execution.version != 1:
+                msg = f"Cannot insert with version {execution.version}"
+                raise VersionConflictError(msg)
+        else:
+            if execution.version == 1:
+                msg = f"Execution {execution.id!r} already exists"
+                raise DuplicateRecordError(msg)
+            if execution.version != stored.version + 1:
+                msg = (
+                    f"Version conflict: expected {stored.version + 1},"
+                    f" got {execution.version}"
+                )
+                raise VersionConflictError(msg)
         self._store[execution.id] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:

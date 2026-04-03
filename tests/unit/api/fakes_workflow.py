@@ -3,6 +3,8 @@
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
+
 if TYPE_CHECKING:
     from synthorg.core.enums import WorkflowExecutionStatus, WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
@@ -43,6 +45,24 @@ class FakeWorkflowExecutionRepository:
         self._executions: dict[str, WorkflowExecution] = {}
 
     async def save(self, execution: WorkflowExecution) -> None:
+        stored = self._executions.get(execution.id)
+        if stored is None:
+            if execution.version != 1:
+                msg = (
+                    f"Cannot insert execution {execution.id!r}"
+                    f" with version {execution.version}"
+                )
+                raise VersionConflictError(msg)
+        else:
+            if execution.version == 1:
+                msg = f"Execution {execution.id!r} already exists"
+                raise DuplicateRecordError(msg)
+            if execution.version != stored.version + 1:
+                msg = (
+                    f"Version conflict: expected {stored.version + 1},"
+                    f" got {execution.version}"
+                )
+                raise VersionConflictError(msg)
         self._executions[execution.id] = copy.deepcopy(execution)
 
     async def get(self, execution_id: str) -> WorkflowExecution | None:

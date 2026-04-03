@@ -53,6 +53,12 @@ class WorkflowNodeExecution(BaseModel):
     def _validate_status_fields(self) -> Self:
         """Enforce cross-field invariants between status and optional fields."""
         if self.status is WorkflowNodeExecutionStatus.TASK_CREATED:
+            if self.node_type is not WorkflowNodeType.TASK:
+                msg = (
+                    "TASK_CREATED status is only valid for TASK nodes,"
+                    f" not {self.node_type.value!r}"
+                )
+                raise ValueError(msg)
             if self.task_id is None:
                 msg = "task_id is required when status is TASK_CREATED"
                 raise ValueError(msg)

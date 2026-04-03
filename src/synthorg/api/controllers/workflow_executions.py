@@ -26,6 +26,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
     WORKFLOW_EXEC_NOT_FOUND,
+    WORKFLOW_EXEC_PERSISTENCE_FAILED,
 )
 from synthorg.persistence.errors import PersistenceError, VersionConflictError
 
@@ -112,7 +113,7 @@ class WorkflowExecutionController(Controller):
             )
         except PersistenceError as exc:
             logger.exception(
-                WORKFLOW_EXEC_INVALID_DEFINITION,
+                WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 workflow_id=workflow_id,
                 error=str(exc),
                 note="persistence failure during activation",
@@ -144,7 +145,7 @@ class WorkflowExecutionController(Controller):
             executions = await service.list_executions(workflow_id)
         except PersistenceError as exc:
             logger.exception(
-                WORKFLOW_EXEC_NOT_FOUND,
+                WORKFLOW_EXEC_PERSISTENCE_FAILED,
                 workflow_id=workflow_id,
                 error=str(exc),
                 note="persistence failure during list",
@@ -172,7 +173,21 @@ class WorkflowExecutionController(Controller):
     ) -> Response[ApiResponse[WorkflowExecution]]:
         """Get a specific workflow execution."""
         service = _build_service(state)
-        execution = await service.get_execution(execution_id)
+        try:
+            execution = await service.get_execution(execution_id)
+        except PersistenceError as exc:
+            logger.exception(
+                WORKFLOW_EXEC_PERSISTENCE_FAILED,
+                execution_id=execution_id,
+                error=str(exc),
+                note="persistence failure during get",
+            )
+            return Response(
+                content=ApiResponse[WorkflowExecution](
+                    error="Failed to retrieve workflow execution.",
+                ),
+                status_code=500,
+            )
         if execution is None:
             logger.warning(
                 WORKFLOW_EXEC_NOT_FOUND,
@@ -220,6 +235,19 @@ class WorkflowExecutionController(Controller):
             return Response(
                 content=ApiResponse[WorkflowExecution](error=str(exc)),
                 status_code=409,
+            )
+        except PersistenceError as exc:
+            logger.exception(
+                WORKFLOW_EXEC_PERSISTENCE_FAILED,
+                execution_id=execution_id,
+                error=str(exc),
+                note="persistence failure during cancel",
+            )
+            return Response(
+                content=ApiResponse[WorkflowExecution](
+                    error="Failed to cancel workflow execution.",
+                ),
+                status_code=500,
             )
 
         return Response(

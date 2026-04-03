@@ -188,13 +188,30 @@ class TestListByDefinition:
         self,
         repo: SQLiteWorkflowExecutionRepository,
     ) -> None:
-        await repo.save(_make_execution("wfexec-001", definition_id="wfdef-a"))
-        await repo.save(_make_execution("wfexec-002", definition_id="wfdef-a"))
+        older = datetime(2026, 1, 1, tzinfo=UTC)
+        newer = datetime(2026, 1, 2, tzinfo=UTC)
+        await repo.save(
+            _make_execution(
+                "wfexec-001",
+                definition_id="wfdef-a",
+                updated_at=older,
+            ),
+        )
+        await repo.save(
+            _make_execution(
+                "wfexec-002",
+                definition_id="wfdef-a",
+                updated_at=newer,
+            ),
+        )
         await repo.save(_make_execution("wfexec-003", definition_id="wfdef-b"))
 
         results = await repo.list_by_definition("wfdef-a")
         assert len(results) == 2
         assert all(e.definition_id == "wfdef-a" for e in results)
+        # Must be ordered by updated_at descending
+        assert results[0].id == "wfexec-002"
+        assert results[1].id == "wfexec-001"
 
     @pytest.mark.unit
     async def test_list_by_definition_empty(
@@ -213,8 +230,14 @@ class TestListByStatus:
         self,
         repo: SQLiteWorkflowExecutionRepository,
     ) -> None:
+        older = datetime(2026, 1, 1, tzinfo=UTC)
+        newer = datetime(2026, 1, 2, tzinfo=UTC)
         await repo.save(
-            _make_execution("wfexec-001", status=WorkflowExecutionStatus.RUNNING),
+            _make_execution(
+                "wfexec-001",
+                status=WorkflowExecutionStatus.RUNNING,
+                updated_at=older,
+            ),
         )
         await repo.save(
             _make_execution(
@@ -224,12 +247,19 @@ class TestListByStatus:
             ),
         )
         await repo.save(
-            _make_execution("wfexec-003", status=WorkflowExecutionStatus.RUNNING),
+            _make_execution(
+                "wfexec-003",
+                status=WorkflowExecutionStatus.RUNNING,
+                updated_at=newer,
+            ),
         )
 
         results = await repo.list_by_status(WorkflowExecutionStatus.RUNNING)
         assert len(results) == 2
         assert all(e.status is WorkflowExecutionStatus.RUNNING for e in results)
+        # Must be ordered by updated_at descending
+        assert results[0].id == "wfexec-003"
+        assert results[1].id == "wfexec-001"
 
 
 class TestDelete:

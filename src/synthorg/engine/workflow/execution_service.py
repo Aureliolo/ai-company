@@ -643,6 +643,13 @@ class WorkflowExecutionService:
 
         if node.type is not WorkflowNodeType.TASK:
             msg = f"Unhandled node type {node.type.value!r} for node {nid!r}"
+            logger.error(
+                WORKFLOW_EXEC_NODE_COMPLETED,
+                execution_id=execution_id,
+                node_id=nid,
+                node_type=node.type.value,
+                error=msg,
+            )
             raise WorkflowExecutionError(msg)
 
         return await _process_task_node(
