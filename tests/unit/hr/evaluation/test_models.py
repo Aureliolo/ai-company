@@ -9,6 +9,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.evaluation.config import EvaluationConfig
 from synthorg.hr.evaluation.enums import EvaluationPillar
 from synthorg.hr.evaluation.models import (
+    EvaluationContext,
     EvaluationReport,
     InteractionFeedback,
     PillarScore,
@@ -328,8 +329,6 @@ class TestEvaluationContext:
 
     def test_agent_id_mismatch_raises(self) -> None:
         """Mismatched agent_id between context and snapshot must raise."""
-        from synthorg.hr.evaluation.models import EvaluationContext
-
         with pytest.raises(ValueError, match="does not match"):
             EvaluationContext(
                 agent_id=NotBlankStr("agent-001"),
