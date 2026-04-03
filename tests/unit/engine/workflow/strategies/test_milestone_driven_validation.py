@@ -458,3 +458,59 @@ class TestAdditionalEdgeCases:
         tasks = strategy._milestone_tasks.get("alpha", set())
         assert len(tasks) == 2
         assert "task-0" in tasks
+
+    @pytest.mark.unit
+    async def test_assign_rejects_non_sprint_task(self) -> None:
+        """Tasks not in the active sprint are silently rejected."""
+        strategy = MilestoneDrivenStrategy()
+        # Sprint with task_count=2 -> task_ids = ("task-0", "task-1")
+        sprint = make_sprint(task_count=2)
+        config = _make_sprint_config(
+            milestones=[
+                {"name": "alpha", "ceremony": "sprint_review"},
+            ],
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        # "task-99" is not in sprint.task_ids
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "task-99", "milestone": "alpha"},
+        )
+        assert strategy._milestone_tasks == {}
+
+    @pytest.mark.unit
+    async def test_unassign_allows_non_sprint_task(self) -> None:
+        """Unassign does not guard against non-sprint tasks."""
+        strategy = MilestoneDrivenStrategy()
+        sprint = make_sprint(task_count=2)
+        config = _make_sprint_config(
+            milestones=[
+                {"name": "alpha", "ceremony": "sprint_review"},
+            ],
+        )
+        await strategy.on_sprint_activated(sprint, config)
+
+        # First assign a valid task
+        await strategy.on_external_event(
+            sprint,
+            "milestone_assign",
+            {"task_id": "task-0", "milestone": "alpha"},
+        )
+        assert "task-0" in strategy._milestone_tasks.get(
+            "alpha",
+            set(),
+        )
+
+        # Unassign using a different sprint (simulating task removal)
+        # -- unassign is not guarded, so it should work
+        await strategy.on_external_event(
+            sprint,
+            "milestone_unassign",
+            {"task_id": "task-0", "milestone": "alpha"},
+        )
+        assert "task-0" not in strategy._milestone_tasks.get(
+            "alpha",
+            set(),
+        )

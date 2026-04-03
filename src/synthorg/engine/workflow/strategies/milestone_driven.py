@@ -333,13 +333,15 @@ class MilestoneDrivenStrategy:
 
     async def on_external_event(
         self,
-        sprint: Sprint,  # noqa: ARG002
+        sprint: Sprint,
         event_name: str,
         payload: Mapping[str, Any],
     ) -> None:
         """Handle milestone_assign / milestone_unassign events.
 
         Expected payload keys: ``task_id`` (str), ``milestone`` (str).
+        Assign events are rejected if ``task_id`` is not in the
+        active sprint's task list.
 
         Args:
             sprint: Current sprint state.
@@ -347,7 +349,7 @@ class MilestoneDrivenStrategy:
             payload: Event payload data.
         """
         if event_name == EVENT_MILESTONE_ASSIGN:
-            self._handle_assign(payload)
+            self._handle_assign(sprint, payload)
         elif event_name == EVENT_MILESTONE_UNASSIGN:
             self._handle_unassign(payload)
 
@@ -391,8 +393,43 @@ class MilestoneDrivenStrategy:
 
     # -- Private helpers -------------------------------------------------------
 
-    def _handle_assign(self, payload: Mapping[str, Any]) -> None:
-        """Register a task under a milestone."""
+    def _handle_assign(
+        self,
+        sprint: Sprint,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Validate, guard, and delegate a milestone assignment."""
+        normalized = self._normalize_payload(payload, "assign")
+        if normalized is None:
+            return
+        task_id, milestone = normalized
+
+        if task_id not in sprint.task_ids:
+            logger.debug(
+                SPRINT_CEREMONY_SKIPPED,
+                reason="task_not_in_active_sprint",
+                task_id=task_id,
+                milestone=milestone,
+                strategy="milestone_driven",
+            )
+            return
+
+        self._add_task_to_milestone(task_id, milestone)
+
+    def _normalize_payload(
+        self,
+        payload: Mapping[str, Any],
+        event_kind: str,
+    ) -> tuple[str, str] | None:
+        """Extract and validate ``(task_id, milestone)`` from payload.
+
+        Args:
+            payload: Event payload data.
+            event_kind: ``"assign"`` or ``"unassign"`` for logging.
+
+        Returns:
+            Stripped ``(task_id, milestone)`` or ``None`` if invalid.
+        """
         task_id = payload.get("task_id")
         milestone = payload.get("milestone")
         if (
@@ -403,14 +440,26 @@ class MilestoneDrivenStrategy:
         ):
             logger.debug(
                 SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_milestone_assign_payload",
+                reason=f"invalid_milestone_{event_kind}_payload",
                 strategy="milestone_driven",
             )
-            return
+            return None
+        return task_id.strip(), milestone.strip()
 
-        milestone = milestone.strip()
-        task_id = task_id.strip()
+    def _add_task_to_milestone(
+        self,
+        task_id: str,
+        milestone: str,
+    ) -> None:
+        """Register a task under a known milestone.
 
+        Rejects unknown milestones and enforces the per-milestone
+        task cap (``_MAX_TASKS_PER_MILESTONE``).
+
+        Args:
+            task_id: Stripped task identifier.
+            milestone: Stripped milestone name.
+        """
         if (
             milestone not in self._milestones
             and milestone != self._transition_milestone
@@ -446,24 +495,15 @@ class MilestoneDrivenStrategy:
         )
 
     def _handle_unassign(self, payload: Mapping[str, Any]) -> None:
-        """Remove a task from a milestone."""
-        task_id = payload.get("task_id")
-        milestone = payload.get("milestone")
-        if (
-            not isinstance(task_id, str)
-            or not task_id.strip()
-            or not isinstance(milestone, str)
-            or not milestone.strip()
-        ):
-            logger.debug(
-                SPRINT_CEREMONY_SKIPPED,
-                reason="invalid_milestone_unassign_payload",
-                strategy="milestone_driven",
-            )
-            return
+        """Remove a task from a milestone.
 
-        milestone = milestone.strip()
-        task_id = task_id.strip()
+        No sprint guard -- unassign is always allowed so that stale
+        entries can be cleaned up even if a task leaves the sprint.
+        """
+        normalized = self._normalize_payload(payload, "unassign")
+        if normalized is None:
+            return
+        task_id, milestone = normalized
 
         tasks = self._milestone_tasks.get(milestone)
         if tasks is not None:
