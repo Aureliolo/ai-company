@@ -88,6 +88,11 @@ class SufficiencyChecker(Protocol):
         ...
 
 
+def _sanitize_for_xml_block(text: str) -> str:
+    """Escape content that could break XML-tagged prompt boundaries."""
+    return text.replace("</retrieved_memories>", "&lt;/retrieved_memories&gt;")
+
+
 def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
     """Format up to 10 entries for LLM prompts, truncating at 200 chars."""
     if not entries:
@@ -98,7 +103,7 @@ def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
         text = e.content[:_max_len]
         if len(e.content) > _max_len:
             text += "..."
-        parts.append(f"- [{e.category.value}] {text}")
+        parts.append(f"- [{e.category.value}] {_sanitize_for_xml_block(text)}")
     return "\n".join(parts)
 
 
@@ -201,9 +206,12 @@ class LLMSufficiencyChecker:
                 results=_format_results_summary(results),
             )
             response = await self._completion_fn(prompt)
-            # .split() tokenizes on whitespace so "INSUFFICIENT" does
-            # not match "SUFFICIENT" -- they are distinct tokens.
-            return "SUFFICIENT" in response.upper().split()
+            # Extract first token from last non-empty line, strip
+            # punctuation, and check exact match.  This rejects
+            # "NOT SUFFICIENT", "SUFFICIENT.", and "INSUFFICIENT".
+            lines = [ln.strip() for ln in response.strip().splitlines() if ln.strip()]
+            verdict = lines[-1].split()[0].strip(".,;:!?") if lines else ""
+            return verdict.upper() == "SUFFICIENT"
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:

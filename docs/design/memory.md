@@ -706,10 +706,10 @@ the agent during execution.
 
     - Injects a brief system instruction about available memory tools
     - Exposes `search_memory` and `recall_memory` (by ID) tools
-    - Delegates `search_memory` requests to `MemoryBackend.retrieve()`
-    - Relies on the configured backend for retrieval semantics; hybrid dense+sparse
-      search and RRF fusion are handled at the backend/retriever level, not within
-      `ToolBasedInjectionStrategy` itself
+    - Delegates `search_memory` requests to `MemoryBackend.retrieve()` (dense-only;
+      hybrid dense+sparse with RRF fusion is not yet wired into the tool-based path)
+    - Hybrid retrieval and RRF fusion are handled at the `ContextInjectionStrategy`
+      level, not within `ToolBasedInjectionStrategy`
     - `QueryReformulator` and `SufficiencyChecker` protocols exist with LLM-based
       implementations, but iterative reformulation is not yet wired into the tool-based
       strategy's search handler (reserved via `query_reformulation_enabled` config field)
