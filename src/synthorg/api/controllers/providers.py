@@ -1,11 +1,16 @@
 """Provider controller -- CRUD, connection testing, and presets."""
 
+import json as _json
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
+from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
@@ -30,6 +35,8 @@ from synthorg.api.dto_discovery import (
 )
 from synthorg.api.dto_providers import (
     ProviderModelResponse,
+    PullModelRequest,
+    UpdateModelConfigRequest,
     to_provider_model_response,
 )
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
@@ -652,3 +659,119 @@ class ProviderController(Controller):
                 from_attributes=True,
             ),
         )
+
+    # ── Local model management ───────────────────────────────
+
+    @post(
+        "/{name:str}/models/pull",
+        guards=[require_ceo_or_manager],
+        media_type="text/event-stream",
+    )
+    async def pull_model(
+        self,
+        state: State,
+        name: PathName,
+        data: PullModelRequest,
+    ) -> ServerSentEvent:
+        """Pull a model on a local provider (SSE streaming).
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            data: Pull request with model name.
+
+        Returns:
+            SSE stream of pull progress events.
+        """
+        app_state: AppState = state.app_state
+        svc = app_state.provider_management
+
+        async def _event_stream() -> AsyncIterator[dict[str, str]]:
+            try:
+                async for event in svc.pull_model(name, data.model_name):
+                    yield {
+                        "event": "complete" if event.done else "progress",
+                        "data": _json.dumps(
+                            event.model_dump(exclude_none=True),
+                        ),
+                    }
+            except ProviderNotFoundError:
+                yield {
+                    "event": "error",
+                    "data": _json.dumps(
+                        {"error": f"Provider {name!r} not found"},
+                    ),
+                }
+            except ProviderValidationError as exc:
+                yield {
+                    "event": "error",
+                    "data": _json.dumps({"error": str(exc)}),
+                }
+
+        return ServerSentEvent(content=_event_stream())
+
+    @delete(
+        "/{name:str}/models/{model_id:path}",
+        guards=[require_ceo_or_manager],
+        status_code=HTTP_204_NO_CONTENT,
+    )
+    async def delete_model(
+        self,
+        state: State,
+        name: PathName,
+        model_id: str,
+    ) -> None:
+        """Delete a model from a local provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            model_id: Model identifier (may contain colons).
+        """
+        app_state: AppState = state.app_state
+        try:
+            await app_state.provider_management.delete_model(name, model_id)
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
+        except ValueError as exc:
+            raise NotFoundError(str(exc)) from exc
+
+    @put(
+        "/{name:str}/models/{model_id:path}/config",
+        guards=[require_ceo_or_manager],
+    )
+    async def update_model_config(
+        self,
+        state: State,
+        name: PathName,
+        model_id: str,
+        data: UpdateModelConfigRequest,
+    ) -> ApiResponse[ProviderModelResponse]:
+        """Update per-model launch parameters for a local provider.
+
+        Args:
+            state: Application state.
+            name: Provider name.
+            model_id: Model identifier.
+            data: New launch parameters.
+
+        Returns:
+            Updated model response.
+        """
+        app_state: AppState = state.app_state
+        try:
+            updated = await app_state.provider_management.update_model_config(
+                name,
+                model_id,
+                data.local_params,
+            )
+        except ProviderNotFoundError as exc:
+            msg = f"Provider {name!r} not found"
+            raise NotFoundError(msg) from exc
+        except ProviderValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
+        model = next(m for m in updated.models if m.id == model_id)
+        return ApiResponse(data=to_provider_model_response(model))

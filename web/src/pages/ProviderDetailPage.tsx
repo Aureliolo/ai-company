@@ -12,7 +12,10 @@ import { ProviderModelList } from './providers/ProviderModelList'
 import { ProviderDetailSkeleton } from './providers/ProviderDetailSkeleton'
 import { ProviderFormModal } from './providers/ProviderFormModal'
 import { TestConnectionResult } from './providers/TestConnectionResult'
+import { ModelPullDialog } from './providers/ModelPullDialog'
+import { ModelConfigDrawer } from './providers/ModelConfigDrawer'
 import { Server } from 'lucide-react'
+import type { ProviderModelResponse } from '@/api/types'
 
 export default function ProviderDetailPage() {
   const { providerName } = useParams<{ providerName: string }>()
@@ -31,6 +34,11 @@ export default function ProviderDetailPage() {
 
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [pullOpen, setPullOpen] = useState(false)
+  const [configModel, setConfigModel] = useState<ProviderModelResponse | null>(null)
+  const [deleteModelId, setDeleteModelId] = useState<string | null>(null)
+
+  const { discoveringModels, deletingModel } = useProvidersStore()
 
   // Loading state
   if (loading && !provider) {
@@ -79,6 +87,12 @@ export default function ProviderDetailPage() {
             useProvidersStore.getState().testConnection(decodedName)
           }}
           testingConnection={testingConnection}
+          onRefresh={() => {
+            useProvidersStore.getState().discoverModels(decodedName)
+          }}
+          refreshing={discoveringModels}
+          onPullModel={() => setPullOpen(true)}
+          supportsPull={provider.supports_model_pull}
         />
       </ErrorBoundary>
 
@@ -96,7 +110,13 @@ export default function ProviderDetailPage() {
 
       {/* Model list */}
       <ErrorBoundary level="section">
-        <ProviderModelList models={models} />
+        <ProviderModelList
+          models={models}
+          supportsDelete={provider.supports_model_delete}
+          supportsConfig={provider.supports_model_config}
+          onDelete={(modelId) => setDeleteModelId(modelId)}
+          onConfigure={(model) => setConfigModel(model)}
+        />
       </ErrorBoundary>
 
       {/* Edit drawer */}
@@ -107,7 +127,7 @@ export default function ProviderDetailPage() {
         provider={provider}
       />
 
-      {/* Delete confirmation */}
+      {/* Delete provider confirmation */}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -121,6 +141,38 @@ export default function ProviderDetailPage() {
             navigate(ROUTES.PROVIDERS)
           }
           setDeleteOpen(false)
+        }}
+      />
+
+      {/* Pull model dialog */}
+      <ModelPullDialog
+        providerName={decodedName}
+        open={pullOpen}
+        onClose={() => setPullOpen(false)}
+      />
+
+      {/* Model config drawer */}
+      <ModelConfigDrawer
+        providerName={decodedName}
+        model={configModel}
+        open={configModel !== null}
+        onClose={() => setConfigModel(null)}
+      />
+
+      {/* Delete model confirmation */}
+      <ConfirmDialog
+        open={deleteModelId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteModelId(null) }}
+        title="Delete Model"
+        description={`Are you sure you want to delete "${deleteModelId ?? ''}" from this provider? This will remove the model from the local instance.`}
+        variant="destructive"
+        confirmLabel="Delete"
+        loading={deletingModel}
+        onConfirm={async () => {
+          if (deleteModelId) {
+            await useProvidersStore.getState().deleteModel(decodedName, deleteModelId)
+          }
+          setDeleteModelId(null)
         }}
       />
     </div>

@@ -1,0 +1,268 @@
+"""Local model management for Ollama and LM Studio.
+
+Provides a ``LocalModelManager`` protocol for pull/delete operations
+on local LLM providers, plus concrete implementations for each
+supported provider.
+"""
+
+import json
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+import httpx
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.provider import (
+    PROVIDER_MODEL_DELETE_FAILED,
+    PROVIDER_MODEL_DELETED,
+    PROVIDER_MODEL_PULL_COMPLETED,
+    PROVIDER_MODEL_PULL_FAILED,
+    PROVIDER_MODEL_PULL_STARTED,
+)
+
+logger = get_logger(__name__)
+
+_PULL_TIMEOUT_SECONDS: float = 600.0
+_DELETE_TIMEOUT_SECONDS: float = 30.0
+_HTTP_OK: int = 200
+_HTTP_NOT_FOUND: int = 404
+_HTTP_CLIENT_ERROR: int = 400
+
+
+class PullProgressEvent(BaseModel):
+    """Progress event emitted during a model pull.
+
+    Attributes:
+        status: Human-readable status message from the provider.
+        progress_percent: Download progress as a percentage (0-100).
+        total_bytes: Total download size in bytes.
+        completed_bytes: Bytes downloaded so far.
+        error: Error message if the pull failed.
+        done: Whether this is the final event.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    status: NotBlankStr
+    progress_percent: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+    )
+    total_bytes: int | None = Field(default=None, ge=0)
+    completed_bytes: int | None = Field(default=None, ge=0)
+    error: str | None = None
+    done: bool = False
+
+
+@runtime_checkable
+class LocalModelManager(Protocol):
+    """Protocol for local provider model management."""
+
+    def pull_model(
+        self,
+        model_name: str,
+    ) -> AsyncIterator[PullProgressEvent]:
+        """Pull/download a model, yielding progress events.
+
+        Args:
+            model_name: Model identifier (e.g. ``"llama3.2:1b"``).
+
+        Yields:
+            Progress events. The last event has ``done=True``.
+        """
+        ...
+
+    async def delete_model(self, model_name: str) -> None:
+        """Delete a model from the local provider.
+
+        Args:
+            model_name: Model identifier to delete.
+
+        Raises:
+            ValueError: If the model does not exist.
+        """
+        ...
+
+
+class OllamaModelManager:
+    """Model manager for Ollama instances.
+
+    Uses Ollama's REST API:
+    - ``POST /api/pull`` with streaming newline-delimited JSON
+    - ``DELETE /api/delete`` with ``{"name": model}``
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._client = client
+
+    async def pull_model(
+        self,
+        model_name: str,
+    ) -> AsyncIterator[PullProgressEvent]:
+        """Pull a model from the Ollama library.
+
+        Streams progress via newline-delimited JSON from Ollama's
+        ``/api/pull`` endpoint.
+
+        Args:
+            model_name: Model name/tag (e.g. ``"llama3.2:1b"``).
+
+        Yields:
+            Progress events parsed from the stream.
+        """
+        logger.info(
+            PROVIDER_MODEL_PULL_STARTED,
+            provider="ollama",
+            model=model_name,
+        )
+        url = f"{self._base_url}/api/pull"
+        client = self._client or httpx.AsyncClient()
+        owns_client = self._client is None
+        try:
+            async with client.stream(
+                "POST",
+                url,
+                json={"name": model_name, "stream": True},
+                timeout=_PULL_TIMEOUT_SECONDS,
+            ) as response:
+                if response.status_code != _HTTP_OK:
+                    error_msg = f"Pull failed: HTTP {response.status_code}"
+                    logger.warning(
+                        PROVIDER_MODEL_PULL_FAILED,
+                        provider="ollama",
+                        model=model_name,
+                        error=error_msg,
+                    )
+                    yield PullProgressEvent(
+                        status=error_msg,
+                        error=error_msg,
+                        done=True,
+                    )
+                    return
+
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    error = data.get("error")
+                    if error:
+                        logger.warning(
+                            PROVIDER_MODEL_PULL_FAILED,
+                            provider="ollama",
+                            model=model_name,
+                            error=error,
+                        )
+                        yield PullProgressEvent(
+                            status=str(error),
+                            error=str(error),
+                            done=True,
+                        )
+                        return
+
+                    status = data.get("status", "unknown")
+                    total = data.get("total")
+                    completed = data.get("completed")
+                    progress = None
+                    if total and completed:
+                        progress = min(
+                            round((completed / total) * 100, 1),
+                            100.0,
+                        )
+
+                    is_done = status == "success"
+                    yield PullProgressEvent(
+                        status=status,
+                        progress_percent=progress,
+                        total_bytes=total,
+                        completed_bytes=completed,
+                        done=is_done,
+                    )
+                    if is_done:
+                        logger.info(
+                            PROVIDER_MODEL_PULL_COMPLETED,
+                            provider="ollama",
+                            model=model_name,
+                        )
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def delete_model(self, model_name: str) -> None:
+        """Delete a model from the Ollama instance.
+
+        Args:
+            model_name: Model name/tag to delete.
+
+        Raises:
+            ValueError: If the model does not exist (404).
+        """
+        url = f"{self._base_url}/api/delete"
+        client = self._client or httpx.AsyncClient()
+        owns_client = self._client is None
+        try:
+            response = await client.request(
+                "DELETE",
+                url,
+                json={"name": model_name},
+                timeout=_DELETE_TIMEOUT_SECONDS,
+            )
+            if response.status_code == _HTTP_NOT_FOUND:
+                msg = f"Model {model_name!r} not found on Ollama instance"
+                logger.warning(
+                    PROVIDER_MODEL_DELETE_FAILED,
+                    provider="ollama",
+                    model=model_name,
+                    error=msg,
+                )
+                raise ValueError(msg)
+            if response.status_code >= _HTTP_CLIENT_ERROR:
+                msg = f"Delete failed: HTTP {response.status_code}"
+                logger.warning(
+                    PROVIDER_MODEL_DELETE_FAILED,
+                    provider="ollama",
+                    model=model_name,
+                    error=msg,
+                )
+                raise ValueError(msg)
+            logger.info(
+                PROVIDER_MODEL_DELETED,
+                provider="ollama",
+                model=model_name,
+            )
+        finally:
+            if owns_client:
+                await client.aclose()
+
+
+def get_local_model_manager(
+    preset_name: str | None,
+    base_url: str,
+) -> LocalModelManager | None:
+    """Resolve a local model manager for the given preset.
+
+    Args:
+        preset_name: Preset identifier (e.g. ``"ollama"``).
+        base_url: Provider base URL.
+
+    Returns:
+        A manager instance, or ``None`` if the preset does not
+        support local model management.
+    """
+    if preset_name == "ollama":
+        return OllamaModelManager(base_url=base_url)
+    return None

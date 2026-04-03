@@ -689,6 +689,22 @@ export interface ProviderHealthSummary {
   total_cost_24h: number
 }
 
+export interface LocalModelParams {
+  num_ctx: number | null
+  num_gpu_layers: number | null
+  num_threads: number | null
+  num_batch: number | null
+}
+
+export interface PullProgressEvent {
+  status: string
+  progress_percent: number | null
+  total_bytes: number | null
+  completed_bytes: number | null
+  error: string | null
+  done: boolean
+}
+
 export interface ProviderModelConfig {
   id: string
   alias: string | null
@@ -696,6 +712,7 @@ export interface ProviderModelConfig {
   cost_per_1k_output: number
   max_context: number
   estimated_latency_ms: number | null
+  local_params: LocalModelParams | null
 }
 
 export interface ProviderModelResponse {
@@ -705,6 +722,7 @@ export interface ProviderModelResponse {
   cost_per_1k_output: number
   max_context: number
   estimated_latency_ms: number | null
+  local_params: LocalModelParams | null
   supports_tools: boolean
   supports_vision: boolean
   supports_streaming: boolean
@@ -728,6 +746,10 @@ export interface ProviderConfig {
   oauth_client_id: string | null
   oauth_scope: string | null
   custom_header_name: string | null
+  preset_name: string | null
+  supports_model_pull: boolean
+  supports_model_delete: boolean
+  supports_model_config: boolean
 }
 
 export interface CreateProviderRequest {
@@ -790,6 +812,9 @@ export interface ProviderPreset {
   requires_base_url: boolean
   readonly candidate_urls: readonly string[]
   readonly default_models: readonly ProviderModelConfig[]
+  supports_model_pull: boolean
+  supports_model_delete: boolean
+  supports_model_config: boolean
 }
 
 export interface ProbePresetResponse {

@@ -1,4 +1,4 @@
-import { ArrowLeft, Pencil, Trash2, Wifi } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, RefreshCw, Trash2, Wifi } from 'lucide-react'
 import { Link } from 'react-router'
 import { ProviderHealthBadge } from '@/components/ui/provider-health-badge'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,10 @@ interface ProviderDetailHeaderProps {
   onDelete: () => void
   onTestConnection: () => void
   testingConnection: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
+  onPullModel?: () => void
+  supportsPull?: boolean
 }
 
 export function ProviderDetailHeader({
@@ -22,6 +26,10 @@ export function ProviderDetailHeader({
   onDelete,
   onTestConnection,
   testingConnection,
+  onRefresh,
+  refreshing = false,
+  onPullModel,
+  supportsPull = false,
 }: ProviderDetailHeaderProps) {
   const authLabel = provider.auth_type.replaceAll('_', ' ')
 
@@ -68,6 +76,23 @@ export function ProviderDetailHeader({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          {onRefresh && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`size-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          )}
+          {supportsPull && onPullModel && (
+            <Button variant="outline" size="sm" onClick={onPullModel}>
+              <Download className="size-3.5 mr-1.5" />
+              Pull Model
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

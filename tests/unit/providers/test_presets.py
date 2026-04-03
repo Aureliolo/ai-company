@@ -110,6 +110,39 @@ class TestProviderPresets:
             f"Uncategorized presets: {all_names - categorized}"
         )
 
+    def test_ollama_supports_local_model_management(self) -> None:
+        """Ollama preset supports pull, delete, and config."""
+        preset = get_preset("ollama")
+        assert preset is not None
+        assert preset.supports_model_pull is True
+        assert preset.supports_model_delete is True
+        assert preset.supports_model_config is True
+
+    def test_lm_studio_local_management_deferred(self) -> None:
+        """LM Studio preset flags are False until API stabilizes."""
+        preset = get_preset("lm-studio")
+        assert preset is not None
+        assert preset.supports_model_pull is False
+        assert preset.supports_model_delete is False
+        assert preset.supports_model_config is False
+
+    def test_vllm_no_local_model_management(self) -> None:
+        """vLLM has no pull/delete/config API."""
+        preset = get_preset("vllm")
+        assert preset is not None
+        assert preset.supports_model_pull is False
+        assert preset.supports_model_delete is False
+        assert preset.supports_model_config is False
+
+    @pytest.mark.parametrize("name", _CLOUD_PRESETS)
+    def test_cloud_presets_no_local_capabilities(self, name: str) -> None:
+        """Cloud presets do not support local model management."""
+        preset = get_preset(name)
+        assert preset is not None
+        assert preset.supports_model_pull is False
+        assert preset.supports_model_delete is False
+        assert preset.supports_model_config is False
+
     def test_auth_type_not_in_supported_raises(self) -> None:
         """Creating a preset with auth_type not in supported_auth_types fails."""
         from pydantic import ValidationError

@@ -33,6 +33,10 @@ function makeProvider(name: string): ProviderWithName {
     oauth_client_id: null,
     oauth_scope: null,
     custom_header_name: null,
+    preset_name: null,
+    supports_model_pull: false,
+    supports_model_delete: false,
+    supports_model_config: false,
   }
 }
 

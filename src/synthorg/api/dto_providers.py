@@ -9,7 +9,10 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
+from synthorg.config.schema import (  # noqa: TC001
+    LocalModelParams,
+    ProviderModelConfig,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.providers.capabilities import ModelCapabilities  # noqa: TC001
 from synthorg.providers.enums import AuthType
@@ -154,6 +157,7 @@ class CreateProviderRequest(BaseModel):
     custom_header_name: NotBlankStr | None = None
     custom_header_value: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] = ()
+    preset_name: NotBlankStr | None = None
 
     @field_validator("name")
     @classmethod
@@ -289,6 +293,10 @@ class ProviderResponse(BaseModel):
     oauth_client_id: NotBlankStr | None = None
     oauth_scope: NotBlankStr | None = None
     custom_header_name: NotBlankStr | None = None
+    preset_name: NotBlankStr | None = None
+    supports_model_pull: bool = False
+    supports_model_delete: bool = False
+    supports_model_config: bool = False
 
 
 class CreateFromPresetRequest(BaseModel):
@@ -371,6 +379,8 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
     Strips all secrets and provides boolean credential indicators.
+    Resolves local model management capabilities from the preset
+    when ``preset_name`` is set.
 
     Args:
         config: Provider configuration (may contain secrets).
@@ -378,11 +388,14 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     Returns:
         Safe response DTO with secrets stripped.
     """
+    from synthorg.providers.presets import get_preset  # noqa: PLC0415
+
     tos_str = (
         config.tos_accepted_at.isoformat()
         if config.tos_accepted_at is not None
         else None
     )
+    preset = get_preset(config.preset_name) if config.preset_name else None
     return ProviderResponse(
         driver=config.driver,
         litellm_provider=config.litellm_provider,
@@ -405,6 +418,10 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         oauth_client_id=config.oauth_client_id,
         oauth_scope=config.oauth_scope,
         custom_header_name=config.custom_header_name,
+        preset_name=config.preset_name,
+        supports_model_pull=preset.supports_model_pull if preset else False,
+        supports_model_delete=preset.supports_model_delete if preset else False,
+        supports_model_config=preset.supports_model_config if preset else False,
     )
 
 
@@ -444,3 +461,33 @@ def to_provider_model_response(
             capabilities.supports_streaming if capabilities is not None else True
         ),
     )
+
+
+# ── Local model management DTOs ──────────────────────────────
+
+
+class PullModelRequest(BaseModel):
+    """Payload for pulling a model on a local provider.
+
+    Attributes:
+        model_name: Model identifier to pull (e.g. ``"llama3.2:1b"``).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    model_name: NotBlankStr = Field(
+        max_length=256,
+        description="Model name/tag to pull",
+    )
+
+
+class UpdateModelConfigRequest(BaseModel):
+    """Payload for updating per-model launch parameters.
+
+    Attributes:
+        local_params: New launch parameters for the model.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    local_params: LocalModelParams

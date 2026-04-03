@@ -54,6 +54,7 @@ def build_provider_config(
         custom_header_name=request.custom_header_name,
         custom_header_value=request.custom_header_value,
         models=request.models,
+        preset_name=request.preset_name,
     )
 
 

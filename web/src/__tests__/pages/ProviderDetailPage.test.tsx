@@ -23,7 +23,7 @@ function makeProvider(name: string): ProviderWithName {
     auth_type: 'api_key',
     base_url: null,
     models: [
-      { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null },
+      { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null, local_params: null },
     ],
     has_api_key: true,
     has_oauth_credentials: false,
@@ -34,11 +34,15 @@ function makeProvider(name: string): ProviderWithName {
     oauth_client_id: null,
     oauth_scope: null,
     custom_header_name: null,
+    preset_name: null,
+    supports_model_pull: false,
+    supports_model_delete: false,
+    supports_model_config: false,
   }
 }
 
 const testModels: ProviderModelResponse[] = [
-  { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null, supports_tools: true, supports_vision: false, supports_streaming: true },
+  { id: 'test-model', alias: 'test', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null, local_params: null, supports_tools: true, supports_vision: false, supports_streaming: true },
 ]
 
 const defaultReturn: UseProviderDetailDataReturn = {

@@ -29,6 +29,10 @@ function makeConfig(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     oauth_client_id: null,
     oauth_scope: null,
     custom_header_name: null,
+    preset_name: null,
+    supports_model_pull: false,
+    supports_model_delete: false,
+    supports_model_config: false,
     ...overrides,
   }
 }
@@ -127,9 +131,9 @@ describe('filterProviders', () => {
 
 describe('sortProviders', () => {
   const providers: ProviderWithName[] = [
-    makeProvider('beta', { models: [{ id: 'm1', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null }] }),
+    makeProvider('beta', { models: [{ id: 'm1', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null, local_params: null }] }),
     makeProvider('alpha'),
-    makeProvider('gamma', { models: [{ id: 'm1', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null }, { id: 'm2', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null }] }),
+    makeProvider('gamma', { models: [{ id: 'm1', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null, local_params: null }, { id: 'm2', alias: null, cost_per_1k_input: 0, cost_per_1k_output: 0, max_context: 100000, estimated_latency_ms: null, local_params: null }] }),
   ]
   const healthMap: Record<string, ProviderHealthSummary> = {
     beta: makeHealth({ health_status: 'down' }),

@@ -99,3 +99,14 @@ PROVIDER_LITELLM_MODELS_EMPTY: Final[str] = "provider.litellm.models_empty"
 # ── Health tracker eviction events ───────────────────────────
 PROVIDER_HEALTH_PRUNED: Final[str] = "provider.health.pruned"
 PROVIDER_HEALTH_AUTO_PRUNED: Final[str] = "provider.health.auto_pruned"
+
+# ── Local model management ──────────────────────────────────
+PROVIDER_MODEL_PULL_STARTED: Final[str] = "provider.model.pull_started"
+PROVIDER_MODEL_PULL_COMPLETED: Final[str] = "provider.model.pull_completed"
+PROVIDER_MODEL_PULL_FAILED: Final[str] = "provider.model.pull_failed"
+PROVIDER_MODEL_DELETED: Final[str] = "provider.model.deleted"
+PROVIDER_MODEL_DELETE_FAILED: Final[str] = "provider.model.delete_failed"
+PROVIDER_MODEL_CONFIG_UPDATED: Final[str] = "provider.model.config_updated"
+PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE: Final[str] = (
+    "provider.local_manager.not_available"
+)

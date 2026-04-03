@@ -25,6 +25,8 @@ from synthorg.observability.events.provider import (
     PROVIDER_DELETED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+    PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
+    PROVIDER_MODEL_CONFIG_UPDATED,
     PROVIDER_NOT_FOUND,
     PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
@@ -56,8 +58,11 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.url_utils import is_self_url, redact_url
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from synthorg.api.state import AppState
-    from synthorg.config.schema import RootConfig
+    from synthorg.config.schema import LocalModelParams, RootConfig
+    from synthorg.providers.management.local_models import PullProgressEvent
     from synthorg.providers.routing.router import ModelRouter
     from synthorg.providers.routing.selector import ModelCandidateSelector
     from synthorg.settings.resolver import ConfigResolver
@@ -391,6 +396,10 @@ class ProviderManagementService:
 
         if request.models is not None:
             models = request.models
+        elif preset.auth_type == AuthType.NONE:
+            # Local providers: skip static LiteLLM DB, rely on live
+            # discovery in _maybe_discover_preset_models below.
+            models = preset.default_models
         else:
             litellm_models = models_from_litellm(preset.litellm_provider)
             models = litellm_models or preset.default_models
@@ -423,6 +432,7 @@ class ProviderManagementService:
             tos_accepted=request.tos_accepted,
             base_url=base_url,
             models=models,
+            preset_name=preset.name,
         )
         return await self.create_provider(create_request)
 
@@ -685,6 +695,125 @@ class ProviderManagementService:
         # 3. Hot-reload: swap in AppState (both sync, no await gap)
         self._app_state.swap_provider_registry(registry)
         self._app_state.swap_model_router(router)
+
+    # ── Local model management ───────────────────────────────
+
+    async def pull_model(
+        self,
+        name: str,
+        model_name: str,
+    ) -> AsyncIterator[PullProgressEvent]:
+        """Pull a model on a local provider.
+
+        Args:
+            name: Provider name.
+            model_name: Model to pull.
+
+        Yields:
+            Pull progress events.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If the provider does not support pull.
+        """
+        from synthorg.providers.management.local_models import (  # noqa: PLC0415
+            get_local_model_manager,
+        )
+
+        config = await self.get_provider(name)
+        preset = get_preset(config.preset_name) if config.preset_name else None
+        if preset is None or not preset.supports_model_pull:
+            msg = f"Provider {name!r} does not support model pull"
+            raise ProviderValidationError(msg)
+        manager = get_local_model_manager(config.preset_name, config.base_url or "")
+        if manager is None:
+            logger.warning(
+                PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE,
+                provider=name,
+                preset=config.preset_name,
+            )
+            msg = f"No local model manager for preset {config.preset_name!r}"
+            raise ProviderValidationError(msg)
+        async for event in manager.pull_model(model_name):
+            yield event
+
+    async def delete_model(self, name: str, model_id: str) -> None:
+        """Delete a model from a local provider.
+
+        Args:
+            name: Provider name.
+            model_id: Model identifier to delete.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If the provider does not support delete.
+        """
+        from synthorg.providers.management.local_models import (  # noqa: PLC0415
+            get_local_model_manager,
+        )
+
+        config = await self.get_provider(name)
+        preset = get_preset(config.preset_name) if config.preset_name else None
+        if preset is None or not preset.supports_model_delete:
+            msg = f"Provider {name!r} does not support model deletion"
+            raise ProviderValidationError(msg)
+        manager = get_local_model_manager(config.preset_name, config.base_url or "")
+        if manager is None:
+            msg = f"No local model manager for preset {config.preset_name!r}"
+            raise ProviderValidationError(msg)
+        await manager.delete_model(model_id)
+        await self.discover_models_for_provider(name)
+
+    async def update_model_config(
+        self,
+        name: str,
+        model_id: str,
+        local_params: LocalModelParams,
+    ) -> ProviderConfig:
+        """Update per-model launch parameters for a local provider.
+
+        Args:
+            name: Provider name.
+            model_id: Model identifier.
+            local_params: New launch parameters.
+
+        Returns:
+            Updated provider configuration.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If the model is not found.
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            config = providers.get(name)
+            if config is None:
+                msg = f"Provider {name!r} not found"
+                raise ProviderNotFoundError(msg)
+            model_idx = next(
+                (i for i, m in enumerate(config.models) if m.id == model_id),
+                None,
+            )
+            if model_idx is None:
+                msg = f"Model {model_id!r} not found in provider {name!r}"
+                raise ProviderValidationError(msg)
+            updated_model = config.models[model_idx].model_copy(
+                update={"local_params": local_params},
+            )
+            new_models = (
+                *config.models[:model_idx],
+                updated_model,
+                *config.models[model_idx + 1 :],
+            )
+            updated = config.model_copy(update={"models": new_models})
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+            logger.info(
+                PROVIDER_MODEL_CONFIG_UPDATED,
+                provider=name,
+                model=model_id,
+            )
+            return updated
 
     def _build_router(
         self,

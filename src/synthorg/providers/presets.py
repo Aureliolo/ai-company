@@ -54,6 +54,9 @@ class ProviderPreset(BaseModel):
     requires_base_url: bool = False
     candidate_urls: tuple[NotBlankStr, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
+    supports_model_pull: bool = False
+    supports_model_delete: bool = False
+    supports_model_config: bool = False
 
     @model_validator(mode="after")
     def _validate_auth_type_in_supported(self) -> Self:
@@ -219,6 +222,9 @@ _OLLAMA = ProviderPreset(
         "http://localhost:11434",
     ),
     default_models=(),
+    supports_model_pull=True,
+    supports_model_delete=True,
+    supports_model_config=True,
 )
 
 _LM_STUDIO = ProviderPreset(

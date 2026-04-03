@@ -42,6 +42,43 @@ from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 logger = get_logger(__name__)
 
 
+class LocalModelParams(BaseModel):
+    """Per-model launch parameters for local providers.
+
+    Provider-agnostic parameter set covering Ollama and LM Studio.
+    Unused fields are ``None`` (providers ignore unrecognised keys).
+
+    Attributes:
+        num_ctx: Context window size in tokens.
+        num_gpu_layers: Number of GPU layers to offload.
+        num_threads: CPU thread count (Ollama).
+        num_batch: Batch size for prompt processing (Ollama).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    num_ctx: int | None = Field(
+        default=None,
+        gt=0,
+        description="Context window size in tokens",
+    )
+    num_gpu_layers: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of GPU layers to offload",
+    )
+    num_threads: int | None = Field(
+        default=None,
+        gt=0,
+        description="CPU thread count",
+    )
+    num_batch: int | None = Field(
+        default=None,
+        gt=0,
+        description="Batch size for prompt processing",
+    )
+
+
 class ProviderModelConfig(BaseModel):
     """Configuration for a single LLM model within a provider.
 
@@ -52,6 +89,7 @@ class ProviderModelConfig(BaseModel):
         cost_per_1k_output: Cost per 1,000 output tokens (base currency).
         max_context: Maximum context window size in tokens.
         estimated_latency_ms: Estimated median latency in milliseconds.
+        local_params: Per-model launch parameters for local providers.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -81,6 +119,10 @@ class ProviderModelConfig(BaseModel):
         gt=0,
         le=300_000,
         description="Estimated median latency in milliseconds",
+    )
+    local_params: LocalModelParams | None = Field(
+        default=None,
+        description="Per-model launch parameters for local providers",
     )
 
 
@@ -204,6 +246,10 @@ class ProviderConfig(BaseModel):
     degradation: DegradationConfig = Field(
         default_factory=DegradationConfig,
         description="Degradation strategy when quota exhausted",
+    )
+    preset_name: NotBlankStr | None = Field(
+        default=None,
+        description="Preset used to create this provider (if any)",
     )
 
     # Required fields per auth type (field_name -> attribute_name).

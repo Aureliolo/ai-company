@@ -10,8 +10,8 @@ const baseProvider: ProviderWithName = {
   auth_type: 'api_key',
   base_url: null,
   models: [
-    { id: 'claude-sonnet-4-20250514', alias: 'sonnet', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null },
-    { id: 'claude-haiku-4-5-20251001', alias: 'haiku', cost_per_1k_input: 0.0008, cost_per_1k_output: 0.004, max_context: 200000, estimated_latency_ms: null },
+    { id: 'claude-sonnet-4-20250514', alias: 'sonnet', cost_per_1k_input: 0.003, cost_per_1k_output: 0.015, max_context: 200000, estimated_latency_ms: null, local_params: null },
+    { id: 'claude-haiku-4-5-20251001', alias: 'haiku', cost_per_1k_input: 0.0008, cost_per_1k_output: 0.004, max_context: 200000, estimated_latency_ms: null, local_params: null },
   ],
   has_api_key: true,
   has_oauth_credentials: false,
@@ -22,6 +22,10 @@ const baseProvider: ProviderWithName = {
   oauth_client_id: null,
   oauth_scope: null,
   custom_header_name: null,
+  preset_name: null,
+  supports_model_pull: false,
+  supports_model_delete: false,
+  supports_model_config: false,
 }
 
 const healthUp: ProviderHealthSummary = {
