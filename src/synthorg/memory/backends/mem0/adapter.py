@@ -35,10 +35,9 @@ from synthorg.memory.backends.mem0.shared import (
     search_shared_memories,
 )
 from synthorg.memory.backends.mem0.sparse_search import (
-    ensure_sparse_field,
-    scored_points_to_entries,
-    search_sparse,
-    upsert_sparse_vector,
+    async_init_sparse_field,
+    async_retrieve_sparse,
+    async_try_sparse_upsert,
 )
 from synthorg.memory.errors import (
     MemoryConnectionError,
@@ -71,8 +70,6 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_RETRIEVED,
     MEMORY_ENTRY_STORE_FAILED,
     MEMORY_ENTRY_STORED,
-    MEMORY_SPARSE_FIELD_ENSURE_FAILED,
-    MEMORY_SPARSE_UPSERT_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -194,23 +191,13 @@ class Mem0MemoryBackend:
                 try:
                     qdrant = client.vector_store.client  # pyright: ignore[reportAttributeAccessIssue]
                     self._qdrant_client = qdrant
-                    await asyncio.to_thread(
-                        ensure_sparse_field,
+                    await async_init_sparse_field(
                         qdrant,
                         self._mem0_config.collection_name,
                     )
                 except builtins.MemoryError, RecursionError:
                     raise
-                except Exception as exc:
-                    logger.warning(
-                        MEMORY_SPARSE_FIELD_ENSURE_FAILED,
-                        error=str(exc),
-                        error_type=type(exc).__name__,
-                        reason=(
-                            "sparse search disabled for this connection "
-                            "-- reconnect to retry"
-                        ),
-                    )
+                except Exception:
                     # Non-fatal: dense search still works.
                     self._qdrant_client = None
             logger.info(MEMORY_BACKEND_CONNECTED, backend="mem0")
@@ -391,33 +378,17 @@ class Mem0MemoryBackend:
         memory_id: NotBlankStr,
         content: str,
     ) -> None:
-        """Upsert a BM25 sparse vector (non-fatal on failure).
-
-        Skips silently if sparse search is disabled or the encoder
-        is unavailable.  Re-raises ``builtins.MemoryError`` and
-        ``RecursionError``.
-        """
+        """Upsert a BM25 sparse vector (non-fatal, delegates to sparse_search)."""
         if self._sparse_encoder is None or self._qdrant_client is None:
             return
-        try:
-            sparse_vec = self._sparse_encoder.encode(content)
-            await asyncio.to_thread(
-                upsert_sparse_vector,
-                self._qdrant_client,
-                self._mem0_config.collection_name,
-                str(memory_id),
-                sparse_vec,
-            )
-        except builtins.MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                MEMORY_SPARSE_UPSERT_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
+        await async_try_sparse_upsert(
+            self._sparse_encoder,
+            self._qdrant_client,
+            self._mem0_config.collection_name,
+            agent_id,
+            memory_id,
+            content,
+        )
 
     # ── CRUD Operations ───────────────────────────────────────────
 
@@ -812,53 +783,18 @@ class Mem0MemoryBackend:
         agent_id: NotBlankStr,
         query: MemoryQuery,
     ) -> tuple[MemoryEntry, ...]:
-        """Retrieve memories via BM25 sparse search.
-
-        Returns empty when sparse search is disabled or unavailable.
-
-        Args:
-            agent_id: Owning agent identifier.
-            query: Retrieval parameters (uses ``query.text`` for BM25).
-
-        Returns:
-            Matching entries ordered by BM25 relevance.
-
-        Raises:
-            MemoryConnectionError: If the backend is not connected.
-            MemoryRetrievalError: If the sparse search fails.
-        """
+        """Retrieve memories via BM25 sparse search (delegates to sparse_search)."""
         if not self.supports_sparse_search or self._sparse_encoder is None:
             return ()
         self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
-        if query.text is None:
-            return ()
-        try:
-            query_vec = self._sparse_encoder.encode(query.text)
-            if query_vec.is_empty:
-                return ()
-            raw_points = await asyncio.to_thread(
-                search_sparse,
-                self._qdrant_client,
-                self._mem0_config.collection_name,
-                query_vec,
-                user_id_filter=str(agent_id),
-                limit=query.limit,
-            )
-            entries = scored_points_to_entries(raw_points, agent_id)
-            return apply_post_filters(entries, query)
-        except builtins.MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                MEMORY_ENTRY_RETRIEVAL_FAILED,
-                agent_id=agent_id,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                source="sparse",
-            )
-            msg = f"Failed sparse retrieval: {exc}"
-            raise MemoryRetrievalError(msg) from exc
+        return await async_retrieve_sparse(
+            self._sparse_encoder,
+            self._qdrant_client,
+            self._mem0_config.collection_name,
+            agent_id,
+            query,
+        )
 
     # ── SharedKnowledgeStore ──────────────────────────────────────
     # Implementations live in shared.py to keep this file under

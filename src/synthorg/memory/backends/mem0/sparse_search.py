@@ -4,26 +4,37 @@ Pure functions operating on a ``QdrantClient`` reference.  These
 handle the sparse vector lifecycle: field creation, upsert alongside
 dense vectors, and sparse-only retrieval.  Qdrant's ``Modifier.IDF``
 applies IDF scoring server-side -- only term frequencies are stored.
+
+Async adapter-level helpers (``async_init_sparse_field``,
+``async_try_sparse_upsert``, ``async_retrieve_sparse``) wrap the
+sync Qdrant functions for use by ``Mem0MemoryBackend``.
 """
 
+import asyncio
 import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry, MemoryMetadata
+from synthorg.memory.errors import (
+    MemoryRetrievalError,
+)
+from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_BACKEND_SYSTEM_ERROR,
+    MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_SPARSE_BATCH_DEGRADED,
     MEMORY_SPARSE_FIELD_ENSURED,
     MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
     MEMORY_SPARSE_SEARCH_COMPLETE,
     MEMORY_SPARSE_SEARCH_FAILED,
     MEMORY_SPARSE_UPSERT_COMPLETE,
+    MEMORY_SPARSE_UPSERT_FAILED,
 )
 
 if TYPE_CHECKING:
-    from synthorg.memory.sparse import SparseVector
+    from synthorg.memory.sparse import BM25Tokenizer, SparseVector
 
 logger = get_logger(__name__)
 
@@ -315,3 +326,133 @@ def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
         created_at=created_at,
         relevance_score=score,
     )
+
+
+# ── Async adapter helpers ─────────────────────────────────────────
+# These wrap the sync Qdrant functions for Mem0MemoryBackend,
+# keeping sparse orchestration out of the large adapter module.
+
+
+async def async_init_sparse_field(
+    qdrant_client: Any,
+    collection_name: str,
+) -> None:
+    """Initialize sparse vector field (async wrapper).
+
+    Args:
+        qdrant_client: ``QdrantClient`` instance.
+        collection_name: Target Qdrant collection.
+    """
+    await asyncio.to_thread(ensure_sparse_field, qdrant_client, collection_name)
+
+
+async def async_try_sparse_upsert(  # noqa: PLR0913
+    encoder: BM25Tokenizer,
+    qdrant_client: Any,
+    collection_name: str,
+    agent_id: NotBlankStr,
+    memory_id: NotBlankStr,
+    content: str,
+) -> None:
+    """Upsert a BM25 sparse vector (non-fatal on failure).
+
+    Args:
+        encoder: BM25 tokenizer for encoding.
+        qdrant_client: ``QdrantClient`` instance.
+        collection_name: Target Qdrant collection.
+        agent_id: Owning agent identifier (for logging).
+        memory_id: Memory entry ID.
+        content: Text content to encode.
+    """
+    try:
+        sparse_vec = encoder.encode(content)
+        await asyncio.to_thread(
+            upsert_sparse_vector,
+            qdrant_client,
+            collection_name,
+            str(memory_id),
+            sparse_vec,
+        )
+    except builtins.MemoryError, RecursionError:
+        logger.error(
+            MEMORY_BACKEND_SYSTEM_ERROR,
+            backend="mem0",
+            operation="sparse_upsert",
+            agent_id=agent_id,
+            exc_info=True,
+        )
+        raise
+    except Exception as exc:
+        logger.warning(
+            MEMORY_SPARSE_UPSERT_FAILED,
+            agent_id=agent_id,
+            memory_id=memory_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+
+
+async def async_retrieve_sparse(
+    encoder: BM25Tokenizer,
+    qdrant_client: Any,
+    collection_name: str,
+    agent_id: NotBlankStr,
+    query: MemoryQuery,
+) -> tuple[MemoryEntry, ...]:
+    """Retrieve memories via BM25 sparse search.
+
+    Returns empty when query text is absent or produces an
+    empty vector.
+
+    Args:
+        encoder: BM25 tokenizer for encoding.
+        qdrant_client: ``QdrantClient`` instance.
+        collection_name: Target Qdrant collection.
+        agent_id: Owning agent identifier.
+        query: Retrieval parameters (uses ``query.text``).
+
+    Returns:
+        Matching entries ordered by BM25 relevance.
+
+    Raises:
+        MemoryRetrievalError: If the sparse search fails.
+    """
+    if query.text is None:
+        return ()
+    try:
+        query_vec = encoder.encode(query.text)
+        if query_vec.is_empty:
+            return ()
+        raw_points = await asyncio.to_thread(
+            search_sparse,
+            qdrant_client,
+            collection_name,
+            query_vec,
+            user_id_filter=str(agent_id),
+            limit=query.limit,
+        )
+        from synthorg.memory.backends.mem0.mappers import (  # noqa: PLC0415
+            apply_post_filters,
+        )
+
+        entries = scored_points_to_entries(raw_points, agent_id)
+        return apply_post_filters(entries, query)
+    except builtins.MemoryError, RecursionError:
+        logger.error(
+            MEMORY_BACKEND_SYSTEM_ERROR,
+            backend="mem0",
+            operation="retrieve_sparse",
+            agent_id=agent_id,
+            exc_info=True,
+        )
+        raise
+    except Exception as exc:
+        logger.warning(
+            MEMORY_ENTRY_RETRIEVAL_FAILED,
+            agent_id=agent_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            source="sparse",
+        )
+        msg = f"Failed sparse retrieval: {exc}"
+        raise MemoryRetrievalError(msg) from exc

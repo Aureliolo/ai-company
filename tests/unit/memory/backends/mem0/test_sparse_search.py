@@ -302,7 +302,7 @@ class TestAdapterSparseIntegration:
         )
 
         with patch(
-            "synthorg.memory.backends.mem0.adapter.upsert_sparse_vector",
+            "synthorg.memory.backends.mem0.sparse_search.upsert_sparse_vector",
         ) as mock_upsert:
             await backend.store(NotBlankStr("agent-1"), request)
             mock_upsert.assert_called_once()
@@ -327,7 +327,7 @@ class TestAdapterSparseIntegration:
         )
 
         with patch(
-            "synthorg.memory.backends.mem0.adapter.upsert_sparse_vector",
+            "synthorg.memory.backends.mem0.sparse_search.upsert_sparse_vector",
             side_effect=RuntimeError("sparse failed"),
         ):
             # Should not raise -- sparse failure is non-fatal

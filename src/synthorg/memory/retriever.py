@@ -202,8 +202,22 @@ class ContextInjectionStrategy:
                 categories=categories,
             )
         except builtins.MemoryError:
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="pipeline",
+                agent_id=agent_id,
+                error_type="system",
+                exc_info=True,
+            )
             raise
         except RecursionError:
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="pipeline",
+                agent_id=agent_id,
+                error_type="system",
+                exc_info=True,
+            )
             raise
         except memory_errors.MemoryError:
             logger.warning(
@@ -224,7 +238,14 @@ class ContextInjectionStrategy:
                     ),
                 )
                 if system_errors is not None:
-                    raise system_errors from exc
+                    logger.error(
+                        MEMORY_RETRIEVAL_DEGRADED,
+                        source="pipeline",
+                        agent_id=agent_id,
+                        error_type="system_in_exception_group",
+                        exc_info=True,
+                    )
+                    raise system_errors.exceptions[0] from exc
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="pipeline",
@@ -384,6 +405,17 @@ class ContextInjectionStrategy:
 
         dense_personal, dense_shared = dense_task.result()
         sparse_personal, sparse_shared = sparse_task.result()
+
+        # When sparse is empty, fall back to linear ranking instead
+        # of running RRF on a single dense list.
+        if not sparse_personal and not sparse_shared:
+            now = datetime.now(UTC)
+            return rank_memories(
+                dense_personal,
+                config=self._config,
+                now=now,
+                shared_entries=dense_shared,
+            )
 
         return self._merge_and_fuse(
             dense_personal + dense_shared,

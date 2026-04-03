@@ -642,8 +642,8 @@ the agent during execution.
     When `fusion_strategy: rrf` is configured, the pipeline runs both dense and BM25 sparse
     search in parallel and fuses results:
 
-    1. Dense search via `MemoryBackend.retrieve()` (personal + shared in parallel)
-    2. Sparse BM25 search via `MemoryBackend.retrieve_sparse()` (personal + shared in parallel)
+    1. Dense search: `MemoryBackend.retrieve()` for personal, `SharedKnowledgeStore.search_shared()` for shared (in parallel)
+    2. Sparse BM25 search: `MemoryBackend.retrieve_sparse()` for personal (shared sparse disabled until `SharedKnowledgeStore` adds the method)
     3. Fuse via `fuse_ranked_lists()` with configurable `rrf_k` smoothing constant
     4. Post-RRF `min_relevance` filter on `combined_score`
     5. Apply `MemoryFilterStrategy` (optional)
