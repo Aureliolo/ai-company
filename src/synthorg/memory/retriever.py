@@ -303,6 +303,13 @@ class ContextInjectionStrategy:
             try:
                 ranked = self._memory_filter.filter_for_injection(ranked)
             except builtins.MemoryError, RecursionError:
+                logger.error(
+                    MEMORY_RETRIEVAL_DEGRADED,
+                    source="memory_filter",
+                    agent_id=agent_id,
+                    error_type="system",
+                    exc_info=True,
+                )
                 raise
             except Exception as exc:
                 logger.warning(

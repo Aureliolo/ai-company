@@ -47,8 +47,6 @@ _STOP_WORDS: frozenset[str] = frozenset(
         "is",
         "it",
         "its",
-        "no",
-        "not",
         "of",
         "on",
         "or",

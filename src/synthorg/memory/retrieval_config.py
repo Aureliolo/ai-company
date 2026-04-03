@@ -196,9 +196,9 @@ class MemoryRetrievalConfig(BaseModel):
                 field="personal_boost",
                 value=self.personal_boost,
                 reason=(
-                    "personal_boost is not applied with RRF fusion "
-                    "strategy -- RRF merges flat ranked lists without "
-                    "personal/shared distinction"
+                    "personal_boost may not be applied when pure RRF "
+                    "is used; fallback to rank_memories (when sparse "
+                    "is empty) does apply personal_boost"
                 ),
             )
         return self
