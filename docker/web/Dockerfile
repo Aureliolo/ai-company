@@ -6,7 +6,7 @@
 # =============================================================================
 
 # Stage 1: Build React dashboard (non-root for defense-in-depth)
-FROM node:25-alpine@sha256:cf38e1f3c28ac9d81cdc0c51d8220320b3b618780e44ef96a39f76f7dbfef023 AS builder
+FROM node:25-alpine@sha256:ad82ecad30371c43f4057aaa4800a8ed88f9446553a2d21323710c7b937177fc AS builder
 RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:build /app
 WORKDIR /app
 COPY --chown=build:build web/package.json web/package-lock.json web/.npmrc ./
