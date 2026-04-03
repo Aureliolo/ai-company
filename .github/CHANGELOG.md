@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.5.8](https://github.com/Aureliolo/synthorg/compare/v0.5.7...v0.5.8) (2026-04-03)
+
+
+### Features
+
+* auto-select embedding model + fine-tuning pipeline wiring ([#999](https://github.com/Aureliolo/synthorg/issues/999)) ([a4cbc4e](https://github.com/Aureliolo/synthorg/commit/a4cbc4e99949ae2c8cc7cf02706b7fb2d6242ca0)), closes [#965](https://github.com/Aureliolo/synthorg/issues/965) [#966](https://github.com/Aureliolo/synthorg/issues/966)
+* ceremony scheduling batch 3 -- milestone strategy, template defaults, department overrides ([#1019](https://github.com/Aureliolo/synthorg/issues/1019)) ([321d245](https://github.com/Aureliolo/synthorg/commit/321d24562eeeac755c240fff130c945d05d7d745))
+* five-pillar evaluation framework for HR performance tracking ([#1017](https://github.com/Aureliolo/synthorg/issues/1017)) ([5e66cbd](https://github.com/Aureliolo/synthorg/commit/5e66cbd1aa928bb4a61e5a11fc143acdc3355aba)), closes [#699](https://github.com/Aureliolo/synthorg/issues/699)
+* populate comparison page with 53 competitor entries ([#1000](https://github.com/Aureliolo/synthorg/issues/1000)) ([5cb232d](https://github.com/Aureliolo/synthorg/commit/5cb232d1dc8cd7703eb173b243c34b5e0e6fc287)), closes [#993](https://github.com/Aureliolo/synthorg/issues/993)
+* throughput-adaptive and external-trigger ceremony scheduling strategies ([#1003](https://github.com/Aureliolo/synthorg/issues/1003)) ([bb5c9a4](https://github.com/Aureliolo/synthorg/commit/bb5c9a4f71235d121cbfd730e6467c8011f1c081)), closes [#973](https://github.com/Aureliolo/synthorg/issues/973) [#974](https://github.com/Aureliolo/synthorg/issues/974)
+
+
+### Bug Fixes
+
+* eliminate backup service I/O from API test lifecycle ([#1015](https://github.com/Aureliolo/synthorg/issues/1015)) ([08d9183](https://github.com/Aureliolo/synthorg/commit/08d9183dc9d028516dc532b7b9a98f27678b0401))
+* update run_affected_tests.py to use -n 8 ([#1014](https://github.com/Aureliolo/synthorg/issues/1014)) ([3ee9fa7](https://github.com/Aureliolo/synthorg/commit/3ee9fa7d8af52f96ab9ba14277b943ec09130ee1))
+
+
+### Performance
+
+* reduce pytest parallelism from -n auto to -n 8 ([#1013](https://github.com/Aureliolo/synthorg/issues/1013)) ([43e0707](https://github.com/Aureliolo/synthorg/commit/43e07070635697511f5a61bc6e2b0aea6d219ce8))
+
+
+### CI/CD
+
+* bump docker/login-action from 4.0.0 to 4.1.0 in the all group ([#1027](https://github.com/Aureliolo/synthorg/issues/1027)) ([e7e28ec](https://github.com/Aureliolo/synthorg/commit/e7e28ecca8814aaa6f060aeb25ed281f433d3ab0))
+* bump wrangler from 4.79.0 to 4.80.0 in /.github in the all group ([#1023](https://github.com/Aureliolo/synthorg/issues/1023)) ([1322a0d](https://github.com/Aureliolo/synthorg/commit/1322a0dc5623e094f6e1869d02628970b12bd149))
+
+
+### Maintenance
+
+* bump github.com/mattn/go-runewidth from 0.0.21 to 0.0.22 in /cli in the all group ([#1024](https://github.com/Aureliolo/synthorg/issues/1024)) ([b311694](https://github.com/Aureliolo/synthorg/commit/b3116944d3b9e82c5c691fe7836ed72b01b9426e))
+* bump https://github.com/astral-sh/ruff-pre-commit from v0.15.8 to 0.15.9 in the all group ([#1022](https://github.com/Aureliolo/synthorg/issues/1022)) ([1650087](https://github.com/Aureliolo/synthorg/commit/16500878a35913454f4062ea51596aa038e30869))
+* bump node from `71be405` to `387eebd` in /docker/sandbox in the all group ([#1021](https://github.com/Aureliolo/synthorg/issues/1021)) ([40bd2f6](https://github.com/Aureliolo/synthorg/commit/40bd2f683a63b8d8301c728aff1bd3547cfaf978))
+* bump node from `cf38e1f` to `ad82eca` in /docker/web in the all group ([#1020](https://github.com/Aureliolo/synthorg/issues/1020)) ([f05ab9f](https://github.com/Aureliolo/synthorg/commit/f05ab9ffcfa912c946134e5a02e78641be5ae6d0))
+* bump the all group in /web with 3 updates ([#1025](https://github.com/Aureliolo/synthorg/issues/1025)) ([21d40d3](https://github.com/Aureliolo/synthorg/commit/21d40d3a378040d9eb32bd0db628c2d9b642f30f))
+* bump the all group with 2 updates ([#1026](https://github.com/Aureliolo/synthorg/issues/1026)) ([36778de](https://github.com/Aureliolo/synthorg/commit/36778de3e5c601dec2fcbb1b7c8bb1765d41a0fc))
+* enable additional eslint-react rules and fix violations ([#1028](https://github.com/Aureliolo/synthorg/issues/1028)) ([80423be](https://github.com/Aureliolo/synthorg/commit/80423beccfbf3b6c948dcae4a6d72268937dfd25))
+
 ## [0.5.7](https://github.com/Aureliolo/synthorg/compare/v0.5.6...v0.5.7) (2026-04-02)
 
 
