@@ -21,6 +21,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_LOW_CONFIDENCE,
     PROCEDURAL_MEMORY_PROPOSED,
+    PROCEDURAL_MEMORY_PROPOSER_INIT,
     PROCEDURAL_MEMORY_SKIPPED,
 )
 from synthorg.providers.enums import MessageRole
@@ -129,7 +130,7 @@ class ProceduralMemoryProposer:
             max_tokens=config.max_tokens,
         )
         logger.debug(
-            PROCEDURAL_MEMORY_PROPOSED,
+            PROCEDURAL_MEMORY_PROPOSER_INIT,
             model=config.model,
             temperature=config.temperature,
             max_tokens=config.max_tokens,

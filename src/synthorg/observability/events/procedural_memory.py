@@ -37,3 +37,6 @@ PROCEDURAL_MEMORY_DISABLED: Final[str] = "procedural_memory.disabled"
 
 PROCEDURAL_MEMORY_SKILL_MD: Final[str] = "procedural_memory.skill_md.written"
 """SKILL.md file materialized from a procedural memory proposal."""
+
+PROCEDURAL_MEMORY_PROPOSER_INIT: Final[str] = "procedural_memory.proposer.init"
+"""ProceduralMemoryProposer constructed with configuration."""
