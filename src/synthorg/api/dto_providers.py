@@ -483,7 +483,7 @@ class PullModelRequest(BaseModel):
     """Payload for pulling a model on a local provider.
 
     Attributes:
-        model_name: Model identifier to pull (e.g. ``"llama3.2:1b"``).
+        model_name: Model identifier to pull (e.g. ``"test-local-001:latest"``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

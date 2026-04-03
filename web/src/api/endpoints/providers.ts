@@ -141,9 +141,11 @@ function processSseLines(
         onProgress(parsed)
       } catch (err) {
         state.currentEvent = ''
+        if (err instanceof SyntaxError) {
+          console.warn('[SSE] Malformed JSON in pull stream line')
+          continue
+        }
         if (err instanceof Error) throw err
-        // JSON parse error -- log and skip
-        console.warn('[SSE] Malformed JSON in pull stream line')
       }
       state.currentEvent = ''
     }

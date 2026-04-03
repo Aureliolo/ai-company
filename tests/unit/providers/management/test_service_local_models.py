@@ -51,7 +51,10 @@ class TestLocalModelManagement:
             PullProgressEvent(status="success", done=True),
         ]
 
+        captured_model_names: list[str] = []
+
         async def fake_pull(model_name: str) -> AsyncIterator[PullProgressEvent]:
+            captured_model_names.append(model_name)
             for evt in fake_events:
                 yield evt
 
@@ -68,6 +71,7 @@ class TestLocalModelManagement:
 
         assert len(events) == 2
         assert events[1].done is True
+        assert captured_model_names == ["test-model:7b"]
 
     async def test_pull_model_unsupported_preset_raises(
         self,

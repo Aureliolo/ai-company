@@ -34,13 +34,15 @@ function ModelConfigForm({
   const handleSave = async () => {
     setSaving(true)
     const parseIntStrict = (val: string): number | null => {
-      if (!val) return null
-      const n = Number(val)
+      const s = val.trim()
+      if (!s) return null
+      const n = Number(s)
       return Number.isFinite(n) && Number.isInteger(n) ? n : null
     }
     const parseFloatStrict = (val: string): number | null => {
-      if (!val) return null
-      const n = Number(val)
+      const s = val.trim()
+      if (!s) return null
+      const n = Number(s)
       return Number.isFinite(n) ? n : null
     }
     const newParams: LocalModelParams = {

@@ -259,3 +259,20 @@ class TestLocalModelParams:
     def test_gpu_layers_allows_zero(self) -> None:
         params = LocalModelParams(num_gpu_layers=0)
         assert params.num_gpu_layers == 0
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("num_ctx", float("nan")),
+            ("num_gpu_layers", float("inf")),
+            ("num_threads", float("-inf")),
+            ("repeat_penalty", float("nan")),
+            ("repeat_penalty", float("inf")),
+        ],
+    )
+    def test_non_finite_rejected(self, field: str, value: float) -> None:
+        """allow_inf_nan=False rejects NaN and Inf."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            LocalModelParams(**{field: value})  # type: ignore[arg-type]
