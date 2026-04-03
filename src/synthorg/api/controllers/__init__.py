@@ -32,6 +32,9 @@ from synthorg.api.controllers.setup_personality import (
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.template_packs import TemplatePackController
 from synthorg.api.controllers.users import UserController
+from synthorg.api.controllers.workflow_executions import (
+    WorkflowExecutionController,
+)
 from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 
@@ -63,6 +66,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     TemplatePackController,
     UserController,
     WorkflowController,
+    WorkflowExecutionController,
 )
 
 __all__ = [
@@ -95,5 +99,6 @@ __all__ = [
     "TemplatePackController",
     "UserController",
     "WorkflowController",
+    "WorkflowExecutionController",
     "ws_handler",
 ]

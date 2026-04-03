@@ -151,3 +151,19 @@ class CoordinationPhaseError(CoordinationError):
         super().__init__(message)
         self.phase = phase
         self.partial_phases = partial_phases
+
+
+class WorkflowExecutionError(EngineError):
+    """Base exception for workflow execution failures."""
+
+
+class WorkflowDefinitionInvalidError(WorkflowExecutionError):
+    """Raised when a workflow definition fails validation at activation time."""
+
+
+class WorkflowConditionEvalError(WorkflowExecutionError):
+    """Raised when a condition expression cannot be evaluated."""
+
+
+class WorkflowExecutionNotFoundError(WorkflowExecutionError):
+    """Raised when a workflow execution instance is not found."""

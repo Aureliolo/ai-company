@@ -652,7 +652,27 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
     )
 
 
+class ActivateWorkflowRequest(BaseModel):
+    """Request body for activating a workflow definition.
+
+    Attributes:
+        project: Project ID for all created tasks.
+        context: Runtime context for condition expression evaluation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    project: NotBlankStr = Field(
+        description="Project ID for created tasks",
+    )
+    context: dict[str, object] = Field(
+        default_factory=dict,
+        description="Runtime context for condition evaluation",
+    )
+
+
 __all__ = [
+    "ActivateWorkflowRequest",
     "ApiResponse",
     "ApproveRequest",
     "CancelTaskRequest",

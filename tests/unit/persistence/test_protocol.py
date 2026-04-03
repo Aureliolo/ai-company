@@ -388,6 +388,26 @@ class _FakeWorkflowDefinitionRepository:
         return False
 
 
+class _FakeWorkflowExecutionRepository:
+    async def save(self, execution: object) -> None:
+        pass
+
+    async def get(self, execution_id: NotBlankStr) -> None:
+        return None
+
+    async def list_by_definition(
+        self,
+        definition_id: NotBlankStr,
+    ) -> tuple[()]:
+        return ()
+
+    async def list_by_status(self, status: object) -> tuple[()]:
+        return ()
+
+    async def delete(self, execution_id: NotBlankStr) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -484,6 +504,10 @@ class _FakeBackend:
     @property
     def workflow_definitions(self) -> _FakeWorkflowDefinitionRepository:
         return _FakeWorkflowDefinitionRepository()
+
+    @property
+    def workflow_executions(self) -> _FakeWorkflowExecutionRepository:
+        return _FakeWorkflowExecutionRepository()
 
     async def get_setting(self, key: str) -> str | None:
         return None

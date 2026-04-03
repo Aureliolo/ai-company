@@ -1,11 +1,12 @@
-"""In-memory fake workflow definition repository for API unit tests."""
+"""In-memory fake workflow repositories for API unit tests."""
 
 import copy
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowType
+    from synthorg.core.enums import WorkflowExecutionStatus, WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
+    from synthorg.engine.workflow.execution_models import WorkflowExecution
 
 
 class FakeWorkflowDefinitionRepository:
@@ -33,3 +34,36 @@ class FakeWorkflowDefinitionRepository:
 
     async def delete(self, definition_id: str) -> bool:
         return self._definitions.pop(definition_id, None) is not None
+
+
+class FakeWorkflowExecutionRepository:
+    """In-memory workflow execution repository for tests."""
+
+    def __init__(self) -> None:
+        self._executions: dict[str, WorkflowExecution] = {}
+
+    async def save(self, execution: WorkflowExecution) -> None:
+        self._executions[execution.id] = copy.deepcopy(execution)
+
+    async def get(self, execution_id: str) -> WorkflowExecution | None:
+        stored = self._executions.get(execution_id)
+        return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_by_definition(
+        self,
+        definition_id: str,
+    ) -> tuple[WorkflowExecution, ...]:
+        result = [
+            e for e in self._executions.values() if e.definition_id == definition_id
+        ]
+        return tuple(copy.deepcopy(e) for e in result)
+
+    async def list_by_status(
+        self,
+        status: WorkflowExecutionStatus,
+    ) -> tuple[WorkflowExecution, ...]:
+        result = [e for e in self._executions.values() if e.status == status]
+        return tuple(copy.deepcopy(e) for e in result)
+
+    async def delete(self, execution_id: str) -> bool:
+        return self._executions.pop(execution_id, None) is not None

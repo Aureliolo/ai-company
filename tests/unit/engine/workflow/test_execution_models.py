@@ -1,0 +1,218 @@
+"""Tests for workflow execution models."""
+
+import math
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+from synthorg.core.enums import (
+    WorkflowExecutionStatus,
+    WorkflowNodeExecutionStatus,
+    WorkflowNodeType,
+)
+from synthorg.engine.workflow.execution_models import (
+    WorkflowExecution,
+    WorkflowNodeExecution,
+)
+
+# ── WorkflowNodeExecution ──────────────────────────────────────────
+
+
+class TestWorkflowNodeExecution:
+    """WorkflowNodeExecution validation and immutability."""
+
+    @pytest.mark.unit
+    def test_valid_pending_node(self) -> None:
+        node = WorkflowNodeExecution(
+            node_id="task-1",
+            node_type=WorkflowNodeType.TASK,
+        )
+        assert node.node_id == "task-1"
+        assert node.node_type is WorkflowNodeType.TASK
+        assert node.status is WorkflowNodeExecutionStatus.PENDING
+        assert node.task_id is None
+        assert node.skipped_reason is None
+
+    @pytest.mark.unit
+    def test_task_created_with_task_id(self) -> None:
+        node = WorkflowNodeExecution(
+            node_id="task-1",
+            node_type=WorkflowNodeType.TASK,
+            status=WorkflowNodeExecutionStatus.TASK_CREATED,
+            task_id="task-abc123",
+        )
+        assert node.status is WorkflowNodeExecutionStatus.TASK_CREATED
+        assert node.task_id == "task-abc123"
+
+    @pytest.mark.unit
+    def test_skipped_with_reason(self) -> None:
+        node = WorkflowNodeExecution(
+            node_id="task-2",
+            node_type=WorkflowNodeType.TASK,
+            status=WorkflowNodeExecutionStatus.SKIPPED,
+            skipped_reason="Conditional branch not taken",
+        )
+        assert node.status is WorkflowNodeExecutionStatus.SKIPPED
+        assert node.skipped_reason == "Conditional branch not taken"
+
+    @pytest.mark.unit
+    def test_control_node_completed(self) -> None:
+        node = WorkflowNodeExecution(
+            node_id="start-1",
+            node_type=WorkflowNodeType.START,
+            status=WorkflowNodeExecutionStatus.COMPLETED,
+        )
+        assert node.status is WorkflowNodeExecutionStatus.COMPLETED
+
+    @pytest.mark.unit
+    def test_frozen(self) -> None:
+        node = WorkflowNodeExecution(
+            node_id="task-1",
+            node_type=WorkflowNodeType.TASK,
+        )
+        with pytest.raises(ValidationError):
+            node.status = WorkflowNodeExecutionStatus.COMPLETED  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_blank_node_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="node_id"):
+            WorkflowNodeExecution(
+                node_id="  ",
+                node_type=WorkflowNodeType.TASK,
+            )
+
+    @pytest.mark.unit
+    def test_blank_task_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="task_id"):
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                task_id="  ",
+            )
+
+
+# ── WorkflowExecution ─────────────────────────────────────────────
+
+
+def _make_execution(**overrides: object) -> WorkflowExecution:
+    """Build a WorkflowExecution with sensible defaults."""
+    now = datetime.now(UTC)
+    defaults: dict[str, object] = {
+        "id": "wfexec-test001",
+        "definition_id": "wfdef-abc123",
+        "definition_version": 1,
+        "activated_by": "test-user",
+        "project": "test-project",
+        "created_at": now,
+        "updated_at": now,
+    }
+    defaults.update(overrides)
+    return WorkflowExecution.model_validate(defaults)
+
+
+class TestWorkflowExecution:
+    """WorkflowExecution validation, defaults, and immutability."""
+
+    @pytest.mark.unit
+    def test_valid_defaults(self) -> None:
+        exe = _make_execution()
+        assert exe.id == "wfexec-test001"
+        assert exe.definition_id == "wfdef-abc123"
+        assert exe.definition_version == 1
+        assert exe.status is WorkflowExecutionStatus.PENDING
+        assert exe.node_executions == ()
+        assert exe.activated_by == "test-user"
+        assert exe.project == "test-project"
+        assert exe.completed_at is None
+        assert exe.error is None
+        assert exe.version == 1
+
+    @pytest.mark.unit
+    def test_with_node_executions(self) -> None:
+        nodes = (
+            WorkflowNodeExecution(
+                node_id="start-1",
+                node_type=WorkflowNodeType.START,
+                status=WorkflowNodeExecutionStatus.COMPLETED,
+            ),
+            WorkflowNodeExecution(
+                node_id="task-1",
+                node_type=WorkflowNodeType.TASK,
+                status=WorkflowNodeExecutionStatus.TASK_CREATED,
+                task_id="task-xyz",
+            ),
+        )
+        exe = _make_execution(node_executions=nodes)
+        assert len(exe.node_executions) == 2
+        assert exe.node_executions[1].task_id == "task-xyz"
+
+    @pytest.mark.unit
+    def test_running_status(self) -> None:
+        exe = _make_execution(status=WorkflowExecutionStatus.RUNNING)
+        assert exe.status is WorkflowExecutionStatus.RUNNING
+
+    @pytest.mark.unit
+    def test_failed_with_error(self) -> None:
+        exe = _make_execution(
+            status=WorkflowExecutionStatus.FAILED,
+            error="Task creation failed",
+        )
+        assert exe.status is WorkflowExecutionStatus.FAILED
+        assert exe.error == "Task creation failed"
+
+    @pytest.mark.unit
+    def test_completed_with_timestamp(self) -> None:
+        now = datetime.now(UTC)
+        exe = _make_execution(
+            status=WorkflowExecutionStatus.COMPLETED,
+            completed_at=now,
+        )
+        assert exe.status is WorkflowExecutionStatus.COMPLETED
+        assert exe.completed_at == now
+
+    @pytest.mark.unit
+    def test_frozen(self) -> None:
+        exe = _make_execution()
+        with pytest.raises(ValidationError):
+            exe.status = WorkflowExecutionStatus.RUNNING  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_blank_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="id"):
+            _make_execution(id="  ")
+
+    @pytest.mark.unit
+    def test_blank_definition_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="definition_id"):
+            _make_execution(definition_id="  ")
+
+    @pytest.mark.unit
+    def test_blank_activated_by_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="activated_by"):
+            _make_execution(activated_by="  ")
+
+    @pytest.mark.unit
+    def test_blank_project_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="project"):
+            _make_execution(project="  ")
+
+    @pytest.mark.unit
+    def test_version_must_be_ge_1(self) -> None:
+        with pytest.raises(ValidationError, match="version"):
+            _make_execution(version=0)
+
+    @pytest.mark.unit
+    def test_definition_version_must_be_ge_1(self) -> None:
+        with pytest.raises(ValidationError, match="definition_version"):
+            _make_execution(definition_version=0)
+
+    @pytest.mark.unit
+    def test_nan_rejected_in_version(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_execution(version=math.nan)
+
+    @pytest.mark.unit
+    def test_nan_rejected_in_definition_version(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_execution(definition_version=math.nan)

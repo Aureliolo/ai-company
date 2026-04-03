@@ -228,6 +228,7 @@ class TestEventConstants:
             "tool",
             "workflow",
             "workflow_definition",
+            "workflow_execution",
             "workspace",
             "trust",
             "promotion",

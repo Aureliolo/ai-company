@@ -67,6 +67,9 @@ from synthorg.persistence.sqlite.user_repo import (
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
+from synthorg.persistence.sqlite.workflow_execution_repo import (
+    SQLiteWorkflowExecutionRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.config import SQLiteConfig
@@ -107,6 +110,7 @@ class SQLitePersistenceBackend:
         self._settings: SQLiteSettingsRepository | None = None
         self._custom_presets: SQLitePersonalityPresetRepository | None = None
         self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
+        self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -129,6 +133,7 @@ class SQLitePersistenceBackend:
         self._settings = None
         self._custom_presets = None
         self._workflow_definitions = None
+        self._workflow_executions = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -212,6 +217,7 @@ class SQLitePersistenceBackend:
         self._settings = SQLiteSettingsRepository(self._db)
         self._custom_presets = SQLitePersonalityPresetRepository(self._db)
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
+        self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -485,6 +491,18 @@ class SQLitePersistenceBackend:
         return self._require_connected(
             self._workflow_definitions,
             "workflow_definitions",
+        )
+
+    @property
+    def workflow_executions(self) -> SQLiteWorkflowExecutionRepository:
+        """Repository for workflow execution persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(
+            self._workflow_executions,
+            "workflow_executions",
         )
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

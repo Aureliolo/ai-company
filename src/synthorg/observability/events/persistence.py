@@ -269,3 +269,25 @@ PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED: Final[str] = (
 PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED: Final[str] = (
     "persistence.workflow_def.deserialize_failed"
 )
+
+# -- Workflow execution events -----------------------------------------------
+
+PERSISTENCE_WORKFLOW_EXEC_SAVED: Final[str] = "persistence.workflow_exec.saved"
+PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED: Final[str] = (
+    "persistence.workflow_exec.save_failed"
+)
+PERSISTENCE_WORKFLOW_EXEC_FETCHED: Final[str] = "persistence.workflow_exec.fetched"
+PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED: Final[str] = (
+    "persistence.workflow_exec.fetch_failed"
+)
+PERSISTENCE_WORKFLOW_EXEC_LISTED: Final[str] = "persistence.workflow_exec.listed"
+PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED: Final[str] = (
+    "persistence.workflow_exec.list_failed"
+)
+PERSISTENCE_WORKFLOW_EXEC_DELETED: Final[str] = "persistence.workflow_exec.deleted"
+PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED: Final[str] = (
+    "persistence.workflow_exec.delete_failed"
+)
+PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.workflow_exec.deserialize_failed"
+)
