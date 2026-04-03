@@ -395,6 +395,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   // ── Local model management ──
 
   pullModel: async (name, modelName) => {
+    _pullAbortController?.abort()
     _pullAbortController = new AbortController()
     set({ pullingModel: true, pullProgress: null })
     try {

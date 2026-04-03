@@ -318,7 +318,7 @@ export function ProviderFormModal({
                     {authType === 'subscription' && (
                       <>
                         {!tosAccepted && (
-                          <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-xs text-text-secondary">
+                          <div className="rounded-md border border-warning/30 bg-warning/5 p-card text-xs text-text-secondary">
                             You must accept the Terms of Service warning before using subscription auth.
                             <Button
                               variant="outline"

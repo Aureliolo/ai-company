@@ -1,8 +1,7 @@
-"""Local model management for Ollama and LM Studio.
+"""Local model management for local LLM providers.
 
 Provides a ``LocalModelManager`` protocol for pull/delete operations
-on local LLM providers, plus concrete implementations for each
-supported provider.
+on local LLM providers, plus a concrete implementation for Ollama.
 """
 
 import json
@@ -12,7 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -58,6 +57,21 @@ class PullProgressEvent(BaseModel):
     error: NotBlankStr | None = None
     done: bool = False
 
+    @model_validator(mode="after")
+    def _check_cross_field_invariants(self) -> PullProgressEvent:
+        """Enforce cross-field consistency."""
+        if self.error is not None and not self.done:
+            msg = "error events must be terminal (done=True)"
+            raise ValueError(msg)
+        if (
+            self.completed_bytes is not None
+            and self.total_bytes is not None
+            and self.completed_bytes > self.total_bytes
+        ):
+            msg = "completed_bytes cannot exceed total_bytes"
+            raise ValueError(msg)
+        return self
+
 
 @runtime_checkable
 class LocalModelManager(Protocol):
@@ -68,6 +82,9 @@ class LocalModelManager(Protocol):
         model_name: str,
     ) -> AsyncIterator[PullProgressEvent]:
         """Pull/download a model, yielding progress events.
+
+        The last event always has ``done=True``. Error events carry
+        ``error`` set and ``done=True``.
 
         Args:
             model_name: Model identifier (e.g. ``"llama3.2:1b"``).
@@ -84,7 +101,8 @@ class LocalModelManager(Protocol):
             model_name: Model identifier to delete.
 
         Raises:
-            ValueError: If the model does not exist.
+            ValueError: If the model does not exist or the delete
+                request fails.
         """
         ...
 
@@ -103,6 +121,9 @@ class OllamaModelManager:
         *,
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        if not base_url or not base_url.strip():
+            msg = "base_url must be a non-empty URL"
+            raise ValueError(msg)
         self._base_url = base_url.rstrip("/")
         self._client = client
 
@@ -163,6 +184,46 @@ class OllamaModelManager:
             done=is_done,
         )
 
+    async def _consume_pull_stream(
+        self,
+        response: httpx.Response,
+        model_name: str,
+    ) -> AsyncIterator[PullProgressEvent]:
+        """Iterate response lines and yield parsed progress events."""
+        got_done = False
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning(
+                    PROVIDER_MODEL_PULL_FAILED,
+                    provider="ollama",
+                    model=model_name,
+                    error=f"Malformed JSON in stream: {line[:200]!r}",
+                )
+                continue
+
+            event = self._parse_pull_line(data, model_name)
+            yield event
+            if event.done:
+                return
+
+        if not got_done:
+            err = "Stream ended without success status"
+            logger.warning(
+                PROVIDER_MODEL_PULL_FAILED,
+                provider="ollama",
+                model=model_name,
+                error=err,
+            )
+            yield PullProgressEvent(
+                status=err,
+                error=err,
+                done=True,
+            )
+
     async def pull_model(
         self,
         model_name: str,
@@ -208,40 +269,11 @@ class OllamaModelManager:
                     )
                     return
 
-                got_done = False
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
-                    try:
-                        data = json.loads(line)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            PROVIDER_MODEL_PULL_FAILED,
-                            provider="ollama",
-                            model=model_name,
-                            error=f"Malformed JSON in stream: {line[:200]!r}",
-                        )
-                        continue
-
-                    event = self._parse_pull_line(data, model_name)
+                async for event in self._consume_pull_stream(
+                    response,
+                    model_name,
+                ):
                     yield event
-                    if event.done:
-                        got_done = True
-                        return
-
-                if not got_done:
-                    err = "Stream ended without success status"
-                    logger.warning(
-                        PROVIDER_MODEL_PULL_FAILED,
-                        provider="ollama",
-                        model=model_name,
-                        error=err,
-                    )
-                    yield PullProgressEvent(
-                        status=err,
-                        error=err,
-                        done=True,
-                    )
         except httpx.HTTPError as exc:
             err = f"HTTP error during pull: {exc}"
             logger.warning(
@@ -266,7 +298,8 @@ class OllamaModelManager:
             model_name: Model name/tag to delete.
 
         Raises:
-            ValueError: If the model does not exist (404).
+            ValueError: If the model does not exist or the delete
+                request fails.
         """
         url = f"{self._base_url}/api/delete"
         client = self._client or httpx.AsyncClient()
@@ -301,6 +334,15 @@ class OllamaModelManager:
                 provider="ollama",
                 model=model_name,
             )
+        except httpx.HTTPError as exc:
+            msg = f"HTTP error during delete: {exc}"
+            logger.warning(
+                PROVIDER_MODEL_DELETE_FAILED,
+                provider="ollama",
+                model=model_name,
+                error=msg,
+            )
+            raise ValueError(msg) from exc
         finally:
             if owns_client:
                 await client.aclose()

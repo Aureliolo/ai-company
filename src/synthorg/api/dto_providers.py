@@ -280,6 +280,10 @@ class ProviderResponse(BaseModel):
         has_custom_header: Whether a custom auth header is configured.
         has_subscription_token: Whether a subscription token is set.
         tos_accepted_at: ISO timestamp of ToS acceptance (or ``None``).
+        preset_name: Preset used to create this provider (if any).
+        supports_model_pull: Whether pulling models is supported.
+        supports_model_delete: Whether deleting models is supported.
+        supports_model_config: Whether per-model config is supported.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -472,6 +476,9 @@ def to_provider_model_response(
 # ── Local model management DTOs ──────────────────────────────
 
 
+_MODEL_NAME_RE = re.compile(r"^[a-zA-Z0-9._:/@-]+$")
+
+
 class PullModelRequest(BaseModel):
     """Payload for pulling a model on a local provider.
 
@@ -485,6 +492,17 @@ class PullModelRequest(BaseModel):
         max_length=256,
         description="Model name/tag to pull",
     )
+
+    @field_validator("model_name")
+    @classmethod
+    def _validate_model_name(cls, v: str) -> str:
+        if not _MODEL_NAME_RE.match(v):
+            msg = (
+                "model_name must contain only alphanumeric characters, "
+                "dots, underscores, colons, slashes, hyphens, and @"
+            )
+            raise ValueError(msg)
+        return v
 
 
 class UpdateModelConfigRequest(BaseModel):

@@ -46,7 +46,11 @@ class TestGetLocalModelManager:
         assert get_local_model_manager("vllm", "http://localhost:8000/v1") is None
 
     def test_unknown_returns_none(self) -> None:
-        assert get_local_model_manager("anthropic", "https://api.example.com") is None
+        result = get_local_model_manager(
+            "example-provider",
+            "https://api.example.com",
+        )
+        assert result is None
 
     def test_none_preset_returns_none(self) -> None:
         assert get_local_model_manager(None, "http://localhost:11434") is None
@@ -115,7 +119,7 @@ class TestOllamaModelManagerPull:
         assert events[1].done is True
 
     async def test_pull_http_error(self) -> None:
-        """Non-200 HTTP response raises."""
+        """Non-200 HTTP response yields a terminal error event."""
         response = AsyncMock(spec=httpx.Response)
         response.status_code = 404
         response.text = "not found"

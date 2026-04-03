@@ -203,13 +203,13 @@ class TestCreateFromPresetLocalSkipsLitellm:
             return_value=litellm_models,
         ) as mock_litellm:
             request = CreateFromPresetRequest(
-                preset_name="anthropic",
-                name="my-anthropic",
+                preset_name="openrouter",
+                name="my-openrouter",
                 api_key="sk-test-key",
             )
             result = await service.create_from_preset(request)
 
-        mock_litellm.assert_called_once_with("anthropic")
+        mock_litellm.assert_called_once_with("openrouter")
         assert result.models == litellm_models
 
     async def test_local_preset_with_explicit_models_skips_both(

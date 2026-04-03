@@ -115,6 +115,40 @@ export async function removeAllowlistEntry(data: RemoveAllowlistEntryRequest): P
   return unwrap(response)
 }
 
+/** Encode a model ID for use in URL paths, preserving `/` for :path params. */
+function encodeModelIdPath(modelId: string): string {
+  return modelId.split('/').map(encodeURIComponent).join('/')
+}
+
+/** Process buffered SSE lines, dispatching events to the callback. */
+function processSseLines(
+  lines: string[],
+  state: { currentEvent: string },
+  onProgress: (event: PullProgressEvent) => void,
+): void {
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      state.currentEvent = line.slice(7).trim()
+    } else if (line.startsWith('data: ')) {
+      try {
+        const parsed = JSON.parse(line.slice(6)) as PullProgressEvent
+        if (state.currentEvent === 'error' || parsed.error) {
+          const errorMsg = parsed.error ?? parsed.status ?? 'Pull failed'
+          state.currentEvent = ''
+          throw new Error(errorMsg)
+        }
+        onProgress(parsed)
+      } catch (err) {
+        state.currentEvent = ''
+        if (err instanceof Error) throw err
+        // JSON parse error -- log and skip
+        console.warn('[SSE] Malformed JSON in pull stream line')
+      }
+      state.currentEvent = ''
+    }
+  }
+}
+
 /**
  * Pull a model on a local provider via SSE streaming.
  *
@@ -142,12 +176,19 @@ export async function pullModel(
   })
 
   if (!response.ok || !response.body) {
+    if (response.status === 401) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token_expires_at')
+      localStorage.removeItem('auth_must_change_password')
+    }
     throw new Error(`Pull failed: HTTP ${response.status}`)
   }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let receivedDone = false
+  const sseState = { currentEvent: '' }
 
   while (true) {
     const { done, value } = await reader.read()
@@ -157,32 +198,30 @@ export async function pullModel(
     const lines = buffer.split('\n')
     buffer = lines.pop() ?? ''
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const event = JSON.parse(line.slice(6)) as PullProgressEvent
-          onProgress(event)
-        } catch {
-          // Skip malformed JSON
-        }
-      }
-    }
+    processSseLines(lines, sseState, (event) => {
+      if (event.done) receivedDone = true
+      onProgress(event)
+    })
   }
 
   // Process any remaining data in the buffer after the stream ends
-  if (buffer.startsWith('data: ')) {
-    try {
-      const event = JSON.parse(buffer.slice(6)) as PullProgressEvent
+  buffer += decoder.decode()
+  if (buffer.trim()) {
+    const trailing = buffer.split('\n')
+    processSseLines(trailing, sseState, (event) => {
+      if (event.done) receivedDone = true
       onProgress(event)
-    } catch {
-      // Skip malformed JSON
-    }
+    })
+  }
+
+  if (!receivedDone) {
+    throw new Error('Pull stream ended without completion event')
   }
 }
 
 export async function deleteModel(name: string, modelId: string): Promise<void> {
   const response = await apiClient.delete<ApiResponse<null>>(
-    `/providers/${encodeURIComponent(name)}/models/${encodeURIComponent(modelId)}`,
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}`,
   )
   unwrapVoid(response)
 }
@@ -193,7 +232,7 @@ export async function updateModelConfig(
   params: LocalModelParams,
 ): Promise<ProviderModelResponse> {
   const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
-    `/providers/${encodeURIComponent(name)}/models/${encodeURIComponent(modelId)}/config`,
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
     { local_params: params },
   )
   return unwrap(response)

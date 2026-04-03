@@ -33,22 +33,22 @@ function ModelConfigForm({
 
   const handleSave = async () => {
     setSaving(true)
-    const parseIntSafe = (val: string): number | null => {
+    const parseIntStrict = (val: string): number | null => {
       if (!val) return null
-      const parsed = parseInt(val, 10)
-      return Number.isNaN(parsed) ? null : parsed
+      const n = Number(val)
+      return Number.isFinite(n) && Number.isInteger(n) ? n : null
     }
-    const parseFloatSafe = (val: string): number | null => {
+    const parseFloatStrict = (val: string): number | null => {
       if (!val) return null
-      const parsed = parseFloat(val)
-      return Number.isNaN(parsed) ? null : parsed
+      const n = Number(val)
+      return Number.isFinite(n) ? n : null
     }
     const newParams: LocalModelParams = {
-      num_ctx: parseIntSafe(numCtx),
-      num_gpu_layers: parseIntSafe(numGpuLayers),
-      num_threads: parseIntSafe(numThreads),
-      num_batch: parseIntSafe(numBatch),
-      repeat_penalty: parseFloatSafe(repeatPenalty),
+      num_ctx: parseIntStrict(numCtx),
+      num_gpu_layers: parseIntStrict(numGpuLayers),
+      num_threads: parseIntStrict(numThreads),
+      num_batch: parseIntStrict(numBatch),
+      repeat_penalty: parseFloatStrict(repeatPenalty),
     }
     const success = await updateModelConfig(providerName, model.id, newParams)
     setSaving(false)
@@ -56,7 +56,7 @@ function ModelConfigForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-section-gap">
       <InputField
         label="Context window (num_ctx)"
         value={numCtx}

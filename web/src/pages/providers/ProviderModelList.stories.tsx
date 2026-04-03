@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import { ProviderModelList } from './ProviderModelList'
 import type { ProviderModelResponse } from '@/api/types'
 
@@ -77,3 +78,21 @@ export const NoCapabilities: Story = {
 }
 
 export const Empty: Story = { args: { models: [] } }
+
+export const WithDeleteActions: Story = {
+  args: { models, supportsDelete: true, onDelete: fn() },
+}
+
+export const WithConfigActions: Story = {
+  args: { models, supportsConfig: true, onConfigure: fn() },
+}
+
+export const WithAllActions: Story = {
+  args: {
+    models,
+    supportsDelete: true,
+    supportsConfig: true,
+    onDelete: fn(),
+    onConfigure: fn(),
+  },
+}

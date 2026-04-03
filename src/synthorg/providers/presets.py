@@ -36,6 +36,11 @@ class ProviderPreset(BaseModel):
         candidate_urls: URLs to probe during auto-detection, in priority
             order.  The first reachable URL becomes the base URL.
         default_models: Pre-configured model definitions.
+        supports_model_pull: Whether pulling/downloading models is
+            supported via the provider's management API.
+        supports_model_delete: Whether deleting models is supported.
+        supports_model_config: Whether per-model launch parameter
+            configuration (e.g. context window, GPU layers) is supported.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

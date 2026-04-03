@@ -616,9 +616,17 @@ class ProviderManagementService:
                 error=msg,
             )
             raise ProviderValidationError(msg)
+        if not config.base_url:
+            msg = f"Provider {name!r} has no base URL configured"
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                provider=name,
+                error=msg,
+            )
+            raise ProviderValidationError(msg)
         manager = get_local_model_manager(
             config.preset_name,
-            config.base_url or "",
+            config.base_url,
         )
         if manager is None:
             msg = f"No local model manager for preset {config.preset_name!r}"
@@ -701,8 +709,10 @@ class ProviderManagementService:
 
         Raises:
             ProviderNotFoundError: If the provider does not exist.
-            ProviderValidationError: If the model is not found.
+            ProviderValidationError: If config is unsupported or
+                the model is not found.
         """
+        await self._resolve_local_manager(name, capability="config")
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
             config = providers.get(name)

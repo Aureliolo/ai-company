@@ -51,6 +51,7 @@ from synthorg.observability.events.api import (
     API_PROVIDER_USAGE_ENRICHMENT_FAILED,
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
+    API_SSE_PULL_MODEL_FAILED,
     API_VALIDATION_FAILED,
 )
 from synthorg.providers.errors import (
@@ -649,19 +650,31 @@ class ProviderController(Controller):
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        {"error": f"Provider {name!r} not found"},
+                        {
+                            "status": f"Provider {name!r} not found",
+                            "error": f"Provider {name!r} not found",
+                            "done": True,
+                        }
                     ),
                 }
             except ProviderValidationError as exc:
                 yield {
                     "event": "error",
-                    "data": _json.dumps({"error": str(exc)}),
+                    "data": _json.dumps(
+                        {
+                            "status": str(exc),
+                            "error": str(exc),
+                            "done": True,
+                        }
+                    ),
                 }
             except asyncio.CancelledError:
                 raise
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.exception(
-                    "api.sse.pull_model_failed",
+                    API_SSE_PULL_MODEL_FAILED,
                     provider=name,
                     model=data.model_name,
                     error=str(exc),
@@ -670,7 +683,11 @@ class ProviderController(Controller):
                 yield {
                     "event": "error",
                     "data": _json.dumps(
-                        {"error": f"Internal error: {type(exc).__name__}"},
+                        {
+                            "status": f"Internal error: {type(exc).__name__}",
+                            "error": f"Internal error: {type(exc).__name__}",
+                            "done": True,
+                        }
                     ),
                 }
 
@@ -685,7 +702,7 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        model_id: str,
+        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
     ) -> None:
         """Delete a model from a local provider.
 
@@ -730,7 +747,7 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        model_id: str,
+        model_id: Annotated[str, Parameter(max_length=256, min_length=1)],
         data: UpdateModelConfigRequest,
     ) -> ApiResponse[ProviderModelResponse]:
         """Update per-model launch parameters for a local provider.
@@ -774,5 +791,12 @@ class ProviderController(Controller):
         )
         if model is None:
             msg = f"Model {model_id!r} missing from updated config"
+            logger.error(
+                API_VALIDATION_FAILED,
+                resource="model",
+                name=model_id,
+                provider=name,
+                error=msg,
+            )
             raise ApiValidationError(msg)
         return ApiResponse(data=to_provider_model_response(model))

@@ -38,7 +38,8 @@ export default function ProviderDetailPage() {
   const [configModel, setConfigModel] = useState<ProviderModelResponse | null>(null)
   const [deleteModelId, setDeleteModelId] = useState<string | null>(null)
 
-  const { discoveringModels, deletingModel } = useProvidersStore()
+  const discoveringModels = useProvidersStore((s) => s.discoveringModels)
+  const deletingModel = useProvidersStore((s) => s.deletingModel)
 
   // Loading state
   if (loading && !provider) {
