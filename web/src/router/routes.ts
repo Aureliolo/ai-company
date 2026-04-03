@@ -32,6 +32,7 @@ export const ROUTES = {
   SETTINGS: '/settings',
   SETTINGS_NAMESPACE: '/settings/:namespace',
   SETTINGS_SINKS: '/settings/observability/sinks',
+  SETTINGS_CEREMONY_POLICY: '/settings/coordination/ceremony-policy',
   DOCUMENTATION: '/docs/',
 } as const
 

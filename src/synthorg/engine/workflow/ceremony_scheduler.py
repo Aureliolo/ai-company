@@ -123,6 +123,11 @@ class CeremonyScheduler:
         """The currently active sprint, or None."""
         return self._active_sprint
 
+    @property
+    def active_strategy(self) -> CeremonySchedulingStrategy | None:
+        """The currently active strategy, or None."""
+        return self._active_strategy
+
     async def activate_sprint(
         self,
         sprint: Sprint,

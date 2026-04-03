@@ -604,6 +604,7 @@ export interface Department {
   budget_percent?: number
   readonly teams: readonly TeamConfig[]
   autonomy_level?: AutonomyLevel | null
+  ceremony_policy?: CeremonyPolicyConfig | null
 }
 
 export interface TeamConfig {
@@ -644,6 +645,7 @@ export interface UpdateDepartmentRequest {
   budget_percent?: number
   autonomy_level?: AutonomyLevel | null
   teams?: readonly TeamConfig[]
+  ceremony_policy?: CeremonyPolicyConfig | null
 }
 
 export interface ReorderDepartmentsRequest {
@@ -1640,4 +1642,51 @@ export interface WorkflowValidationError {
 export interface WorkflowValidationResult {
   readonly valid: boolean
   readonly errors: readonly WorkflowValidationError[]
+}
+
+// ── Ceremony Policy ──────────────────────────────────────────
+
+export type CeremonyStrategyType =
+  | 'task_driven'
+  | 'calendar'
+  | 'hybrid'
+  | 'event_driven'
+  | 'budget_driven'
+  | 'throughput_adaptive'
+  | 'external_trigger'
+  | 'milestone_driven'
+
+export type VelocityCalcType =
+  | 'task_driven'
+  | 'calendar'
+  | 'multi_dimensional'
+  | 'budget'
+  | 'points_per_sprint'
+
+export interface CeremonyPolicyConfig {
+  strategy?: CeremonyStrategyType | null
+  strategy_config?: Record<string, unknown> | null
+  velocity_calculator?: VelocityCalcType | null
+  auto_transition?: boolean | null
+  transition_threshold?: number | null
+}
+
+export type PolicyFieldSource = 'project' | 'department' | 'default'
+
+export interface ResolvedPolicyField<T = unknown> {
+  value: T
+  source: PolicyFieldSource
+}
+
+export interface ResolvedCeremonyPolicyResponse {
+  strategy: ResolvedPolicyField<CeremonyStrategyType>
+  strategy_config: ResolvedPolicyField<Record<string, unknown>>
+  velocity_calculator: ResolvedPolicyField<VelocityCalcType>
+  auto_transition: ResolvedPolicyField<boolean>
+  transition_threshold: ResolvedPolicyField<number>
+}
+
+export interface ActiveCeremonyStrategy {
+  strategy: CeremonyStrategyType | null
+  sprint_id: string | null
 }

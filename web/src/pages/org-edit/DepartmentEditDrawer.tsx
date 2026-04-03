@@ -1,12 +1,13 @@
 import { useCallback, useRef, useState } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
-import type { Department, DepartmentHealth, UpdateDepartmentRequest } from '@/api/types'
+import type { CeremonyPolicyConfig, Department, DepartmentHealth, UpdateDepartmentRequest } from '@/api/types'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
+import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
 
 export interface DepartmentEditDrawerProps {
   open: boolean
@@ -29,6 +30,7 @@ export function DepartmentEditDrawer({
 }: DepartmentEditDrawerProps) {
   const [displayName, setDisplayName] = useState('')
   const [budgetPercent, setBudgetPercent] = useState('0')
+  const [ceremonyPolicy, setCeremonyPolicy] = useState<CeremonyPolicyConfig | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -39,6 +41,7 @@ export function DepartmentEditDrawer({
     if (department) {
       setDisplayName(department.display_name ?? department.name)
       setBudgetPercent(department.budget_percent != null ? String(department.budget_percent) : '0')
+      setCeremonyPolicy(department.ceremony_policy ?? null)
       setSubmitError(null)
     }
     setDeleteOpen(false)
@@ -57,12 +60,13 @@ export function DepartmentEditDrawer({
       await onUpdate(department.name, {
         display_name: displayName.trim() || undefined,
         budget_percent: Number.isFinite(pct) ? pct : undefined,
+        ceremony_policy: ceremonyPolicy,
       })
       onClose()
     } catch (err) {
       setSubmitError(getErrorMessage(err))
     }
-  }, [department, displayName, budgetPercent, onUpdate, onClose])
+  }, [department, displayName, budgetPercent, ceremonyPolicy, onUpdate, onClose])
 
   const handleDelete = useCallback(async () => {
     if (!department) return
@@ -101,6 +105,13 @@ export function DepartmentEditDrawer({
               value={budgetPercent}
               onChange={(e) => setBudgetPercent(e.target.value)}
               hint="Percentage of company budget (0-100)"
+            />
+
+            {/* Ceremony policy override */}
+            <DepartmentCeremonyOverride
+              policy={ceremonyPolicy}
+              onChange={setCeremonyPolicy}
+              disabled={saving}
             />
 
             {/* Teams summary */}

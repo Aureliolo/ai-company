@@ -28,6 +28,7 @@ const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
+const CeremonyPolicyPage = lazy(() => import('@/pages/settings/ceremony-policy/CeremonyPolicyPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'))
 
@@ -116,6 +117,7 @@ export const router = createBrowserRouter([
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
+              { path: 'settings/coordination/ceremony-policy', element: <CeremonyPolicyPage /> },
               { path: 'settings/:namespace', element: <SettingsNamespacePage /> },
               { path: '*', element: <NotFoundPage /> },
             ],

@@ -400,6 +400,24 @@ export default function SettingsPage() {
                           </span>
                         </div>
                       </Link>
+                    ) : ns === 'coordination' ? (
+                      <Link
+                        to="/settings/coordination/ceremony-policy"
+                        className="grid grid-cols-[1fr_auto] items-start gap-grid-gap rounded-md p-card transition-all duration-200 hover:bg-card-hover hover:-translate-y-px"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <span className="text-sm font-medium text-foreground">Ceremony Policy</span>
+                          <p className="text-xs text-text-secondary">Configure scheduling strategies, velocity, and department overrides</p>
+                        </div>
+                        <div className="w-56 shrink-0">
+                          <span
+                            className="inline-flex h-9 w-full items-center justify-center rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground"
+                            aria-hidden
+                          >
+                            Open
+                          </span>
+                        </div>
+                      </Link>
                     ) : undefined}
                   />
                 </ErrorBoundary>
