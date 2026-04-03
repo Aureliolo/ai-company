@@ -312,9 +312,11 @@ def _extract_jti(request: Request[Any, Any, Any]) -> str | None:
     token = auth_header[7:]
     try:
         claims = app_state.auth_service.decode_token(token)
-        return claims.get("jti")
     except Exception:
         return None
+    else:
+        jti: str | None = claims.get("jti")
+        return jti
 
 
 # ── Controller ────────────────────────────────────────────────

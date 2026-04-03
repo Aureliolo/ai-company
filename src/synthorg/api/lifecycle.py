@@ -213,7 +213,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
 
             # Session store shares the persistence db connection.
             try:
-                db = persistence.users._db  # noqa: SLF001
+                db = persistence.users._db  # type: ignore[attr-defined]  # noqa: SLF001
                 session_store = SessionStore(db)
                 await session_store.load_revoked()
                 app_state.set_session_store(session_store)

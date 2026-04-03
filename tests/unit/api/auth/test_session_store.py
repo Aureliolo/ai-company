@@ -1,8 +1,13 @@
 """Tests for the session store."""
 
 from collections.abc import AsyncGenerator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import aiosqlite
 import pytest
@@ -20,13 +25,13 @@ _NOW = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
 _FROZEN_NOW = _NOW + timedelta(minutes=5)
 
 
-def _patch_now():
+@contextmanager
+def _patch_now() -> Iterator[None]:
     """Patch datetime.now in the session store module."""
-    return patch(
-        "synthorg.api.auth.session_store.datetime",
-        wraps=datetime,
-        **{"now.return_value": _FROZEN_NOW},  # type: ignore[arg-type]
-    )
+    mock_dt = MagicMock(wraps=datetime)
+    mock_dt.now.return_value = _FROZEN_NOW
+    with patch("synthorg.api.auth.session_store.datetime", mock_dt):
+        yield
 
 
 def _make_session(  # noqa: PLR0913

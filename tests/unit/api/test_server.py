@@ -14,12 +14,10 @@ def _run_with_config(
     server: ServerConfig | None = None,
 ) -> MagicMock:
     """Helper: run_server with a mock uvicorn.run and return the mock."""
-    api_kwargs: dict[str, object] = {}
-    if server is not None:
-        api_kwargs["server"] = server
+    api_config = ApiConfig(server=server) if server is not None else ApiConfig()
     config = RootConfig(
         company_name="test-co",
-        api=ApiConfig(**api_kwargs),
+        api=api_config,
     )
     dummy_app = MagicMock()
     mock_run = MagicMock()
