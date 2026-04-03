@@ -17,9 +17,9 @@ export interface TaskDrivenConfigProps {
 }
 
 export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfigProps) {
-  const trigger = (config.trigger as string) ?? ''
-  const everyN = (config.every_n_completions as number) ?? 5
-  const pct = (config.sprint_percentage as number) ?? 50
+  const trigger = typeof config.trigger === 'string' ? config.trigger : ''
+  const everyN = typeof config.every_n_completions === 'number' ? config.every_n_completions : 5
+  const pct = typeof config.sprint_percentage === 'number' ? config.sprint_percentage : 50
 
   return (
     <div className="space-y-3">
@@ -37,7 +37,11 @@ export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfi
           label="Every N Completions"
           type="number"
           value={String(everyN)}
-          onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, every_n_completions: val }) }}
+          onChange={(e) => {
+            const val = Number(e.target.value)
+            if (!Number.isFinite(val)) return
+            onChange({ ...config, every_n_completions: Math.max(1, Math.round(val)) })
+          }}
           disabled={disabled}
           hint="Fire after every N task completions (min: 1)"
         />
@@ -48,7 +52,11 @@ export function TaskDrivenConfig({ config, onChange, disabled }: TaskDrivenConfi
           label="Sprint Percentage"
           type="number"
           value={String(pct)}
-          onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, sprint_percentage: val }) }}
+          onChange={(e) => {
+            const val = Number(e.target.value)
+            if (!Number.isFinite(val)) return
+            onChange({ ...config, sprint_percentage: Math.min(100, Math.max(1, Math.round(val))) })
+          }}
           disabled={disabled}
           hint="Fire when this percentage of tasks complete (1-100)"
         />

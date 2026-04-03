@@ -35,7 +35,11 @@ export function CalendarConfig({ config, onChange, disabled }: CalendarConfigPro
         label="Duration (days)"
         type="number"
         value={String(durationDays)}
-        onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, duration_days: val }) }}
+        onChange={(e) => {
+          const val = Number(e.target.value)
+          if (!Number.isFinite(val)) return
+          onChange({ ...config, duration_days: Math.min(90, Math.max(1, Math.round(val))) })
+        }}
         disabled={disabled}
         hint="Sprint duration in calendar days (1-90)"
       />

@@ -294,6 +294,10 @@ def _build_resolved_response(
 async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
     """Fetch project-level ceremony policy from settings.
 
+    Fetches all five ceremony settings concurrently via a TaskGroup.
+    Individual setting-fetch failures are caught and surfaced as a
+    single ``ServiceUnavailableError``.
+
     Args:
         app_state: Application state with settings service.
 
@@ -301,7 +305,8 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         CeremonyPolicyConfig from settings values.
 
     Raises:
-        ServiceUnavailableError: If the settings service is not available.
+        ServiceUnavailableError: If the settings service is not
+            available or one or more settings cannot be fetched.
     """
     if not app_state.has_settings_service:
         msg = "Settings service not available"
@@ -322,9 +327,19 @@ async def _fetch_project_policy(app_state: AppState) -> CeremonyPolicyConfig:
         entry = await settings.get("coordination", key)
         data[key] = entry.value
 
-    async with asyncio.TaskGroup() as tg:
-        for key in keys:
-            tg.create_task(_fetch(key))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for key in keys:
+                tg.create_task(_fetch(key))
+    except* Exception as eg:
+        first = eg.exceptions[0]
+        msg = f"Failed to fetch ceremony settings: {first}"
+        logger.warning(
+            API_SERVICE_UNAVAILABLE,
+            service="settings",
+            error=str(first),
+        )
+        raise ServiceUnavailableError(msg) from first
 
     return _build_project_policy(data)
 
@@ -351,7 +366,6 @@ async def _lookup_dept_override_from_settings(
             "coordination",
             "dept_ceremony_policies",
         )
-        policies = json.loads(entry.value)
     except MemoryError, RecursionError:
         raise
     except Exception:
@@ -362,6 +376,16 @@ async def _lookup_dept_override_from_settings(
             exc_info=True,
         )
         return _SETTINGS_NOT_FOUND
+
+    try:
+        policies = json.loads(entry.value)
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning(
+            API_REQUEST_ERROR,
+            endpoint="ceremony_policy.fetch_dept",
+            error=f"Corrupt dept_ceremony_policies value: {exc}",
+        )
+        raise
 
     if not isinstance(policies, dict) or department_name not in policies:
         return _SETTINGS_NOT_FOUND

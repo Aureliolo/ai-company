@@ -544,7 +544,22 @@ async def _get_dept_ceremony_override(
         # None sentinel means "explicitly inheriting"
         if val is None:
             return None
-        return val if isinstance(val, dict) else None
+        if isinstance(val, dict):
+            # Validate structure before returning to catch corrupt data
+            try:
+                CeremonyPolicyConfig.model_validate(val)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    API_REQUEST_ERROR,
+                    endpoint="departments.ceremony_policy.get",
+                    department=department_name,
+                    error=f"Invalid stored override: {exc}",
+                )
+                return None
+            return val
+        return None
 
     # Fall back to config-based ceremony_policy
     if not app_state.has_config_resolver:

@@ -26,6 +26,10 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
             setRawJson(val)
             try {
               const parsed: unknown = JSON.parse(val)
+              if (!Array.isArray(parsed)) {
+                setJsonError('Sources must be a JSON array')
+                return
+              }
               onChange({ ...config, sources: parsed })
               setJsonError(null)
             } catch {

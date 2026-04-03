@@ -33,7 +33,7 @@ export function DepartmentCeremonyOverride({
   onChange,
   disabled,
 }: DepartmentCeremonyOverrideProps) {
-  const hasOverride = policy != null && Object.keys(policy).length > 0
+  const hasOverride = policy != null
   const [expanded, setExpanded] = useState(hasOverride)
   const prevHasOverrideRef = useRef(hasOverride)
 
@@ -48,14 +48,19 @@ export function DepartmentCeremonyOverride({
       if (inherit) {
         onChange(null)
       } else {
-        onChange({ strategy: 'task_driven' })
+        // Preserve existing policy fields if available, otherwise start empty
+        onChange(policy ?? {})
       }
     },
-    [onChange],
+    [onChange, policy],
   )
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
+      // Only reset config/velocity when strategy actually changes
+      if (s === policy?.strategy) {
+        return
+      }
       onChange({
         ...policy,
         strategy: s,

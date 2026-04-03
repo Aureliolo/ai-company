@@ -123,6 +123,15 @@ class TestCeremonySettingsRegistered:
         assert defn is not None
         assert set(defn.enum_values) == {m.value for m in CeremonyStrategyType}
 
+    def test_ceremony_policy_overrides_is_json(
+        self, registry: SettingsRegistry
+    ) -> None:
+        defn = registry.get("coordination", "ceremony_policy_overrides")
+        assert defn is not None
+        assert defn.type == SettingType.JSON
+        assert defn.default == "{}"
+        assert defn.level == SettingLevel.ADVANCED
+
     def test_ceremony_velocity_calculator_enum_values_match_strenum(
         self, registry: SettingsRegistry
     ) -> None:

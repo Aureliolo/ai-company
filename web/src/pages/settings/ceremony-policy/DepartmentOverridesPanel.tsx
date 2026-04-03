@@ -21,7 +21,6 @@ function DepartmentRow({ dept }: { dept: Department }) {
   const updatePolicy = useCeremonyPolicyStore((s) => s.updateDepartmentPolicy)
   const clearPolicy = useCeremonyPolicyStore((s) => s.clearDepartmentPolicy)
   const saving = useCeremonyPolicyStore((s) => s.saving)
-  const saveError = useCeremonyPolicyStore((s) => s.saveError)
   const departmentError = useCeremonyPolicyStore((s) => s.departmentErrors.get(dept.name))
 
   useEffect(() => {
@@ -41,11 +40,11 @@ function DepartmentRow({ dept }: { dept: Department }) {
         setLocalDraft(null)
         clearPolicy(dept.name)
       } else {
-        // Show editing form without persisting immediately
-        setLocalDraft({ strategy: 'task_driven' })
+        // Seed from existing policy if available, otherwise empty override
+        setLocalDraft(policy ?? {})
       }
     },
-    [dept.name, clearPolicy],
+    [dept.name, clearPolicy, policy],
   )
 
   const handleStrategyChange = useCallback(
@@ -89,9 +88,6 @@ function DepartmentRow({ dept }: { dept: Department }) {
           {departmentError && (
             <p className="text-xs text-danger">{departmentError}</p>
           )}
-          {saveError && (
-            <p className="text-xs text-danger">Save failed: {saveError}</p>
-          )}
 
           <InheritToggle
             inherit={!isEditing}
@@ -130,6 +126,10 @@ function DepartmentRow({ dept }: { dept: Department }) {
 }
 
 export function DepartmentOverridesPanel({ departments }: DepartmentOverridesPanelProps) {
+  // Store-wide saveError displayed once at the panel level (only one department
+  // save runs at a time, so a single error banner is sufficient).
+  const saveError = useCeremonyPolicyStore((s) => s.saveError)
+
   if (departments.length === 0) {
     return (
       <p className="text-xs text-text-secondary">
@@ -140,6 +140,9 @@ export function DepartmentOverridesPanel({ departments }: DepartmentOverridesPan
 
   return (
     <SectionCard title="Department Overrides" icon={Building2}>
+      {saveError && (
+        <p className="mb-2 text-xs text-danger">Save failed: {saveError}</p>
+      )}
       <div className="divide-y divide-border rounded-md border border-border">
         {departments.map((dept) => (
           <DepartmentRow key={dept.name} dept={dept} />

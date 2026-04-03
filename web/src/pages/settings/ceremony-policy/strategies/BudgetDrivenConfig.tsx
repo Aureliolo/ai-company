@@ -7,8 +7,12 @@ export interface BudgetDrivenConfigProps {
 }
 
 export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenConfigProps) {
-  const thresholds = (config.budget_thresholds as number[]) ?? [25, 50, 75, 100]
-  const transitionPct = (config.transition_threshold as number) ?? 100
+  const thresholds = Array.isArray(config.budget_thresholds)
+    ? (config.budget_thresholds as unknown[]).map(Number).filter((n) => Number.isFinite(n))
+    : [25, 50, 75, 100]
+  const transitionPct = typeof config.transition_threshold === 'number'
+    ? config.transition_threshold
+    : 100
 
   return (
     <div className="space-y-3">
@@ -20,7 +24,7 @@ export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenC
             .split(',')
             .map((s) => Number(s.trim()))
             .filter((n) => Number.isFinite(n) && n > 0 && n <= 100)
-          if (Array.isArray(parsed)) onChange({ ...config, budget_thresholds: parsed })
+          onChange({ ...config, budget_thresholds: parsed })
         }}
         disabled={disabled}
         hint="Comma-separated budget percentages that trigger ceremonies (e.g. 25, 50, 75)"
@@ -30,7 +34,11 @@ export function BudgetDrivenConfig({ config, onChange, disabled }: BudgetDrivenC
         label="Transition Threshold (%)"
         type="number"
         value={String(transitionPct)}
-        onChange={(e) => { const val = Number(e.target.value); if (Number.isFinite(val)) onChange({ ...config, transition_threshold: val }) }}
+        onChange={(e) => {
+          const val = Number(e.target.value)
+          if (!Number.isFinite(val)) return
+          onChange({ ...config, transition_threshold: Math.min(100, Math.max(1, Math.round(val))) })
+        }}
         disabled={disabled}
         hint="Budget percentage that triggers sprint auto-transition (1-100)"
       />

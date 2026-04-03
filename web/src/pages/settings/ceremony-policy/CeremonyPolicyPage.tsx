@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowLeft, Loader2, Settings, Timer } from 'lucide-react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType, Department, VelocityCalcType } from '@/api/types'
@@ -66,23 +66,50 @@ export default function CeremonyPolicyPage() {
   }, [settingsEntries])
 
   // Local form state for project-level policy (initialized from settings).
-  // Re-synced when settingsSnapshot changes (e.g. deep-link fetch or WS update).
-  const prevSnapshotRef = useRef(settingsSnapshot)
-  const [strategy, setStrategy] = useState<CeremonyStrategyType>(settingsSnapshot.strategy)
-  const [strategyConfig, setStrategyConfig] = useState<Record<string, unknown>>(settingsSnapshot.strategyConfig)
-  const [velocityCalculator, setVelocityCalculator] = useState<VelocityCalcType>(settingsSnapshot.velocityCalculator)
-  const [autoTransition, setAutoTransition] = useState(settingsSnapshot.autoTransition)
-  const [transitionThreshold, setTransitionThreshold] = useState(settingsSnapshot.transitionThreshold)
+  // Consolidated into a single object to allow atomic re-sync from the
+  // settings snapshot without triggering multiple setState calls.
+  interface FormState {
+    strategy: CeremonyStrategyType
+    strategyConfig: Record<string, unknown>
+    velocityCalculator: VelocityCalcType
+    autoTransition: boolean
+    transitionThreshold: number
+  }
+  const [form, setForm] = useState<FormState>(() => ({
+    strategy: settingsSnapshot.strategy,
+    strategyConfig: settingsSnapshot.strategyConfig,
+    velocityCalculator: settingsSnapshot.velocityCalculator,
+    autoTransition: settingsSnapshot.autoTransition,
+    transitionThreshold: settingsSnapshot.transitionThreshold,
+  }))
   const [saving, setSaving] = useState(false)
 
-  if (prevSnapshotRef.current !== settingsSnapshot) {
-    prevSnapshotRef.current = settingsSnapshot
-    setStrategy(settingsSnapshot.strategy)
-    setStrategyConfig(settingsSnapshot.strategyConfig)
-    setVelocityCalculator(settingsSnapshot.velocityCalculator)
-    setAutoTransition(settingsSnapshot.autoTransition)
-    setTransitionThreshold(settingsSnapshot.transitionThreshold)
-  }
+  // Re-sync form when the underlying settings entries change (deep-link
+  // fetch or WS update).  A single setState avoids the per-field warnings.
+  useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate external-store sync
+    setForm({
+      strategy: settingsSnapshot.strategy,
+      strategyConfig: settingsSnapshot.strategyConfig,
+      velocityCalculator: settingsSnapshot.velocityCalculator,
+      autoTransition: settingsSnapshot.autoTransition,
+      transitionThreshold: settingsSnapshot.transitionThreshold,
+    })
+  }, [
+    settingsSnapshot.strategy,
+    settingsSnapshot.strategyConfig,
+    settingsSnapshot.velocityCalculator,
+    settingsSnapshot.autoTransition,
+    settingsSnapshot.transitionThreshold,
+  ])
+
+  // Convenience destructuring for template readability
+  const { strategy, strategyConfig, velocityCalculator, autoTransition, transitionThreshold } = form
+  const setStrategy = useCallback((s: CeremonyStrategyType) => setForm((prev) => ({ ...prev, strategy: s })), [])
+  const setStrategyConfig = useCallback((c: Record<string, unknown>) => setForm((prev) => ({ ...prev, strategyConfig: c })), [])
+  const setVelocityCalculator = useCallback((v: VelocityCalcType) => setForm((prev) => ({ ...prev, velocityCalculator: v })), [])
+  const setAutoTransition = useCallback((b: boolean) => setForm((prev) => ({ ...prev, autoTransition: b })), [])
+  const setTransitionThreshold = useCallback((t: number) => setForm((prev) => ({ ...prev, transitionThreshold: t })), [])
 
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
@@ -103,13 +130,13 @@ export default function CeremonyPolicyPage() {
     }
     return { overrides: {} as Record<string, CeremonyPolicyConfig | null>, overridesParseError }
   }, [settingsEntries])
-  const prevOverridesRef = useRef(ceremonyOverridesSnapshot)
   const [ceremonyOverrides, setCeremonyOverrides] = useState<Record<string, CeremonyPolicyConfig | null>>(ceremonyOverridesSnapshot.overrides)
 
-  if (prevOverridesRef.current !== ceremonyOverridesSnapshot) {
-    prevOverridesRef.current = ceremonyOverridesSnapshot
+  // Re-sync ceremony overrides when the settings snapshot changes.
+  useEffect(() => {
+    // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate external-store sync
     setCeremonyOverrides(ceremonyOverridesSnapshot.overrides)
-  }
+  }, [ceremonyOverridesSnapshot.overrides])
 
   // Show toasts for JSON parse failures (outside useMemo to avoid side effects in memos)
   useEffect(() => {
@@ -149,7 +176,9 @@ export default function CeremonyPolicyPage() {
     })
   }, [addToast])
 
-  // Save handler: persist all ceremony settings
+  // Save handler: persist all ceremony settings.
+  // Individual calls are used because the settings service does not support
+  // batch updates -- each key is an independent PUT /settings/{ns}/{key}.
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
@@ -193,7 +222,7 @@ export default function CeremonyPolicyPage() {
   const handleStrategyChange = useCallback((s: CeremonyStrategyType) => {
     setStrategy(s)
     setVelocityCalculator(STRATEGY_DEFAULT_VELOCITY_CALC[s])
-  }, [])
+  }, [setStrategy, setVelocityCalculator])
 
   return (
     <ErrorBoundary level="page">

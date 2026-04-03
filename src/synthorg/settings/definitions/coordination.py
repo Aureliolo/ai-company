@@ -165,6 +165,11 @@ _r.register(
     )
 )
 
+# The next two settings are aggregate JSON blobs managed entirely through the
+# settings service (keyed by department or ceremony name).  They intentionally
+# omit yaml_path because they do not map to a single YAML config path -- the
+# YAML company config stores per-department ceremony_policy inline on each
+# department object, not as a separate top-level blob.
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,

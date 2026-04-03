@@ -35,7 +35,7 @@ function CeremonyRow({
   saving?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  const hasOverride = policy != null && Object.keys(policy).length > 0
+  const hasOverride = policy != null
   const strategy = policy?.strategy ?? 'task_driven'
 
   const handleInheritChange = useCallback(
@@ -43,10 +43,11 @@ function CeremonyRow({
       if (inherit) {
         onOverrideChange(name, null)
       } else {
-        onOverrideChange(name, { strategy: 'task_driven' })
+        // Create empty override -- inherits all fields until explicitly set
+        onOverrideChange(name, policy ?? {})
       }
     },
-    [name, onOverrideChange],
+    [name, onOverrideChange, policy],
   )
 
   const handleStrategyChange = useCallback(

@@ -91,10 +91,11 @@ export const useCeremonyPolicyStore = create<CeremonyPolicyState>()((set, get) =
   updateDepartmentPolicy: async (name: string, data: CeremonyPolicyConfig) => {
     set({ saving: true, saveError: null })
     try {
-      await ceremonyApi.updateDepartmentCeremonyPolicy(name, data)
+      const saved = await ceremonyApi.updateDepartmentCeremonyPolicy(name, data)
       const current = get().departmentPolicies
       const updated = new Map(current)
-      updated.set(name, data)
+      // Use server-normalized response instead of the input data
+      updated.set(name, saved)
       set({ departmentPolicies: updated, saving: false })
     } catch (err) {
       set({ saveError: getErrorMessage(err), saving: false })
