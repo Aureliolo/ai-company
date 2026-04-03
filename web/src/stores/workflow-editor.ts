@@ -423,6 +423,16 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       set({ error: 'Cannot validate: no workflow loaded' })
       return
     }
+    const badNodes = nodes.filter((n) => !n.type)
+    const badEdges = edges.filter((e) => !(e.data as Record<string, unknown>)?.edgeType)
+    if (badNodes.length > 0 || badEdges.length > 0) {
+      const parts: string[] = []
+      if (badNodes.length > 0) parts.push(`nodes missing type: ${badNodes.map((n) => n.id).join(', ')}`)
+      if (badEdges.length > 0) parts.push(`edges missing type: ${badEdges.map((e) => e.id).join(', ')}`)
+      set({ error: `Cannot validate -- ${parts.join('; ')}. Remove and re-add the affected items.`, validating: false })
+      return
+    }
+
     set({ validating: true })
     try {
       const result = await validateWorkflowDraft({
@@ -430,7 +440,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         workflow_type: definition.workflow_type,
         nodes: nodes.map((n) => ({
           id: n.id,
-          type: n.type ?? 'task',
+          type: n.type!,
           label: (n.data as Record<string, unknown>)?.label ?? n.id,
           position_x: n.position.x,
           position_y: n.position.y,
@@ -440,7 +450,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)?.edgeType ?? 'sequential',
+          type: (e.data as Record<string, unknown>)!.edgeType as string,
           label: (e.label as string) ?? null,
         })),
       })
