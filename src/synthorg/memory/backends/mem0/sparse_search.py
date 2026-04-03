@@ -212,6 +212,12 @@ def scored_points_to_entries(
             entry = _point_to_entry(point, agent_id)
             entries.append(entry)
         except builtins.MemoryError, RecursionError:
+            logger.error(
+                MEMORY_SPARSE_SEARCH_FAILED,
+                point_id=str(getattr(point, "id", "unknown")),
+                reason="system error during point conversion",
+                exc_info=True,
+            )
             raise
         except Exception:
             skipped += 1
