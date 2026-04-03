@@ -45,7 +45,7 @@ docker compose -f docker/compose.yml up -d
 
 | Container | Image | Description |
 |-----------|-------|-------------|
-| **backend** | `ghcr.io/aureliolo/synthorg` | Python API server (Litestar). 3-stage build, Chainguard distroless runtime (no shell), runs as non-root (UID 65532). |
+| **backend** | `ghcr.io/aureliolo/synthorg-backend` | Python API server (Litestar). 3-stage build, Chainguard distroless runtime (no shell), runs as non-root (UID 65532). |
 | **web** | `ghcr.io/aureliolo/synthorg-web` | Nginx + React 19 dashboard (shadcn/ui + Tailwind CSS). SPA routing, proxies API and WebSocket requests to backend, serves embedded MkDocs documentation at `/docs/`. |
 
 ### Environment Variables

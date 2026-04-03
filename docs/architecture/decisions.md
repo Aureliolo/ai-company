@@ -62,7 +62,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | ID | Decision | Rationale | Alternatives considered |
 |----|----------|-----------|------------------------|
 | D16 | Docker MVP via `aiodocker`; `SandboxBackend` protocol for future backends | Docker cold start (1-2s) invisible against LLM latency (2-30s). Pre-built image + user config. Fail if Docker unavailable -- no unsafe subprocess fallback. gVisor as config-level hardening upgrade | Docker + WASM (CPython can't run pip packages in WASM), Docker + Firecracker (Linux-only, requires KVM), docker-py (sync, no 3.14 support). Precedents: E2B, major cloud providers, Daytona -- none offer unsandboxed fallback |
-| D17 | Official `mcp` Python SDK, pinned `==1.26.0`; `MCPBridgeTool` adapter | Used by every major framework (LangChain, CrewAI, major agent SDKs, Pydantic AI). Python 3.14 compatible. Pydantic 2.12.5 compatible. Thin adapter isolates codebase from SDK changes | Custom MCP client (must implement protocol handshake, track spec changes manually) |
+| D17 | Official `mcp` Python SDK, exact-pinned (`==`), updated via Dependabot; `MCPBridgeTool` adapter | Used by every major framework (LangChain, CrewAI, major agent SDKs, Pydantic AI). Python 3.14 compatible. Pydantic v2 compatible. Thin adapter isolates codebase from SDK changes | Custom MCP client (must implement protocol handshake, track spec changes manually) |
 | D18 | MCP result mapping via adapter in `MCPBridgeTool` | Keep `ToolResult` as-is. Text concatenation for LLM path. Rich content in metadata. Zero disruption to existing codebase | Extend ToolResult for multi-modal (cascading changes across codebase; LLM providers consume as text anyway) |
 
 ## Timeout & Approval
@@ -101,7 +101,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | MTEB | General passage retrieval | MTEB performance does not transfer to memory retrieval (Pearson: -0.115). Optimizing for MTEB may actively harm memory retrieval quality |
 | Manual evaluation | Custom retrieval benchmarks | Too expensive to maintain. LMEB provides a standardized, reproducible alternative |
 
-**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The fine-tuning pipeline stages themselves raise `NotImplementedError` -- only the checkpoint lookup is wired (see #1001).
+**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The fine-tuning pipeline stages (data generation, hard negative mining, contrastive training, checkpoint deploy) are not yet implemented -- functions validate inputs and raise `NotImplementedError` (see #1001).
 
 ## Overarching Pattern
 

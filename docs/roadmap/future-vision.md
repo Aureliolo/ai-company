@@ -1,47 +1,54 @@
 # Future Vision
 
-These features are not part of the MVP. They represent the longer-term direction for SynthOrg once the core framework is stable.
+These features represent the longer-term direction for SynthOrg beyond the current development cycle.
 
-## Future Features
+## Planned Features
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Plugin system | High | Third-party plugins for new tools, roles, and providers. |
-| Multi-project support | High | Company handles multiple projects simultaneously. |
-| Self-improving company | High | The AI company developing the AI company framework (meta). |
-| Community marketplace | Medium | Share and download company templates, roles, and workflows. |
-| Network hosting | Medium | Expose on LAN/internet with multi-user access. |
-| Agent evolution | Medium | Agents improve over time based on feedback. |
-| Benchmarking suite | Medium | Compare company configurations on standard tasks. |
-| Visual workflow editor | Medium | Drag-and-drop workflow design in the Web UI. |
-| Agent promotions (extended) | Medium | Advanced promotion features: peer review integration, multi-dimensional criteria weighting, team-wide calibration. Core promotion system is [implemented](../design/agents.md#promotions-demotions). |
-| Reporting system | Medium | Weekly/monthly automated company reports. |
-| Training mode | Medium | New agents learn from senior agents' past work. |
-| Integration APIs | Medium | Connect to real Slack, GitHub, Jira, Linear. |
-| Inter-company communication | Low | Two AI companies collaborating on a project. |
-| Voice interface | Low | Talk to the AI company via voice. |
-| Mobile app | Low | Monitor the company from a phone. |
-| Client simulation | Low | AI "clients" that give requirements and review output. |
-| Shift system | Low | Agents "work" in shifts, different agents for different hours. |
+| Feature | Version | Status |
+|---------|---------|--------|
+| Plugin system | v0.7 | Planned |
+| Multi-project support | v0.8 | Planned |
+| Benchmarking suite | v0.7 | Planned |
+| Community template marketplace | v0.7 | Research |
+| Agent evolution (learning from feedback) | v0.7 | Planned |
+| Training mode (learn from senior agents) | v0.7 | Planned |
+| Client simulation | v0.7 | Planned |
+| Inter-company communication | v0.7 | Planned |
+| A2A protocol compatibility | v0.7 | Research |
+| Dynamic company scaling | v0.8 | Planned |
+| Self-improving company | v0.8 | Planned |
+| Distributed message bus | v0.8 | Planned |
+| Distributed task queue | v0.8 | Planned |
+| PostgreSQL persistence backend | v0.8 | Planned |
+| Shift system for agents | v0.8 | Planned |
 
----
+## Recently Shipped (formerly "Future")
+
+These features were previously listed as future work and have since been implemented:
+
+- **Visual workflow editor** -- shipped in v0.5.9 (PR #1018)
+- **Network hosting / multi-user access** -- shipped in v0.5.9 (PR #1032)
+- **Workflow execution from graph definitions** -- shipped in v0.6.0 (PR #1040)
+- **Local model management** (Ollama/LM Studio) -- shipped in v0.6.0 (PR #1037)
+- **Ceremony scheduling** (8 strategies) -- shipped across v0.5.5--v0.5.7
+- **Agent promotions** -- core promotion/demotion system shipped in v0.5.0
 
 ## Scaling Path
 
-SynthOrg is designed to scale incrementally from a local single-process deployment to a fully hosted cloud platform.
+SynthOrg is designed to scale incrementally from a local single-process deployment to a hosted platform.
 
 ```text
-Phase 1: Local Single-Process
-  └── Async runtime, embedded DB, in-memory bus, 1-10 agents
+Phase 1: Local Single-Process (current)
+  -- Async runtime, SQLite, in-memory bus, 1-10 agents
 
-Phase 2: Local Multi-Process
-  └── External message bus, production DB, sandboxed execution, 10-30 agents
+Phase 2: Local Multi-Process (v0.7-v0.8)
+  -- External message bus, production DB, sandboxed execution, 10-30 agents
 
-Phase 3: Network/Server
-  └── Full API, multi-user, distributed agents, 30-100 agents
+Phase 3: Network/Server (v0.8+)
+  -- Full API with multi-user auth, distributed agents, 30-100 agents
 
-Phase 4: Cloud/Hosted
-  └── Container orchestration, horizontal scaling, marketplace, 100+ agents
+Phase 4: Cloud/Hosted (future)
+  -- Container orchestration, horizontal scaling, marketplace, 100+ agents
 ```
 
 Each phase builds on the previous one. The pluggable protocol interfaces throughout the codebase (persistence, memory, message bus, sandbox) are designed to make these transitions configuration changes rather than rewrites.

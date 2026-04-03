@@ -61,7 +61,7 @@ Memory persistence is configurable per agent, from no persistence to fully persi
     ```yaml
     memory:
       level: "persistent"            # none | session | project | persistent (default: session)
-      backend: "mem0"               # mem0 | custom | cognee | graphiti (future) -- see Decision Log
+      backend: "mem0"               # mem0 | custom | cognee | graphiti (future)
       storage:
         data_dir: "/data/memory"    # mounted Docker volume path
         vector_store: "qdrant"      # hardcoded to embedded qdrant in Mem0 backend
