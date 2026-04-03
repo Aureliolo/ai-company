@@ -25,6 +25,7 @@ from synthorg.observability.events.memory import (
     MEMORY_BACKEND_SYSTEM_ERROR,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_SPARSE_BATCH_DEGRADED,
+    MEMORY_SPARSE_FIELD_ENSURE_FAILED,
     MEMORY_SPARSE_FIELD_ENSURED,
     MEMORY_SPARSE_POINT_FIELD_DEFAULTED,
     MEMORY_SPARSE_SEARCH_COMPLETE,
@@ -257,7 +258,10 @@ def _extract_metadata(
         category = MemoryCategory.EPISODIC
 
     confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
-    source = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
+    source_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
+    source = source_raw.strip() if isinstance(source_raw, str) else source_raw
+    if not source:
+        source = None
     tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags")
     if tags_raw is None:
         tags_raw = ()
@@ -359,7 +363,23 @@ async def async_init_sparse_field(
         qdrant_client: ``QdrantClient`` instance.
         collection_name: Target Qdrant collection.
     """
-    await asyncio.to_thread(ensure_sparse_field, qdrant_client, collection_name)
+    try:
+        await asyncio.to_thread(
+            ensure_sparse_field,
+            qdrant_client,
+            collection_name,
+        )
+    except builtins.MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            MEMORY_SPARSE_FIELD_ENSURE_FAILED,
+            backend="qdrant",
+            collection=collection_name,
+            operation="init_sparse_field",
+            exc_info=True,
+        )
+        raise
 
 
 async def async_try_sparse_upsert(  # noqa: PLR0913
