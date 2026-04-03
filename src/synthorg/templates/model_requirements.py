@@ -11,7 +11,9 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from synthorg.core.types import ModelTier
+from synthorg.core.types import (
+    ModelTier as ModelTier,  # noqa: PLC0414 -- re-export for mypy
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,

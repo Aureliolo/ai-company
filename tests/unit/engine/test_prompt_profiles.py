@@ -74,7 +74,7 @@ class TestPromptProfile:
             profile = PromptProfile(
                 tier="large",
                 max_personality_tokens=100,
-                autonomy_detail_level=level,  # type: ignore[arg-type]
+                autonomy_detail_level=level,
             )
             assert profile.autonomy_detail_level == level
 
@@ -84,7 +84,7 @@ class TestPromptProfile:
             profile = PromptProfile(
                 tier="large",
                 max_personality_tokens=100,
-                personality_mode=mode,  # type: ignore[arg-type]
+                personality_mode=mode,
             )
             assert profile.personality_mode == mode
 
