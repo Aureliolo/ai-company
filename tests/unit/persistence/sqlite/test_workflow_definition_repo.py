@@ -137,12 +137,12 @@ class TestSQLiteWorkflowDefinitionRepository:
             assert loaded.position_x == original.position_x
             assert loaded.position_y == original.position_y
             assert dict(loaded.config) == dict(original.config)
-        for original, loaded in zip(defn.edges, result.edges, strict=True):
-            assert loaded.id == original.id
-            assert loaded.source_node_id == original.source_node_id
-            assert loaded.target_node_id == original.target_node_id
-            assert loaded.type == original.type
-            assert loaded.label == original.label
+        for orig_edge, loaded_edge in zip(defn.edges, result.edges, strict=True):
+            assert loaded_edge.id == orig_edge.id
+            assert loaded_edge.source_node_id == orig_edge.source_node_id
+            assert loaded_edge.target_node_id == orig_edge.target_node_id
+            assert loaded_edge.type == orig_edge.type
+            assert loaded_edge.label == orig_edge.label
 
     async def test_save_upsert_updates_existing(
         self,

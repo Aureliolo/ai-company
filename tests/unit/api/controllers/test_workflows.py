@@ -154,7 +154,8 @@ def _create_workflow(
         headers=make_auth_headers("ceo"),
     )
     assert resp.status_code == 201
-    return resp.json()
+    result: dict[str, Any] = resp.json()
+    return result
 
 
 @pytest.mark.unit
