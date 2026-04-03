@@ -1,0 +1,64 @@
+import { createLogger } from '@/lib/logger'
+
+describe('createLogger', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+  let errorSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('prefixes warn messages with module name', () => {
+    const log = createLogger('test-module')
+    log.warn('something happened')
+    expect(warnSpy).toHaveBeenCalledWith('[test-module]', 'something happened')
+  })
+
+  it('prefixes error messages with module name', () => {
+    const log = createLogger('ws')
+    log.error('connection lost')
+    expect(errorSpy).toHaveBeenCalledWith('[ws]', 'connection lost')
+  })
+
+  it('sanitizes string arguments', () => {
+    const log = createLogger('m')
+    const malicious = 'safe\x00text'
+    log.warn('msg', malicious)
+    // sanitizeForLog replaces control chars with spaces
+    expect(warnSpy).toHaveBeenCalledWith('[m]', 'msg', 'safe text')
+  })
+
+  it('sanitizes Error arguments', () => {
+    const log = createLogger('m')
+    const err = new Error('boom')
+    log.error('failed', err)
+    const sanitized = errorSpy.mock.calls[0]?.[2]
+    expect(typeof sanitized).toBe('string')
+    expect(sanitized).toContain('boom')
+  })
+
+  it('passes objects through unchanged', () => {
+    const log = createLogger('m')
+    const ctx = { key: 'value', count: 42 }
+    log.warn('context', ctx)
+    expect(warnSpy).toHaveBeenCalledWith('[m]', 'context', ctx)
+  })
+
+  it('passes numbers through unchanged', () => {
+    const log = createLogger('m')
+    log.error('code', 404)
+    expect(errorSpy).toHaveBeenCalledWith('[m]', 'code', 404)
+  })
+
+  it('handles multiple arguments', () => {
+    const log = createLogger('multi')
+    log.warn('a', 'b', { c: 1 })
+    expect(warnSpy).toHaveBeenCalledWith('[multi]', 'a', 'b', { c: 1 })
+  })
+})
