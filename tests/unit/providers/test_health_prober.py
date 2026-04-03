@@ -344,7 +344,7 @@ class TestProberLifecycle:
         )
         # Bypass the validated minimum so wait_for times out
         # immediately between probe cycles instead of sleeping 1s.
-        prober._interval = 0  # type: ignore[assignment]
+        prober._interval = 0
 
         async def _counting_get() -> dict[str, MagicMock]:
             nonlocal call_count
