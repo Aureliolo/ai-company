@@ -7,6 +7,7 @@ performs field-by-field 3-level resolution.
 
 from collections.abc import Mapping  # noqa: TC003 -- Pydantic runtime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -58,6 +59,27 @@ _DEFAULT_STRATEGY: CeremonyStrategyType = CeremonyStrategyType.TASK_DRIVEN
 _DEFAULT_VELOCITY_CALC: VelocityCalcType = VelocityCalcType.TASK_DRIVEN
 _DEFAULT_AUTO_TRANSITION: bool = True
 _DEFAULT_TRANSITION_THRESHOLD: float = 1.0
+
+STRATEGY_DEFAULT_VELOCITY_CALC: Mapping[CeremonyStrategyType, VelocityCalcType] = (
+    MappingProxyType(
+        {
+            CeremonyStrategyType.TASK_DRIVEN: VelocityCalcType.TASK_DRIVEN,
+            CeremonyStrategyType.CALENDAR: VelocityCalcType.CALENDAR,
+            CeremonyStrategyType.HYBRID: VelocityCalcType.MULTI_DIMENSIONAL,
+            CeremonyStrategyType.EVENT_DRIVEN: VelocityCalcType.POINTS_PER_SPRINT,
+            CeremonyStrategyType.BUDGET_DRIVEN: VelocityCalcType.BUDGET,
+            CeremonyStrategyType.THROUGHPUT_ADAPTIVE: VelocityCalcType.TASK_DRIVEN,
+            CeremonyStrategyType.EXTERNAL_TRIGGER: VelocityCalcType.POINTS_PER_SPRINT,
+            CeremonyStrategyType.MILESTONE_DRIVEN: VelocityCalcType.POINTS_PER_SPRINT,
+        }
+    )
+)
+"""Strategy-to-velocity-calculator mapping.
+
+Each strategy has a natural default velocity calculator.  Used by
+``resolve_ceremony_policy()`` when no level explicitly sets
+``velocity_calculator``.
+"""
 
 
 class CeremonyPolicyConfig(BaseModel):
@@ -176,10 +198,14 @@ def resolve_ceremony_policy(
     # least specific (first), taking the first non-None value.
     strategy = _resolve_field(layers, "strategy", _DEFAULT_STRATEGY)
     strategy_config: Mapping[str, Any] = _resolve_field(layers, "strategy_config", {})
+    default_vel_calc = STRATEGY_DEFAULT_VELOCITY_CALC.get(
+        strategy,
+        _DEFAULT_VELOCITY_CALC,
+    )
     velocity_calculator = _resolve_field(
         layers,
         "velocity_calculator",
-        _DEFAULT_VELOCITY_CALC,
+        default_vel_calc,
     )
     auto_transition = _resolve_field(
         layers,

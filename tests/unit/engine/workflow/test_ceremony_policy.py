@@ -1,8 +1,11 @@
 """Tests for ceremony scheduling policy configuration and resolution."""
 
+from typing import ClassVar
+
 import pytest
 
 from synthorg.engine.workflow.ceremony_policy import (
+    STRATEGY_DEFAULT_VELOCITY_CALC,
     CeremonyPolicyConfig,
     CeremonyStrategyType,
     ResolvedCeremonyPolicy,
@@ -230,3 +233,79 @@ class TestResolveCeremonyPolicy:
         resolved = resolve_ceremony_policy(project, department)
         # Department fully overrides (not merged)
         assert resolved.strategy_config == {"b": 2}
+
+
+# ── Strategy-aware velocity calculator defaults ────────────────────
+
+
+class TestStrategyAwareVelocityDefault:
+    """Velocity calculator default should derive from strategy."""
+
+    _EXPECTED_DEFAULTS: ClassVar[
+        list[tuple[CeremonyStrategyType, VelocityCalcType]]
+    ] = [
+        (CeremonyStrategyType.TASK_DRIVEN, VelocityCalcType.TASK_DRIVEN),
+        (CeremonyStrategyType.CALENDAR, VelocityCalcType.CALENDAR),
+        (CeremonyStrategyType.HYBRID, VelocityCalcType.MULTI_DIMENSIONAL),
+        (CeremonyStrategyType.EVENT_DRIVEN, VelocityCalcType.POINTS_PER_SPRINT),
+        (CeremonyStrategyType.BUDGET_DRIVEN, VelocityCalcType.BUDGET),
+        (CeremonyStrategyType.THROUGHPUT_ADAPTIVE, VelocityCalcType.TASK_DRIVEN),
+        (CeremonyStrategyType.EXTERNAL_TRIGGER, VelocityCalcType.POINTS_PER_SPRINT),
+        (CeremonyStrategyType.MILESTONE_DRIVEN, VelocityCalcType.POINTS_PER_SPRINT),
+    ]
+
+    @pytest.mark.unit
+    def test_mapping_covers_all_strategy_types(self) -> None:
+        """STRATEGY_DEFAULT_VELOCITY_CALC must have an entry for every strategy."""
+        assert set(STRATEGY_DEFAULT_VELOCITY_CALC) == set(CeremonyStrategyType)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("strategy", "expected_calc"),
+        _EXPECTED_DEFAULTS,
+        ids=[s.value for s, _ in _EXPECTED_DEFAULTS],
+    )
+    def test_strategy_aware_velocity_default(
+        self,
+        strategy: CeremonyStrategyType,
+        expected_calc: VelocityCalcType,
+    ) -> None:
+        """When only strategy is set, velocity_calculator derives from strategy."""
+        project = CeremonyPolicyConfig(strategy=strategy)
+        resolved = resolve_ceremony_policy(project)
+        assert resolved.velocity_calculator is expected_calc
+
+    @pytest.mark.unit
+    def test_explicit_velocity_calculator_overrides_strategy_default(self) -> None:
+        """User-set velocity_calculator takes precedence over strategy default."""
+        project = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.CALENDAR,
+            velocity_calculator=VelocityCalcType.TASK_DRIVEN,
+        )
+        resolved = resolve_ceremony_policy(project)
+        assert resolved.velocity_calculator is VelocityCalcType.TASK_DRIVEN
+
+    @pytest.mark.unit
+    def test_department_strategy_override_changes_velocity_default(self) -> None:
+        """Department strategy override changes the velocity_calculator default."""
+        project = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.TASK_DRIVEN,
+        )
+        department = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.CALENDAR,
+        )
+        resolved = resolve_ceremony_policy(project, department)
+        assert resolved.strategy is CeremonyStrategyType.CALENDAR
+        assert resolved.velocity_calculator is VelocityCalcType.CALENDAR
+
+    @pytest.mark.unit
+    def test_ceremony_strategy_override_changes_velocity_default(self) -> None:
+        """Per-ceremony strategy override changes the velocity_calculator default."""
+        project = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.TASK_DRIVEN,
+        )
+        ceremony = CeremonyPolicyConfig(
+            strategy=CeremonyStrategyType.HYBRID,
+        )
+        resolved = resolve_ceremony_policy(project, None, ceremony)
+        assert resolved.velocity_calculator is VelocityCalcType.MULTI_DIMENSIONAL

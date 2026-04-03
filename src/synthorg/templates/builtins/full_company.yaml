@@ -375,6 +375,7 @@ template:
     sprint:
       ceremony_policy:
         strategy: "hybrid"
+        velocity_calculator: "multi_dimensional"
       duration_days: {{ sprint_length | default(14) }}
       velocity_window: 5
       ceremonies:

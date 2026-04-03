@@ -74,3 +74,4 @@ template:
     sprint:
       ceremony_policy:
         strategy: "task_driven"
+        velocity_calculator: "task_driven"

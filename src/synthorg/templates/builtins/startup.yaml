@@ -116,6 +116,7 @@ template:
     sprint:
       ceremony_policy:
         strategy: "task_driven"
+        velocity_calculator: "task_driven"
       duration_days: {{ sprint_length | default(7) }}
       ceremonies:
         - name: "sprint_planning"
