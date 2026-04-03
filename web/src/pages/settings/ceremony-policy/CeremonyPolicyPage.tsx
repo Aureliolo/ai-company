@@ -111,6 +111,7 @@ export default function CeremonyPolicyPage() {
     transitionThreshold: settingsSnapshot.transitionThreshold,
   }))
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   // Track whether the user has made unsaved edits.  Set to true on any
   // local form change, cleared on save or when the snapshot re-syncs
   // successfully (i.e. when the user has not touched the form).
@@ -149,7 +150,8 @@ export default function CeremonyPolicyPage() {
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
   const [deptLoading, setDeptLoading] = useState(true)
-  const [deptLoadError, setDeptLoadError] = useState(false)
+  // deptLoadError tracking removed -- we show partial results via
+  // departments.length > 0 and surface errors via toast.
 
   // Per-ceremony overrides (from ceremony_policy_overrides setting)
   const ceremonyOverridesSnapshot = useMemo(() => {
@@ -227,7 +229,7 @@ export default function CeremonyPolicyPage() {
         }
       } catch {
         if (!cancelled) {
-          setDeptLoadError(true)
+          // Error surfaced via toast; partial results preserved in allDepts
           addToast({ variant: 'error', title: 'Failed to load departments' })
         }
       } finally {
@@ -246,6 +248,7 @@ export default function CeremonyPolicyPage() {
   // batch updates -- each key is an independent PUT /settings/{ns}/{key}.
   const handleSave = useCallback(async () => {
     setSaving(true)
+    setSaveError(null)
     try {
       await Promise.all([
         updateSetting('coordination', 'ceremony_strategy', strategy),
@@ -259,7 +262,9 @@ export default function CeremonyPolicyPage() {
       addToast({ variant: 'success', title: 'Ceremony policy saved' })
       fetchResolvedPolicy()
     } catch (err) {
-      addToast({ variant: 'error', title: 'Failed to save ceremony policy', description: getErrorMessage(err) })
+      const msg = getErrorMessage(err)
+      setSaveError(msg)
+      addToast({ variant: 'error', title: 'Failed to save ceremony policy', description: msg })
     } finally {
       setSaving(false)
     }
@@ -378,9 +383,9 @@ export default function CeremonyPolicyPage() {
                   />
                 </div>
 
-                {storeSaveError && (
+                {(storeSaveError || saveError) && (
                   <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-                    Save failed: {storeSaveError}
+                    Save failed: {saveError ?? storeSaveError}
                   </div>
                 )}
 
@@ -404,7 +409,7 @@ export default function CeremonyPolicyPage() {
 
             {/* Department overrides */}
             {deptLoading && <SkeletonCard />}
-            {!deptLoading && !deptLoadError && (
+            {!deptLoading && departments.length > 0 && (
               <DepartmentOverridesPanel departments={departments} />
             )}
 
