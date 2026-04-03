@@ -13,13 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
-
-__all__ = ["ModelTier"]
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,
     TEMPLATE_MODEL_REQUIREMENT_PARSED,
     TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
 )
+
+__all__ = ["ModelTier"]
 
 logger = get_logger(__name__)
 
