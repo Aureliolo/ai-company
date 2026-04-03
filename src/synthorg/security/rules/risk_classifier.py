@@ -40,6 +40,7 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
         ActionType.VCS_BRANCH: ApprovalRiskLevel.LOW,
         ActionType.COMMS_INTERNAL: ApprovalRiskLevel.LOW,
         ActionType.DB_QUERY: ApprovalRiskLevel.LOW,
+        ActionType.MEMORY_READ: ApprovalRiskLevel.LOW,
     }
 )
 

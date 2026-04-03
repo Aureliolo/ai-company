@@ -119,6 +119,7 @@ if TYPE_CHECKING:
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.persistence.repositories import (
         CheckpointRepository,
         HeartbeatRepository,
@@ -203,6 +204,10 @@ class AgentEngine:
         tool_invocation_tracker: Optional tracker for recording tool
             invocations in the activity timeline.  Passed through to
             each ``ToolInvoker`` created by ``_make_tool_invoker``.
+        memory_injection_strategy: Optional memory injection strategy.
+            When a ``ToolBasedInjectionStrategy`` is provided, memory
+            tools (``search_memory``, ``recall_memory``) are registered
+            in the ``ToolRegistry`` for each agent execution.
     """
 
     def __init__(  # noqa: PLR0913
@@ -231,6 +236,7 @@ class AgentEngine:
         plan_execute_config: PlanExecuteConfig | None = None,
         provider_registry: ProviderRegistry | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
+        memory_injection_strategy: MemoryInjectionStrategy | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -297,6 +303,7 @@ class AgentEngine:
         self._error_taxonomy_config = error_taxonomy_config
         self._coordinator = coordinator
         self._tool_invocation_tracker = tool_invocation_tracker
+        self._memory_injection_strategy = memory_injection_strategy
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -1192,6 +1199,16 @@ class AgentEngine:
             identity,
             task_id=task_id,
         )
+        if self._memory_injection_strategy is not None:
+            from synthorg.memory.tools import (  # noqa: PLC0415
+                registry_with_memory_tools,
+            )
+
+            registry = registry_with_memory_tools(
+                registry,
+                self._memory_injection_strategy,
+                agent_id=str(identity.id),
+            )
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(

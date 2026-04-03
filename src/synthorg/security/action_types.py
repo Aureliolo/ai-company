@@ -1,6 +1,6 @@
 """Action type taxonomy -- categories, registry, and validation.
 
-Provides ``ActionTypeCategory`` for the 10 top-level categories and
+Provides ``ActionTypeCategory`` for the 11 top-level categories and
 ``ActionTypeRegistry`` for validating built-in and custom action types,
 expanding category shortcuts, and querying the taxonomy.
 """
@@ -32,6 +32,7 @@ class ActionTypeCategory(StrEnum):
     ORG = "org"
     DB = "db"
     ARCH = "arch"
+    MEMORY = "memory"
 
 
 def _build_category_map() -> dict[str, frozenset[str]]:

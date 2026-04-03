@@ -373,6 +373,7 @@ class ToolCategory(StrEnum):
     COMMUNICATION = "communication"
     ANALYTICS = "analytics"
     DEPLOYMENT = "deployment"
+    MEMORY = "memory"
     MCP = "mcp"
     OTHER = "other"
 
@@ -475,6 +476,7 @@ class ActionType(StrEnum):
     DB_MUTATE = "db:mutate"
     DB_ADMIN = "db:admin"
     ARCH_DECIDE = "arch:decide"
+    MEMORY_READ = "memory:read"
 
 
 class MergeOrder(StrEnum):

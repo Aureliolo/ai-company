@@ -54,11 +54,14 @@ class ToolPermissionChecker:
     _LEVEL_CATEGORIES: ClassVar[Mapping[ToolAccessLevel, frozenset[ToolCategory]]] = (
         MappingProxyType(
             {
+                # MEMORY is read-only (no write tool exists); agent
+                # isolation is enforced by the MemoryBackend, not here.
                 ToolAccessLevel.SANDBOXED: frozenset(
                     {
                         ToolCategory.FILE_SYSTEM,
                         ToolCategory.CODE_EXECUTION,
                         ToolCategory.VERSION_CONTROL,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 ToolAccessLevel.RESTRICTED: frozenset(
@@ -67,6 +70,7 @@ class ToolPermissionChecker:
                         ToolCategory.CODE_EXECUTION,
                         ToolCategory.VERSION_CONTROL,
                         ToolCategory.WEB,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 ToolAccessLevel.STANDARD: frozenset(
@@ -77,6 +81,7 @@ class ToolPermissionChecker:
                         ToolCategory.WEB,
                         ToolCategory.TERMINAL,
                         ToolCategory.ANALYTICS,
+                        ToolCategory.MEMORY,
                     }
                 ),
                 # all categories -- new ToolCategory members are auto-included;

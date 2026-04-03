@@ -32,6 +32,7 @@ class TestDefaultMapping:
         classifier = DefaultRiskTierClassifier()
         assert classifier.classify(ActionType.CODE_READ) == ApprovalRiskLevel.LOW
         assert classifier.classify(ActionType.TEST_RUN) == ApprovalRiskLevel.LOW
+        assert classifier.classify(ActionType.MEMORY_READ) == ApprovalRiskLevel.LOW
 
 
 class TestUnknownFallback:

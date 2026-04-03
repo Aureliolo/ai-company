@@ -16,7 +16,7 @@ class TestMappingCompleteness:
                 f"ToolCategory.{category.name} missing from DEFAULT_CATEGORY_ACTION_MAP"
             )
 
-    def test_mapping_has_exactly_12_entries(self) -> None:
+    def test_mapping_has_entry_for_every_category(self) -> None:
         assert len(DEFAULT_CATEGORY_ACTION_MAP) == len(ToolCategory)
 
     def test_no_extra_keys_beyond_tool_category(self) -> None:
@@ -60,6 +60,7 @@ class TestMappingSpotChecks:
             (ToolCategory.COMMUNICATION, ActionType.COMMS_INTERNAL),
             (ToolCategory.ANALYTICS, ActionType.CODE_READ),
             (ToolCategory.DEPLOYMENT, ActionType.DEPLOY_STAGING),
+            (ToolCategory.MEMORY, ActionType.MEMORY_READ),
             (ToolCategory.MCP, ActionType.CODE_WRITE),
             (ToolCategory.OTHER, ActionType.CODE_READ),
         ],
