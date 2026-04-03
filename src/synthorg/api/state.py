@@ -464,6 +464,10 @@ class AppState:
         """
         if self._session_store is not None:
             msg = "session_store is already configured"
+            logger.warning(
+                "app.state.session_store_set",
+                error=msg,
+            )
             raise RuntimeError(msg)
         self._session_store = store
         logger.info(

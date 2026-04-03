@@ -495,8 +495,15 @@ async def ws_handler(
                 user,
             )
     finally:
-        await channels_plugin.unsubscribe(subscriber)
-        # Track presence disconnect.
+        try:
+            await channels_plugin.unsubscribe(subscriber)
+        except Exception:
+            logger.error(
+                API_WS_DISCONNECTED,
+                error="Failed to unsubscribe",
+                client=str(socket.client),
+                exc_info=True,
+            )
         app_state = socket.app.state["app_state"]
         app_state.user_presence.disconnect(user.user_id)
         logger.info(API_WS_DISCONNECTED, client=str(socket.client))
@@ -651,7 +658,7 @@ def _handle_subscribe(
             logger.warning(
                 API_WS_USER_CHANNEL_DENIED,
                 user_id=conn_user.user_id,
-                channel=c,
+                channel="user:<redacted>",
             )
             # Silently drop -- don't expose other user IDs.
     subscribed.update(valid)

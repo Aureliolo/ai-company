@@ -540,6 +540,13 @@ class SettingsService:
                 VersionConflictError,
             )
 
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="concurrent_modification",
+                expected_updated_at=expected_updated_at,
+            )
             msg = f"Concurrent modification on {namespace}/{key}"
             raise VersionConflictError(msg)
 

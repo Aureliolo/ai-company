@@ -187,6 +187,54 @@ class TestAuthMiddlewareJWT:
 
 
 @pytest.mark.unit
+class TestAuthMiddlewareRevocation:
+    async def test_revoked_session_returns_401(self) -> None:
+        """JWT with a revoked jti is rejected by the middleware."""
+        from unittest.mock import MagicMock
+
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        token, _, session_id = svc.create_token(user)
+
+        mock_store = MagicMock()
+        mock_store.is_revoked.return_value = True
+
+        auth_config = AuthConfig(jwt_secret=_SECRET)
+
+        @get("/protected")
+        async def protected_route() -> dict[str, str]:
+            return {"status": "ok"}
+
+        middleware_cls = create_auth_middleware_class(auth_config)
+
+        class _RevokedState:
+            def __init__(self) -> None:
+                self.auth_service = svc
+                self.persistence = persistence
+                self.has_session_store = True
+                self.session_store = mock_store
+
+        app = Litestar(
+            route_handlers=[protected_route],
+            middleware=[middleware_cls],
+        )
+        app.state["app_state"] = _RevokedState()
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+        mock_store.is_revoked.assert_called_once_with(session_id)
+
+
+@pytest.mark.unit
 class TestAuthMiddlewareApiKey:
     async def test_valid_api_key_authenticates(self) -> None:
         svc = _make_auth_service()

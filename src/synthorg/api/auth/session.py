@@ -44,8 +44,14 @@ class Session(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_ordering(self) -> Self:
-        """Ensure ``created_at <= expires_at``."""
+        """Ensure ``created_at <= last_active_at <= expires_at``."""
         if self.created_at > self.expires_at:
             msg = "created_at must not be after expires_at"
+            raise ValueError(msg)
+        if self.last_active_at < self.created_at:
+            msg = "last_active_at must not be before created_at"
+            raise ValueError(msg)
+        if self.last_active_at > self.expires_at:
+            msg = "last_active_at must not be after expires_at"
             raise ValueError(msg)
         return self

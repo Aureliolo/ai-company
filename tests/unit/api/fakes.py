@@ -601,7 +601,7 @@ class FakePersistenceBackend:
     async def disconnect(self) -> None:
         self._connected = False
 
-    def get_db(self) -> object:
+    def get_db(self) -> Any:
         msg = "FakePersistenceBackend does not expose a real DB"
         raise NotImplementedError(msg)
 

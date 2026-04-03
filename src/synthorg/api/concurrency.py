@@ -48,6 +48,10 @@ def check_if_match(
     skipped (backward compatible -- clients not sending
     ``If-Match`` bypass optimistic concurrency).
 
+    Supports RFC 7232 syntax: ``*`` matches any version, and
+    comma-separated entity-tag lists are parsed to check if
+    ``current_etag`` is among them.
+
     Args:
         request_etag: Value from the ``If-Match`` request header.
         current_etag: Current ETag of the resource.
@@ -59,15 +63,25 @@ def check_if_match(
     if not request_etag:
         return
 
-    if request_etag != current_etag:
-        logger.info(
-            API_CONCURRENCY_CONFLICT,
-            resource=resource_name,
-            request_etag=request_etag,
-            current_etag=current_etag,
-        )
-        msg = (
-            f"Version conflict on {resource_name}: "
-            f"expected {current_etag}, got {request_etag}"
-        )
-        raise VersionConflictError(msg)
+    stripped = request_etag.strip()
+
+    # RFC 7232: "*" matches any current entity.
+    if stripped == "*":
+        return
+
+    # Parse comma-separated entity-tag list.
+    tags = [t.strip() for t in stripped.split(",")]
+    if current_etag in tags:
+        return
+
+    logger.warning(
+        API_CONCURRENCY_CONFLICT,
+        resource=resource_name,
+        request_etag=request_etag,
+        current_etag=current_etag,
+    )
+    msg = (
+        f"Version conflict on {resource_name}: "
+        f"expected {current_etag}, got {request_etag}"
+    )
+    raise VersionConflictError(msg)

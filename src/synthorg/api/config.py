@@ -208,19 +208,22 @@ class ServerConfig(BaseModel):
         # Validate trusted_proxies as valid IP/CIDR entries.
         for entry in self.trusted_proxies:
             try:
-                ipaddress.ip_network(entry, strict=False)
+                network = ipaddress.ip_network(entry, strict=False)
             except ValueError:
                 msg = (
                     f"Invalid trusted_proxies entry: {entry!r} "
                     f"(must be an IP address or CIDR notation)"
                 )
                 raise ValueError(msg) from None
+            if network.prefixlen == 0:
+                msg = (
+                    f"Overly broad trusted_proxies entry: {entry!r} "
+                    f"trusts all addresses -- use specific IPs/CIDRs"
+                )
+                raise ValueError(msg)
 
-        if (
-            self.host == "0.0.0.0"  # noqa: S104
-            and not has_cert
-            and not self.trusted_proxies
-        ):
+        _wildcard_hosts = {"0.0.0.0", "::"}  # noqa: S104
+        if self.host in _wildcard_hosts and not has_cert and not self.trusted_proxies:
             logger.warning(
                 API_NETWORK_EXPOSURE_WARNING,
                 host=self.host,
