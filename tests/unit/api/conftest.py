@@ -15,6 +15,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService
+from synthorg.api.config import ApiConfig, RateLimitConfig
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.guards import HumanRole
 from synthorg.budget.tracker import CostTracker
@@ -213,7 +214,14 @@ def approval_store() -> ApprovalStore:
 
 @pytest.fixture
 def root_config() -> RootConfig:
-    return RootConfig(company_name="test-company")
+    # High rate limit so Hypothesis property tests (10k+ examples)
+    # don't hit 429.
+    return RootConfig(
+        company_name="test-company",
+        api=ApiConfig(
+            rate_limit=RateLimitConfig(max_requests=1_000_000),
+        ),
+    )
 
 
 @pytest.fixture
