@@ -862,6 +862,7 @@ class AgentEngine:
             available_tools=tool_defs,
             effective_autonomy=effective_autonomy,
             currency=cur_code,
+            model_tier=identity.model.model_tier,
         )
 
         ctx = AgentContext.from_identity(

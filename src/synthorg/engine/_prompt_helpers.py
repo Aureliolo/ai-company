@@ -7,18 +7,30 @@ the 800-line limit.
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.engine.prompt_template import AUTONOMY_INSTRUCTIONS
+from synthorg.engine.prompt_template import (
+    AUTONOMY_INSTRUCTIONS,
+    AUTONOMY_MINIMAL,
+    AUTONOMY_SUMMARY,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.role import Role
+    from synthorg.engine.prompt_profiles import PromptProfile
     from synthorg.security.autonomy.models import EffectiveAutonomy
+
+_AUTONOMY_LOOKUP = {
+    "full": AUTONOMY_INSTRUCTIONS,
+    "summary": AUTONOMY_SUMMARY,
+    "minimal": AUTONOMY_MINIMAL,
+}
 
 
 def build_core_context(
     agent: AgentIdentity,
     role: Role | None,
     effective_autonomy: EffectiveAutonomy | None = None,
+    profile: PromptProfile | None = None,
 ) -> dict[str, Any]:
     """Build the core (always-present) template variables from agent identity.
 
@@ -26,12 +38,22 @@ def build_core_context(
         agent: Agent identity.
         role: Optional role with description.
         effective_autonomy: Resolved autonomy for the current run.
+        profile: Prompt profile controlling verbosity.  ``None``
+            defaults to full rendering.
 
     Returns:
         Dict of core template variables.
     """
     personality = agent.personality
     authority = agent.authority
+
+    # Profile-derived rendering flags (defaults = full profile).
+    personality_mode = profile.personality_mode if profile else "full"
+    autonomy_detail = profile.autonomy_detail_level if profile else "full"
+    include_org_policies = profile.include_org_policies if profile else True
+    simplify_criteria = profile.simplify_acceptance_criteria if profile else False
+
+    autonomy_map = _AUTONOMY_LOOKUP[autonomy_detail]
 
     ctx: dict[str, Any] = {
         "agent_name": agent.name,
@@ -54,7 +76,11 @@ def build_core_context(
         "reports_to": authority.reports_to or "",
         "can_delegate_to": authority.can_delegate_to,
         "budget_limit": authority.budget_limit,
-        "autonomy_instructions": AUTONOMY_INSTRUCTIONS[agent.level],
+        "autonomy_instructions": autonomy_map[agent.level],
+        # Profile-driven template flags.
+        "personality_mode": personality_mode,
+        "include_org_policies": include_org_policies,
+        "simplify_acceptance_criteria": simplify_criteria,
     }
 
     if effective_autonomy is not None:

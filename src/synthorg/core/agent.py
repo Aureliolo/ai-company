@@ -21,7 +21,7 @@ from synthorg.core.enums import (
     ToolAccessLevel,
 )
 from synthorg.core.role import Authority
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
@@ -157,6 +157,8 @@ class ModelConfig(BaseModel):
         temperature: Sampling temperature (0.0 to 2.0).
         max_tokens: Maximum output tokens.
         fallback_model: Optional fallback model identifier.
+        model_tier: Capability tier (``"large"``/``"medium"``/``"small"``)
+            set during model matching. Controls prompt profile selection.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -177,6 +179,10 @@ class ModelConfig(BaseModel):
     fallback_model: NotBlankStr | None = Field(
         default=None,
         description="Fallback model identifier",
+    )
+    model_tier: ModelTier | None = Field(
+        default=None,
+        description="Model capability tier (large/medium/small)",
     )
 
 

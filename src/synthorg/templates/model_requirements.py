@@ -11,6 +11,7 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_REQUIREMENT_INVALID,
@@ -21,7 +22,6 @@ from synthorg.observability.events.template import (
 logger = get_logger(__name__)
 
 # Valid tier and priority literals.
-ModelTier = Literal["large", "medium", "small"]
 ModelPriority = Literal["quality", "balanced", "speed", "cost"]
 
 _VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))

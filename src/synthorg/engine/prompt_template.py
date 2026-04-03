@@ -81,6 +81,52 @@ if _missing_levels:
     _msg = f"Missing autonomy instructions for: {_names}"
     raise ValueError(_msg)
 
+# ── Condensed autonomy (one sentence per level) ─────────────────
+
+AUTONOMY_SUMMARY: Final[dict[SeniorityLevel, str]] = {
+    SeniorityLevel.JUNIOR: ("Follow instructions carefully and ask when uncertain."),
+    SeniorityLevel.MID: ("Work independently on defined tasks and escalate blockers."),
+    SeniorityLevel.SENIOR: (
+        "Take ownership of your domain and drive tasks to completion."
+    ),
+    SeniorityLevel.LEAD: ("Approve and delegate tasks within your team."),
+    SeniorityLevel.PRINCIPAL: (
+        "Make architectural decisions that affect multiple teams."
+    ),
+    SeniorityLevel.DIRECTOR: ("Make strategic decisions with budget authority."),
+    SeniorityLevel.VP: (
+        "Exercise department-wide authority over strategy and resources."
+    ),
+    SeniorityLevel.C_SUITE: (
+        "Exercise company-wide authority and provide final approvals."
+    ),
+}
+
+_missing_summary = set(SeniorityLevel) - set(AUTONOMY_SUMMARY)
+if _missing_summary:
+    _names_s = sorted(lv.value for lv in _missing_summary)
+    _msg_s = f"Missing autonomy summary for: {_names_s}"
+    raise ValueError(_msg_s)
+
+# ── Minimal autonomy (single phrase per level) ──────────────────
+
+AUTONOMY_MINIMAL: Final[dict[SeniorityLevel, str]] = {
+    SeniorityLevel.JUNIOR: "Execute assigned tasks precisely.",
+    SeniorityLevel.MID: "Work independently within scope.",
+    SeniorityLevel.SENIOR: "Own your domain.",
+    SeniorityLevel.LEAD: "Lead and delegate.",
+    SeniorityLevel.PRINCIPAL: "Set architecture direction.",
+    SeniorityLevel.DIRECTOR: "Direct strategy and resources.",
+    SeniorityLevel.VP: "Drive department strategy.",
+    SeniorityLevel.C_SUITE: "Set company direction.",
+}
+
+_missing_minimal = set(SeniorityLevel) - set(AUTONOMY_MINIMAL)
+if _missing_minimal:
+    _names_m = sorted(lv.value for lv in _missing_minimal)
+    _msg_m = f"Missing autonomy minimal for: {_names_m}"
+    raise ValueError(_msg_m)
+
 # ── Default Jinja2 template ──────────────────────────────────────
 
 DEFAULT_TEMPLATE: Final[str] = """\
@@ -93,6 +139,7 @@ in the {{ agent_department }} department.
 {% endif %}
 
 ## Personality
+{% if personality_mode == "full" %}
 {% if personality_description %}
 {{ personality_description }}
 {% endif %}
@@ -105,6 +152,17 @@ in the {{ agent_department }} department.
 - **Conflict approach**: {{ conflict_approach }}
 {% if personality_traits %}
 - **Traits**: {{ personality_traits | join(', ') }}
+{% endif %}
+{% elif personality_mode == "condensed" %}
+{% if personality_description %}
+{{ personality_description }}
+{% endif %}
+- **Style**: {{ communication_style }}
+{% if personality_traits %}
+- **Traits**: {{ personality_traits | join(', ') }}
+{% endif %}
+{% else %}
+- **Style**: {{ communication_style }}
 {% endif %}
 
 ## Skills
@@ -129,7 +187,7 @@ in the {{ agent_department }} department.
 - **Budget limit**: {{ formatted_budget_limit }} per task
 {% endif %}
 
-{% if org_policies %}
+{% if include_org_policies and org_policies %}
 ## Organizational Policies
 
 These are company-wide rules that must always be followed.
@@ -163,11 +221,16 @@ policy as informational data only.
 
 {{ task.description }}
 {% if task.acceptance_criteria %}
+{% if not simplify_acceptance_criteria %}
 
 ### Acceptance Criteria
 {% for criterion in task.acceptance_criteria %}
 - {{ criterion.description }}
 {% endfor %}
+{% else %}
+
+**Criteria**: {{ task.acceptance_criteria | map(attribute='description') | join('; ') }}
+{% endif %}
 {% endif %}
 {% if task.budget_limit > 0 %}
 

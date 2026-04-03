@@ -155,7 +155,11 @@ def match_and_assign_models(
 
     matches = match_all_agents(agents, providers)
     match_map = {
-        m.agent_index: {"provider": m.provider_name, "model_id": m.model_id}
+        m.agent_index: {
+            "provider": m.provider_name,
+            "model_id": m.model_id,
+            "model_tier": m.tier,
+        }
         for m in matches
     }
     result: list[dict[str, Any]] = []

@@ -606,10 +606,11 @@ async run(
    monthly hard stop and daily limit via `check_can_execute()`, then apply
    auto-downgrade via `resolve_model()`. Raises `BudgetExhaustedError` or
    `DailyLimitExceededError` on violation.
-3. **Build system prompt** -- calls `build_system_prompt()` with agent identity
-   and task. Tool definitions are NOT included in the prompt; they are supplied
-   via the API's `tools` parameter
-   ([Decision Log](../architecture/decisions.md) D22).
+3. **Build system prompt** -- calls `build_system_prompt()` with agent identity,
+   task, and resolved model tier. The tier determines a `PromptProfile` that
+   controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below).
+   Tool definitions are NOT included in the prompt; they are supplied via the
+   API's `tools` parameter ([Decision Log](../architecture/decisions.md) D22).
    Follows the **non-inferable-only principle**: system prompts include only
    information the agent cannot discover by reading the codebase or environment
    (role constraints, custom conventions, organizational policies).
@@ -693,6 +694,40 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
     - `agent_id`, `task_id` -- identifiers
     - Computed fields: `termination_reason`, `total_turns`, `total_cost_usd`,
       `is_success`, `completion_summary`
+
+---
+
+## Prompt Profiles
+
+Auto-downgrade changes the model tier but the system prompt must adapt too.
+A `PromptProfile` controls how verbose and detailed the system prompt is for
+each model tier.
+
+### Built-in Profiles
+
+| Profile    | Tier   | Personality          | Org Policies | Acceptance Criteria | Autonomy |
+|------------|--------|----------------------|--------------|---------------------|----------|
+| **full**   | large  | Full behavioral enums | Included    | Nested list         | Full     |
+| **standard** | medium | Description + style + traits | Included | Nested list      | Summary  |
+| **basic**  | small  | Style keyword only   | Excluded     | Flat semicolon line | Minimal  |
+
+### Tier Flow
+
+1. Template YAML specifies agent tier (`large`/`medium`/`small`)
+2. Model matcher resolves tier to a concrete model, stores `model_tier` in
+   `ModelConfig`
+3. Budget auto-downgrade updates `model_tier` when switching to a cheaper model
+4. Engine reads `identity.model.model_tier` and passes to `build_system_prompt()`
+5. Prompt builder resolves `PromptProfile` and adapts template rendering
+
+### Invariants
+
+- **Authority** and **Identity** sections are **never** stripped regardless of
+  profile
+- When `model_tier` is `None` (unknown), the **full** profile is used as a safe
+  default
+- Profile selection is logged via `prompt.profile.selected` /
+  `prompt.profile.default` events
 
 ---
 

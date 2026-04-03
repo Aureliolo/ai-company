@@ -607,7 +607,7 @@ class TestSystemPromptModel:
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Metadata contains all five expected keys with correct values."""
+        """Metadata contains expected keys with correct values."""
         result = build_system_prompt(agent=sample_agent_with_personality)
         agent = sample_agent_with_personality
 
@@ -617,6 +617,7 @@ class TestSystemPromptModel:
             "role": agent.role,
             "department": agent.department,
             "level": agent.level.value,
+            "profile_tier": "large",
         }
 
 
@@ -1021,3 +1022,200 @@ class TestEffectiveAutonomyInPrompt:
         result = build_system_prompt(agent=sample_agent_with_personality)
         assert "Autonomy level" not in result.content
         assert "Auto-approved actions" not in result.content
+
+
+# ── TestPromptProfileIntegration ─────────────────────────────────
+
+
+class TestPromptProfileIntegration:
+    """Tests for profile-driven prompt rendering via model_tier."""
+
+    @pytest.mark.unit
+    def test_model_tier_none_produces_full_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """No tier = full profile, backward compatible."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier=None,
+        )
+        p = sample_agent_with_personality.personality
+
+        assert p.risk_tolerance.value in result.content
+        assert p.creativity.value in result.content
+        assert p.verbosity.value in result.content
+
+    @pytest.mark.unit
+    def test_small_tier_omits_org_policies(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Small tier profile excludes org policies from prompt."""
+        policies = ("All code must be reviewed.", "Follow security guidelines.")
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            org_policies=policies,
+            model_tier="small",
+        )
+
+        assert "Organizational Policies" not in result.content
+        assert "All code must be reviewed" not in result.content
+        assert "org_policies" not in result.sections
+
+    @pytest.mark.unit
+    def test_large_tier_includes_org_policies(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Large tier profile includes org policies in prompt."""
+        policies = ("All code must be reviewed.",)
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            org_policies=policies,
+            model_tier="large",
+        )
+
+        assert "Organizational Policies" in result.content
+        assert "All code must be reviewed" in result.content
+        assert "org_policies" in result.sections
+
+    @pytest.mark.unit
+    def test_small_tier_simplifies_acceptance_criteria(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Small tier renders acceptance criteria as flat semicolon line."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            model_tier="small",
+        )
+
+        # Should NOT have the full "### Acceptance Criteria" heading.
+        assert "### Acceptance Criteria" not in result.content
+        # Should have semicolon-joined flat format.
+        assert "**Criteria**:" in result.content
+
+    @pytest.mark.unit
+    def test_large_tier_full_acceptance_criteria(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Large tier renders full nested acceptance criteria."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            model_tier="large",
+        )
+
+        assert "### Acceptance Criteria" in result.content
+
+    @pytest.mark.unit
+    def test_small_tier_minimal_personality(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Small tier shows only communication style, not enums."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier="small",
+        )
+        p = sample_agent_with_personality.personality
+
+        assert p.communication_style in result.content
+        # Behavioral enums should NOT appear.
+        assert "Risk tolerance" not in result.content
+        assert "Verbosity" not in result.content
+        assert "Decision-making" not in result.content
+
+    @pytest.mark.unit
+    def test_medium_tier_condensed_personality(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Medium tier shows description + style + traits, no enums."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier="medium",
+        )
+        p = sample_agent_with_personality.personality
+
+        assert p.description in result.content
+        assert p.communication_style in result.content
+        for trait in p.traits:
+            assert trait in result.content
+        # Behavioral enums should NOT appear in condensed mode.
+        assert "Risk tolerance" not in result.content
+        assert "Creativity" not in result.content
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("tier", ["large", "medium", "small"])
+    def test_authority_always_present(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        tier: str,
+    ) -> None:
+        """Authority section is never stripped by any profile."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier=tier,  # type: ignore[arg-type]
+        )
+
+        assert "## Authority" in result.content
+        assert "authority" in result.sections
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("tier", ["large", "medium", "small"])
+    def test_identity_always_present(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        tier: str,
+    ) -> None:
+        """Identity section is never stripped by any profile."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier=tier,  # type: ignore[arg-type]
+        )
+
+        assert "## Identity" in result.content
+        assert sample_agent_with_personality.name in result.content
+        assert "identity" in result.sections
+
+    @pytest.mark.unit
+    def test_profile_tier_in_metadata(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Metadata includes profile_tier when profile is applied."""
+        result = build_system_prompt(
+            agent=sample_agent_with_personality,
+            model_tier="medium",
+        )
+
+        assert result.metadata["profile_tier"] == "medium"
+
+    @pytest.mark.unit
+    def test_small_prompt_shorter_than_large(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Small tier prompt uses fewer tokens than large tier."""
+        policies = ("All code must be reviewed.", "Follow security guidelines.")
+        large = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            org_policies=policies,
+            model_tier="large",
+        )
+        small = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            org_policies=policies,
+            model_tier="small",
+        )
+
+        assert small.estimated_tokens < large.estimated_tokens
