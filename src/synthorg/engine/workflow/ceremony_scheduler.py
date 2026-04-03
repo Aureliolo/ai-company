@@ -167,6 +167,7 @@ class CeremonyScheduler:
             previous_strategy_type = (
                 self._active_strategy.strategy_type if self._active_strategy else None
             )
+            previous_velocity_history_size = len(self._velocity_history)
 
             if self._running:
                 await self._deactivate_sprint_unlocked()
@@ -210,7 +211,7 @@ class CeremonyScheduler:
                 previous_strategy_type,
                 strategy,
                 sprint,
-                velocity_history,
+                previous_velocity_history_size,
             )
 
     def _detect_migration(
@@ -218,14 +219,14 @@ class CeremonyScheduler:
         previous_strategy_type: CeremonyStrategyType | None,
         strategy: CeremonySchedulingStrategy,
         sprint: Sprint,
-        velocity_history: tuple[VelocityRecord, ...],
+        previous_velocity_history_size: int,
     ) -> StrategyMigrationInfo | None:
         """Detect and log a strategy migration (if any)."""
         migration = detect_strategy_migration(
             previous_strategy_type,
             strategy.strategy_type,
             sprint.id,
-            len(velocity_history),
+            previous_velocity_history_size,
         )
         if migration is not None:
             logger.info(

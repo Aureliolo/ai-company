@@ -210,6 +210,11 @@ class TestFormatReorderPrompt:
         text = format_reorder_prompt(_sample_info())
         assert "task_driven" in text
 
+    @pytest.mark.unit
+    def test_contains_sprint_id(self) -> None:
+        text = format_reorder_prompt(_sample_info())
+        assert "sprint-10" in text
+
 
 # ── notify_strategy_migration ──────────────────────────────────────
 

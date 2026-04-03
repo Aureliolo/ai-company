@@ -150,13 +150,15 @@ def format_reorder_prompt(info: StrategyMigrationInfo) -> str:
         Action-item text for the responsible role.
     """
     return (
-        f"ACTION REQUIRED: The ceremony scheduling strategy"
-        f" has changed to '{info.new_strategy.value}'."
-        f" Please review and reorder the sprint backlog to"
-        f" align with the new strategy's optimization"
-        f" approach. Previous velocity data"
-        f" ({info.velocity_history_size} sprints under"
-        f" '{info.previous_strategy.value}') has been reset."
+        f"ACTION REQUIRED: Sprint {info.sprint_id} -- the"
+        f" ceremony scheduling strategy has changed to"
+        f" '{info.new_strategy.value}'. Please review and"
+        f" reorder the sprint backlog to align with the new"
+        f" strategy's optimization approach."
+        f" {info.velocity_history_size} velocity records from"
+        f" '{info.previous_strategy.value}' are preserved but"
+        f" velocity-based ordering from the previous strategy"
+        f" is no longer valid."
     )
 
 
