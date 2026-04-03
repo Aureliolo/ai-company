@@ -190,7 +190,6 @@ class OllamaModelManager:
         model_name: str,
     ) -> AsyncIterator[PullProgressEvent]:
         """Iterate response lines and yield parsed progress events."""
-        got_done = False
         async for line in response.aiter_lines():
             if not line.strip():
                 continue
@@ -210,19 +209,19 @@ class OllamaModelManager:
             if event.done:
                 return
 
-        if not got_done:
-            err = "Stream ended without success status"
-            logger.warning(
-                PROVIDER_MODEL_PULL_FAILED,
-                provider="ollama",
-                model=model_name,
-                error=err,
-            )
-            yield PullProgressEvent(
-                status=err,
-                error=err,
-                done=True,
-            )
+        # Stream ended without a terminal done=True event.
+        err = "Stream ended without success status"
+        logger.warning(
+            PROVIDER_MODEL_PULL_FAILED,
+            provider="ollama",
+            model=model_name,
+            error=err,
+        )
+        yield PullProgressEvent(
+            status=err,
+            error=err,
+            done=True,
+        )
 
     async def pull_model(
         self,

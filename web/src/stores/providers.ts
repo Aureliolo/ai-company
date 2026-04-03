@@ -399,22 +399,22 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
     const controller = new AbortController()
     _pullAbortController = controller
     set({ pullingModel: true, pullProgress: null })
-    let lastEvent: PullProgressEvent | null = null
+    let lastError: string | null = null
     try {
       await apiPullModel(
         name,
         modelName,
         (event) => {
-          lastEvent = event
+          if (event.error) lastError = event.error
           set({ pullProgress: event })
         },
         controller.signal,
       )
-      if (lastEvent?.error) {
+      if (lastError) {
         useToastStore.getState().add({
           variant: 'error',
           title: 'Model pull failed',
-          description: lastEvent.error,
+          description: lastError,
         })
         return false
       }

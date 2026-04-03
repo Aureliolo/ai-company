@@ -791,14 +791,23 @@ class ProviderController(Controller):
             )
             raise NotFoundError(msg) from exc
         except ProviderValidationError as exc:
+            exc_msg = str(exc)
+            if "not found" in exc_msg:
+                logger.warning(
+                    API_RESOURCE_NOT_FOUND,
+                    resource="model",
+                    name=model_id,
+                    provider=name,
+                )
+                raise NotFoundError(exc_msg) from exc
             logger.warning(
                 API_VALIDATION_FAILED,
                 resource="provider",
                 name=name,
                 model=model_id,
-                error=str(exc),
+                error=exc_msg,
             )
-            raise ApiValidationError(str(exc)) from exc
+            raise ApiValidationError(exc_msg) from exc
         model = next(
             (m for m in updated.models if m.id == model_id),
             None,
