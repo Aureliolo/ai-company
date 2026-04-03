@@ -333,7 +333,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
-| `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection, department overrides, per-ceremony overrides |
+| `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection with resolved-policy source badges, department overrides with inherit/override toggle, per-ceremony overrides, velocity-calculator auto-selection per strategy |
 | `/docs/` | Documentation | Static MkDocs HTML served by nginx (bypasses React Router) |
 | `*` | 404 Not Found | Catch-all |
 

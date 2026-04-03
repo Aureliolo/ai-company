@@ -121,7 +121,11 @@ export function DepartmentCeremonyOverride({
                   label="Transition Threshold"
                   type="number"
                   value={String(policy?.transition_threshold ?? 1.0)}
-                  onChange={(e) => onChange({ ...policy, transition_threshold: Number(e.target.value) })}
+                  onChange={(e) => {
+                    const val = Number(e.target.value)
+                    if (!Number.isFinite(val)) return
+                    onChange({ ...policy, transition_threshold: Math.min(1.0, Math.max(0.01, val)) })
+                  }}
                   disabled={disabled}
                   hint="0.01 to 1.0"
                 />

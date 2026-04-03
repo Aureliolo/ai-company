@@ -5,6 +5,7 @@ import type { CeremonyPolicyConfig, CeremonyStrategyType, Department, VelocityCa
 import { Button } from '@/components/ui/button'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SectionCard } from '@/components/ui/section-card'
+import { SkeletonCard } from '@/components/ui/skeleton'
 import { PolicySourceBadge } from '@/components/ui/policy-source-badge'
 import { useSettingsStore } from '@/stores/settings'
 import { useSettingsData } from '@/hooks/useSettingsData'
@@ -113,6 +114,7 @@ export default function CeremonyPolicyPage() {
 
   // Departments for the overrides panel
   const [departments, setDepartments] = useState<readonly Department[]>([])
+  const [deptLoading, setDeptLoading] = useState(true)
   const [deptLoadError, setDeptLoadError] = useState(false)
 
   // Per-ceremony overrides (from ceremony_policy_overrides setting)
@@ -166,13 +168,17 @@ export default function CeremonyPolicyPage() {
     fetchActiveStrategy()
   }, [fetchResolvedPolicy, fetchActiveStrategy])
 
-  // Fetch departments with error handling
+  // Fetch departments with error handling.
+  // deptLoading is initialized to true, so we only need to clear it on
+  // completion.  The set-state calls below are legitimate async callbacks.
   useEffect(() => {
     import('@/api/endpoints/company').then(({ listDepartments }) =>
       listDepartments().then((result) => setDepartments(result.data)),
     ).catch(() => {
       setDeptLoadError(true)
       addToast({ variant: 'error', title: 'Failed to load departments' })
+    }).finally(() => {
+      setDeptLoading(false)
     })
   }, [addToast])
 
@@ -324,7 +330,8 @@ export default function CeremonyPolicyPage() {
             </SectionCard>
 
             {/* Department overrides */}
-            {!deptLoadError && (
+            {deptLoading && <SkeletonCard />}
+            {!deptLoading && !deptLoadError && (
               <DepartmentOverridesPanel departments={departments} />
             )}
 

@@ -174,8 +174,6 @@ def _parse_velocity_calculator(raw: str | None) -> VelocityCalcType | None:
 
 def _parse_auto_transition(raw: str | None) -> bool | None:
     """Parse auto-transition boolean from its raw setting value."""
-    if raw is None:
-        return None
     if not raw:
         return None
     return raw.lower() == "true"
@@ -385,7 +383,8 @@ async def _lookup_dept_override_from_settings(
             endpoint="ceremony_policy.fetch_dept",
             error=f"Corrupt dept_ceremony_policies value: {exc}",
         )
-        raise
+        msg = "Malformed ceremony policies data"
+        raise ServiceUnavailableError(msg) from exc
 
     if not isinstance(policies, dict) or department_name not in policies:
         return _SETTINGS_NOT_FOUND

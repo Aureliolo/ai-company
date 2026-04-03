@@ -463,7 +463,7 @@ async def _load_dept_policies_json(
         parsed = json.loads(entry.value)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load",
@@ -471,7 +471,8 @@ async def _load_dept_policies_json(
             exc_info=True,
         )
         if raise_on_error:
-            raise
+            msg = "Failed to load department ceremony policies"
+            raise ServiceUnavailableError(msg) from exc
         return {}
 
     if not isinstance(parsed, dict):
@@ -557,7 +558,8 @@ async def _get_dept_ceremony_override(
                     department=department_name,
                     error=f"Invalid stored override: {exc}",
                 )
-                return None
+                msg = f"Corrupt ceremony policy override for {department_name!r}"
+                raise ServiceUnavailableError(msg) from exc
             return val
         return None
 
@@ -579,6 +581,13 @@ async def _get_dept_ceremony_override(
     raise NotFoundError(msg)
 
 
+# Serializes concurrent read-modify-write operations on the
+# dept_ceremony_policies JSON blob.  The asyncio.Lock is sufficient
+# because Litestar runs in a single-process, single-event-loop
+# deployment model -- all concurrent requests share the same loop.
+# If the server moves to multi-worker (e.g. Gunicorn with multiple
+# uvicorn workers), this must be replaced with a settings-service-level
+# compare-and-swap (CAS) operation to prevent cross-worker races.
 _dept_policy_lock = asyncio.Lock()
 
 

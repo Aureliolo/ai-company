@@ -43,7 +43,10 @@ function CeremonyRow({
       if (inherit) {
         onOverrideChange(name, null)
       } else {
-        // Create empty override -- inherits all fields until explicitly set
+        // Preserve existing fields if available; otherwise create a sparse
+        // override that inherits all fields from the project/department level
+        // until the user explicitly sets them.  No resolved policy is available
+        // at the per-ceremony level -- sparse overrides are intentional here.
         onOverrideChange(name, policy ?? {})
       }
     },

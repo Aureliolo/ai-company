@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { InputField } from '@/components/ui/input-field'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 
@@ -12,6 +12,32 @@ export function ExternalTriggerConfig({ config, onChange, disabled }: ExternalTr
   const transitionEvent = (config.transition_event as string) ?? ''
   const [rawJson, setRawJson] = useState(() => JSON.stringify(config.sources ?? [], null, 2))
   const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // Sync rawJson when config.sources changes externally (e.g. parent reset).
+  // rawJson is intentionally excluded from deps to avoid feedback loops --
+  // we only want to sync when the *prop* changes, not when the user edits.
+  useEffect(() => {
+    const incoming = JSON.stringify(config.sources ?? [], null, 2)
+    // Only update if the semantic value differs to avoid cursor jumps
+    // while the user is actively editing
+    try {
+      const currentParsed = JSON.parse(rawJson)
+      const incomingParsed = config.sources ?? []
+      if (JSON.stringify(currentParsed) !== JSON.stringify(incomingParsed)) {
+        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+        setRawJson(incoming)
+        // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+        setJsonError(null)
+      }
+    } catch {
+      // Current rawJson is invalid -- always sync from prop
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+      setRawJson(incoming)
+      // eslint-disable-next-line @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync
+      setJsonError(null)
+    }
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- rawJson intentionally excluded
+  }, [config.sources])
 
   return (
     <div className="space-y-3">

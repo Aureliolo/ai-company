@@ -17,8 +17,10 @@ export interface CalendarConfigProps {
 }
 
 export function CalendarConfig({ config, onChange, disabled }: CalendarConfigProps) {
-  const frequency = (config.frequency as string) ?? ''
-  const durationDays = (config.duration_days as number) ?? 14
+  const frequency = typeof config.frequency === 'string' ? config.frequency : ''
+  const durationDays = typeof config.duration_days === 'number' && Number.isFinite(config.duration_days)
+    ? config.duration_days
+    : 14
 
   return (
     <div className="space-y-3">
