@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { BaseEdge, getSmoothStepPath, MarkerType, type EdgeProps } from '@xyflow/react'
+import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react'
 
 function SequentialEdgeComponent(props: EdgeProps) {
   const [edgePath] = getSmoothStepPath({
@@ -16,7 +16,7 @@ function SequentialEdgeComponent(props: EdgeProps) {
       id={props.id}
       path={edgePath}
       style={{ stroke: 'var(--so-border-bright)', strokeWidth: 1.5 }}
-      markerEnd={MarkerType.ArrowClosed}
+      markerEnd={props.markerEnd}
     />
   )
 }

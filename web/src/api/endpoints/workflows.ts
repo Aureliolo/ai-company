@@ -59,6 +59,16 @@ export async function validateWorkflow(id: string): Promise<WorkflowValidationRe
   return unwrap(response)
 }
 
+export async function validateWorkflowDraft(
+  data: CreateWorkflowDefinitionRequest,
+): Promise<WorkflowValidationResult> {
+  const response = await apiClient.post<ApiResponse<WorkflowValidationResult>>(
+    '/workflows/validate-draft',
+    data,
+  )
+  return unwrap(response)
+}
+
 export async function exportWorkflowYaml(id: string): Promise<string> {
   const response = await apiClient.post<string>(
     `/workflows/${encodeURIComponent(id)}/export`,

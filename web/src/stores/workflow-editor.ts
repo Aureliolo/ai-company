@@ -17,7 +17,7 @@ import {
   getWorkflow,
   createWorkflow,
   updateWorkflow,
-  validateWorkflow,
+  validateWorkflowDraft,
   exportWorkflowYaml,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
@@ -141,6 +141,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         edges,
         loading: false,
         dirty: false,
+        selectedNodeId: null,
         undoStack: [],
         redoStack: [],
         yamlPreview: yaml,
@@ -176,9 +177,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         edges: [],
         loading: false,
         dirty: false,
+        selectedNodeId: null,
         undoStack: [],
         redoStack: [],
         yamlPreview: yaml,
+        validationResult: null,
       })
     } catch (err) {
       set({ loading: false, error: getErrorMessage(err) })
@@ -399,14 +402,32 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   },
 
   validate: async () => {
-    const { definition } = get()
+    const { definition, nodes, edges } = get()
     if (!definition) {
       set({ error: 'Cannot validate: no workflow loaded' })
       return
     }
     set({ validating: true })
     try {
-      const result = await validateWorkflow(definition.id)
+      const result = await validateWorkflowDraft({
+        name: definition.name,
+        workflow_type: definition.workflow_type,
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.type ?? 'task',
+          label: (n.data as Record<string, unknown>)?.label ?? n.id,
+          position_x: n.position.x,
+          position_y: n.position.y,
+          config: ((n.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {},
+        })),
+        edges: edges.map((e) => ({
+          id: e.id,
+          source_node_id: e.source,
+          target_node_id: e.target,
+          type: (e.data as Record<string, unknown>)?.edgeType ?? 'sequential',
+          label: (e.label as string) ?? null,
+        })),
+      })
       set({ validationResult: result, validating: false })
     } catch (err) {
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })

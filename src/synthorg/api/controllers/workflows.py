@@ -4,12 +4,13 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from litestar import Controller, Response, delete, get, patch, post
+from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError
 
+from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import (
     ApiResponse,
     CreateWorkflowDefinitionRequest,
@@ -43,6 +44,7 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_UPDATED,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
+from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
@@ -171,10 +173,15 @@ class WorkflowController(Controller):
     @post(guards=[require_write_access])
     async def create_workflow(
         self,
+        request: Request,
         state: State,
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition."""
+        auth_user = request.scope.get("user")
+        creator = (
+            auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else "api"
+        )
         now = datetime.now(UTC)
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -186,7 +193,7 @@ class WorkflowController(Controller):
                 workflow_type=data.workflow_type,
                 nodes=nodes,
                 edges=edges,
-                created_by="api",
+                created_by=creator,
                 created_at=now,
                 updated_at=now,
             )
@@ -275,7 +282,22 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
-        await repo.save(updated)
+        try:
+            await repo.save(updated)
+        except QueryError as exc:
+            if "Version conflict" in str(exc):
+                logger.warning(
+                    WORKFLOW_DEF_VERSION_CONFLICT,
+                    definition_id=updated.id,
+                    error=str(exc),
+                )
+                return Response(
+                    content=ApiResponse[WorkflowDefinition](
+                        error=f"Version conflict: {exc}",
+                    ),
+                    status_code=409,
+                )
+            raise
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
 
         return Response(
@@ -305,6 +327,43 @@ class WorkflowController(Controller):
         logger.info(
             WORKFLOW_DEF_DELETED,
             definition_id=workflow_id,
+        )
+
+    @post("/validate-draft", guards=[require_read_access], status_code=200)
+    async def validate_draft(
+        self,
+        data: CreateWorkflowDefinitionRequest,
+    ) -> Response[ApiResponse[WorkflowValidationResult]]:
+        """Validate a draft workflow without persisting."""
+        try:
+            nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
+            edges = tuple(WorkflowEdge.model_validate(e) for e in data.edges)
+            definition = WorkflowDefinition(
+                id="draft",
+                name=data.name,
+                description=data.description,
+                workflow_type=data.workflow_type,
+                nodes=nodes,
+                edges=edges,
+                created_by="draft",
+            )
+        except (ValueError, ValidationError) as exc:
+            logger.warning(
+                WORKFLOW_DEF_INVALID_REQUEST,
+                error=str(exc),
+            )
+            return Response(
+                content=ApiResponse[WorkflowValidationResult](
+                    error=f"Invalid workflow: {exc}",
+                ),
+                status_code=422,
+            )
+
+        result = run_workflow_validation(definition)
+        return Response(
+            content=ApiResponse[WorkflowValidationResult](
+                data=result,
+            ),
         )
 
     @post("/{workflow_id:str}/validate", guards=[require_read_access], status_code=200)

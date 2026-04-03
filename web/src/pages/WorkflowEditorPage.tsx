@@ -221,7 +221,7 @@ function WorkflowEditorInner() {
         />
       </div>
 
-      <div className="relative flex-1 rounded-lg border border-border">
+      <div className="relative min-h-0 flex-1 rounded-lg border border-border">
         <ReactFlow
           aria-label="Workflow editor canvas"
           nodes={nodes}
@@ -265,7 +265,7 @@ function WorkflowEditorInner() {
 
 export default function WorkflowEditorPage() {
   return (
-    <div className="flex h-full flex-col gap-section-gap">
+    <div className="flex h-[calc(100vh-7rem)] flex-col gap-section-gap">
       <h1 className="text-lg font-semibold text-foreground">Workflow Editor</h1>
 
       <ErrorBoundary level="section">

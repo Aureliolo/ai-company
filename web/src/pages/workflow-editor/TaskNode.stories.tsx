@@ -50,10 +50,10 @@ export const Selected: StoryObj = {
         id: '1',
         type: 'task',
         position: { x: 0, y: 0 },
+        selected: true,
         data: {
           label: 'Implementation',
           config: { title: 'Implementation', priority: 'medium' },
-          selected: true,
         },
       }]}
     />

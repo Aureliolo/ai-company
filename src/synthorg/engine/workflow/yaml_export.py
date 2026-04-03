@@ -180,6 +180,58 @@ def _assemble_document(
     return doc
 
 
+def _generate_steps(
+    sorted_ids: list[str],
+    node_map: dict[str, Any],
+    reverse_adj: dict[str, list[str]],
+    outgoing_edges: dict[str, list[tuple[str, WorkflowEdgeType]]],
+) -> list[dict[str, Any]]:
+    """Build step dicts from topologically sorted node IDs."""
+    skip = {WorkflowNodeType.START, WorkflowNodeType.END}
+    steps: list[dict[str, Any]] = []
+    for node_id in sorted_ids:
+        node = node_map[node_id]
+        if node.type in skip:
+            continue
+        incoming = [
+            src
+            for src in reverse_adj.get(node_id, [])
+            if node_map[src].type not in skip
+        ]
+        steps.append(
+            _build_step(
+                node_id=node_id,
+                node_type=node.type,
+                config=dict(node.config),
+                incoming_node_ids=incoming,
+                outgoing_edges=outgoing_edges.get(node_id, []),
+            )
+        )
+    return steps
+
+
+def _serialize_yaml(
+    document: dict[str, Any],
+    workflow_id: str,
+) -> str:
+    """Serialize document to YAML, wrapping errors as ValueError."""
+    try:
+        return yaml.dump(
+            document,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+    except yaml.YAMLError as exc:
+        msg = f"YAML serialization failed: {exc}"
+        logger.exception(
+            WORKFLOW_DEF_EXPORT_FAILED,
+            workflow_id=workflow_id,
+            reason="yaml_error",
+        )
+        raise ValueError(msg) from exc
+
+
 def export_workflow_yaml(definition: WorkflowDefinition) -> str:
     """Export a workflow definition as a YAML string.
 
@@ -209,44 +261,9 @@ def export_workflow_yaml(definition: WorkflowDefinition) -> str:
         )
         raise
 
-    skip = {WorkflowNodeType.START, WorkflowNodeType.END}
-    steps: list[dict[str, Any]] = []
-    for node_id in sorted_ids:
-        node = node_map[node_id]
-        if node.type in skip:
-            continue
-        incoming = [
-            src
-            for src in reverse_adj.get(node_id, [])
-            if node_map[src].type not in skip
-        ]
-        steps.append(
-            _build_step(
-                node_id=node_id,
-                node_type=node.type,
-                config=dict(node.config),
-                incoming_node_ids=incoming,
-                outgoing_edges=outgoing_edges.get(node_id, []),
-            )
-        )
-
+    steps = _generate_steps(sorted_ids, node_map, reverse_adj, outgoing_edges)
     document = _assemble_document(definition, steps)
-
-    try:
-        result = yaml.dump(
-            document,
-            default_flow_style=False,
-            sort_keys=False,
-            allow_unicode=True,
-        )
-    except yaml.YAMLError as exc:
-        msg = f"YAML serialization failed: {exc}"
-        logger.exception(
-            WORKFLOW_DEF_EXPORT_FAILED,
-            workflow_id=definition.id,
-            reason="yaml_error",
-        )
-        raise ValueError(msg) from exc
+    result = _serialize_yaml(document, definition.id)
 
     logger.info(
         WORKFLOW_DEF_EXPORTED,
