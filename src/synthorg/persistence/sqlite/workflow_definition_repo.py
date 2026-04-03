@@ -3,9 +3,12 @@
 import json
 import sqlite3
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-import aiosqlite
 from pydantic import ValidationError
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -30,29 +33,55 @@ from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
-_MAX_LIST_ROWS: int = 10_000
+_SELECT_COLUMNS = """\
+id, name, description, workflow_type, nodes, edges,
+created_by, created_at, updated_at, version"""
 
 
-def _row_to_definition(row: aiosqlite.Row) -> WorkflowDefinition:
+def _parse_row_timestamps(data: dict[str, object]) -> None:
+    """Parse ISO timestamps and ensure timezone awareness."""
+    for field in ("created_at", "updated_at"):
+        dt = datetime.fromisoformat(str(data[field]))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        data[field] = dt
+
+
+def _deserialize_row(
+    row: aiosqlite.Row,
+    context_id: str,
+) -> WorkflowDefinition:
     """Reconstruct a ``WorkflowDefinition`` from a database row.
 
     Args:
         row: A single database row with workflow definition columns.
+        context_id: Identifier for error context logging.
 
     Returns:
         Validated ``WorkflowDefinition`` model instance.
+
+    Raises:
+        QueryError: If deserialization fails.
     """
-    data = dict(row)
-    data["workflow_type"] = WorkflowType(data["workflow_type"])
-    data["nodes"] = tuple(
-        WorkflowNode.model_validate(n) for n in json.loads(data["nodes"])
-    )
-    data["edges"] = tuple(
-        WorkflowEdge.model_validate(e) for e in json.loads(data["edges"])
-    )
-    data["created_at"] = datetime.fromisoformat(data["created_at"])
-    data["updated_at"] = datetime.fromisoformat(data["updated_at"])
-    return WorkflowDefinition.model_validate(data)
+    try:
+        data = dict(row)
+        data["workflow_type"] = WorkflowType(data["workflow_type"])
+        data["nodes"] = tuple(
+            WorkflowNode.model_validate(n) for n in json.loads(data["nodes"])
+        )
+        data["edges"] = tuple(
+            WorkflowEdge.model_validate(e) for e in json.loads(data["edges"])
+        )
+        _parse_row_timestamps(data)
+        return WorkflowDefinition.model_validate(data)
+    except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
+        msg = f"Failed to deserialize workflow definition {context_id!r}"
+        logger.exception(
+            PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
+            definition_id=context_id,
+            error=str(exc),
+        )
+        raise QueryError(msg) from exc
 
 
 class SQLiteWorkflowDefinitionRepository:
@@ -72,6 +101,10 @@ class SQLiteWorkflowDefinitionRepository:
 
     async def save(self, definition: WorkflowDefinition) -> None:
         """Persist a workflow definition via upsert.
+
+        The upsert enforces optimistic concurrency: updates only
+        succeed when the existing row's version is exactly one
+        behind the incoming version.
 
         Args:
             definition: Workflow definition model to persist.
@@ -99,7 +132,8 @@ ON CONFLICT(id) DO UPDATE SET
     nodes=excluded.nodes,
     edges=excluded.edges,
     updated_at=excluded.updated_at,
-    version=excluded.version""",
+    version=excluded.version
+WHERE workflow_definitions.version = excluded.version - 1""",
                 (
                     definition.id,
                     definition.name,
@@ -114,7 +148,7 @@ ON CONFLICT(id) DO UPDATE SET
                 ),
             )
             await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        except sqlite3.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
@@ -144,11 +178,11 @@ ON CONFLICT(id) DO UPDATE SET
         """
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM workflow_definitions WHERE id = ?",
+                f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions WHERE id = ?",  # noqa: S608
                 (definition_id,),
             )
             row = await cursor.fetchone()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        except sqlite3.Error as exc:
             msg = f"Failed to fetch workflow definition {definition_id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_DEF_FETCH_FAILED,
@@ -165,22 +199,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             return None
 
-        try:
-            definition = _row_to_definition(row)
-        except (
-            ValueError,
-            ValidationError,
-            json.JSONDecodeError,
-            KeyError,
-        ) as exc:
-            msg = f"Failed to deserialize workflow definition {definition_id!r}"
-            logger.exception(
-                PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
-                definition_id=definition_id,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-
+        definition = _deserialize_row(row, definition_id)
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_FETCHED,
             definition_id=definition_id,
@@ -204,7 +223,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database query or deserialization fails.
         """
-        query = "SELECT * FROM workflow_definitions"
+        query = f"SELECT {_SELECT_COLUMNS} FROM workflow_definitions"  # noqa: S608
         conditions: list[str] = []
         params: list[str] = []
 
@@ -214,12 +233,12 @@ ON CONFLICT(id) DO UPDATE SET
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        query += f" ORDER BY updated_at DESC LIMIT {_MAX_LIST_ROWS}"
+        query += " ORDER BY updated_at DESC LIMIT 10000"
 
         try:
             cursor = await self._db.execute(query, params)
             rows = await cursor.fetchall()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        except sqlite3.Error as exc:
             msg = "Failed to list workflow definitions"
             logger.exception(
                 PERSISTENCE_WORKFLOW_DEF_LIST_FAILED,
@@ -227,21 +246,9 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        try:
-            definitions = tuple(_row_to_definition(row) for row in rows)
-        except (
-            ValueError,
-            ValidationError,
-            json.JSONDecodeError,
-            KeyError,
-        ) as exc:
-            msg = "Failed to deserialize workflow definitions"
-            logger.exception(
-                PERSISTENCE_WORKFLOW_DEF_DESERIALIZE_FAILED,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-
+        definitions = tuple(
+            _deserialize_row(row, str(dict(row).get("id", "?"))) for row in rows
+        )
         logger.debug(
             PERSISTENCE_WORKFLOW_DEF_LISTED,
             count=len(definitions),
@@ -260,13 +267,14 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the database operation fails.
         """
+        cursor = None
         try:
             cursor = await self._db.execute(
                 "DELETE FROM workflow_definitions WHERE id = ?",
                 (definition_id,),
             )
             await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
+        except sqlite3.Error as exc:
             msg = f"Failed to delete workflow definition {definition_id!r}"
             logger.exception(
                 PERSISTENCE_WORKFLOW_DEF_DELETE_FAILED,
@@ -275,7 +283,7 @@ ON CONFLICT(id) DO UPDATE SET
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor.rowcount > 0
+        deleted = cursor is not None and cursor.rowcount > 0
         logger.info(
             PERSISTENCE_WORKFLOW_DEF_DELETED,
             definition_id=definition_id,

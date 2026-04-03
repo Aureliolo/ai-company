@@ -12,14 +12,14 @@ export interface ParallelJoinNodeData extends Record<string, unknown> {
 
 export type ParallelJoinNodeType = Node<ParallelJoinNodeData, 'parallel_join'>
 
-function ParallelJoinNodeComponent({ data }: NodeProps<ParallelJoinNodeType>) {
+function ParallelJoinNodeComponent({ data, selected }: NodeProps<ParallelJoinNodeType>) {
   const strategy = (data.config?.join_strategy as string) || 'all'
 
   return (
     <div
       className={cn(
         'flex h-8 min-w-32 items-center justify-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-4',
-        data.selected && 'ring-2 ring-accent',
+        selected && 'ring-2 ring-accent',
         data.hasError && 'ring-2 ring-danger',
       )}
       data-testid="parallel-join-node"

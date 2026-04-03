@@ -47,9 +47,6 @@ function topologicalSort(nodeIds: string[], edges: Edge[]): string[] {
   return result
 }
 
-/** Whether the last topological sort detected a cycle. */
-let lastSortHadCycle = false
-
 /**
  * Generate a YAML string from the editor's nodes and edges.
  */
@@ -64,7 +61,7 @@ export function generateYamlPreview(
 
   const allIds = nodes.map((n) => n.id)
   const sorted = topologicalSort(allIds, edges)
-  lastSortHadCycle = sorted.length < allIds.length
+  const hasCycle = sorted.length < allIds.length
 
   // Build reverse adjacency (incoming edges per node)
   const incoming = new Map<string, string[]>()
@@ -97,6 +94,7 @@ export function generateYamlPreview(
       if (config.task_type) step.task_type = config.task_type
       if (config.priority) step.priority = config.priority
       if (config.complexity) step.complexity = config.complexity
+      if (config.coordination_topology) step.coordination_topology = config.coordination_topology
     } else if (node.type === 'conditional' && config?.condition_expression) {
       step.condition = config.condition_expression
     } else if (node.type === 'parallel_split') {
@@ -104,11 +102,13 @@ export function generateYamlPreview(
         .filter((e) => e.data?.edgeType === 'parallel_branch')
         .map((e) => e.target)
       if (branches.length > 0) step.branches = branches
+      if (config?.max_concurrency) step.max_concurrency = config.max_concurrency
     } else if (node.type === 'parallel_join') {
       step.join_strategy = (config?.join_strategy as string) || 'all'
     } else if (node.type === 'agent_assignment' && config) {
       if (config.routing_strategy) step.strategy = config.routing_strategy
       if (config.role_filter) step.role = config.role_filter
+      if (config.agent_name) step.agent_name = config.agent_name
     }
 
     // Dependencies (skip START/END)
@@ -130,7 +130,7 @@ export function generateYamlPreview(
   }
 
   let output = yaml.dump(document, { sortKeys: false, noRefs: true })
-  if (lastSortHadCycle) {
+  if (hasCycle) {
     output = '# WARNING: Cycle detected -- some nodes omitted from preview\n' + output
   }
   return output

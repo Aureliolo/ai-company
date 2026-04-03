@@ -32,6 +32,7 @@ from synthorg.persistence.repositories import (
     TaskRepository,
     UserRepository,
 )
+from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -45,11 +46,14 @@ if TYPE_CHECKING:
         ArtifactType,
         ProjectStatus,
         TaskStatus,
+        WorkflowType,
     )
     from synthorg.core.project import Project
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+    from synthorg.engine.workflow.definition import WorkflowDefinition
+    from synthorg.hr.enums import LifecycleEventType
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import (
         CollaborationMetricRecord,
@@ -120,9 +124,10 @@ class _FakeLifecycleEventRepository:
     async def list_events(
         self,
         *,
-        agent_id: str | None = None,
-        event_type: str | None = None,
-        since: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        event_type: LifecycleEventType | None = None,
+        since: AwareDatetime | None = None,
+        limit: int | None = None,
     ) -> tuple[AgentLifecycleEvent, ...]:
         return ()
 
@@ -134,9 +139,9 @@ class _FakeTaskMetricRepository:
     async def query(
         self,
         *,
-        agent_id: str | None = None,
-        since: str | None = None,
-        until: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
     ) -> tuple[TaskMetricRecord, ...]:
         return ()
 
@@ -151,8 +156,8 @@ class _FakeCollaborationMetricRepository:
     async def query(
         self,
         *,
-        agent_id: str | None = None,
-        since: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        since: AwareDatetime | None = None,
     ) -> tuple[CollaborationMetricRecord, ...]:
         return ()
 
@@ -366,17 +371,17 @@ class _FakePersonalityPresetRepository:
 
 
 class _FakeWorkflowDefinitionRepository:
-    async def save(self, definition: object) -> None:
+    async def save(self, definition: WorkflowDefinition) -> None:
         pass
 
-    async def get(self, definition_id: NotBlankStr) -> object | None:
+    async def get(self, definition_id: NotBlankStr) -> WorkflowDefinition | None:
         return None
 
     async def list_definitions(
         self,
         *,
-        workflow_type: object = None,
-    ) -> tuple[()]:
+        workflow_type: WorkflowType | None = None,
+    ) -> tuple[WorkflowDefinition, ...]:
         return ()
 
     async def delete(self, definition_id: NotBlankStr) -> bool:
@@ -550,4 +555,12 @@ class TestProtocolCompliance:
         assert isinstance(
             _FakePersonalityPresetRepository(),
             PersonalityPresetRepository,
+        )
+
+    def test_fake_workflow_def_repo_is_workflow_definition_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeWorkflowDefinitionRepository(),
+            WorkflowDefinitionRepository,
         )

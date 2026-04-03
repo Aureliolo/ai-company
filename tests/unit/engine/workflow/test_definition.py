@@ -13,58 +13,21 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowNode,
 )
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _start_node(node_id: str = "start-1") -> WorkflowNode:
-    return WorkflowNode(id=node_id, type=WorkflowNodeType.START, label="Start")
-
-
-def _end_node(node_id: str = "end-1") -> WorkflowNode:
-    return WorkflowNode(id=node_id, type=WorkflowNodeType.END, label="End")
-
-
-def _task_node(node_id: str = "task-1", label: str = "Do work") -> WorkflowNode:
-    return WorkflowNode(
-        id=node_id,
-        type=WorkflowNodeType.TASK,
-        label=label,
-        position_x=100.0,
-        position_y=200.0,
-        config={"task_type": "development", "priority": "high"},
-    )
-
-
-def _edge(
-    edge_id: str,
-    source: str,
-    target: str,
-    edge_type: WorkflowEdgeType = WorkflowEdgeType.SEQUENTIAL,
-) -> WorkflowEdge:
-    return WorkflowEdge(
-        id=edge_id,
-        source_node_id=source,
-        target_node_id=target,
-        type=edge_type,
-    )
-
-
-def _minimal_definition(**overrides: object) -> WorkflowDefinition:
-    """Build a minimal valid definition (start -> task -> end)."""
-    defaults: dict[str, object] = {
-        "id": "wf-1",
-        "name": "Test Workflow",
-        "created_by": "test-user",
-        "nodes": (_start_node(), _task_node(), _end_node()),
-        "edges": (
-            _edge("e1", "start-1", "task-1"),
-            _edge("e2", "task-1", "end-1"),
-        ),
-    }
-    defaults.update(overrides)
-    return WorkflowDefinition.model_validate(defaults)
-
+from tests.unit.engine.workflow.conftest import (
+    make_edge as _edge,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_end_node as _end_node,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_minimal_definition as _minimal_definition,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_start_node as _start_node,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_task_node as _task_node,
+)
 
 # ── WorkflowNode ────────────────────────────────────────────────
 

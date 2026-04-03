@@ -27,8 +27,9 @@ export function WorkflowNodeDrawer({
   const fields = nodeType ? NODE_CONFIG_SCHEMAS[nodeType] : []
 
   const handleFieldChange = useCallback(
-    (key: string, value: string) => {
-      onConfigChange({ ...config, [key]: value })
+    (key: string, value: string, fieldType?: string) => {
+      const parsed = fieldType === 'number' && value !== '' ? Number(value) : value
+      onConfigChange({ ...config, [key]: parsed })
     },
     [config, onConfigChange],
   )
@@ -70,7 +71,7 @@ export function WorkflowNodeDrawer({
               key={field.key}
               label={field.label}
               value={value}
-              onValueChange={(v) => handleFieldChange(field.key, v)}
+              onValueChange={(v) => handleFieldChange(field.key, v, field.type)}
               placeholder={field.placeholder}
               type={field.type === 'number' ? 'number' : 'text'}
             />

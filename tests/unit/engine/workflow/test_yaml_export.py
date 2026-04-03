@@ -6,53 +6,16 @@ import pytest
 import yaml
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType, WorkflowType
-from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,
-    WorkflowEdge,
-    WorkflowNode,
-)
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _node(
-    node_id: str,
-    node_type: WorkflowNodeType,
-    label: str = "Node",
-    **config: object,
-) -> WorkflowNode:
-    return WorkflowNode(id=node_id, type=node_type, label=label, config=config)
-
-
-def _edge(
-    edge_id: str,
-    source: str,
-    target: str,
-    edge_type: WorkflowEdgeType = WorkflowEdgeType.SEQUENTIAL,
-) -> WorkflowEdge:
-    return WorkflowEdge(
-        id=edge_id,
-        source_node_id=source,
-        target_node_id=target,
-        type=edge_type,
-    )
-
-
-def _wf(
-    nodes: tuple[WorkflowNode, ...],
-    edges: tuple[WorkflowEdge, ...],
-    **kwargs: object,
-) -> WorkflowDefinition:
-    defaults: dict[str, object] = {
-        "id": "wf-test",
-        "name": "Test Workflow",
-        "created_by": "test",
-    }
-    defaults.update(kwargs)
-    return WorkflowDefinition.model_validate(
-        {"nodes": nodes, "edges": edges, **defaults},
-    )
+from tests.unit.engine.workflow.conftest import (
+    make_edge as _edge,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_node as _node,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_workflow as _wf,
+)
 
 
 def _parse_yaml(yaml_str: str) -> dict[str, Any]:

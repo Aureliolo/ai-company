@@ -3,55 +3,19 @@
 import pytest
 
 from synthorg.core.enums import WorkflowEdgeType, WorkflowNodeType
-from synthorg.engine.workflow.definition import (
-    WorkflowDefinition,
-    WorkflowEdge,
-    WorkflowNode,
-)
 from synthorg.engine.workflow.validation import (
     ValidationErrorCode,
     validate_workflow,
 )
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _node(
-    node_id: str,
-    node_type: WorkflowNodeType,
-    label: str = "Node",
-    **config: object,
-) -> WorkflowNode:
-    return WorkflowNode(id=node_id, type=node_type, label=label, config=config)
-
-
-def _edge(
-    edge_id: str,
-    source: str,
-    target: str,
-    edge_type: WorkflowEdgeType = WorkflowEdgeType.SEQUENTIAL,
-) -> WorkflowEdge:
-    return WorkflowEdge(
-        id=edge_id,
-        source_node_id=source,
-        target_node_id=target,
-        type=edge_type,
-    )
-
-
-def _wf(
-    nodes: tuple[WorkflowNode, ...],
-    edges: tuple[WorkflowEdge, ...],
-    wf_id: str = "wf-test",
-) -> WorkflowDefinition:
-    return WorkflowDefinition(
-        id=wf_id,
-        name="Test",
-        created_by="test",
-        nodes=nodes,
-        edges=edges,
-    )
-
+from tests.unit.engine.workflow.conftest import (
+    make_edge as _edge,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_node as _node,
+)
+from tests.unit.engine.workflow.conftest import (
+    make_workflow as _wf,
+)
 
 # ── Valid workflows ─────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ const noop = () => {}
 
 const meta: Meta = {
   title: 'Workflow Editor/Node Drawer',
+  component: WorkflowNodeDrawer,
   parameters: { layout: 'padded' },
 }
 

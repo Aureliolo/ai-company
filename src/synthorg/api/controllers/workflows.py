@@ -16,6 +16,7 @@ from synthorg.api.dto import (
     PaginatedResponse,
     UpdateWorkflowDefinitionRequest,
 )
+from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
@@ -28,7 +29,9 @@ from synthorg.engine.workflow.definition import (
 )
 from synthorg.engine.workflow.validation import (
     WorkflowValidationResult,
-    validate_workflow,
+)
+from synthorg.engine.workflow.validation import (
+    validate_workflow as run_workflow_validation,
 )
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.observability import get_logger
@@ -291,13 +294,19 @@ class WorkflowController(Controller):
         """Delete a workflow definition."""
         repo = state.app_state.persistence.workflow_definitions
         deleted = await repo.delete(workflow_id)
-        if deleted:
-            logger.info(
-                WORKFLOW_DEF_DELETED,
+        if not deleted:
+            logger.warning(
+                WORKFLOW_DEF_NOT_FOUND,
                 definition_id=workflow_id,
             )
+            msg = "Workflow definition not found"
+            raise NotFoundError(msg)
+        logger.info(
+            WORKFLOW_DEF_DELETED,
+            definition_id=workflow_id,
+        )
 
-    @post("/{workflow_id:str}/validate", guards=[require_read_access])
+    @post("/{workflow_id:str}/validate", guards=[require_read_access], status_code=200)
     async def validate_workflow(
         self,
         state: State,
@@ -318,14 +327,14 @@ class WorkflowController(Controller):
                 status_code=404,
             )
 
-        result = validate_workflow(definition)
+        result = run_workflow_validation(definition)
         return Response(
             content=ApiResponse[WorkflowValidationResult](
                 data=result,
             ),
         )
 
-    @post("/{workflow_id:str}/export", guards=[require_read_access])
+    @post("/{workflow_id:str}/export", guards=[require_read_access], status_code=200)
     async def export_workflow(
         self,
         state: State,

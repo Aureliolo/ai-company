@@ -12,14 +12,14 @@ export interface ConditionalNodeData extends Record<string, unknown> {
 
 export type ConditionalNodeType = Node<ConditionalNodeData, 'conditional'>
 
-function ConditionalNodeComponent({ data }: NodeProps<ConditionalNodeType>) {
+function ConditionalNodeComponent({ data, selected }: NodeProps<ConditionalNodeType>) {
   const condition = (data.config?.condition_expression as string) || data.label
 
   return (
     <div
       className={cn(
         'relative flex size-24 items-center justify-center',
-        data.selected && '[&>div]:ring-2 [&>div]:ring-accent',
+        selected && '[&>div]:ring-2 [&>div]:ring-accent',
         data.hasError && '[&>div]:ring-2 [&>div]:ring-danger',
       )}
       data-testid="conditional-node"

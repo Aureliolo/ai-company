@@ -22,6 +22,7 @@ function Wrapper({ nodes }: { nodes: Node[] }) {
 
 const meta: Meta = {
   title: 'Workflow Editor/Conditional Node',
+  component: ConditionalNode,
   parameters: { layout: 'centered' },
 }
 

@@ -10,7 +10,7 @@ export default meta
 
 export const Default: StoryObj = {
   render: () => (
-    <div style={{ height: 600 }}>
+    <div className="h-[60vh]">
       <WorkflowEditorSkeleton />
     </div>
   ),

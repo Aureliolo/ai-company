@@ -43,8 +43,8 @@ const VIEWPORT_KEY = 'synthorg:workflow:viewport'
 function saveViewport(viewport: { x: number; y: number; zoom: number }) {
   try {
     localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport))
-  } catch {
-    // Ignore storage errors
+  } catch (err) {
+    console.warn('Failed to save viewport to localStorage:', err)
   }
 }
 
@@ -62,8 +62,8 @@ function loadViewport(): { x: number; y: number; zoom: number } | undefined {
     ) {
       return parsed as { x: number; y: number; zoom: number }
     }
-  } catch {
-    // Ignore parse errors
+  } catch (err) {
+    console.warn('Failed to load viewport from localStorage:', err)
   }
   return undefined
 }
@@ -245,7 +245,7 @@ function WorkflowEditorInner() {
         </ReactFlow>
 
         {/* ARIA live region for editor actions */}
-        <div className="sr-only" aria-live="assertive" />
+{/* Toast system handles ARIA announcements -- removed empty live region */}
       </div>
 
       <WorkflowYamlPreview yaml={yamlPreview} />

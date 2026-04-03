@@ -12,15 +12,15 @@ export interface AgentAssignmentNodeData extends Record<string, unknown> {
 
 export type AgentAssignmentNodeType = Node<AgentAssignmentNodeData, 'agent_assignment'>
 
-function AgentAssignmentNodeComponent({ data }: NodeProps<AgentAssignmentNodeType>) {
+function AgentAssignmentNodeComponent({ data, selected }: NodeProps<AgentAssignmentNodeType>) {
   const strategy = (data.config?.routing_strategy as string) || 'auto'
-  const role = (data.config?.role_filter as string) || undefined
+  const role = data.config?.role_filter as string | undefined
 
   return (
     <div
       className={cn(
         'min-w-36 max-w-48 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2',
-        data.selected && 'ring-2 ring-accent',
+        selected && 'ring-2 ring-accent',
         data.hasError && 'ring-2 ring-danger',
       )}
       data-testid="agent-assignment-node"

@@ -29,6 +29,7 @@ function Wrapper(props: Partial<React.ComponentProps<typeof WorkflowToolbar>>) {
 
 const meta: Meta = {
   title: 'Workflow Editor/Toolbar',
+  component: WorkflowToolbar,
   parameters: { layout: 'padded' },
 }
 

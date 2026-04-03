@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (22 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (23 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
 
@@ -160,6 +160,23 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 **API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
+#### Workflow Editor (`/workflows/editor`)
+
+Visual workflow designer -- a DAG-based editor for creating and editing workflow definitions that orchestrate multi-step agent pipelines. Operators build workflows by placing nodes on a canvas, connecting them with edges, and configuring each node's properties via a side drawer.
+
+**Key features**:
+
+- **7 node types**: start, end, task, conditional, parallel_fork, parallel_join, notification
+- **4 edge types**: sequential, conditional (true/false branches), parallel_fork, parallel_join
+- **Undo/redo**: full history stack for node/edge additions, deletions, moves, and config changes
+- **YAML preview**: live read-only YAML export of the current workflow graph
+- **Validation**: client-side structural validation with inline error display
+
+No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
+
+**API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`
+**WS channels**: (none)
+
 #### Settings (`/settings`)
 
 Configuration for 7 namespaces: api, memory, budget, security, coordination, observability, backup. Navigation uses a horizontal **namespace tab bar** across the top of the settings page, with each namespace as a clickable tab. Within each namespace, settings are displayed in a single-column layout with sub-group headings, basic/advanced mode, GUI/Code edit toggle (JSON/YAML within Code mode). Each namespace is URL-addressable (`/settings/{namespace}`) for deep linking from other pages (e.g. Dashboard budget warning links to `/settings/budget`).
@@ -298,7 +315,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
-| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 2 edge types, YAML preview, validation) |
+| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation) |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |
@@ -350,6 +367,7 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
+| **Workflow Editor** | (none) | N/A -- REST API only, no real-time collaboration |
 | **Settings** | `system` | Restart-required notifications |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
 
@@ -427,6 +445,7 @@ Every backend controller has a home in the page structure. No orphans.
 | CoordinationController | Task Board (task detail action) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
+| WorkflowController | Workflow Editor |
 
 ---
 

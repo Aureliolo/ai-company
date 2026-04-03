@@ -21,6 +21,7 @@ import {
   exportWorkflowYaml,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
+import { getErrorMessage } from '@/utils/errors'
 
 const MAX_UNDO = 50
 
@@ -82,12 +83,11 @@ function generateEdgeId(): string {
 
 function nodeTypeToEdgeType(
   sourceType: string | undefined,
-  sourceHandle: string | null | undefined,
 ): string {
   if (sourceType === 'conditional') {
-    return sourceHandle === 'true' ? 'conditional' : 'conditional'
+    return 'conditional'
   }
-  if (sourceType === 'parallel_split') return 'sequential'
+  if (sourceType === 'parallel_split') return 'parallel_branch'
   return 'sequential'
 }
 
@@ -147,7 +147,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : 'Failed to load' })
+      set({ loading: false, error: getErrorMessage(err) })
     }
   },
 
@@ -181,7 +181,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         yamlPreview: yaml,
       })
     } catch (err) {
-      set({ loading: false, error: err instanceof Error ? err.message : 'Failed to create' })
+      set({ loading: false, error: getErrorMessage(err) })
     }
   },
 
@@ -211,9 +211,9 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         })),
         expected_version: definition.version,
       })
-      set({ definition: updatedDef, saving: false, dirty: false })
+      set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
     } catch (err) {
-      set({ saving: false, error: err instanceof Error ? err.message : 'Failed to save' })
+      set({ saving: false, error: getErrorMessage(err) })
     }
   },
 
@@ -279,7 +279,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     if (!connection.source || !connection.target) return
     const snapshot: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const sourceNode = nodes.find((n) => n.id === connection.source)
-    const edgeType = nodeTypeToEdgeType(sourceNode?.type, connection.sourceHandle)
+    const edgeType = nodeTypeToEdgeType(sourceNode?.type)
     const isTrueBranch = connection.sourceHandle === 'true'
     const newEdge: Edge = {
       id: generateEdgeId(),
@@ -324,25 +324,34 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   onNodesChange: (changes: NodeChange[]) => {
     set((s) => {
-      const newNodes = applyNodeChanges(changes, s.nodes)
-      // Only mark dirty for non-selection changes
       const hasMoves = changes.some((c) => c.type === 'position' || c.type === 'remove')
+      const snapshot = hasMoves
+        ? { nodes: structuredClone(s.nodes), edges: structuredClone(s.edges) }
+        : null
+      const newNodes = applyNodeChanges(changes, s.nodes)
       return {
         nodes: newNodes,
         dirty: s.dirty || hasMoves,
         yamlPreview: hasMoves ? regenerateYaml(newNodes, s.edges, s.definition) : s.yamlPreview,
+        undoStack: snapshot ? [...s.undoStack.slice(-MAX_UNDO + 1), snapshot] : s.undoStack,
+        redoStack: snapshot ? [] : s.redoStack,
       }
     })
   },
 
   onEdgesChange: (changes: EdgeChange[]) => {
     set((s) => {
-      const newEdges = applyEdgeChanges(changes, s.edges)
       const hasRemoves = changes.some((c) => c.type === 'remove')
+      const snapshot = hasRemoves
+        ? { nodes: structuredClone(s.nodes), edges: structuredClone(s.edges) }
+        : null
+      const newEdges = applyEdgeChanges(changes, s.edges)
       return {
         edges: newEdges,
         dirty: s.dirty || hasRemoves,
         yamlPreview: hasRemoves ? regenerateYaml(s.nodes, newEdges, s.definition) : s.yamlPreview,
+        undoStack: snapshot ? [...s.undoStack.slice(-MAX_UNDO + 1), snapshot] : s.undoStack,
+        redoStack: snapshot ? [] : s.redoStack,
       }
     })
   },
@@ -356,7 +365,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     if (undoStack.length === 0) return
     const snapshot = undoStack.at(-1)
     if (!snapshot) return
-    const current: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const current: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
     set({
       nodes: snapshot.nodes,
@@ -373,7 +382,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     if (redoStack.length === 0) return
     const snapshot = redoStack.at(-1)
     if (!snapshot) return
-    const current: WorkflowSnapshot = { nodes: [...nodes], edges: [...edges] }
+    const current: WorkflowSnapshot = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
     const yaml = regenerateYaml(snapshot.nodes, snapshot.edges, definition)
     set({
       nodes: snapshot.nodes,
@@ -387,13 +396,16 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
 
   validate: async () => {
     const { definition } = get()
-    if (!definition) return
+    if (!definition) {
+      set({ error: 'Cannot validate: no workflow loaded' })
+      return
+    }
     set({ validating: true })
     try {
       const result = await validateWorkflow(definition.id)
       set({ validationResult: result, validating: false })
     } catch (err) {
-      set({ validating: false, validationResult: null, error: err instanceof Error ? err.message : 'Validation failed' })
+      set({ validating: false, validationResult: null, error: getErrorMessage(err) })
     }
   },
 

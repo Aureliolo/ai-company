@@ -3,7 +3,6 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getSmoothStepPath,
-  MarkerType,
   type EdgeProps,
 } from '@xyflow/react'
 
@@ -31,7 +30,7 @@ function ConditionalEdgeComponent(props: EdgeProps) {
           strokeWidth: 1.5,
           strokeDasharray: '6 3',
         }}
-        markerEnd={MarkerType.ArrowClosed}
+        markerEnd={props.markerEnd}
       />
       <EdgeLabelRenderer>
         <div

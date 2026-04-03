@@ -17,6 +17,7 @@ const sampleYaml = `workflow_definition:
 
 const meta: Meta = {
   title: 'Workflow Editor/YAML Preview',
+  component: WorkflowYamlPreview,
   parameters: { layout: 'padded' },
 }
 

@@ -8,7 +8,7 @@ const nodeTypes = { start: StartNode, end: EndNode }
 function Wrapper({ nodes }: { nodes: Node[] }) {
   return (
     <ReactFlowProvider>
-      <div style={{ width: 200, height: 150 }}>
+      <div className="h-40 w-52">
         <ReactFlow
           nodes={nodes}
           edges={[]}
