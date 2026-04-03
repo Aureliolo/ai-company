@@ -1,6 +1,6 @@
 ---
 title: Agents & HR
-description: Agent identity system, seniority levels, role catalog, hiring, firing, performance tracking, and promotions in the SynthOrg framework.
+description: Agent identity system, seniority levels, role catalog, hiring, firing, performance tracking, evaluation, and promotions in the SynthOrg framework.
 ---
 
 # Agents & HR
@@ -405,3 +405,51 @@ Agents can move between seniority levels based on performance:
       boundaries only (never mid-execution, consistent with
       [auto-downgrade](operations.md)). Per-agent `preferred_model` overrides seniority
       default. Smart routing still uses cheap models for simple tasks regardless of seniority.
+
+---
+
+## Five-Pillar Evaluation Framework
+
+Performance data is also evaluated through a structured five-pillar framework
+([InfoQ: Evaluating AI Agents](https://www.infoq.com/articles/evaluating-ai-agents-lessons-learned/)):
+
+| Pillar | Measures | Data Sources |
+|--------|----------|--------------|
+| **Intelligence/Accuracy** | Quality of task output, reasoning coherence | `QualityScoreResult`, `LlmCalibrationRecord` |
+| **Performance/Efficiency** | Cost, latency, token usage | `WindowMetrics` (cost, time, tokens) |
+| **Reliability/Resilience** | Consistency, failure recovery, streaks | `TaskMetricRecord` sequences |
+| **Responsibility/Governance** | Compliance, trust stability, autonomy adherence | Audit log, trust system, autonomy system |
+| **User Experience** | Clarity, helpfulness, tone, satisfaction | `InteractionFeedback` records |
+
+Each pillar and its individual metrics can be independently enabled/disabled via
+`EvaluationConfig`. Disabled pillars/metrics have their weight redistributed
+proportionally to remaining enabled ones. All pillars ship enabled by default with
+recommended weights (equal 0.2 each).
+
+The `EvaluationService` orchestrates scoring, delegating to pluggable
+`PillarScoringStrategy` implementations. The efficiency pillar is computed inline
+from `WindowMetrics`. Human-calibrated LLM labeling uses the existing
+`LlmCalibrationSampler` infrastructure -- calibration drift above a configurable
+threshold reduces the intelligence pillar's confidence, signaling the need for
+more human labels.
+
+???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
+
+    **D24 -- Five-Pillar Evaluation:** Pluggable `PillarScoringStrategy` protocol with
+    single `EvaluationContext` bag. Each pillar has a default strategy:
+
+    - **Intelligence:** `QualityBlendIntelligenceStrategy` -- blends CI quality score
+      (70%) with LLM calibration score (30%). High calibration drift reduces confidence.
+    - **Efficiency:** Inline computation from `WindowMetrics` -- normalized cost (40%),
+      time (30%), token (30%) efficiency scores.
+    - **Resilience:** `TaskBasedResilienceStrategy` -- success rate (40%), recovery rate
+      (25%), quality consistency (20%), streak bonus (15%).
+    - **Governance:** `AuditBasedGovernanceStrategy` -- audit compliance (50%), trust
+      level (30%), autonomy compliance (20%).
+    - **Experience:** `FeedbackBasedUxStrategy` -- clarity (25%), helpfulness (25%),
+      trust (20%), tone (15%), satisfaction (15%).
+
+    All metrics toggleable via `EvaluationConfig` per-pillar sub-configs. Weight
+    redistribution follows the `BehavioralTelemetryStrategy` pattern. Pull-based
+    evaluation (no background daemon). Settings system integration deferred --
+    config model is ready for it.

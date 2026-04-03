@@ -197,6 +197,7 @@ class TestEventConstants:
             "degradation",
             "delegation",
             "docker",
+            "evaluation",
             "execution",
             "git",
             "hr",
