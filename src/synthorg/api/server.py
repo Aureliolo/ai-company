@@ -4,13 +4,16 @@ Provides a convenience function to start the API server
 with settings from ``RootConfig``.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import uvicorn
 
 from synthorg.api.app import create_app
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.api import (
+    API_APP_STARTUP,
+    API_TLS_CONFIGURED,
+)
 
 if TYPE_CHECKING:
     from synthorg.config.schema import RootConfig
@@ -46,6 +49,24 @@ def run_server(config: RootConfig) -> None:
         server.ws_ping_timeout if server.ws_ping_timeout > 0 else None
     )
 
+    ssl_kwargs: dict[str, Any] = {}
+    if server.ssl_certfile:
+        ssl_kwargs["ssl_certfile"] = server.ssl_certfile
+        ssl_kwargs["ssl_keyfile"] = server.ssl_keyfile
+        if server.ssl_ca_certs:
+            ssl_kwargs["ssl_ca_certs"] = server.ssl_ca_certs
+        logger.info(
+            API_TLS_CONFIGURED,
+            certfile=server.ssl_certfile,
+        )
+
+    proxy_kwargs: dict[str, Any] = {}
+    if server.trusted_proxies:
+        proxy_kwargs["forwarded_allow_ips"] = ",".join(
+            server.trusted_proxies,
+        )
+        proxy_kwargs["proxy_headers"] = True
+
     app = create_app(config=config)
     uvicorn.run(
         app,
@@ -57,4 +78,6 @@ def run_server(config: RootConfig) -> None:
         ws_ping_timeout=ws_timeout,
         access_log=False,
         log_config=None,
+        **ssl_kwargs,
+        **proxy_kwargs,
     )

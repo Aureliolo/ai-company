@@ -77,7 +77,7 @@ class TestAuthMiddlewareJWT:
         await persistence.users.save(user)
 
         app = _build_app(auth_service=svc, persistence=persistence)
-        token, _ = svc.create_token(user)
+        token, _, _ = svc.create_token(user)
 
         with TestClient(app) as client:
             resp = client.get(
@@ -130,7 +130,7 @@ class TestAuthMiddlewareJWT:
         await persistence.connect()
         await persistence.users.save(user)
 
-        token, _ = svc.create_token(user)
+        token, _, _ = svc.create_token(user)
 
         # Change password -- new hash means different pwd_sig
         updated_user = User(
@@ -174,7 +174,7 @@ class TestAuthMiddlewareJWT:
         persistence = FakePersistenceBackend()
         await persistence.connect()
         # Don't save user -- simulate deleted user
-        token, _ = svc.create_token(user)
+        token, _, _ = svc.create_token(user)
         app = _build_app(auth_service=svc, persistence=persistence)
 
         with TestClient(app) as client:

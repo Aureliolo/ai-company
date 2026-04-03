@@ -79,20 +79,23 @@ class TestJWT:
     def test_create_and_decode(self) -> None:
         svc = _make_service()
         user = _make_user()
-        token, expires_in = svc.create_token(user)
+        token, expires_in, session_id = svc.create_token(user)
         assert isinstance(token, str)
         assert expires_in == 1440 * 60
+        assert isinstance(session_id, str)
+        assert len(session_id) == 32  # uuid4().hex
 
         claims = svc.decode_token(token)
         assert claims["sub"] == "user-001"
         assert claims["username"] == "admin"
         assert claims["role"] == "ceo"
+        assert claims["jti"] == session_id
 
     def test_expired_token_raises(self) -> None:
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
         svc = AuthService(config)
         user = _make_user()
-        _token, _ = svc.create_token(user)
+        _token, _, _ = svc.create_token(user)
 
         # Manually create an expired token
         expired_payload = {
@@ -110,7 +113,7 @@ class TestJWT:
     def test_invalid_signature_raises(self) -> None:
         svc = _make_service()
         user = _make_user()
-        token, _ = svc.create_token(user)
+        token, _, _ = svc.create_token(user)
 
         # Decode with wrong secret
         wrong_svc = AuthService(
@@ -122,7 +125,7 @@ class TestJWT:
     def test_must_change_password_in_claims(self) -> None:
         svc = _make_service()
         user = _make_user(must_change_password=True)
-        token, _ = svc.create_token(user)
+        token, _, _ = svc.create_token(user)
         claims = svc.decode_token(token)
         assert claims["must_change_password"] is True
 

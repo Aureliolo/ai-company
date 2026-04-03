@@ -7,6 +7,7 @@ Holds typed references to core services, injected into
 
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.session_store import SessionStore  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.backup.service import BackupService  # noqa: TC001
@@ -87,6 +88,7 @@ class AppState:
         "_provider_management",
         "_provider_registry",
         "_review_gate_service",
+        "_session_store",
         "_settings_service",
         "_task_engine",
         "_ticket_store",
@@ -161,6 +163,7 @@ class AppState:
         )
         self._review_gate_service: ReviewGateService | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
+        self._session_store: SessionStore | None = None
         self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
@@ -433,6 +436,22 @@ class AppState:
     def ticket_store(self) -> WsTicketStore:
         """Return the WebSocket ticket store (always available)."""
         return self._ticket_store
+
+    @property
+    def session_store(self) -> SessionStore:
+        """Return the JWT session store."""
+        return self._require_service(
+            self._session_store,
+            "session_store",
+        )
+
+    def set_session_store(self, store: SessionStore) -> None:
+        """Set the session store (deferred initialisation).
+
+        Args:
+            store: Configured session store.
+        """
+        self._session_store = store
 
     def set_auth_service(self, service: AuthService) -> None:
         """Set the auth service (deferred initialisation).

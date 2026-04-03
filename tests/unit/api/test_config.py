@@ -70,3 +70,62 @@ class TestApiConfig:
         config = ApiConfig()
         with pytest.raises(ValidationError):
             config.api_prefix = "/other"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestServerConfigTLS:
+    """Tests for TLS and trusted proxy configuration."""
+
+    def test_tls_defaults_none(self) -> None:
+        server = ServerConfig()
+        assert server.ssl_certfile is None
+        assert server.ssl_keyfile is None
+        assert server.ssl_ca_certs is None
+        assert server.trusted_proxies == ()
+
+    def test_valid_tls_pair(self) -> None:
+        server = ServerConfig(
+            ssl_certfile="/etc/tls/cert.pem",
+            ssl_keyfile="/etc/tls/key.pem",
+        )
+        assert server.ssl_certfile == "/etc/tls/cert.pem"
+        assert server.ssl_keyfile == "/etc/tls/key.pem"
+
+    def test_certfile_without_keyfile_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"ssl_keyfile.*required",
+        ):
+            ServerConfig(ssl_certfile="/etc/tls/cert.pem")
+
+    def test_keyfile_without_certfile_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"ssl_certfile.*required",
+        ):
+            ServerConfig(ssl_keyfile="/etc/tls/key.pem")
+
+    def test_tls_with_ca_certs(self) -> None:
+        server = ServerConfig(
+            ssl_certfile="/etc/tls/cert.pem",
+            ssl_keyfile="/etc/tls/key.pem",
+            ssl_ca_certs="/etc/tls/ca.pem",
+        )
+        assert server.ssl_ca_certs == "/etc/tls/ca.pem"
+
+    def test_ca_certs_without_tls_pair_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"ssl_certfile.*required",
+        ):
+            ServerConfig(ssl_ca_certs="/etc/tls/ca.pem")
+
+    def test_trusted_proxies_accepts_ips(self) -> None:
+        server = ServerConfig(
+            trusted_proxies=("10.0.0.1", "172.16.0.0/12"),
+        )
+        assert server.trusted_proxies == ("10.0.0.1", "172.16.0.0/12")
+
+    def test_trusted_proxies_empty_by_default(self) -> None:
+        server = ServerConfig()
+        assert server.trusted_proxies == ()

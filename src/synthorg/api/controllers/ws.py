@@ -27,7 +27,14 @@ from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
-from synthorg.api.channels import ALL_CHANNELS
+from synthorg.api.auth.presence import UserPresence  # noqa: TC001
+from synthorg.api.channels import (
+    _BUDGET_CHANNELS,
+    ALL_CHANNELS,
+    extract_user_id,
+    is_user_channel,
+    user_channel,
+)
 from synthorg.api.guards import _READ_ROLES, HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -41,6 +48,7 @@ from synthorg.observability.events.api import (
     API_WS_TRANSPORT_ERROR,
     API_WS_UNKNOWN_ACTION,
     API_WS_UNSUBSCRIBE,
+    API_WS_USER_CHANNEL_DENIED,
 )
 
 logger = get_logger(__name__)
@@ -261,11 +269,30 @@ def _matches_filters(
     return all(payload.get(k) == v for k, v in channel_filters.items())
 
 
+def _channel_allowed(
+    channel: str,
+    conn_user: AuthenticatedUser,
+) -> bool:
+    """Check whether the connected user may receive this channel.
+
+    Server-side access control:
+    - User channels: only the owning user.
+    - Budget channels: CEO or Manager only.
+    - All others: any read-capable user.
+    """
+    if is_user_channel(channel):
+        return extract_user_id(channel) == conn_user.user_id
+    if channel in _BUDGET_CHANNELS:
+        return conn_user.role in (HumanRole.CEO, HumanRole.MANAGER)
+    return True
+
+
 async def _on_event(
     event_data: bytes,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
     socket: WebSocket[Any, Any, Any],
+    conn_user: AuthenticatedUser,
 ) -> None:
     """Filter and forward a single channel event to the client."""
     try:
@@ -298,9 +325,15 @@ async def _on_event(
     channel = event.get("channel", "")
     if channel not in subscribed:
         return
+    if not _channel_allowed(channel, conn_user):
+        return
 
     channel_filters = filters.get(channel)
-    if channel_filters and not _matches_filters(event, channel, channel_filters):
+    if channel_filters and not _matches_filters(
+        event,
+        channel,
+        channel_filters,
+    ):
         return
 
     try:
@@ -381,8 +414,11 @@ async def _setup_connection(
     if not already_accepted:
         await socket.accept()
 
+    # Subscribe to all shared channels + the user's private channel.
+    user_ch = user_channel(user.user_id)
+    all_subs = [*ALL_CHANNELS, user_ch]
     try:
-        subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
+        subscriber = await channels_plugin.subscribe(all_subs)
     except Exception:
         logger.error(
             API_WS_TRANSPORT_ERROR,
@@ -393,6 +429,13 @@ async def _setup_connection(
         )
         await socket.close(code=1011, reason="Internal error")
         return None
+
+    # Track presence.
+    app_state = socket.app.state["app_state"]
+    if hasattr(app_state, "_user_presence"):
+        presence: UserPresence | None = app_state._user_presence  # noqa: SLF001
+        if presence is not None:
+            presence.connect(user.user_id)
 
     logger.info(
         API_WS_CONNECTED,
@@ -433,17 +476,36 @@ async def ws_handler(
         return
     channels_plugin, subscriber = setup
 
-    subscribed: set[str] = set()
+    # Auto-subscribe to the user's private channel.
+    user_ch = user_channel(user.user_id)
+    subscribed: set[str] = {user_ch}
     filters: dict[str, dict[str, str]] = {}
 
     async def _event_callback(event_data: bytes) -> None:
-        await _on_event(event_data, subscribed, filters, socket)
+        await _on_event(
+            event_data,
+            subscribed,
+            filters,
+            socket,
+            user,
+        )
 
     try:
         async with subscriber.run_in_background(_event_callback):
-            await _receive_loop(socket, subscribed, filters)
+            await _receive_loop(
+                socket,
+                subscribed,
+                filters,
+                user,
+            )
     finally:
         await channels_plugin.unsubscribe(subscriber)
+        # Track presence disconnect.
+        app_state = socket.app.state["app_state"]
+        if hasattr(app_state, "_user_presence"):
+            presence: UserPresence | None = app_state._user_presence  # noqa: SLF001
+            if presence is not None:
+                presence.disconnect(user.user_id)
         logger.info(API_WS_DISCONNECTED, client=str(socket.client))
 
 
@@ -451,20 +513,25 @@ async def _receive_loop(
     socket: WebSocket[Any, Any, Any],
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
+    conn_user: AuthenticatedUser,
 ) -> None:
     """Process client subscribe/unsubscribe commands."""
     try:
         while True:
             data = await socket.receive_text()
-            response = _handle_message(data, subscribed, filters)
+            response = _handle_message(
+                data,
+                subscribed,
+                filters,
+                conn_user,
+            )
             await socket.send_text(response)
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
     except Exception:
-        user = socket.scope.get("user")
         logger.error(
             API_WS_TRANSPORT_ERROR,
-            user_id=getattr(user, "user_id", "unknown"),
+            user_id=conn_user.user_id,
             client=str(socket.client),
             exc_info=True,
         )
@@ -532,6 +599,7 @@ def _handle_message(
     data: str,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
+    conn_user: AuthenticatedUser,
 ) -> str:
     """Parse, validate, and dispatch a single client message."""
     parsed = _parse_ws_message(data)
@@ -545,7 +613,13 @@ def _handle_message(
     action, channels, client_filters = fields
 
     if action == "subscribe":
-        return _handle_subscribe(channels, client_filters, subscribed, filters)
+        return _handle_subscribe(
+            channels,
+            client_filters,
+            subscribed,
+            filters,
+            conn_user,
+        )
 
     if action == "unsubscribe":
         return _handle_unsubscribe(channels, subscribed, filters)
@@ -559,6 +633,7 @@ def _handle_subscribe(
     client_filters: dict[str, Any] | None,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
+    conn_user: AuthenticatedUser,
 ) -> str:
     """Process a subscribe action.
 
@@ -573,7 +648,19 @@ def _handle_subscribe(
     ):
         return json.dumps({"error": "Filter bounds exceeded"})
 
-    valid = [c for c in channels if c in _ALL_CHANNELS_SET]
+    # Accept shared channels + the user's own user channel.
+    own_user_ch = user_channel(conn_user.user_id)
+    valid: list[str] = []
+    for c in channels:
+        if c in _ALL_CHANNELS_SET or c == own_user_ch:
+            valid.append(c)
+        elif is_user_channel(c):
+            logger.warning(
+                API_WS_USER_CHANNEL_DENIED,
+                user_id=conn_user.user_id,
+                channel=c,
+            )
+            # Silently drop -- don't expose other user IDs.
     subscribed.update(valid)
     if client_filters is not None:
         for c in valid:

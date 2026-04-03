@@ -29,6 +29,8 @@ CHANNEL_MEETINGS: Final[str] = "meetings"
 CHANNEL_ARTIFACTS: Final[str] = "artifacts"
 CHANNEL_PROJECTS: Final[str] = "projects"
 
+CHANNEL_USER_PREFIX: Final[str] = "user:"
+
 ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_TASKS,
     CHANNEL_AGENTS,
@@ -40,6 +42,47 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_ARTIFACTS,
     CHANNEL_PROJECTS,
 )
+
+# Channels whose events contain sensitive cost/budget data.
+_BUDGET_CHANNELS: Final[frozenset[str]] = frozenset({CHANNEL_BUDGET})
+
+
+def user_channel(user_id: str) -> str:
+    """Return the user-scoped channel name.
+
+    Args:
+        user_id: The user's unique identifier.
+
+    Returns:
+        Channel name like ``user:abc123``.
+    """
+    return f"{CHANNEL_USER_PREFIX}{user_id}"
+
+
+def is_user_channel(channel: str) -> bool:
+    """Check whether a channel name is a user-scoped channel.
+
+    Args:
+        channel: Channel name to check.
+
+    Returns:
+        ``True`` if the channel starts with ``user:``.
+    """
+    return channel.startswith(CHANNEL_USER_PREFIX)
+
+
+def extract_user_id(channel: str) -> str | None:
+    """Extract the user ID from a user-scoped channel name.
+
+    Args:
+        channel: Channel name like ``user:abc123``.
+
+    Returns:
+        The user ID, or ``None`` if not a user channel.
+    """
+    if not channel.startswith(CHANNEL_USER_PREFIX):
+        return None
+    return channel[len(CHANNEL_USER_PREFIX) :]
 
 
 def get_channels_plugin(
@@ -120,5 +163,5 @@ def create_channels_plugin() -> ChannelsPlugin:
     return ChannelsPlugin(
         backend=MemoryChannelsBackend(history=20),
         channels=ALL_CHANNELS,
-        arbitrary_channels_allowed=False,
+        arbitrary_channels_allowed=True,
     )

@@ -3,7 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING, Any, Self
 
-from litestar import Controller, delete, get, post, put
+from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import (
     ClientException,
@@ -13,6 +13,7 @@ from litestar.exceptions import (
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.concurrency import check_if_match, compute_etag
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo_or_manager, require_read_access
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
@@ -247,8 +248,8 @@ class SettingsController(Controller):
         state: State,
         namespace: PathNamespace,
         key: PathKey,
-    ) -> ApiResponse[SettingEntry]:
-        """Get a single resolved setting.
+    ) -> Response[ApiResponse[SettingEntry]]:
+        """Get a single resolved setting with ETag header.
 
         Args:
             state: Application state.
@@ -256,7 +257,7 @@ class SettingsController(Controller):
             key: Setting key.
 
         Returns:
-            Resolved setting entry.
+            Resolved setting entry with ETag response header.
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
@@ -264,7 +265,14 @@ class SettingsController(Controller):
             entry = await app_state.settings_service.get_entry(namespace, key)
         except SettingNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc
-        return ApiResponse(data=entry)
+        etag = compute_etag(
+            entry.value,
+            entry.updated_at or "",
+        )
+        return Response(
+            content=ApiResponse(data=entry),
+            headers={"ETag": etag},
+        )
 
     @put(
         "/{namespace:str}/{key:str}",
@@ -272,24 +280,50 @@ class SettingsController(Controller):
     )
     async def update_setting(
         self,
+        request: Request[Any, Any, Any],
         state: State,
         namespace: PathNamespace,
         key: PathKey,
         data: UpdateSettingRequest,
-    ) -> ApiResponse[SettingEntry]:
-        """Update a setting value.
+    ) -> Response[ApiResponse[SettingEntry]]:
+        """Update a setting value with optimistic concurrency.
+
+        When the ``If-Match`` header is present, the current ETag
+        is checked before updating.  A 409 is returned on mismatch.
 
         Args:
+            request: Litestar request (for If-Match header).
             state: Application state.
             namespace: Setting namespace.
             key: Setting key.
             data: Request body with new value.
 
         Returns:
-            Updated setting entry.
+            Updated setting entry with new ETag header.
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
+
+        # Check If-Match for optimistic concurrency.
+        if_match = request.headers.get("if-match")
+        if if_match:
+            try:
+                current = await app_state.settings_service.get_entry(
+                    namespace,
+                    key,
+                )
+            except SettingNotFoundError as exc:
+                raise NotFoundException(str(exc)) from exc
+            current_etag = compute_etag(
+                current.value,
+                current.updated_at or "",
+            )
+            check_if_match(
+                if_match,
+                current_etag,
+                f"{namespace}:{key}",
+            )
+
         try:
             entry = await app_state.settings_service.set(namespace, key, data.value)
         except SettingNotFoundError as exc:
@@ -304,7 +338,15 @@ class SettingsController(Controller):
             )
             msg = "Internal error processing sensitive setting"
             raise InternalServerException(msg) from None
-        return ApiResponse(data=entry)
+
+        new_etag = compute_etag(
+            entry.value,
+            entry.updated_at or "",
+        )
+        return Response(
+            content=ApiResponse(data=entry),
+            headers={"ETag": new_etag},
+        )
 
     @delete(
         "/{namespace:str}/{key:str}",

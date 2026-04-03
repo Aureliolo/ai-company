@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -149,7 +150,10 @@ class AuthService:
             None, self.verify_password, password, password_hash
         )
 
-    def create_token(self, user: User) -> tuple[str, int]:
+    def create_token(
+        self,
+        user: User,
+    ) -> tuple[str, int, str]:
         """Create a JWT for the given user.
 
         The token includes a ``pwd_sig`` claim -- a 16-character
@@ -160,11 +164,14 @@ class AuthService:
         claim on every request so that tokens issued before a
         password change are automatically rejected.
 
+        A ``jti`` (JWT ID) claim is included for per-token session
+        tracking and revocation.
+
         Args:
             user: Authenticated user.
 
         Returns:
-            Tuple of (encoded JWT string, expiry seconds).
+            Tuple of (encoded JWT, expiry seconds, session ID).
 
         Raises:
             SecretNotConfiguredError: If the JWT secret is empty.
@@ -172,6 +179,7 @@ class AuthService:
         secret = self._require_secret("create_token")
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60
+        session_id = uuid.uuid4().hex
         pwd_sig = hashlib.sha256(
             user.password_hash.encode(),
         ).hexdigest()[:16]
@@ -181,6 +189,7 @@ class AuthService:
             "role": user.role.value,
             "must_change_password": user.must_change_password,
             "pwd_sig": pwd_sig,
+            "jti": session_id,
             "iat": now,
             "exp": now + timedelta(seconds=expiry_seconds),
         }
@@ -189,7 +198,7 @@ class AuthService:
             secret,
             algorithm=self._config.jwt_algorithm,
         )
-        return token, expiry_seconds
+        return token, expiry_seconds, session_id
 
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT.

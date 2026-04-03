@@ -6,13 +6,20 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from synthorg.api.auth.models import AuthMethod
+from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.controllers.ws import (
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
     _handle_message,
 )
 from synthorg.api.guards import _READ_ROLES, HumanRole
+
+_TEST_USER = AuthenticatedUser(
+    user_id="test-user",
+    username="test",
+    role=HumanRole.CEO,
+    auth_method=AuthMethod.JWT,
+)
 
 
 @pytest.mark.unit
@@ -24,6 +31,7 @@ class TestWsHandleMessage:
             json.dumps({"action": "subscribe", "channels": ["tasks"]}),
             subscribed,
             filters,
+            _TEST_USER,
         )
         data = json.loads(result)
         assert data["action"] == "subscribed"
@@ -37,6 +45,7 @@ class TestWsHandleMessage:
             json.dumps({"action": "unsubscribe", "channels": ["tasks"]}),
             subscribed,
             filters,
+            _TEST_USER,
         )
         data = json.loads(result)
         assert data["action"] == "unsubscribed"
@@ -47,7 +56,7 @@ class TestWsHandleMessage:
     def test_invalid_json(self) -> None:
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
-        result = _handle_message("not json", subscribed, filters)
+        result = _handle_message("not json", subscribed, filters, _TEST_USER)
         data = json.loads(result)
         assert data["error"] == "Invalid JSON"
 
@@ -58,6 +67,7 @@ class TestWsHandleMessage:
             json.dumps({"action": "unknown"}),
             subscribed,
             filters,
+            _TEST_USER,
         )
         data = json.loads(result)
         assert data["error"] == "Unknown action"
@@ -74,6 +84,7 @@ class TestWsHandleMessage:
             ),
             subscribed,
             filters,
+            _TEST_USER,
         )
         assert "tasks" in subscribed
         assert "invalid" not in subscribed
@@ -94,6 +105,7 @@ class TestWsHandleMessage:
             ),
             subscribed,
             filters,
+            _TEST_USER,
         )
         assert "tasks" in subscribed
         assert filters["tasks"] == {
@@ -108,6 +120,7 @@ class TestWsHandleMessage:
             json.dumps({"action": "unsubscribe", "channels": ["tasks"]}),
             subscribed,
             filters,
+            _TEST_USER,
         )
         assert "tasks" not in subscribed
         assert "tasks" not in filters
@@ -119,6 +132,7 @@ class TestWsHandleMessage:
             json.dumps({"action": "subscribe", "channels": ["tasks"]}),
             subscribed,
             filters,
+            _TEST_USER,
         )
         assert "tasks" in subscribed
         assert "tasks" not in filters
@@ -137,6 +151,7 @@ class TestWsHandleMessage:
             ),
             subscribed,
             filters,
+            _TEST_USER,
         )
         data = json.loads(result)
         assert data["error"] == "Filter bounds exceeded"
@@ -155,6 +170,7 @@ class TestWsHandleMessage:
             ),
             subscribed,
             filters,
+            _TEST_USER,
         )
         data = json.loads(result)
         assert data["error"] == "Filter bounds exceeded"
@@ -166,13 +182,13 @@ class TestWsHandleMessage:
 
         # 4096 bytes should pass (valid JSON that fits)
         small_msg = json.dumps({"action": "subscribe", "channels": ["tasks"]})
-        result = _handle_message(small_msg, subscribed, filters)
+        result = _handle_message(small_msg, subscribed, filters, _TEST_USER)
         data = json.loads(result)
         assert data["action"] == "subscribed"
 
         # Message whose encoded bytes exceed 4096 should fail
         big_msg = json.dumps({"action": "subscribe", "data": "x" * 4096})
-        result = _handle_message(big_msg, subscribed, filters)
+        result = _handle_message(big_msg, subscribed, filters, _TEST_USER)
         data = json.loads(result)
         assert data["error"] == "Message too large"
 
@@ -184,7 +200,7 @@ class TestWsHandleMessage:
     def test_non_dict_json_returns_error(self, value: object) -> None:
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
-        result = _handle_message(json.dumps(value), subscribed, filters)
+        result = _handle_message(json.dumps(value), subscribed, filters, _TEST_USER)
         data = json.loads(result)
         assert data["error"] == "Expected JSON object"
 

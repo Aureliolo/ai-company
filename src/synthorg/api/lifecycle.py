@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.session_store import SessionStore
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
@@ -209,6 +210,23 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     error="Failed to bootstrap system user",
                 )
                 raise
+
+            # Session store shares the persistence db connection.
+            try:
+                db = persistence.users._db  # noqa: SLF001
+                session_store = SessionStore(db)
+                await session_store.load_revoked()
+                app_state.set_session_store(session_store)
+                logger.info(
+                    API_APP_STARTUP,
+                    note="Session store initialized",
+                )
+            except Exception:
+                logger.warning(
+                    API_APP_STARTUP,
+                    error="Session store init failed (non-fatal)",
+                    exc_info=True,
+                )
 
         if message_bus is not None:
             try:

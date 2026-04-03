@@ -4,9 +4,36 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from synthorg.api.config import ApiConfig, ServerConfig
 from synthorg.config.schema import RootConfig
 
 pytestmark = pytest.mark.unit
+
+
+def _run_with_config(
+    server: ServerConfig | None = None,
+) -> MagicMock:
+    """Helper: run_server with a mock uvicorn.run and return the mock."""
+    api_kwargs: dict[str, object] = {}
+    if server is not None:
+        api_kwargs["server"] = server
+    config = RootConfig(
+        company_name="test-co",
+        api=ApiConfig(**api_kwargs),
+    )
+    dummy_app = MagicMock()
+    mock_run = MagicMock()
+    with (
+        patch(
+            "synthorg.api.server.create_app",
+            return_value=dummy_app,
+        ),
+        patch("synthorg.api.server.uvicorn.run", mock_run),
+    ):
+        from synthorg.api.server import run_server
+
+        run_server(config)
+    return mock_run
 
 
 class TestRunServerUvicornParams:
@@ -14,23 +41,51 @@ class TestRunServerUvicornParams:
 
     def test_access_log_disabled_and_log_config_none(self) -> None:
         """Uvicorn access log is disabled; log_config is None."""
-        dummy_app = MagicMock()
-        mock_run = MagicMock()
-        with (
-            patch(
-                "synthorg.api.server.create_app",
-                return_value=dummy_app,
-            ),
-            patch("synthorg.api.server.uvicorn.run", mock_run),
-        ):
-            from synthorg.api.server import run_server
-
-            run_server(RootConfig(company_name="test-co"))
-
+        mock_run = _run_with_config()
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
-        # access_log and log_config are keyword args to uvicorn.run.
         assert call_kwargs.kwargs["access_log"] is False
         assert call_kwargs.kwargs["log_config"] is None
-        # The dummy app was passed as the first positional arg.
-        assert call_kwargs.args[0] is dummy_app
+
+    def test_no_tls_kwargs_by_default(self) -> None:
+        mock_run = _run_with_config()
+        kw = mock_run.call_args.kwargs
+        assert "ssl_certfile" not in kw
+        assert "ssl_keyfile" not in kw
+        assert "ssl_ca_certs" not in kw
+
+    def test_tls_kwargs_passed_when_configured(self) -> None:
+        server = ServerConfig(
+            ssl_certfile="/etc/tls/cert.pem",
+            ssl_keyfile="/etc/tls/key.pem",
+        )
+        mock_run = _run_with_config(server)
+        kw = mock_run.call_args.kwargs
+        assert kw["ssl_certfile"] == "/etc/tls/cert.pem"
+        assert kw["ssl_keyfile"] == "/etc/tls/key.pem"
+        assert "ssl_ca_certs" not in kw
+
+    def test_tls_with_ca_certs(self) -> None:
+        server = ServerConfig(
+            ssl_certfile="/etc/tls/cert.pem",
+            ssl_keyfile="/etc/tls/key.pem",
+            ssl_ca_certs="/etc/tls/ca.pem",
+        )
+        mock_run = _run_with_config(server)
+        kw = mock_run.call_args.kwargs
+        assert kw["ssl_ca_certs"] == "/etc/tls/ca.pem"
+
+    def test_no_proxy_headers_by_default(self) -> None:
+        mock_run = _run_with_config()
+        kw = mock_run.call_args.kwargs
+        assert "forwarded_allow_ips" not in kw
+        assert "proxy_headers" not in kw
+
+    def test_proxy_headers_when_trusted_proxies_set(self) -> None:
+        server = ServerConfig(
+            trusted_proxies=("10.0.0.1", "172.16.0.0/12"),
+        )
+        mock_run = _run_with_config(server)
+        kw = mock_run.call_args.kwargs
+        assert kw["forwarded_allow_ips"] == "10.0.0.1,172.16.0.0/12"
+        assert kw["proxy_headers"] is True

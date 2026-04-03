@@ -12,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.api import (
+    API_NETWORK_EXPOSURE_WARNING,
+)
+
+logger = get_logger(__name__)
 
 
 class CorsConfig(BaseModel):
@@ -109,6 +115,13 @@ class ServerConfig(BaseModel):
         ws_ping_interval: WebSocket ping interval in seconds
             (0 to disable).
         ws_ping_timeout: WebSocket pong timeout in seconds.
+        ssl_certfile: Path to SSL certificate file (PEM format).
+        ssl_keyfile: Path to SSL private key file (PEM format).
+        ssl_ca_certs: Path to CA bundle for client cert
+            verification.
+        trusted_proxies: IP addresses/CIDRs trusted as reverse
+            proxies for ``X-Forwarded-For``/``X-Forwarded-Proto``
+            header processing.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -143,6 +156,58 @@ class ServerConfig(BaseModel):
         ge=0,
         description="WebSocket pong timeout in seconds",
     )
+    ssl_certfile: str | None = Field(
+        default=None,
+        description="Path to SSL certificate file (PEM format)",
+    )
+    ssl_keyfile: str | None = Field(
+        default=None,
+        description="Path to SSL private key file (PEM format)",
+    )
+    ssl_ca_certs: str | None = Field(
+        default=None,
+        description=("Path to CA bundle for client certificate verification"),
+    )
+    trusted_proxies: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "IP addresses/CIDRs trusted as reverse proxies "
+            "for X-Forwarded-For/Proto header processing"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_tls_pair(self) -> Self:
+        """Require both cert and key when either is set."""
+        has_cert = self.ssl_certfile is not None
+        has_key = self.ssl_keyfile is not None
+        has_ca = self.ssl_ca_certs is not None
+
+        if has_cert and not has_key:
+            msg = "ssl_keyfile is required when ssl_certfile is set"
+            raise ValueError(msg)
+        if has_key and not has_cert:
+            msg = "ssl_certfile is required when ssl_keyfile is set"
+            raise ValueError(msg)
+        if has_ca and not has_cert:
+            msg = "ssl_certfile is required when ssl_ca_certs is set"
+            raise ValueError(msg)
+
+        if (
+            self.host == "0.0.0.0"  # noqa: S104
+            and not has_cert
+            and not self.trusted_proxies
+        ):
+            logger.warning(
+                API_NETWORK_EXPOSURE_WARNING,
+                host=self.host,
+                note=(
+                    "Server binds to all interfaces without TLS "
+                    "or trusted proxy configuration"
+                ),
+            )
+
+        return self
 
 
 class ApiConfig(BaseModel):

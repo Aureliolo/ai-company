@@ -170,7 +170,7 @@ def make_auth_headers(
         created_at=now,
         updated_at=now,
     )
-    token, _ = auth_service.create_token(user)
+    token, _, _ = auth_service.create_token(user)
     return {"Authorization": f"Bearer {token}"}
 
 

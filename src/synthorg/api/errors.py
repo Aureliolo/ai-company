@@ -40,6 +40,7 @@ class ErrorCode(IntEnum):
     # 1xxx -- auth
     UNAUTHORIZED = 1000
     FORBIDDEN = 1001
+    SESSION_REVOKED = 1002
 
     # 2xxx -- validation
     VALIDATION_ERROR = 2000
@@ -53,6 +54,7 @@ class ErrorCode(IntEnum):
     # 4xxx -- conflict
     RESOURCE_CONFLICT = 4000
     DUPLICATE_RECORD = 4001
+    VERSION_CONFLICT = 4002
 
     # 5xxx -- rate_limit
     RATE_LIMITED = 5000
@@ -192,6 +194,21 @@ class ConflictError(ApiError):
     default_message: ClassVar[str] = "Resource conflict"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
     error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message, status_code=409)
+
+
+class VersionConflictError(ApiError):
+    """Raised when an ETag/If-Match version check fails (409).
+
+    Used for optimistic concurrency control on settings,
+    company config, and agent modification endpoints.
+    """
+
+    default_message: ClassVar[str] = "Version conflict"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.VERSION_CONFLICT
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=409)
