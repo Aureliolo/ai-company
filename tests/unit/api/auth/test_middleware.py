@@ -515,6 +515,7 @@ class TestAuthMiddlewareSystemUser:
                 "sub": "system",
                 "iss": "attacker",
                 "aud": "synthorg-backend",
+                "jti": "sys-wrong-iss",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },
@@ -558,6 +559,7 @@ class TestAuthMiddlewareSystemUser:
                 "sub": "system",
                 "iss": "synthorg-cli",
                 "aud": "wrong-audience",
+                "jti": "sys-wrong-aud",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },
@@ -633,6 +635,7 @@ class TestAuthMiddlewareSystemUser:
         token = pyjwt.encode(
             {
                 "sub": user.id,
+                "jti": "no-pwd-sig",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },

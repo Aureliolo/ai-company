@@ -457,6 +457,7 @@ class TestSystemUserBlocking:
                 "sub": SYSTEM_USER_ID,
                 "iss": "synthorg-cli",
                 "aud": "synthorg-backend",
+                "jti": "sys-change-pwd",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },
