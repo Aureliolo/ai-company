@@ -101,7 +101,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 | MTEB | General passage retrieval | MTEB performance does not transfer to memory retrieval (Pearson: -0.115). Optimizing for MTEB may actively harm memory retrieval quality |
 | Manual evaluation | Custom retrieval benchmarks | Too expensive to maintain. LMEB provides a standardized, reproducible alternative |
 
-**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The fine-tuning pipeline (data generation, hard negative mining, contrastive training) is tracked in #1001.
+**Model selection:** Three deployment tiers recommended based on LMEB scores. See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full analysis. Domain-specific fine-tuning (+10-27% improvement) configured via `EmbeddingFineTuneConfig`; when enabled, the Mem0 adapter uses the checkpoint path as the model identifier. The fine-tuning pipeline stages (data generation, hard negative mining, contrastive training, checkpoint deploy) are not yet implemented -- functions validate inputs and raise `NotImplementedError` (see #1001).
 
 ## Overarching Pattern
 

@@ -8,7 +8,7 @@ What works today:
 
 - **Agent engine** with ReAct, Plan-and-Execute, Hybrid execution loops, crash recovery, and task decomposition
 - **Budget & cost management** with per-agent limits, auto-downgrade, spending reports, and anomaly detection
-- **Security** with fail-closed rule engine, 5 autonomy tiers, progressive trust, output scanning, and audit logging
+- **Security** with fail-closed rule engine, 4 autonomy tiers, progressive trust, output scanning, and audit logging
 - **Memory** with hybrid retrieval (dense + BM25 sparse), tool-based injection, procedural memory auto-generation from failures, and consolidation
 - **Communication** with message bus, delegation, conflict resolution, and meeting protocols
 - **Workflow engine** with Kanban, Agile sprints, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions

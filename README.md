@@ -77,7 +77,7 @@ curl http://localhost:3001/api/v1/health
 
 **[Budget & Cost Management](https://synthorg.io/docs/design/operations/)** -- Per-agent cost limits with hierarchical cascading, auto-downgrade to cheaper models at task boundaries, spending reports, budget forecasting, and anomaly detection.
 
-**[Security & Trust](https://synthorg.io/docs/security/)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (5 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
+**[Security & Trust](https://synthorg.io/docs/security/)** -- SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels (4 tiers), approval gates, LLM fallback evaluator, and audit logging. Container images are cosign-signed with [SLSA L3](https://slsa.dev) provenance.
 
 **[Memory](https://synthorg.io/docs/design/memory/)** -- 5 memory types (episodic, semantic, procedural, working, organizational) with hybrid retrieval, tool-based injection (agents call `search_memory` and `recall_memory` on demand), query reformulation, procedural memory auto-generation from failures, consolidation, and pluggable backends.
 
