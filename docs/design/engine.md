@@ -1,6 +1,6 @@
 ---
 title: Task & Workflow Engine
-description: Task lifecycle, execution loops, routing, orchestration, crash recovery, graceful shutdown, workspace isolation, and workflow definitions.
+description: Task lifecycle, execution loops, routing, orchestration, crash recovery, graceful shutdown, workspace isolation, workflow definitions, and workflow execution.
 ---
 
 # Task & Workflow Engine
@@ -224,6 +224,60 @@ A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph t
 ### Persistence
 
 `WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 7 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, and export.
+
+### Workflow Execution
+
+When a user **activates** a workflow definition, the `WorkflowExecutionService`
+creates a `WorkflowExecution` instance that tracks per-node processing state
+and maps TASK nodes to concrete `Task` instances created via the `TaskEngine`.
+
+**Strategy: Eager instantiation.** All tasks on reachable paths are created
+upfront at activation time with `Task.dependencies` wired from the graph
+topology. The TaskEngine's existing status machine handles execution ordering.
+
+**Activation algorithm** (topological walk):
+
+1. Validate the definition via `validate_workflow()`.
+2. Build adjacency maps and topological sort via shared `graph_utils`.
+3. Walk nodes in topological order:
+   - **START/END**: Mark `COMPLETED` (structural markers, no tasks).
+   - **AGENT_ASSIGNMENT**: Mark `COMPLETED`; stash `agent_name` config for
+     downstream TASK nodes.
+   - **TASK**: Create a concrete task via `TaskEngine.create_task()`. Resolve
+     upstream TASK dependencies by reverse-walking through control nodes.
+     Apply `assigned_to` from any preceding agent assignment. Mark
+     `TASK_CREATED` with the created `task_id`.
+   - **CONDITIONAL**: Evaluate `condition_expression` against the provided
+     runtime `context` dict using a safe string evaluator. Mark the untaken
+     branch's downstream nodes as `SKIPPED`.
+   - **PARALLEL_SPLIT/JOIN**: Mark `COMPLETED`. Branch targets proceed with
+     no mutual dependency; join semantics are handled by dependency wiring.
+4. Transition execution to `RUNNING` status; persist.
+
+**Execution lifecycle** (`WorkflowExecutionStatus`): `PENDING` (created) ->
+`RUNNING` (tasks instantiated) -> `COMPLETED` | `FAILED` | `CANCELLED`.
+
+**Per-node tracking** (`WorkflowNodeExecutionStatus`): `PENDING`, `SKIPPED`
+(conditional branch not taken), `TASK_CREATED` (concrete task instantiated),
+`COMPLETED` (control node processed).
+
+**Condition evaluator** (`condition_eval.py`): Safe, minimal string evaluator
+(no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
+key lookup (truthy check), equality (`key == value`), and inequality
+(`key != value`). Designed to be replaceable with a richer evaluator.
+
+**Persistence**: `WorkflowExecutionRepository` with SQLite implementation.
+`node_executions` stored as JSON array (same pattern as definition
+nodes/edges). Optimistic concurrency via version counter.
+
+**API endpoints** (`/workflow-executions` controller):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/activate/{workflow_id}` | Activate a workflow definition |
+| GET | `/by-definition/{workflow_id}` | List executions for a definition |
+| GET | `/{execution_id}` | Get a specific execution |
+| POST | `/{execution_id}/cancel` | Cancel an execution |
 
 ---
 

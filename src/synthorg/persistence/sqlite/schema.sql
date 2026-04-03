@@ -344,3 +344,41 @@ CREATE INDEX IF NOT EXISTS idx_wd_workflow_type
 
 CREATE INDEX IF NOT EXISTS idx_wd_updated_at
     ON workflow_definitions(updated_at DESC);
+
+-- Workflow execution instances ------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS workflow_executions (
+    id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
+    definition_id TEXT NOT NULL CHECK(length(definition_id) > 0),
+    definition_version INTEGER NOT NULL CHECK(definition_version >= 1),
+    status TEXT NOT NULL CHECK(status IN (
+        'pending', 'running', 'completed', 'failed', 'cancelled'
+    )),
+    node_executions TEXT NOT NULL DEFAULT '[]',
+    activated_by TEXT NOT NULL CHECK(length(activated_by) > 0),
+    project TEXT NOT NULL CHECK(length(project) > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    error TEXT,
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+    FOREIGN KEY (definition_id) REFERENCES workflow_definitions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_definition_id
+    ON workflow_executions(definition_id);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_status
+    ON workflow_executions(status);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_updated_at
+    ON workflow_executions(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_definition_updated
+    ON workflow_executions(definition_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_status_updated
+    ON workflow_executions(status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_wfe_project
+    ON workflow_executions(project);

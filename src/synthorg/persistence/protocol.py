@@ -33,6 +33,9 @@ from synthorg.persistence.repositories import (
 from synthorg.persistence.workflow_definition_repo import (
     WorkflowDefinitionRepository,  # noqa: TC001
 )
+from synthorg.persistence.workflow_execution_repo import (
+    WorkflowExecutionRepository,  # noqa: TC001
+)
 
 
 @runtime_checkable
@@ -64,6 +67,7 @@ class PersistenceBackend(Protocol):
         projects: Repository for Project persistence.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
+        workflow_executions: Repository for workflow execution persistence.
     """
 
     async def connect(self) -> None:
@@ -207,6 +211,11 @@ class PersistenceBackend(Protocol):
     @property
     def workflow_definitions(self) -> WorkflowDefinitionRepository:
         """Repository for workflow definition persistence."""
+        ...
+
+    @property
+    def workflow_executions(self) -> WorkflowExecutionRepository:
+        """Repository for workflow execution persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

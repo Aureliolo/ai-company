@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from synthorg.api.guards import HumanRole
+from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,
     LifecycleEventRepository,
@@ -33,6 +35,7 @@ from synthorg.persistence.repositories import (
     UserRepository,
 )
 from synthorg.persistence.workflow_definition_repo import WorkflowDefinitionRepository
+from synthorg.persistence.workflow_execution_repo import WorkflowExecutionRepository
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -388,6 +391,32 @@ class _FakeWorkflowDefinitionRepository:
         return False
 
 
+class _FakeWorkflowExecutionRepository:
+    async def save(self, execution: WorkflowExecution) -> None:
+        pass
+
+    async def get(
+        self,
+        execution_id: NotBlankStr,
+    ) -> WorkflowExecution | None:
+        return None
+
+    async def list_by_definition(
+        self,
+        definition_id: NotBlankStr,
+    ) -> tuple[WorkflowExecution, ...]:
+        return ()
+
+    async def list_by_status(
+        self,
+        status: WorkflowExecutionStatus,
+    ) -> tuple[WorkflowExecution, ...]:
+        return ()
+
+    async def delete(self, execution_id: NotBlankStr) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -485,6 +514,10 @@ class _FakeBackend:
     def workflow_definitions(self) -> _FakeWorkflowDefinitionRepository:
         return _FakeWorkflowDefinitionRepository()
 
+    @property
+    def workflow_executions(self) -> _FakeWorkflowExecutionRepository:
+        return _FakeWorkflowExecutionRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -567,4 +600,12 @@ class TestProtocolCompliance:
         assert isinstance(
             _FakeWorkflowDefinitionRepository(),
             WorkflowDefinitionRepository,
+        )
+
+    def test_fake_workflow_exec_repo_is_workflow_execution_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeWorkflowExecutionRepository(),
+            WorkflowExecutionRepository,
         )

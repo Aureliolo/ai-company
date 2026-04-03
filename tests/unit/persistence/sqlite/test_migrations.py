@@ -32,6 +32,7 @@ _EXPECTED_TABLES = {
     "projects",
     "custom_presets",
     "workflow_definitions",
+    "workflow_executions",
 }
 
 _EXPECTED_INDEXES = {
@@ -77,6 +78,12 @@ _EXPECTED_INDEXES = {
     "idx_projects_lead",
     "idx_wd_workflow_type",
     "idx_wd_updated_at",
+    "idx_wfe_definition_id",
+    "idx_wfe_status",
+    "idx_wfe_updated_at",
+    "idx_wfe_definition_updated",
+    "idx_wfe_status_updated",
+    "idx_wfe_project",
 }
 
 

@@ -1,0 +1,100 @@
+"""Repository protocol for workflow execution persistence."""
+
+from typing import Protocol, runtime_checkable
+
+from synthorg.core.enums import WorkflowExecutionStatus  # noqa: TC001
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.execution_models import (
+    WorkflowExecution,  # noqa: TC001
+)
+
+
+@runtime_checkable
+class WorkflowExecutionRepository(Protocol):
+    """CRUD interface for workflow execution persistence.
+
+    Workflow executions are runtime instances of activated
+    workflow definitions, tracking per-node execution state
+    and mapping to concrete tasks.
+    """
+
+    async def save(self, execution: WorkflowExecution) -> None:
+        """Persist a workflow execution (insert or update).
+
+        Args:
+            execution: The workflow execution to persist.
+
+        Raises:
+            DuplicateRecordError: If inserting a duplicate ID.
+            VersionConflictError: If optimistic concurrency check fails.
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(
+        self,
+        execution_id: NotBlankStr,
+    ) -> WorkflowExecution | None:
+        """Retrieve a workflow execution by its ID.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            The execution, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_by_definition(
+        self,
+        definition_id: NotBlankStr,
+    ) -> tuple[WorkflowExecution, ...]:
+        """List executions for a given workflow definition.
+
+        Args:
+            definition_id: The source definition identifier.
+
+        Returns:
+            Matching executions as a tuple, ordered by
+            ``updated_at`` descending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_by_status(
+        self,
+        status: WorkflowExecutionStatus,
+    ) -> tuple[WorkflowExecution, ...]:
+        """List executions with a given status.
+
+        Args:
+            status: The execution status to filter by.
+
+        Returns:
+            Matching executions as a tuple, ordered by
+            ``updated_at`` descending.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, execution_id: NotBlankStr) -> bool:
+        """Delete a workflow execution by ID.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            ``True`` if the execution was deleted,
+            ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...

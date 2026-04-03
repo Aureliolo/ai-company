@@ -322,6 +322,34 @@ class WorkflowEdgeType(StrEnum):
     PARALLEL_BRANCH = "parallel_branch"
 
 
+class WorkflowExecutionStatus(StrEnum):
+    """Lifecycle status of a workflow execution instance.
+
+    Tracks the overall progress of an activated workflow definition
+    from creation through completion or cancellation.
+    """
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class WorkflowNodeExecutionStatus(StrEnum):
+    """Per-node execution status within a workflow execution.
+
+    Tracks whether each node in the workflow graph has been
+    processed, skipped (conditional branch not taken), or
+    resulted in a concrete task.
+    """
+
+    PENDING = "pending"
+    SKIPPED = "skipped"
+    TASK_CREATED = "task_created"
+    COMPLETED = "completed"
+
+
 class ArtifactType(StrEnum):
     """Type of produced artifact."""
 
