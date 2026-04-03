@@ -99,6 +99,30 @@ function regenerateYaml(nodes: Node[], edges: Edge[], definition: WorkflowDefini
   )
 }
 
+interface EdgeMeta {
+  visualType: string
+  sourceHandle: string | undefined
+  edgeType: string
+  branch: string | undefined
+}
+
+function mapPersistedEdge(edgeType: string): EdgeMeta {
+  const isTrue = edgeType === 'conditional_true'
+  const isFalse = edgeType === 'conditional_false'
+  if (isTrue || isFalse) {
+    return {
+      visualType: 'conditional',
+      sourceHandle: isTrue ? 'true' : 'false',
+      edgeType,
+      branch: isTrue ? 'true' : 'false',
+    }
+  }
+  if (edgeType === 'parallel_branch') {
+    return { visualType: 'parallel_branch', sourceHandle: undefined, edgeType, branch: undefined }
+  }
+  return { visualType: 'sequential', sourceHandle: undefined, edgeType, branch: undefined }
+}
+
 export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) => ({
   definition: null,
   nodes: [],
@@ -124,15 +148,18 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         position: { x: n.position_x, y: n.position_y },
         data: { label: n.label, config: n.config },
       }))
-      const edges: Edge[] = def.edges.map((e) => ({
-        id: e.id,
-        source: e.source_node_id,
-        target: e.target_node_id,
-        type: e.type === 'conditional_true' || e.type === 'conditional_false' ? 'conditional' : e.type === 'parallel_branch' ? 'parallel_branch' : 'sequential',
-        sourceHandle: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined,
-        data: { edgeType: e.type, branch: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined },
-        label: e.label ?? undefined,
-      }))
+      const edges: Edge[] = def.edges.map((e) => {
+        const meta = mapPersistedEdge(e.type)
+        return {
+          id: e.id,
+          source: e.source_node_id,
+          target: e.target_node_id,
+          type: meta.visualType,
+          sourceHandle: meta.sourceHandle,
+          data: { edgeType: meta.edgeType, branch: meta.branch },
+          label: e.label ?? undefined,
+        }
+      })
       const yaml = regenerateYaml(nodes, edges, def)
       set({
         definition: def,
