@@ -157,7 +157,6 @@ def _sample_info() -> StrategyMigrationInfo:
         sprint_id="sprint-10",
         previous_strategy=CeremonyStrategyType.TASK_DRIVEN,
         new_strategy=CeremonyStrategyType.HYBRID,
-        velocity_window_reset=True,
         velocity_history_size=4,
     )
 
