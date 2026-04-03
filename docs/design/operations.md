@@ -639,7 +639,7 @@ Action types classify agent actions for use by [autonomy presets](#autonomy-leve
 [progressive trust](#progressive-trust)
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~25 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~26 built-in action types (type safety, autocomplete, typos caught
 at compile time) + `ActionTypeRegistry` for custom types via explicit registration. Unknown
 strings are rejected at config load time -- a typo in `human_approval` list silently meaning
 "skip approval" is a critical safety concern.

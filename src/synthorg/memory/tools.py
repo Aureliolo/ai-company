@@ -7,7 +7,6 @@ bridges the memory injection system into the standard tool dispatch
 pipeline (``ToolInvoker`` -> ``ToolRegistry`` -> ``BaseTool.execute``).
 """
 
-import copy
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ToolCategory
@@ -25,8 +24,11 @@ from synthorg.memory.tool_retriever import (
     ToolBasedInjectionStrategy,
 )
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import MEMORY_RETRIEVAL_DEGRADED
-from synthorg.observability.events.tool import TOOL_REGISTRY_BUILT
+from synthorg.observability.events.tool import (
+    TOOL_FACTORY_BUILT,
+    TOOL_MEMORY_AUGMENTATION_FAILED,
+    TOOL_REGISTRY_BUILT,
+)
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
 if TYPE_CHECKING:
@@ -37,6 +39,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Error prefixes imported from tool_retriever -- single source of truth.
+# Any new error return value in tool_retriever MUST use one of these
+# prefixes or be added here for correct is_error classification.
 _ERROR_PREFIXES = (
     ERROR_PREFIX,
     SEARCH_UNAVAILABLE,
@@ -70,13 +74,15 @@ class SearchMemoryTool(BaseTool):
         strategy: ToolBasedInjectionStrategy,
         agent_id: NotBlankStr,
     ) -> None:
+        # dict() converts MappingProxyType (not deepcopy-able) to a
+        # plain dict; BaseTool.__init__ handles the defensive deepcopy.
         super().__init__(
             name=SEARCH_MEMORY_TOOL_NAME,
             description=(
                 "Search agent memory for relevant past context, "
                 "decisions, or learned information."
             ),
-            parameters_schema=copy.deepcopy(dict(SEARCH_MEMORY_SCHEMA)),
+            parameters_schema=dict(SEARCH_MEMORY_SCHEMA),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -90,7 +96,8 @@ class SearchMemoryTool(BaseTool):
         """Execute a memory search via the injection strategy.
 
         Args:
-            arguments: Tool arguments from the LLM (query, categories, limit).
+            arguments: Tool arguments from the LLM, validated
+                against ``SEARCH_MEMORY_SCHEMA``.
 
         Returns:
             ``ToolExecutionResult`` with formatted memory entries or error.
@@ -124,10 +131,12 @@ class RecallMemoryTool(BaseTool):
         strategy: ToolBasedInjectionStrategy,
         agent_id: NotBlankStr,
     ) -> None:
+        # dict() converts MappingProxyType (not deepcopy-able) to a
+        # plain dict; BaseTool.__init__ handles the defensive deepcopy.
         super().__init__(
             name=RECALL_MEMORY_TOOL_NAME,
             description="Recall a specific memory entry by its ID.",
-            parameters_schema=copy.deepcopy(dict(RECALL_MEMORY_SCHEMA)),
+            parameters_schema=dict(RECALL_MEMORY_SCHEMA),
             category=ToolCategory.MEMORY,
         )
         self._strategy = strategy
@@ -174,10 +183,34 @@ def create_memory_tools(
     Returns:
         Tuple of two ``BaseTool`` instances (search and recall).
     """
-    return (
+    tools = (
         SearchMemoryTool(strategy=strategy, agent_id=agent_id),
         RecallMemoryTool(strategy=strategy, agent_id=agent_id),
     )
+    logger.debug(
+        TOOL_FACTORY_BUILT,
+        agent_id=agent_id,
+        tools=[t.name for t in tools],
+    )
+    return tools
+
+
+def _build_augmented_registry(
+    tool_registry: ToolRegistry,
+    strategy: ToolBasedInjectionStrategy,
+    agent_id: NotBlankStr,
+) -> ToolRegistry:
+    """Construct a new registry with memory tools appended."""
+    from synthorg.tools.registry import (  # noqa: PLC0415
+        ToolRegistry as _ToolRegistry,
+    )
+
+    memory_tools = create_memory_tools(
+        strategy=strategy,
+        agent_id=agent_id,
+    )
+    existing = list(tool_registry.all_tools())
+    return _ToolRegistry([*existing, *memory_tools])
 
 
 def registry_with_memory_tools(
@@ -188,9 +221,8 @@ def registry_with_memory_tools(
     """Build a registry with memory tools added if applicable.
 
     Returns the original registry unchanged when the strategy is
-    ``None`` or is not a ``ToolBasedInjectionStrategy``.
-
-    Follows the ``registry_with_approval_tool`` pattern in
+    ``None`` or is not a ``ToolBasedInjectionStrategy``.  Follows the
+    ``registry_with_approval_tool`` pattern in
     ``engine/_security_factory.py``.
 
     Args:
@@ -199,25 +231,23 @@ def registry_with_memory_tools(
         agent_id: Agent ID to bind to the memory tools.
 
     Returns:
-        Augmented registry with memory tools, or original if not applicable.
+        Augmented registry with memory tools, or original if not
+        applicable.
     """
     if not isinstance(strategy, ToolBasedInjectionStrategy):
         return tool_registry
 
-    from synthorg.tools.registry import (  # noqa: PLC0415
-        ToolRegistry as _ToolRegistry,
-    )
-
     try:
-        memory_tools = create_memory_tools(
-            strategy=strategy,
-            agent_id=agent_id,
+        augmented = _build_augmented_registry(
+            tool_registry,
+            strategy,
+            agent_id,
         )
-        existing = list(tool_registry.all_tools())
-        augmented = _ToolRegistry([*existing, *memory_tools])
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.warning(
-            MEMORY_RETRIEVAL_DEGRADED,
+            TOOL_MEMORY_AUGMENTATION_FAILED,
             source="registry_augmentation",
             agent_id=agent_id,
             error=str(exc),

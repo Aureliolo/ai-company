@@ -369,6 +369,95 @@ class TestAgentEngineWithTools:
 
 
 @pytest.mark.unit
+class TestAgentEngineMemoryToolWiring:
+    """memory_injection_strategy wires memory tools into _make_tool_invoker."""
+
+    def test_memory_tools_registered_when_strategy_provided(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        from synthorg.core.enums import ToolCategory
+        from synthorg.memory.injection import InjectionStrategy
+        from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+        from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
+        from synthorg.tools.base import BaseTool, ToolExecutionResult
+        from synthorg.tools.registry import ToolRegistry
+
+        class StubTool(BaseTool):
+            async def execute(
+                self,
+                *,
+                arguments: dict[str, Any],
+            ) -> ToolExecutionResult:
+                return ToolExecutionResult(content="stub")
+
+        registry = ToolRegistry(
+            [StubTool(name="stub", category=ToolCategory.OTHER)],
+        )
+        backend = AsyncMock()
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=MemoryRetrievalConfig(
+                strategy=InjectionStrategy.TOOL_BASED,
+            ),
+        )
+        provider = mock_provider_factory(
+            [_make_completion_response()],
+        )
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+            memory_injection_strategy=strategy,
+        )
+
+        invoker = engine._make_tool_invoker(
+            sample_agent_with_personality,
+        )
+
+        assert invoker is not None
+        assert "search_memory" in [d.name for d in invoker.get_permitted_definitions()]
+        assert "recall_memory" in [d.name for d in invoker.get_permitted_definitions()]
+
+    def test_no_memory_tools_when_strategy_is_none(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        from synthorg.core.enums import ToolCategory
+        from synthorg.tools.base import BaseTool, ToolExecutionResult
+        from synthorg.tools.registry import ToolRegistry
+
+        class StubTool(BaseTool):
+            async def execute(
+                self,
+                *,
+                arguments: dict[str, Any],
+            ) -> ToolExecutionResult:
+                return ToolExecutionResult(content="stub")
+
+        registry = ToolRegistry(
+            [StubTool(name="stub", category=ToolCategory.OTHER)],
+        )
+        provider = mock_provider_factory(
+            [_make_completion_response()],
+        )
+        engine = AgentEngine(
+            provider=provider,
+            tool_registry=registry,
+        )
+
+        invoker = engine._make_tool_invoker(
+            sample_agent_with_personality,
+        )
+
+        assert invoker is not None
+        names = [d.name for d in invoker.get_permitted_definitions()]
+        assert "search_memory" not in names
+        assert "recall_memory" not in names
+
+
+@pytest.mark.unit
 class TestAgentEngineBudgetChecker:
     """Budget limit creates checker, exhaustion terminates."""
 

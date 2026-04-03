@@ -152,15 +152,15 @@ class TestSearchMemoryTool:
         assert "found via search" in result.content
         assert not result.is_error
 
-    async def test_execute_empty_query_returns_error(self) -> None:
+    @pytest.mark.parametrize("query", ["", "   ", "\t\n"])
+    async def test_execute_blank_query_returns_error(self, query: str) -> None:
         tool = SearchMemoryTool(
             strategy=_make_strategy(),
             agent_id="agent-1",
         )
-        result = await tool.execute(arguments={"query": ""})
+        result = await tool.execute(arguments={"query": query})
 
         assert result.is_error
-        assert "non-empty" in result.content.lower()
 
     async def test_execute_no_results(self) -> None:
         tool = SearchMemoryTool(
@@ -304,15 +304,30 @@ class TestRecallMemoryTool:
         assert result.is_error
         assert "not found" in result.content.lower()
 
-    async def test_execute_empty_id_returns_error(self) -> None:
+    @pytest.mark.parametrize("memory_id", ["", "   ", "\t\n"])
+    async def test_execute_blank_id_returns_error(
+        self,
+        memory_id: str,
+    ) -> None:
         tool = RecallMemoryTool(
             strategy=_make_strategy(),
             agent_id="agent-1",
         )
-        result = await tool.execute(arguments={"memory_id": ""})
+        result = await tool.execute(arguments={"memory_id": memory_id})
 
         assert result.is_error
-        assert "memory_id" in result.content.lower()
+
+    async def test_execute_oversized_id_returns_error(self) -> None:
+        tool = RecallMemoryTool(
+            strategy=_make_strategy(),
+            agent_id="agent-1",
+        )
+        result = await tool.execute(
+            arguments={"memory_id": "x" * 300},
+        )
+
+        assert result.is_error
+        assert "maximum" in result.content.lower()
 
     async def test_execute_backend_error_returns_error_result(self) -> None:
         from synthorg.memory.errors import MemoryRetrievalError

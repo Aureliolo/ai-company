@@ -116,6 +116,7 @@ class TestEnumMemberCounts:
 
     def test_action_type_has_26_members(self) -> None:
         assert len(ActionType) == 26
+        assert ActionType.MEMORY_READ.value == "memory:read"
 
 
 # ── String Values ──────────────────────────────────────────────────

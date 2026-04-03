@@ -74,6 +74,8 @@ SEARCH_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
     }
 )
 
+_MAX_MEMORY_ID_LEN: Final[int] = 256
+
 RECALL_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
     {
         "type": "object",
@@ -81,6 +83,7 @@ RECALL_MEMORY_SCHEMA: Final[MappingProxyType[str, Any]] = MappingProxyType(
             "memory_id": {
                 "type": "string",
                 "description": "Exact memory ID to recall.",
+                "maxLength": _MAX_MEMORY_ID_LEN,
             },
         },
         "required": ["memory_id"],
@@ -228,6 +231,8 @@ class ToolBasedInjectionStrategy:
         Returns:
             Two tool definitions with JSON Schema parameters.
         """
+        # dict() converts MappingProxyType (not deepcopy-able) to a
+        # plain dict before deepcopy creates an independent schema copy.
         return (
             ToolDefinition(
                 name=NotBlankStr(SEARCH_MEMORY_TOOL_NAME),
@@ -268,6 +273,13 @@ class ToolBasedInjectionStrategy:
         if tool_name == RECALL_MEMORY_TOOL_NAME:
             return await self._handle_recall(arguments, agent_id)
         msg = f"Unknown tool: {tool_name!r}"
+        logger.warning(
+            MEMORY_RETRIEVAL_DEGRADED,
+            source="handle_tool_call",
+            agent_id=agent_id,
+            tool_name=tool_name,
+            error=msg,
+        )
         raise ValueError(msg)
 
     async def _handle_search(
@@ -340,6 +352,17 @@ class ToolBasedInjectionStrategy:
         if not memory_id or not str(memory_id).strip():
             return "Error: memory_id is required."
 
+        memory_id = str(memory_id).strip()
+        if len(memory_id) > _MAX_MEMORY_ID_LEN:
+            return "Error: memory_id exceeds maximum allowed length."
+
+        logger.info(
+            MEMORY_RETRIEVAL_START,
+            agent_id=agent_id,
+            tool=RECALL_MEMORY_TOOL_NAME,
+            memory_id=memory_id,
+        )
+
         try:
             entry = await self._backend.get(
                 NotBlankStr(agent_id),
@@ -366,8 +389,16 @@ class ToolBasedInjectionStrategy:
             )
             return RECALL_UNEXPECTED
 
+        logger.info(
+            MEMORY_RETRIEVAL_COMPLETE,
+            agent_id=agent_id,
+            tool=RECALL_MEMORY_TOOL_NAME,
+            found=entry is not None,
+        )
+
         if entry is None:
-            return f"Memory not found: {memory_id}"
+            safe_id = memory_id[:64]
+            return f"{RECALL_NOT_FOUND_PREFIX} {safe_id}"
 
         return _format_entries((entry,))
 
