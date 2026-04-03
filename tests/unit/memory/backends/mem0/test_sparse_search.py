@@ -179,9 +179,13 @@ class TestSearchSparse:
         call_kwargs = client.query_points.call_args.kwargs
         assert call_kwargs["limit"] == 5
         assert call_kwargs["using"] == "bm25"
-        # Verify user_id filter is present in the query_filter
+        # Verify user_id filter enforces agent isolation
         filter_obj = call_kwargs["query_filter"]
         assert filter_obj is not None
+        assert len(filter_obj.must) == 1
+        condition = filter_obj.must[0]
+        assert condition.key == "user_id"
+        assert condition.match.value == "agent-1"
 
     def test_empty_vector_returns_empty(self) -> None:
         client = MagicMock()
