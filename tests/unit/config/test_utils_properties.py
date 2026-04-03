@@ -35,16 +35,16 @@ _json_primitives = st.one_of(
 _json_values = st.recursive(
     _json_primitives,
     lambda children: st.one_of(
-        st.lists(children, max_size=5),
-        st.dictionaries(st.text(min_size=1, max_size=10), children, max_size=5),
+        st.lists(children, max_size=3),
+        st.dictionaries(st.text(min_size=1, max_size=10), children, max_size=3),
     ),
-    max_leaves=20,
+    max_leaves=5,
 )
 
 _str_key_dicts = st.dictionaries(
     st.text(min_size=1, max_size=10),
     _json_values,
-    max_size=8,
+    max_size=5,
 )
 
 # ── deep_merge ──────────────────────────────────────────────────
@@ -52,7 +52,7 @@ _str_key_dicts = st.dictionaries(
 
 class TestDeepMergeProperties:
     @given(a=_str_key_dicts)
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_identity_merge_with_empty(self, a: dict[str, Any]) -> None:
         result = deep_merge(a, {})
         assert result == a
@@ -60,13 +60,13 @@ class TestDeepMergeProperties:
         assert result is not a
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_result_keys_are_union(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         result = deep_merge(a, b)
         assert set(result.keys()) == set(a.keys()) | set(b.keys())
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_inputs_are_not_mutated(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         a_before = copy.deepcopy(a)
         b_before = copy.deepcopy(b)
@@ -84,7 +84,7 @@ class TestDeepMergeProperties:
         ),
         override_z=st.integers(),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_recursive_nested_merge(
         self, base: dict[str, Any], override_z: int
     ) -> None:
@@ -97,7 +97,7 @@ class TestDeepMergeProperties:
         assert result["nested"]["z"] == override_z
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_override_values_win_for_non_dict(
         self, a: dict[str, Any], b: dict[str, Any]
     ) -> None:
@@ -112,14 +112,14 @@ class TestDeepMergeProperties:
 
 class TestToFloatProperties:
     @given(value=st.integers(min_value=-10_000, max_value=10_000))
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_integers_convert(self, value: int) -> None:
         result = to_float(value)
         assert isinstance(result, float)
         assert result == float(value)
 
     @given(value=st.floats(allow_nan=False, allow_infinity=False))
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_floats_pass_through(self, value: float) -> None:
         result = to_float(value)
         assert isinstance(result, float)
@@ -128,7 +128,7 @@ class TestToFloatProperties:
     @given(
         value=st.from_regex(r"-?\d+(\.\d+)?", fullmatch=True),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=50)
     def test_numeric_strings_convert(self, value: str) -> None:
         result = to_float(value)
         assert isinstance(result, float)

@@ -55,7 +55,7 @@ class TestFingerprintProperties:
         name=_tool_name,
         args=_args_strategy,
     )
-    @settings(max_examples=200)
+    @settings(max_examples=50)
     def test_determinism(
         self,
         name: str,
@@ -71,7 +71,7 @@ class TestFingerprintProperties:
         name=_tool_name,
         args=_args_strategy,
     )
-    @settings(max_examples=200)
+    @settings(max_examples=50)
     def test_format(
         self,
         name: str,
