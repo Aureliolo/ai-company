@@ -261,7 +261,8 @@ class WorkflowController(Controller):
         updates["version"] = existing.version + 1
 
         try:
-            updated = existing.model_copy(update=updates)
+            merged = existing.model_dump() | updates
+            updated = WorkflowDefinition.model_validate(merged)
         except (ValueError, ValidationError) as exc:
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,

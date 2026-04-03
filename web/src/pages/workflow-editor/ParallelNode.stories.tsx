@@ -8,7 +8,7 @@ const nodeTypes = { parallel_split: ParallelSplitNode, parallel_join: ParallelJo
 function Wrapper({ nodes }: { nodes: Node[] }) {
   return (
     <ReactFlowProvider>
-      <div style={{ width: 300, height: 200 }}>
+      <div className="h-52 w-80">
         <ReactFlow
           nodes={nodes}
           edges={[]}

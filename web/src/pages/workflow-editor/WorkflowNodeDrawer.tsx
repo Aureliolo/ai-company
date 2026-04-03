@@ -5,6 +5,39 @@ import { SelectField } from '@/components/ui/select-field'
 import { NODE_CONFIG_SCHEMAS, type ConfigField } from './node-config-schemas'
 import type { WorkflowNodeType } from '@/api/types'
 
+interface FieldRendererProps {
+  field: ConfigField
+  value: string
+  onChange: (key: string, value: string, fieldType?: string) => void
+}
+
+function FieldRenderer({ field, value, onChange }: FieldRendererProps) {
+  if (field.type === 'select' && field.options) {
+    return (
+      <SelectField
+        label={field.label}
+        value={value}
+        onChange={(v) => onChange(field.key, v)}
+        placeholder={field.placeholder}
+        options={[
+          { value: '', label: '-- Select --' },
+          ...field.options.map((opt) => ({ value: opt.value, label: opt.label })),
+        ]}
+      />
+    )
+  }
+
+  return (
+    <InputField
+      label={field.label}
+      value={value}
+      onValueChange={(v) => onChange(field.key, v, field.type)}
+      placeholder={field.placeholder}
+      type={field.type === 'number' ? 'number' : 'text'}
+    />
+  )
+}
+
 export interface WorkflowNodeDrawerProps {
   open: boolean
   onClose: () => void
@@ -52,36 +85,14 @@ export function WorkflowNodeDrawer({
           ID: {nodeId}
         </div>
 
-        {fields.map((field: ConfigField) => {
-          const value = String(config[field.key] ?? '')
-
-          if (field.type === 'select' && field.options) {
-            return (
-              <SelectField
-                key={field.key}
-                label={field.label}
-                value={value}
-                onChange={(v) => handleFieldChange(field.key, v)}
-                placeholder={field.placeholder}
-                options={[
-                  { value: '', label: '-- Select --' },
-                  ...field.options.map((opt) => ({ value: opt.value, label: opt.label })),
-                ]}
-              />
-            )
-          }
-
-          return (
-            <InputField
-              key={field.key}
-              label={field.label}
-              value={value}
-              onValueChange={(v) => handleFieldChange(field.key, v, field.type)}
-              placeholder={field.placeholder}
-              type={field.type === 'number' ? 'number' : 'text'}
-            />
-          )
-        })}
+        {fields.map((field: ConfigField) => (
+          <FieldRenderer
+            key={field.key}
+            field={field}
+            value={String(config[field.key] ?? '')}
+            onChange={handleFieldChange}
+          />
+        ))}
 
         {fields.length === 0 && (
           <div className="text-sm text-muted-foreground">

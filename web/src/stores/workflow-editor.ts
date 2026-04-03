@@ -129,7 +129,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         id: e.id,
         source: e.source_node_id,
         target: e.target_node_id,
-        type: e.type === 'conditional_true' || e.type === 'conditional_false' ? 'conditional' : 'sequential',
+        type: e.type === 'conditional_true' || e.type === 'conditional_false' ? 'conditional' : e.type === 'parallel_branch' ? 'parallel_branch' : 'sequential',
         sourceHandle: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined,
         data: { edgeType: e.type, branch: e.type === 'conditional_true' ? 'true' : e.type === 'conditional_false' ? 'false' : undefined },
         label: e.label ?? undefined,

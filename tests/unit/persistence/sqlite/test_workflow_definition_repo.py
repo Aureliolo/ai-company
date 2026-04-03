@@ -15,6 +15,7 @@ from synthorg.engine.workflow.definition import (
     WorkflowEdge,
     WorkflowNode,
 )
+from synthorg.persistence.errors import QueryError
 from synthorg.persistence.sqlite.workflow_definition_repo import (
     SQLiteWorkflowDefinitionRepository,
 )
@@ -174,12 +175,13 @@ class TestSQLiteWorkflowDefinitionRepository:
         defn_v1 = _make_definition(version=1)
         await repo.save(defn_v1)
 
-        # Attempt to save version 3 (skipping 2) -- should be rejected
+        # Attempt to save version 3 (skipping 2) -- should raise
         defn_v3 = _make_definition(
             name="Skipped version",
             version=3,
         )
-        await repo.save(defn_v3)
+        with pytest.raises(QueryError, match="Version conflict"):
+            await repo.save(defn_v3)
 
         # Original version 1 should still be stored
         result = await repo.get("wf-001")

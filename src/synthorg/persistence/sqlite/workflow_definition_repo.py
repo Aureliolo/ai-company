@@ -119,7 +119,7 @@ class SQLiteWorkflowDefinitionRepository:
             [e.model_dump(mode="json") for e in definition.edges],
         )
         try:
-            await self._db.execute(
+            cursor = await self._db.execute(
                 """\
 INSERT INTO workflow_definitions
     (id, name, description, workflow_type, nodes, edges,
@@ -147,6 +147,19 @@ WHERE workflow_definitions.version = excluded.version - 1""",
                     definition.version,
                 ),
             )
+            if cursor.rowcount == 0 and definition.version > 1:
+                await self._db.rollback()
+                msg = (
+                    f"Version conflict saving workflow definition"
+                    f" {definition.id!r}: expected version"
+                    f" {definition.version - 1}, not found"
+                )
+                logger.warning(
+                    PERSISTENCE_WORKFLOW_DEF_SAVE_FAILED,
+                    definition_id=definition.id,
+                    error=msg,
+                )
+                raise QueryError(msg)
             await self._db.commit()
         except sqlite3.Error as exc:
             msg = f"Failed to save workflow definition {definition.id!r}"

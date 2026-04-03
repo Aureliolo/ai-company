@@ -316,7 +316,7 @@ CREATE TABLE IF NOT EXISTS workflow_definitions (
     created_by TEXT NOT NULL CHECK(length(created_by) > 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1
+    version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wd_workflow_type
