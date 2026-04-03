@@ -216,7 +216,13 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       })
       set({ definition: updatedDef, saving: false, dirty: false, validationResult: null })
     } catch (err) {
-      set({ saving: false, error: getErrorMessage(err) })
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 409 && definition) {
+        set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
+        await get().loadDefinition(definition.id)
+      } else {
+        set({ saving: false, error: getErrorMessage(err) })
+      }
     }
   },
 

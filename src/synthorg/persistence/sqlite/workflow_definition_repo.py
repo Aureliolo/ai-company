@@ -280,7 +280,6 @@ WHERE workflow_definitions.version = excluded.version - 1""",
         Raises:
             QueryError: If the database operation fails.
         """
-        cursor = None
         try:
             cursor = await self._db.execute(
                 "DELETE FROM workflow_definitions WHERE id = ?",
@@ -296,7 +295,7 @@ WHERE workflow_definitions.version = excluded.version - 1""",
             )
             raise QueryError(msg) from exc
 
-        deleted = cursor is not None and cursor.rowcount > 0
+        deleted = cursor.rowcount > 0
         logger.info(
             PERSISTENCE_WORKFLOW_DEF_DELETED,
             definition_id=definition_id,
