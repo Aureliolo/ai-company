@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { createLogger } from '@/lib/logger'
-import { ReactFlow, ReactFlowProvider, Background, type Node } from '@xyflow/react'
+import { ReactFlow, ReactFlowProvider, Background, MiniMap, type Node } from '@xyflow/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Workflow } from 'lucide-react'
 import { useSearchParams } from 'react-router'
@@ -245,6 +245,31 @@ function WorkflowEditorInner() {
           proOptions={{ hideAttribution: true }}
         >
           <Background color="var(--color-border)" gap={24} size={1} />
+          <MiniMap
+            position="bottom-right"
+            pannable
+            zoomable
+            style={{ backgroundColor: 'var(--so-bg-surface)' }}
+            maskColor="var(--so-bg-overlay)"
+            nodeColor={(node) => {
+              switch (node.type) {
+                case 'start':
+                case 'end':
+                  return 'var(--so-accent)'
+                case 'task':
+                  return 'var(--so-info)'
+                case 'conditional':
+                  return 'var(--so-warning)'
+                case 'parallel_split':
+                case 'parallel_join':
+                  return 'var(--so-success)'
+                case 'agent_assignment':
+                  return 'var(--so-purple)'
+                default:
+                  return 'var(--so-text-muted)'
+              }
+            }}
+          />
         </ReactFlow>
 
         {/* ARIA live region for editor actions */}
