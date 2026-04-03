@@ -245,6 +245,10 @@ def registry_with_memory_tools(
         )
     except MemoryError, RecursionError:
         raise
+    except ValueError:
+        # Configuration errors (duplicate names, reserved collisions)
+        # are programming bugs -- let them propagate.
+        raise
     except Exception as exc:
         logger.warning(
             TOOL_MEMORY_AUGMENTATION_FAILED,

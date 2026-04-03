@@ -529,23 +529,21 @@ class TestRegistryWithMemoryTools:
         assert "search_memory" in names
         assert "recall_memory" in names
 
-    def test_graceful_degradation_on_duplicate(self) -> None:
-        """Duplicate tool names return original registry instead of crashing."""
+    def test_duplicate_names_raise_value_error(self) -> None:
+        """Duplicate tool names are a config error and must propagate."""
         strategy = _make_strategy()
-        # First augmentation
         augmented = registry_with_memory_tools(
             _make_empty_registry(),
             strategy,
             agent_id="agent-1",
         )
-        # Second augmentation with same tools -- would cause duplicate names
-        result = registry_with_memory_tools(
-            augmented,
-            strategy,
-            agent_id="agent-1",
-        )
-        # Should degrade gracefully, returning original
-        assert result is augmented
+        # Second augmentation with same tools -- duplicate names
+        with pytest.raises(ValueError, match="Duplicate tool name"):
+            registry_with_memory_tools(
+                augmented,
+                strategy,
+                agent_id="agent-1",
+            )
 
 
 # -- _is_error_response direct tests ----------------------------------------
