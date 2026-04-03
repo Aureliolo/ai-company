@@ -136,7 +136,7 @@ def _validate_optional_fields(
                 got=type(ceremony_policy).__name__,
             )
             raise TemplateRenderError(msg)
-        dept_dict["ceremony_policy"] = copy.deepcopy(ceremony_policy)
+        dept_dict["ceremony_policy"] = ceremony_policy
 
 
 def _handle_dept_remove(

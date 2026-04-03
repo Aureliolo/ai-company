@@ -259,6 +259,24 @@ class TestDepartment:
         assert dept.ceremony_policy is not None
         assert dept.ceremony_policy["transition_threshold"] == 0.8
 
+    def test_ceremony_policy_is_defensively_copied(self) -> None:
+        """Mutating the source dict must not affect the stored policy."""
+        source = {"strategy": "calendar", "cadence": "weekly"}
+        dept = Department(
+            name="marketing",
+            head="head",
+            ceremony_policy=source,
+        )
+
+        # Mutate the original dict
+        source["strategy"] = "task_driven"
+        source["new_key"] = "surprise"
+
+        # Department's copy must be unaffected
+        assert dept.ceremony_policy is not None
+        assert dept.ceremony_policy["strategy"] == "calendar"
+        assert "new_key" not in dept.ceremony_policy
+
 
 # ── CompanyConfig ──────────────────────────────────────────────────
 
