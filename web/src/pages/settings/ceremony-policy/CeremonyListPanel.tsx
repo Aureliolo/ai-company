@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, List } from 'lucide-react'
 import type { CeremonyPolicyConfig, CeremonyStrategyType } from '@/api/types'
 import { InheritToggle } from '@/components/ui/inherit-toggle'
 import { SectionCard } from '@/components/ui/section-card'
-import { CEREMONY_STRATEGY_LABELS } from '@/utils/constants'
+import { CEREMONY_STRATEGY_LABELS, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
 import { cn } from '@/lib/utils'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
@@ -56,7 +56,7 @@ function CeremonyRow({
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
-      onOverrideChange(name, { ...policy, strategy: s })
+      onOverrideChange(name, { ...policy, strategy: s, strategy_config: {} })
     },
     [name, policy, onOverrideChange],
   )
@@ -103,7 +103,7 @@ function CeremonyRow({
                 disabled={saving}
               />
               <PolicyFieldsPanel
-                velocityCalculator={policy?.velocity_calculator ?? 'task_driven'}
+                velocityCalculator={policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy as CeremonyStrategyType]}
                 autoTransition={policy?.auto_transition ?? true}
                 transitionThreshold={policy?.transition_threshold ?? 1.0}
                 onVelocityCalculatorChange={(v) => onOverrideChange(name, { ...policy, velocity_calculator: v })}

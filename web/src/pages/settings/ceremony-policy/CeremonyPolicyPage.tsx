@@ -12,7 +12,7 @@ import { useSettingsData } from '@/hooks/useSettingsData'
 import { useCeremonyPolicyStore } from '@/stores/ceremony-policy'
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
-import { CEREMONY_STRATEGY_TYPES, STRATEGY_DEFAULT_VELOCITY_CALC } from '@/utils/constants'
+import { CEREMONY_STRATEGY_TYPES, STRATEGY_DEFAULT_VELOCITY_CALC, VELOCITY_CALC_TYPES } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { StrategyPicker } from './StrategyPicker'
 import { StrategyChangeWarning } from './StrategyChangeWarning'
@@ -76,9 +76,18 @@ export default function CeremonyPolicyPage() {
     return {
       strategy,
       strategyConfig: config,
-      velocityCalculator: (get('ceremony_velocity_calculator') as VelocityCalcType | undefined)
-        ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy],
-      autoTransition: get('ceremony_auto_transition') !== 'false',
+      velocityCalculator: (() => {
+        const raw = get('ceremony_velocity_calculator') as string | undefined
+        if (raw && VELOCITY_CALC_TYPES.includes(raw as VelocityCalcType)) {
+          return raw as VelocityCalcType
+        }
+        return STRATEGY_DEFAULT_VELOCITY_CALC[strategy]
+      })(),
+      autoTransition: (() => {
+        const raw = get('ceremony_auto_transition') as string | undefined
+        if (raw === undefined) return true
+        return raw.toLowerCase() === 'true'
+      })(),
       transitionThreshold,
       configParseError,
     }
@@ -289,7 +298,7 @@ export default function CeremonyPolicyPage() {
 
         {!loading && storeError && (
           <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
-            Failed to load ceremony policy: {storeError}
+            Failed to load resolved policy: {storeError}
           </div>
         )}
 
@@ -299,7 +308,7 @@ export default function CeremonyPolicyPage() {
           </div>
         )}
 
-        {!loading && !storeError && (
+        {!loading && (
           <>
             {/* Strategy change warning */}
             {activeStrategy?.strategy && strategy !== activeStrategy.strategy && (

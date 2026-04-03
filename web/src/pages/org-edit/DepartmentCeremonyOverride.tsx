@@ -33,7 +33,7 @@ export function DepartmentCeremonyOverride({
   onChange,
   disabled,
 }: DepartmentCeremonyOverrideProps) {
-  const hasOverride = policy != null
+  const hasOverride = policy != null && Object.keys(policy).length > 0
   const [expanded, setExpanded] = useState(hasOverride)
   const prevHasOverrideRef = useRef(hasOverride)
 
