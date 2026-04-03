@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from litestar import Controller, Request, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
@@ -173,7 +173,7 @@ class WorkflowController(Controller):
     @post(guards=[require_write_access])
     async def create_workflow(
         self,
-        request: Request,
+        request: Request[Any, Any, Any],
         state: State,
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
