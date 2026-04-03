@@ -258,7 +258,13 @@ def _extract_metadata(
 
     confidence = metadata_raw.get(f"{_SYNTHORG_PREFIX}confidence", 1.0)
     source = metadata_raw.get(f"{_SYNTHORG_PREFIX}source")
-    tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags", [])
+    tags_raw = metadata_raw.get(f"{_SYNTHORG_PREFIX}tags")
+    if tags_raw is None:
+        tags_raw = ()
+    elif isinstance(tags_raw, str):
+        tags_raw = (tags_raw,)
+    elif not isinstance(tags_raw, list | tuple):
+        tags_raw = ()
     tags = tuple(NotBlankStr(t) for t in tags_raw if t and str(t).strip())
     return category, confidence, source, tags
 

@@ -160,6 +160,11 @@ class TestSearchSparse:
 
         client.query_points.assert_called_once()
         assert len(points) == 1
+        # Verify the sparse vector was forwarded
+        call_kwargs = client.query_points.call_args.kwargs
+        query_arg = call_kwargs["query"]
+        assert list(query_arg.indices) == list(query_vec.indices)
+        assert list(query_arg.values) == list(query_vec.values)
 
     def test_applies_user_id_filter(self) -> None:
         client = MagicMock()

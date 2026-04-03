@@ -188,9 +188,9 @@ class Mem0MemoryBackend:
             self._connected = True
             # Expose the Qdrant client for sparse vector operations.
             if self._mem0_config.sparse_search_enabled:
+                qdrant: Any = None
                 try:
                     qdrant = client.vector_store.client  # pyright: ignore[reportAttributeAccessIssue]
-                    self._qdrant_client = qdrant
                     await async_init_sparse_field(
                         qdrant,
                         self._mem0_config.collection_name,
@@ -199,7 +199,8 @@ class Mem0MemoryBackend:
                     raise
                 except Exception:
                     # Non-fatal: dense search still works.
-                    self._qdrant_client = None
+                    qdrant = None
+                self._qdrant_client = qdrant
             logger.info(MEMORY_BACKEND_CONNECTED, backend="mem0")
 
     async def disconnect(self) -> None:

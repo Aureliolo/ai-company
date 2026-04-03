@@ -488,10 +488,14 @@ class ContextInjectionStrategy:
         if not getattr(self._backend, "supports_sparse_search", False):
             return (), ()
 
+        retrieve_fn = getattr(self._backend, "retrieve_sparse", None)
+        if retrieve_fn is None:
+            return (), ()
+
         # SharedKnowledgeStore does not yet expose retrieve_sparse,
         # so shared sparse is disabled until the protocol is extended.
         personal = await _safe_call(
-            self._backend.retrieve_sparse(agent_id, query),  # type: ignore[attr-defined]
+            retrieve_fn(agent_id, query),
             source="sparse_personal",
             agent_id=agent_id,
         )
