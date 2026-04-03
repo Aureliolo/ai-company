@@ -4,6 +4,7 @@ from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.engine.workflow.ceremony_policy import CeremonyStrategyType
@@ -42,7 +43,7 @@ class TestStrategyMigrationInfo:
             new_strategy=CeremonyStrategyType.HYBRID,
             velocity_history_size=0,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError, match="frozen"):
             info.sprint_id = "modified"  # type: ignore[misc]
 
     @pytest.mark.unit
@@ -180,6 +181,16 @@ class TestFormatMigrationWarning:
         text = format_migration_warning(_sample_info())
         assert "velocity" in text.lower()
 
+    @pytest.mark.unit
+    def test_contains_velocity_history_size(self) -> None:
+        text = format_migration_warning(_sample_info())
+        assert "4" in text
+
+    @pytest.mark.unit
+    def test_mentions_raw_records_preserved(self) -> None:
+        text = format_migration_warning(_sample_info())
+        assert "preserved" in text.lower()
+
 
 class TestFormatReorderPrompt:
     """format_reorder_prompt() tests."""
@@ -193,6 +204,11 @@ class TestFormatReorderPrompt:
     def test_contains_history_size(self) -> None:
         text = format_reorder_prompt(_sample_info())
         assert "4" in text
+
+    @pytest.mark.unit
+    def test_contains_previous_strategy(self) -> None:
+        text = format_reorder_prompt(_sample_info())
+        assert "task_driven" in text
 
 
 # ── notify_strategy_migration ──────────────────────────────────────
@@ -273,6 +289,22 @@ class TestNotifyStrategyMigration:
         messenger.send_message = AsyncMock(side_effect=RecursionError)
         with pytest.raises(RecursionError):
             await notify_strategy_migration(_sample_info(), messenger)
+
+    @pytest.mark.unit
+    async def test_broadcast_content_is_migration_warning(self) -> None:
+        messenger = _make_mock_messenger()
+        info = _sample_info()
+        await notify_strategy_migration(info, messenger)
+        kwargs = messenger.broadcast.call_args.kwargs
+        assert kwargs["content"] == format_migration_warning(info)
+
+    @pytest.mark.unit
+    async def test_send_message_content_is_reorder_prompt(self) -> None:
+        messenger = _make_mock_messenger()
+        info = _sample_info()
+        await notify_strategy_migration(info, messenger)
+        kwargs = messenger.send_message.call_args.kwargs
+        assert kwargs["content"] == format_reorder_prompt(info)
 
     @pytest.mark.unit
     async def test_custom_channel_and_role(self) -> None:

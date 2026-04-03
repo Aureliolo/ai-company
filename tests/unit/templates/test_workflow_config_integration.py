@@ -635,6 +635,11 @@ class TestBuiltinWorkflowConfigs:
     ) -> None:
         """Each builtin template must declare its default velocity calculator."""
         loaded = load_template(name)
+        # Assert raw template YAML declares the field (not just derived)
+        sprint_cfg = loaded.template.workflow_config.get("sprint", {})
+        ceremony_policy = sprint_cfg.get("ceremony_policy", {})
+        assert ceremony_policy.get("velocity_calculator") == expected_calc
+        # Assert rendered config matches
         config = render_template(loaded)
         policy = config.workflow.sprint.ceremony_policy
         assert policy.velocity_calculator == VelocityCalcType(expected_calc)

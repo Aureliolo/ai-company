@@ -6,7 +6,7 @@ a ``StrategyMigrationInfo`` result.  A separate ``notify_strategy_migration()``
 function sends best-effort notifications via the communication system.
 """
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,10 +17,12 @@ from synthorg.engine.workflow.ceremony_policy import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
-    SPRINT_CEREMONY_STRATEGY_CHANGED,
+    SPRINT_CEREMONY_NOTIFICATION_FAILED,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from synthorg.communication.messenger import AgentMessenger
 
 logger = get_logger(__name__)
@@ -41,9 +43,10 @@ class StrategyMigrationInfo(BaseModel):
         sprint_id: The sprint being activated.
         previous_strategy: The outgoing strategy type.
         new_strategy: The incoming strategy type.
-        velocity_history_size: Number of velocity records from the
-            old strategy (retained but no longer used for computed
-            metrics).
+        velocity_history_size: Count of velocity records accumulated
+            under the outgoing strategy.  Used in notification messages
+            to give the responsible role context on how much history is
+            being superseded.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -77,7 +80,7 @@ class StrategyMigrationInfo(BaseModel):
 def detect_strategy_migration(
     previous_strategy_type: CeremonyStrategyType | None,
     new_strategy_type: CeremonyStrategyType,
-    sprint_id: str,
+    sprint_id: NotBlankStr,
     velocity_history_size: int,
 ) -> StrategyMigrationInfo | None:
     """Detect a strategy change between sprints.
@@ -127,9 +130,11 @@ def format_migration_warning(info: StrategyMigrationInfo) -> str:
         f" sprint start and may cause initial ceremony"
         f" optimization issues while the system adapts."
         f" The velocity rolling-average window has been"
-        f" reset ({info.velocity_history_size} prior sprint"
-        f" records from the '{info.previous_strategy.value}'"
-        f" strategy will not carry over)."
+        f" reset -- computed metrics from the"
+        f" {info.velocity_history_size} prior sprint records"
+        f" under '{info.previous_strategy.value}' will not"
+        f" transfer to the new strategy. Raw velocity"
+        f" records are preserved."
     )
 
 
@@ -155,12 +160,37 @@ def format_reorder_prompt(info: StrategyMigrationInfo) -> str:
     )
 
 
+async def _send_best_effort(
+    coro: Awaitable[Any],
+    info: StrategyMigrationInfo,
+    note: str,
+    **extra_context: str,
+) -> None:
+    """Await *coro*; swallow non-fatal errors.
+
+    ``MemoryError`` and ``RecursionError`` propagate.  All other
+    exceptions are logged at WARNING and swallowed.
+    """
+    try:
+        await coro
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            SPRINT_CEREMONY_NOTIFICATION_FAILED,
+            sprint_id=info.sprint_id,
+            note=note,
+            exc_info=True,
+            **extra_context,
+        )
+
+
 async def notify_strategy_migration(
     info: StrategyMigrationInfo,
     messenger: AgentMessenger,
     *,
-    responsible_role: str = "scrum_master",
-    channel: str = "#sprint-team",
+    responsible_role: NotBlankStr = "scrum_master",
+    channel: NotBlankStr = "#sprint-team",
 ) -> None:
     """Send migration notifications via the communication system.
 
@@ -178,37 +208,30 @@ async def notify_strategy_migration(
         messenger: Per-agent messenger facade.
         responsible_role: Agent role to receive the reorder prompt.
         channel: Channel for the reorder prompt message.
+
+    Raises:
+        MemoryError: Re-raised from either messenger call.
+        RecursionError: Re-raised from either messenger call.
     """
-    try:
-        await messenger.broadcast(
+    await _send_best_effort(
+        messenger.broadcast(
             content=format_migration_warning(info),
             message_type=MessageType.ANNOUNCEMENT,
             priority=MessagePriority.HIGH,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            SPRINT_CEREMONY_STRATEGY_CHANGED,
-            sprint_id=info.sprint_id,
-            note="broadcast notification failed",
-            exc_info=True,
-        )
-
-    try:
-        await messenger.send_message(
+        ),
+        info,
+        "broadcast notification failed",
+    )
+    await _send_best_effort(
+        messenger.send_message(
             to=responsible_role,
             channel=channel,
             content=format_reorder_prompt(info),
             message_type=MessageType.TASK_UPDATE,
             priority=MessagePriority.HIGH,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            SPRINT_CEREMONY_STRATEGY_CHANGED,
-            sprint_id=info.sprint_id,
-            note="reorder prompt notification failed",
-            exc_info=True,
-        )
+        ),
+        info,
+        "reorder prompt notification failed",
+        responsible_role=responsible_role,
+        channel=channel,
+    )

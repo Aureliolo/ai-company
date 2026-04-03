@@ -81,19 +81,41 @@ SPRINT_CEREMONY_SCHEDULER_STARTED: str = "workflow.sprint.ceremony_scheduler_sta
 SPRINT_CEREMONY_SCHEDULER_STOPPED: str = "workflow.sprint.ceremony_scheduler_stopped"
 """CeremonyScheduler deactivated."""
 
+SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED: str = (
+    "workflow.sprint.ceremony_deactivation_hook_failed"
+)
+"""on_sprint_deactivated hook raised (teardown continued)."""
+
 SPRINT_CEREMONY_BRIDGE_CREATED: str = "workflow.sprint.ceremony_bridge_created"
 """Sprint ceremony config bridged to meeting type config."""
 
 SPRINT_CEREMONY_POLICY_RESOLVED: str = "workflow.sprint.ceremony_policy_resolved"
 """3-level ceremony policy resolution completed."""
 
+SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT: str = (
+    "workflow.sprint.ceremony_policy_config_conflict"
+)
+"""Ceremony policy has conflicting configuration (e.g. threshold set but
+auto-transition disabled)."""
+
 SPRINT_CEREMONY_STRATEGY_CHANGED: str = "workflow.sprint.ceremony_strategy_changed"
 """Ceremony scheduling strategy changed between sprints."""
+
+SPRINT_CEREMONY_NOTIFICATION_FAILED: str = (
+    "workflow.sprint.ceremony_notification_failed"
+)
+"""Strategy migration notification delivery failed (swallowed)."""
 
 SPRINT_CEREMONY_SCHEDULER_START_FAILED: str = (
     "workflow.sprint.ceremony_scheduler_start_failed"
 )
 """CeremonyScheduler activation failed (cleanup executed)."""
+
+SPRINT_CEREMONY_STRATEGY_HOOK_FAILED: str = (
+    "workflow.sprint.ceremony_strategy_hook_failed"
+)
+"""Strategy lifecycle hook (on_task_completed) failed -- ceremony
+evaluation skipped for this cycle."""
 
 SPRINT_CEREMONY_TRIGGER_FAILED: str = "workflow.sprint.ceremony_trigger_failed"
 """Ceremony trigger_event call failed (swallowed)."""

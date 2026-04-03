@@ -493,3 +493,40 @@ class TestCeremonySchedulerStrategyMigration:
                 config,
                 FailingCalendarStrategy(),
             )
+
+    @pytest.mark.unit
+    async def test_strategy_after_failed_activation_is_cleared(self) -> None:
+        """After a failed activation, the next activation is first-time."""
+        scheduler = CeremonyScheduler(
+            meeting_scheduler=_make_mock_meeting_scheduler(),
+        )
+        config = _make_config()
+        await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            TaskDrivenStrategy(),
+        )
+
+        class FailingCalendarStrategy(CalendarStrategy):
+            async def on_sprint_activated(
+                self,
+                sprint: Sprint,
+                config: SprintConfig,
+            ) -> None:
+                msg = "fail"
+                raise RuntimeError(msg)
+
+        with pytest.raises(RuntimeError):
+            await scheduler.activate_sprint(
+                _make_sprint(),
+                config,
+                FailingCalendarStrategy(),
+            )
+
+        # After failure, next activation is treated as first-time.
+        result = await scheduler.activate_sprint(
+            _make_sprint(),
+            config,
+            CalendarStrategy(),
+        )
+        assert result is None

@@ -613,7 +613,10 @@ When the ceremony strategy changes between sprints:
 
 - The velocity rolling-average window **resets** (previous records used a
   different unit/calculation).
-- A warning is logged: "insufficient velocity history for new strategy."
+- A strategy change is logged at INFO level using the
+  `SPRINT_CEREMONY_STRATEGY_CHANGED` event.  The velocity
+  rolling-average window resets; prior records are preserved but
+  their computed metrics no longer carry over.
 - Historical `VelocityRecord` data is preserved (raw dimensions are always
   stored). Only the _computed_ velocity resets.
 
@@ -735,7 +738,7 @@ Event constants in `synthorg.observability.events.workflow`:
 
 ### Shipped in #978 (Strategy Migration UX)
 
-- `StrategyMigrationInfo` frozen model (sprint_id, previous/new strategy, velocity_window_reset, history size)
+- `StrategyMigrationInfo` frozen model (sprint_id, previous/new strategy, velocity_history_size)
 - `detect_strategy_migration()` pure function for change detection
 - `format_migration_warning()` and `format_reorder_prompt()` pure text formatters
 - `notify_strategy_migration()` async best-effort notification via `AgentMessenger`

@@ -20,6 +20,7 @@ from synthorg.engine.workflow.ceremony_policy import (
     TRIGGER_SPRINT_END,
     TRIGGER_SPRINT_MIDPOINT,
     TRIGGER_SPRINT_START,
+    CeremonyStrategyType,
 )
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 from synthorg.engine.workflow.strategy_migration import (
@@ -29,11 +30,13 @@ from synthorg.engine.workflow.strategy_migration import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
+    SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED,
     SPRINT_CEREMONY_SCHEDULER_START_FAILED,
     SPRINT_CEREMONY_SCHEDULER_STARTED,
     SPRINT_CEREMONY_SCHEDULER_STOPPED,
     SPRINT_CEREMONY_SKIPPED,
     SPRINT_CEREMONY_STRATEGY_CHANGED,
+    SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
     SPRINT_CEREMONY_TRIGGER_FAILED,
     SPRINT_CEREMONY_TRIGGERED,
 )
@@ -138,6 +141,10 @@ class CeremonyScheduler:
         activation fails partway through, the scheduler is
         deactivated to avoid partial state.
 
+        The caller is responsible for invoking
+        ``notify_strategy_migration()`` with the returned info
+        and an ``AgentMessenger`` when migration is detected.
+
         Args:
             sprint: The sprint to activate (should be ACTIVE).
             config: Sprint configuration.
@@ -147,6 +154,14 @@ class CeremonyScheduler:
         Returns:
             Migration info if the strategy type changed from the
             previous sprint, else ``None``.
+
+        Raises:
+            Exception: Any exception from
+                ``strategy.on_sprint_activated()`` or sprint-start
+                ceremony firing propagates after the scheduler is
+                deactivated.  ``MemoryError`` and
+                ``RecursionError`` propagate immediately without
+                cleanup.
         """
         async with self._lock:
             previous_strategy_type = (
@@ -191,21 +206,36 @@ class CeremonyScheduler:
                 ceremony_count=len(config.ceremonies),
             )
 
-            migration = detect_strategy_migration(
+            return self._detect_migration(
                 previous_strategy_type,
-                strategy.strategy_type,
-                sprint.id,
-                len(velocity_history),
+                strategy,
+                sprint,
+                velocity_history,
             )
-            if migration is not None:
-                logger.info(
-                    SPRINT_CEREMONY_STRATEGY_CHANGED,
-                    sprint_id=sprint.id,
-                    previous_strategy=migration.previous_strategy.value,
-                    new_strategy=migration.new_strategy.value,
-                    velocity_history_size=migration.velocity_history_size,
-                )
-            return migration
+
+    def _detect_migration(
+        self,
+        previous_strategy_type: CeremonyStrategyType | None,
+        strategy: CeremonySchedulingStrategy,
+        sprint: Sprint,
+        velocity_history: tuple[VelocityRecord, ...],
+    ) -> StrategyMigrationInfo | None:
+        """Detect and log a strategy migration (if any)."""
+        migration = detect_strategy_migration(
+            previous_strategy_type,
+            strategy.strategy_type,
+            sprint.id,
+            len(velocity_history),
+        )
+        if migration is not None:
+            logger.info(
+                SPRINT_CEREMONY_STRATEGY_CHANGED,
+                sprint_id=sprint.id,
+                previous_strategy=migration.previous_strategy.value,
+                new_strategy=migration.new_strategy.value,
+                velocity_history_size=migration.velocity_history_size,
+            )
+        return migration
 
     async def deactivate_sprint(self) -> None:
         """Stop tracking the current sprint's ceremonies.
@@ -232,11 +262,10 @@ class CeremonyScheduler:
                 raise
             except Exception:
                 logger.exception(
-                    SPRINT_CEREMONY_SCHEDULER_STOPPED,
+                    SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED,
                     sprint_id=(
                         self._active_sprint.id if self._active_sprint else "unknown"
                     ),
-                    note="on_sprint_deactivated hook failed",
                 )
 
         sprint_id = self._active_sprint.id if self._active_sprint else "unknown"
@@ -300,10 +329,11 @@ class CeremonyScheduler:
                 raise
             except Exception:
                 logger.exception(
-                    SPRINT_CEREMONY_SKIPPED,
-                    note="strategy on_task_completed hook failed",
+                    SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
                     task_id=task_id,
+                    sprint_id=sprint.id,
                 )
+                return sprint
             await self._evaluate_ceremonies(sprint)
             await self._check_one_shot_triggers(sprint, context)
             return self._check_auto_transition(sprint, context)

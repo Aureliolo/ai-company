@@ -14,7 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.engine.workflow.velocity_types import VelocityCalcType
 from synthorg.observability import get_logger
-from synthorg.observability.events.workflow import SPRINT_CEREMONY_POLICY_RESOLVED
+from synthorg.observability.events.workflow import (
+    SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT,
+    SPRINT_CEREMONY_POLICY_RESOLVED,
+)
 
 logger = get_logger(__name__)
 
@@ -56,7 +59,6 @@ TRIGGER_SPRINT_PERCENTAGE: str = "sprint_percentage"
 # -- Defaults ----------------------------------------------------------------
 
 _DEFAULT_STRATEGY: CeremonyStrategyType = CeremonyStrategyType.TASK_DRIVEN
-_DEFAULT_VELOCITY_CALC: VelocityCalcType = VelocityCalcType.TASK_DRIVEN
 _DEFAULT_AUTO_TRANSITION: bool = True
 _DEFAULT_TRANSITION_THRESHOLD: float = 1.0
 
@@ -95,7 +97,7 @@ class CeremonyPolicyConfig(BaseModel):
         velocity_calculator: Velocity calculator type.
         auto_transition: Whether to auto-transition sprints.
         transition_threshold: Fraction of tasks complete to trigger
-            auto-transition (0.0--1.0).
+            auto-transition (0.0, 1.0] -- zero excluded.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -163,7 +165,7 @@ class ResolvedCeremonyPolicy(BaseModel):
         """Warn if threshold is set but auto-transition is disabled."""
         if not self.auto_transition and self.transition_threshold != 1.0:
             logger.warning(
-                SPRINT_CEREMONY_POLICY_RESOLVED,
+                SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT,
                 note="transition_threshold is set but auto_transition is disabled",
                 transition_threshold=self.transition_threshold,
             )
@@ -198,10 +200,7 @@ def resolve_ceremony_policy(
     # least specific (first), taking the first non-None value.
     strategy = _resolve_field(layers, "strategy", _DEFAULT_STRATEGY)
     strategy_config: Mapping[str, Any] = _resolve_field(layers, "strategy_config", {})
-    default_vel_calc = STRATEGY_DEFAULT_VELOCITY_CALC.get(
-        strategy,
-        _DEFAULT_VELOCITY_CALC,
-    )
+    default_vel_calc = STRATEGY_DEFAULT_VELOCITY_CALC[strategy]
     velocity_calculator = _resolve_field(
         layers,
         "velocity_calculator",
