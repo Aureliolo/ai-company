@@ -21,7 +21,7 @@ function FocusRestoreWrapper() {
   const [open, setOpen] = React.useState(false)
   return (
     <>
-      <button data-testid="opener" onClick={() => setOpen(true)}>Open</button>
+      <button type="button" data-testid="opener" onClick={() => setOpen(true)}>Open</button>
       <Drawer open={open} onClose={() => setOpen(false)} title="Test">Content</Drawer>
     </>
   )

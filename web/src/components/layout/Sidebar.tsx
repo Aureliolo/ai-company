@@ -262,6 +262,7 @@ function SidebarFooter({
       <div className="flex flex-col gap-1">
         {showCollapseToggle && (
           <button
+            type="button"
             onClick={toggleCollapse}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -279,6 +280,7 @@ function SidebarFooter({
         )}
 
         <button
+          type="button"
           title="Notifications"
           aria-label="Notifications"
           className={SIDEBAR_BUTTON_CLASS}
@@ -291,6 +293,7 @@ function SidebarFooter({
         </button>
 
         <button
+          type="button"
           onClick={openCommandPalette}
           title={`Search (${shortcutKey}+K)`}
           aria-label="Search commands"
@@ -353,6 +356,7 @@ function SidebarFooter({
               </div>
             )}
             <button
+              type="button"
               onClick={logout}
               title="Logout"
               aria-label="Logout"

@@ -87,6 +87,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
     >
       {isTablet && onHamburgerClick && (
         <button
+          type="button"
           onClick={onHamburgerClick}
           aria-label="Open navigation menu"
           aria-expanded={sidebarOverlayOpen}

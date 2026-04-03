@@ -32,6 +32,7 @@ export const DebouncedUpdates: Story = {
     return (
       <div className="space-y-4">
         <button
+          type="button"
           className="rounded bg-accent px-4 py-2 text-sm text-background"
           onClick={() => setCount((c) => c + 1)}
         >

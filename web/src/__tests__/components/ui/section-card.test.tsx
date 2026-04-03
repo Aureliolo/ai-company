@@ -34,7 +34,7 @@ describe('SectionCard', () => {
 
   it('renders action slot when provided', () => {
     render(
-      <SectionCard title="Overview" action={<button>Edit</button>}>
+      <SectionCard title="Overview" action={<button type="button">Edit</button>}>
         Content
       </SectionCard>,
     )

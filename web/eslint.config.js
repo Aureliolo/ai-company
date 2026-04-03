@@ -35,6 +35,21 @@ export default tseslint.config(
       // Rule flags every obj[var] with no data-flow analysis -- too many false
       // positives. Prototype pollution is guarded explicitly at system boundaries.
       'security/detect-object-injection': 'off',
+      // -- eslint-react rules not in recommended-typescript --
+      // Prevent dollar signs from leaking into rendered JSX output
+      '@eslint-react/jsx-no-leaked-dollar': 'error',
+      // Remove unnecessary <></> fragment wrappers
+      '@eslint-react/jsx-no-useless-fragment': 'warn',
+      // Require type attribute on <button> to prevent unintended form submission
+      '@eslint-react/dom-no-missing-button-type': 'warn',
+      // Require rel="noopener" with target="_blank" (security)
+      '@eslint-react/dom-no-unsafe-target-blank': 'error',
+      // Catch duplicate keys in JSX lists
+      '@eslint-react/no-duplicate-key': 'error',
+      // Catch unstable context values that cause unnecessary re-renders
+      '@eslint-react/no-unstable-context-value': 'warn',
+      // Catch unstable default props that cause unnecessary re-renders
+      '@eslint-react/no-unstable-default-props': 'warn',
     },
   },
   {

@@ -28,6 +28,7 @@ function FullScreenError({ onRetry }: { onRetry: () => void }) {
         Failed to check setup status.
       </div>
       <button
+        type="button"
         onClick={onRetry}
         className={
           'rounded-md bg-primary px-4 py-2 text-sm'

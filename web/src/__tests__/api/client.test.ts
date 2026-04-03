@@ -1,4 +1,10 @@
 import type { AxiosResponse } from 'axios'
+import { vi } from 'vitest'
+
+// Mock dev auth bypass OFF so the 401 interceptor actually clears localStorage.
+// Must be hoisted before client.ts imports @/utils/dev at module level.
+vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
+
 import { ApiRequestError, unwrap, unwrapPaginated, unwrapVoid, apiClient } from '@/api/client'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from '@/api/types'
 

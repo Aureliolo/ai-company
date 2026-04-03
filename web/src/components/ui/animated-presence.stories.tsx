@@ -38,6 +38,7 @@ function TransitionDemo() {
       <div className="flex gap-2">
         {pages.map((page, i) => (
           <button
+            type="button"
             key={page.key}
             onClick={() => setIndex(i)}
             className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
