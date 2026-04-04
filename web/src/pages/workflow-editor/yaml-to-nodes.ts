@@ -151,12 +151,17 @@ export function parseYamlToNodesEdges(
   for (let i = 0; i < steps.length; i++) {
     const raw = steps[i]
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-      errors.push(`Step ${i + 1} is not an object (got ${typeof raw})`)
+      const actualType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw
+      errors.push(`Step ${i + 1} is not an object (got ${actualType})`)
       continue
     }
     const step = raw as YamlStep
 
-    // Normalize ID: trim whitespace, treat blank as missing
+    // Validate and normalize ID
+    if (step.id !== undefined && typeof step.id !== 'string') {
+      errors.push(`Step ${i + 1} has non-string id (got ${typeof step.id})`)
+      continue
+    }
     const rawId = typeof step.id === 'string' ? step.id.trim() : ''
     const stepId = rawId || `auto-${++autoIdCounter}`
 
@@ -227,6 +232,9 @@ export function parseYamlToNodesEdges(
     const { step } = validated
 
     // Edges from depends_on
+    if (step.depends_on && !Array.isArray(step.depends_on)) {
+      errors.push(`Step '${stepId}' has non-array depends_on (got ${typeof step.depends_on})`)
+    }
     if (step.depends_on && Array.isArray(step.depends_on)) {
       for (const rawDepId of step.depends_on) {
         if (typeof rawDepId !== 'string' && typeof rawDepId !== 'number') {
@@ -274,6 +282,9 @@ export function parseYamlToNodesEdges(
     }
 
     // Edges from branches (parallel_split)
+    if (step.branches && !Array.isArray(step.branches)) {
+      errors.push(`Step '${stepId}' has non-array branches (got ${typeof step.branches})`)
+    }
     if (step.branches && Array.isArray(step.branches)) {
       for (const rawTarget of step.branches) {
         if (typeof rawTarget !== 'string' && typeof rawTarget !== 'number') {

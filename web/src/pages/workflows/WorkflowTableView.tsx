@@ -77,7 +77,7 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
                   <td className="px-4 py-2.5 text-right text-muted-foreground">{w.edges.length}</td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">v{w.version}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{formatDate(w.updated_at)}</td>
-                  <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-2 py-2.5">
                     <DropdownMenu.Root>
                       <DropdownMenu.Trigger asChild>
                         <button
