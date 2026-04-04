@@ -493,12 +493,18 @@ export function ConditionExpressionBuilder({
         if (!flat) return
         setEntries(toEntries(flat.comparisons))
         setLogicalOperator(flat.logicalOperator)
-        setNegate(false)
-        setSubGroups([])
+        setNegate(flat.negate)
+        setSubGroups(
+          flat.subGroups.map((sg) => ({
+            key: allocKey(),
+            operator: sg.operator,
+            entries: toEntries(sg.comparisons),
+          })),
+        )
       }
       setMode(newMode)
     },
-    [comparisons, logicalOperator, freeText, toEntries, subGroups, negate],
+    [comparisons, logicalOperator, freeText, toEntries, subGroups, negate, allocKey],
   )
 
   return (
@@ -522,6 +528,21 @@ export function ConditionExpressionBuilder({
             checked={negate}
             onChange={setNegate}
           />
+          {/* Show root operator when there are subGroups but only 1 entry */}
+          {entries.length <= 1 && subGroups.length > 0 && (
+            <div className="flex items-center gap-2 pl-1">
+              <SegmentedControl
+                label="Logical operator"
+                value={logicalOperator === 'NOT' ? 'AND' : logicalOperator}
+                onChange={setLogicalOperator}
+                options={[
+                  { value: 'AND' as const, label: 'AND' },
+                  { value: 'OR' as const, label: 'OR' },
+                ]}
+                size="sm"
+              />
+            </div>
+          )}
           {entries.map((entry, index) => (
             <ConditionRow
               key={entry.key}

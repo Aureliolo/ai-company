@@ -14,7 +14,7 @@ interface WorkflowTableViewProps {
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

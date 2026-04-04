@@ -81,9 +81,9 @@ function edgeTypeToVisualType(edgeType: WorkflowEdgeType): string {
 /**
  * Infer the edge type from the source step's type and branch index.
  *
- * NOTE: Conditional branch assignment (true vs false) is based on
- * declaration order in depends_on, which can flip if the user
- * reorders steps in YAML.  A future improvement would store
+ * NOTE (#1060): Conditional branch assignment (true vs false) is
+ * based on declaration order in depends_on, which can flip if the
+ * user reorders steps in YAML.  A future improvement would store
  * explicit branch metadata in the YAML schema (e.g.
  * `{ id: "stepA", branch: "true" }`).
  */
@@ -146,13 +146,27 @@ export function parseYamlToNodesEdges(
   const stepMap = new Map<string, ValidatedStep>()
   let autoIdCounter = 0
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i] as YamlStep | undefined
-    if (!step) continue
-    const stepId = step.id ?? `auto-${++autoIdCounter}`
+  const RESERVED_IDS = new Set(['start-1', 'end-1'])
 
-    if (!step.id) {
+  for (let i = 0; i < steps.length; i++) {
+    const raw = steps[i]
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      errors.push(`Step ${i + 1} is not an object (got ${typeof raw})`)
+      continue
+    }
+    const step = raw as YamlStep
+
+    // Normalize ID: trim whitespace, treat blank as missing
+    const rawId = typeof step.id === 'string' ? step.id.trim() : ''
+    const stepId = rawId || `auto-${++autoIdCounter}`
+
+    if (!rawId) {
       warnings.push(`Step ${i + 1} has no id, auto-generated: ${stepId}`)
+    }
+
+    if (RESERVED_IDS.has(stepId)) {
+      errors.push(`Step ${i + 1} uses reserved id "${stepId}"`)
+      continue
     }
 
     if (seenIds.has(stepId)) {
@@ -207,6 +221,7 @@ export function parseYamlToNodesEdges(
   // Track how many depends_on edges each conditional source has
   // emitted so we can alternate true/false branches.
   const conditionalBranchCounters = new Map<string, number>()
+  const emittedEdges = new Set<string>()
 
   for (const [stepId, validated] of stepMap) {
     const { step } = validated
@@ -227,6 +242,10 @@ export function parseYamlToNodesEdges(
         if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
           conditionalBranchCounters.set(depId, branchIdx + 1)
         }
+
+        const edgeKey = `${depId}->${stepId}:${edgeType}`
+        if (emittedEdges.has(edgeKey)) continue
+        emittedEdges.add(edgeKey)
 
         const visualType = edgeTypeToVisualType(edgeType)
         const isTrue = edgeType === 'conditional_true'
@@ -256,6 +275,10 @@ export function parseYamlToNodesEdges(
         }
 
         const edgeType: WorkflowEdgeType = 'parallel_branch'
+        const edgeKey = `${stepId}->${branchTarget}:${edgeType}`
+        if (emittedEdges.has(edgeKey)) continue
+        emittedEdges.add(edgeKey)
+
         edges.push({
           id: `edge-${stepId}-${branchTarget}`,
           source: stepId,
