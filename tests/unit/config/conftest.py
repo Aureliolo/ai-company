@@ -25,6 +25,7 @@ from synthorg.core.company import CompanyConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.workflow.config import WorkflowConfig
+from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -101,6 +102,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     security = SecurityConfig()
     trust = TrustConfig()
     promotion = PromotionConfig()
+    performance = PerformanceConfig()
     coordination = CoordinationSectionConfig()
     backup = BackupConfig()
     workflow = WorkflowConfig()

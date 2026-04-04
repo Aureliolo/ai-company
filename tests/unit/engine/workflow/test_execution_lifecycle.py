@@ -108,6 +108,18 @@ class FakeExecutionRepo:
             copy.deepcopy(e) for e in self._store.values() if e.status == status
         )
 
+    async def find_by_task_id(
+        self,
+        task_id: str,
+    ) -> WorkflowExecution | None:
+        for execution in self._store.values():
+            if execution.status != WorkflowExecutionStatus.RUNNING:
+                continue
+            for ne in execution.node_executions:
+                if ne.task_id == task_id:
+                    return copy.deepcopy(execution)
+        return None
+
     async def delete(self, execution_id: str) -> bool:
         return self._store.pop(execution_id, None) is not None
 

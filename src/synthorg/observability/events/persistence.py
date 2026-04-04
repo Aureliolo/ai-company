@@ -291,3 +291,9 @@ PERSISTENCE_WORKFLOW_EXEC_DELETE_FAILED: Final[str] = (
 PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED: Final[str] = (
     "persistence.workflow_exec.deserialize_failed"
 )
+PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK: Final[str] = (
+    "persistence.workflow_exec.found_by_task"
+)
+PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED: Final[str] = (
+    "persistence.workflow_exec.find_by_task_failed"
+)

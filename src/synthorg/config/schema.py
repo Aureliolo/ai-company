@@ -25,6 +25,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
+from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -89,12 +90,12 @@ class ProviderModelConfig(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens in USD (base currency)",
+        description="Cost per 1k input tokens (base currency)",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens in USD (base currency)",
+        description="Cost per 1k output tokens (base currency)",
     )
     max_context: int = Field(
         default=200_000,
@@ -181,7 +182,7 @@ class ProviderConfig(BaseModel):
     subscription_token: NotBlankStr | None = Field(
         default=None,
         repr=False,
-        description="OAuth bearer token for subscription-based auth",
+        description="Bearer token for subscription-based auth",
     )
     tos_accepted_at: AwareDatetime | None = Field(
         default=None,
@@ -563,6 +564,8 @@ class RootConfig(BaseModel):
         security: Security subsystem configuration.
         trust: Progressive trust configuration.
         promotion: Promotion/demotion configuration.
+        performance: Performance tracking configuration (quality judge,
+            CI/LLM weights, trend thresholds).
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
         git_clone: Git clone SSRF prevention network policy.
@@ -674,6 +677,10 @@ class RootConfig(BaseModel):
     promotion: PromotionConfig = Field(
         default_factory=PromotionConfig,
         description="Promotion/demotion configuration",
+    )
+    performance: PerformanceConfig = Field(
+        default_factory=PerformanceConfig,
+        description="Performance tracking configuration",
     )
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,

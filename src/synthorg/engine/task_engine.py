@@ -1,13 +1,9 @@
 """Centralized single-writer task engine.
 
 Owns all task state mutations via an ``asyncio.Queue``.  A single
-background task consumes mutation requests sequentially, derives a new
-``Task`` instance from the current state and the mutation (e.g. via
-``Task.model_validate`` / ``Task.with_transition``), persists the result,
-and publishes snapshots to the message bus.
-
-Reads bypass the queue and go directly to persistence -- this is safe
-because the TaskEngine is the only writer.
+background task processes mutations sequentially, persists results,
+and publishes snapshots.  Reads bypass the queue (safe: single writer).
+Observer notifications are dispatched via a separate background queue.
 """
 
 import asyncio
@@ -57,7 +53,9 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
+    TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
     TASK_ENGINE_OBSERVER_FAILED,
+    TASK_ENGINE_OBSERVER_QUEUE_FULL,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
     TASK_ENGINE_STARTED,
@@ -92,10 +90,10 @@ class _MutationEnvelope:
 class TaskEngine:
     """Centralized single-writer for all task state mutations.
 
-    Uses an actor-like pattern: a single background ``asyncio.Task``
-    consumes ``TaskMutation`` requests from an ``asyncio.Queue``,
-    applies each mutation sequentially, persists the result, and
-    publishes state-change snapshots.
+    Actor-like pattern: mutations are queued, processed sequentially,
+    persisted, and published.  Observer notifications are dispatched
+    via a separate background queue so slow observers never block
+    the mutation pipeline.
 
     Args:
         persistence: Backend for task storage.
@@ -122,6 +120,10 @@ class TaskEngine:
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
+        self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
+            maxsize=self._config.effective_observer_queue_size,
+        )
+        self._observer_task: asyncio.Task[None] | None = None
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -134,11 +136,7 @@ class TaskEngine:
         self,
         callback: Callable[[TaskStateChanged], Awaitable[None]],
     ) -> None:
-        """Register an observer for successful task mutations.
-
-        Observers are called after each successful mutation with a
-        ``TaskStateChanged`` event.  Errors in observers are logged
-        and swallowed (best-effort).
+        """Register a best-effort observer for successful task mutations.
 
         Args:
             callback: Async callable receiving the event.
@@ -162,20 +160,20 @@ class TaskEngine:
             self._processing_loop(),
             name="task-engine-loop",
         )
+        self._observer_task = asyncio.create_task(
+            self._observer_dispatch_loop(),
+            name="task-engine-observer-dispatcher",
+        )
         logger.info(
             TASK_ENGINE_STARTED,
             max_queue_size=self._config.max_queue_size,
         )
 
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
-        """Stop the engine and drain pending mutations.
-
-        Acquires ``_lifecycle_lock`` to prevent a race with ``submit()``
-        where an envelope is enqueued after the processing loop exits.
+        """Stop the engine and drain pending mutations and observer events.
 
         Args:
-            timeout: Seconds to wait for drain.  Defaults to
-                ``config.drain_timeout_seconds``.
+            timeout: Seconds to wait for drain (default: config value).
         """
         async with self._lifecycle_lock:
             if not self._running:
@@ -184,51 +182,81 @@ class TaskEngine:
         effective_timeout = (
             timeout if timeout is not None else self._config.drain_timeout_seconds
         )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + effective_timeout
 
-        if self._processing_task is not None:
-            logger.info(
-                TASK_ENGINE_DRAIN_START,
-                pending=self._queue.qsize(),
-                timeout_seconds=effective_timeout,
+        await self._drain_processing(effective_timeout)
+        # Signal the observer loop that no more events will arrive.
+        # Bounded by remaining budget -- if the queue is full and the
+        # dispatcher is stuck, we skip the sentinel and let
+        # _drain_observer cancel the observer task on timeout.
+        remaining = max(0.0, deadline - loop.time())
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                self._observer_queue.put(None),
+                timeout=remaining,
             )
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(self._processing_task),
-                    timeout=effective_timeout,
-                )
-                logger.info(TASK_ENGINE_DRAIN_COMPLETE)
-            except TimeoutError:
-                logger.warning(
-                    TASK_ENGINE_DRAIN_TIMEOUT,
-                    remaining=self._queue.qsize(),
-                )
-                # Capture in-flight ref before cancel -- the finally block
-                # in _process_one clears self._in_flight on CancelledError.
-                saved_in_flight = self._in_flight
-                self._processing_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await self._processing_task
-                self._fail_remaining_futures(saved_in_flight)
-            except BaseException:
-                self._fail_remaining_futures(self._in_flight)
-                raise
-            finally:
-                self._processing_task = None
+        observer_budget = max(0.0, deadline - loop.time())
+        await self._drain_observer(observer_budget)
 
         logger.info(TASK_ENGINE_STOPPED)
+
+    async def _drain_processing(self, budget: float) -> None:
+        """Drain the mutation processing loop within *budget* seconds."""
+        if self._processing_task is None:
+            return
+        logger.info(
+            TASK_ENGINE_DRAIN_START,
+            pending=self._queue.qsize(),
+            timeout_seconds=budget,
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._processing_task),
+                timeout=budget,
+            )
+            logger.info(TASK_ENGINE_DRAIN_COMPLETE)
+        except TimeoutError:
+            logger.warning(
+                TASK_ENGINE_DRAIN_TIMEOUT,
+                remaining=self._queue.qsize(),
+            )
+            saved_in_flight = self._in_flight
+            self._processing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._processing_task
+            self._fail_remaining_futures(saved_in_flight)
+        except BaseException:
+            self._fail_remaining_futures(self._in_flight)
+            raise
+        finally:
+            self._processing_task = None
+
+    async def _drain_observer(self, budget: float) -> None:
+        """Drain the observer dispatch loop within *budget* seconds."""
+        if self._observer_task is None:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._observer_task),
+                timeout=budget,
+            )
+        except TimeoutError:
+            logger.warning(
+                TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
+                remaining=self._observer_queue.qsize(),
+            )
+            self._observer_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._observer_task
+        finally:
+            self._observer_task = None
 
     def _fail_remaining_futures(
         self,
         saved_in_flight: _MutationEnvelope | None = None,
     ) -> None:
-        """Fail in-flight and remaining enqueued futures after drain timeout.
-
-        Args:
-            saved_in_flight: In-flight envelope captured before task
-                cancellation -- needed because ``_process_one``'s
-                ``finally`` block clears ``self._in_flight`` on
-                ``CancelledError``.
-        """
+        """Fail in-flight and queued futures after drain timeout."""
         shutdown_result_for = self._shutdown_result
         failed_count = 0
         in_flight = saved_in_flight if saved_in_flight is not None else self._in_flight
@@ -268,10 +296,6 @@ class TaskEngine:
 
     async def submit(self, mutation: TaskMutation) -> TaskMutationResult:
         """Submit a mutation and await its result.
-
-        Acquires ``_lifecycle_lock`` to prevent a race between
-        ``submit()`` and ``stop()`` where an envelope could be enqueued
-        after the processing loop has already drained and exited.
 
         Args:
             mutation: The mutation to apply.
@@ -617,23 +641,16 @@ class TaskEngine:
     # -- Background processing ---------------------------------------------
 
     _MAX_LIST_RESULTS: int = 10_000
-    """Safety cap on ``list_tasks`` results to bound memory usage.
-
-    Real pagination should be pushed into the persistence layer.
-    """
+    """Safety cap on ``list_tasks`` results (pagination TODO)."""
 
     _POLL_INTERVAL_SECONDS: float = 0.5
-    """How often the processing loop checks for ``_running = False``."""
+    """How often background loops check for shutdown."""
 
     _SNAPSHOT_SENDER: str = "task-engine"
-    """Sender identity used in snapshot ``Message`` envelopes."""
+    """Sender identity for snapshot ``Message`` envelopes."""
 
     _SNAPSHOT_CHANNEL: str = "tasks"
-    """Message bus channel for snapshot publication.
-
-    Must match ``CHANNEL_TASKS`` in ``api.channels`` so that events
-    reach the MessageBusBridge and WebSocket consumers.
-    """
+    """Snapshot channel (must match ``CHANNEL_TASKS`` in ``api.channels``)."""
 
     async def _processing_loop(self) -> None:
         """Background loop: dequeue and process mutations sequentially.
@@ -711,7 +728,16 @@ class TaskEngine:
                         channel=self._SNAPSHOT_CHANNEL,
                     )
                 if self._observers:
-                    await self._notify_observers(event)
+                    try:
+                        self._observer_queue.put_nowait(event)
+                    except asyncio.QueueFull:
+                        logger.warning(
+                            TASK_ENGINE_OBSERVER_QUEUE_FULL,
+                            request_id=event.request_id,
+                            task_id=event.task_id,
+                            mutation_type=event.mutation_type,
+                            queue_size=self._observer_queue.qsize(),
+                        )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -735,6 +761,39 @@ class TaskEngine:
             self._in_flight = None
 
     # -- Event building & notification ------------------------------------
+
+    async def _observer_dispatch_loop(self) -> None:
+        """Background loop: dequeue and dispatch observer events.
+
+        Mirrors ``_processing_loop`` but for observer notifications.
+        Exits when a ``None`` sentinel is dequeued (placed by
+        ``stop()`` after the processing loop finishes).
+        """
+        while True:
+            try:
+                event = await asyncio.wait_for(
+                    self._observer_queue.get(),
+                    timeout=self._POLL_INTERVAL_SECONDS,
+                )
+            except TimeoutError:
+                continue
+            if event is None:
+                self._observer_queue.task_done()
+                break  # sentinel -- processing loop is done
+            try:
+                await self._notify_observers(event)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    TASK_ENGINE_LOOP_ERROR,
+                    error="Unhandled exception in observer dispatch loop",
+                    task_id=event.task_id,
+                    request_id=event.request_id,
+                    mutation_type=event.mutation_type,
+                )
+            finally:
+                self._observer_queue.task_done()
 
     async def _notify_observers(
         self,

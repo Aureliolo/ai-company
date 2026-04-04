@@ -1,5 +1,6 @@
 """Tests for TaskEngine observer mechanism."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -12,6 +13,23 @@ from synthorg.engine.task_engine_models import (
     TaskStateChanged,
     TransitionTaskMutation,
 )
+
+
+async def _flush_observers(engine: TaskEngine, *, budget: float = 1.0) -> None:
+    """Wait for the background observer dispatcher to fully process all events.
+
+    Uses ``queue.join()`` which waits until every dequeued event has
+    been processed (i.e. ``task_done()`` called by the dispatcher).
+
+    Raises:
+        AssertionError: If the queue does not drain within *budget*.
+    """
+    try:
+        await asyncio.wait_for(engine._observer_queue.join(), timeout=budget)
+    except TimeoutError:
+        msg = f"Observer queue did not drain within {budget}s"
+        raise AssertionError(msg) from None
+
 
 # ── Fake persistence ──────────────────────────────────────────────
 
@@ -99,6 +117,7 @@ class TestRegisterObserver:
             ),
             requested_by="test",
         )
+        await _flush_observers(started_engine)
         assert len(received) == 1
         assert received[0].task_id == task.id
         assert received[0].mutation_type == "create"
@@ -116,7 +135,7 @@ class TestRegisterObserver:
 
         started_engine.register_observer(bad_observer)
 
-        # Should succeed despite observer failure
+        # Should succeed despite observer failure (error logged in dispatcher)
         task = await started_engine.create_task(
             CreateTaskData(
                 title="Resilient Task",
@@ -160,6 +179,7 @@ class TestRegisterObserver:
             ),
             requested_by="test",
         )
+        await _flush_observers(started_engine)
         assert len(calls_a) == 1
         assert len(calls_b) == 1
 
@@ -187,6 +207,7 @@ class TestRegisterObserver:
             ),
         )
         assert not result.success
+        await _flush_observers(started_engine)
         assert len(received) == 0
 
     @pytest.mark.unit
@@ -225,9 +246,51 @@ class TestRegisterObserver:
             ),
         )
         assert result.success
+        await _flush_observers(started_engine)
         # 2 events: create + transition
         assert len(received) == 2
         transition_event = received[1]
         assert transition_event.mutation_type == "transition"
         assert transition_event.previous_status is TaskStatus.CREATED
         assert transition_event.new_status is TaskStatus.ASSIGNED
+
+    @pytest.mark.unit
+    async def test_slow_observer_does_not_block_mutations(
+        self,
+        started_engine: TaskEngine,
+    ) -> None:
+        """A slow observer does not block the mutation pipeline."""
+        gate = asyncio.Event()
+
+        async def slow_observer(event: TaskStateChanged) -> None:
+            await gate.wait()
+
+        started_engine.register_observer(slow_observer)
+
+        # Submit two mutations rapidly -- both should complete even
+        # though the observer is blocked.
+        task1 = await started_engine.create_task(
+            CreateTaskData(
+                title="Task 1",
+                description="D",
+                type=TaskType.DEVELOPMENT,
+                project="proj-1",
+                created_by="test",
+            ),
+            requested_by="test",
+        )
+        task2 = await started_engine.create_task(
+            CreateTaskData(
+                title="Task 2",
+                description="D",
+                type=TaskType.DEVELOPMENT,
+                project="proj-1",
+                created_by="test",
+            ),
+            requested_by="test",
+        )
+        assert task1 is not None
+        assert task2 is not None
+        # Unblock the observer for clean teardown
+        gate.set()
+        await _flush_observers(started_engine)
