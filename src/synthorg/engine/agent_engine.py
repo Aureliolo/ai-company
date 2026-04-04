@@ -878,7 +878,7 @@ class AgentEngine:
                     tokens_override = raw_override
             except Exception:
                 logger.warning(
-                    PROMPT_PERSONALITY_TRIMMED,
+                    EXECUTION_ENGINE_ERROR,
                     msg="failed to read ENGINE settings, using defaults",
                     exc_info=True,
                 )
