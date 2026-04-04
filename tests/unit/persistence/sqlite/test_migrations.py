@@ -32,6 +32,7 @@ _EXPECTED_TABLES = {
     "projects",
     "custom_presets",
     "workflow_definitions",
+    "workflow_definition_versions",
     "workflow_executions",
     "fine_tune_runs",
     "fine_tune_checkpoints",
@@ -93,6 +94,7 @@ _EXPECTED_INDEXES = {
     "idx_ftc_active",
     "idx_ftc_single_active",
     "idx_ftc_created_at",
+    "idx_wdv_definition_saved",
 }
 
 

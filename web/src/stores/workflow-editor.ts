@@ -13,6 +13,8 @@ import { createLogger } from '@/lib/logger'
 const log = createLogger('workflow-editor')
 import type {
   WorkflowDefinition,
+  WorkflowDefinitionVersionSummary,
+  WorkflowDiff,
   WorkflowValidationResult,
   WorkflowNodeType,
 } from '@/api/types'
@@ -21,6 +23,9 @@ import {
   createWorkflow,
   updateWorkflow,
   validateWorkflowDraft,
+  listWorkflowVersions,
+  getWorkflowDiff,
+  rollbackWorkflow,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workflow-editor/copy-paste'
@@ -60,6 +65,13 @@ export interface WorkflowEditorState {
   // Clipboard
   clipboard: ClipboardData | null
 
+  // Version history
+  versionHistoryOpen: boolean
+  versions: readonly WorkflowDefinitionVersionSummary[]
+  versionsLoading: boolean
+  diffResult: WorkflowDiff | null
+  diffLoading: boolean
+
   // Actions
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
@@ -78,6 +90,11 @@ export interface WorkflowEditorState {
   exportYaml: () => Promise<string>
   copySelectedNodes: () => void
   pasteNodes: () => void
+  toggleVersionHistory: () => void
+  loadVersions: () => Promise<void>
+  loadDiff: (fromVersion: number, toVersion: number) => Promise<void>
+  clearDiff: () => void
+  rollback: (targetVersion: number) => Promise<void>
   reset: () => void
 }
 
@@ -147,6 +164,12 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   redoStack: [],
   yamlPreview: '',
   clipboard: null,
+
+  versionHistoryOpen: false,
+  versions: [],
+  versionsLoading: false,
+  diffResult: null,
+  diffLoading: false,
 
   loadDefinition: async (id: string) => {
     set({ loading: true, error: null })
@@ -534,6 +557,63 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     })
   },
 
+  toggleVersionHistory: () => {
+    const open = !get().versionHistoryOpen
+    set({ versionHistoryOpen: open })
+    if (open) {
+      useWorkflowEditorStore.getState().loadVersions()
+    }
+  },
+
+  loadVersions: async () => {
+    const defn = get().definition
+    if (!defn) return
+    set({ versionsLoading: true })
+    try {
+      const result = await listWorkflowVersions(defn.id, { limit: 50 })
+      set({ versions: result.data, versionsLoading: false })
+    } catch (err) {
+      log.warn('Failed to load versions', err)
+      set({ versionsLoading: false })
+    }
+  },
+
+  loadDiff: async (fromVersion: number, toVersion: number) => {
+    const defn = get().definition
+    if (!defn) return
+    set({ diffLoading: true })
+    try {
+      const diff = await getWorkflowDiff(defn.id, fromVersion, toVersion)
+      set({ diffResult: diff, diffLoading: false })
+    } catch (err) {
+      log.warn('Failed to load diff', err)
+      set({ diffLoading: false })
+    }
+  },
+
+  clearDiff: () => {
+    set({ diffResult: null })
+  },
+
+  rollback: async (targetVersion: number) => {
+    const defn = get().definition
+    if (!defn) return
+    set({ saving: true, error: null })
+    try {
+      const updated = await rollbackWorkflow(defn.id, {
+        target_version: targetVersion,
+        expected_version: defn.version,
+      })
+      set({ definition: updated, saving: false, dirty: false })
+      // Reload the definition to refresh editor state.
+      await useWorkflowEditorStore.getState().loadDefinition(updated.id)
+      await useWorkflowEditorStore.getState().loadVersions()
+    } catch (err) {
+      log.warn('Rollback failed', err)
+      set({ saving: false, error: getErrorMessage(err) })
+    }
+  },
+
   reset: () => {
     set({
       definition: null,
@@ -550,6 +630,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       redoStack: [],
       yamlPreview: '',
       clipboard: null,
+      versionHistoryOpen: false,
+      versions: [],
+      versionsLoading: false,
+      diffResult: null,
+      diffLoading: false,
     })
   },
 }))
