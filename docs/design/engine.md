@@ -740,7 +740,7 @@ each model tier.
 | Profile    | Tier   | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
 |------------|--------|----------------------|------------------------|--------------|---------------------|----------|
 | **full**   | large  | Full behavioral enums | 500                   | Included     | Nested list         | Full     |
-| **standard** | medium | Description + style + traits | 200              | Included     | Bullet list         | Summary  |
+| **standard** | medium | Description + style + traits | 200              | Included     | Nested list         | Summary  |
 | **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
 
 ### Personality Trimming

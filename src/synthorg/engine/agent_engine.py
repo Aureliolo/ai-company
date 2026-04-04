@@ -892,6 +892,7 @@ class AgentEngine:
                 PROMPT_PERSONALITY_TRIMMED,
                 agent_id=agent_id,
                 agent_name=identity.name,
+                task_id=task_id,
                 before_tokens=ti.before_tokens,
                 after_tokens=ti.after_tokens,
                 max_tokens=ti.max_tokens,

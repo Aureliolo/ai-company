@@ -71,6 +71,12 @@ class PersonalityTrimInfo(BaseModel):
         if self.after_tokens > self.before_tokens:
             msg = "after_tokens must not exceed before_tokens"
             raise ValueError(msg)
+        if self.trim_tier in {1, 2} and self.after_tokens > self.max_tokens:
+            msg = (
+                "after_tokens must not exceed max_tokens for "
+                f"trim_tier {self.trim_tier} (only tier 3 is best-effort)"
+            )
+            raise ValueError(msg)
         return self
 
     @computed_field  # type: ignore[prop-decorator]
@@ -151,9 +157,9 @@ def _estimate_personality_tokens(
     """Estimate token count of the personality section as the template renders it.
 
     Assembles the text that the Jinja2 template would produce for the
-    given *personality_mode*, including inline markdown formatting
-    (bold labels, list prefixes), and runs it through the estimator.
-    The section heading and template whitespace are not included.
+    given *personality_mode*, including the section heading and inline
+    markdown formatting (bold labels, list prefixes), and runs it
+    through the estimator.
 
     Args:
         ctx: Template context dict with personality fields populated.
@@ -163,7 +169,7 @@ def _estimate_personality_tokens(
     Returns:
         Estimated token count.
     """
-    parts: list[str] = []
+    parts: list[str] = ["## Personality"]
     desc = ctx.get("personality_description", "")
     style = ctx.get("communication_style", "")
 

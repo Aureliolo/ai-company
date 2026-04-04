@@ -482,6 +482,7 @@ def _trim_sections(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
+    trimming_enabled: bool = True,
 ) -> tuple[
     str,
     int,
@@ -510,6 +511,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
         if estimated <= max_tokens:
             break
@@ -543,6 +545,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -623,6 +626,7 @@ def _render_with_trimming(  # noqa: PLR0913
             context_budget=context_budget_indicator,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
 
     return _build_prompt_result(
