@@ -154,12 +154,20 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
     },
 
     testConnection: async (name: string, data?: TestConnectionRequest) => {
+      const targetProvider = name
       set({ testingConnection: true, testConnectionResult: null })
       try {
         const result = await apiTestConnection(name, data)
+        // Drop stale result if user navigated away (clearDetail)
+        if (get().selectedProvider?.name !== targetProvider) {
+          return null
+        }
         set({ testConnectionResult: result, testingConnection: false })
         return result
       } catch (err) {
+        if (get().selectedProvider?.name !== targetProvider) {
+          return null
+        }
         const errorResult: TestConnectionResponse = {
           success: false,
           latency_ms: null,

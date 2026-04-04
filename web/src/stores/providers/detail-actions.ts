@@ -46,12 +46,14 @@ export function createDetailActions(set: ProvidersSet) {
 
         const partialErrors: string[] = []
         if (modelsResult.status === 'rejected') {
-          log.warn('Failed to load models:', modelsResult.reason)
-          partialErrors.push(`models (${getErrorMessage(modelsResult.reason)})`)
+          const msg = getErrorMessage(modelsResult.reason)
+          log.warn('Failed to load models:', msg)
+          partialErrors.push(`models (${msg})`)
         }
         if (healthResult.status === 'rejected') {
-          log.warn('Failed to load health:', healthResult.reason)
-          partialErrors.push(`health (${getErrorMessage(healthResult.reason)})`)
+          const msg = getErrorMessage(healthResult.reason)
+          log.warn('Failed to load health:', msg)
+          partialErrors.push(`health (${msg})`)
         }
 
         set({
@@ -67,7 +69,7 @@ export function createDetailActions(set: ProvidersSet) {
         })
       } catch (err) {
         if (requestId !== _detailRequestId) return
-        log.error('Failed to fetch provider detail:', err)
+        log.error('Failed to fetch provider detail:', getErrorMessage(err))
         set({ detailLoading: false, detailError: getErrorMessage(err) })
       }
     },
