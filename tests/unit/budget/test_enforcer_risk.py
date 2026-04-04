@@ -131,7 +131,7 @@ class TestCheckRiskBudget:
         enforcer, risk_tracker = _make_enforcer(
             total_daily_risk_limit=1.0,
             per_task_risk_limit=1.0,
-            per_agent_daily_risk_limit=10.0,
+            per_agent_daily_risk_limit=1.0,
         )
         await risk_tracker.record(
             _make_risk_record(agent_id="agent-a", risk_units=1.1),
@@ -214,6 +214,24 @@ class TestRecordRisk:
         enforcer = BudgetEnforcer(
             budget_config=budget_config,
             cost_tracker=cost_tracker,
+        )
+        record = await enforcer.record_risk(
+            "agent-1",
+            "task-1",
+            "code:write",
+        )
+        assert record is None
+
+    async def test_record_risk_none_when_no_scorer(self) -> None:
+        risk_config = RiskBudgetConfig(enabled=True)
+        budget_config = BudgetConfig(risk_budget=risk_config)
+        cost_tracker = CostTracker(budget_config=budget_config)
+        risk_tracker = RiskTracker(risk_budget_config=risk_config)
+        enforcer = BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            risk_tracker=risk_tracker,
+            # risk_scorer intentionally omitted
         )
         record = await enforcer.record_risk(
             "agent-1",

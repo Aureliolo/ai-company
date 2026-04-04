@@ -33,18 +33,23 @@ class RiskRecord(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")
-    action_type: str = Field(description="Action type (category:action)")
-    risk_score: RiskScore = Field(description="Multi-dimensional risk assessment")
+    action_type: NotBlankStr = Field(
+        description="Action type (category:action)",
+    )
+    risk_score: RiskScore = Field(
+        description="Multi-dimensional risk assessment",
+    )
     risk_units: float = Field(ge=0.0, description="Scalar risk value")
     timestamp: AwareDatetime = Field(description="Timestamp of the action")
 
     @model_validator(mode="after")
     def _validate_action_type_format(self) -> Self:
         """Ensure action_type follows the category:action convention."""
-        if ":" not in self.action_type:
+        parts = self.action_type.split(":", maxsplit=1)
+        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():  # noqa: PLR2004
             msg = (
-                f"action_type must follow category:action format, "
-                f"got {self.action_type!r}"
+                f"action_type must follow category:action format "
+                f"with non-empty segments, got {self.action_type!r}"
             )
             raise ValueError(msg)
         return self

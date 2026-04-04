@@ -12,9 +12,6 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.observability import get_logger
-from synthorg.observability.events.reporting import (
-    REPORTING_GENERATION_STARTED,
-)
 
 if TYPE_CHECKING:
     from synthorg.budget.automated_reports import AutomatedReportService
@@ -118,10 +115,7 @@ class ReportsController(Controller):
     ) -> ApiResponse[ReportResponse]:
         """Generate a comprehensive report on demand."""
         service = _get_report_service(state)
-        logger.info(
-            REPORTING_GENERATION_STARTED,
-            period=data.period.value,
-        )
+        # Service owns lifecycle logging (STARTED + COMPLETED events).
         report = await service.generate_comprehensive_report(
             period=data.period,
         )

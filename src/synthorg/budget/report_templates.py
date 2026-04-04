@@ -159,7 +159,7 @@ class RiskTrendsReport(BaseModel):
 
     total_risk_units: float = Field(default=0.0, ge=0.0)
     risk_by_agent: tuple[tuple[NotBlankStr, float], ...] = ()
-    risk_by_action_type: tuple[tuple[str, float], ...] = ()
+    risk_by_action_type: tuple[tuple[NotBlankStr, float], ...] = ()
     daily_risk_trend: tuple[DailyRiskPoint, ...] = ()
     generated_at: _dt.datetime = Field(description="Generation timestamp")
 

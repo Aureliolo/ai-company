@@ -175,6 +175,12 @@ class TestRiskScorerWeights:
 class TestDefaultRiskScorer:
     """Tests for the DefaultRiskScorer implementation."""
 
+    def test_implements_risk_scorer_protocol(self) -> None:
+        from synthorg.security.risk_scorer import RiskScorer
+
+        scorer = DefaultRiskScorer()
+        assert isinstance(scorer, RiskScorer)
+
     def test_all_builtin_action_types_have_scores(self) -> None:
         scorer = DefaultRiskScorer()
         for action_type in ActionType:

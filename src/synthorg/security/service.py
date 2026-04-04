@@ -19,9 +19,6 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
     AUTONOMY_ACTION_HUMAN_REQUIRED,
 )
-from synthorg.observability.events.risk_budget import (
-    RISK_BUDGET_SHADOW_LOGGED,
-)
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_RECORD_ERROR,
     SECURITY_DISABLED,
@@ -31,6 +28,7 @@ from synthorg.observability.events.security import (
     SECURITY_EVALUATE_START,
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
+    SECURITY_SHADOW_WOULD_BLOCK,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
@@ -221,16 +219,20 @@ class SecOpsService:
         if self._config.audit_enabled:
             self._record_audit(context, verdict)
 
-        # Shadow mode: log the real verdict but return ALLOW.
-        if self._config.enforcement_mode == SecurityEnforcementMode.SHADOW:
-            if verdict.verdict != SecurityVerdictType.ALLOW:
-                logger.warning(
-                    RISK_BUDGET_SHADOW_LOGGED,
-                    tool_name=context.tool_name,
-                    original_verdict=verdict.verdict.value,
-                    risk_level=verdict.risk_level.value,
-                    reason=verdict.reason,
-                )
+        # Shadow mode: log blocking verdicts but return ALLOW.
+        # Only replace non-ALLOW verdicts to preserve legitimate
+        # ALLOW reasons in the audit trail.
+        if (
+            self._config.enforcement_mode == SecurityEnforcementMode.SHADOW
+            and verdict.verdict != SecurityVerdictType.ALLOW
+        ):
+            logger.warning(
+                SECURITY_SHADOW_WOULD_BLOCK,
+                tool_name=context.tool_name,
+                original_verdict=verdict.verdict.value,
+                risk_level=verdict.risk_level.value,
+                reason=verdict.reason,
+            )
             verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
                 reason=f"Shadow mode (original: {verdict.verdict.value})",

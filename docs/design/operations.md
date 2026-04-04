@@ -218,7 +218,7 @@ graph TD
 
     Percentages are illustrative defaults. All allocations are configurable per company.
     Dollar signs in the diagram are illustrative -- the actual currency is determined by
-    the `budget.currency` setting (ISO 4217 code, defaults to USD).
+    the `budget.currency` setting (ISO 4217 code, defaults to EUR).
 
 ### Cost Tracking
 
@@ -277,7 +277,7 @@ task-boundary auto-downgrade.
 ```yaml
 budget:
   total_monthly: 100.00
-  currency: "USD"  # ISO 4217 currency code for display
+  currency: "EUR"  # ISO 4217 currency code for display
   reset_day: 1
   alerts:
     warn_at: 75               # percent
@@ -1246,6 +1246,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | `GET /overview` (metrics summary with budget status, 7d spend sparkline, agent counts), `GET /trends?period=7d\|30d\|90d&metric=spend\|tasks_completed\|active_agents\|success_rate` (time-series bucketed metrics; hourly buckets for 7d, daily for 30d/90d; defaults: `period=7d`, `metric=spend`), `GET /forecast?horizon_days=1..90` (budget spend projection with daily projections and exhaustion estimate; default 14; 400 on out-of-range) |
+| `POST /api/v1/reports/generate`, `GET /api/v1/reports/periods` | On-demand report generation (comprehensive periodic reports: spending, performance, task completion, risk trends), available report period listing |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
 | `GET /api/v1/providers`, `GET /api/v1/providers/{name}`, `GET /api/v1/providers/{name}/models`, `GET /api/v1/providers/{name}/health`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models`, `POST /api/v1/providers/probe-preset`, `GET /api/v1/providers/discovery-policy`, `POST /api/v1/providers/discovery-policy/entries`, `POST /api/v1/providers/discovery-policy/remove-entry`, `POST /api/v1/providers/{name}/models/pull`, `DELETE /api/v1/providers/{name}/models/{model_id}`, `PUT /api/v1/providers/{name}/models/{model_id}/config` | Provider CRUD, single provider detail, model listing, health status, connection testing, presets, preset auto-probe, model discovery, discovery SSRF allowlist management, local model management (pull with SSE progress, delete, per-model config), 5 auth types (api_key, subscription, oauth, custom_header, none) |
 | `GET /api/v1/setup/status`, `GET /api/v1/setup/templates`, `POST /api/v1/setup/company`, `POST /api/v1/setup/agent`, `GET /api/v1/setup/agents`, `PUT /api/v1/setup/agents/{agent_index}/model` (`{agent_index}` = zero-based position in the list returned by `GET /api/v1/setup/agents`; not a stable ID -- re-fetch to resolve; out-of-range returns 404), `PUT /api/v1/setup/agents/{agent_index}/name`, `POST /api/v1/setup/agents/{agent_index}/randomize-name`, `PUT /api/v1/setup/agents/{agent_index}/personality`, `GET /api/v1/setup/personality-presets`, `GET /api/v1/setup/name-locales/available`, `GET /api/v1/setup/name-locales`, `PUT /api/v1/setup/name-locales`, `POST /api/v1/setup/complete` | First-run setup wizard: status check (public, reports `has_company`/`has_agents`/`has_providers`/`has_name_locales` for step resume), template listing, company creation (auto-creates template agents with model matching), agent listing + model/name/personality reassignment, manual agent creation (blank path), personality preset listing, name locale management (list available Faker locales, get/set selected locales for agent name generation), completion gate (requires company + providers; agents are optional for Quick Setup mode) |

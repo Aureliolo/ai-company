@@ -48,3 +48,6 @@ SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
 
 # Custom policy events.
 SECURITY_CUSTOM_POLICY_MATCHED: Final[str] = "security.custom_policy.matched"
+
+# Shadow mode events.
+SECURITY_SHADOW_WOULD_BLOCK: Final[str] = "security.shadow.would_block"

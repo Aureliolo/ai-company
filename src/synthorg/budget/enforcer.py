@@ -626,16 +626,27 @@ class BudgetEnforcer:
         ):
             return None
 
-        score = self._risk_scorer.score(action_type)
-        record = _RiskRecord(
-            agent_id=agent_id,
-            task_id=task_id,
-            action_type=action_type,
-            risk_score=score,
-            risk_units=score.risk_units,
-            timestamp=datetime.now(UTC),
-        )
-        await self._risk_tracker.record(record)
+        try:
+            score = self._risk_scorer.score(action_type)
+            record = _RiskRecord(
+                agent_id=agent_id,
+                task_id=task_id,
+                action_type=action_type,
+                risk_score=score,
+                risk_units=score.risk_units,
+                timestamp=datetime.now(UTC),
+            )
+            await self._risk_tracker.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                RISK_BUDGET_RECORD_ADDED,
+                agent_id=agent_id,
+                action_type=action_type,
+                reason="risk_recording_failed",
+            )
+            return None
         logger.debug(
             RISK_BUDGET_RECORD_ADDED,
             agent_id=agent_id,

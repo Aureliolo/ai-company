@@ -111,7 +111,7 @@ class TestShadowMode:
         assert verdict.verdict == SecurityVerdictType.ALLOW
 
     async def test_shadow_mode_allow_stays_allow(self) -> None:
-        """In shadow mode, ALLOW verdicts remain ALLOW."""
+        """In shadow mode, ALLOW verdicts remain ALLOW with original reason."""
         rule_engine = MagicMock()
         rule_engine.evaluate.return_value = _make_allow_verdict()
         audit_log = MagicMock()
@@ -127,6 +127,30 @@ class TestShadowMode:
         )
         verdict = await service.evaluate_pre_tool(_make_context())
         assert verdict.verdict == SecurityVerdictType.ALLOW
+        # Original reason preserved (not overwritten with shadow annotation).
+        assert "Shadow mode" not in verdict.reason
+
+    async def test_shadow_mode_deny_reason_annotated(self) -> None:
+        """In shadow mode, converted DENY includes original verdict in reason."""
+        rule_engine = MagicMock()
+        rule_engine.evaluate.return_value = _make_deny_verdict()
+        audit_log = MagicMock()
+        output_scanner = MagicMock()
+
+        service = SecOpsService(
+            config=SecurityConfig(
+                enforcement_mode=SecurityEnforcementMode.SHADOW,
+            ),
+            rule_engine=rule_engine,
+            audit_log=audit_log,
+            output_scanner=output_scanner,
+        )
+        verdict = await service.evaluate_pre_tool(_make_context())
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        assert "Shadow mode" in verdict.reason
+        assert "deny" in verdict.reason
+        # Original fields preserved.
+        assert verdict.risk_level == ApprovalRiskLevel.HIGH
 
     async def test_shadow_mode_audit_still_recorded(self) -> None:
         """In shadow mode, audit entries are still recorded."""
