@@ -133,3 +133,9 @@ MEMORY_SPARSE_BATCH_DEGRADED: Final[str] = "memory.sparse.batch_degraded"
 
 MEMORY_REFORMULATION_FAILED: Final[str] = "memory.reformulation.failed"
 MEMORY_SUFFICIENCY_CHECK_FAILED: Final[str] = "memory.sufficiency_check.failed"
+MEMORY_REFORMULATION_ROUND: Final[str] = "memory.reformulation.round"
+MEMORY_REFORMULATION_SUFFICIENT: Final[str] = "memory.reformulation.sufficient"
+
+# ── Diversity re-ranking ─────────────────────────────────────────
+
+MEMORY_DIVERSITY_RERANKED: Final[str] = "memory.ranking.diversity_reranked"

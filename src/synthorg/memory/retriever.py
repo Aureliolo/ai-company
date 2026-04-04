@@ -20,6 +20,7 @@ from synthorg.memory.models import MemoryQuery
 from synthorg.memory.ranking import (
     FusionStrategy,
     ScoredMemory,
+    apply_diversity_penalty,
     fuse_ranked_lists,
     rank_memories,
 )
@@ -298,6 +299,12 @@ class ContextInjectionStrategy:
                 reason="all below min_relevance",
             )
             return ()
+
+        if self._config.diversity_penalty_enabled:
+            ranked = apply_diversity_penalty(
+                ranked,
+                diversity_lambda=self._config.diversity_lambda,
+            )
 
         if self._memory_filter is not None:
             try:

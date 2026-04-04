@@ -112,6 +112,22 @@ class MemoryRetrievalConfig(BaseModel):
         le=1000,
         description="RRF smoothing constant k (only used with RRF strategy)",
     )
+    diversity_penalty_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, apply MMR-style diversity penalty to re-rank "
+            "retrieval results, reducing redundancy"
+        ),
+    )
+    diversity_lambda: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "MMR trade-off parameter: 1.0 = pure relevance (no "
+            "diversity), 0.0 = maximum diversity"
+        ),
+    )
     query_reformulation_enabled: bool = Field(
         default=False,
         description=(
@@ -163,6 +179,25 @@ class MemoryRetrievalConfig(BaseModel):
                 field="rrf_k",
                 value=self.rrf_k,
                 reason="rrf_k is ignored when fusion_strategy is LINEAR",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_diversity_lambda_consistency(self) -> Self:
+        """Warn when diversity_lambda is customized but penalty is disabled."""
+        if (
+            not self.diversity_penalty_enabled
+            and self.diversity_lambda != 0.7  # noqa: PLR2004
+            and "diversity_lambda" in self.model_fields_set
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="diversity_lambda",
+                value=self.diversity_lambda,
+                reason=(
+                    "diversity_lambda is ignored when "
+                    "diversity_penalty_enabled is False"
+                ),
             )
         return self
 

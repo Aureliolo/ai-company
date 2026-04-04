@@ -6,9 +6,11 @@ inputs).  Logging calls are the only side effect.
 ``rank_memories`` scores entries via linear combination of relevance
 and recency (single-source).  ``fuse_ranked_lists`` merges multiple
 pre-ranked lists via Reciprocal Rank Fusion (multi-source).
+``apply_diversity_penalty`` re-ranks using MMR to reduce redundancy.
 """
 
 import math
+from collections.abc import Callable  # noqa: TC003
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
@@ -17,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_DIVERSITY_RERANKED,
     MEMORY_RANKING_COMPLETE,
     MEMORY_RRF_FUSION_COMPLETE,
     MEMORY_RRF_VALIDATION_FAILED,
@@ -375,3 +378,112 @@ def fuse_ranked_lists(
     )
 
     return result
+
+
+# ── Diversity re-ranking (MMR) ────────────────────────────────────
+
+
+def _word_bigrams(text: str) -> set[tuple[str, str]]:
+    """Extract word-level bigrams from *text*.
+
+    Args:
+        text: Input text.
+
+    Returns:
+        Set of consecutive (word_i, word_i+1) pairs (lowercased).
+    """
+    words = text.lower().split()
+    if len(words) < 2:  # noqa: PLR2004
+        return set()
+    return {(words[i], words[i + 1]) for i in range(len(words) - 1)}
+
+
+def _bigram_jaccard(text_a: str, text_b: str) -> float:
+    """Word-bigram Jaccard similarity between two texts.
+
+    Returns 0.0 when either text has fewer than 2 words (no bigrams
+    possible).
+
+    Args:
+        text_a: First text.
+        text_b: Second text.
+
+    Returns:
+        Similarity score between 0.0 and 1.0.
+    """
+    bigrams_a = _word_bigrams(text_a)
+    bigrams_b = _word_bigrams(text_b)
+    if not bigrams_a or not bigrams_b:
+        return 0.0
+    intersection = len(bigrams_a & bigrams_b)
+    union = len(bigrams_a | bigrams_b)
+    return intersection / union
+
+
+def apply_diversity_penalty(
+    scored: tuple[ScoredMemory, ...],
+    *,
+    diversity_lambda: float = 0.7,
+    similarity_fn: Callable[[str, str], float] | None = None,
+) -> tuple[ScoredMemory, ...]:
+    """Re-rank scored memories using Maximal Marginal Relevance.
+
+    Iteratively selects entries that balance relevance (via
+    ``combined_score``) with diversity (via pairwise dissimilarity
+    to already-selected entries).
+
+    MMR score: ``lambda * combined_score - (1 - lambda) * max_sim``
+
+    Args:
+        scored: Pre-ranked scored memories.
+        diversity_lambda: Trade-off between relevance (1.0) and
+            diversity (0.0).  Must be in [0.0, 1.0].
+        similarity_fn: Optional pairwise text similarity function.
+            Defaults to ``_bigram_jaccard`` when ``None``.
+
+    Returns:
+        Re-ordered tuple of the same length as *scored*.
+
+    Raises:
+        ValueError: If ``diversity_lambda`` is outside [0.0, 1.0].
+    """
+    if diversity_lambda < 0.0 or diversity_lambda > 1.0:
+        msg = f"diversity_lambda must be in [0.0, 1.0], got {diversity_lambda}"
+        raise ValueError(msg)
+
+    if len(scored) <= 1:
+        return scored
+
+    sim_fn = similarity_fn or _bigram_jaccard
+    remaining = list(scored)
+    selected: list[ScoredMemory] = []
+
+    while remaining:
+        best_idx = 0
+        best_mmr = -1.0
+
+        for i, candidate in enumerate(remaining):
+            relevance = diversity_lambda * candidate.combined_score
+
+            if selected:
+                max_sim = max(
+                    sim_fn(candidate.entry.content, s.entry.content) for s in selected
+                )
+            else:
+                max_sim = 0.0
+
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_idx = i
+
+        selected.append(remaining.pop(best_idx))
+
+    logger.debug(
+        MEMORY_DIVERSITY_RERANKED,
+        input_count=len(scored),
+        diversity_lambda=diversity_lambda,
+    )
+
+    return tuple(selected)

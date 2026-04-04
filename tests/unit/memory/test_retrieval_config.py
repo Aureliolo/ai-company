@@ -216,6 +216,69 @@ class TestMemoryRetrievalConfigFusion:
 
 
 @pytest.mark.unit
+class TestMemoryRetrievalConfigDiversity:
+    def test_default_diversity_disabled(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.diversity_penalty_enabled is False
+
+    def test_default_diversity_lambda(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.diversity_lambda == 0.7
+
+    def test_diversity_enabled(self) -> None:
+        c = MemoryRetrievalConfig(diversity_penalty_enabled=True)
+        assert c.diversity_penalty_enabled is True
+
+    def test_diversity_lambda_boundaries(self) -> None:
+        c0 = MemoryRetrievalConfig(
+            diversity_penalty_enabled=True,
+            diversity_lambda=0.0,
+        )
+        assert c0.diversity_lambda == 0.0
+        c1 = MemoryRetrievalConfig(
+            diversity_penalty_enabled=True,
+            diversity_lambda=1.0,
+        )
+        assert c1.diversity_lambda == 1.0
+
+    def test_diversity_lambda_below_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(diversity_lambda=-0.1)
+
+    def test_diversity_lambda_above_one_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(diversity_lambda=1.1)
+
+    def test_diversity_lambda_non_default_when_disabled_warns(self) -> None:
+        with structlog.testing.capture_logs() as cap:
+            c = MemoryRetrievalConfig(diversity_lambda=0.5)
+        assert c.diversity_lambda == 0.5
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "diversity_lambda"
+        ]
+        assert len(events) == 1
+        assert "diversity_lambda is ignored" in events[0]["reason"]
+
+    def test_diversity_lambda_default_when_disabled_no_warning(self) -> None:
+        with structlog.testing.capture_logs() as cap:
+            MemoryRetrievalConfig()
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "diversity_lambda"
+        ]
+        assert len(events) == 0
+
+    def test_diversity_lambda_nan_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(diversity_lambda=float("nan"))
+
+
+@pytest.mark.unit
 class TestMemoryRetrievalConfigReformulation:
     def test_default_reformulation_disabled(self) -> None:
         c = MemoryRetrievalConfig()
