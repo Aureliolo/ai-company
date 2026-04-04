@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.6.1](https://github.com/Aureliolo/synthorg/compare/v0.6.0...v0.6.1) (2026-04-04)
+
+
+### Features
+
+* capability-aware prompt profiles for model tier adaptation ([#1047](https://github.com/Aureliolo/synthorg/issues/1047)) ([67650c5](https://github.com/Aureliolo/synthorg/commit/67650c542d31fe8da38bc6d1a3a87ef24790c36f)), closes [#805](https://github.com/Aureliolo/synthorg/issues/805)
+* implement procedural memory auto-generation from agent failures ([#1048](https://github.com/Aureliolo/synthorg/issues/1048)) ([55f5206](https://github.com/Aureliolo/synthorg/commit/55f52068c7ae1386a760989bfacd02baede2067b)), closes [#420](https://github.com/Aureliolo/synthorg/issues/420)
+* implement quality scoring Layers 2+3 -- LLM judge and human override ([#1057](https://github.com/Aureliolo/synthorg/issues/1057)) ([4a8adfe](https://github.com/Aureliolo/synthorg/commit/4a8adfec13c3fbe77cbb6cdd04c5aaeb04b94aa0)), closes [#230](https://github.com/Aureliolo/synthorg/issues/230)
+* token-based personality trimming via PromptProfile.max_personality_tokens ([#1059](https://github.com/Aureliolo/synthorg/issues/1059)) ([75afd52](https://github.com/Aureliolo/synthorg/commit/75afd520351bc217b4bfa022ff8a9f4663e839f9)), closes [#1045](https://github.com/Aureliolo/synthorg/issues/1045)
+* workflow execution lifecycle + editor improvements ([#1058](https://github.com/Aureliolo/synthorg/issues/1058)) ([7b54262](https://github.com/Aureliolo/synthorg/commit/7b542626324eb7bdfecf9afb6f837e42b9b54d2a)), closes [#1029](https://github.com/Aureliolo/synthorg/issues/1029) [#1042](https://github.com/Aureliolo/synthorg/issues/1042)
+
+
+### Refactoring
+
+* **web:** address complexity and logging issues in dashboard ([#1056](https://github.com/Aureliolo/synthorg/issues/1056)) ([ada997b](https://github.com/Aureliolo/synthorg/commit/ada997bfc1064ac797faebabf8d1d822abe75aa6)), closes [#1055](https://github.com/Aureliolo/synthorg/issues/1055)
+
+
+### Documentation
+
+* comprehensive documentation refresh ([#1050](https://github.com/Aureliolo/synthorg/issues/1050)) ([c7a4259](https://github.com/Aureliolo/synthorg/commit/c7a4259ed2a83aa307fde390c09e6b76e513cb7b))
+
+
+### Tests
+
+* fix Hypothesis fuzzing infra and speed up slow unit tests ([#1044](https://github.com/Aureliolo/synthorg/issues/1044)) ([1111602](https://github.com/Aureliolo/synthorg/commit/1111602d5e03b1856434c10c801b005e3ee2d7bd))
+
+
+### Maintenance
+
+* add text=auto catch-all to .gitattributes ([#1051](https://github.com/Aureliolo/synthorg/issues/1051)) ([fc65d72](https://github.com/Aureliolo/synthorg/commit/fc65d72ef1ba5937cfbe4feba22571131bb08857))
+* bump defu from 6.1.4 to 6.1.6 in /site ([#1062](https://github.com/Aureliolo/synthorg/issues/1062)) ([f0cc439](https://github.com/Aureliolo/synthorg/commit/f0cc4391e64ac20bda04a673af0a8d55f95e5c31))
+
 ## [0.6.0](https://github.com/Aureliolo/synthorg/compare/v0.5.9...v0.6.0) (2026-04-03)
 
 
