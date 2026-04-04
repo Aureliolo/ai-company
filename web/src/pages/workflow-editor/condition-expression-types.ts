@@ -176,8 +176,8 @@ export function parseConditionString(str: string): ConditionExpression | null {
   if (notMatch?.[1]) {
     const inner = parseConditionString(notMatch[1])
     if (!inner) return null
-    const children = inner.kind === 'group' ? inner.conditions : [inner]
-    return createGroup('NOT', children)
+    // Preserve inner as a single child -- keep its operator intact
+    return createGroup('NOT', [inner])
   }
 
   const unwrapped = unwrapParens(trimmed)

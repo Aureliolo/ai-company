@@ -218,10 +218,13 @@ export function ConditionExpressionBuilder({
     // Skip if the value matches what we last synced or what the builder
     // would currently serialize (avoids infinite loops from our own onChange).
     const currentComparisons = entries.map((e) => e.comparison)
-    const currentSerialized =
+    let currentSerialized =
       mode === 'builder'
-        ? serializeCondition(buildExpression(currentComparisons, logicalOperator))
+        ? serializeCondition(buildExpression(currentComparisons, logicalOperator, subGroups))
         : freeText
+    if (mode === 'builder' && negate && currentSerialized) {
+      currentSerialized = `NOT (${currentSerialized})`
+    }
 
     if (value === lastSyncedRef.current || value === currentSerialized) {
       lastSyncedRef.current = value
@@ -352,17 +355,21 @@ export function ConditionExpressionBuilder({
     (newMode: 'builder' | 'advanced') => {
       if (newMode === 'advanced') {
         const expr = buildExpression(comparisons, logicalOperator, subGroups)
-        setFreeText(serializeCondition(expr))
+        let serialized = serializeCondition(expr)
+        if (negate && serialized) serialized = `NOT (${serialized})`
+        setFreeText(serialized)
       } else {
         // Fix #16: If the free text cannot be parsed, block the switch.
         const flat = parseForBuilder(freeText)
         if (!flat) return
         setEntries(toEntries(flat.comparisons))
         setLogicalOperator(flat.logicalOperator)
+        setNegate(false)
+        setSubGroups([])
       }
       setMode(newMode)
     },
-    [comparisons, logicalOperator, freeText, toEntries, subGroups],
+    [comparisons, logicalOperator, freeText, toEntries, subGroups, negate],
   )
 
   return (

@@ -69,7 +69,7 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
             <DropdownMenu.Content
               align="end"
               sideOffset={4}
-              className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-lg"
+              className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)]"
             >
               <DropdownMenu.Item
                 className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none hover:bg-surface focus:bg-surface"

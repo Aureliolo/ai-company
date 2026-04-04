@@ -150,7 +150,6 @@ export function parseYamlToNodesEdges(
       errors.push(`Duplicate step id: ${stepId}`)
       continue
     }
-    seenIds.add(stepId)
 
     const stepType = step.type ?? 'task'
     if (!VALID_TYPES.has(stepType)) {
@@ -158,6 +157,8 @@ export function parseYamlToNodesEdges(
       continue
     }
 
+    // Only add to seenIds after type validation passes
+    seenIds.add(stepId)
     stepMap.set(stepId, { id: stepId, type: stepType, step, index: i })
   }
 
