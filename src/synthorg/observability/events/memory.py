@@ -81,6 +81,26 @@ MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_mis
 
 MEMORY_FINE_TUNE_REQUESTED: Final[str] = "memory.fine_tune.requested"
 MEMORY_FINE_TUNE_VALIDATION_FAILED: Final[str] = "memory.fine_tune.validation_failed"
+MEMORY_FINE_TUNE_STARTED: Final[str] = "memory.fine_tune.started"
+MEMORY_FINE_TUNE_STAGE_ENTERED: Final[str] = "memory.fine_tune.stage_entered"
+MEMORY_FINE_TUNE_PROGRESS: Final[str] = "memory.fine_tune.progress"
+MEMORY_FINE_TUNE_COMPLETED: Final[str] = "memory.fine_tune.completed"
+MEMORY_FINE_TUNE_FAILED: Final[str] = "memory.fine_tune.failed"
+MEMORY_FINE_TUNE_CANCELLED: Final[str] = "memory.fine_tune.cancelled"
+MEMORY_FINE_TUNE_INTERRUPTED: Final[str] = "memory.fine_tune.interrupted"
+MEMORY_FINE_TUNE_DEPENDENCY_MISSING: Final[str] = "memory.fine_tune.dependency_missing"
+MEMORY_FINE_TUNE_CHECKPOINT_SAVED: Final[str] = "memory.fine_tune.checkpoint_saved"
+MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED: Final[str] = (
+    "memory.fine_tune.checkpoint_deployed"
+)
+MEMORY_FINE_TUNE_CHECKPOINT_ROLLED_BACK: Final[str] = (
+    "memory.fine_tune.checkpoint_rolled_back"
+)
+MEMORY_FINE_TUNE_CHECKPOINT_DELETED: Final[str] = "memory.fine_tune.checkpoint_deleted"
+MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED: Final[str] = (
+    "memory.fine_tune.preflight_completed"
+)
+MEMORY_FINE_TUNE_EVAL_COMPLETED: Final[str] = "memory.fine_tune.eval_completed"
 MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )

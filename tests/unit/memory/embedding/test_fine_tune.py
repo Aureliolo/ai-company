@@ -18,6 +18,7 @@ class TestFineTuneStage:
         assert FineTuneStage.GENERATING_DATA.value == "generating_data"
         assert FineTuneStage.MINING_NEGATIVES.value == "mining_negatives"
         assert FineTuneStage.TRAINING.value == "training"
+        assert FineTuneStage.EVALUATING.value == "evaluating"
         assert FineTuneStage.DEPLOYING.value == "deploying"
         assert FineTuneStage.COMPLETE.value == "complete"
         assert FineTuneStage.FAILED.value == "failed"

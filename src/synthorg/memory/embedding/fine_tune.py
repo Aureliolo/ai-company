@@ -34,6 +34,7 @@ class FineTuneStage(StrEnum):
     GENERATING_DATA = "generating_data"
     MINING_NEGATIVES = "mining_negatives"
     TRAINING = "training"
+    EVALUATING = "evaluating"
     DEPLOYING = "deploying"
     COMPLETE = "complete"
     FAILED = "failed"

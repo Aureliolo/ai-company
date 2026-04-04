@@ -43,3 +43,16 @@ class MemoryConfigError(MemoryError):
 
 class MemoryCapabilityError(MemoryError):
     """Raised when an unsupported operation is attempted for a backend."""
+
+
+class FineTuneDependencyError(MemoryError):
+    """Raised when fine-tuning ML dependencies are not installed.
+
+    The ``synthorg[fine-tune]`` extra provides ``torch`` and
+    ``sentence-transformers``.  This error includes install
+    instructions in its message.
+    """
+
+
+class FineTuneCancelledError(MemoryError):
+    """Raised when a fine-tuning pipeline run is cancelled."""

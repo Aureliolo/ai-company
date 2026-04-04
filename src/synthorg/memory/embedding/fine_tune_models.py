@@ -1,9 +1,16 @@
 """Request and response models for the fine-tuning API."""
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -17,6 +24,13 @@ class FineTuneRequest(BaseModel):
         base_model: Base embedding model to fine-tune (``None`` = use
             current active model).
         output_dir: Directory to save checkpoints (``None`` = default).
+        resume_run_id: Resume a previous failed/cancelled run.
+        epochs: Override training epochs.
+        learning_rate: Override learning rate.
+        temperature: Override InfoNCE temperature.
+        top_k: Override hard negative count.
+        batch_size: Override training batch size.
+        validation_split: Fraction of data held out for evaluation.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -31,6 +45,41 @@ class FineTuneRequest(BaseModel):
     output_dir: NotBlankStr | None = Field(
         default=None,
         description="Checkpoint output directory (None = default)",
+    )
+    resume_run_id: NotBlankStr | None = Field(
+        default=None,
+        description="Resume a previous failed/cancelled run",
+    )
+    epochs: int | None = Field(
+        default=None,
+        ge=1,
+        description="Override training epochs",
+    )
+    learning_rate: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Override learning rate",
+    )
+    temperature: float | None = Field(
+        default=None,
+        gt=0.0,
+        description="Override InfoNCE temperature",
+    )
+    top_k: int | None = Field(
+        default=None,
+        ge=1,
+        description="Override hard negative count per query",
+    )
+    batch_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="Override training batch size",
+    )
+    validation_split: float | None = Field(
+        default=None,
+        gt=0.0,
+        lt=1.0,
+        description="Fraction of data held out for evaluation",
     )
 
     @model_validator(mode="after")
@@ -60,6 +109,7 @@ _ACTIVE_STAGES: frozenset[FineTuneStage] = frozenset(
         FineTuneStage.GENERATING_DATA,
         FineTuneStage.MINING_NEGATIVES,
         FineTuneStage.TRAINING,
+        FineTuneStage.EVALUATING,
         FineTuneStage.DEPLOYING,
     }
 )
@@ -69,6 +119,8 @@ class FineTuneStatus(BaseModel):
     """Status of the fine-tuning pipeline.
 
     Attributes:
+        run_id: Current or most recent run ID (``None`` when idle
+            with no history).
         stage: Current pipeline stage.
         progress: Progress fraction (0.0-1.0), ``None`` when idle.
         error: Error message if the pipeline failed.
@@ -76,6 +128,10 @@ class FineTuneStatus(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
+    run_id: NotBlankStr | None = Field(
+        default=None,
+        description="Current or most recent run ID",
+    )
     stage: FineTuneStage = Field(
         default=FineTuneStage.IDLE,
         description="Current pipeline stage",
@@ -108,3 +164,217 @@ class FineTuneStatus(BaseModel):
             msg = "error must be None during active pipeline stages"
             raise ValueError(msg)
         return self
+
+
+# ── Evaluation metrics ───────────────────────────────────────────
+
+
+class EvalMetrics(BaseModel):
+    """Before/after evaluation metrics for a fine-tuned checkpoint.
+
+    Attributes:
+        ndcg_at_10: NDCG@10 of the fine-tuned model.
+        recall_at_10: Recall@10 of the fine-tuned model.
+        base_ndcg_at_10: NDCG@10 of the base model.
+        base_recall_at_10: Recall@10 of the base model.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    ndcg_at_10: float = Field(ge=0.0, le=1.0, description="NDCG@10 fine-tuned")
+    recall_at_10: float = Field(ge=0.0, le=1.0, description="Recall@10 fine-tuned")
+    base_ndcg_at_10: float = Field(ge=0.0, le=1.0, description="NDCG@10 base")
+    base_recall_at_10: float = Field(ge=0.0, le=1.0, description="Recall@10 base")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def improvement_ndcg(self) -> float:
+        """Relative improvement in NDCG@10."""
+        if self.base_ndcg_at_10 == 0.0:
+            return 0.0
+        return (self.ndcg_at_10 - self.base_ndcg_at_10) / self.base_ndcg_at_10
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def improvement_recall(self) -> float:
+        """Relative improvement in Recall@10."""
+        if self.base_recall_at_10 == 0.0:
+            return 0.0
+        return (self.recall_at_10 - self.base_recall_at_10) / self.base_recall_at_10
+
+
+# ── Run configuration snapshot ──────────────────────────────────
+
+
+class FineTuneRunConfig(BaseModel):
+    """Frozen snapshot of the configuration used for a pipeline run.
+
+    Attributes:
+        source_dir: Source document directory.
+        base_model: Base embedding model identifier.
+        output_dir: Checkpoint output directory.
+        epochs: Training epochs.
+        learning_rate: Training learning rate.
+        temperature: InfoNCE temperature.
+        top_k: Hard negatives per query.
+        batch_size: Training batch size.
+        validation_split: Fraction held out for evaluation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    source_dir: NotBlankStr = Field(description="Source document directory")
+    base_model: NotBlankStr = Field(description="Base embedding model")
+    output_dir: NotBlankStr = Field(description="Checkpoint output directory")
+    epochs: int = Field(default=3, ge=1, description="Training epochs")
+    learning_rate: float = Field(default=1e-5, gt=0.0, description="Learning rate")
+    temperature: float = Field(default=0.02, gt=0.0, description="InfoNCE temperature")
+    top_k: int = Field(default=4, ge=1, description="Hard negatives per query")
+    batch_size: int = Field(default=128, ge=1, description="Training batch size")
+    validation_split: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description="Fraction held out for evaluation",
+    )
+
+
+# ── Pipeline run record ─────────────────────────────────────────
+
+
+class FineTuneRun(BaseModel):
+    """Persistent record of a fine-tuning pipeline run.
+
+    Attributes:
+        id: Unique run identifier.
+        stage: Current pipeline stage.
+        progress: Progress fraction within current stage.
+        error: Error message if the run failed.
+        config: Frozen configuration snapshot.
+        started_at: When the run was started.
+        updated_at: Last status update timestamp.
+        completed_at: When the run finished (completed/failed/cancelled).
+        stages_completed: Stages that finished successfully.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique run identifier")
+    stage: FineTuneStage = Field(description="Current pipeline stage")
+    progress: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Progress within current stage",
+    )
+    error: NotBlankStr | None = Field(
+        default=None,
+        description="Error message if failed",
+    )
+    config: FineTuneRunConfig = Field(description="Configuration snapshot")
+    started_at: AwareDatetime = Field(description="Run start time")
+    updated_at: AwareDatetime = Field(description="Last update time")
+    completed_at: AwareDatetime | None = Field(
+        default=None,
+        description="Run completion time",
+    )
+    stages_completed: tuple[str, ...] = Field(
+        default=(),
+        description="Successfully completed stage names",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def duration_seconds(self) -> float | None:
+        """Run duration in seconds (``None`` if not completed)."""
+        if self.completed_at is None:
+            return None
+        delta = self.completed_at - self.started_at
+        return delta.total_seconds()
+
+
+# ── Checkpoint record ────────────────────────────────────────────
+
+
+class CheckpointRecord(BaseModel):
+    """Persistent record of a fine-tuned model checkpoint.
+
+    Attributes:
+        id: Unique checkpoint identifier.
+        run_id: Pipeline run that produced this checkpoint.
+        model_path: Path to the checkpoint directory.
+        base_model: Base model identifier.
+        doc_count: Number of training documents.
+        eval_metrics: Evaluation metrics (``None`` if not evaluated).
+        size_bytes: Checkpoint size on disk.
+        created_at: When the checkpoint was saved.
+        is_active: Whether this checkpoint is currently deployed.
+        backup_config_json: JSON backup of pre-deployment config.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(description="Unique checkpoint ID")
+    run_id: NotBlankStr = Field(description="Originating run ID")
+    model_path: NotBlankStr = Field(description="Path to checkpoint")
+    base_model: NotBlankStr = Field(description="Base model identifier")
+    doc_count: int = Field(ge=0, description="Training document count")
+    eval_metrics: EvalMetrics | None = Field(
+        default=None,
+        description="Evaluation metrics",
+    )
+    size_bytes: int = Field(ge=0, description="Checkpoint size on disk")
+    created_at: AwareDatetime = Field(description="Creation timestamp")
+    is_active: bool = Field(default=False, description="Currently deployed")
+    backup_config_json: str | None = Field(
+        default=None,
+        description="Pre-deployment config backup (JSON)",
+    )
+
+
+# ── Pre-flight validation ────────────────────────────────────────
+
+
+class PreflightCheck(BaseModel):
+    """Result of a single pre-flight validation check.
+
+    Attributes:
+        name: Check identifier.
+        status: Pass/warn/fail result.
+        message: Human-readable result description.
+        detail: Optional additional detail.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(description="Check identifier")
+    status: Literal["pass", "warn", "fail"] = Field(description="Result")
+    message: NotBlankStr = Field(description="Result description")
+    detail: str | None = Field(default=None, description="Additional detail")
+
+
+class PreflightResult(BaseModel):
+    """Aggregated pre-flight validation results.
+
+    Attributes:
+        checks: Individual check results.
+        recommended_batch_size: VRAM-based batch size recommendation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    checks: tuple[PreflightCheck, ...] = Field(
+        default=(),
+        description="Individual check results",
+    )
+    recommended_batch_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="VRAM-based batch size recommendation",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def can_proceed(self) -> bool:
+        """True if no checks have ``"fail"`` status."""
+        return all(c.status != "fail" for c in self.checks)
