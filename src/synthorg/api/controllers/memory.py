@@ -240,7 +240,7 @@ class MemoryAdminController(Controller):
         updated = await repo.get_checkpoint(checkpoint_id)
         return ApiResponse(data=updated)
 
-    @delete("/fine-tune/checkpoints/{checkpoint_id:str}")
+    @delete("/fine-tune/checkpoints/{checkpoint_id:str}", status_code=200)
     async def delete_checkpoint(
         self,
         state: State,
