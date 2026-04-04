@@ -84,6 +84,24 @@ class WorkflowExecutionRepository(Protocol):
         """
         ...
 
+    async def find_by_task_id(
+        self,
+        task_id: NotBlankStr,
+    ) -> WorkflowExecution | None:
+        """Find a RUNNING execution containing a node with the given task ID.
+
+        Args:
+            task_id: The concrete task identifier to search for.
+
+        Returns:
+            The matching execution, or ``None`` if no running
+            execution contains this task ID.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        ...
+
     async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a workflow execution by ID.
 

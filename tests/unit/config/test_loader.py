@@ -1,7 +1,7 @@
 """Tests for config loader (parsing, merging, validation)."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 
 import pytest
 import structlog
@@ -66,10 +66,12 @@ class TestReadConfigText:
     ) -> None:
         f = tmp_path / "config.yaml"
         f.write_text("content", encoding="utf-8")
-        monkeypatch.setattr(
-            "pathlib.Path.read_text",
-            lambda *a, **kw: (_ for _ in ()).throw(PermissionError("denied")),
-        )
+
+        def _raise_permission(*a: object, **kw: object) -> Never:
+            msg = "denied"
+            raise PermissionError(msg)
+
+        monkeypatch.setattr("pathlib.Path.read_text", _raise_permission)
         with pytest.raises(ConfigParseError, match="Unable to read"):
             _read_config_text(f)
 
@@ -356,6 +358,23 @@ class TestLoadConfigFromString:
     def test_empty_string_uses_defaults(self) -> None:
         cfg = load_config_from_string("")
         assert cfg.company_name == "SynthOrg"
+
+    def test_performance_config_round_trip(self) -> None:
+        yaml_str = """\
+company_name: Test Corp
+performance:
+  quality_judge_model: test-judge-001
+  quality_judge_provider: test-provider
+  quality_ci_weight: 0.3
+  quality_llm_weight: 0.7
+  min_data_points: 10
+"""
+        cfg = load_config_from_string(yaml_str)
+        assert cfg.performance.quality_judge_model == "test-judge-001"
+        assert cfg.performance.quality_judge_provider == "test-provider"
+        assert cfg.performance.quality_ci_weight == 0.3
+        assert cfg.performance.quality_llm_weight == 0.7
+        assert cfg.performance.min_data_points == 10
 
 
 # ── _substitute_env_vars ────────────────────────────────────────

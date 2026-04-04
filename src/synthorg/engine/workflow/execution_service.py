@@ -698,19 +698,8 @@ class WorkflowExecutionService:
         self,
         task_id: str,
     ) -> WorkflowExecution | None:
-        """Find a RUNNING execution containing a node with the task ID.
-
-        TODO(#1060): Replace O(R*N) full scan with an indexed lookup
-        (task_id -> execution_id map or repository method).
-        """
-        running = await self._execution_repo.list_by_status(
-            WorkflowExecutionStatus.RUNNING,
-        )
-        for execution in running:
-            for ne in execution.node_executions:
-                if ne.task_id == task_id:
-                    return execution
-        return None
+        """Find a RUNNING execution containing a node with the task ID."""
+        return await self._execution_repo.find_by_task_id(task_id)
 
 
 def _update_node_status(

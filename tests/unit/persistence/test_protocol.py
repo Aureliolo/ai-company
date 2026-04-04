@@ -413,6 +413,12 @@ class _FakeWorkflowExecutionRepository:
     ) -> tuple[WorkflowExecution, ...]:
         return ()
 
+    async def find_by_task_id(
+        self,
+        task_id: NotBlankStr,
+    ) -> WorkflowExecution | None:
+        return None
+
     async def delete(self, execution_id: NotBlankStr) -> bool:
         return False
 

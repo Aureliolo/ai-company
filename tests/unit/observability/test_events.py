@@ -185,6 +185,7 @@ class TestEventConstants:
             "budget",
             "cfo",
             "classification",
+            "condition_eval",
             "code_runner",
             "communication",
             "company",

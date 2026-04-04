@@ -20,19 +20,20 @@ export const apiClient = axios.create({
 })
 
 // ── Request interceptor: attach JWT ──────────────────────────
-// SECURITY NOTE: JWT is stored in localStorage, which is accessible to any JS
-// running in the page context (XSS risk). HttpOnly cookies would eliminate this
-// attack surface but require backend cookie-based auth support plus CSRF
-// protection. Mitigations in place: short-lived tokens with server-controlled
-// expiry, automatic 401 cleanup, and expiry checks on page load (see auth
-// store). Default token lifetime is 24 hours (configurable via jwt_expiry_minutes).
-// CSP headers in security-headers.conf (included by nginx.conf) restrict
-// script sources. If the deployment
-// architecture changes to support cookie-based auth, migrate away from
-// localStorage -- see docs/security.md for the full threat model.
+// SECURITY NOTE: JWT is stored in sessionStorage, which is accessible to any JS
+// running in the page context (XSS risk) but scoped to the browser tab (tokens
+// do not persist across sessions or leak to other tabs). HttpOnly cookies would
+// eliminate this attack surface entirely but require backend cookie-based auth
+// support plus CSRF protection. Mitigations in place: short-lived tokens with
+// server-controlled expiry, automatic 401 cleanup, expiry checks on page load
+// (see auth store), and tab-scoped storage. Default token lifetime is 24 hours
+// (configurable via jwt_expiry_minutes). CSP headers in security-headers.conf
+// (included by nginx.conf) restrict script sources. If the deployment
+// architecture changes to support cookie-based auth, migrate to HttpOnly cookies
+// -- see docs/security.md for the full threat model.
 
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token')
+  const token = sessionStorage.getItem('auth_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -46,9 +47,9 @@ apiClient.interceptors.response.use(
   (error: AxiosError<{ error?: string; success?: boolean }>) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // Clear credentials synchronously to prevent stale-token retries
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_token_expires_at')
-      localStorage.removeItem('auth_must_change_password')
+      sessionStorage.removeItem('auth_token')
+      sessionStorage.removeItem('auth_token_expires_at')
+      sessionStorage.removeItem('auth_must_change_password')
       // Sync Zustand auth state -- dynamic import avoids circular dependency.
       // We intentionally fire-and-forget: the rejection below reaches the
       // caller immediately, while auth state cleanup happens concurrently.

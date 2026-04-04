@@ -3,10 +3,11 @@
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowExecutionStatus, WorkflowType
+    from synthorg.core.enums import WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
 
@@ -90,6 +91,18 @@ class FakeWorkflowExecutionRepository:
             reverse=True,
         )
         return tuple(copy.deepcopy(e) for e in result)
+
+    async def find_by_task_id(
+        self,
+        task_id: str,
+    ) -> WorkflowExecution | None:
+        for execution in self._executions.values():
+            if execution.status != WorkflowExecutionStatus.RUNNING:
+                continue
+            for ne in execution.node_executions:
+                if ne.task_id == task_id:
+                    return copy.deepcopy(execution)
+        return None
 
     async def delete(self, execution_id: str) -> bool:
         return self._executions.pop(execution_id, None) is not None

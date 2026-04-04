@@ -8,6 +8,9 @@
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 
+/** A depends_on entry: plain string or object with explicit branch. */
+export type DependsOnEntry = string | { id: string; branch: 'true' | 'false' }
+
 interface StepData {
   id: string
   type: string
@@ -111,12 +114,24 @@ export function generateYamlPreview(
       if (config.agent_name) step.agent_name = config.agent_name
     }
 
-    // Dependencies (skip START/END)
-    const deps = (incoming.get(nodeId) ?? []).filter((srcId) => {
+    // Dependencies (skip START/END), with explicit branch metadata
+    // for conditional edges to ensure round-trip fidelity.
+    const depEntries: DependsOnEntry[] = []
+    for (const srcId of incoming.get(nodeId) ?? []) {
       const srcNode = nodeMap.get(srcId)
-      return srcNode && !skipTypes.has(srcNode.type ?? '')
-    })
-    if (deps.length > 0) step.depends_on = deps
+      if (!srcNode || skipTypes.has(srcNode.type ?? '')) continue
+      // Find the edge from srcId to this node
+      const edge = edges.find((e) => e.source === srcId && e.target === nodeId)
+      const edgeType = (edge?.data as Record<string, unknown> | undefined)?.edgeType as string | undefined
+      if (edgeType === 'conditional_true') {
+        depEntries.push({ id: srcId, branch: 'true' })
+      } else if (edgeType === 'conditional_false') {
+        depEntries.push({ id: srcId, branch: 'false' })
+      } else {
+        depEntries.push(srcId)
+      }
+    }
+    if (depEntries.length > 0) step.depends_on = depEntries
 
     steps.push(step)
   }
