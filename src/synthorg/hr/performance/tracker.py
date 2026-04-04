@@ -443,7 +443,7 @@ class PerformanceTracker:
         if since is not None:
             records = [r for r in records if r.recorded_at >= since]
         if until is not None:
-            records = [r for r in records if r.recorded_at <= until]
+            records = [r for r in records if r.recorded_at < until]
         return tuple(records)
 
     @property
