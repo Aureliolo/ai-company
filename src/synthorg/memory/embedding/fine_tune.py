@@ -17,7 +17,6 @@ import asyncio
 import json
 import math
 from collections.abc import Callable
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -703,12 +702,10 @@ async def deploy_checkpoint(
         settings_service,
         "set",
     ):
-        now = datetime.now(UTC).isoformat()
         await settings_service.set(
             "memory",
             "embedder_model",
             checkpoint_path,
-            now,
         )
 
     if settings_service is None and config_path is None:

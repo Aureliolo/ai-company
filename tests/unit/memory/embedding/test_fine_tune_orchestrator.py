@@ -20,6 +20,7 @@ from synthorg.memory.embedding.fine_tune_models import (
 from synthorg.memory.embedding.fine_tune_orchestrator import (
     FineTuneOrchestrator,
 )
+from synthorg.memory.errors import FineTuneCancelledError
 from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
@@ -126,7 +127,10 @@ class TestOrchestratorLifecycle:
             # Clean up the blocking task.
             await orchestrator.cancel()
             if orchestrator._current_task is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    FineTuneCancelledError,
+                ):
                     await orchestrator._current_task
 
 
@@ -148,7 +152,10 @@ class TestOrchestratorCancellation:
             await asyncio.sleep(0)
             await orchestrator.cancel()
             if orchestrator._current_task is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    FineTuneCancelledError,
+                ):
                     await orchestrator._current_task
 
         # Run should be marked as failed.

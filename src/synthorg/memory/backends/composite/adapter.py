@@ -359,7 +359,7 @@ class CompositeBackend:
         query: MemoryQuery,
     ) -> list[MemoryBackend]:
         """Determine which backends to query for a retrieve call."""
-        if query.namespaces is None:
+        if not query.namespaces:
             return list(self._unique_backends)
         seen: dict[int, MemoryBackend] = {}
         for ns in query.namespaces:

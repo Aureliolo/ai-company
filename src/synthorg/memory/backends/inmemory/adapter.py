@@ -263,6 +263,8 @@ class InMemoryBackend:
             str(memory_id),
         )
         if entry is not None:
+            if _is_expired(entry, datetime.now(UTC)):
+                return None
             logger.debug(
                 MEMORY_ENTRY_FETCHED,
                 backend="inmemory",
@@ -321,10 +323,15 @@ class InMemoryBackend:
         """
         self._require_connected()
         agent_store = self._store.get(str(agent_id), {})
+        now = datetime.now(UTC)
         if category is None:
-            total = len(agent_store)
+            total = sum(1 for e in agent_store.values() if not _is_expired(e, now))
         else:
-            total = sum(1 for e in agent_store.values() if e.category == category)
+            total = sum(
+                1
+                for e in agent_store.values()
+                if e.category == category and not _is_expired(e, now)
+            )
         logger.debug(
             MEMORY_ENTRY_COUNTED,
             backend="inmemory",

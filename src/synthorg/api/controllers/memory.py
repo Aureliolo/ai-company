@@ -5,6 +5,7 @@ All endpoints require CEO or the internal SYSTEM role
 """
 
 import asyncio
+import contextlib
 import json
 
 from litestar import Controller, delete, get, post
@@ -251,15 +252,41 @@ class MemoryAdminController(Controller):
         # Update runtime embedder config via settings if available.
         if app_state.has_settings_service:
             svc = app_state.settings_service
+            # Capture prior settings for rollback.
+            prior_model = prior_provider = None
+            try:
+                sv = await svc.get("memory", "embedder_model")
+                prior_model = sv.value if sv else None
+            except Exception:  # noqa: S110
+                pass  # Best-effort read for rollback
+            try:
+                sv = await svc.get("memory", "embedder_provider")
+                prior_provider = sv.value if sv else None
+            except Exception:  # noqa: S110
+                pass  # Best-effort read for rollback
             try:
                 await svc.set("memory", "embedder_model", cp.model_path)
                 await svc.set("memory", "embedder_provider", "local")
             except Exception as exc:
-                # Rollback activation on settings failure.
+                # Rollback activation + settings on failure.
                 if prior is not None:
                     await repo.set_active(prior.id)
                 else:
                     await repo.deactivate_all()
+                if prior_model is not None:
+                    with contextlib.suppress(Exception):
+                        await svc.set(
+                            "memory",
+                            "embedder_model",
+                            prior_model,
+                        )
+                if prior_provider is not None:
+                    with contextlib.suppress(Exception):
+                        await svc.set(
+                            "memory",
+                            "embedder_provider",
+                            prior_provider,
+                        )
                 logger.warning(
                     MEMORY_FINE_TUNE_REQUESTED,
                     error=f"Settings update failed: {exc}",
@@ -425,7 +452,8 @@ def _run_preflight_checks(
     checks.append(_check_dependencies())
     checks.append(_check_gpu())
     checks.append(_check_documents(request.source_dir))
-    checks.append(_check_disk_space(request.source_dir))
+    output_dir = request.output_dir or request.source_dir
+    checks.append(_check_disk_space(output_dir))
     return checks
 
 
