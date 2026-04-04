@@ -879,6 +879,8 @@ class AgentEngine:
             except Exception:
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
                     msg="failed to read ENGINE settings, using defaults",
                     exc_info=True,
                 )
