@@ -8,6 +8,7 @@ as described in the Cost Controls section of the Operations design page.
 
 import copy
 from datetime import UTC, datetime
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -533,23 +534,23 @@ class BudgetEnforcer:
                 projected = self._risk_scorer.score(action_type).risk_units
 
             day_start = daily_period_start()
-            tracker = self._risk_tracker
+            t = self._risk_tracker
             checks = (
                 (
                     risk_cfg.per_task_risk_limit,
-                    lambda: tracker.get_task_risk(task_id),
+                    partial(t.get_task_risk, task_id),
                     RISK_BUDGET_TASK_LIMIT_EXCEEDED,
                     "Per-task",
                 ),
                 (
                     risk_cfg.per_agent_daily_risk_limit,
-                    lambda: tracker.get_agent_risk(agent_id, start=day_start),
+                    partial(t.get_agent_risk, agent_id, start=day_start),
                     RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
                     "Per-agent daily",
                 ),
                 (
                     risk_cfg.total_daily_risk_limit,
-                    lambda: tracker.get_total_risk(start=day_start),
+                    partial(t.get_total_risk, start=day_start),
                     RISK_BUDGET_LIMIT_EXCEEDED,
                     "Total daily",
                 ),
