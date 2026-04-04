@@ -1,0 +1,88 @@
+import { EmptyState } from '@/components/ui/empty-state'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { useFineTuningStore } from '@/stores/fine-tuning'
+
+import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
+
+const STAGE_STATUS_MAP: Record<string, 'active' | 'on_leave' | 'terminated'> = {
+  complete: 'active',
+  failed: 'terminated',
+  idle: 'on_leave',
+}
+
+export function RunHistoryTable() {
+  const { runs } = useFineTuningStore()
+
+  if (runs.length === 0) {
+    return (
+      <EmptyState
+        title="No runs yet"
+        description="Start your first fine-tuning run to see history here."
+      />
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="pb-2 pr-4">Date</th>
+            <th className="pb-2 pr-4">Duration</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2 pr-4">Stages</th>
+            <th className="pb-2">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id} className="border-b border-border/50">
+              <td className="py-2 pr-4 font-mono text-xs">
+                {new Date(run.started_at).toLocaleString()}
+              </td>
+              <td className="py-2 pr-4 font-mono text-xs">
+                {run.duration_seconds != null
+                  ? formatDuration(run.duration_seconds)
+                  : '--'}
+              </td>
+              <td className="py-2 pr-4">
+                <StatusBadge
+                  status={STAGE_STATUS_MAP[run.stage] ?? 'on_leave'}
+                  label={formatStage(run.stage)}
+                />
+              </td>
+              <td className="py-2 pr-4 text-xs text-muted-foreground">
+                {run.stages_completed.length}/5
+              </td>
+              <td className="py-2 font-mono text-xs text-muted-foreground">
+                {run.config.source_dir}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.round((seconds % 3600) / 60)
+  return `${h}h ${m}m`
+}
+
+function formatStage(stage: FineTuneStage): string {
+  const labels: Record<string, string> = {
+    complete: 'Completed',
+    failed: 'Failed',
+    idle: 'Idle',
+    generating_data: 'Generating',
+    mining_negatives: 'Mining',
+    training: 'Training',
+    evaluating: 'Evaluating',
+    deploying: 'Deploying',
+  }
+  return labels[stage] ?? stage
+}
