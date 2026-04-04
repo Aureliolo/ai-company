@@ -69,10 +69,10 @@ export function BlueprintPicker({
   const loadBlueprints = useWorkflowsStore((s) => s.loadBlueprints)
 
   useEffect(() => {
-    if (blueprints.length === 0 && !loading) {
+    if (blueprints.length === 0 && !loading && !error) {
       loadBlueprints()
     }
-  }, [blueprints.length, loading, loadBlueprints])
+  }, [blueprints.length, loading, error, loadBlueprints])
 
   const filtered = workflowTypeFilter
     ? blueprints.filter((bp) => bp.workflow_type === workflowTypeFilter)

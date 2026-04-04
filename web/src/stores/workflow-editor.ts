@@ -245,7 +245,18 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   },
 
   createDefinition: async (name: string, workflowType: string) => {
-    set({ loading: true, error: null })
+    set((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+      versions: [],
+      versionsLoading: false,
+      versionsHasMore: false,
+      diffResult: null,
+      diffLoading: false,
+      _versionsRequestId: prev._versionsRequestId + 1,
+      _diffRequestId: prev._diffRequestId + 1,
+    }))
     try {
       const startId = generateNodeId()
       const endId = generateNodeId()
@@ -662,6 +673,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     set((prev) => ({
       ...prev,
       diffResult: null,
+      diffLoading: false,
       _diffRequestId: prev._diffRequestId + 1,
     }))
   },

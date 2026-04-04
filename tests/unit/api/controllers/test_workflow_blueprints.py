@@ -40,6 +40,7 @@ class TestListWorkflowBlueprints:
             "/api/v1/workflows/blueprints",
             headers=make_auth_headers("ceo"),
         )
+        assert resp.status_code == 200
         body = resp.json()
         bp = body["data"][0]
         assert "name" in bp
@@ -57,6 +58,7 @@ class TestListWorkflowBlueprints:
             "/api/v1/workflows/blueprints",
             headers=make_auth_headers("ceo"),
         )
+        assert resp.status_code == 200
         names = {bp["name"] for bp in resp.json()["data"]}
         for builtin_name in BUILTIN_BLUEPRINTS:
             assert builtin_name in names
@@ -93,6 +95,7 @@ class TestCreateFromBlueprint:
             json={"blueprint_name": "feature-pipeline"},
             headers=make_auth_headers("ceo"),
         )
+        assert resp.status_code == 201
         data = resp.json()["data"]
         # Feature pipeline: start + 5 tasks + end = 7 nodes, 6 edges
         assert len(data["nodes"]) == 7
@@ -152,6 +155,7 @@ class TestCreateFromBlueprint:
             json={"blueprint_name": "feature-pipeline"},
             headers=make_auth_headers("ceo"),
         )
+        assert create_resp.status_code == 201
         wf_id = create_resp.json()["data"]["id"]
 
         patch_resp = test_client.patch(
