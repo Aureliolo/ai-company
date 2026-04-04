@@ -95,9 +95,41 @@ class TestMemoryStoreRequest:
             content="test memory",
         )
         assert r.category is MemoryCategory.EPISODIC
+        assert r.namespace == "default"
         assert r.content == "test memory"
         assert r.metadata == MemoryMetadata()
         assert r.expires_at is None
+
+    def test_namespace_default(self) -> None:
+        r = MemoryStoreRequest(
+            category=MemoryCategory.WORKING,
+            content="c",
+        )
+        assert r.namespace == "default"
+
+    def test_namespace_custom(self) -> None:
+        r = MemoryStoreRequest(
+            category=MemoryCategory.EPISODIC,
+            namespace="memories",
+            content="c",
+        )
+        assert r.namespace == "memories"
+
+    def test_namespace_empty_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least 1 character"):
+            MemoryStoreRequest(
+                category=MemoryCategory.WORKING,
+                namespace="",
+                content="c",
+            )
+
+    def test_namespace_whitespace_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            MemoryStoreRequest(
+                category=MemoryCategory.WORKING,
+                namespace="   ",
+                content="c",
+            )
 
     def test_with_all_fields(self) -> None:
         expires = datetime(2027, 1, 1, tzinfo=UTC)
@@ -153,10 +185,59 @@ class TestMemoryEntry:
         )
         assert e.id == "mem-001"
         assert e.agent_id == "agent-a"
+        assert e.namespace == "default"
         assert e.category is MemoryCategory.PROCEDURAL
         assert e.relevance_score is None
         assert e.updated_at is None
         assert e.expires_at is None
+
+    def test_namespace_default(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            category=MemoryCategory.WORKING,
+            content="c",
+            created_at=now,
+        )
+        assert e.namespace == "default"
+
+    def test_namespace_custom(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            namespace="scratch",
+            category=MemoryCategory.WORKING,
+            content="temp",
+            created_at=now,
+        )
+        assert e.namespace == "scratch"
+
+    def test_namespace_empty_rejected(self) -> None:
+        now = datetime.now(tz=UTC)
+        with pytest.raises(ValidationError, match="at least 1 character"):
+            MemoryEntry(
+                id="m",
+                agent_id="a",
+                namespace="",
+                category=MemoryCategory.WORKING,
+                content="c",
+                created_at=now,
+            )
+
+    def test_namespace_preserved_in_json_roundtrip(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            namespace="memories",
+            category=MemoryCategory.SEMANTIC,
+            content="fact",
+            created_at=now,
+        )
+        restored = MemoryEntry.model_validate_json(e.model_dump_json())
+        assert restored.namespace == "memories"
 
     def test_with_relevance_score(self) -> None:
         now = datetime.now(tz=UTC)
@@ -380,12 +461,35 @@ class TestMemoryQuery:
     def test_defaults(self) -> None:
         q = MemoryQuery()
         assert q.text is None
+        assert q.namespaces is None
         assert q.categories is None
         assert q.tags == ()
         assert q.min_relevance == 0.0
         assert q.limit == 10
         assert q.since is None
         assert q.until is None
+
+    def test_namespaces_filter(self) -> None:
+        q = MemoryQuery(
+            namespaces=frozenset({"memories", "scratch"}),
+        )
+        assert q.namespaces == frozenset({"memories", "scratch"})
+
+    def test_namespaces_none_means_all(self) -> None:
+        q = MemoryQuery()
+        assert q.namespaces is None
+
+    def test_namespaces_single(self) -> None:
+        q = MemoryQuery(namespaces=frozenset({"working"}))
+        assert q.namespaces == frozenset({"working"})
+
+    def test_namespaces_preserved_in_json_roundtrip(self) -> None:
+        q = MemoryQuery(
+            namespaces=frozenset({"memories", "preferences"}),
+            limit=5,
+        )
+        restored = MemoryQuery.model_validate_json(q.model_dump_json())
+        assert restored.namespaces == frozenset({"memories", "preferences"})
 
     def test_with_text(self) -> None:
         q = MemoryQuery(text="search term")
@@ -473,6 +577,7 @@ class TestMemoryQuery:
         now = datetime.now(tz=UTC)
         q = MemoryQuery(
             text="search",
+            namespaces=frozenset({"memories"}),
             categories=frozenset({MemoryCategory.WORKING}),
             tags=("tag1",),
             min_relevance=0.5,
@@ -483,6 +588,7 @@ class TestMemoryQuery:
         json_str = q.model_dump_json()
         restored = MemoryQuery.model_validate_json(json_str)
         assert restored.text == q.text
+        assert restored.namespaces == q.namespaces
         assert restored.limit == q.limit
         assert restored.min_relevance == q.min_relevance
         assert restored.categories == q.categories

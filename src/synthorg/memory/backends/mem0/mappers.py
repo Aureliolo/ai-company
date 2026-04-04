@@ -59,6 +59,7 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
     """
     meta: dict[str, Any] = {
         f"{_PREFIX}category": request.category.value,
+        f"{_PREFIX}namespace": request.namespace,
         f"{_PREFIX}confidence": request.metadata.confidence,
     }
     if request.metadata.source is not None:
@@ -300,6 +301,23 @@ def _resolve_created_at(
     return fallback
 
 
+def _extract_namespace(
+    raw_metadata: dict[str, Any] | None,
+) -> NotBlankStr:
+    """Extract the storage namespace from Mem0 metadata.
+
+    Returns ``"default"`` when the key is absent (backward compat
+    with entries stored before the namespace field was added).
+    """
+    if not raw_metadata or not isinstance(raw_metadata, dict):
+        return NotBlankStr("default")
+    raw = raw_metadata.get(f"{_PREFIX}namespace")
+    if raw is None:
+        return NotBlankStr("default")
+    coerced = str(raw).strip()
+    return NotBlankStr(coerced) if coerced else NotBlankStr("default")
+
+
 def mem0_result_to_entry(
     raw: dict[str, Any],
     agent_id: NotBlankStr,
@@ -343,6 +361,7 @@ def mem0_result_to_entry(
 
     raw_metadata = raw.get("metadata")
     category, metadata, expires_at = parse_mem0_metadata(raw_metadata)
+    namespace = _extract_namespace(raw_metadata)
 
     if created_at is None:
         created_at = _resolve_created_at(
@@ -357,6 +376,7 @@ def mem0_result_to_entry(
     return MemoryEntry(
         id=memory_id,
         agent_id=agent_id,
+        namespace=namespace,
         category=category,
         content=content,
         metadata=metadata,
@@ -418,6 +438,43 @@ def query_to_mem0_getall_args(
     }
 
 
+def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
+    """Return True if *entry* has expired."""
+    return entry.expires_at is not None and entry.expires_at <= now
+
+
+def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
+    """Check namespace, category, and tag filters."""
+    if query.namespaces and entry.namespace not in query.namespaces:
+        return False
+    if query.categories and entry.category not in query.categories:
+        return False
+    return not (
+        query.tags and not all(tag in entry.metadata.tags for tag in query.tags)
+    )
+
+
+def _matches_filters(
+    entry: MemoryEntry,
+    query: MemoryQuery,
+    now: datetime,
+) -> bool:
+    """Return True if *entry* passes all query filters."""
+    if _is_expired(entry, now):
+        return False
+    if not _matches_metadata(entry, query):
+        return False
+    if query.since is not None and entry.created_at < query.since:
+        return False
+    if query.until is not None and entry.created_at >= query.until:
+        return False
+    return not (
+        query.min_relevance > 0.0
+        and entry.relevance_score is not None
+        and entry.relevance_score < query.min_relevance
+    )
+
+
 def apply_post_filters(
     entries: tuple[MemoryEntry, ...],
     query: MemoryQuery,
@@ -442,25 +499,7 @@ def apply_post_filters(
     """
     now = datetime.now(UTC)
     pre_count = len(entries)
-    result: list[MemoryEntry] = []
-    for entry in entries:
-        if entry.expires_at is not None and entry.expires_at <= now:
-            continue
-        if query.categories and entry.category not in query.categories:
-            continue
-        if query.tags and not all(tag in entry.metadata.tags for tag in query.tags):
-            continue
-        if query.since is not None and entry.created_at < query.since:
-            continue
-        if query.until is not None and entry.created_at >= query.until:
-            continue
-        if (
-            query.min_relevance > 0.0
-            and entry.relevance_score is not None
-            and entry.relevance_score < query.min_relevance
-        ):
-            continue
-        result.append(entry)
+    result = [e for e in entries if _matches_filters(e, query, now)]
     post_count = len(result)
     if pre_count > 0 and post_count == 0:
         logger.warning(

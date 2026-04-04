@@ -60,6 +60,9 @@ class MemoryStoreRequest(BaseModel):
 
     Attributes:
         category: Memory type category.
+        namespace: Storage namespace for routing (e.g. ``"memories"``,
+            ``"scratch"``).  The composite backend uses this to dispatch
+            to durable vs thread-scoped backends.
         content: Memory content text.
         metadata: Associated metadata.
         expires_at: Optional expiration timestamp.
@@ -68,6 +71,10 @@ class MemoryStoreRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     category: MemoryCategory = Field(description="Memory type category")
+    namespace: NotBlankStr = Field(
+        default="default",
+        description="Storage namespace for composite routing",
+    )
     content: NotBlankStr = Field(description="Memory content text")
     metadata: MemoryMetadata = Field(
         default_factory=MemoryMetadata,
@@ -85,6 +92,7 @@ class MemoryEntry(BaseModel):
     Attributes:
         id: Unique memory identifier (assigned by backend).
         agent_id: Owning agent identifier.
+        namespace: Storage namespace (routing key for composite backend).
         category: Memory type category.
         content: Memory content text.
         metadata: Associated metadata.
@@ -98,6 +106,10 @@ class MemoryEntry(BaseModel):
 
     id: NotBlankStr = Field(description="Unique memory identifier")
     agent_id: NotBlankStr = Field(description="Owning agent identifier")
+    namespace: NotBlankStr = Field(
+        default="default",
+        description="Storage namespace for composite routing",
+    )
     category: MemoryCategory = Field(description="Memory type category")
     content: NotBlankStr = Field(description="Memory content text")
     metadata: MemoryMetadata = Field(
@@ -158,6 +170,7 @@ class MemoryQuery(BaseModel):
 
     Attributes:
         text: Semantic search text (``None`` for metadata-only).
+        namespaces: Filter by storage namespaces.
         categories: Filter by memory categories.
         tags: Filter by tags (AND semantics).
         min_relevance: Minimum relevance score threshold.
@@ -171,6 +184,10 @@ class MemoryQuery(BaseModel):
     text: NotBlankStr | None = Field(
         default=None,
         description="Semantic search text",
+    )
+    namespaces: frozenset[NotBlankStr] | None = Field(
+        default=None,
+        description="Filter by storage namespaces",
     )
     categories: frozenset[MemoryCategory] | None = Field(
         default=None,

@@ -37,6 +37,7 @@ def _make_entry(  # noqa: PLR0913
     *,
     memory_id: str = "mem-1",
     agent_id: str = "test-agent-001",
+    namespace: str = "default",
     category: MemoryCategory = MemoryCategory.EPISODIC,
     content: str = "test content",
     tags: tuple[str, ...] = (),
@@ -49,6 +50,7 @@ def _make_entry(  # noqa: PLR0913
     return MemoryEntry(
         id=memory_id,
         agent_id=agent_id,
+        namespace=namespace,
         category=category,
         content=content,
         metadata=MemoryMetadata(tags=tags),
@@ -68,10 +70,20 @@ class TestBuildMem0Metadata:
         meta = build_mem0_metadata(request)
 
         assert meta[f"{_PREFIX}category"] == "episodic"
+        assert meta[f"{_PREFIX}namespace"] == "default"
         assert meta[f"{_PREFIX}confidence"] == 1.0
         assert f"{_PREFIX}source" not in meta
         assert f"{_PREFIX}tags" not in meta
         assert f"{_PREFIX}expires_at" not in meta
+
+    def test_custom_namespace(self) -> None:
+        request = MemoryStoreRequest(
+            category=MemoryCategory.WORKING,
+            namespace="scratch",
+            content="temp",
+        )
+        meta = build_mem0_metadata(request)
+        assert meta[f"{_PREFIX}namespace"] == "scratch"
 
     def test_full_metadata(self) -> None:
         expires = datetime.now(UTC) + timedelta(days=7)
@@ -88,6 +100,7 @@ class TestBuildMem0Metadata:
         meta = build_mem0_metadata(request)
 
         assert meta[f"{_PREFIX}category"] == "semantic"
+        assert meta[f"{_PREFIX}namespace"] == "default"
         assert meta[f"{_PREFIX}confidence"] == 0.85
         assert meta[f"{_PREFIX}source"] == "task-123"
         assert meta[f"{_PREFIX}tags"] == ["tag-a", "tag-b"]
@@ -245,10 +258,38 @@ class TestMem0ResultToEntry:
 
         assert entry.id == "abc-123"
         assert entry.agent_id == "test-agent-001"
+        assert entry.namespace == "default"
         assert entry.category == MemoryCategory.EPISODIC
         assert entry.content == "test content"
         assert entry.metadata.confidence == 0.8
         assert entry.relevance_score is None
+
+    def test_namespace_extracted_from_metadata(self) -> None:
+        raw = {
+            "id": "ns-1",
+            "memory": "test",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "metadata": {
+                f"{_PREFIX}category": "semantic",
+                f"{_PREFIX}namespace": "memories",
+                f"{_PREFIX}confidence": 1.0,
+            },
+        }
+        entry = mem0_result_to_entry(raw, "test-agent-001")
+        assert entry.namespace == "memories"
+
+    def test_namespace_defaults_for_legacy_entries(self) -> None:
+        raw = {
+            "id": "legacy-1",
+            "memory": "old entry",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "metadata": {
+                f"{_PREFIX}category": "episodic",
+                f"{_PREFIX}confidence": 1.0,
+            },
+        }
+        entry = mem0_result_to_entry(raw, "test-agent-001")
+        assert entry.namespace == "default"
 
     def test_with_score(self) -> None:
         raw = {
@@ -381,6 +422,26 @@ class TestApplyPostFilters:
         result = apply_post_filters(entries, query)
         assert len(result) == 2
         assert all(e.category == MemoryCategory.EPISODIC for e in result)
+
+    def test_namespace_filter(self) -> None:
+        entries = (
+            _make_entry(memory_id="m1", namespace="memories"),
+            _make_entry(memory_id="m2", namespace="scratch"),
+            _make_entry(memory_id="m3", namespace="memories"),
+        )
+        query = MemoryQuery(namespaces=frozenset({"memories"}))
+        result = apply_post_filters(entries, query)
+        assert len(result) == 2
+        assert all(e.namespace == "memories" for e in result)
+
+    def test_namespace_filter_none_passes_all(self) -> None:
+        entries = (
+            _make_entry(memory_id="m1", namespace="memories"),
+            _make_entry(memory_id="m2", namespace="scratch"),
+        )
+        query = MemoryQuery(namespaces=None)
+        result = apply_post_filters(entries, query)
+        assert len(result) == 2
 
     def test_tag_filter(self) -> None:
         entries = (

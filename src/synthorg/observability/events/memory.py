@@ -85,6 +85,14 @@ MEMORY_EMBEDDER_SETTINGS_READ_FAILED: Final[str] = (
     "memory.embedder.settings_read_failed"
 )
 
+# ── Composite routing ────────────────────────────────────────────
+
+MEMORY_COMPOSITE_ROUTED: Final[str] = "memory.composite.routed"
+MEMORY_COMPOSITE_FANOUT_START: Final[str] = "memory.composite.fanout_start"
+MEMORY_COMPOSITE_FANOUT_COMPLETE: Final[str] = "memory.composite.fanout_complete"
+MEMORY_COMPOSITE_FANOUT_PARTIAL: Final[str] = "memory.composite.fanout_partial"
+MEMORY_COMPOSITE_ID_RESOLVED: Final[str] = "memory.composite.id_resolved"
+
 # ── Sparse search ─────────────────────────────────────────────────
 
 MEMORY_SPARSE_FIELD_ENSURED: Final[str] = "memory.sparse.field_ensured"

@@ -62,8 +62,6 @@ from synthorg.engine.task_sync import (
     sync_to_task_engine,
     transition_task_if_needed,
 )
-from synthorg.memory.procedural.pipeline import propose_procedural_memory
-from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
@@ -129,6 +127,7 @@ if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategy
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
+    from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.persistence.repositories import (
         CheckpointRepository,
@@ -339,6 +338,10 @@ class AgentEngine:
             and procedural_memory_config.enabled
             and memory_backend is not None
         ):
+            from synthorg.memory.procedural.proposer import (  # noqa: PLC0415
+                ProceduralMemoryProposer,
+            )
+
             self._procedural_proposer = ProceduralMemoryProposer(
                 provider=provider,
                 config=procedural_memory_config,
@@ -718,6 +721,10 @@ class AgentEngine:
         if self._memory_backend is None:  # pragma: no cover -- guarded by __init__
             return
         try:
+            from synthorg.memory.procedural.pipeline import (  # noqa: PLC0415
+                propose_procedural_memory,
+            )
+
             await propose_procedural_memory(
                 execution_result,
                 recovery_result,

@@ -128,6 +128,88 @@ def _create_mem0_backend(
     return backend
 
 
+def _create_inmemory_backend(
+    config: CompanyMemoryConfig,
+) -> MemoryBackend:
+    """Create an in-memory (session-scoped) backend.
+
+    Args:
+        config: Company-wide memory configuration.
+
+    Returns:
+        A new, disconnected ``InMemoryBackend`` instance.
+    """
+    from synthorg.memory.backends.inmemory import (  # noqa: PLC0415
+        InMemoryBackend,
+    )
+
+    backend = InMemoryBackend(
+        max_memories_per_agent=config.options.max_memories_per_agent,
+    )
+    logger.info(MEMORY_BACKEND_CREATED, backend="inmemory")
+    return backend
+
+
+def _create_composite_backend(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig | None,
+) -> MemoryBackend:
+    """Create a composite backend with namespace routing.
+
+    Args:
+        config: Company-wide memory configuration (must have
+            ``composite`` set).
+        embedder: Embedder config, passed through to child mem0
+            backends.
+
+    Returns:
+        A new, disconnected ``CompositeBackend`` instance.
+
+    Raises:
+        MemoryConfigError: If composite config is missing or
+            child backends cannot be created.
+    """
+    from synthorg.memory.backends.composite import (  # noqa: PLC0415
+        CompositeBackend,
+    )
+
+    if config.composite is None:  # pragma: no cover -- guarded by validator
+        msg = "composite config is required when backend is 'composite'"
+        raise MemoryConfigError(msg)
+    composite_cfg = config.composite
+    # Collect unique backend names from routes + default.
+    names: set[str] = set(composite_cfg.routes.values())
+    names.add(composite_cfg.default)
+    # Create each child backend once.
+    children: dict[str, MemoryBackend] = {}
+    for name in sorted(names):
+        if name == "mem0":
+            children[name] = _create_mem0_backend(
+                config,
+                embedder=embedder,
+            )
+        elif name == "inmemory":
+            children[name] = _create_inmemory_backend(config)
+        else:
+            msg = f"Composite child '{name}' is not a recognized backend"
+            logger.error(
+                MEMORY_BACKEND_UNKNOWN,
+                backend=name,
+            )
+            raise MemoryConfigError(msg)
+    backend = CompositeBackend(
+        children=children,
+        config=composite_cfg,
+    )
+    logger.info(
+        MEMORY_BACKEND_CREATED,
+        backend="composite",
+        children=sorted(children.keys()),
+    )
+    return backend
+
+
 def create_memory_backend(
     config: CompanyMemoryConfig,
     *,
@@ -152,10 +234,10 @@ def create_memory_backend(
     """
     if config.backend == "mem0":
         return _create_mem0_backend(config, embedder=embedder)
-    # Defensive guard: config validation rejects unknown backends, so
-    # this branch is unreachable under normal construction.  It exists
-    # as a safety net for callers that bypass validation (e.g. via
-    # model_construct).
+    if config.backend == "inmemory":
+        return _create_inmemory_backend(config)
+    if config.backend == "composite":
+        return _create_composite_backend(config, embedder=embedder)
     msg = f"Unknown memory backend: {config.backend!r}"
     logger.error(MEMORY_BACKEND_UNKNOWN, backend=config.backend)
     raise MemoryConfigError(msg)

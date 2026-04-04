@@ -14,6 +14,9 @@ from synthorg.core.enums import (
     MemoryLevel,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.memory.backends.composite.config import (
+    CompositeBackendConfig,  # noqa: TC001
+)
 from synthorg.memory.consolidation.config import ConsolidationConfig
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
@@ -207,11 +210,15 @@ class CompanyMemoryConfig(BaseModel):
         consolidation: Memory consolidation settings.
         embedder: Optional embedder override (``None`` = auto-select).
         procedural: Procedural memory auto-generation settings.
+        composite: Composite backend routing config (required when
+            backend is ``"composite"``).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"mem0"})
+    _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset(
+        {"mem0", "composite", "inmemory"},
+    )
 
     backend: NotBlankStr = Field(
         default="mem0",
@@ -252,6 +259,13 @@ class CompanyMemoryConfig(BaseModel):
             "which model to use, and quality thresholds."
         ),
     )
+    composite: CompositeBackendConfig | None = Field(
+        default=None,
+        description=(
+            "Composite backend routing configuration.  "
+            "Required when backend is ``'composite'``."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_backend_name(self) -> Self:
@@ -265,6 +279,27 @@ class CompanyMemoryConfig(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 field="backend",
                 value=self.backend,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_composite_config(self) -> Self:
+        """Require composite config when backend is ``"composite"``."""
+        if self.backend == "composite" and self.composite is None:
+            msg = "composite config is required when backend is 'composite'"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="composite",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.backend != "composite" and self.composite is not None:
+            msg = "composite config is only valid when backend is 'composite'"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="composite",
                 reason=msg,
             )
             raise ValueError(msg)
