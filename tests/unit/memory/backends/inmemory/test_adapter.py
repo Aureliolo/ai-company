@@ -1,5 +1,7 @@
 """Tests for InMemoryBackend."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from synthorg.core.enums import MemoryCategory
@@ -451,6 +453,62 @@ class TestMaxMemories:
     def test_invalid_limit_raises(self) -> None:
         with pytest.raises(ValueError, match="must be >= 1"):
             InMemoryBackend(max_memories_per_agent=0)
+
+
+# -- Expiry -----------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExpiry:
+    async def test_get_returns_none_for_expired_entry(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        past = datetime.now(tz=UTC) - timedelta(hours=1)
+        mid = await connected.store(
+            "a",
+            _req(content="ephemeral"),
+        )
+        # Patch the stored entry's expires_at to the past.
+        store = connected._store["a"]
+        entry = store[mid]
+        store[mid] = entry.model_copy(update={"expires_at": past})
+
+        assert await connected.get("a", mid) is None
+
+    async def test_retrieve_excludes_expired_entry(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        past = datetime.now(tz=UTC) - timedelta(hours=1)
+        mid = await connected.store(
+            "a",
+            _req(content="expired"),
+        )
+        await connected.store("a", _req(content="alive"))
+        store = connected._store["a"]
+        entry = store[mid]
+        store[mid] = entry.model_copy(update={"expires_at": past})
+
+        result = await connected.retrieve("a", MemoryQuery())
+        assert len(result) == 1
+        assert result[0].content == "alive"
+
+    async def test_count_excludes_expired_entry(
+        self,
+        connected: InMemoryBackend,
+    ) -> None:
+        past = datetime.now(tz=UTC) - timedelta(hours=1)
+        mid = await connected.store(
+            "a",
+            _req(content="expired"),
+        )
+        await connected.store("a", _req(content="alive"))
+        store = connected._store["a"]
+        entry = store[mid]
+        store[mid] = entry.model_copy(update={"expires_at": past})
+
+        assert await connected.count("a") == 1
 
 
 # -- Clear ------------------------------------------------------------

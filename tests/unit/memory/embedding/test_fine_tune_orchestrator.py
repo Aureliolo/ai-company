@@ -33,6 +33,7 @@ _SCHEMA_PATH = Path("src/synthorg/persistence/sqlite/schema.sql")
 async def db() -> AsyncGenerator[aiosqlite.Connection]:
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA foreign_keys = ON")
     schema = _SCHEMA_PATH.read_text()  # noqa: ASYNC240
     await conn.executescript(schema)
     yield conn

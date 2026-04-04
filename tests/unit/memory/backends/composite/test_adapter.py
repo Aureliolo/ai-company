@@ -353,6 +353,40 @@ class TestRetrieveFanout:
         assert len(result) == 1
         assert result[0].id.startswith("durable:")
 
+    async def test_retrieve_degrades_gracefully_on_child_error(
+        self,
+        connected: CompositeBackend,
+        durable: InMemoryBackend,
+        session: InMemoryBackend,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Results from healthy child are returned when another child raises."""
+        await connected.store(
+            "a",
+            _req(namespace="memories", content="durable-item"),
+        )
+        await connected.store(
+            "a",
+            _req(namespace="scratch", content="session-item"),
+        )
+
+        # Break the session backend's retrieve method.
+        async def _broken_retrieve(
+            *args: object,
+            **kwargs: object,
+        ) -> list[object]:
+            msg = "simulated backend failure"
+            raise Exception(msg)  # noqa: TRY002
+
+        monkeypatch.setattr(session, "retrieve", _broken_retrieve)
+
+        # Should NOT raise -- graceful degradation.
+        result = await connected.retrieve("a", MemoryQuery())
+        # Only the durable backend's entry survives.
+        assert len(result) >= 1
+        contents = {e.content for e in result}
+        assert "durable-item" in contents
+
     async def test_retrieve_multiple_namespaces(
         self,
         connected: CompositeBackend,

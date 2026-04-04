@@ -232,6 +232,8 @@ class FineTuneOrchestrator:
                     MEMORY_FINE_TUNE_CANCELLED,
                     note="cancel timed out waiting for task",
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:  # noqa: S110
                 pass  # Task failed/cancelled -- already logged by _on_task_done
 
@@ -293,7 +295,7 @@ class FineTuneOrchestrator:
             )
             try:
                 await self._mark_failed(
-                    run,
+                    self._current_run or run,
                     "cancelled by user",
                 )
             except Exception:
@@ -317,7 +319,7 @@ class FineTuneOrchestrator:
             raise
         except Exception as exc:
             try:
-                await self._mark_failed(run, str(exc))
+                await self._mark_failed(self._current_run or run, str(exc))
             except Exception:
                 self._current_run = run.model_copy(
                     update={

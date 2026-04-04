@@ -482,10 +482,19 @@ class SQLiteFineTuneCheckpointRepository:
                     error=msg,
                 )
                 raise QueryError(msg)
-            await self._db.execute(
+            cursor = await self._db.execute(
                 "DELETE FROM fine_tune_checkpoints WHERE id = ? AND is_active = 0",
                 (checkpoint_id,),
             )
+            if cursor.rowcount == 0:
+                # Race: became active between SELECT and DELETE.
+                msg = f"Cannot delete active checkpoint {checkpoint_id}"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error="checkpoint became active during delete",
+                )
+                raise QueryError(msg)
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"

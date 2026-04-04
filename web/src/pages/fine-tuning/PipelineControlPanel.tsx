@@ -102,13 +102,14 @@ export function PipelineControlPanel() {
 
       {preflight && <PreflightResultPanel result={preflight} />}
 
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setShowAdvanced(!showAdvanced)}
-        className="self-start text-sm text-muted-foreground hover:text-foreground"
+        className="self-start"
       >
         {showAdvanced ? 'Hide' : 'Show'} Advanced Options
-      </button>
+      </Button>
 
       {showAdvanced && (
         <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card">

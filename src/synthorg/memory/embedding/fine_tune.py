@@ -140,7 +140,15 @@ def _scan_documents(source_dir: str) -> list[tuple[str, str]]:
     results: list[tuple[str, str]] = []
     for ext in ("*.txt", "*.md", "*.rst"):
         for f in src.rglob(ext):
-            content = f.read_text(encoding="utf-8", errors="ignore")
+            try:
+                content = f.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                logger.warning(
+                    MEMORY_FINE_TUNE_VALIDATION_FAILED,
+                    file=str(f),
+                    reason="not valid UTF-8, skipping",
+                )
+                continue
             if content.strip():
                 results.append((str(f), content))
     return results
@@ -412,11 +420,15 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     _require_not_blank(output_dir, "output_dir")
     if epochs < 1:
         msg = "epochs must be >= 1"
-        logger.warning(
-            MEMORY_FINE_TUNE_VALIDATION_FAILED,
-            field="epochs",
-            reason=msg,
-        )
+        raise ValueError(msg)
+    if batch_size < 1:
+        msg = "batch_size must be >= 1"
+        raise ValueError(msg)
+    if learning_rate <= 0:
+        msg = "learning_rate must be > 0"
+        raise ValueError(msg)
+    if temperature <= 0:
+        msg = "temperature must be > 0"
         raise ValueError(msg)
 
     st = _import_sentence_transformers()
@@ -666,6 +678,14 @@ async def deploy_checkpoint(
     if not exists:
         msg = f"Checkpoint path does not exist: {checkpoint_path}"
         raise ValueError(msg)
+
+    if config_path is not None and settings_service is None:
+        logger.warning(
+            MEMORY_FINE_TUNE_VALIDATION_FAILED,
+            field="config_path",
+            reason="config_path provided without settings_service"
+            " -- file-based config update not implemented",
+        )
 
     # Back up current config if settings service is available.
     backup: dict[str, str] = {}

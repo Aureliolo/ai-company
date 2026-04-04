@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 
-const STAGE_STATUS_MAP: Record<string, 'active' | 'idle' | 'error' | 'offline'> = {
+const STAGE_STATUS_MAP: Record<FineTuneStage, 'active' | 'idle' | 'error' | 'offline'> = {
   complete: 'active',
   failed: 'error',
   idle: 'idle',
@@ -88,7 +88,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatStage(stage: FineTuneStage): string {
-  const labels: Record<string, string> = {
+  const labels: Record<FineTuneStage, string> = {
     complete: 'Completed',
     failed: 'Failed',
     idle: 'Idle',
