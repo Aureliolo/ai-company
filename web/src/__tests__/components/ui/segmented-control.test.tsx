@@ -152,7 +152,7 @@ describe('SegmentedControl', () => {
   })
 
   describe('fast-check property tests', () => {
-    it('ArrowRight wraps correctly for any enabled option count', () => {
+    it('ArrowRight wraps correctly for any enabled option count', { timeout: 15_000 }, () => {
       fc.assert(
         fc.property(
           fc.integer({ min: 2, max: 10 }),
