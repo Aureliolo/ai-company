@@ -158,6 +158,10 @@ class CompositeQualityStrategy:
                             acceptance_criteria=acceptance_criteria,
                         ),
                     )
+            except* MemoryError as eg:
+                raise eg.exceptions[0] from eg
+            except* RecursionError as eg:
+                raise eg.exceptions[0] from eg
             except* RetryExhaustedError as eg:
                 # Unwrap from ExceptionGroup so engine fallback
                 # chain receives a bare RetryExhaustedError.

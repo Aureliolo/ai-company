@@ -370,6 +370,35 @@ class TestRetryExhaustedPropagation:
                 acceptance_criteria=(),
             )
 
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+    )
+    async def test_system_errors_propagate_unwrapped(
+        self,
+        error_cls: type[BaseException],
+    ) -> None:
+        """MemoryError and RecursionError propagate bare from TaskGroup."""
+        ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
+        llm = AsyncMock()
+        llm.name = "llm_judge"
+        llm.score.side_effect = error_cls("boom")
+        composite = CompositeQualityStrategy(
+            ci_strategy=ci,
+            llm_strategy=llm,
+            ci_weight=0.4,
+            llm_weight=0.6,
+        )
+        record = make_task_metric(completed_at=NOW)
+
+        with pytest.raises(error_cls):
+            await composite.score(
+                agent_id=NotBlankStr("agent-001"),
+                task_id=NotBlankStr("task-001"),
+                task_result=record,
+                acceptance_criteria=(),
+            )
+
 
 @pytest.mark.unit
 class TestWeightValidation:
