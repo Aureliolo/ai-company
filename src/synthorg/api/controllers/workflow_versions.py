@@ -38,12 +38,18 @@ from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
 from synthorg.persistence.errors import QueryError, VersionConflictError
+from synthorg.persistence.workflow_definition_repo import (
+    WorkflowDefinitionRepository,  # noqa: TC001
+)
+from synthorg.persistence.workflow_version_repo import (
+    WorkflowVersionRepository,  # noqa: TC001
+)
 
 logger = get_logger(__name__)
 
 
 async def _fetch_version_pair(
-    version_repo: object,
+    version_repo: WorkflowVersionRepository,
     workflow_id: str,
     from_version: int,
     to_version: int,
@@ -93,8 +99,8 @@ async def _fetch_version_pair(
 
 
 async def _fetch_rollback_target(
-    repo: object,
-    version_repo: object,
+    repo: WorkflowDefinitionRepository,
+    version_repo: WorkflowVersionRepository,
     workflow_id: str,
     data: RollbackWorkflowRequest,
 ) -> (
