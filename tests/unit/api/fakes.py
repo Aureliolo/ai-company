@@ -23,6 +23,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -575,16 +576,23 @@ class FakeWorkflowVersionRepository:
     """In-memory workflow version repository for tests."""
 
     def __init__(self) -> None:
-        self._versions: dict[tuple[str, int], Any] = {}
+        self._versions: dict[tuple[str, int], WorkflowDefinitionVersion] = {}
 
-    async def save_version(self, version: Any) -> None:
+    async def save_version(
+        self,
+        version: WorkflowDefinitionVersion,
+    ) -> None:
         import copy
 
         key = (version.definition_id, version.version)
         if key not in self._versions:
             self._versions[key] = copy.deepcopy(version)
 
-    async def get_version(self, definition_id: str, version: int) -> Any | None:
+    async def get_version(
+        self,
+        definition_id: str,
+        version: int,
+    ) -> WorkflowDefinitionVersion | None:
         import copy
 
         stored = self._versions.get((definition_id, version))
@@ -596,7 +604,7 @@ class FakeWorkflowVersionRepository:
         *,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[WorkflowDefinitionVersion, ...]:
         matching = sorted(
             (v for v in self._versions.values() if v.definition_id == definition_id),
             key=lambda v: v.version,

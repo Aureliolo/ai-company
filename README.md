@@ -28,7 +28,7 @@ Most agent frameworks give you **functions that call LLMs**. SynthOrg gives you 
 - **Shared organizational memory.** Hybrid retrieval pipeline (dense + BM25 sparse with RRF fusion), tool-based and context injection strategies, procedural memory auto-generation from failures, consolidation, and archival. Agents remember across sessions.
 - **Cost-aware by design.** Per-agent token budgets, automatic model downgrade at task boundaries, spending reports, trend analysis, and CFO-level optimization with anomaly detection.
 - **Trust spectrum.** From locked-down (human approves every tool call) to fully autonomous -- with a fail-closed security rule engine, output scanning, progressive trust, and audit logging in between.
-- **Real workflows.** Kanban boards, Agile sprints with velocity tracking, ceremony scheduling (8 strategies), visual workflow editor, and workflow execution from graph definitions.
+- **Real workflows.** Kanban boards, Agile sprints with velocity tracking, ceremony scheduling (8 strategies), visual workflow editor with starter blueprints and version history with diff/rollback, and workflow execution from graph definitions.
 - **Provider-agnostic.** Any LLM via LiteLLM -- Ollama, LM Studio, vLLM, and 100+ cloud providers. Local model management with pull/delete/configure for Ollama and LM Studio.
 
 ## Quick Start

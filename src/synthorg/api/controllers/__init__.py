@@ -40,6 +40,9 @@ from synthorg.api.controllers.users import UserController
 from synthorg.api.controllers.workflow_executions import (
     WorkflowExecutionController,
 )
+from synthorg.api.controllers.workflow_versions import (
+    WorkflowVersionController,
+)
 from synthorg.api.controllers.workflows import WorkflowController
 from synthorg.api.controllers.ws import ws_handler
 
@@ -72,6 +75,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     TemplatePackController,
     UserController,
     WorkflowController,
+    WorkflowVersionController,
     QualityController,
     ReportsController,
     WorkflowExecutionController,
@@ -111,5 +115,6 @@ __all__ = [
     "UserController",
     "WorkflowController",
     "WorkflowExecutionController",
+    "WorkflowVersionController",
     "ws_handler",
 ]

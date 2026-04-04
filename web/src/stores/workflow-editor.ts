@@ -574,7 +574,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       set({ versions: result.data, versionsLoading: false })
     } catch (err) {
       log.warn('Failed to load versions', err)
-      set({ versionsLoading: false })
+      set({ versionsLoading: false, error: getErrorMessage(err) })
     }
   },
 
@@ -587,7 +587,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       set({ diffResult: diff, diffLoading: false })
     } catch (err) {
       log.warn('Failed to load diff', err)
-      set({ diffLoading: false })
+      set({ diffLoading: false, error: getErrorMessage(err) })
     }
   },
 

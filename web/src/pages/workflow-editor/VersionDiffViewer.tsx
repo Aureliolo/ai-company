@@ -37,19 +37,25 @@ export function VersionDiffViewer() {
   if (!diffResult) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="diff-viewer-title"
+      onKeyDown={(e) => { if (e.key === 'Escape') clearDiff() }}
+    >
       <div className="relative mx-4 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">
+            <h2 id="diff-viewer-title" className="text-lg font-semibold text-foreground">
               Version Diff
             </h2>
             <p className="text-sm text-muted">
               v{diffResult.from_version} to v{diffResult.to_version}
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={clearDiff}>
+          <Button variant="ghost" size="sm" onClick={clearDiff} aria-label="Close">
             <X className="size-4" />
           </Button>
         </div>

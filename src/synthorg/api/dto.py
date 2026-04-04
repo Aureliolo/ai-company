@@ -6,7 +6,7 @@ models because they omit server-generated fields).
 """
 
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -689,11 +689,15 @@ class BlueprintInfoResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     name: NotBlankStr = Field(description="Blueprint identifier")
-    display_name: str = Field(description="Human-readable name")
+    display_name: NotBlankStr = Field(description="Human-readable name")
     description: str = Field(default="", description="Short description")
-    source: str = Field(description="Origin: builtin or user")
-    tags: tuple[str, ...] = Field(default=(), description="Tags")
-    workflow_type: str = Field(description="Target workflow type")
+    source: Literal["builtin", "user"] = Field(
+        description="Origin: builtin or user",
+    )
+    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Tags")
+    workflow_type: WorkflowType = Field(
+        description="Target workflow type",
+    )
     node_count: int = Field(ge=0, description="Number of nodes")
     edge_count: int = Field(ge=0, description="Number of edges")
 
@@ -731,7 +735,18 @@ class RollbackWorkflowRequest(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     target_version: int = Field(ge=1, description="Version to rollback to")
-    expected_version: int = Field(ge=1, description="Optimistic concurrency guard")
+    expected_version: int = Field(
+        ge=1,
+        description="Optimistic concurrency guard",
+    )
+
+    @model_validator(mode="after")
+    def _validate_version_order(self) -> Self:
+        """Reject rollback where target >= expected."""
+        if self.target_version >= self.expected_version:
+            msg = "target_version must be less than expected_version"
+            raise ValueError(msg)
+        return self
 
 
 __all__ = [

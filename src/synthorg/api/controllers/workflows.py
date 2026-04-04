@@ -1,5 +1,6 @@
 """Workflow definition controller -- CRUD, validation, and YAML export."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -17,7 +18,6 @@ from synthorg.api.dto import (
     CreateFromBlueprintRequest,
     CreateWorkflowDefinitionRequest,
     PaginatedResponse,
-    RollbackWorkflowRequest,
     UpdateWorkflowDefinitionRequest,
 )
 from synthorg.api.errors import NotFoundError
@@ -34,12 +34,12 @@ from synthorg.engine.workflow.blueprint_loader import (
     list_blueprints,
     load_blueprint,
 )
+from synthorg.engine.workflow.blueprint_models import BlueprintData  # noqa: TC001
 from synthorg.engine.workflow.definition import (
     WorkflowDefinition,
     WorkflowEdge,
     WorkflowNode,
 )
-from synthorg.engine.workflow.diff import WorkflowDiff, compute_diff
 from synthorg.engine.workflow.validation import (
     WorkflowValidationResult,
 )
@@ -57,13 +57,10 @@ from synthorg.observability.events.blueprint import (
 from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_CREATED,
     WORKFLOW_DEF_DELETED,
-    WORKFLOW_DEF_DIFF_COMPUTED,
     WORKFLOW_DEF_INVALID_REQUEST,
     WORKFLOW_DEF_NOT_FOUND,
-    WORKFLOW_DEF_ROLLED_BACK,
     WORKFLOW_DEF_UPDATED,
     WORKFLOW_DEF_VERSION_CONFLICT,
-    WORKFLOW_DEF_VERSION_LISTED,
 )
 from synthorg.persistence.errors import VersionConflictError
 
@@ -118,7 +115,11 @@ def _build_version_snapshot(
     definition: WorkflowDefinition,
     saved_by: str,
 ) -> WorkflowDefinitionVersion:
-    """Build a version snapshot from a definition."""
+    """Build a version snapshot from a definition.
+
+    The snapshot's ``saved_at`` is set to the definition's
+    ``updated_at`` timestamp, not the current time.
+    """
     return WorkflowDefinitionVersion(
         definition_id=definition.id,
         version=definition.version,
@@ -130,6 +131,47 @@ def _build_version_snapshot(
         created_by=definition.created_by,
         saved_by=saved_by,
         saved_at=definition.updated_at,
+    )
+
+
+def _get_auth_user_id(request: Request[Any, Any, Any]) -> str:
+    """Extract the authenticated user ID from a request."""
+    auth_user = request.scope.get("user")
+    if isinstance(auth_user, AuthenticatedUser):
+        return auth_user.user_id
+    return "api"
+
+
+def _nodes_from_blueprint(
+    bp: BlueprintData,
+) -> tuple[WorkflowNode, ...]:
+    """Convert blueprint nodes to workflow nodes."""
+    return tuple(
+        WorkflowNode(
+            id=n.id,
+            type=n.type,
+            label=n.label,
+            position_x=n.position_x,
+            position_y=n.position_y,
+            config=dict(n.config),
+        )
+        for n in bp.nodes
+    )
+
+
+def _edges_from_blueprint(
+    bp: BlueprintData,
+) -> tuple[WorkflowEdge, ...]:
+    """Convert blueprint edges to workflow edges."""
+    return tuple(
+        WorkflowEdge(
+            id=e.id,
+            source_node_id=e.source_node_id,
+            target_node_id=e.target_node_id,
+            type=e.type,
+            label=e.label,
+        )
+        for e in bp.edges
     )
 
 
@@ -191,8 +233,6 @@ class WorkflowController(Controller):
         self,
     ) -> Response[ApiResponse[tuple[BlueprintInfoResponse, ...]]]:
         """List available workflow blueprints."""
-        import asyncio  # noqa: PLC0415
-
         infos = await asyncio.to_thread(list_blueprints)
         responses = tuple(
             BlueprintInfoResponse(
@@ -201,7 +241,7 @@ class WorkflowController(Controller):
                 description=i.description,
                 source=i.source,
                 tags=i.tags,
-                workflow_type=i.workflow_type,
+                workflow_type=WorkflowType(i.workflow_type),
                 node_count=i.node_count,
                 edge_count=i.edge_count,
             )
@@ -221,12 +261,7 @@ class WorkflowController(Controller):
         data: CreateFromBlueprintRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition from a blueprint."""
-        import asyncio  # noqa: PLC0415
-
-        auth_user = request.scope.get("user")
-        creator = (
-            auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else "api"
-        )
+        creator = _get_auth_user_id(request)
         logger.info(
             BLUEPRINT_INSTANTIATE_START,
             blueprint_name=data.blueprint_name,
@@ -254,34 +289,12 @@ class WorkflowController(Controller):
             )
             return Response(
                 content=ApiResponse[WorkflowDefinition](
-                    error=f"Blueprint validation failed: {exc}",
+                    error="Blueprint validation failed",
                 ),
                 status_code=422,
             )
 
         now = datetime.now(UTC)
-        nodes = tuple(
-            WorkflowNode(
-                id=n.id,
-                type=n.type,
-                label=n.label,
-                position_x=n.position_x,
-                position_y=n.position_y,
-                config=dict(n.config),
-            )
-            for n in bp.nodes
-        )
-        edges = tuple(
-            WorkflowEdge(
-                id=e.id,
-                source_node_id=e.source_node_id,
-                target_node_id=e.target_node_id,
-                type=e.type,
-                label=e.label,
-            )
-            for e in bp.edges
-        )
-
         definition = WorkflowDefinition(
             id=f"wfdef-{uuid.uuid4().hex[:12]}",
             name=data.name or bp.display_name,
@@ -289,8 +302,8 @@ class WorkflowController(Controller):
                 data.description if data.description is not None else bp.description
             ),
             workflow_type=bp.workflow_type,
-            nodes=nodes,
-            edges=edges,
+            nodes=_nodes_from_blueprint(bp),
+            edges=_edges_from_blueprint(bp),
             created_by=creator,
             created_at=now,
             updated_at=now,
@@ -298,12 +311,16 @@ class WorkflowController(Controller):
 
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
+
+        version_repo = state.app_state.persistence.workflow_versions
+        snapshot = _build_version_snapshot(definition, creator)
+        await version_repo.save_version(snapshot)
+
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
             definition_id=definition.id,
             blueprint_name=data.blueprint_name,
         )
-
         return Response(
             content=ApiResponse[WorkflowDefinition](data=definition),
             status_code=201,
@@ -341,10 +358,7 @@ class WorkflowController(Controller):
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition."""
-        auth_user = request.scope.get("user")
-        creator = (
-            auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else "api"
-        )
+        creator = _get_auth_user_id(request)
         now = datetime.now(UTC)
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -452,15 +466,6 @@ class WorkflowController(Controller):
                 status_code=422,
             )
 
-        # Auto-snapshot version before saving.
-        auth_user = request.scope.get("user")
-        updater = (
-            auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else "api"
-        )
-        version_repo = state.app_state.persistence.workflow_versions
-        snapshot = _build_version_snapshot(updated, updater)
-        await version_repo.save_version(snapshot)
-
         try:
             await repo.save(updated)
         except VersionConflictError as exc:
@@ -475,6 +480,11 @@ class WorkflowController(Controller):
                 ),
                 status_code=409,
             )
+
+        updater = _get_auth_user_id(request)
+        version_repo = state.app_state.persistence.workflow_versions
+        snapshot = _build_version_snapshot(updated, updater)
+        await version_repo.save_version(snapshot)
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
 
         return Response(
@@ -491,7 +501,7 @@ class WorkflowController(Controller):
         state: State,
         workflow_id: PathId,
     ) -> None:
-        """Delete a workflow definition."""
+        """Delete a workflow definition and its version history."""
         repo = state.app_state.persistence.workflow_definitions
         deleted = await repo.delete(workflow_id)
         if not deleted:
@@ -501,6 +511,8 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
+        version_repo = state.app_state.persistence.workflow_versions
+        await version_repo.delete_versions_for_definition(workflow_id)
         logger.info(
             WORKFLOW_DEF_DELETED,
             definition_id=workflow_id,
@@ -609,205 +621,4 @@ class WorkflowController(Controller):
         return Response(
             content=yaml_str,
             media_type="text/yaml",
-        )
-
-    # ── Version history endpoints ──────────────────────────────
-
-    @get("/{workflow_id:str}/versions", guards=[require_read_access])
-    async def list_versions(
-        self,
-        state: State,
-        workflow_id: PathId,
-        offset: PaginationOffset = 0,
-        limit: PaginationLimit = 20,
-    ) -> Response[PaginatedResponse[WorkflowDefinitionVersion]]:
-        """List version history for a workflow definition."""
-        version_repo = state.app_state.persistence.workflow_versions
-        versions = await version_repo.list_versions(
-            workflow_id,
-            limit=limit,
-            offset=offset,
-        )
-        total = await version_repo.count_versions(workflow_id)
-        logger.debug(
-            WORKFLOW_DEF_VERSION_LISTED,
-            definition_id=workflow_id,
-            count=len(versions),
-        )
-        # Versions are already paginated by the repo query, so pass
-        # them through with pre-computed total for metadata.
-        _, meta = paginate(versions, offset=offset, limit=limit, total=total)
-        return Response(
-            content=PaginatedResponse[WorkflowDefinitionVersion](
-                data=versions,
-                pagination=meta,
-            ),
-        )
-
-    @get(
-        "/{workflow_id:str}/versions/{version_num:int}",
-        guards=[require_read_access],
-    )
-    async def get_version(
-        self,
-        state: State,
-        workflow_id: PathId,
-        version_num: int,
-    ) -> Response[ApiResponse[WorkflowDefinitionVersion]]:
-        """Get a specific version snapshot."""
-        version_repo = state.app_state.persistence.workflow_versions
-        version = await version_repo.get_version(workflow_id, version_num)
-        if version is None:
-            return Response(
-                content=ApiResponse[WorkflowDefinitionVersion](
-                    error=f"Version {version_num} not found",
-                ),
-                status_code=404,
-            )
-        return Response(
-            content=ApiResponse[WorkflowDefinitionVersion](data=version),
-        )
-
-    @get("/{workflow_id:str}/diff", guards=[require_read_access])
-    async def get_diff(
-        self,
-        state: State,
-        workflow_id: PathId,
-        from_version: Annotated[
-            int,
-            Parameter(required=True, ge=1, description="Source version"),
-        ],
-        to_version: Annotated[
-            int,
-            Parameter(required=True, ge=1, description="Target version"),
-        ],
-    ) -> Response[ApiResponse[WorkflowDiff]]:
-        """Compute diff between two versions of a workflow definition."""
-        if from_version == to_version:
-            return Response(
-                content=ApiResponse[WorkflowDiff](
-                    error="from_version and to_version must differ",
-                ),
-                status_code=400,
-            )
-
-        version_repo = state.app_state.persistence.workflow_versions
-        old = await version_repo.get_version(workflow_id, from_version)
-        if old is None:
-            return Response(
-                content=ApiResponse[WorkflowDiff](
-                    error=f"Version {from_version} not found",
-                ),
-                status_code=404,
-            )
-        new = await version_repo.get_version(workflow_id, to_version)
-        if new is None:
-            return Response(
-                content=ApiResponse[WorkflowDiff](
-                    error=f"Version {to_version} not found",
-                ),
-                status_code=404,
-            )
-
-        diff = compute_diff(old, new)
-        logger.debug(
-            WORKFLOW_DEF_DIFF_COMPUTED,
-            definition_id=workflow_id,
-            from_version=from_version,
-            to_version=to_version,
-        )
-        return Response(
-            content=ApiResponse[WorkflowDiff](data=diff),
-        )
-
-    @post("/{workflow_id:str}/rollback", guards=[require_write_access], status_code=200)
-    async def rollback_workflow(
-        self,
-        request: Request[Any, Any, Any],
-        state: State,
-        workflow_id: PathId,
-        data: RollbackWorkflowRequest,
-    ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Rollback a workflow to a previous version."""
-        repo = state.app_state.persistence.workflow_definitions
-        existing = await repo.get(workflow_id)
-        if existing is None:
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Workflow definition not found",
-                ),
-                status_code=404,
-            )
-
-        if data.expected_version != existing.version:
-            logger.warning(
-                WORKFLOW_DEF_VERSION_CONFLICT,
-                definition_id=workflow_id,
-                expected=data.expected_version,
-                actual=existing.version,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=(
-                        f"Version conflict: expected "
-                        f"{data.expected_version}, "
-                        f"actual {existing.version}"
-                    ),
-                ),
-                status_code=409,
-            )
-
-        version_repo = state.app_state.persistence.workflow_versions
-        target = await version_repo.get_version(
-            workflow_id,
-            data.target_version,
-        )
-        if target is None:
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Target version {data.target_version} not found",
-                ),
-                status_code=404,
-            )
-
-        auth_user = request.scope.get("user")
-        updater = (
-            auth_user.user_id if isinstance(auth_user, AuthenticatedUser) else "api"
-        )
-        now = datetime.now(UTC)
-
-        rolled_back = WorkflowDefinition(
-            id=existing.id,
-            name=target.name,
-            description=target.description,
-            workflow_type=target.workflow_type,
-            nodes=target.nodes,
-            edges=target.edges,
-            created_by=existing.created_by,
-            created_at=existing.created_at,
-            updated_at=now,
-            version=existing.version + 1,
-        )
-
-        snapshot = _build_version_snapshot(rolled_back, updater)
-        await version_repo.save_version(snapshot)
-
-        try:
-            await repo.save(rolled_back)
-        except VersionConflictError as exc:
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Version conflict during rollback: {exc}",
-                ),
-                status_code=409,
-            )
-
-        logger.info(
-            WORKFLOW_DEF_ROLLED_BACK,
-            definition_id=workflow_id,
-            target_version=data.target_version,
-            new_version=rolled_back.version,
-        )
-        return Response(
-            content=ApiResponse[WorkflowDefinition](data=rolled_back),
         )

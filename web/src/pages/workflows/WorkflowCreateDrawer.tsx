@@ -6,12 +6,15 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Button } from '@/components/ui/button'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
+import { createLogger } from '@/lib/logger'
 import { WORKFLOW_TYPES } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { formatLabel } from '@/utils/format'
 import { BlueprintPicker } from './BlueprintPicker'
 import { listBlueprints } from '@/api/endpoints/workflows'
 import type { BlueprintInfo } from '@/api/types'
+
+const log = createLogger('workflow-create-drawer')
 
 interface WorkflowCreateDrawerProps {
   open: boolean
@@ -56,7 +59,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
     if (open && mode === 'blueprint' && blueprintCache.length === 0) {
       listBlueprints()
         .then(setBlueprintCache)
-        .catch(() => {})
+        .catch((err: unknown) => { log.warn('Failed to pre-fetch blueprints', err) })
     }
   }, [open, mode, blueprintCache.length])
 

@@ -310,7 +310,16 @@ def _collect_user_blueprints() -> dict[str, BlueprintInfo]:
     seen: dict[str, BlueprintInfo] = {}
     if not _USER_BLUEPRINTS_DIR.is_dir():
         return seen
+    resolved_base = _USER_BLUEPRINTS_DIR.resolve()
     for path in sorted(p for p in _USER_BLUEPRINTS_DIR.glob("*.yaml") if p.is_file()):
+        resolved = path.resolve()
+        if not resolved.is_relative_to(resolved_base):
+            logger.warning(
+                BLUEPRINT_LIST,
+                blueprint_path=str(path),
+                action="skip_symlink_escape",
+            )
+            continue
         name = path.stem.strip().lower()
         if not _BLUEPRINT_NAME_RE.match(name):
             logger.warning(
