@@ -34,11 +34,12 @@ from synthorg.observability.events.reporting import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.cost_record import CostRecord
     from synthorg.budget.report_config import AutomatedReportingConfig
     from synthorg.budget.reports import ReportGenerator, SpendingReport
     from synthorg.budget.risk_record import RiskRecord
     from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.budget.tracker import CostRecord, CostTracker
+    from synthorg.budget.tracker import CostTracker
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
@@ -346,8 +347,8 @@ def _build_performance_report(
     for r in cost_records:
         cost_by_agent[r.agent_id] += r.cost_usd
     risk_by_agent: dict[str, list[float]] = defaultdict(list)
-    for r in risk_records:
-        risk_by_agent[r.agent_id].append(r.risk_units)
+    for rr in risk_records:
+        risk_by_agent[rr.agent_id].append(rr.risk_units)
 
     snapshots: list[AgentPerformanceSummary] = []
     all_quality: list[float] = []
