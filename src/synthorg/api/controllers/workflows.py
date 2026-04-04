@@ -68,6 +68,9 @@ from synthorg.observability.events.workflow_version import (
     WORKFLOW_VERSION_SNAPSHOT_FAILED,
 )
 from synthorg.persistence.errors import QueryError, VersionConflictError
+from synthorg.persistence.workflow_definition_repo import (
+    WorkflowDefinitionRepository,  # noqa: TC001
+)
 
 logger = get_logger(__name__)
 
@@ -221,7 +224,7 @@ def _apply_update(
 
 
 async def _fetch_existing_for_update(
-    repo: object,
+    repo: WorkflowDefinitionRepository,
     workflow_id: str,
     expected_version: int | None,
 ) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
