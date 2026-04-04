@@ -764,6 +764,8 @@ def create_app(  # noqa: PLR0913, PLR0915
 
     # Auto-wire performance tracker with composite quality strategy
     # when not explicitly injected (production path).
+    # TODO(#1061): pass effective_config.performance once RootConfig
+    # has a PerformanceConfig field -- currently uses defaults.
     if performance_tracker is None:
         performance_tracker = _build_performance_tracker(
             cost_tracker=cost_tracker,

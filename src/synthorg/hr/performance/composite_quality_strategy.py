@@ -18,6 +18,7 @@ from synthorg.observability.events.performance import (
     PERF_LLM_JUDGE_FAILED,
     PERF_QUALITY_OVERRIDE_APPLIED,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.task import AcceptanceCriterion
@@ -139,23 +140,28 @@ class CompositeQualityStrategy:
         # Layers 1+2: CI signal and LLM judge in parallel.
         # Skip layers with zero weight to avoid unnecessary calls.
         if self._ci_weight > 0.0 and self._llm_weight > 0.0:
-            async with asyncio.TaskGroup() as tg:
-                ci_task = tg.create_task(
-                    self._ci_strategy.score(
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        task_result=task_result,
-                        acceptance_criteria=acceptance_criteria,
-                    ),
-                )
-                llm_task = tg.create_task(
-                    self._try_llm(
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        task_result=task_result,
-                        acceptance_criteria=acceptance_criteria,
-                    ),
-                )
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    ci_task = tg.create_task(
+                        self._ci_strategy.score(
+                            agent_id=agent_id,
+                            task_id=task_id,
+                            task_result=task_result,
+                            acceptance_criteria=acceptance_criteria,
+                        ),
+                    )
+                    llm_task = tg.create_task(
+                        self._try_llm(
+                            agent_id=agent_id,
+                            task_id=task_id,
+                            task_result=task_result,
+                            acceptance_criteria=acceptance_criteria,
+                        ),
+                    )
+            except* RetryExhaustedError as eg:
+                # Unwrap from ExceptionGroup so engine fallback
+                # chain receives a bare RetryExhaustedError.
+                raise eg.exceptions[0] from eg
             ci_result = ci_task.result()
             llm_result = llm_task.result()
         elif self._ci_weight > 0.0:
@@ -176,14 +182,14 @@ class CompositeQualityStrategy:
             )
             if llm_result is not None:
                 return llm_result
-            # LLM failed -- fall back to CI as a safety net.
-            ci_result = await self._ci_strategy.score(
-                agent_id=agent_id,
-                task_id=task_id,
-                task_result=task_result,
-                acceptance_criteria=acceptance_criteria,
+            # LLM failed and CI is disabled -- return zero-confidence
+            # fallback so downstream knows scoring was inconclusive.
+            return QualityScoreResult(
+                score=0.0,
+                strategy_name=NotBlankStr(self.name),
+                breakdown=(),
+                confidence=0.0,
             )
-            llm_result = None
 
         # Combine layers.
         return self._combine(ci_result, llm_result)
@@ -229,8 +235,8 @@ class CompositeQualityStrategy:
 
         Returns ``None`` if the LLM strategy is not configured,
         encounters a non-critical failure, or returns zero confidence.
-        Critical errors (``MemoryError``, ``RecursionError``) are
-        re-raised.
+        ``MemoryError``, ``RecursionError``, and
+        ``RetryExhaustedError`` are re-raised.
         """
         if self._llm_strategy is None:
             return None
@@ -243,6 +249,8 @@ class CompositeQualityStrategy:
                 acceptance_criteria=acceptance_criteria,
             )
         except MemoryError, RecursionError:
+            raise
+        except RetryExhaustedError:
             raise
         except Exception:
             logger.warning(

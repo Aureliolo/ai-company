@@ -342,11 +342,11 @@ class TestConfidence:
 
 
 @pytest.mark.unit
-class TestRetryExhaustedGracefulDegradation:
-    """RetryExhaustedError is caught and falls back to CI-only."""
+class TestRetryExhaustedPropagation:
+    """RetryExhaustedError propagates to engine fallback chain."""
 
-    async def test_llm_retry_exhausted_falls_back_to_ci(self) -> None:
-        """RetryExhaustedError from LLM degrades to CI-only."""
+    async def test_llm_retry_exhausted_raises(self) -> None:
+        """RetryExhaustedError from LLM bubbles up unwrapped."""
         ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
         llm = AsyncMock()
         llm.name = "llm_judge"
@@ -361,15 +361,13 @@ class TestRetryExhaustedGracefulDegradation:
         )
         record = make_task_metric(completed_at=NOW)
 
-        result = await composite.score(
-            agent_id=NotBlankStr("agent-001"),
-            task_id=NotBlankStr("task-001"),
-            task_result=record,
-            acceptance_criteria=(),
-        )
-
-        assert result.score == 7.0
-        assert result.strategy_name == "composite"
+        with pytest.raises(RetryExhaustedError):
+            await composite.score(
+                agent_id=NotBlankStr("agent-001"),
+                task_id=NotBlankStr("task-001"),
+                task_result=record,
+                acceptance_criteria=(),
+            )
 
 
 @pytest.mark.unit
