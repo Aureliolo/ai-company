@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.2](https://github.com/Aureliolo/synthorg/compare/v0.6.1...v0.6.2) (2026-04-04)
+
+
+### Features
+
+* cumulative risk-unit action budgets ([#806](https://github.com/Aureliolo/synthorg/issues/806)) and automated reporting ([#245](https://github.com/Aureliolo/synthorg/issues/245)) ([#1063](https://github.com/Aureliolo/synthorg/issues/1063)) ([4689816](https://github.com/Aureliolo/synthorg/commit/468981622f8e80aee396b964364d8553b73016d5))
+* fine-tuning pipeline + CompositeBackend + workflow lifecycle ([#1065](https://github.com/Aureliolo/synthorg/issues/1065)) ([85b05bc](https://github.com/Aureliolo/synthorg/commit/85b05bcb92c3306739ab779fbf615821c271ecad)), closes [#1001](https://github.com/Aureliolo/synthorg/issues/1001) [#850](https://github.com/Aureliolo/synthorg/issues/850) [#1058](https://github.com/Aureliolo/synthorg/issues/1058)
+
 ## [0.6.1](https://github.com/Aureliolo/synthorg/compare/v0.6.0...v0.6.1) (2026-04-04)
 
 
