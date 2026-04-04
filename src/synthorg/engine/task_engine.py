@@ -187,9 +187,15 @@ class TaskEngine:
 
         await self._drain_processing(effective_timeout)
         # Signal the observer loop that no more events will arrive.
-        # Use async put (not put_nowait) to avoid QueueFull aborting
-        # shutdown when the observer queue is backed up.
-        await self._observer_queue.put(None)
+        # Bounded by remaining budget -- if the queue is full and the
+        # dispatcher is stuck, we skip the sentinel and let
+        # _drain_observer cancel the observer task on timeout.
+        remaining = max(0.0, deadline - loop.time())
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                self._observer_queue.put(None),
+                timeout=remaining,
+            )
         observer_budget = max(0.0, deadline - loop.time())
         await self._drain_observer(observer_budget)
 
