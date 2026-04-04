@@ -2,6 +2,7 @@
  * Tests for workflow-to-YAML exporter (depends_on branch metadata).
  */
 import { describe, it, expect } from 'vitest'
+import fc from 'fast-check'
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
@@ -132,5 +133,74 @@ describe('generateYamlPreview depends_on', () => {
     const checkStep = steps.find((s) => s.id === 'check')
     expect(checkStep).toBeDefined()
     expect(checkStep!.depends_on).toEqual(['setup'])
+  })
+
+  it('conditional edges produce {id, branch} and sequential edges produce plain strings (property)', () => {
+    // Generate a random chain: start -> N task nodes with sequential
+    // edges, one conditional node branching to two tasks, then end.
+    const taskCountArb = fc.integer({ min: 1, max: 5 })
+
+    fc.assert(
+      fc.property(taskCountArb, (taskCount) => {
+        // Build a linear chain of task nodes
+        const nodes: Node[] = [makeNode('start', 'start')]
+        const edges: Edge[] = []
+        let prev = 'start'
+        for (let i = 0; i < taskCount; i++) {
+          const id = `task_${i}`
+          nodes.push(makeNode(id, 'task', { title: id }))
+          edges.push(makeEdge(prev, id))
+          prev = id
+        }
+        // Add a conditional branch at the end
+        const condId = 'cond'
+        nodes.push(makeNode(condId, 'conditional', { condition_expression: 'x' }))
+        edges.push(makeEdge(prev, condId))
+        nodes.push(makeNode('yes', 'task', { title: 'Yes' }))
+        nodes.push(makeNode('no', 'task', { title: 'No' }))
+        edges.push(makeEdge(condId, 'yes', 'conditional_true', 'true'))
+        edges.push(makeEdge(condId, 'no', 'conditional_false', 'false'))
+        nodes.push(makeNode('end', 'end'))
+        edges.push(makeEdge('yes', 'end'))
+        edges.push(makeEdge('no', 'end'))
+
+        const output = generateYamlPreview(nodes, edges, 'test', 'agile')
+        const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as {
+          workflow_definition: { steps: Array<Record<string, unknown>> }
+        }
+        const steps = parsed.workflow_definition.steps
+
+        for (const step of steps) {
+          if (!step.depends_on || !Array.isArray(step.depends_on)) continue
+          for (const dep of step.depends_on as Array<unknown>) {
+            if (typeof dep === 'object' && dep !== null) {
+              // Object entry must have id + branch (conditional)
+              const obj = dep as Record<string, unknown>
+              if (obj.id === undefined || obj.branch === undefined) return false
+              if (obj.branch !== 'true' && obj.branch !== 'false') return false
+            }
+            // String entries are valid (sequential/parallel)
+          }
+        }
+
+        // Conditional targets must have object depends_on
+        const yesStep = steps.find((s) => s.id === 'yes')
+        const noStep = steps.find((s) => s.id === 'no')
+        if (!yesStep?.depends_on || !noStep?.depends_on) return false
+        const yesDep = (yesStep.depends_on as Array<unknown>)[0]
+        const noDep = (noStep.depends_on as Array<unknown>)[0]
+        if (typeof yesDep !== 'object' || typeof noDep !== 'object') return false
+
+        // Sequential tasks must have plain string depends_on
+        for (let i = 1; i < taskCount; i++) {
+          const step = steps.find((s) => s.id === `task_${i}`)
+          if (!step?.depends_on) return false
+          const dep = (step.depends_on as Array<unknown>)[0]
+          if (typeof dep !== 'string') return false
+        }
+        return true
+      }),
+      { numRuns: 20 },
+    )
   })
 })
