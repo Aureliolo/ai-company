@@ -183,9 +183,16 @@ export async function pullModel(
 
   if (!response.ok || !response.body) {
     if (response.status === 401) {
+      // Clear credentials synchronously then sync Zustand auth state
+      // (matches client.ts 401 interceptor pattern).
       sessionStorage.removeItem('auth_token')
       sessionStorage.removeItem('auth_token_expires_at')
       sessionStorage.removeItem('auth_must_change_password')
+      import('@/stores/auth').then(({ useAuthStore }) => {
+        useAuthStore.getState().logout()
+      }).catch((importErr: unknown) => {
+        log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
+      })
     }
     throw new Error(`Pull failed: HTTP ${response.status}`)
   }

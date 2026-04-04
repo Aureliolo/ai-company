@@ -171,34 +171,35 @@ describe('generateYamlPreview depends_on', () => {
         const steps = parsed.workflow_definition.steps
 
         for (const step of steps) {
-          if (!step.depends_on || !Array.isArray(step.depends_on)) continue
+          if (!step.depends_on) continue
+          expect(Array.isArray(step.depends_on)).toBe(true)
           for (const dep of step.depends_on as Array<unknown>) {
             if (typeof dep === 'object' && dep !== null) {
-              // Object entry must have id + branch (conditional)
               const obj = dep as Record<string, unknown>
-              if (obj.id === undefined || obj.branch === undefined) return false
-              if (obj.branch !== 'true' && obj.branch !== 'false') return false
+              expect(obj.id).toBeDefined()
+              expect(obj.branch).toBeDefined()
+              expect(obj.branch).toMatch(/^(true|false)$/)
+            } else {
+              expect(typeof dep).toBe('string')
             }
-            // String entries are valid (sequential/parallel)
           }
         }
 
         // Conditional targets must have object depends_on
         const yesStep = steps.find((s) => s.id === 'yes')
         const noStep = steps.find((s) => s.id === 'no')
-        if (!yesStep?.depends_on || !noStep?.depends_on) return false
-        const yesDep = (yesStep.depends_on as Array<unknown>)[0]
-        const noDep = (noStep.depends_on as Array<unknown>)[0]
-        if (typeof yesDep !== 'object' || typeof noDep !== 'object') return false
+        expect(yesStep).toBeDefined()
+        expect(noStep).toBeDefined()
+        expect(typeof (yesStep!.depends_on as Array<unknown>)[0]).toBe('object')
+        expect(typeof (noStep!.depends_on as Array<unknown>)[0]).toBe('object')
 
         // Sequential tasks must have plain string depends_on
         for (let i = 1; i < taskCount; i++) {
           const step = steps.find((s) => s.id === `task_${i}`)
-          if (!step?.depends_on) return false
-          const dep = (step.depends_on as Array<unknown>)[0]
-          if (typeof dep !== 'string') return false
+          expect(step).toBeDefined()
+          expect(step!.depends_on).toBeDefined()
+          expect(typeof (step!.depends_on as Array<unknown>)[0]).toBe('string')
         }
-        return true
       }),
       { numRuns: 20 },
     )

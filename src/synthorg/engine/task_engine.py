@@ -771,6 +771,7 @@ class TaskEngine:
             except TimeoutError:
                 continue
             if event is None:
+                self._observer_queue.task_done()
                 break  # sentinel -- processing loop is done
             try:
                 await self._notify_observers(event)
@@ -784,6 +785,8 @@ class TaskEngine:
                     request_id=event.request_id,
                     mutation_type=event.mutation_type,
                 )
+            finally:
+                self._observer_queue.task_done()
 
     async def _notify_observers(
         self,
