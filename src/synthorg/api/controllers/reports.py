@@ -12,6 +12,7 @@ from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_SERVICE_UNAVAILABLE
 
 if TYPE_CHECKING:
     from synthorg.budget.automated_reports import AutomatedReportService
@@ -91,7 +92,7 @@ def _get_report_service(
     )
     if service is None:
         logger.warning(
-            "api.service.unavailable",
+            API_SERVICE_UNAVAILABLE,
             service="report_service",
         )
         raise ServiceUnavailableError(_SERVICE_UNAVAILABLE_MSG)

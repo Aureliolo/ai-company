@@ -429,10 +429,10 @@ def _build_risk_trends_report(
         ),
     )
 
-    # Daily trend -- key on date directly (no string round-trip).
+    # Daily trend -- key on UTC date to avoid timezone misplacement.
     daily: dict[_dt.date, list[RiskRecord]] = defaultdict(list)
     for r in records:
-        daily[r.timestamp.date()].append(r)
+        daily[r.timestamp.astimezone(UTC).date()].append(r)
     daily_trend = tuple(
         DailyRiskPoint(
             date=day,

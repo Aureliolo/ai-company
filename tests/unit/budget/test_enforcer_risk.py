@@ -147,6 +147,64 @@ class TestCheckRiskBudget:
                 "code:write",
             )
 
+    async def test_check_raises_when_projected_exceeds_per_task(self) -> None:
+        """Recorded usage under limit, but projected (recorded + action score)
+        exceeds it."""
+        # code:write scores ~0.31 risk units with DefaultRiskScorer.
+        # Set per-task limit just above recorded but below recorded + projected.
+        enforcer, risk_tracker = _make_enforcer(per_task_risk_limit=0.4)
+        await risk_tracker.record(
+            _make_risk_record(task_id="task-1", risk_units=0.15),
+        )
+        # 0.15 (recorded) + ~0.31 (projected) = ~0.46 >= 0.4 limit
+        with pytest.raises(RiskBudgetExhaustedError):
+            await enforcer.check_risk_budget(
+                "agent-1",
+                "task-1",
+                "code:write",
+            )
+
+    async def test_check_raises_when_projected_exceeds_agent_daily(
+        self,
+    ) -> None:
+        """Agent daily: recorded under limit, projected pushes over."""
+        enforcer, risk_tracker = _make_enforcer(
+            per_agent_daily_risk_limit=0.4,
+            per_task_risk_limit=0.0,
+        )
+        await risk_tracker.record(
+            _make_risk_record(agent_id="agent-1", risk_units=0.15),
+        )
+        with pytest.raises(RiskBudgetExhaustedError):
+            await enforcer.check_risk_budget(
+                "agent-1",
+                "task-2",
+                "code:write",
+            )
+
+    async def test_check_raises_when_projected_exceeds_total_daily(
+        self,
+    ) -> None:
+        """Total daily: recorded under limit, projected pushes over."""
+        enforcer, risk_tracker = _make_enforcer(
+            total_daily_risk_limit=0.4,
+            per_task_risk_limit=0.0,
+            per_agent_daily_risk_limit=0.0,
+        )
+        await risk_tracker.record(
+            _make_risk_record(
+                agent_id="agent-a",
+                task_id="other-task",
+                risk_units=0.15,
+            ),
+        )
+        with pytest.raises(RiskBudgetExhaustedError):
+            await enforcer.check_risk_budget(
+                "agent-b",
+                "task-1",
+                "code:write",
+            )
+
     async def test_check_skipped_when_risk_disabled(self) -> None:
         enforcer, _ = _make_enforcer(risk_enabled=False)
         result = await enforcer.check_risk_budget(

@@ -12,10 +12,9 @@ from synthorg.budget.config import BudgetConfig
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_config import RiskBudgetConfig
-from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
-from synthorg.security.risk_scorer import RiskScore
+from tests.unit.budget.conftest import make_risk_record
 
 
 def _make_service(
@@ -37,29 +36,6 @@ def _make_service(
         report_generator=report_generator,
         cost_tracker=cost_tracker,
         risk_tracker=risk_tracker,
-    )
-
-
-def _make_risk_record(
-    *,
-    agent_id: str = "agent-1",
-    action_type: str = "code:write",
-    risk_units: float = 0.3,
-    timestamp: datetime | None = None,
-) -> RiskRecord:
-    score = RiskScore(
-        reversibility=0.5,
-        blast_radius=0.3,
-        data_sensitivity=0.2,
-        external_visibility=0.1,
-    )
-    return RiskRecord(
-        agent_id=agent_id,
-        task_id="task-1",
-        action_type=action_type,
-        risk_score=score,
-        risk_units=risk_units,
-        timestamp=timestamp or datetime.now(UTC),
     )
 
 
@@ -163,10 +139,10 @@ class TestGenerateRiskTrendsReport:
 
         now = datetime.now(UTC)
         await risk_tracker.record(
-            _make_risk_record(agent_id="a", risk_units=0.5, timestamp=now),
+            make_risk_record(agent_id="a", risk_units=0.5, timestamp=now),
         )
         await risk_tracker.record(
-            _make_risk_record(agent_id="b", risk_units=0.3, timestamp=now),
+            make_risk_record(agent_id="b", risk_units=0.3, timestamp=now),
         )
 
         report = await service.generate_risk_trends_report(

@@ -526,12 +526,12 @@ class BudgetEnforcer:
             action_type=action_type,
         )
 
-        # Score the pending action for projected enforcement.
-        projected = 0.0
-        if self._risk_scorer is not None:
-            projected = self._risk_scorer.score(action_type).risk_units
-
         try:
+            # Score the pending action for projected enforcement.
+            projected = 0.0
+            if self._risk_scorer is not None:
+                projected = self._risk_scorer.score(action_type).risk_units
+
             day_start = daily_period_start()
             # Per-task check (task lifetime, not daily).
             self._enforce_risk_limit(

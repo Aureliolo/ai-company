@@ -48,6 +48,15 @@ class TestReportScheduleConfig:
                 periods=(ReportPeriod.DAILY, ReportPeriod.DAILY),
             )
 
+    def test_duplicate_templates_rejected(self) -> None:
+        with pytest.raises(ValueError, match=r"[Dd]uplicate"):
+            ReportScheduleConfig(
+                templates=(
+                    ReportTemplateName.COMPREHENSIVE,
+                    ReportTemplateName.COMPREHENSIVE,
+                ),
+            )
+
     def test_frozen(self) -> None:
         cfg = ReportScheduleConfig()
         with pytest.raises(Exception):  # noqa: B017, PT011
