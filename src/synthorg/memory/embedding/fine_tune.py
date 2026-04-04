@@ -628,7 +628,7 @@ async def deploy_checkpoint(
     config_path: str | None = None,
     *,
     settings_service: object | None = None,
-) -> None:
+) -> str | None:
     """Stage 5: Deploy a fine-tuned checkpoint.
 
     Backs up current embedder config and updates it to point
@@ -639,6 +639,9 @@ async def deploy_checkpoint(
         config_path: Optional config file to update.
         settings_service: Optional settings service for runtime
             config updates.
+
+    Returns:
+        JSON string of the pre-deployment backup config, or ``None``.
 
     Raises:
         ValueError: If checkpoint_path is blank.
@@ -700,3 +703,4 @@ async def deploy_checkpoint(
         config_path=config_path,
         backup_keys=list(backup.keys()),
     )
+    return json.dumps(backup) if backup else None
