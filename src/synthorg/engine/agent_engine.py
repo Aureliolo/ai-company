@@ -869,16 +869,14 @@ class AgentEngine:
         tokens_override: int | None = None
         if self._config_resolver is not None:
             try:
-                trimming_enabled = await self._config_resolver.get_bool(
+                resolved_enabled = await self._config_resolver.get_bool(
                     "engine",
                     "personality_trimming_enabled",
                 )
-                raw_override = await self._config_resolver.get_int(
+                resolved_override = await self._config_resolver.get_int(
                     "engine",
                     "personality_max_tokens_override",
                 )
-                if raw_override > 0:
-                    tokens_override = raw_override
             except MemoryError, RecursionError:
                 raise
             except Exception:
@@ -889,6 +887,10 @@ class AgentEngine:
                     msg="failed to read ENGINE settings, using defaults",
                     exc_info=True,
                 )
+            else:
+                trimming_enabled = resolved_enabled
+                if resolved_override > 0:
+                    tokens_override = resolved_override
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
