@@ -65,6 +65,14 @@ class ReportScheduleConfig(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_unique_templates(self) -> Self:
+        """Ensure no duplicate templates."""
+        if len(self.templates) != len(set(self.templates)):
+            msg = "Duplicate templates in schedule configuration"
+            raise ValueError(msg)
+        return self
+
 
 class AutomatedReportingConfig(BaseModel):
     """Top-level configuration for the automated reporting system.

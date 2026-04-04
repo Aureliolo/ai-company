@@ -213,6 +213,8 @@ class SecurityConfig(BaseModel):
 
     Attributes:
         enabled: Master switch for the security subsystem.
+        enforcement_mode: Security enforcement mode
+            (active/shadow/disabled).
         rule_engine: Rule engine configuration.
         llm_fallback: LLM-based fallback for uncertain evaluations.
         audit_enabled: Whether to record audit entries.

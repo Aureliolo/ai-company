@@ -1,6 +1,6 @@
 """Tests for automated report template models."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -148,7 +148,7 @@ class TestComprehensiveReport:
         now = datetime.now(UTC)
         report = ComprehensiveReport(
             period=ReportPeriod.DAILY,
-            start=now,
+            start=now - timedelta(days=1),
             end=now,
             generated_at=now,
         )
@@ -162,7 +162,7 @@ class TestComprehensiveReport:
         now = datetime.now(UTC)
         report = ComprehensiveReport(
             period=ReportPeriod.DAILY,
-            start=now,
+            start=now - timedelta(days=1),
             end=now,
             generated_at=now,
         )

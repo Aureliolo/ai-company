@@ -74,12 +74,35 @@ class TestRiskBudgetConfig:
         ):
             RiskBudgetConfig(
                 per_task_risk_limit=200.0,
+                per_agent_daily_risk_limit=200.0,
+                total_daily_risk_limit=100.0,
+            )
+
+    def test_agent_daily_limit_exceeds_total_rejected(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=r"per_agent_daily_risk_limit.*total_daily_risk_limit",
+        ):
+            RiskBudgetConfig(
+                per_agent_daily_risk_limit=200.0,
+                total_daily_risk_limit=100.0,
+            )
+
+    def test_task_limit_exceeds_agent_daily_rejected(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match=r"per_task_risk_limit.*per_agent_daily_risk_limit",
+        ):
+            RiskBudgetConfig(
+                per_task_risk_limit=15.0,
+                per_agent_daily_risk_limit=10.0,
                 total_daily_risk_limit=100.0,
             )
 
     def test_task_limit_equals_total_allowed(self) -> None:
         cfg = RiskBudgetConfig(
             per_task_risk_limit=100.0,
+            per_agent_daily_risk_limit=100.0,
             total_daily_risk_limit=100.0,
         )
         assert cfg.per_task_risk_limit == 100.0

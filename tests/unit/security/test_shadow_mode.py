@@ -171,6 +171,32 @@ class TestShadowMode:
         await service.evaluate_pre_tool(_make_context())
         audit_log.record.assert_called_once()
 
+    async def test_shadow_mode_escalate_becomes_allow(self) -> None:
+        """In shadow mode, ESCALATE verdicts are also converted to ALLOW."""
+        rule_engine = MagicMock()
+        rule_engine.evaluate.return_value = SecurityVerdict(
+            verdict=SecurityVerdictType.ESCALATE,
+            reason="Test escalation",
+            risk_level=ApprovalRiskLevel.HIGH,
+            confidence=EvaluationConfidence.HIGH,
+            evaluated_at=datetime.now(UTC),
+            evaluation_duration_ms=1.0,
+        )
+        audit_log = MagicMock()
+        output_scanner = MagicMock()
+
+        service = SecOpsService(
+            config=SecurityConfig(
+                enforcement_mode=SecurityEnforcementMode.SHADOW,
+            ),
+            rule_engine=rule_engine,
+            audit_log=audit_log,
+            output_scanner=output_scanner,
+        )
+        verdict = await service.evaluate_pre_tool(_make_context())
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        assert "Shadow mode" in verdict.reason
+
     async def test_disabled_mode_returns_allow(self) -> None:
         """In disabled mode, always returns ALLOW without running rules."""
         rule_engine = MagicMock()

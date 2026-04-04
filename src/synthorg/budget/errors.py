@@ -8,9 +8,10 @@ engine layer.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 if TYPE_CHECKING:
     from synthorg.budget.quota import DegradationAction
-    from synthorg.core.types import NotBlankStr
 
 
 class BudgetExhaustedError(Exception):
@@ -48,8 +49,8 @@ class RiskBudgetExhaustedError(BudgetExhaustedError):
         self,
         msg: str,
         *,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        agent_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
         risk_units_used: float = 0.0,
         risk_limit: float = 0.0,
     ) -> None:

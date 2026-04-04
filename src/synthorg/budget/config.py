@@ -208,6 +208,10 @@ class BudgetConfig(BaseModel):
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code for display formatting",
     )
+    risk_budget: RiskBudgetConfig = Field(
+        default_factory=RiskBudgetConfig,
+        description="Cumulative risk-unit action budget configuration",
+    )
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:
@@ -235,8 +239,3 @@ class BudgetConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
-
-    risk_budget: RiskBudgetConfig = Field(
-        default_factory=RiskBudgetConfig,
-        description="Cumulative risk-unit action budget configuration",
-    )

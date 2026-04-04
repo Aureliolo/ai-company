@@ -29,6 +29,7 @@ from synthorg.budget.quota import (
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.reports import ReportGenerator
 from synthorg.budget.risk_config import RiskBudgetAlertConfig, RiskBudgetConfig
+from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -38,6 +39,7 @@ from synthorg.budget.spending_summary import (
 from synthorg.budget.tracker import CostTracker
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from synthorg.security.risk_scorer import RiskScore
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -150,6 +152,45 @@ class QuotaLimitFactory(ModelFactory[QuotaLimit]):
 class SubscriptionConfigFactory(ModelFactory[SubscriptionConfig]):
     __model__ = SubscriptionConfig
     quotas = ()
+
+
+# ── Shared risk helpers ────────────────────────────────────────────
+
+
+def make_risk_score(
+    *,
+    reversibility: float = 0.5,
+    blast_radius: float = 0.3,
+    data_sensitivity: float = 0.2,
+    external_visibility: float = 0.1,
+) -> RiskScore:
+    """Build a RiskScore with sensible defaults."""
+    return RiskScore(
+        reversibility=reversibility,
+        blast_radius=blast_radius,
+        data_sensitivity=data_sensitivity,
+        external_visibility=external_visibility,
+    )
+
+
+def make_risk_record(
+    *,
+    agent_id: str = "agent-1",
+    task_id: str = "task-1",
+    action_type: str = "code:write",
+    risk_units: float = 0.3,
+    timestamp: datetime | None = None,
+) -> RiskRecord:
+    """Build a RiskRecord with sensible defaults."""
+    score = make_risk_score()
+    return RiskRecord(
+        agent_id=agent_id,
+        task_id=task_id,
+        action_type=action_type,
+        risk_score=score,
+        risk_units=risk_units,
+        timestamp=timestamp or datetime.now(UTC),
+    )
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────

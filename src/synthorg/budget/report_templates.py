@@ -9,7 +9,14 @@ All models are frozen Pydantic models (immutable, append-only pattern).
 import datetime as _dt  # noqa: TC003
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.budget.report_config import ReportPeriod  # noqa: TC001
 from synthorg.budget.reports import SpendingReport  # noqa: TC001
@@ -70,7 +77,7 @@ class PerformanceMetricsReport(BaseModel):
     )
     total_tasks_completed: int = Field(default=0, ge=0)
     total_tasks_failed: int = Field(default=0, ge=0)
-    generated_at: _dt.datetime = Field(description="Generation timestamp")
+    generated_at: AwareDatetime = Field(description="Generation timestamp")
 
 
 # ── Task Completion ──────────────────────────────────────────────
@@ -114,7 +121,7 @@ class TaskCompletionReport(BaseModel):
     total_failed: int = Field(default=0, ge=0)
     total_in_progress: int = Field(default=0, ge=0)
     by_department: tuple[DepartmentTaskSummary, ...] = ()
-    generated_at: _dt.datetime = Field(description="Generation timestamp")
+    generated_at: AwareDatetime = Field(description="Generation timestamp")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -161,7 +168,7 @@ class RiskTrendsReport(BaseModel):
     risk_by_agent: tuple[tuple[NotBlankStr, float], ...] = ()
     risk_by_action_type: tuple[tuple[NotBlankStr, float], ...] = ()
     daily_risk_trend: tuple[DailyRiskPoint, ...] = ()
-    generated_at: _dt.datetime = Field(description="Generation timestamp")
+    generated_at: AwareDatetime = Field(description="Generation timestamp")
 
     @model_validator(mode="after")
     def _validate_agent_ranking_order(self) -> Self:
@@ -202,10 +209,21 @@ class ComprehensiveReport(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     period: ReportPeriod = Field(description="Report period")
-    start: _dt.datetime = Field(description="Period start (inclusive)")
-    end: _dt.datetime = Field(description="Period end (exclusive)")
+    start: AwareDatetime = Field(description="Period start (inclusive)")
+    end: AwareDatetime = Field(description="Period end (exclusive)")
     spending: SpendingReport | None = None
     performance: PerformanceMetricsReport | None = None
     task_completion: TaskCompletionReport | None = None
     risk_trends: RiskTrendsReport | None = None
-    generated_at: _dt.datetime = Field(description="Generation timestamp")
+    generated_at: AwareDatetime = Field(description="Generation timestamp")
+
+    @model_validator(mode="after")
+    def _validate_time_range(self) -> Self:
+        """Ensure start < end."""
+        if self.start >= self.end:
+            msg = (
+                f"start ({self.start.isoformat()}) must be before "
+                f"end ({self.end.isoformat()})"
+            )
+            raise ValueError(msg)
+        return self

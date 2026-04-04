@@ -64,6 +64,16 @@ class RiskBudgetConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_limits(self) -> Self:
         """Ensure limit hierarchy: per_task <= per_agent_daily <= total_daily."""
+        if (
+            self.per_agent_daily_risk_limit > 0
+            and self.per_task_risk_limit > self.per_agent_daily_risk_limit
+        ):
+            msg = (
+                f"per_task_risk_limit ({self.per_task_risk_limit}) "
+                f"must be <= per_agent_daily_risk_limit "
+                f"({self.per_agent_daily_risk_limit})"
+            )
+            raise ValueError(msg)
         if self.total_daily_risk_limit > 0:
             if self.per_task_risk_limit > self.total_daily_risk_limit:
                 msg = (

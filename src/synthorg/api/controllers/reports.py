@@ -8,7 +8,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ServiceUnavailableError
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.report_config import ReportPeriod
 from synthorg.observability import get_logger
@@ -90,6 +90,10 @@ def _get_report_service(
         None,
     )
     if service is None:
+        logger.warning(
+            "api.service.unavailable",
+            service="report_service",
+        )
         raise ServiceUnavailableError(_SERVICE_UNAVAILABLE_MSG)
     return service
 
@@ -107,6 +111,7 @@ class ReportsController(Controller):
         "/generate",
         summary="Generate an on-demand report",
         description=("Trigger on-demand report generation for a given period."),
+        guards=[require_write_access],
     )
     async def generate_report(
         self,

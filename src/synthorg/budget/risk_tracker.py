@@ -303,18 +303,18 @@ def _filter_records(  # noqa: PLR0913
     end: datetime | None = None,
 ) -> list[RiskRecord]:
     """Filter records by optional criteria."""
-    result = records
+    gen = (r for r in records)
     if agent_id is not None:
-        result = [r for r in result if r.agent_id == agent_id]
+        gen = (r for r in gen if r.agent_id == agent_id)
     if task_id is not None:
-        result = [r for r in result if r.task_id == task_id]
+        gen = (r for r in gen if r.task_id == task_id)
     if action_type is not None:
-        result = [r for r in result if r.action_type == action_type]
+        gen = (r for r in gen if r.action_type == action_type)
     if start is not None:
-        result = [r for r in result if r.timestamp >= start]
+        gen = (r for r in gen if r.timestamp >= start)
     if end is not None:
-        result = [r for r in result if r.timestamp < end]
-    return result
+        gen = (r for r in gen if r.timestamp < end)
+    return list(gen)
 
 
 def _sum_risk_units(records: list[RiskRecord]) -> float:

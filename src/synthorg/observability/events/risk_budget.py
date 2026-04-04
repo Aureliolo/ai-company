@@ -10,6 +10,7 @@ RISK_BUDGET_SCORE_FALLBACK: Final[str] = "risk_budget.score.fallback"
 # -- Risk tracker events --
 RISK_BUDGET_TRACKER_CREATED: Final[str] = "risk_budget.tracker.created"
 RISK_BUDGET_RECORD_ADDED: Final[str] = "risk_budget.record.added"
+RISK_BUDGET_RECORD_FAILED: Final[str] = "risk_budget.record.failed"
 RISK_BUDGET_AGENT_QUERIED: Final[str] = "risk_budget.agent.queried"
 RISK_BUDGET_TASK_QUERIED: Final[str] = "risk_budget.task.queried"
 RISK_BUDGET_TOTAL_QUERIED: Final[str] = "risk_budget.total.queried"

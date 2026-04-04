@@ -222,6 +222,12 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
     }
 )
 
+# Exhaustiveness check: ensure every ActionType has an explicit score.
+_missing_actions = set(ActionType) - set(_DEFAULT_SCORE_MAP)
+if _missing_actions:
+    _msg = f"_DEFAULT_SCORE_MAP missing entries for: {_missing_actions}"
+    raise RuntimeError(_msg)
+
 
 # ── Default Implementation ───────────────────────────────────────────
 

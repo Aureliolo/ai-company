@@ -39,7 +39,13 @@ class RiskRecord(BaseModel):
     risk_score: RiskScore = Field(
         description="Multi-dimensional risk assessment",
     )
-    risk_units: float = Field(ge=0.0, description="Scalar risk value")
+    risk_units: float = Field(
+        ge=0.0,
+        description=(
+            "Scalar risk value for budget tracking. Should match "
+            "risk_score.risk_units; enforced by BudgetEnforcer."
+        ),
+    )
     timestamp: AwareDatetime = Field(description="Timestamp of the action")
 
     @model_validator(mode="after")

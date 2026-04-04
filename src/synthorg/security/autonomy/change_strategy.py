@@ -34,9 +34,10 @@ class HumanOnlyPromotionStrategy:
     """Default strategy: promotions and recovery always require human approval.
 
     Downgrades are applied immediately based on the reason:
-    - ``HIGH_ERROR_RATE`` → SUPERVISED (or current level if already more restrictive)
-    - ``BUDGET_EXHAUSTED`` → SUPERVISED (or current level if already more restrictive)
-    - ``SECURITY_INCIDENT`` → LOCKED
+    - ``HIGH_ERROR_RATE`` -> SUPERVISED (or current if more restrictive)
+    - ``BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
+    - ``RISK_BUDGET_EXHAUSTED`` -> SUPERVISED (or current if more restrictive)
+    - ``SECURITY_INCIDENT`` -> LOCKED
 
     Downgrades never *increase* autonomy: if the agent is already at
     LOCKED, a HIGH_ERROR_RATE event keeps it at LOCKED (not SUPERVISED).

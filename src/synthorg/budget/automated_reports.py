@@ -7,6 +7,7 @@ Service layer for the Automated Reporting section of the Operations
 design page.
 """
 
+import asyncio
 import datetime as _dt
 import math
 from collections import defaultdict
@@ -22,6 +23,7 @@ from synthorg.budget.report_templates import (
     RiskTrendsReport,
     TaskCompletionReport,
 )
+from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.reporting import (
     REPORTING_GENERATION_COMPLETED,
@@ -36,8 +38,7 @@ if TYPE_CHECKING:
     from synthorg.budget.reports import ReportGenerator, SpendingReport
     from synthorg.budget.risk_record import RiskRecord
     from synthorg.budget.risk_tracker import RiskTracker
-    from synthorg.budget.tracker import CostTracker
-    from synthorg.hr.performance.models import TaskMetricRecord
+    from synthorg.budget.tracker import CostRecord, CostTracker
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
@@ -200,22 +201,23 @@ class AutomatedReportService:
         )
 
         try:
-            spending = await self.generate_spending_report(
-                start=start,
-                end=end,
-            )
-            performance = await self.generate_performance_report(
-                start=start,
-                end=end,
-            )
-            task_completion = await self.generate_task_completion_report(
-                start=start,
-                end=end,
-            )
-            risk_trends = await self.generate_risk_trends_report(
-                start=start,
-                end=end,
-            )
+            async with asyncio.TaskGroup() as tg:
+                sp = tg.create_task(
+                    self.generate_spending_report(start=start, end=end),
+                )
+                pf = tg.create_task(
+                    self.generate_performance_report(start=start, end=end),
+                )
+                tc = tg.create_task(
+                    self.generate_task_completion_report(start=start, end=end),
+                )
+                rt = tg.create_task(
+                    self.generate_risk_trends_report(start=start, end=end),
+                )
+            spending = sp.result()
+            performance = pf.result()
+            task_completion = tc.result()
+            risk_trends = rt.result()
         except MemoryError, RecursionError:
             raise
         except Exception:
@@ -228,8 +230,9 @@ class AutomatedReportService:
         logger.info(
             REPORTING_GENERATION_COMPLETED,
             period=period.value,
-            has_spending=True,
-            has_performance=True,
+            has_spending=len(spending.by_task) > 0,
+            has_performance=len(performance.agent_snapshots) > 0,
+            has_task_completion=task_completion.total_assigned > 0,
             has_risk_trends=risk_trends.total_risk_units > 0,
         )
 
@@ -328,7 +331,7 @@ def _monthly_range(ref: datetime) -> tuple[datetime, datetime]:
 
 def _build_performance_report(
     metrics: tuple[TaskMetricRecord, ...],
-    cost_records: tuple[object, ...],
+    cost_records: tuple[CostRecord, ...],
     risk_records: tuple[RiskRecord, ...],
     now: datetime,
 ) -> PerformanceMetricsReport:
@@ -341,11 +344,7 @@ def _build_performance_report(
     # Pre-aggregate cost and risk per agent.
     cost_by_agent: dict[str, float] = defaultdict(float)
     for r in cost_records:
-        cost_by_agent[getattr(r, "agent_id", "")] += getattr(
-            r,
-            "cost_usd",
-            0.0,
-        )
+        cost_by_agent[r.agent_id] += r.cost_usd
     risk_by_agent: dict[str, list[float]] = defaultdict(list)
     for r in risk_records:
         risk_by_agent[r.agent_id].append(r.risk_units)
@@ -384,8 +383,8 @@ def _build_agent_snapshot(
     agent_risk_values: list[float],
 ) -> AgentPerformanceSummary:
     """Build a single agent's performance summary."""
-    completed = sum(1 for m in metrics if getattr(m, "success", False))
-    scores = [getattr(m, "quality_score", None) for m in metrics]
+    completed = sum(1 for m in metrics if m.is_success)
+    scores = [m.quality_score for m in metrics]
     valid = [s for s in scores if s is not None]
     avg_q = round(math.fsum(valid) / len(valid), 2) if valid else None
     return AgentPerformanceSummary(

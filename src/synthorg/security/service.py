@@ -154,10 +154,14 @@ class SecOpsService:
         """Evaluate a tool invocation before execution.
 
         Steps:
-            1. Run rule engine.
-            2. If ESCALATE, create approval item (or convert to DENY).
-            3. Record audit entry.
-            4. Return verdict.
+            1. Check disabled/DISABLED enforcement mode.
+            2. Run rule engine.
+            3. LLM fallback for uncertain evaluations.
+            4. Autonomy augmentation (tighten only).
+            5. If ESCALATE, create approval item or convert to DENY.
+            6. Record audit entry.
+            7. Apply shadow mode conversion if applicable.
+            8. Return verdict.
         """
         if (
             not self._config.enabled

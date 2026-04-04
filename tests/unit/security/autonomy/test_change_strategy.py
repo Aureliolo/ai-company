@@ -38,6 +38,15 @@ class TestAutoDowngrade:
         assert result == AutonomyLevel.SUPERVISED
 
     @pytest.mark.unit
+    def test_risk_budget_exhausted_to_supervised(self) -> None:
+        strategy = HumanOnlyPromotionStrategy()
+        result = strategy.auto_downgrade(
+            "agent-1",
+            DowngradeReason.RISK_BUDGET_EXHAUSTED,
+        )
+        assert result == AutonomyLevel.SUPERVISED
+
+    @pytest.mark.unit
     def test_security_incident_to_locked(self) -> None:
         strategy = HumanOnlyPromotionStrategy()
         result = strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)

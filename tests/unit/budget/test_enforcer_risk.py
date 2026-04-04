@@ -115,7 +115,7 @@ class TestCheckRiskBudget:
     async def test_check_raises_on_agent_daily_limit_exceeded(self) -> None:
         enforcer, risk_tracker = _make_enforcer(
             per_agent_daily_risk_limit=1.0,
-            per_task_risk_limit=10.0,
+            per_task_risk_limit=0.0,
         )
         await risk_tracker.record(
             _make_risk_record(agent_id="agent-1", risk_units=1.1),
@@ -130,11 +130,15 @@ class TestCheckRiskBudget:
     async def test_check_raises_on_total_daily_limit_exceeded(self) -> None:
         enforcer, risk_tracker = _make_enforcer(
             total_daily_risk_limit=1.0,
-            per_task_risk_limit=1.0,
-            per_agent_daily_risk_limit=1.0,
+            per_task_risk_limit=0.0,
+            per_agent_daily_risk_limit=0.0,
         )
         await risk_tracker.record(
-            _make_risk_record(agent_id="agent-a", risk_units=1.1),
+            _make_risk_record(
+                agent_id="agent-a",
+                task_id="other-task",
+                risk_units=1.1,
+            ),
         )
         with pytest.raises(RiskBudgetExhaustedError):
             await enforcer.check_risk_budget(
@@ -153,7 +157,9 @@ class TestCheckRiskBudget:
         assert result.allowed is True
 
     async def test_check_skipped_when_no_risk_tracker(self) -> None:
-        budget_config = BudgetConfig()
+        budget_config = BudgetConfig(
+            risk_budget=RiskBudgetConfig(enabled=True),
+        )
         cost_tracker = CostTracker(budget_config=budget_config)
         enforcer = BudgetEnforcer(
             budget_config=budget_config,
@@ -209,7 +215,9 @@ class TestRecordRisk:
         assert record is None
 
     async def test_record_risk_none_when_no_tracker(self) -> None:
-        budget_config = BudgetConfig()
+        budget_config = BudgetConfig(
+            risk_budget=RiskBudgetConfig(enabled=True),
+        )
         cost_tracker = CostTracker(budget_config=budget_config)
         enforcer = BudgetEnforcer(
             budget_config=budget_config,

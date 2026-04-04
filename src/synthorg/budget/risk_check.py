@@ -1,6 +1,8 @@
 """Risk budget check result model."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RiskCheckResult(BaseModel):
@@ -17,3 +19,11 @@ class RiskCheckResult(BaseModel):
     allowed: bool = True
     risk_units: float = Field(default=0.0, ge=0.0)
     reason: str = ""
+
+    @model_validator(mode="after")
+    def _validate_reason_on_denial(self) -> Self:
+        """Ensure denied results include a reason."""
+        if not self.allowed and not self.reason.strip():
+            msg = "reason must be non-empty when allowed is False"
+            raise ValueError(msg)
+        return self

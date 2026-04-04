@@ -55,6 +55,7 @@ from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_ENFORCEMENT_CHECK,
     RISK_BUDGET_LIMIT_EXCEEDED,
     RISK_BUDGET_RECORD_ADDED,
+    RISK_BUDGET_RECORD_FAILED,
     RISK_BUDGET_TASK_LIMIT_EXCEEDED,
 )
 
@@ -90,6 +91,8 @@ class BudgetEnforcer:
         model_resolver: Auto-downgrade alias lookup.
         quota_tracker: Provider-level quota enforcement.
         degradation_configs: Per-provider degradation strategies.
+        risk_tracker: Optional risk tracking service.
+        risk_scorer: Optional risk scoring implementation.
     """
 
     def __init__(  # noqa: PLR0913
@@ -502,10 +505,11 @@ class BudgetEnforcer:
     ) -> RiskCheckResult:
         """Pre-flight risk budget check.
 
-        Checks per-task, per-agent daily, and total daily risk limits.
-        Returns an allowed ``RiskCheckResult`` when risk budgets are
-        disabled, no risk tracker is configured, or limits are zero
-        (unlimited).
+        Checks per-task, per-agent daily, and total daily risk limits
+        including the projected risk of the pending action.
+
+        Pre-flight checks are best-effort under concurrency (TOCTOU).
+        See class docstring.
 
         Raises:
             RiskBudgetExhaustedError: When a risk limit is exceeded
@@ -522,86 +526,89 @@ class BudgetEnforcer:
             action_type=action_type,
         )
 
-        day_start = daily_period_start()
+        # Score the pending action for projected enforcement.
+        projected = 0.0
+        if self._risk_scorer is not None:
+            projected = self._risk_scorer.score(action_type).risk_units
 
-        # Per-task check.
-        if risk_cfg.per_task_risk_limit > 0:
-            task_risk = await self._risk_tracker.get_task_risk(
-                task_id,
-                start=day_start,
-            )
-            if task_risk >= risk_cfg.per_task_risk_limit:
-                logger.warning(
-                    RISK_BUDGET_TASK_LIMIT_EXCEEDED,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    task_risk=task_risk,
-                    limit=risk_cfg.per_task_risk_limit,
-                )
-                msg = (
-                    f"Per-task risk limit exceeded: "
-                    f"{task_risk:.2f} >= "
-                    f"{risk_cfg.per_task_risk_limit:.2f}"
-                )
-                raise RiskBudgetExhaustedError(
-                    msg,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    risk_units_used=task_risk,
-                    risk_limit=risk_cfg.per_task_risk_limit,
-                )
-
-        # Per-agent daily check.
-        if risk_cfg.per_agent_daily_risk_limit > 0:
-            agent_risk = await self._risk_tracker.get_agent_risk(
+        try:
+            day_start = daily_period_start()
+            # Per-task check (task lifetime, not daily).
+            self._enforce_risk_limit(
+                risk_cfg.per_task_risk_limit,
+                await self._risk_tracker.get_task_risk(task_id),
+                projected,
+                RISK_BUDGET_TASK_LIMIT_EXCEEDED,
+                "Per-task",
                 agent_id,
-                start=day_start,
+                task_id,
             )
-            if agent_risk >= risk_cfg.per_agent_daily_risk_limit:
-                logger.warning(
-                    RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
-                    agent_id=agent_id,
-                    agent_risk=agent_risk,
-                    limit=risk_cfg.per_agent_daily_risk_limit,
-                )
-                msg = (
-                    f"Per-agent daily risk limit exceeded: "
-                    f"{agent_risk:.2f} >= "
-                    f"{risk_cfg.per_agent_daily_risk_limit:.2f}"
-                )
-                raise RiskBudgetExhaustedError(
-                    msg,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    risk_units_used=agent_risk,
-                    risk_limit=risk_cfg.per_agent_daily_risk_limit,
-                )
-
-        # Total daily check.
-        if risk_cfg.total_daily_risk_limit > 0:
-            total_risk = await self._risk_tracker.get_total_risk(
-                start=day_start,
+            self._enforce_risk_limit(
+                risk_cfg.per_agent_daily_risk_limit,
+                await self._risk_tracker.get_agent_risk(
+                    agent_id,
+                    start=day_start,
+                ),
+                projected,
+                RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
+                "Per-agent daily",
+                agent_id,
+                task_id,
             )
-            if total_risk >= risk_cfg.total_daily_risk_limit:
-                logger.warning(
-                    RISK_BUDGET_LIMIT_EXCEEDED,
-                    total_risk=total_risk,
-                    limit=risk_cfg.total_daily_risk_limit,
-                )
-                msg = (
-                    f"Total daily risk limit exceeded: "
-                    f"{total_risk:.2f} >= "
-                    f"{risk_cfg.total_daily_risk_limit:.2f}"
-                )
-                raise RiskBudgetExhaustedError(
-                    msg,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    risk_units_used=total_risk,
-                    risk_limit=risk_cfg.total_daily_risk_limit,
-                )
+            self._enforce_risk_limit(
+                risk_cfg.total_daily_risk_limit,
+                await self._risk_tracker.get_total_risk(start=day_start),
+                projected,
+                RISK_BUDGET_LIMIT_EXCEEDED,
+                "Total daily",
+                agent_id,
+                task_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except RiskBudgetExhaustedError:
+            raise
+        except Exception:
+            logger.exception(
+                RISK_BUDGET_ENFORCEMENT_CHECK,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason="risk_check_error",
+            )
 
-        return RiskCheckResult()
+        return RiskCheckResult(risk_units=projected)
+
+    def _enforce_risk_limit(  # noqa: PLR0913
+        self,
+        limit: float,
+        current: float,
+        projected: float,
+        event: str,
+        label: str,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Check a single risk limit and raise if exceeded."""
+        if limit <= 0:
+            return
+        total = current + projected
+        if total >= limit:
+            logger.warning(
+                event,
+                agent_id=agent_id,
+                task_id=task_id,
+                current=current,
+                projected=projected,
+                limit=limit,
+            )
+            msg = f"{label} risk limit exceeded: {total:.2f} >= {limit:.2f}"
+            raise RiskBudgetExhaustedError(
+                msg,
+                agent_id=agent_id,
+                task_id=task_id,
+                risk_units_used=total,
+                risk_limit=limit,
+            )
 
     async def record_risk(
         self,
@@ -641,10 +648,9 @@ class BudgetEnforcer:
             raise
         except Exception:
             logger.exception(
-                RISK_BUDGET_RECORD_ADDED,
+                RISK_BUDGET_RECORD_FAILED,
                 agent_id=agent_id,
                 action_type=action_type,
-                reason="risk_recording_failed",
             )
             return None
         logger.debug(
