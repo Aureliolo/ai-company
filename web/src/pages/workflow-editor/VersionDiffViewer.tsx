@@ -93,7 +93,13 @@ export function VersionDiffViewer() {
   return (
     <Dialog
       open={diffResult !== null}
-      onOpenChange={(open) => { if (!open) clearDiff() }}
+      onOpenChange={(open) => {
+        if (!open) {
+          // Delay clearing so Radix exit animation can finish
+          // before diffResult content is unmounted.
+          setTimeout(() => clearDiff(), 150)
+        }
+      }}
     >
       <DialogContent>
         {diffResult && (

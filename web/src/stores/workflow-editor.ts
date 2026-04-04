@@ -9,8 +9,6 @@ import { create } from 'zustand'
 import type { Node, Edge, Connection, NodeChange, EdgeChange } from '@xyflow/react'
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('workflow-editor')
 import type {
   WorkflowDefinition,
   WorkflowDefinitionVersionSummary,
@@ -18,6 +16,8 @@ import type {
   WorkflowValidationResult,
   WorkflowNodeType,
 } from '@/api/types'
+
+const log = createLogger('workflow-editor')
 import {
   getWorkflow,
   createWorkflow,
@@ -73,6 +73,10 @@ export interface WorkflowEditorState {
   versionsHasMore: boolean
   diffResult: WorkflowDiff | null
   diffLoading: boolean
+  /** @internal Request counter to discard stale version responses. */
+  _versionsRequestId: number
+  /** @internal Request counter to discard stale diff responses. */
+  _diffRequestId: number
 
   // Actions
   loadDefinition: (id: string) => Promise<void>
@@ -174,6 +178,8 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   versionsHasMore: false,
   diffResult: null,
   diffLoading: false,
+  _versionsRequestId: 0,
+  _diffRequestId: 0,
 
   loadDefinition: async (id: string) => {
     set({ loading: true, error: null })
@@ -572,19 +578,19 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   loadVersions: async () => {
     const defn = get().definition
     if (!defn) return
-    const capturedDefnId = defn.id
-    set({ versionsLoading: true })
+    const reqId = get()._versionsRequestId + 1
+    set({ versionsLoading: true, _versionsRequestId: reqId })
     try {
       const limit = 50
-      const result = await listWorkflowVersions(capturedDefnId, { limit })
-      if (get().definition?.id !== capturedDefnId) return
+      const result = await listWorkflowVersions(defn.id, { limit })
+      if (get()._versionsRequestId !== reqId) return
       set({
         versions: result.data,
         versionsLoading: false,
         versionsHasMore: result.data.length >= limit,
       })
     } catch (err) {
-      if (get().definition?.id !== capturedDefnId) return
+      if (get()._versionsRequestId !== reqId) return
       log.warn('Failed to load versions', sanitizeForLog(err))
       set({ versionsLoading: false, error: getErrorMessage(err) })
     }
@@ -593,23 +599,21 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   loadMoreVersions: async () => {
     const defn = get().definition
     if (!defn) return
-    const capturedDefnId = defn.id
-    const currentVersions = get().versions
-    set({ versionsLoading: true })
+    const reqId = get()._versionsRequestId + 1
+    const offset = get().versions.length
+    set({ versionsLoading: true, _versionsRequestId: reqId })
     try {
       const limit = 50
-      const result = await listWorkflowVersions(capturedDefnId, {
-        limit,
-        offset: currentVersions.length,
-      })
-      if (get().definition?.id !== capturedDefnId) return
-      set({
-        versions: [...currentVersions, ...result.data],
+      const result = await listWorkflowVersions(defn.id, { limit, offset })
+      if (get()._versionsRequestId !== reqId) return
+      set((prev) => ({
+        ...prev,
+        versions: [...prev.versions, ...result.data],
         versionsLoading: false,
         versionsHasMore: result.data.length >= limit,
-      })
+      }))
     } catch (err) {
-      if (get().definition?.id !== capturedDefnId) return
+      if (get()._versionsRequestId !== reqId) return
       log.warn('Failed to load more versions', sanitizeForLog(err))
       set({ versionsLoading: false, error: getErrorMessage(err) })
     }
@@ -618,23 +622,26 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   loadDiff: async (fromVersion: number, toVersion: number) => {
     const defn = get().definition
     if (!defn) return
-    const capturedDefnId = defn.id
-    const capturedFrom = fromVersion
-    const capturedTo = toVersion
-    set({ diffLoading: true })
+    const reqId = get()._diffRequestId + 1
+    set({ diffLoading: true, _diffRequestId: reqId })
     try {
-      const diff = await getWorkflowDiff(capturedDefnId, capturedFrom, capturedTo)
-      if (get().definition?.id !== capturedDefnId) return
+      const diff = await getWorkflowDiff(defn.id, fromVersion, toVersion)
+      if (get()._diffRequestId !== reqId) return
       set({ diffResult: diff, diffLoading: false })
     } catch (err) {
-      if (get().definition?.id !== capturedDefnId) return
+      if (get()._diffRequestId !== reqId) return
       log.warn('Failed to load diff', sanitizeForLog(err))
       set({ diffLoading: false, error: getErrorMessage(err) })
     }
   },
 
   clearDiff: () => {
-    set({ diffResult: null })
+    // Increment token to discard any in-flight diff response.
+    set((prev) => ({
+      ...prev,
+      diffResult: null,
+      _diffRequestId: prev._diffRequestId + 1,
+    }))
   },
 
   rollback: async (targetVersion: number) => {
@@ -680,6 +687,8 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       versionsHasMore: false,
       diffResult: null,
       diffLoading: false,
+      _versionsRequestId: 0,
+      _diffRequestId: 0,
     })
   },
 }))
