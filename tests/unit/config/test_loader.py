@@ -357,6 +357,23 @@ class TestLoadConfigFromString:
         cfg = load_config_from_string("")
         assert cfg.company_name == "SynthOrg"
 
+    def test_performance_config_round_trip(self) -> None:
+        yaml_str = """\
+company_name: Test Corp
+performance:
+  quality_judge_model: test-judge-001
+  quality_judge_provider: test-provider
+  quality_ci_weight: 0.3
+  quality_llm_weight: 0.7
+  min_data_points: 10
+"""
+        cfg = load_config_from_string(yaml_str)
+        assert cfg.performance.quality_judge_model == "test-judge-001"
+        assert cfg.performance.quality_judge_provider == "test-provider"
+        assert cfg.performance.quality_ci_weight == 0.3
+        assert cfg.performance.quality_llm_weight == 0.7
+        assert cfg.performance.min_data_points == 10
+
 
 # ── _substitute_env_vars ────────────────────────────────────────
 

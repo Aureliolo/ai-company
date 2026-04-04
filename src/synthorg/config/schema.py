@@ -25,6 +25,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
+from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.promotion.config import PromotionConfig
 from synthorg.memory.config import CompanyMemoryConfig
 from synthorg.memory.org.config import OrgMemoryConfig
@@ -563,6 +564,8 @@ class RootConfig(BaseModel):
         security: Security subsystem configuration.
         trust: Progressive trust configuration.
         promotion: Promotion/demotion configuration.
+        performance: Performance tracking configuration (quality judge,
+            CI/LLM weights, trend thresholds).
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
         git_clone: Git clone SSRF prevention network policy.
@@ -674,6 +677,10 @@ class RootConfig(BaseModel):
     promotion: PromotionConfig = Field(
         default_factory=PromotionConfig,
         description="Promotion/demotion configuration",
+    )
+    performance: PerformanceConfig = Field(
+        default_factory=PerformanceConfig,
+        description="Performance tracking configuration",
     )
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,

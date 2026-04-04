@@ -1396,6 +1396,48 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 | `DELETE` | `/api/v1/admin/backups/{id}` | Delete a specific backup |
 | `POST` | `/api/v1/admin/backups/restore` | Restore from backup (requires `confirm=true`) |
 
+## Performance Tracking Configuration
+
+The `performance` namespace in the company YAML configures the performance tracking
+subsystem, including quality scoring weights, LLM judge settings, and trend detection
+thresholds. These values flow through `RootConfig.performance` into
+`_build_performance_tracker` at app startup.
+
+```yaml
+performance:
+  min_data_points: 5              # Minimum data points for meaningful aggregation
+  windows:
+    - "7d"
+    - "30d"
+    - "90d"
+  improving_threshold: 0.05       # Slope threshold for improving trend
+  declining_threshold: -0.05      # Slope threshold for declining trend
+  quality_judge_model: null       # Model ID for LLM quality judge (null = disabled)
+  quality_judge_provider: null    # Provider name (null = auto from first available)
+  quality_ci_weight: 0.4          # Weight for CI signal in composite score
+  quality_llm_weight: 0.6         # Weight for LLM judge in composite score
+  llm_sampling_rate: 0.01         # Fraction of events sampled by LLM calibration
+  llm_sampling_model: null        # Model for calibration sampling (null = disabled)
+  calibration_retention_days: 90  # Days to retain calibration records
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `quality_judge_model` | `string` or `null` | `null` | Model ID for quality LLM judge. `null` disables the judge. |
+| `quality_judge_provider` | `string` or `null` | `null` | Provider name for the judge. Requires `quality_judge_model`. |
+| `quality_ci_weight` | `float` | `0.4` | Weight for CI signal (0.0--1.0). Must sum to 1.0 with `quality_llm_weight`. |
+| `quality_llm_weight` | `float` | `0.6` | Weight for LLM judge (0.0--1.0). Must sum to 1.0 with `quality_ci_weight`. |
+| `min_data_points` | `int` | `5` | Minimum data points for meaningful metric aggregation. |
+| `improving_threshold` | `float` | `0.05` | Slope above which a metric trend is classified as "improving". |
+| `declining_threshold` | `float` | `-0.05` | Slope below which a metric trend is classified as "declining". |
+| `llm_sampling_rate` | `float` | `0.01` | Fraction of task events sampled for LLM calibration. |
+| `calibration_retention_days` | `int` | `90` | Days to retain calibration records before expiry. |
+
+!!! note "Validation Rules"
+    - `quality_ci_weight + quality_llm_weight` must equal `1.0` (tolerance: 1e-6)
+    - `improving_threshold` must be strictly greater than `declining_threshold`
+    - `quality_judge_provider` requires `quality_judge_model` to be set
+
 ## Observability and Logging
 
 Structured logging pipeline built on **structlog** + stdlib, with automatic sensitive field
