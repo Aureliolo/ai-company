@@ -4,7 +4,7 @@ blueprint:
   description: >-
     A multi-stage code review pipeline with automated checks,
     peer review via agent assignment, and a quality gate that
-    routes back for revision if needed.
+    branches to approve or revision.
   workflow_type: "sequential_pipeline"
   tags:
     - "review"

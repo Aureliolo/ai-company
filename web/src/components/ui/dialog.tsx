@@ -44,7 +44,12 @@ export function DialogContent({ className, children }: DialogContentProps) {
   )
 }
 
-export function DialogHeader({ className, children }: { className?: string; children: React.ReactNode }) {
+export interface DialogHeaderProps {
+  className?: string
+  children: React.ReactNode
+}
+
+export function DialogHeader({ className, children }: DialogHeaderProps) {
   return (
     <div className={cn('flex items-center justify-between border-b border-border px-6 py-4', className)}>
       {children}
@@ -52,7 +57,12 @@ export function DialogHeader({ className, children }: { className?: string; chil
   )
 }
 
-export function DialogTitle({ className, children }: { className?: string; children: React.ReactNode }) {
+export interface DialogTitleProps {
+  className?: string
+  children: React.ReactNode
+}
+
+export function DialogTitle({ className, children }: DialogTitleProps) {
   return (
     <RadixDialog.Title className={cn('text-lg font-semibold text-foreground', className)}>
       {children}
@@ -60,7 +70,12 @@ export function DialogTitle({ className, children }: { className?: string; child
   )
 }
 
-export function DialogDescription({ className, children }: { className?: string; children: React.ReactNode }) {
+export interface DialogDescriptionProps {
+  className?: string
+  children: React.ReactNode
+}
+
+export function DialogDescription({ className, children }: DialogDescriptionProps) {
   return (
     <RadixDialog.Description className={cn('text-sm text-muted', className)}>
       {children}

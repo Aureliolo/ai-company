@@ -56,7 +56,6 @@ blueprint:
       config:
         routing_strategy: "role_filter"
         role_filter: "senior"
-        agent_name: ""
 
     - id: "task-workspace"
       type: "task"
