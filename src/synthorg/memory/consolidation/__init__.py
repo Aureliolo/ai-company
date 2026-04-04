@@ -13,6 +13,10 @@ from synthorg.memory.consolidation.config import (
     RetentionConfig,
 )
 from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
+from synthorg.memory.consolidation.distillation import (
+    DistillationRequest,
+    capture_distillation,
+)
 from synthorg.memory.consolidation.dual_mode_strategy import (
     DualModeConsolidationStrategy,
 )
@@ -46,6 +50,7 @@ __all__ = [
     "ConsolidationStrategy",
     "ContentDensity",
     "DensityClassifier",
+    "DistillationRequest",
     "DualModeConfig",
     "DualModeConsolidationStrategy",
     "ExtractivePreserver",
@@ -55,4 +60,5 @@ __all__ = [
     "RetentionEnforcer",
     "RetentionRule",
     "SimpleConsolidationStrategy",
+    "capture_distillation",
 ]
