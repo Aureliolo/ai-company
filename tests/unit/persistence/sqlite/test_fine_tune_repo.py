@@ -44,6 +44,11 @@ def _run(
         "started_at": now,
         "updated_at": now,
     }
+    # Terminal stages need completed_at for validator.
+    if stage in {FineTuneStage.COMPLETE, FineTuneStage.FAILED}:
+        defaults.setdefault("completed_at", now)
+    if stage == FineTuneStage.FAILED:
+        defaults.setdefault("error", "test failure")
     defaults.update(overrides)
     return FineTuneRun(**defaults)  # type: ignore[arg-type]
 

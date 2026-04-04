@@ -80,11 +80,12 @@ class InMemoryBackend:
 
     async def disconnect(self) -> None:
         """Mark the backend as disconnected (idempotent)."""
-        if not self._connected:
-            return
-        logger.info(MEMORY_BACKEND_DISCONNECTING, backend="inmemory")
-        self._connected = False
-        logger.info(MEMORY_BACKEND_DISCONNECTED, backend="inmemory")
+        async with self._connect_lock:
+            if not self._connected:
+                return
+            logger.info(MEMORY_BACKEND_DISCONNECTING, backend="inmemory")
+            self._connected = False
+            logger.info(MEMORY_BACKEND_DISCONNECTED, backend="inmemory")
 
     async def health_check(self) -> bool:
         """Return connection status."""

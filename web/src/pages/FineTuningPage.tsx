@@ -1,7 +1,9 @@
 import { useCallback, useEffect } from 'react'
 import { Activity, Clock, Database, Settings } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
+import type { WsEvent } from '@/api/types'
 import { SectionCard } from '@/components/ui/section-card'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -15,8 +17,18 @@ import { RunHistoryTable } from './fine-tuning/RunHistoryTable'
 
 export default function FineTuningPage() {
   const { status, preflight, fetchStatus, fetchCheckpoints, fetchRuns, handleWsEvent } =
-    useFineTuningStore()
-  const { onChannelEvent, offChannelEvent } = useWebSocketStore()
+    useFineTuningStore(useShallow((s) => ({
+      status: s.status,
+      preflight: s.preflight,
+      fetchStatus: s.fetchStatus,
+      fetchCheckpoints: s.fetchCheckpoints,
+      fetchRuns: s.fetchRuns,
+      handleWsEvent: s.handleWsEvent,
+    })))
+  const { onChannelEvent, offChannelEvent } = useWebSocketStore(useShallow((s) => ({
+    onChannelEvent: s.onChannelEvent,
+    offChannelEvent: s.offChannelEvent,
+  })))
 
   useEffect(() => {
     void fetchStatus()
@@ -26,8 +38,8 @@ export default function FineTuningPage() {
 
   // Subscribe to WebSocket events for real-time updates.
   const wsHandler = useCallback(
-    (event: { payload: Record<string, unknown> }) => {
-      handleWsEvent(event.payload)
+    (event: WsEvent) => {
+      handleWsEvent(event)
     },
     [handleWsEvent],
   )

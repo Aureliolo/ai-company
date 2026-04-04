@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -8,7 +9,12 @@ import { useFineTuningStore } from '@/stores/fine-tuning'
 
 export function CheckpointTable() {
   const { checkpoints, deployCheckpointAction, rollbackCheckpointAction, deleteCheckpointAction } =
-    useFineTuningStore()
+    useFineTuningStore(useShallow((s) => ({
+      checkpoints: s.checkpoints,
+      deployCheckpointAction: s.deployCheckpointAction,
+      rollbackCheckpointAction: s.rollbackCheckpointAction,
+      deleteCheckpointAction: s.deleteCheckpointAction,
+    })))
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   if (checkpoints.length === 0) {

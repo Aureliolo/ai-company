@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import type { StartFineTuneRequest } from '@/api/endpoints/fine-tuning'
@@ -10,20 +11,46 @@ import { PreflightResultPanel } from './PreflightResultPanel'
 
 export function PipelineControlPanel() {
   const { status, preflight, loading, startRun, cancelRun, runPreflightCheck } =
-    useFineTuningStore()
+    useFineTuningStore(useShallow((s) => ({
+      status: s.status,
+      preflight: s.preflight,
+      loading: s.loading,
+      startRun: s.startRun,
+      cancelRun: s.cancelRun,
+      runPreflightCheck: s.runPreflightCheck,
+    })))
   const [sourceDir, setSourceDir] = useState('/data/documents')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [epochs, setEpochs] = useState('3')
+  const [learningRate, setLearningRate] = useState('1e-5')
+  const [batchSize, setBatchSize] = useState(
+    String(preflight?.recommended_batch_size ?? 128),
+  )
+
+  // Clear stale preflight when sourceDir changes.
+  useEffect(() => {
+    useFineTuningStore.setState({ preflight: null })
+  }, [sourceDir])
 
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
 
-  const handlePreflight = () => {
+  const buildRequest = (): StartFineTuneRequest => {
     const request: StartFineTuneRequest = { source_dir: sourceDir }
-    void runPreflightCheck(request)
+    const parsedEpochs = Number(epochs)
+    if (!Number.isNaN(parsedEpochs) && parsedEpochs > 0) request.epochs = parsedEpochs
+    const parsedLr = Number(learningRate)
+    if (!Number.isNaN(parsedLr) && parsedLr > 0) request.learning_rate = parsedLr
+    const parsedBatch = Number(batchSize)
+    if (!Number.isNaN(parsedBatch) && parsedBatch > 0) request.batch_size = parsedBatch
+    return request
+  }
+
+  const handlePreflight = () => {
+    void runPreflightCheck(buildRequest())
   }
 
   const handleStart = () => {
-    const request: StartFineTuneRequest = { source_dir: sourceDir }
-    void startRun(request)
+    void startRun(buildRequest())
   }
 
   return (
@@ -66,9 +93,9 @@ export function PipelineControlPanel() {
 
       {showAdvanced && (
         <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card">
-          <InputField label="Epochs" value="3" onChange={() => {}} hint="Training epochs" />
-          <InputField label="Learning Rate" value="1e-5" onChange={() => {}} />
-          <InputField label="Batch Size" value={String(preflight?.recommended_batch_size ?? 128)} onChange={() => {}} />
+          <InputField label="Epochs" value={epochs} onValueChange={setEpochs} hint="Training epochs" />
+          <InputField label="Learning Rate" value={learningRate} onValueChange={setLearningRate} />
+          <InputField label="Batch Size" value={batchSize} onValueChange={setBatchSize} />
         </div>
       )}
     </div>

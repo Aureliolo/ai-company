@@ -1,3 +1,5 @@
+import { useShallow } from 'zustand/react/shallow'
+
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
@@ -8,10 +10,15 @@ const STAGE_STATUS_MAP: Record<string, 'active' | 'idle' | 'error' | 'offline'> 
   complete: 'active',
   failed: 'error',
   idle: 'idle',
+  generating_data: 'active',
+  mining_negatives: 'active',
+  training: 'active',
+  evaluating: 'active',
+  deploying: 'active',
 }
 
 export function RunHistoryTable() {
-  const { runs } = useFineTuningStore()
+  const { runs } = useFineTuningStore(useShallow((s) => ({ runs: s.runs })))
 
   if (runs.length === 0) {
     return (
@@ -69,9 +76,9 @@ export function RunHistoryTable() {
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
   const h = Math.floor(seconds / 3600)
-  const m = Math.round((seconds % 3600) / 60)
+  const m = Math.floor((seconds % 3600) / 60)
   return `${h}h ${m}m`
 }
 

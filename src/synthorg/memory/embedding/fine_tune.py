@@ -44,7 +44,7 @@ ProgressCallback = Callable[[float], None]
 
 
 class FineTuneStage(StrEnum):
-    """Fine-tuning pipeline stage status."""
+    """Fine-tuning pipeline lifecycle state."""
 
     IDLE = "idle"
     GENERATING_DATA = "generating_data"
@@ -121,7 +121,11 @@ def _ensure_dir(path: str) -> Path:
 
 
 def _chunk_text(text: str, chunk_size: int = 512) -> list[str]:
-    """Split text into word-boundary chunks of ~chunk_size words."""
+    """Split text into word-boundary chunks.
+
+    Produces chunks of exactly *chunk_size* words
+    (the last chunk may be shorter).
+    """
     words = text.split()
     chunks: list[str] = []
     for i in range(0, len(words), chunk_size):
@@ -154,8 +158,8 @@ async def generate_training_data(  # noqa: PLR0913
 ) -> tuple[Path, Path]:
     """Stage 1: Generate synthetic query-document pairs.
 
-    Uses an LLM to generate realistic retrieval queries for each
-    document chunk in *source_dir*.  No manual annotation required.
+    Generate synthetic query-document pairs from source documents.
+    No manual annotation required.
 
     When no ``llm_provider`` is available, generates simple
     extractive queries from chunk content.
@@ -203,8 +207,8 @@ async def generate_training_data(  # noqa: PLR0913
 
     train_path = out / "training.jsonl"
     val_path = out / "validation.jsonl"
-    await asyncio.to_thread(_write_jsonl, train_path, training)
-    await asyncio.to_thread(_write_jsonl, val_path, validation)
+    await asyncio.to_thread(_write_jsonl_any, train_path, training)
+    await asyncio.to_thread(_write_jsonl_any, val_path, validation)
 
     return train_path, val_path
 
@@ -213,24 +217,20 @@ def _generate_query(
     chunk: str,
     llm_provider: object | None,
 ) -> str:
-    """Generate a retrieval query for a document chunk.
+    """Generate an extractive retrieval query from a chunk.
 
-    When an LLM provider is available, uses it to generate a
-    natural query.  Falls back to extractive first-sentence query.
+    The *llm_provider* parameter is accepted for forward compatibility
+    but is currently unused -- all queries use extractive fallback.
     """
     # LLM-based generation would go here when provider protocol
     # is wired. For now, use extractive fallback.
     _ = llm_provider
     sentences = chunk.split(".")
     first = sentences[0].strip() if sentences else chunk[:100]
+    if not first:
+        first = chunk[:100].strip()
+    first = first[:200]
     return f"Find information about: {first}"
-
-
-def _write_jsonl(path: Path, records: list[dict[str, str]]) -> None:
-    """Write records as JSONL."""
-    with path.open("w", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record) + "\n")
 
 
 # -- Stage 2: Hard negative mining ------------------------------------
@@ -284,16 +284,21 @@ async def mine_hard_negatives(  # noqa: PLR0913
     out = _ensure_dir(output_dir)
     triples_path = out / "training_triples.jsonl"
 
+    query_embeddings = await asyncio.to_thread(
+        model.encode,
+        queries,
+        show_progress_bar=False,
+    )
+
     triples: list[dict[str, object]] = []
     for i, query in enumerate(queries):
         if cancellation is not None and i % 50 == 0:
             cancellation.check()
-        query_emb = await asyncio.to_thread(
-            model.encode,
-            [query],
-            show_progress_bar=False,
+        sims = await asyncio.to_thread(
+            _cosine_similarities,
+            query_embeddings[i],
+            passage_embeddings,
         )
-        sims = _cosine_similarities(query_emb[0], passage_embeddings)
         positive_sim = sims[i]
         margin = 0.95 * positive_sim
         candidates = sorted(
@@ -329,9 +334,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def _write_jsonl_any(
     path: Path,
-    records: list[dict[str, object]],
+    records: list[dict[str, Any]],
 ) -> None:
-    """Write records as JSONL (supports any JSON-serializable values)."""
+    """Write records as JSONL."""
     with path.open("w", encoding="utf-8") as f:
         for record in records:
             f.write(json.dumps(record) + "\n")

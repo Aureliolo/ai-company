@@ -1,4 +1,4 @@
-"""Request and response models for the fine-tuning API."""
+"""Domain models for the fine-tuning pipeline."""
 
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal, Self
@@ -282,6 +282,35 @@ class FineTuneRun(BaseModel):
         default=(),
         description="Successfully completed stage names",
     )
+
+    @model_validator(mode="after")
+    def _validate_run_invariants(self) -> Self:
+        """Enforce stage/error/completed_at consistency."""
+        _terminal = frozenset(
+            {FineTuneStage.COMPLETE, FineTuneStage.FAILED},
+        )
+        if self.stage == FineTuneStage.FAILED and self.error is None:
+            msg = "error is required when stage is FAILED"
+            raise ValueError(msg)
+        if self.stage == FineTuneStage.COMPLETE and self.error is not None:
+            msg = "error must be None when stage is COMPLETE"
+            raise ValueError(msg)
+        if self.stage in _ACTIVE_STAGES and self.error is not None:
+            msg = "error must be None during active pipeline stages"
+            raise ValueError(msg)
+        if self.stage in _terminal and self.completed_at is None:
+            msg = "completed_at is required for terminal stages"
+            raise ValueError(msg)
+        if self.stage not in _terminal and self.completed_at is not None:
+            msg = "completed_at must be None for non-terminal stages"
+            raise ValueError(msg)
+        # Validate stage names in stages_completed.
+        valid_names = frozenset(s.value for s in FineTuneStage)
+        for name in self.stages_completed:
+            if name not in valid_names:
+                msg = f"Unknown stage name in stages_completed: {name!r}"
+                raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

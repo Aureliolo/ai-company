@@ -196,6 +196,7 @@ class TestFineTuneRun:
     def test_duration_computed(self) -> None:
         now = datetime.now(tz=UTC)
         run = self._make_run(
+            stage=FineTuneStage.COMPLETE,
             started_at=now,
             completed_at=now,
         )

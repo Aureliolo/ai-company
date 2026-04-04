@@ -4,13 +4,16 @@ Defines event types and the ``WsEvent`` payload that is
 serialised to JSON and pushed to WebSocket subscribers.
 """
 
+import copy
 from enum import StrEnum
+from typing import Self
 
 from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
+    model_validator,
 )
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -92,3 +95,8 @@ class WsEvent(BaseModel):
         default_factory=dict,
         description="Event-specific data",
     )
+
+    @model_validator(mode="after")
+    def _deep_copy_payload(self) -> Self:
+        object.__setattr__(self, "payload", copy.deepcopy(self.payload))
+        return self

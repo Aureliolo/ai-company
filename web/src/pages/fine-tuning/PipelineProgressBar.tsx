@@ -6,7 +6,8 @@ interface PipelineProgressBarProps {
 }
 
 export function PipelineProgressBar({ stage, progress }: PipelineProgressBarProps) {
-  const pct = progress != null ? Math.round(progress * 100) : 0
+  const rawPct = progress != null ? Math.round(progress * 100) : 0
+  const pct = Math.min(100, Math.max(0, rawPct))
 
   return (
     <div className="flex flex-col gap-2 pt-4">

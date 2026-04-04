@@ -7,6 +7,7 @@ with the backend name (``"mem0:abc123"``) so that ``get()`` and
 """
 
 import asyncio
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -69,9 +70,9 @@ class CompositeBackend:
         config: CompositeBackendConfig,
     ) -> None:
         self._config = config
-        self._children = children
+        self._children = MappingProxyType(dict(children))
         # Resolve namespace -> backend instance.
-        self._namespace_to_backend: dict[str, MemoryBackend] = {}
+        namespace_to_backend: dict[str, MemoryBackend] = {}
         for ns, backend_name in config.routes.items():
             if backend_name not in children:
                 msg = (
@@ -79,16 +80,17 @@ class CompositeBackend:
                     f"backend '{backend_name}'"
                 )
                 raise MemoryConfigError(msg)
-            self._namespace_to_backend[ns] = children[backend_name]
+            namespace_to_backend[ns] = children[backend_name]
+        self._namespace_to_backend = MappingProxyType(namespace_to_backend)
         # Default backend.
         if config.default not in children:
             msg = f"Composite default references unknown backend '{config.default}'"
             raise MemoryConfigError(msg)
         self._default_backend = children[config.default]
         # Reverse map: id(backend) -> name (for ID prefixing).
-        self._backend_to_name: dict[int, str] = {
-            id(b): name for name, b in children.items()
-        }
+        self._backend_to_name = MappingProxyType(
+            {id(b): name for name, b in children.items()},
+        )
         # Deduplicated backends for lifecycle operations.
         seen: dict[int, MemoryBackend] = {}
         for b in children.values():
@@ -216,7 +218,10 @@ class CompositeBackend:
 
     @property
     def supports_temporal(self) -> bool:
-        """True if all children support temporal."""
+        """True if all children support temporal.
+
+        Backends missing the attribute default to True.
+        """
         return all(getattr(b, "supports_temporal", True) for b in self._unique_backends)
 
     @property

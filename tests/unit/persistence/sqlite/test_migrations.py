@@ -91,6 +91,7 @@ _EXPECTED_INDEXES = {
     "idx_ftr_updated_at",
     "idx_ftc_run_id",
     "idx_ftc_active",
+    "idx_ftc_single_active",
     "idx_ftc_created_at",
 }
 

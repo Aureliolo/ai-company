@@ -24,13 +24,14 @@ export function PipelineStepper({ stage }: PipelineStepperProps) {
       {STAGES.map((s, i) => {
         const isComplete = i < currentIdx
         const isCurrent = s.key === stage
+        const connectorComplete = i <= currentIdx
         return (
           <div key={s.key} className="flex items-center gap-2">
             {i > 0 && (
               <div
                 className={cn(
                   'h-0.5 w-8',
-                  isComplete ? 'bg-accent' : 'bg-border',
+                  connectorComplete ? 'bg-accent' : 'bg-border',
                 )}
               />
             )}

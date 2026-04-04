@@ -4,6 +4,9 @@ All endpoints require CEO or the internal SYSTEM role
 (used by the CLI for admin operations).
 """
 
+import asyncio
+import json
+
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import ClientException
@@ -81,12 +84,18 @@ class MemoryAdminController(Controller):
             source_dir=data.source_dir,
             base_model=data.base_model,
         )
+        if not app_state.has_fine_tune_orchestrator:
+            raise ClientException(detail="Fine-tuning is not available")
         orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.start(data)
         except RuntimeError as exc:
+            logger.warning(
+                MEMORY_FINE_TUNE_REQUESTED,
+                error=str(exc),
+            )
             raise ClientException(
-                detail=str(exc),
+                detail="A fine-tuning run is already active",
                 status_code=HTTP_409_CONFLICT,
             ) from exc
         return ApiResponse(
@@ -105,16 +114,30 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[FineTuneStatus]:
         """Resume a failed/cancelled pipeline run."""
         app_state: AppState = state.app_state
+        if not app_state.has_fine_tune_orchestrator:
+            raise ClientException(detail="Fine-tuning is not available")
         orchestrator = app_state.fine_tune_orchestrator
         try:
             run = await orchestrator.resume(run_id)
         except RuntimeError as exc:
+            logger.warning(
+                MEMORY_FINE_TUNE_REQUESTED,
+                run_id=run_id,
+                error=str(exc),
+            )
             raise ClientException(
-                detail=str(exc),
+                detail="A fine-tuning run is already active",
                 status_code=HTTP_409_CONFLICT,
             ) from exc
         except ValueError as exc:
-            raise ClientException(detail=str(exc)) from exc
+            logger.warning(
+                MEMORY_FINE_TUNE_REQUESTED,
+                run_id=run_id,
+                error=str(exc),
+            )
+            raise ClientException(
+                detail="Run not found or not resumable",
+            ) from exc
         return ApiResponse(
             data=FineTuneStatus(
                 run_id=run.id,
@@ -145,6 +168,8 @@ class MemoryAdminController(Controller):
     ) -> ApiResponse[FineTuneStatus]:
         """Cancel the active pipeline run."""
         app_state: AppState = state.app_state
+        if not app_state.has_fine_tune_orchestrator:
+            raise ClientException(detail="Fine-tuning is not available")
         orchestrator = app_state.fine_tune_orchestrator
         await orchestrator.cancel()
         status = await orchestrator.get_status()
@@ -157,8 +182,15 @@ class MemoryAdminController(Controller):
         data: FineTuneRequest,
     ) -> ApiResponse[PreflightResult]:
         """Run pre-flight validation checks."""
-        checks = list(_run_preflight_checks(data))
-        batch_size = _recommend_batch_size()
+        async with asyncio.TaskGroup() as tg:
+            checks_task = tg.create_task(
+                asyncio.to_thread(_run_preflight_checks, data),
+            )
+            batch_task = tg.create_task(
+                asyncio.to_thread(_recommend_batch_size),
+            )
+        checks = list(checks_task.result())
+        batch_size = batch_task.result()
         result = PreflightResult(
             checks=tuple(checks),
             recommended_batch_size=batch_size,
@@ -214,7 +246,16 @@ class MemoryAdminController(Controller):
             msg = f"Checkpoint {checkpoint_id} not found"
             raise ClientException(detail=msg)
         await repo.set_active(checkpoint_id)
+        # Update runtime embedder config via settings if available.
+        if app_state.has_settings_service and cp.backup_config_json:
+            svc = app_state.settings_service
+            await svc.set("memory", "embedder_model", cp.model_path)
+            await svc.set("memory", "embedder_provider", "local")
         updated = await repo.get_checkpoint(checkpoint_id)
+        if updated is None:
+            raise ClientException(
+                detail="Checkpoint activated but not found on re-read",
+            )
         return ApiResponse(data=updated)
 
     @post("/fine-tune/checkpoints/{checkpoint_id:str}/rollback")
@@ -236,9 +277,15 @@ class MemoryAdminController(Controller):
             msg = f"Checkpoint {checkpoint_id} not found"
             raise ClientException(detail=msg)
         if cp.backup_config_json is None:
-            msg = f"No backup config for checkpoint {checkpoint_id}"
+            msg = "No backup config available for this checkpoint"
             raise ClientException(detail=msg)
-        # Deactivate the checkpoint.
+        # Restore backup config via settings service.
+        if app_state.has_settings_service:
+            backup = json.loads(cp.backup_config_json)
+            svc = app_state.settings_service
+            for key, value in backup.items():
+                await svc.set("memory", key, value)
+        # Deactivate all checkpoints (no checkpoint is "active" now).
         await repo.deactivate_all()
         updated = await repo.get_checkpoint(checkpoint_id)
         return ApiResponse(data=updated)
@@ -358,7 +405,7 @@ def _check_documents(source_dir: str) -> PreflightCheck:
         return PreflightCheck(
             name="documents",
             status="fail",
-            message=f"Source directory not found: {source_dir}",
+            message="Source directory not found",
         )
     count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
     if count < 10:  # noqa: PLR2004
@@ -420,7 +467,7 @@ def _check_gpu() -> PreflightCheck:
 
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
-            vram_gb = props.total_mem / (1024**3)
+            vram_gb = props.total_memory / (1024**3)
             return PreflightCheck(
                 name="gpu",
                 status="pass",
@@ -458,14 +505,20 @@ def _recommend_batch_size() -> int | None:
         if not torch.cuda.is_available():
             return 16
         props = torch.cuda.get_device_properties(0)
-        vram_gb = props.total_mem / (1024**3)
+        vram_gb = props.total_memory / (1024**3)
         if vram_gb >= 40:  # noqa: PLR2004
             return 128
         if vram_gb >= 16:  # noqa: PLR2004
             return 64
         if vram_gb >= 8:  # noqa: PLR2004
             return 32
-    except Exception:
+        return 16  # noqa: TRY300
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.debug(
+            MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
+            note="batch size recommendation failed",
+            error=str(exc),
+        )
         return None
-    else:
-        return 16

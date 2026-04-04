@@ -7,6 +7,10 @@ sets the token, and each stage checks it between batches.
 import threading
 
 from synthorg.memory.errors import FineTuneCancelledError
+from synthorg.observability import get_logger
+from synthorg.observability.events.memory import MEMORY_FINE_TUNE_CANCELLED
+
+logger = get_logger(__name__)
 
 
 class CancellationToken:
@@ -26,6 +30,7 @@ class CancellationToken:
     def cancel(self) -> None:
         """Signal cancellation."""
         self._event.set()
+        logger.info(MEMORY_FINE_TUNE_CANCELLED, source="token")
 
     @property
     def is_cancelled(self) -> bool:
@@ -42,4 +47,5 @@ class CancellationToken:
         """
         if self._event.is_set():
             msg = "Fine-tuning pipeline run was cancelled"
+            logger.warning(MEMORY_FINE_TUNE_CANCELLED, source="stage_check")
             raise FineTuneCancelledError(msg)

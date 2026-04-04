@@ -2,7 +2,7 @@
 
 Manages background execution of the five-stage pipeline with state
 persistence, cancellation, WebSocket progress events, and resume
-from last completed stage.
+of failed runs from the last completed stage.
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
@@ -23,6 +23,7 @@ from synthorg.memory.embedding.fine_tune import (
     mine_hard_negatives,
 )
 from synthorg.memory.embedding.fine_tune_models import (
+    CheckpointRecord,
     FineTuneRun,
     FineTuneRunConfig,
     FineTuneStatus,
@@ -54,6 +55,14 @@ logger = get_logger(__name__)
 _PROGRESS_THROTTLE_SEC = 1.0
 
 
+class ChannelsPlugin(Protocol):
+    """Protocol for WebSocket channel publishing."""
+
+    def publish(self, data: str, *, channels: list[str]) -> None:
+        """Publish data to the given channels."""
+        ...
+
+
 class FineTuneOrchestrator:
     """Background pipeline orchestrator.
 
@@ -64,7 +73,7 @@ class FineTuneOrchestrator:
         run_repo: SQLite repository for run state.
         checkpoint_repo: SQLite repository for checkpoints.
         settings_service: Runtime settings (for deploy stage).
-        channels_plugin: Litestar WS plugin (for progress events).
+        channels_plugin: WS plugin exposing ``publish(data, channels=...)``.
         llm_provider: Optional LLM provider for data generation.
     """
 
@@ -74,7 +83,7 @@ class FineTuneOrchestrator:
         run_repo: SQLiteFineTuneRunRepository,
         checkpoint_repo: SQLiteFineTuneCheckpointRepository,
         settings_service: object | None = None,
-        channels_plugin: Any | None = None,
+        channels_plugin: ChannelsPlugin | None = None,
         llm_provider: object | None = None,
     ) -> None:
         self._run_repo = run_repo
@@ -85,6 +94,7 @@ class FineTuneOrchestrator:
         self._current_task: asyncio.Task[None] | None = None
         self._cancellation: CancellationToken | None = None
         self._current_run: FineTuneRun | None = None
+        self._op_lock = asyncio.Lock()
 
     # -- Public API ---------------------------------------------------
 
@@ -95,7 +105,11 @@ class FineTuneOrchestrator:
 
     @property
     def current_run(self) -> FineTuneRun | None:
-        """The currently active or most recently completed run."""
+        """The in-memory run state.
+
+        After a process restart this is ``None`` until a new run starts;
+        use ``get_status()`` for persistent state.
+        """
         return self._current_run
 
     async def start(
@@ -113,36 +127,40 @@ class FineTuneOrchestrator:
         Raises:
             RuntimeError: If a run is already active (409 Conflict).
         """
-        if self.is_running:
-            msg = "A fine-tuning run is already active"
-            raise RuntimeError(msg)
+        async with self._op_lock:
+            if self.is_running:
+                msg = "A fine-tuning run is already active"
+                raise RuntimeError(msg)
 
-        config = _build_config(request)
-        now = datetime.now(UTC)
-        run = FineTuneRun(
-            id=str(uuid.uuid4()),
-            stage=FineTuneStage.GENERATING_DATA,
-            config=config,
-            started_at=now,
-            updated_at=now,
-        )
-        await self._run_repo.save_run(run)
-        self._current_run = run
-        logger.info(
-            MEMORY_FINE_TUNE_STARTED,
-            run_id=run.id,
-            source_dir=config.source_dir,
-        )
+            config = _build_config(request)
+            now = datetime.now(UTC)
+            run = FineTuneRun(
+                id=str(uuid.uuid4()),
+                stage=FineTuneStage.GENERATING_DATA,
+                config=config,
+                started_at=now,
+                updated_at=now,
+            )
+            await self._run_repo.save_run(run)
+            self._current_run = run
+            logger.info(
+                MEMORY_FINE_TUNE_STARTED,
+                run_id=run.id,
+                source_dir=config.source_dir,
+            )
 
-        self._cancellation = CancellationToken()
-        self._current_task = asyncio.create_task(
-            self._execute_pipeline(run),
-        )
-        self._current_task.add_done_callback(self._on_task_done)
-        return run
+            self._cancellation = CancellationToken()
+            self._current_task = asyncio.create_task(
+                self._execute_pipeline(run),
+            )
+            self._current_task.add_done_callback(self._on_task_done)
+            return run
 
     async def resume(self, run_id: str) -> FineTuneRun:
-        """Resume a failed/cancelled run from last completed stage.
+        """Resume a failed run from the last completed stage.
+
+        Cancelled runs are stored as FAILED and are resumable.
+        Completed runs cannot be resumed.
 
         Args:
             run_id: ID of the run to resume.
@@ -154,51 +172,54 @@ class FineTuneOrchestrator:
             RuntimeError: If a run is already active.
             ValueError: If run not found or not resumable.
         """
-        if self.is_running:
-            msg = "A fine-tuning run is already active"
-            raise RuntimeError(msg)
-        run = await self._run_repo.get_run(run_id)
-        if run is None:
-            msg = f"Run {run_id} not found"
-            raise ValueError(msg)
-        if run.stage not in (
-            FineTuneStage.FAILED,
-            FineTuneStage.COMPLETE,
-        ):
-            msg = f"Run {run_id} is not resumable (stage={run.stage})"
-            raise ValueError(msg)
+        async with self._op_lock:
+            if self.is_running:
+                msg = "A fine-tuning run is already active"
+                raise RuntimeError(msg)
+            run = await self._run_repo.get_run(run_id)
+            if run is None:
+                msg = f"Run {run_id} not found"
+                raise ValueError(msg)
+            if run.stage != FineTuneStage.FAILED:
+                msg = f"Run {run_id} is not resumable (stage={run.stage})"
+                raise ValueError(msg)
 
-        now = datetime.now(UTC)
-        resumed = run.model_copy(
-            update={
-                "stage": FineTuneStage.GENERATING_DATA,
-                "progress": None,
-                "error": None,
-                "updated_at": now,
-                "completed_at": None,
-            },
-        )
-        await self._run_repo.save_run(resumed)
-        self._current_run = resumed
-        logger.info(
-            MEMORY_FINE_TUNE_STARTED,
-            run_id=run_id,
-            resumed=True,
-            stages_completed=run.stages_completed,
-        )
+            now = datetime.now(UTC)
+            resumed = run.model_copy(
+                update={
+                    "stage": FineTuneStage.GENERATING_DATA,
+                    "progress": None,
+                    "error": None,
+                    "updated_at": now,
+                    "completed_at": None,
+                },
+            )
+            await self._run_repo.save_run(resumed)
+            self._current_run = resumed
+            logger.info(
+                MEMORY_FINE_TUNE_STARTED,
+                run_id=run_id,
+                resumed=True,
+                stages_completed=run.stages_completed,
+            )
 
-        self._cancellation = CancellationToken()
-        self._current_task = asyncio.create_task(
-            self._execute_pipeline(resumed),
-        )
-        self._current_task.add_done_callback(self._on_task_done)
-        return resumed
+            self._cancellation = CancellationToken()
+            self._current_task = asyncio.create_task(
+                self._execute_pipeline(resumed),
+            )
+            self._current_task.add_done_callback(self._on_task_done)
+            return resumed
 
     async def cancel(self) -> None:
-        """Cancel the active pipeline run."""
-        if self._cancellation is not None:
-            self._cancellation.cancel()
-            logger.info(MEMORY_FINE_TUNE_CANCELLED)
+        """Cancel the active pipeline run.
+
+        Signals cooperative cancellation; the background task will
+        stop at the next cancellation check point.
+        """
+        async with self._op_lock:
+            if self._cancellation is not None:
+                self._cancellation.cancel()
+                logger.info(MEMORY_FINE_TUNE_CANCELLED)
 
     async def recover_interrupted(self) -> int:
         """Mark interrupted runs as FAILED on startup."""
@@ -246,23 +267,53 @@ class FineTuneOrchestrator:
                 MEMORY_FINE_TUNE_COMPLETED,
                 run_id=run.id,
             )
-            self._emit_ws("memory.fine_tune.completed", run)
-        except FineTuneCancelledError:
-            await self._mark_failed(
+            self._schedule_ws(
+                "memory.fine_tune.completed",
                 run,
-                "cancelled by user",
             )
-            self._emit_ws(
+        except FineTuneCancelledError:
+            logger.info(
+                MEMORY_FINE_TUNE_CANCELLED,
+                run_id=run.id,
+                stage=run.stage.value,
+            )
+            try:
+                await self._mark_failed(
+                    run,
+                    "cancelled by user",
+                )
+            except Exception:
+                # Update in-memory state even if DB fails.
+                self._current_run = run.model_copy(
+                    update={
+                        "stage": FineTuneStage.FAILED,
+                        "error": "cancelled by user",
+                    },
+                )
+                logger.exception(
+                    MEMORY_FINE_TUNE_FAILED,
+                    run_id=run.id,
+                    error="failed to persist cancellation state",
+                )
+            self._schedule_ws(
                 "memory.fine_tune.failed",
-                self._current_run if self._current_run is not None else run,
+                self._current_run or run,
             )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            await self._mark_failed(run, str(exc))
-            self._emit_ws(
+            try:
+                await self._mark_failed(run, str(exc))
+            except Exception:
+                self._current_run = run.model_copy(
+                    update={
+                        "stage": FineTuneStage.FAILED,
+                        "error": str(exc),
+                    },
+                )
+            self._schedule_ws(
                 "memory.fine_tune.failed",
-                self._current_run if self._current_run is not None else run,
+                self._current_run or run,
             )
             logger.exception(
                 MEMORY_FINE_TUNE_FAILED,
@@ -349,7 +400,7 @@ class FineTuneOrchestrator:
                 run,
                 FineTuneStage.EVALUATING,
             )
-            await evaluate_checkpoint(
+            eval_metrics = await evaluate_checkpoint(
                 checkpoint_path=str(checkpoint_path),
                 base_model=cfg.base_model,
                 validation_data_path=str(val_path),
@@ -358,6 +409,8 @@ class FineTuneOrchestrator:
                 cancellation=self._cancellation,
             )
             run = await self._complete_stage(run, "evaluating")
+        else:
+            eval_metrics = None
 
         # Stage 5: Deploy.
         if "deploying" not in completed:
@@ -365,10 +418,26 @@ class FineTuneOrchestrator:
                 run,
                 FineTuneStage.DEPLOYING,
             )
-            await deploy_checkpoint(
+            backup_json = await deploy_checkpoint(
                 checkpoint_path=str(checkpoint_path),
                 settings_service=self._settings_service,
             )
+            # Persist checkpoint record.
+            size_bytes = _dir_size(checkpoint_path)
+            record = CheckpointRecord(
+                id=str(uuid.uuid4()),
+                run_id=run.id,
+                model_path=str(checkpoint_path),
+                base_model=cfg.base_model,
+                doc_count=0,
+                eval_metrics=eval_metrics,
+                size_bytes=size_bytes,
+                created_at=datetime.now(UTC),
+                is_active=True,
+                backup_config_json=backup_json,
+            )
+            await self._checkpoint_repo.deactivate_all()
+            await self._checkpoint_repo.save_checkpoint(record)
             run = await self._complete_stage(run, "deploying")
 
         return run
@@ -396,7 +465,10 @@ class FineTuneOrchestrator:
             run_id=run.id,
             stage=stage.value,
         )
-        self._emit_ws("memory.fine_tune.stage_changed", run)
+        self._schedule_ws(
+            "memory.fine_tune.stage_changed",
+            run,
+        )
         return run
 
     async def _complete_stage(
@@ -447,30 +519,26 @@ class FineTuneOrchestrator:
     ) -> Any:
         """Create a throttled progress callback for a stage.
 
-        The callback captures the run ID and reads ``self._current_run``
-        at call time so it always reflects the latest stage/progress,
-        even when invoked from a worker thread via ``asyncio.to_thread``.
+        The callback is safe to call from worker threads: it schedules
+        state mutations back onto the event loop via
+        ``call_soon_threadsafe``.
         """
         run_id = run.id
         last_emit = 0.0
+        loop = asyncio.get_running_loop()
 
-        def _cb(progress: float) -> None:
-            nonlocal last_emit
-            now = time.monotonic()
-            if now - last_emit < _PROGRESS_THROTTLE_SEC:
-                return
-            last_emit = now
+        def _update_on_loop(progress: float) -> None:
+            """Apply progress update (runs on event loop thread)."""
             current = self._current_run
             if current is not None and current.id == run_id:
                 updated = current.model_copy(
                     update={"progress": progress},
                 )
-                self._current_run = updated
             else:
                 updated = run.model_copy(
                     update={"progress": progress},
                 )
-                self._current_run = updated
+            self._current_run = updated
             logger.debug(
                 MEMORY_FINE_TUNE_PROGRESS,
                 run_id=run_id,
@@ -478,10 +546,34 @@ class FineTuneOrchestrator:
             )
             self._emit_ws(
                 "memory.fine_tune.progress",
-                self._current_run if self._current_run is not None else run,
+                updated,
             )
 
+        def _cb(progress: float) -> None:
+            nonlocal last_emit
+            now = time.monotonic()
+            if now - last_emit < _PROGRESS_THROTTLE_SEC:
+                return
+            last_emit = now
+            loop.call_soon_threadsafe(_update_on_loop, progress)
+
         return _cb
+
+    def _schedule_ws(
+        self,
+        event_type: str,
+        run: FineTuneRun,
+    ) -> None:
+        """Emit a WS event (safe from both event loop and threads)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop -- skip.
+            return
+        if asyncio.get_event_loop() is loop:
+            self._emit_ws(event_type, run)
+        else:
+            loop.call_soon_threadsafe(self._emit_ws, event_type, run)
 
     def _emit_ws(
         self,
@@ -513,6 +605,8 @@ class FineTuneOrchestrator:
             logger.warning(
                 MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
+                run_id=run.id,
+                exc_info=True,
             )
 
     @staticmethod
@@ -529,22 +623,34 @@ class FineTuneOrchestrator:
             )
 
 
-# -- Config builder ---------------------------------------------------
+# -- Helpers -----------------------------------------------------------
+
+
+def _dir_size(path: Path) -> int:
+    """Compute total size in bytes of a directory."""
+    if not path.is_dir():
+        return path.stat().st_size if path.exists() else 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
 def _build_config(request: FineTuneRequest) -> FineTuneRunConfig:
     """Build a frozen config snapshot from a request."""
-    r = request
-    return FineTuneRunConfig(
-        source_dir=r.source_dir,
-        base_model=(r.base_model if r.base_model is not None else "auto"),
-        output_dir=(r.output_dir if r.output_dir is not None else "/data/fine-tune"),
-        epochs=r.epochs if r.epochs is not None else 3,
-        learning_rate=(r.learning_rate if r.learning_rate is not None else 1e-5),
-        temperature=(r.temperature if r.temperature is not None else 0.02),
-        top_k=r.top_k if r.top_k is not None else 4,
-        batch_size=(r.batch_size if r.batch_size is not None else 128),
-        validation_split=(
-            r.validation_split if r.validation_split is not None else 0.1
-        ),
-    )
+    overrides = {
+        k: v
+        for k, v in request.model_dump(
+            exclude={"resume_run_id"},
+        ).items()
+        if v is not None
+    }
+    defaults = {
+        "base_model": "all-MiniLM-L6-v2",
+        "output_dir": "/data/fine-tune",
+        "epochs": 3,
+        "learning_rate": 1e-5,
+        "temperature": 0.02,
+        "top_k": 4,
+        "batch_size": 128,
+        "validation_split": 0.1,
+    }
+    merged = {**defaults, **overrides}
+    return FineTuneRunConfig(**merged)

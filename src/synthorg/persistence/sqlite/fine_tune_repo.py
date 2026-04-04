@@ -1,5 +1,6 @@
 """SQLite repositories for fine-tuning pipeline runs and checkpoints."""
 
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -22,13 +23,36 @@ from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
 
-_ACTIVE_STAGES = (
-    FineTuneStage.GENERATING_DATA.value,
-    FineTuneStage.MINING_NEGATIVES.value,
-    FineTuneStage.TRAINING.value,
-    FineTuneStage.EVALUATING.value,
-    FineTuneStage.DEPLOYING.value,
+_ACTIVE_STAGES = tuple(
+    s.value
+    for s in FineTuneStage
+    if s
+    not in {
+        FineTuneStage.IDLE,
+        FineTuneStage.COMPLETE,
+        FineTuneStage.FAILED,
+    }
 )
+
+_MAX_LIST_LIMIT: int = 1_000
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp with UTC fallback."""
+    if value is None:
+        return None
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _parse_required_ts(value: str) -> datetime:
+    """Parse a required ISO-8601 timestamp with UTC fallback."""
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
 
 
 def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
@@ -41,9 +65,9 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
         progress=row["progress"],
         error=row["error"],
         config=config,
-        started_at=row["started_at"],
-        updated_at=row["updated_at"],
-        completed_at=row["completed_at"],
+        started_at=_parse_required_ts(row["started_at"]),
+        updated_at=_parse_required_ts(row["updated_at"]),
+        completed_at=_parse_ts(row["completed_at"]),
         stages_completed=stages,
     )
 
@@ -63,7 +87,7 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
         doc_count=row["doc_count"],
         eval_metrics=eval_metrics,
         size_bytes=row["size_bytes"],
-        created_at=row["created_at"],
+        created_at=_parse_required_ts(row["created_at"]),
         is_active=bool(row["is_active"]),
         backup_config_json=row["backup_config_json"],
     )
@@ -83,11 +107,19 @@ class SQLiteFineTuneRunRepository:
         """Persist a run (upsert semantics)."""
         try:
             await self._db.execute(
-                "INSERT OR REPLACE INTO fine_tune_runs "
+                "INSERT INTO fine_tune_runs "
                 "(id, stage, progress, error, config_json, "
                 "started_at, updated_at, completed_at, "
                 "stages_completed) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "stage = excluded.stage, "
+                "progress = excluded.progress, "
+                "error = excluded.error, "
+                "config_json = excluded.config_json, "
+                "updated_at = excluded.updated_at, "
+                "completed_at = excluded.completed_at, "
+                "stages_completed = excluded.stages_completed",
                 (
                     run.id,
                     run.stage.value,
@@ -120,6 +152,11 @@ class SQLiteFineTuneRunRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get fine-tune run {run_id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                run_id=run_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -138,6 +175,10 @@ class SQLiteFineTuneRunRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active fine-tune run"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -154,6 +195,8 @@ class SQLiteFineTuneRunRepository:
         Returns:
             Tuple of (runs, total_count).
         """
+        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
+        offset = max(offset, 0)
         try:
             count_cursor = await self._db.execute(
                 "SELECT COUNT(*) FROM fine_tune_runs",
@@ -169,6 +212,10 @@ class SQLiteFineTuneRunRepository:
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list fine-tune runs"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         return tuple(_run_from_row(r) for r in rows), total
 
@@ -178,6 +225,7 @@ class SQLiteFineTuneRunRepository:
             await self._db.execute(
                 "UPDATE fine_tune_runs SET "
                 "stage = ?, progress = ?, error = ?, "
+                "config_json = ?, "
                 "updated_at = ?, completed_at = ?, "
                 "stages_completed = ? "
                 "WHERE id = ?",
@@ -185,6 +233,7 @@ class SQLiteFineTuneRunRepository:
                     run.stage.value,
                     run.progress,
                     run.error,
+                    run.config.model_dump_json(),
                     run.updated_at.isoformat(),
                     run.completed_at.isoformat() if run.completed_at else None,
                     json.dumps(list(run.stages_completed)),
@@ -194,6 +243,11 @@ class SQLiteFineTuneRunRepository:
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to update fine-tune run {run.id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                run_id=run.id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     async def mark_interrupted(self) -> int:
@@ -224,6 +278,10 @@ class SQLiteFineTuneRunRepository:
             count = cursor.rowcount
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to mark interrupted fine-tune runs"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if count > 0:
             logger.warning(
@@ -250,11 +308,19 @@ class SQLiteFineTuneCheckpointRepository:
         """Persist a checkpoint (upsert semantics)."""
         try:
             await self._db.execute(
-                "INSERT OR REPLACE INTO fine_tune_checkpoints "
+                "INSERT INTO fine_tune_checkpoints "
                 "(id, run_id, model_path, base_model, doc_count, "
                 "eval_metrics_json, size_bytes, created_at, "
                 "is_active, backup_config_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "model_path = excluded.model_path, "
+                "base_model = excluded.base_model, "
+                "doc_count = excluded.doc_count, "
+                "eval_metrics_json = excluded.eval_metrics_json, "
+                "size_bytes = excluded.size_bytes, "
+                "is_active = excluded.is_active, "
+                "backup_config_json = excluded.backup_config_json",
                 (
                     checkpoint.id,
                     checkpoint.run_id,
@@ -273,6 +339,11 @@ class SQLiteFineTuneCheckpointRepository:
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save checkpoint {checkpoint.id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                checkpoint_id=checkpoint.id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     async def get_checkpoint(
@@ -288,6 +359,11 @@ class SQLiteFineTuneCheckpointRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get checkpoint {checkpoint_id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                checkpoint_id=checkpoint_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None
@@ -304,6 +380,8 @@ class SQLiteFineTuneCheckpointRepository:
         Returns:
             Tuple of (checkpoints, total_count).
         """
+        limit = min(max(limit, 1), _MAX_LIST_LIMIT)
+        offset = max(offset, 0)
         try:
             count_cursor = await self._db.execute(
                 "SELECT COUNT(*) FROM fine_tune_checkpoints",
@@ -319,19 +397,22 @@ class SQLiteFineTuneCheckpointRepository:
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list checkpoints"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         return tuple(_checkpoint_from_row(r) for r in rows), total
 
     async def set_active(self, checkpoint_id: str) -> None:
         """Deactivate all checkpoints and activate the given one.
 
-        Uses a single transaction to ensure atomicity.
+        Uses aiosqlite transaction methods for atomicity.
 
         Raises:
             QueryError: If the checkpoint does not exist or DB fails.
         """
         try:
-            await self._db.execute("BEGIN IMMEDIATE")
             await self._db.execute(
                 "UPDATE fine_tune_checkpoints SET is_active = 0",
             )
@@ -340,14 +421,26 @@ class SQLiteFineTuneCheckpointRepository:
                 (checkpoint_id,),
             )
             affected = cursor.rowcount
-            await self._db.execute("COMMIT")
+            if affected == 0:
+                await self._db.rollback()
+                msg = f"Checkpoint {checkpoint_id} not found"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error=msg,
+                )
+                raise QueryError(msg)
+            await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            await self._db.execute("ROLLBACK")
+            with contextlib.suppress(Exception):
+                await self._db.rollback()
             msg = f"Failed to activate checkpoint {checkpoint_id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                checkpoint_id=checkpoint_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
-        if affected == 0:
-            msg = f"Checkpoint {checkpoint_id} not found"
-            raise QueryError(msg)
 
     async def deactivate_all(self) -> None:
         """Deactivate all checkpoints (for rollback)."""
@@ -358,37 +451,50 @@ class SQLiteFineTuneCheckpointRepository:
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to deactivate all checkpoints"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
 
     async def delete_checkpoint(
         self,
         checkpoint_id: str,
     ) -> None:
-        """Delete a checkpoint atomically. Raises if it is the active one.
+        """Delete a checkpoint. Raises if it is the active one.
 
-        Uses a conditional DELETE to avoid TOCTOU races.
+        Checks existence and active status before deleting to provide
+        clear error messages without TOCTOU races.
         """
-        is_active = False
         try:
-            cursor = await self._db.execute(
+            check = await self._db.execute(
+                "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",
+                (checkpoint_id,),
+            )
+            row = await check.fetchone()
+            if row is None:
+                return
+            if bool(row["is_active"]):
+                msg = f"Cannot delete active checkpoint {checkpoint_id}"
+                logger.warning(
+                    MEMORY_FINE_TUNE_PERSIST_FAILED,
+                    checkpoint_id=checkpoint_id,
+                    error=msg,
+                )
+                raise QueryError(msg)
+            await self._db.execute(
                 "DELETE FROM fine_tune_checkpoints WHERE id = ? AND is_active = 0",
                 (checkpoint_id,),
             )
             await self._db.commit()
-            if cursor.rowcount == 0:
-                # Check if it exists but is active.
-                check = await self._db.execute(
-                    "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",
-                    (checkpoint_id,),
-                )
-                row = await check.fetchone()
-                is_active = row is not None and bool(row["is_active"])
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                checkpoint_id=checkpoint_id,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
-        if is_active:
-            msg = f"Cannot delete active checkpoint {checkpoint_id}"
-            raise QueryError(msg)
 
     async def get_active_checkpoint(
         self,
@@ -401,6 +507,10 @@ class SQLiteFineTuneCheckpointRepository:
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to query active checkpoint"
+            logger.warning(
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
+                error=str(exc),
+            )
             raise QueryError(msg) from exc
         if row is None:
             return None

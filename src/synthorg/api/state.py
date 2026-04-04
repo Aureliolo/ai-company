@@ -390,8 +390,23 @@ class AppState:
         self,
         orchestrator: FineTuneOrchestrator,
     ) -> None:
-        """Set the fine-tune orchestrator (lifecycle wiring)."""
+        """Set the fine-tune orchestrator (lifecycle wiring).
+
+        Args:
+            orchestrator: Fully configured fine-tune orchestrator.
+
+        Raises:
+            RuntimeError: If the orchestrator was already configured.
+        """
+        if self._fine_tune_orchestrator is not None:
+            msg = "Fine-tune orchestrator already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._fine_tune_orchestrator = orchestrator
+        logger.info(
+            API_APP_STARTUP,
+            note="Fine-tune orchestrator configured",
+        )
 
     @property
     def has_config_resolver(self) -> bool:
@@ -489,14 +504,11 @@ class AppState:
         """
         if self._session_store is not None:
             msg = "session_store is already configured"
-            logger.warning(
-                "app.state.session_store_set",
-                error=msg,
-            )
+            logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._session_store = store
         logger.info(
-            "app.state.session_store_set",
+            API_APP_STARTUP,
             note="Session store configured",
         )
 

@@ -29,8 +29,9 @@ configuration without modifying application code.
 | context  | decisions| learned   |               |
 +----------+----------+-----------+---------------+
 |            Storage Backend                      |
-|   Mem0 (initial, implemented) / Custom (future) |
-|   Qdrant (embedded) + SQLite history             |
+|   Mem0 (durable, Qdrant+SQLite)                  |
+|   InMemory (session-scoped)                      |
+|   Composite (namespace-based routing adapter)    |
 |     See Decision Log                             |
 +-------------------------------------------------+
 ```
@@ -178,9 +179,11 @@ implementation effort for the research direction backends.
 
 ## Memory Backend Protocol
 
-Agent memory is implemented behind a pluggable `MemoryBackend` protocol (Mem0 initial, custom
-stack future -- see [Decision Log](../architecture/decisions.md)). Application code depends only on the protocol; the storage engine is an
-implementation detail swappable via config.
+Agent memory is implemented behind a pluggable `MemoryBackend` protocol with three concrete
+implementations: Mem0 (durable, Qdrant+SQLite), InMemory (session-scoped), and Composite
+(namespace-based routing adapter) -- see [Decision Log](../architecture/decisions.md). Application
+code depends only on the protocol; the storage engine is an implementation detail swappable via
+config.
 
 ### Enums
 
@@ -283,6 +286,8 @@ single except clause.
 | `MemoryNotFoundError` | A specific memory ID is not found |
 | `MemoryConfigError` | Memory configuration is invalid |
 | `MemoryCapabilityError` | An unsupported operation is attempted for a backend |
+| `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers) are missing |
+| `FineTuneCancelledError` | A fine-tuning pipeline run is cancelled |
 
 ### Configuration
 
@@ -343,54 +348,57 @@ Key findings:
 - Three deployment tiers are recommended: full-resource (7-12B), mid-resource (1-4B), and
   CPU-only (< 1B)
 
-!!! info "Research Direction: Domain-Specific Embedding Fine-Tuning"
+### Domain-Specific Embedding Fine-Tuning
 
-    Domain-specific fine-tuning can improve retrieval quality by 10-27% over base models
-    ([NVIDIA evaluation](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune)).
-    The pipeline requires no manual annotation and runs on a single GPU.
+Domain-specific fine-tuning can improve retrieval quality by 10-27% over base models
+([NVIDIA evaluation](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune)).
+The pipeline requires no manual annotation and runs on a single GPU.
 
-    **Pipeline stages:**
+**Pipeline stages:**
 
-    1. **Synthetic data generation** -- LLM generates query-document pairs from org documents
-       (policies, ADRs, procedures, coding standards)
-    2. **Hard negative mining** -- base model embeds all passages; top-k semantically similar
-       but non-matching passages become hard negatives
-    3. **Contrastive fine-tuning** -- biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
-       lr=1e-5). Single GPU, 1-2 hours for ~500 documents
-    4. **Deploy** -- save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
+1. **Synthetic data generation** -- LLM generates query-document pairs from org documents
+   (policies, ADRs, procedures, coding standards)
+2. **Hard negative mining** -- base model embeds all passages; top-k semantically similar
+   but non-matching passages become hard negatives
+3. **Contrastive fine-tuning** -- biencoder training with InfoNCE loss (tau=0.02, 3 epochs,
+   lr=1e-5). Single GPU, 1-2 hours for ~500 documents
+4. **Evaluation** -- NDCG@10 and Recall@10 comparison of the fine-tuned checkpoint against
+   the base model on held-out validation data
+5. **Deploy** -- save checkpoint; update `Mem0EmbedderConfig` to point to fine-tuned model
 
-    **Integration design:** fine-tuning is an offline pipeline triggered via
-    `POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
-    `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
-    `enabled=True` and `checkpoint_path` is set, backend initialization uses the
-    checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
-    provider must serve the fine-tuned model under this identifier.
+**Integration design:** fine-tuning is an offline pipeline triggered via
+`POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
+`EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
+`enabled=True` and `checkpoint_path` is set, backend initialization uses the
+checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
+provider must serve the fine-tuned model under this identifier.
 
-    ```python
-    class EmbeddingFineTuneConfig(BaseModel):
-        model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+```python
+class EmbeddingFineTuneConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-        enabled: bool = False
-        checkpoint_path: NotBlankStr | None = None
-        base_model: NotBlankStr | None = None
-        training_data_dir: NotBlankStr | None = None
-    ```
+    enabled: bool = False
+    checkpoint_path: NotBlankStr | None = None
+    base_model: NotBlankStr | None = None
+    training_data_dir: NotBlankStr | None = None
+```
 
-    When `enabled=True`, both `checkpoint_path` and `base_model` are required
-    (enforced by model validation).  Path traversal (`..`) and Windows-style
-    paths are rejected to prevent container path escapes.
+When `enabled=True`, both `checkpoint_path` and `base_model` are required
+(enforced by model validation).  Path traversal (`..`) and Windows-style
+paths are rejected to prevent container path escapes.
 
-    A future `FineTuningPipeline` protocol would formalize the four stages:
+The `FineTuningPipeline` protocol formalizes the five stages:
 
-    ```python
-    class FineTuningPipeline(Protocol):
-        async def generate_training_data(self, source_dir: str) -> Path: ...
-        async def mine_hard_negatives(self, training_data: Path) -> Path: ...
-        async def fine_tune(self, training_data: Path, base_model: str) -> Path: ...
-    ```
+```python
+class FineTuningPipeline(Protocol):
+    async def generate_training_data(self, source_dir: str) -> Path: ...
+    async def mine_hard_negatives(self, training_data: Path) -> Path: ...
+    async def fine_tune(self, training_data: Path, base_model: str) -> Path: ...
+    async def evaluate(self, checkpoint: Path, base_model: str, validation_data: Path) -> EvalMetrics: ...
+```
 
-    See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full pipeline
-    design and expected improvement metrics.
+See [Embedding Evaluation](../reference/embedding-evaluation.md) for the full pipeline
+design and expected improvement metrics.
 
 ### Consolidation and Retention
 

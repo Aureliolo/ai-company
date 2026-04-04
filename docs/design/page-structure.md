@@ -204,6 +204,8 @@ The **observability namespace** includes a dedicated **Sinks** sub-page (`/setti
 
 The **coordination namespace** includes a dedicated **Ceremony Policy** sub-page (`/settings/coordination/ceremony-policy`) for managing ceremony scheduling configuration. The page displays strategy selection (8 strategy types with descriptions and velocity unit indicator), velocity-calculator selection (paired to strategy via defaults), strategy-specific config panels, auto-transition toggle and threshold, department overrides with inherit/override toggles, per-ceremony overrides, and a strategy change warning banner. A resolved-policy view (populated from `GET /ceremony-policy/resolved`) annotates each field with a `PolicySourceBadge` showing the origin level (project, department, or default). Department overrides are read and written through `GET /departments/{name}/ceremony-policy` and `PUT /departments/{name}/ceremony-policy`, which store data in the `dept_ceremony_policies` JSON setting and resolve against the project-level policy.
 
+The **memory namespace** includes a dedicated **Fine-Tuning** sub-page (`/settings/memory/fine-tuning`) for managing the domain-specific embedding fine-tuning pipeline. The page displays pipeline status, run history, preflight checks, and controls for starting/cancelling fine-tuning runs.
+
 The **backup namespace** will include backup management CRUD (trigger, list, restore, delete) in a future iteration, consolidating the BackupController under the Settings page. The current implementation covers backup configuration settings only (schedule, retention, path).
 
 System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Environment-sourced settings display as read-only.
@@ -278,6 +280,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 |   +-- Meetings           [Video]               /meetings
 |   +-- Providers          [Cpu]                 /providers
 |   +-- Docs               [BookOpen]            /docs/  (external -- static HTML, not SPA)
+|   +-- Fine-Tuning        [Sparkles]            /settings/memory/fine-tuning
 |   +-- Settings           [Settings]            /settings
 |
 +-- BOTTOM
@@ -348,6 +351,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
 | `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection with resolved-policy source badges, department overrides with inherit/override toggle, per-ceremony overrides, velocity-calculator auto-selection per strategy |
+| `/settings/memory/fine-tuning` | Fine-Tuning | Embedding fine-tuning pipeline management (status, run history, preflight checks, start/cancel) |
 | `/docs/` | Documentation | Static MkDocs HTML served by nginx (bypasses React Router) |
 | `*` | 404 Not Found | Catch-all |
 

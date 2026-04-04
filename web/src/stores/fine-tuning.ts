@@ -14,11 +14,19 @@ import {
 import type {
   CheckpointRecord,
   FineTuneRun,
+  FineTuneStage,
   FineTuneStatus,
   PreflightResult,
   StartFineTuneRequest,
 } from '@/api/endpoints/fine-tuning'
+import type { WsEvent } from '@/api/types'
 import { createLogger } from '@/lib/logger'
+
+/** All valid fine-tune stage values for runtime validation of WS payloads. */
+const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
+  'idle', 'generating_data', 'mining_negatives', 'training',
+  'evaluating', 'deploying', 'complete', 'failed',
+])
 
 const log = createLogger('fine-tuning-store')
 
@@ -41,7 +49,7 @@ interface FineTuningState {
   deployCheckpointAction: (id: string) => Promise<void>
   rollbackCheckpointAction: (id: string) => Promise<void>
   deleteCheckpointAction: (id: string) => Promise<void>
-  handleWsEvent: (payload: Record<string, unknown>) => void
+  handleWsEvent: (event: WsEvent) => void
 }
 
 export const useFineTuningStore = create<FineTuningState>((set, get) => ({
@@ -105,10 +113,10 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
   },
 
   runPreflightCheck: async (request) => {
-    set({ loading: true, preflight: null })
+    set({ loading: true, preflight: null, error: null })
     try {
       const result = await runPreflight(request)
-      set({ preflight: result, loading: false })
+      set({ preflight: result, loading: false, error: null })
     } catch (err) {
       log.error('Failed to run preflight', err)
       set({ loading: false, error: 'Preflight check failed' })
@@ -145,19 +153,28 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
     }
   },
 
-  handleWsEvent: (payload) => {
-    const eventType = payload.event_type as string | undefined
-    if (!eventType?.startsWith('memory.fine_tune.')) return
+  handleWsEvent: (event) => {
+    const { event_type: eventType, payload: data } = event
+    if (!eventType.startsWith('memory.fine_tune.')) return
 
-    const data = (payload.payload ?? payload) as Record<string, unknown>
     const currentStatus = get().status
+
+    const rawStage = data.stage as string | undefined
+    const stage: FineTuneStatus['stage'] =
+      rawStage != null && VALID_STAGES.has(rawStage)
+        ? (rawStage as FineTuneStatus['stage'])
+        : (currentStatus?.stage ?? 'idle')
+
+    const rawProgress = data.progress as number | undefined
+    const progress =
+      rawProgress != null ? Math.min(1, Math.max(0, rawProgress)) : null
 
     if (eventType === 'memory.fine_tune.progress') {
       set({
         status: {
           run_id: (data.run_id as string) ?? currentStatus?.run_id ?? null,
-          stage: (data.stage as FineTuneStatus['stage']) ?? currentStatus?.stage ?? 'idle',
-          progress: (data.progress as number) ?? null,
+          stage,
+          progress,
           error: null,
         },
       })
@@ -165,7 +182,7 @@ export const useFineTuningStore = create<FineTuningState>((set, get) => ({
       set({
         status: {
           run_id: (data.run_id as string) ?? currentStatus?.run_id ?? null,
-          stage: (data.stage as FineTuneStatus['stage']) ?? 'idle',
+          stage,
           progress: 0,
           error: null,
         },

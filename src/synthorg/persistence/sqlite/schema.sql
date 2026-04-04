@@ -415,7 +415,7 @@ CREATE TABLE IF NOT EXISTS fine_tune_checkpoints (
     eval_metrics_json TEXT,
     size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
     created_at TEXT NOT NULL,
-    is_active INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 0 CHECK(is_active IN (0, 1)),
     backup_config_json TEXT
 );
 
@@ -424,6 +424,10 @@ CREATE INDEX IF NOT EXISTS idx_ftc_run_id
 
 CREATE INDEX IF NOT EXISTS idx_ftc_active
     ON fine_tune_checkpoints(is_active);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ftc_single_active
+    ON fine_tune_checkpoints(is_active)
+    WHERE is_active = 1;
 
 CREATE INDEX IF NOT EXISTS idx_ftc_created_at
     ON fine_tune_checkpoints(created_at DESC);

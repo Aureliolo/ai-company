@@ -98,8 +98,9 @@ class TestOrchestratorLifecycle:
             run = await orchestrator.start(req)
             assert run.id
             assert run.stage == FineTuneStage.GENERATING_DATA
-            # Wait for background task.
-            await asyncio.sleep(0.1)
+            # Wait for background task to complete.
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
 
         # Run should be persisted.
         fetched = await run_repo.get_run(run.id)
@@ -117,7 +118,9 @@ class TestOrchestratorLifecycle:
                 await orchestrator.start(req)
             # Clean up the blocking task.
             await orchestrator.cancel()
-            await asyncio.sleep(0.1)
+            if orchestrator._current_task is not None:
+                with contextlib.suppress(Exception):
+                    await orchestrator._current_task
 
 
 # -- Cancellation -----------------------------------------------------
@@ -134,9 +137,12 @@ class TestOrchestratorCancellation:
         req = _request(tmp_path)
         with _mock_all_stages(block=True):
             run = await orchestrator.start(req)
-            await asyncio.sleep(0.05)
+            # Yield to let the task start.
+            await asyncio.sleep(0)
             await orchestrator.cancel()
-            await asyncio.sleep(0.2)
+            if orchestrator._current_task is not None:
+                with contextlib.suppress(Exception):
+                    await orchestrator._current_task
 
         # Run should be marked as failed.
         fetched = await run_repo.get_run(run.id)
@@ -196,7 +202,8 @@ class TestOrchestratorStatus:
         req = _request(tmp_path)
         with _mock_all_stages():
             run = await orchestrator.start(req)
-            await asyncio.sleep(0.1)
+            if orchestrator._current_task is not None:
+                await orchestrator._current_task
         status = await orchestrator.get_status()
         assert status.run_id == run.id
 
@@ -218,9 +225,14 @@ def _mock_all_stages(
         if block:
             token = kwargs.get("cancellation")
             if token:
-                # Wait on the threading.Event directly (CancellationToken
-                # now uses threading.Event internally).
-                await asyncio.to_thread(token._event.wait)
+                # Block in a thread until cancelled (public API only).
+                import time
+
+                def _wait() -> None:
+                    while not token.is_cancelled:
+                        time.sleep(0.01)
+
+                await asyncio.to_thread(_wait)
                 token.check()
             else:
                 await asyncio.Event().wait()
@@ -259,8 +271,8 @@ def _mock_all_stages(
             base_recall_at_10=0.6,
         )
 
-    async def _deploy(**kwargs: Any) -> None:
-        pass
+    async def _deploy(**kwargs: Any) -> str | None:
+        return '{"embedder_model": "test-model"}'
 
     base = "synthorg.memory.embedding.fine_tune_orchestrator"
     with (
