@@ -65,8 +65,11 @@ web/vitest.config.js
 # Documentation build output (Zensical)
 _site/
 
-# Generated OpenAPI schema (built by scripts/export_openapi.py)
-docs/_generated/
+# Generated OpenAPI artifacts (built by scripts/export_openapi.py,
+# written as siblings of docs/openapi/index.md so zensical copies them
+# into the built site as static assets)
+docs/openapi/reference.html
+docs/openapi/openapi.json
 
 # Generated comparison page (built by scripts/generate_comparison.py)
 docs/reference/comparison.md

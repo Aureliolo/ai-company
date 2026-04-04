@@ -133,7 +133,7 @@ nav:
       - Error Reference: errors.md
   - Security: security.md
   - Licensing: licensing.md
-  - API Reference: rest-api.md
+  - REST API: openapi/index.md
   - Library Reference:
       - api/index.md
       - Core: api/core.md

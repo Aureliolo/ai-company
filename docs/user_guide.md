@@ -115,5 +115,5 @@ docker compose -f docker/compose.yml down
 ## Next Steps
 
 - [Guides](guides/index.md) -- In-depth guides for configuration, agents, budgets, security, and more
-- [REST API Reference](rest-api.md) -- Interact with your org via the API
+- [REST API Reference](openapi/index.md) -- Interact with your org via the API
 - [Design Specification](design/index.md) -- Full architecture details
