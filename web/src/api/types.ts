@@ -1722,6 +1722,9 @@ export interface WorkflowDefinitionVersionSummary {
   readonly name: string
   readonly description: string
   readonly workflow_type: string
+  readonly nodes: readonly WorkflowNodeData[]
+  readonly edges: readonly WorkflowEdgeData[]
+  readonly created_by: string
   readonly saved_by: string
   readonly saved_at: string
 }

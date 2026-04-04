@@ -230,20 +230,24 @@ class TestRollback:
         assert resp.status_code == 409
 
     @pytest.mark.unit
-    def test_rollback_target_not_found(self, test_client: TestClient[Any]) -> None:
+    def test_rollback_target_gte_expected_returns_400(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Rollback is rejected when target_version >= expected_version."""
         wf = _create_workflow(test_client)
         resp = test_client.post(
             f"/api/v1/workflows/{wf['id']}/rollback",
-            json={"target_version": 99, "expected_version": 1},
+            json={"target_version": 5, "expected_version": 3},
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 400
 
     @pytest.mark.unit
     def test_rollback_definition_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.post(
             "/api/v1/workflows/wfdef-nonexistent/rollback",
-            json={"target_version": 1, "expected_version": 1},
+            json={"target_version": 1, "expected_version": 2},
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404

@@ -439,7 +439,9 @@ CREATE TABLE IF NOT EXISTS workflow_definition_versions (
     version INTEGER NOT NULL CHECK(version >= 1),
     name TEXT NOT NULL CHECK(length(name) > 0),
     description TEXT NOT NULL DEFAULT '',
-    workflow_type TEXT NOT NULL,
+    workflow_type TEXT NOT NULL CHECK(workflow_type IN (
+        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
+    )),
     nodes TEXT NOT NULL,
     edges TEXT NOT NULL,
     created_by TEXT NOT NULL CHECK(length(created_by) > 0),

@@ -162,9 +162,9 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 #### Workflows (`/workflows`)
 
-Workflow definition list with card grid, search, and type filter. "Create Workflow" button opens a creation flow. Each card shows name, description, node count, edge count, creation time, and last-modified time. Actions per card: duplicate, delete (with confirmation dialog). Click navigates to the Workflow Editor at `/workflows/editor?id={workflowId}`.
+Workflow definition list with card grid, search, and type filter. "Create Workflow" button opens a creation drawer with blank or blueprint picker mode (5 starter blueprints). Each card shows name, description, node count, edge count, creation time, and last-modified time. Actions per card: duplicate, delete (with confirmation dialog). Click navigates to the Workflow Editor at `/workflows/editor?id={workflowId}`.
 
-**API endpoints**: `GET /workflows`, `POST /workflows`, `DELETE /workflows/{id}`
+**API endpoints**: `GET /workflows`, `POST /workflows`, `DELETE /workflows/{id}`, `GET /workflows/blueprints`, `POST /workflows/from-blueprint`
 **WS channels**: (none)
 
 #### Workflow Editor (`/workflows/editor`)
@@ -184,6 +184,10 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 - **Condition builder**: structured expression editor (Builder mode with field/operator/value rows and AND/OR/NOT logical operators, Advanced mode with free-text) for conditional nodes
 - **Workflow selector**: switch between saved workflow definitions from the editor toolbar
 - **Multi-workflow support**: "Save as New" duplicate action, quick-switch between workflows
+
+- **Version history**: slide-in drawer listing all saved versions with compare (diff viewer) and restore (rollback) actions per entry
+- **Diff viewer**: modal overlay showing node changes, edge changes, and metadata changes between any two versions
+- **Rollback**: restore a previous version's content as a new version (no history lost)
 
 No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
 
@@ -333,8 +337,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
-| `/workflows` | Workflows | Card grid list with search, type filter, create/duplicate/delete |
-| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation) |
+| `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
+| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation, version history with diff/rollback) |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |

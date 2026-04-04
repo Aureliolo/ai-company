@@ -5,9 +5,7 @@ of a workflow definition at a specific version number, created on
 every save.
 """
 
-from datetime import datetime  # noqa: TC003
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import WorkflowType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -53,4 +51,4 @@ class WorkflowDefinitionVersion(BaseModel):
     )
     created_by: NotBlankStr = Field(description="Original definition creator")
     saved_by: NotBlankStr = Field(description="User who performed this save")
-    saved_at: datetime = Field(description="Timestamp of this save")
+    saved_at: AwareDatetime = Field(description="Timestamp of this save")

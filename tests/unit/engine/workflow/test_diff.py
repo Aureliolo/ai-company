@@ -54,12 +54,13 @@ def _ver(version: int = 1, **overrides: object) -> WorkflowDefinitionVersion:
 
 
 class TestIdenticalVersions:
-    """Diffing identical versions produces empty diff."""
+    """Diffing identical content across versions produces empty diff."""
 
     @pytest.mark.unit
     def test_empty_diff(self) -> None:
-        v = _ver()
-        diff = compute_diff(v, v)
+        v1 = _ver(1)
+        v2 = _ver(2)
+        diff = compute_diff(v1, v2)
         assert diff.node_changes == ()
         assert diff.edge_changes == ()
         assert diff.metadata_changes == ()
@@ -223,6 +224,32 @@ class TestEdgeChanges:
         assert len(recon) == 1
 
     @pytest.mark.unit
+    def test_edge_label_changed(self) -> None:
+        """Detect edge label changes."""
+        old_edge = WorkflowEdge(
+            id="e1",
+            source_node_id="start",
+            target_node_id="end",
+            label="Old Label",
+        )
+        new_edge = WorkflowEdge(
+            id="e1",
+            source_node_id="start",
+            target_node_id="end",
+            label="New Label",
+        )
+        old = _ver(1, edges=(old_edge,))
+        new = _ver(2, edges=(new_edge,))
+        diff = compute_diff(old, new)
+
+        label_changes = [
+            c for c in diff.edge_changes if c.change_type == "label_changed"
+        ]
+        assert len(label_changes) == 1
+        assert label_changes[0].old_value == {"label": "Old Label"}
+        assert label_changes[0].new_value == {"label": "New Label"}
+
+    @pytest.mark.unit
     def test_edge_type_changed(self) -> None:
         retyped = WorkflowEdge(
             id="e1",
@@ -291,6 +318,7 @@ class TestSummary:
 
     @pytest.mark.unit
     def test_no_changes_summary(self) -> None:
-        v = _ver()
-        diff = compute_diff(v, v)
+        v1 = _ver(1)
+        v2 = _ver(2)
+        diff = compute_diff(v1, v2)
         assert diff.summary == "No changes"

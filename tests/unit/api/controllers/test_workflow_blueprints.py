@@ -125,7 +125,7 @@ class TestCreateFromBlueprint:
         assert resp.status_code == 404
 
     @pytest.mark.unit
-    def test_blank_blueprint_name_returns_422(
+    def test_blank_blueprint_name_returns_400(
         self, test_client: TestClient[Any]
     ) -> None:
         resp = test_client.post(

@@ -14,6 +14,16 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.definition import WorkflowEdge, WorkflowNode
 from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_version import (
+    WORKFLOW_VERSION_COUNT_FAILED,
+    WORKFLOW_VERSION_DELETE_FAILED,
+    WORKFLOW_VERSION_DELETED,
+    WORKFLOW_VERSION_FETCH_FAILED,
+    WORKFLOW_VERSION_LIST_FAILED,
+    WORKFLOW_VERSION_LISTED,
+    WORKFLOW_VERSION_SAVE_FAILED,
+    WORKFLOW_VERSION_SAVED,
+)
 from synthorg.persistence.errors import QueryError
 
 logger = get_logger(__name__)
@@ -36,13 +46,6 @@ _SELECT_LIST = (
     "ORDER BY version DESC "
     "LIMIT ? OFFSET ?"
 )
-
-_EVENT_SAVED = "persistence.workflow_version.saved"
-_EVENT_SAVE_FAILED = "persistence.workflow_version.save_failed"
-_EVENT_FETCH_FAILED = "persistence.workflow_version.fetch_failed"
-_EVENT_LISTED = "persistence.workflow_version.listed"
-_EVENT_LIST_FAILED = "persistence.workflow_version.list_failed"
-_EVENT_DELETED = "persistence.workflow_version.deleted"
 
 
 def _deserialize_row(
@@ -67,7 +70,7 @@ def _deserialize_row(
     except (ValueError, ValidationError, json.JSONDecodeError, KeyError) as exc:
         msg = f"Failed to deserialize workflow version {context!r}"
         logger.exception(
-            _EVENT_FETCH_FAILED,
+            WORKFLOW_VERSION_FETCH_FAILED,
             context=context,
             error=str(exc),
         )
@@ -121,7 +124,7 @@ class SQLiteWorkflowVersionRepository:
             )
             await self._db.commit()
             logger.debug(
-                _EVENT_SAVED,
+                WORKFLOW_VERSION_SAVED,
                 definition_id=version.definition_id,
                 version=version.version,
             )
@@ -130,7 +133,7 @@ class SQLiteWorkflowVersionRepository:
                 f"Failed to save version {version.version} for {version.definition_id}"
             )
             logger.exception(
-                _EVENT_SAVE_FAILED,
+                WORKFLOW_VERSION_SAVE_FAILED,
                 definition_id=version.definition_id,
                 version=version.version,
                 error=str(exc),
@@ -152,7 +155,7 @@ class SQLiteWorkflowVersionRepository:
         except Exception as exc:
             msg = f"Failed to fetch version {version} for {definition_id}"
             logger.exception(
-                _EVENT_FETCH_FAILED,
+                WORKFLOW_VERSION_FETCH_FAILED,
                 definition_id=definition_id,
                 version=version,
                 error=str(exc),
@@ -181,14 +184,14 @@ class SQLiteWorkflowVersionRepository:
         except Exception as exc:
             msg = f"Failed to list versions for {definition_id}"
             logger.exception(
-                _EVENT_LIST_FAILED,
+                WORKFLOW_VERSION_LIST_FAILED,
                 definition_id=definition_id,
                 error=str(exc),
             )
             raise QueryError(msg) from exc
 
         logger.debug(
-            _EVENT_LISTED,
+            WORKFLOW_VERSION_LISTED,
             definition_id=definition_id,
             count=len(rows),
         )
@@ -211,7 +214,7 @@ class SQLiteWorkflowVersionRepository:
         except Exception as exc:
             msg = f"Failed to count versions for {definition_id}"
             logger.exception(
-                _EVENT_LIST_FAILED,
+                WORKFLOW_VERSION_COUNT_FAILED,
                 definition_id=definition_id,
                 error=str(exc),
             )
@@ -234,14 +237,14 @@ class SQLiteWorkflowVersionRepository:
         except Exception as exc:
             msg = f"Failed to delete versions for {definition_id}"
             logger.exception(
-                _EVENT_LIST_FAILED,
+                WORKFLOW_VERSION_DELETE_FAILED,
                 definition_id=definition_id,
                 error=str(exc),
             )
             raise QueryError(msg) from exc
         else:
-            logger.debug(
-                _EVENT_DELETED,
+            logger.info(
+                WORKFLOW_VERSION_DELETED,
                 definition_id=definition_id,
                 count=count,
             )

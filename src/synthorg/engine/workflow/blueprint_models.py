@@ -71,7 +71,8 @@ class BlueprintData(BaseModel):
     """Complete blueprint for a workflow starter template.
 
     Contains graph structure plus metadata.  Validated to ensure
-    structural integrity (unique IDs, valid edges, terminal nodes).
+    structural integrity (unique IDs, valid edges, exactly one START
+    and one END node).
 
     Attributes:
         name: Machine-readable identifier (e.g. ``"feature-pipeline"``).
@@ -92,7 +93,10 @@ class BlueprintData(BaseModel):
         default=WorkflowType.SEQUENTIAL_PIPELINE,
         description="Target execution topology",
     )
-    tags: tuple[str, ...] = Field(default=(), description="Categorization tags")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Categorization tags",
+    )
     nodes: tuple[BlueprintNodeData, ...] = Field(
         default=(),
         description="Workflow graph nodes",

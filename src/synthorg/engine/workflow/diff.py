@@ -5,9 +5,10 @@ workflow definition versions (node changes, edge changes, metadata
 changes).
 """
 
-from typing import Literal
+from collections import Counter
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.version import WorkflowDefinitionVersion  # noqa: TC001
@@ -40,6 +41,22 @@ class NodeChange(BaseModel):
     old_value: dict[str, object] | None = None
     new_value: dict[str, object] | None = None
 
+    @model_validator(mode="after")
+    def _validate_values(self) -> Self:
+        """Enforce old_value/new_value presence rules per change_type."""
+        if self.change_type == "added":
+            if self.old_value is not None or self.new_value is None:
+                msg = "added change must have new_value only"
+                raise ValueError(msg)
+        elif self.change_type == "removed":
+            if self.old_value is None or self.new_value is not None:
+                msg = "removed change must have old_value only"
+                raise ValueError(msg)
+        elif self.old_value is None or self.new_value is None:
+            msg = f"{self.change_type} change must have both old_value and new_value"
+            raise ValueError(msg)
+        return self
+
 
 class EdgeChange(BaseModel):
     """A single change to a workflow edge between two versions.
@@ -63,6 +80,22 @@ class EdgeChange(BaseModel):
     ]
     old_value: dict[str, object] | None = None
     new_value: dict[str, object] | None = None
+
+    @model_validator(mode="after")
+    def _validate_values(self) -> Self:
+        """Enforce old_value/new_value presence rules per change_type."""
+        if self.change_type == "added":
+            if self.old_value is not None or self.new_value is None:
+                msg = "added change must have new_value only"
+                raise ValueError(msg)
+        elif self.change_type == "removed":
+            if self.old_value is None or self.new_value is not None:
+                msg = "removed change must have old_value only"
+                raise ValueError(msg)
+        elif self.old_value is None or self.new_value is None:
+            msg = f"{self.change_type} change must have both old_value and new_value"
+            raise ValueError(msg)
+        return self
 
 
 class MetadataChange(BaseModel):
@@ -104,6 +137,14 @@ class WorkflowDiff(BaseModel):
     metadata_changes: tuple[MetadataChange, ...] = ()
     summary: str = ""
 
+    @model_validator(mode="after")
+    def _validate_version_range(self) -> Self:
+        """Reject diffs where source and target are the same."""
+        if self.from_version == self.to_version:
+            msg = "from_version and to_version must differ"
+            raise ValueError(msg)
+        return self
+
 
 def compute_diff(
     old: WorkflowDefinitionVersion,
@@ -117,7 +158,14 @@ def compute_diff(
 
     Returns:
         A :class:`WorkflowDiff` describing all changes.
+
+    Raises:
+        ValueError: If the two versions belong to different definitions.
     """
+    if old.definition_id != new.definition_id:
+        msg = "Cannot diff versions from different definitions"
+        raise ValueError(msg)
+
     node_changes = _diff_nodes(old, new)
     edge_changes = _diff_edges(old, new)
     metadata_changes = _diff_metadata(old, new)
@@ -208,8 +256,8 @@ def _diff_nodes(
                 )
             )
 
-        old_cfg = o.model_dump(mode="json")["config"]
-        new_cfg = n.model_dump(mode="json")["config"]
+        old_cfg = dict(o.config) if o.config else {}
+        new_cfg = dict(n.config) if n.config else {}
         if old_cfg != new_cfg:
             changes.append(
                 NodeChange(
@@ -344,9 +392,9 @@ def _build_summary(
     parts: list[str] = []
 
     # Count node changes by type.
-    node_counts: dict[str, int] = {}
-    for nc in node_changes:
-        node_counts[nc.change_type] = node_counts.get(nc.change_type, 0) + 1
+    node_counts: dict[str, int] = dict(
+        Counter(nc.change_type for nc in node_changes),
+    )
     _node_ct_order = (
         "added",
         "removed",
@@ -363,9 +411,9 @@ def _build_summary(
             parts.append(f"{count} {label} {noun}")
 
     # Count edge changes by type.
-    edge_counts: dict[str, int] = {}
-    for ec in edge_changes:
-        edge_counts[ec.change_type] = edge_counts.get(ec.change_type, 0) + 1
+    edge_counts: dict[str, int] = dict(
+        Counter(ec.change_type for ec in edge_changes),
+    )
     for ct in ("added", "removed", "reconnected", "type_changed", "label_changed"):
         count = edge_counts.get(ct, 0)
         if count > 0:

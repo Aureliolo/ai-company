@@ -46,7 +46,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
         title="Version History"
         side="right"
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-section-gap">
           {versionsLoading && (
             <div className="flex flex-col gap-2">
               {Array.from({ length: 3 }, (_, i) => (
