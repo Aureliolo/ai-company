@@ -331,3 +331,261 @@ class TestHandleToolCall:
                 arguments={"memory_id": "mem-1"},
                 agent_id="agent-1",
             )
+
+
+# -- Query reformulation (Search-and-Ask) ----------------------------------
+
+
+def _reformulation_config(max_rounds: int = 2) -> MemoryRetrievalConfig:
+    """Config with query reformulation enabled."""
+    return MemoryRetrievalConfig(
+        strategy=InjectionStrategy.TOOL_BASED,
+        min_relevance=0.0,
+        query_reformulation_enabled=True,
+        max_reformulation_rounds=max_rounds,
+    )
+
+
+@pytest.mark.unit
+class TestSearchWithReformulation:
+    async def test_disabled_is_single_shot(self) -> None:
+        """Default config does not reformulate."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = _make_backend(entries)
+
+        # Use sufficiency checker that would return False
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(return_value=False)
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value="new query")
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_tool_config(),  # reformulation disabled by default
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "find me memories"},
+            agent_id="agent-1",
+        )
+
+        # Only one retrieve call -- no reformulation
+        assert backend.retrieve.call_count == 1
+        sufficiency.check_sufficiency.assert_not_called()
+        reformulator.reformulate.assert_not_called()
+
+    async def test_no_reformulator_is_single_shot(self) -> None:
+        """Reformulation skipped when reformulator is None."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = _make_backend(entries)
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(),
+            reformulator=None,
+            sufficiency_checker=AsyncMock(),
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "find me memories"},
+            agent_id="agent-1",
+        )
+        assert backend.retrieve.call_count == 1
+
+    async def test_sufficient_on_first_try_no_reformulation(self) -> None:
+        """When results are sufficient, no reformulation is performed."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = _make_backend(entries)
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(return_value=True)
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value="unused")
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "find me memories"},
+            agent_id="agent-1",
+        )
+
+        sufficiency.check_sufficiency.assert_called_once()
+        reformulator.reformulate.assert_not_called()
+        # Only one retrieve
+        assert backend.retrieve.call_count == 1
+
+    async def test_insufficient_then_sufficient_one_round(self) -> None:
+        """Insufficient -> reformulate -> sufficient: one round."""
+        initial = (_make_entry(entry_id="a", content="initial"),)
+        refined = (_make_entry(entry_id="b", content="refined"),)
+
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(side_effect=[initial, refined])
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(side_effect=[False, True])
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value="refined query")
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=3),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "original query"},
+            agent_id="agent-1",
+        )
+
+        assert backend.retrieve.call_count == 2
+        reformulator.reformulate.assert_called_once()
+        # Result should include both initial and refined entries
+        assert "initial" in result
+        assert "refined" in result
+
+    async def test_max_rounds_reached(self) -> None:
+        """Stops after max_reformulation_rounds."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=entries)
+
+        sufficiency = AsyncMock()
+        # Always insufficient
+        sufficiency.check_sufficiency = AsyncMock(return_value=False)
+        reformulator = AsyncMock()
+        # Return a new query each round (alternating)
+        reformulator.reformulate = AsyncMock(
+            side_effect=["query1", "query2", "query3", "query4"],
+        )
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=2),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "original"},
+            agent_id="agent-1",
+        )
+
+        # Initial retrieve + 2 rounds = 3 retrieves
+        assert backend.retrieve.call_count == 3
+        # 2 sufficiency checks (one per round)
+        assert sufficiency.check_sufficiency.call_count == 2
+        # 2 reformulations
+        assert reformulator.reformulate.call_count == 2
+
+    async def test_reformulator_returns_none_stops_loop(self) -> None:
+        """Returns current results when reformulator returns None."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=entries)
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(return_value=False)
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value=None)
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=3),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "original"},
+            agent_id="agent-1",
+        )
+
+        # Initial retrieve only -- no further rounds after None
+        assert backend.retrieve.call_count == 1
+        reformulator.reformulate.assert_called_once()
+
+    async def test_reformulator_returns_same_query_stops(self) -> None:
+        """Loop stops when reformulator returns the same query."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=entries)
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(return_value=False)
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value="original")
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=3),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "original"},
+            agent_id="agent-1",
+        )
+
+        # Should stop after one reformulation attempt
+        assert backend.retrieve.call_count == 1
+
+
+@pytest.mark.unit
+class TestMergeResults:
+    def test_empty_inputs(self) -> None:
+        from synthorg.memory.tool_retriever import _merge_results
+
+        assert _merge_results((), ()) == ()
+
+    def test_disjoint_entries_concatenated(self) -> None:
+        from synthorg.memory.tool_retriever import _merge_results
+
+        a = _make_entry(entry_id="a")
+        b = _make_entry(entry_id="b")
+        result = _merge_results((a,), (b,))
+        assert len(result) == 2
+        ids = [e.id for e in result]
+        assert ids == ["a", "b"]
+
+    def test_higher_relevance_wins_on_collision(self) -> None:
+        from synthorg.memory.tool_retriever import _merge_results
+
+        low = _make_entry(entry_id="dup", relevance_score=0.3)
+        high = _make_entry(entry_id="dup", relevance_score=0.9)
+        result = _merge_results((low,), (high,))
+        assert len(result) == 1
+        assert result[0].relevance_score == 0.9
+
+    def test_existing_wins_when_new_is_lower(self) -> None:
+        from synthorg.memory.tool_retriever import _merge_results
+
+        high = _make_entry(entry_id="dup", relevance_score=0.9)
+        low = _make_entry(entry_id="dup", relevance_score=0.3)
+        result = _merge_results((high,), (low,))
+        assert len(result) == 1
+        assert result[0].relevance_score == 0.9
+
+    def test_none_relevance_treated_as_zero(self) -> None:
+        from synthorg.memory.tool_retriever import _merge_results
+
+        none_rel = _make_entry(entry_id="dup", relevance_score=None)
+        with_rel = _make_entry(entry_id="dup", relevance_score=0.1)
+        result = _merge_results((none_rel,), (with_rel,))
+        assert result[0].relevance_score == 0.1

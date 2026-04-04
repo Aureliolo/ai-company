@@ -288,10 +288,21 @@ class TestMemoryRetrievalConfigReformulation:
         c = MemoryRetrievalConfig()
         assert c.max_reformulation_rounds == 2
 
-    def test_reformulation_enabled_rejected(self) -> None:
-        """Reformulation is not yet wired -- reject with ValueError."""
-        with pytest.raises(ValueError, match="not yet supported"):
-            MemoryRetrievalConfig(query_reformulation_enabled=True)
+    def test_reformulation_enabled_with_context_rejected(self) -> None:
+        """Reformulation is only wired into TOOL_BASED strategy."""
+        with pytest.raises(ValueError, match=r"requires strategy='tool_based'"):
+            MemoryRetrievalConfig(
+                strategy=InjectionStrategy.CONTEXT,
+                query_reformulation_enabled=True,
+            )
+
+    def test_reformulation_enabled_with_tool_based_accepted(self) -> None:
+        c = MemoryRetrievalConfig(
+            strategy=InjectionStrategy.TOOL_BASED,
+            query_reformulation_enabled=True,
+        )
+        assert c.query_reformulation_enabled is True
+        assert c.strategy is InjectionStrategy.TOOL_BASED
 
     def test_max_reformulation_rounds_zero_rejected(self) -> None:
         with pytest.raises(ValidationError):

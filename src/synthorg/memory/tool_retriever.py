@@ -16,6 +16,8 @@ from synthorg.memory.errors import MemoryError as DomainMemoryError
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_REFORMULATION_ROUND,
+    MEMORY_REFORMULATION_SUFFICIENT,
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_START,
@@ -25,6 +27,10 @@ from synthorg.providers.models import ChatMessage, ToolDefinition
 
 if TYPE_CHECKING:
     from synthorg.memory.protocol import MemoryBackend
+    from synthorg.memory.reformulation import (
+        QueryReformulator,
+        SufficiencyChecker,
+    )
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 logger = get_logger(__name__)
@@ -129,6 +135,44 @@ def _parse_categories(
     return frozenset(categories) if categories else None
 
 
+def _merge_results(
+    existing: tuple[MemoryEntry, ...],
+    new: tuple[MemoryEntry, ...],
+) -> tuple[MemoryEntry, ...]:
+    """Merge two entry tuples by ID, keeping higher-relevance entries.
+
+    Preserves the order of *existing* and appends unseen entries from
+    *new* at the end.  When the same ID appears in both, the entry
+    with the higher ``relevance_score`` is kept (treating ``None`` as
+    ``0.0``).
+
+    Args:
+        existing: Current entries (order preserved).
+        new: New entries to merge in.
+
+    Returns:
+        Merged tuple with stable ordering.
+    """
+    merged: dict[str, MemoryEntry] = {}
+    order: list[str] = []
+    for entry in existing:
+        merged[entry.id] = entry
+        order.append(entry.id)
+
+    for entry in new:
+        if entry.id in merged:
+            current = merged[entry.id]
+            current_rel = current.relevance_score or 0.0
+            new_rel = entry.relevance_score or 0.0
+            if new_rel > current_rel:
+                merged[entry.id] = entry
+        else:
+            merged[entry.id] = entry
+            order.append(entry.id)
+
+    return tuple(merged[eid] for eid in order)
+
+
 def _parse_search_args(
     arguments: dict[str, Any],
     config_max_memories: int,
@@ -182,9 +226,15 @@ class ToolBasedInjectionStrategy:
             ``ContextInjectionStrategy`` (unused).
     """
 
-    __slots__ = ("_backend", "_config", "_shared_store")
+    __slots__ = (
+        "_backend",
+        "_config",
+        "_reformulator",
+        "_shared_store",
+        "_sufficiency_checker",
+    )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         backend: MemoryBackend,
@@ -192,10 +242,14 @@ class ToolBasedInjectionStrategy:
         shared_store: Any | None = None,
         token_estimator: Any | None = None,  # noqa: ARG002
         memory_filter: Any | None = None,  # noqa: ARG002
+        reformulator: QueryReformulator | None = None,
+        sufficiency_checker: SufficiencyChecker | None = None,
     ) -> None:
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
+        self._reformulator = reformulator
+        self._sufficiency_checker = sufficiency_checker
 
     async def prepare_messages(
         self,
@@ -303,14 +357,11 @@ class ToolBasedInjectionStrategy:
         )
 
         try:
-            query = MemoryQuery(
-                text=query_text,
+            entries = await self._retrieve_with_reformulation(
+                query_text=query_text,
                 limit=limit,
                 categories=categories,
-            )
-            entries = await self._backend.retrieve(
-                NotBlankStr(agent_id),
-                query,
+                agent_id=agent_id,
             )
         except builtins.MemoryError, RecursionError:
             raise
@@ -341,6 +392,112 @@ class ToolBasedInjectionStrategy:
         )
 
         return _format_entries(entries)
+
+    async def _retrieve_with_reformulation(
+        self,
+        *,
+        query_text: str,
+        limit: int,
+        categories: frozenset[MemoryCategory] | None,
+        agent_id: str,
+    ) -> tuple[MemoryEntry, ...]:
+        """Retrieve memories, optionally with iterative reformulation.
+
+        When ``query_reformulation_enabled`` is True and both the
+        reformulator and sufficiency checker are configured, performs
+        up to ``max_reformulation_rounds`` rounds of:
+        search -> check sufficiency -> reformulate query.
+
+        Returns the merged results from all rounds.
+        """
+        query = MemoryQuery(
+            text=query_text,
+            limit=limit,
+            categories=categories,
+        )
+        entries = await self._backend.retrieve(
+            NotBlankStr(agent_id),
+            query,
+        )
+
+        if not self._should_reformulate():
+            return entries
+
+        return await self._reformulation_loop(
+            initial_entries=entries,
+            query_text=query_text,
+            limit=limit,
+            categories=categories,
+            agent_id=agent_id,
+        )
+
+    def _should_reformulate(self) -> bool:
+        """Check whether reformulation should be attempted."""
+        return (
+            self._config.query_reformulation_enabled
+            and self._reformulator is not None
+            and self._sufficiency_checker is not None
+        )
+
+    async def _reformulation_loop(
+        self,
+        *,
+        initial_entries: tuple[MemoryEntry, ...],
+        query_text: str,
+        limit: int,
+        categories: frozenset[MemoryCategory] | None,
+        agent_id: str,
+    ) -> tuple[MemoryEntry, ...]:
+        """Run the iterative reformulation loop."""
+        assert self._reformulator is not None  # noqa: S101
+        assert self._sufficiency_checker is not None  # noqa: S101
+
+        entries = initial_entries
+        current_query = query_text
+        max_rounds = self._config.max_reformulation_rounds
+
+        for round_idx in range(max_rounds):
+            is_sufficient = await self._sufficiency_checker.check_sufficiency(
+                current_query,
+                entries,
+            )
+            if is_sufficient:
+                logger.info(
+                    MEMORY_REFORMULATION_SUFFICIENT,
+                    agent_id=agent_id,
+                    round=round_idx,
+                    result_count=len(entries),
+                )
+                return entries
+
+            new_query = await self._reformulator.reformulate(
+                current_query,
+                entries,
+            )
+            if new_query is None or new_query == current_query:
+                return entries
+
+            logger.debug(
+                MEMORY_REFORMULATION_ROUND,
+                agent_id=agent_id,
+                round=round_idx + 1,
+                original_length=len(current_query),
+                new_length=len(new_query),
+            )
+
+            next_query = MemoryQuery(
+                text=new_query,
+                limit=limit,
+                categories=categories,
+            )
+            new_entries = await self._backend.retrieve(
+                NotBlankStr(agent_id),
+                next_query,
+            )
+            entries = _merge_results(entries, new_entries)
+            current_query = new_query
+
+        return entries
 
     async def _handle_recall(
         self,

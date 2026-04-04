@@ -202,18 +202,21 @@ class MemoryRetrievalConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_reformulation_not_supported(self) -> Self:
-        """Reject query_reformulation_enabled until wiring is complete."""
+    def _validate_reformulation_requires_tool_based(self) -> Self:
+        """Query reformulation is only wired into the TOOL_BASED strategy."""
         if not self.query_reformulation_enabled:
             return self
+        if self.strategy == InjectionStrategy.TOOL_BASED:
+            return self
         msg = (
-            "query_reformulation_enabled is not yet supported: "
-            "the retrieval pipeline does not consume this option"
+            "query_reformulation_enabled requires strategy='tool_based'; "
+            f"got strategy={self.strategy.value!r}"
         )
         logger.warning(
             CONFIG_VALIDATION_FAILED,
             field="query_reformulation_enabled",
             value=self.query_reformulation_enabled,
+            strategy=self.strategy.value,
             reason=msg,
         )
         raise ValueError(msg)
