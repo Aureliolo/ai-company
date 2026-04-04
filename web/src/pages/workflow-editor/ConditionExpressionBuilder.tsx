@@ -18,9 +18,9 @@ import {
   CONDITION_VALUES,
   createComparison,
   createGroup,
-  flattenExpression,
-  parseConditionString,
+  parseForBuilderState,
   serializeCondition,
+  type BuilderState,
   type ComparisonOperator,
   type ConditionComparison,
   type ConditionExpression,
@@ -51,16 +51,11 @@ const OPERATORS: { value: ComparisonOperator; label: string }[] = [
 ]
 
 /**
- * Try to parse a value string into a flat builder state (list of
- * comparisons + logical operator). Returns null if the expression
- * cannot be represented in the flat builder (e.g. nested groups).
+ * Parse a value string into full builder state (comparisons, sub-groups,
+ * negate).  Returns null only for expressions too complex for the builder.
  */
-function parseForBuilder(
-  str: string,
-): { comparisons: ConditionComparison[]; logicalOperator: LogicalOperator } | null {
-  const parsed = parseConditionString(str)
-  if (!parsed) return null
-  return flattenExpression(parsed)
+function parseForBuilder(str: string): BuilderState | null {
+  return parseForBuilderState(str)
 }
 
 /** Build a ConditionExpression from the builder state (comparisons + sub-groups). */
@@ -173,6 +168,125 @@ function ComparisonRow({
   )
 }
 
+// ---- Sub-component: operator + comparison row in the top-level list ----
+
+interface ConditionRowProps {
+  entry: ComparisonEntry
+  index: number
+  baseId: string
+  canRemove: boolean
+  showOperator: boolean
+  logicalOperator: 'AND' | 'OR'
+  onOperatorChange: (op: 'AND' | 'OR') => void
+  onUpdate: (index: number, updated: ConditionComparison) => void
+  onRemove: (index: number) => void
+}
+
+function ConditionRow({
+  entry,
+  index,
+  baseId,
+  canRemove,
+  showOperator,
+  logicalOperator,
+  onOperatorChange,
+  onUpdate,
+  onRemove,
+}: ConditionRowProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      {showOperator && (
+        <div className="flex items-center gap-2 pl-1">
+          <SegmentedControl
+            label="Logical operator"
+            value={logicalOperator}
+            onChange={onOperatorChange}
+            options={[
+              { value: 'AND' as const, label: 'AND' },
+              { value: 'OR' as const, label: 'OR' },
+            ]}
+            size="sm"
+          />
+        </div>
+      )}
+      <ComparisonRow
+        comparison={entry.comparison}
+        index={index}
+        baseId={baseId}
+        canRemove={canRemove}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+      />
+    </div>
+  )
+}
+
+// ---- Sub-component: nested condition group ----
+
+interface ConditionGroupPanelProps {
+  group: SubGroupEntry
+  baseId: string
+  onOperatorChange: (groupKey: number, op: 'AND' | 'OR') => void
+  onRemove: (groupKey: number) => void
+  onAddRow: (groupKey: number) => void
+  onUpdateRow: (groupKey: number, index: number, updated: ConditionComparison) => void
+  onRemoveRow: (groupKey: number, index: number) => void
+}
+
+function ConditionGroupPanel({
+  group,
+  baseId,
+  onOperatorChange,
+  onRemove,
+  onAddRow,
+  onUpdateRow,
+  onRemoveRow,
+}: ConditionGroupPanelProps) {
+  return (
+    <div className="ml-4 space-y-2 rounded-md border border-border p-2">
+      <div className="flex items-center justify-between">
+        <SegmentedControl
+          label="Group operator"
+          value={group.operator}
+          onChange={(op) => onOperatorChange(group.key, op)}
+          options={[
+            { value: 'AND' as const, label: 'AND' },
+            { value: 'OR' as const, label: 'OR' },
+          ]}
+          size="sm"
+        />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => onRemove(group.key)}
+          aria-label="Remove group"
+        >
+          <X className="size-3.5" />
+        </Button>
+      </div>
+      {group.entries.map((entry, idx) => (
+        <ComparisonRow
+          key={entry.key}
+          comparison={entry.comparison}
+          index={idx}
+          baseId={`${baseId}-g${group.key}`}
+          canRemove={group.entries.length > 1}
+          onUpdate={(i, updated) => onUpdateRow(group.key, i, updated)}
+          onRemove={(i) => onRemoveRow(group.key, i)}
+        />
+      ))}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onAddRow(group.key)}
+      >
+        <Plus data-icon="inline-start" className="size-3.5" />
+        Add condition
+      </Button>
+    </div>
+  )
+}
+
 // ---- Main builder ----
 
 export function ConditionExpressionBuilder({
@@ -208,8 +322,15 @@ export function ConditionExpressionBuilder({
     () => initialFlat?.logicalOperator ?? 'AND',
   )
 
-  const [negate, setNegate] = useState(() => /^NOT\s*\(/i.test(value))
-  const [subGroups, setSubGroups] = useState<SubGroupEntry[]>([])
+  const [negate, setNegate] = useState(() => initialFlat?.negate ?? false)
+  const [subGroups, setSubGroups] = useState<SubGroupEntry[]>(() => {
+    if (!initialFlat?.subGroups.length) return []
+    return initialFlat.subGroups.map((sg) => ({
+      key: allocKey(),
+      operator: sg.operator,
+      entries: toEntries(sg.comparisons),
+    }))
+  })
   const [freeText, setFreeText] = useState(value)
 
   // Fix #12: Resync internal state when `value` changes externally.
@@ -233,10 +354,18 @@ export function ConditionExpressionBuilder({
     lastSyncedRef.current = value
 
     /* eslint-disable @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync */
-    const flat = parseForBuilder(value)
-    if (flat) {
-      setEntries(toEntries(flat.comparisons))
-      setLogicalOperator(flat.logicalOperator)
+    const parsed = parseForBuilder(value)
+    if (parsed) {
+      setEntries(toEntries(parsed.comparisons))
+      setLogicalOperator(parsed.logicalOperator)
+      setNegate(parsed.negate)
+      setSubGroups(
+        parsed.subGroups.map((sg) => ({
+          key: allocKey(),
+          operator: sg.operator,
+          entries: toEntries(sg.comparisons),
+        })),
+      )
       setMode('builder')
     } else {
       setFreeText(value)
@@ -394,74 +523,30 @@ export function ConditionExpressionBuilder({
             onChange={setNegate}
           />
           {entries.map((entry, index) => (
-            <div key={entry.key} className="flex flex-col gap-2">
-              {index > 0 && (
-                <div className="flex items-center gap-2 pl-1">
-                  <SegmentedControl
-                    label="Logical operator"
-                    value={logicalOperator}
-                    onChange={setLogicalOperator}
-                    options={[
-                      { value: 'AND' as const, label: 'AND' },
-                      { value: 'OR' as const, label: 'OR' },
-                    ]}
-                    size="sm"
-                  />
-                </div>
-              )}
-              <ComparisonRow
-                comparison={entry.comparison}
-                index={index}
-                baseId={datalistId}
-                canRemove={entries.length > 1}
-                onUpdate={handleUpdateRow}
-                onRemove={handleRemoveRow}
-              />
-            </div>
+            <ConditionRow
+              key={entry.key}
+              entry={entry}
+              index={index}
+              baseId={datalistId}
+              canRemove={entries.length > 1}
+              showOperator={index > 0}
+              logicalOperator={logicalOperator === 'NOT' ? 'AND' : logicalOperator}
+              onOperatorChange={setLogicalOperator}
+              onUpdate={handleUpdateRow}
+              onRemove={handleRemoveRow}
+            />
           ))}
-          {/* Sub-groups */}
           {subGroups.map((group) => (
-            <div key={group.key} className="ml-4 space-y-2 rounded-md border border-border p-2">
-              <div className="flex items-center justify-between">
-                <SegmentedControl
-                  label="Group operator"
-                  value={group.operator}
-                  onChange={(op) => handleGroupOperatorChange(group.key, op)}
-                  options={[
-                    { value: 'AND' as const, label: 'AND' },
-                    { value: 'OR' as const, label: 'OR' },
-                  ]}
-                  size="sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveGroup(group.key)}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-danger"
-                  aria-label="Remove group"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-              {group.entries.map((entry, idx) => (
-                <ComparisonRow
-                  key={entry.key}
-                  comparison={entry.comparison}
-                  index={idx}
-                  baseId={`${datalistId}-g${group.key}`}
-                  canRemove={group.entries.length > 1}
-                  onUpdate={(i, updated) => handleGroupUpdateRow(group.key, i, updated)}
-                  onRemove={(i) => handleGroupRemoveRow(group.key, i)}
-                />
-              ))}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleGroupAddRow(group.key)}
-              >
-                <Plus data-icon="inline-start" className="size-3.5" />
-                Add condition
-              </Button>
-            </div>
+            <ConditionGroupPanel
+              key={group.key}
+              group={group}
+              baseId={datalistId}
+              onOperatorChange={handleGroupOperatorChange}
+              onRemove={handleRemoveGroup}
+              onAddRow={handleGroupAddRow}
+              onUpdateRow={handleGroupUpdateRow}
+              onRemoveRow={handleGroupRemoveRow}
+            />
           ))}
 
           <div className="mt-1 flex gap-2">

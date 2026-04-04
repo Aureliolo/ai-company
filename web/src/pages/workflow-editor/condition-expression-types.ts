@@ -213,6 +213,9 @@ export function flattenExpression(
     return { comparisons: [expr], logicalOperator: 'AND' }
   }
 
+  // NOT groups cannot be represented in the flat builder
+  if (expr.logicalOperator === 'NOT') return null
+
   // Only flatten if all children are comparisons (no nested groups)
   const comparisons: ConditionComparison[] = []
   for (const child of expr.conditions) {
@@ -221,6 +224,74 @@ export function flattenExpression(
   }
 
   return { comparisons, logicalOperator: expr.logicalOperator }
+}
+
+/** Extended builder state including negate and sub-groups. */
+export interface BuilderState {
+  comparisons: ConditionComparison[]
+  logicalOperator: 'AND' | 'OR'
+  negate: boolean
+  subGroups: { operator: 'AND' | 'OR'; comparisons: ConditionComparison[] }[]
+}
+
+/**
+ * Parse a condition string into full builder state, supporting NOT
+ * wrappers and one level of nested groups.  Returns null only for
+ * expressions too deep for the builder UI.
+ */
+export function parseForBuilderState(str: string): BuilderState | null {
+  let expr = parseConditionString(str)
+  if (!expr) return null
+
+  let negate = false
+  // Unwrap NOT
+  if (
+    expr.kind === 'group' &&
+    expr.logicalOperator === 'NOT' &&
+    expr.conditions.length === 1
+  ) {
+    negate = true
+    const inner = expr.conditions[0]!
+    expr = inner
+  }
+
+  // Single comparison
+  if (expr.kind === 'comparison') {
+    return { comparisons: [expr], logicalOperator: 'AND', negate, subGroups: [] }
+  }
+
+  // Group -- separate flat comparisons from sub-groups
+  const comparisons: ConditionComparison[] = []
+  const subGroups: BuilderState['subGroups'] = []
+
+  for (const child of expr.conditions) {
+    if (child.kind === 'comparison') {
+      comparisons.push(child)
+    } else if (child.kind === 'group' && child.logicalOperator !== 'NOT') {
+      const groupComparisons: ConditionComparison[] = []
+      let allFlat = true
+      for (const gc of child.conditions) {
+        if (gc.kind === 'comparison') {
+          groupComparisons.push(gc)
+        } else {
+          allFlat = false
+          break
+        }
+      }
+      if (!allFlat) return null // nesting too deep
+      subGroups.push({
+        operator: child.logicalOperator as 'AND' | 'OR',
+        comparisons: groupComparisons,
+      })
+    } else {
+      return null // can't handle NOT sub-groups or deeper nesting
+    }
+  }
+
+  if (comparisons.length === 0 && subGroups.length === 0) return null
+
+  const op = (expr.logicalOperator === 'NOT' ? 'AND' : expr.logicalOperator) as 'AND' | 'OR'
+  return { comparisons, logicalOperator: op, negate, subGroups }
 }
 
 /** Common field suggestions for the condition builder. */

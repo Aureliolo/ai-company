@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router'
-import { DropdownMenu } from 'radix-ui'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { MoreHorizontal, Pencil, Copy, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ROUTES } from '@/router/routes'

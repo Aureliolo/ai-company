@@ -78,6 +78,15 @@ function edgeTypeToVisualType(edgeType: WorkflowEdgeType): string {
  *   'conditional_false' for the second.
  * - Otherwise returns 'sequential'.
  */
+/**
+ * Infer the edge type from the source step's type and branch index.
+ *
+ * NOTE: Conditional branch assignment (true vs false) is based on
+ * declaration order in depends_on, which can flip if the user
+ * reorders steps in YAML.  A future improvement would store
+ * explicit branch metadata in the YAML schema (e.g.
+ * `{ id: "stepA", branch: "true" }`).
+ */
 function inferDependsOnEdgeType(
   sourceStep: ValidatedStep,
   branchIndex: number,

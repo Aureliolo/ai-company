@@ -60,7 +60,13 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
                   tabIndex={0}
                   className="cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-muted/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                   onClick={() => navigate(editorUrl)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(editorUrl) } }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    const target = e.target as HTMLElement
+                    if (target.closest('button, a, input, select, textarea, [role="menuitem"]')) return
+                    e.preventDefault()
+                    navigate(editorUrl)
+                  }}
                   role="link"
                   aria-label={`Open workflow ${w.name}`}
                 >
@@ -89,7 +95,7 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
                         <DropdownMenu.Content
                           align="end"
                           sideOffset={4}
-                          className="z-50 min-w-[140px] rounded-md border border-border bg-popover p-1 shadow-[var(--so-shadow-card-hover)]"
+                          className="z-50 min-w-36 rounded-md border border-border bg-popover p-1 shadow-[var(--so-shadow-card-hover)]"
                         >
                           <DropdownMenu.Item
                             className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-foreground outline-none hover:bg-accent/10 focus:bg-accent/10"
