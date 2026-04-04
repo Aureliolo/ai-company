@@ -393,6 +393,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                     bridge,
                     message_bus,
                     persistence,
+                    performance_tracker=app_state.performance_tracker,
                 )
                 raise
         await _maybe_bootstrap_agents(app_state)
@@ -434,6 +435,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             bridge,
             message_bus,
             persistence,
+            performance_tracker=app_state.performance_tracker,
         )
 
     return [on_startup], [on_shutdown]

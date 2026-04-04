@@ -167,18 +167,23 @@ class CompositeQualityStrategy:
             )
             llm_result = None
         else:
+            # ci_weight == 0.0: LLM-only mode.
             llm_result = await self._try_llm(
                 agent_id=agent_id,
                 task_id=task_id,
                 task_result=task_result,
                 acceptance_criteria=acceptance_criteria,
             )
+            if llm_result is not None:
+                return llm_result
+            # LLM failed -- fall back to CI as a safety net.
             ci_result = await self._ci_strategy.score(
                 agent_id=agent_id,
                 task_id=task_id,
                 task_result=task_result,
                 acceptance_criteria=acceptance_criteria,
             )
+            llm_result = None
 
         # Combine layers.
         return self._combine(ci_result, llm_result)
