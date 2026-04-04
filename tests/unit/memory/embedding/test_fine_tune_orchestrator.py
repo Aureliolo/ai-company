@@ -1,0 +1,267 @@
+"""Tests for FineTuneOrchestrator."""
+
+import asyncio
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest.mock import patch
+
+import aiosqlite
+import pytest
+
+from synthorg.memory.embedding.fine_tune import FineTuneStage
+from synthorg.memory.embedding.fine_tune_models import (
+    FineTuneRequest,
+    FineTuneRun,
+    FineTuneRunConfig,
+)
+from synthorg.memory.embedding.fine_tune_orchestrator import (
+    FineTuneOrchestrator,
+)
+from synthorg.persistence.sqlite.fine_tune_repo import (
+    SQLiteFineTuneCheckpointRepository,
+    SQLiteFineTuneRunRepository,
+)
+
+_SCHEMA_PATH = Path("src/synthorg/persistence/sqlite/schema.sql")
+
+
+@pytest.fixture
+async def db() -> aiosqlite.Connection:
+    conn = await aiosqlite.connect(":memory:")
+    conn.row_factory = aiosqlite.Row
+    schema = _SCHEMA_PATH.read_text()  # noqa: ASYNC240
+    await conn.executescript(schema)
+    yield conn  # type: ignore[misc]
+    await conn.close()
+
+
+@pytest.fixture
+def run_repo(db: aiosqlite.Connection) -> SQLiteFineTuneRunRepository:
+    return SQLiteFineTuneRunRepository(db)
+
+
+@pytest.fixture
+def cp_repo(
+    db: aiosqlite.Connection,
+) -> SQLiteFineTuneCheckpointRepository:
+    return SQLiteFineTuneCheckpointRepository(db)
+
+
+@pytest.fixture
+def orchestrator(
+    run_repo: SQLiteFineTuneRunRepository,
+    cp_repo: SQLiteFineTuneCheckpointRepository,
+) -> FineTuneOrchestrator:
+    return FineTuneOrchestrator(
+        run_repo=run_repo,
+        checkpoint_repo=cp_repo,
+    )
+
+
+def _request(tmp_path: Path) -> FineTuneRequest:
+    src = tmp_path / "src"
+    src.mkdir(exist_ok=True)
+    (src / "doc.txt").write_text("Test content for training. " * 50)
+    # FineTuneRequest rejects Windows paths (drive letters).
+    # Use synthetic POSIX paths -- the orchestrator mock doesn't
+    # hit the filesystem for stages 2-5.
+    return FineTuneRequest(
+        source_dir="/test/src",
+        output_dir="/test/out",
+    )
+
+
+# -- Basic lifecycle --------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOrchestratorLifecycle:
+    def test_not_running_initially(
+        self,
+        orchestrator: FineTuneOrchestrator,
+    ) -> None:
+        assert orchestrator.is_running is False
+        assert orchestrator.current_run is None
+
+    async def test_start_creates_run(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        run_repo: SQLiteFineTuneRunRepository,
+        tmp_path: Path,
+    ) -> None:
+        req = _request(tmp_path)
+        # Mock stage functions to return immediately.
+        with _mock_all_stages():
+            run = await orchestrator.start(req)
+            assert run.id
+            assert run.stage == FineTuneStage.GENERATING_DATA
+            # Wait for background task.
+            await asyncio.sleep(0.1)
+
+        # Run should be persisted.
+        fetched = await run_repo.get_run(run.id)
+        assert fetched is not None
+
+    async def test_double_start_raises(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        tmp_path: Path,
+    ) -> None:
+        req = _request(tmp_path)
+        with _mock_all_stages(block=True):
+            await orchestrator.start(req)
+            with pytest.raises(RuntimeError, match="already active"):
+                await orchestrator.start(req)
+            # Clean up the blocking task.
+            await orchestrator.cancel()
+            await asyncio.sleep(0.1)
+
+
+# -- Cancellation -----------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOrchestratorCancellation:
+    async def test_cancel_stops_run(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        run_repo: SQLiteFineTuneRunRepository,
+        tmp_path: Path,
+    ) -> None:
+        req = _request(tmp_path)
+        with _mock_all_stages(block=True):
+            run = await orchestrator.start(req)
+            await asyncio.sleep(0.05)
+            await orchestrator.cancel()
+            await asyncio.sleep(0.2)
+
+        # Run should be marked as failed.
+        fetched = await run_repo.get_run(run.id)
+        assert fetched is not None
+        assert fetched.stage == FineTuneStage.FAILED
+
+
+# -- Startup recovery ------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOrchestratorRecovery:
+    async def test_recover_interrupted(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        run_repo: SQLiteFineTuneRunRepository,
+    ) -> None:
+        now = datetime.now(tz=UTC)
+        run = FineTuneRun(
+            id="stale-run",
+            stage=FineTuneStage.TRAINING,
+            progress=0.5,
+            config=FineTuneRunConfig(
+                source_dir="/docs",
+                base_model="test-model",
+                output_dir="/out",
+            ),
+            started_at=now,
+            updated_at=now,
+        )
+        await run_repo.save_run(run)
+        count = await orchestrator.recover_interrupted()
+        assert count == 1
+        fetched = await run_repo.get_run("stale-run")
+        assert fetched is not None
+        assert fetched.stage == FineTuneStage.FAILED
+
+
+# -- Status -----------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOrchestratorStatus:
+    async def test_status_idle(
+        self,
+        orchestrator: FineTuneOrchestrator,
+    ) -> None:
+        status = await orchestrator.get_status()
+        assert status.stage == FineTuneStage.IDLE
+        assert status.run_id is None
+
+    async def test_status_after_start(
+        self,
+        orchestrator: FineTuneOrchestrator,
+        tmp_path: Path,
+    ) -> None:
+        req = _request(tmp_path)
+        with _mock_all_stages():
+            run = await orchestrator.start(req)
+            await asyncio.sleep(0.1)
+        status = await orchestrator.get_status()
+        assert status.run_id == run.id
+
+
+# -- Helpers ----------------------------------------------------------
+
+import contextlib  # noqa: E402
+
+
+@contextlib.contextmanager
+def _mock_all_stages(*, block: bool = False):
+    """Mock all pipeline stage functions.
+
+    If block=True, generate_training_data blocks until cancelled.
+    """
+
+    async def _gen_data(**kwargs):
+        if block:
+            token = kwargs.get("cancellation")
+            if token:
+                await token._event.wait()
+                token.check()
+            else:
+                await asyncio.sleep(10)
+        p = Path(kwargs.get("output_dir", "."))
+        await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
+        train = p / "training.jsonl"
+        val = p / "validation.jsonl"
+        data = '{"query":"q","positive_passage":"p"}\n'
+        await asyncio.to_thread(train.write_text, data)
+        await asyncio.to_thread(val.write_text, data)
+        return train, val
+
+    async def _mine(**kwargs):
+        p = Path(kwargs.get("output_dir", "."))
+        await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
+        out = p / "training_triples.jsonl"
+        data = '{"query":"q","positive":"p","negatives":[]}\n'
+        await asyncio.to_thread(out.write_text, data)
+        return out
+
+    async def _train(**kwargs):
+        p = Path(kwargs.get("output_dir", "."))
+        cp = p / "checkpoint"
+        await asyncio.to_thread(cp.mkdir, parents=True, exist_ok=True)
+        return cp
+
+    async def _eval(**kwargs):
+        from synthorg.memory.embedding.fine_tune_models import (
+            EvalMetrics,
+        )
+
+        return EvalMetrics(
+            ndcg_at_10=0.6,
+            recall_at_10=0.7,
+            base_ndcg_at_10=0.5,
+            base_recall_at_10=0.6,
+        )
+
+    async def _deploy(**kwargs):
+        pass
+
+    base = "synthorg.memory.embedding.fine_tune_orchestrator"
+    with (
+        patch(f"{base}.generate_training_data", side_effect=_gen_data),
+        patch(f"{base}.mine_hard_negatives", side_effect=_mine),
+        patch(f"{base}.contrastive_fine_tune", side_effect=_train),
+        patch(f"{base}.evaluate_checkpoint", side_effect=_eval),
+        patch(f"{base}.deploy_checkpoint", side_effect=_deploy),
+    ):
+        yield
