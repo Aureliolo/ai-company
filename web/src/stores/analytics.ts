@@ -73,7 +73,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
         const deptResult = await listDepartments({ limit: 100 })
         const healthPromises = deptResult.data.map((dept) =>
           getDepartmentHealth(dept.name).catch((err: unknown) => {
-            log.warn(`Failed to fetch health for ${dept.name}:`, err)
+            log.warn('Failed to fetch health for dept:', dept.name, err)
             return null
           }),
         )
@@ -82,7 +82,7 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
           (h): h is DepartmentHealth => h !== null,
         )
       } catch (err) {
-        log.warn('Failed to fetch department list:', err)
+        log.warn('Failed to fetch department list:', getErrorMessage(err))
       }
 
       const orgHealthPercent = computeOrgHealth(departmentHealths)

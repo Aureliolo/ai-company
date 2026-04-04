@@ -36,13 +36,13 @@ export function createListActions(set: ProvidersSet) {
           if (result.status === 'fulfilled') {
             healthMap[names[i]!] = result.value
           } else {
-            log.warn(`Failed to fetch health for provider "${names[i]}":`, result.reason)
+            log.warn('Failed to fetch health for provider:', names[i], getErrorMessage(result.reason))
           }
         }
         set({ healthMap, listLoading: false })
       } catch (err) {
         if (requestId !== _listRequestId) return
-        log.error('Failed to fetch providers:', err)
+        log.error('Failed to fetch providers:', getErrorMessage(err))
         set({ listLoading: false, listError: getErrorMessage(err) })
       }
     },

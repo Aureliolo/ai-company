@@ -116,6 +116,9 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
           healthMap: Object.fromEntries(
             Object.entries(state.healthMap).filter(([k]) => k !== name),
           ),
+          ...(state.selectedProvider?.name === name
+            ? { selectedProvider: null, selectedProviderModels: [], selectedProviderHealth: null, detailError: null }
+            : {}),
         }))
         useToastStore.getState().add({
           variant: 'success',
