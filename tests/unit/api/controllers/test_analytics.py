@@ -365,12 +365,12 @@ class TestForecastEndpoint:
 class TestAnalyticsGracefulDegradation:
     """Verify fallback behavior when optional services are unavailable."""
 
-    def test_trends_empty_when_no_performance_tracker(
+    def test_trends_zero_when_no_data_in_auto_wired_tracker(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,
     ) -> None:
-        """Trends returns empty data when performance tracker unavailable."""
+        """Trends returns zero-value buckets when auto-wired tracker has no data."""
         from synthorg.api.app import create_app
         from synthorg.api.auth.service import AuthService
         from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
@@ -399,7 +399,8 @@ class TestAnalyticsGracefulDegradation:
             )
             assert resp.status_code == 200
             data = resp.json()["data"]
-            assert data["data_points"] == []
+            # Auto-wired tracker has no records, so all buckets are zero.
+            assert all(dp["value"] == 0.0 for dp in data["data_points"])
 
 
 # ── Integration tests ──────────────────────────────────────────
