@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Plus, Minus, Move, Settings, Tag, Shuffle } from 'lucide-react'
 import {
   Dialog,
@@ -89,15 +90,24 @@ export function EdgeChangeRow({ change }: EdgeChangeRowProps) {
 export function VersionDiffViewer() {
   const diffResult = useWorkflowEditorStore((s) => s.diffResult)
   const clearDiff = useWorkflowEditorStore((s) => s.clearDiff)
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current)
+  }, [])
 
   return (
     <Dialog
       open={diffResult !== null}
       onOpenChange={(open) => {
+        if (clearTimerRef.current) {
+          clearTimeout(clearTimerRef.current)
+          clearTimerRef.current = null
+        }
         if (!open) {
           // Delay clearing so Radix exit animation can finish
           // before diffResult content is unmounted.
-          setTimeout(() => clearDiff(), 150)
+          clearTimerRef.current = setTimeout(() => clearDiff(), 150)
         }
       }}
     >

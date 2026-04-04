@@ -156,6 +156,34 @@ function mapPersistedEdge(edgeType: string): EdgeMeta {
   return { visualType: 'sequential', sourceHandle: undefined, edgeType, branch: undefined }
 }
 
+/** Parse a WorkflowDefinition into React Flow nodes, edges, and YAML. */
+function parseDefinition(def: WorkflowDefinition): {
+  nodes: Node[]
+  edges: Edge[]
+  yaml: string
+} {
+  const nodes: Node[] = def.nodes.map((n) => ({
+    id: n.id,
+    type: n.type,
+    position: { x: n.position_x, y: n.position_y },
+    data: { label: n.label, config: n.config },
+  }))
+  const edges: Edge[] = def.edges.map((e) => {
+    const meta = mapPersistedEdge(e.type)
+    return {
+      id: e.id,
+      source: e.source_node_id,
+      target: e.target_node_id,
+      type: meta.visualType,
+      sourceHandle: meta.sourceHandle,
+      data: { edgeType: meta.edgeType, branch: meta.branch },
+      label: e.label ?? undefined,
+    }
+  })
+  const yaml = regenerateYaml(nodes, edges, def)
+  return { nodes, edges, yaml }
+}
+
 export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) => ({
   definition: null,
   nodes: [],
@@ -182,28 +210,22 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   _diffRequestId: 0,
 
   loadDefinition: async (id: string) => {
-    set({ loading: true, error: null })
+    // Invalidate version/diff state and bump tokens when switching definitions.
+    set((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+      versions: [],
+      versionsLoading: false,
+      versionsHasMore: false,
+      diffResult: null,
+      diffLoading: false,
+      _versionsRequestId: prev._versionsRequestId + 1,
+      _diffRequestId: prev._diffRequestId + 1,
+    }))
     try {
       const def = await getWorkflow(id)
-      const nodes: Node[] = def.nodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: { x: n.position_x, y: n.position_y },
-        data: { label: n.label, config: n.config },
-      }))
-      const edges: Edge[] = def.edges.map((e) => {
-        const meta = mapPersistedEdge(e.type)
-        return {
-          id: e.id,
-          source: e.source_node_id,
-          target: e.target_node_id,
-          type: meta.visualType,
-          sourceHandle: meta.sourceHandle,
-          data: { edgeType: meta.edgeType, branch: meta.branch },
-          label: e.label ?? undefined,
-        }
-      })
-      const yaml = regenerateYaml(nodes, edges, def)
+      const { nodes, edges, yaml } = parseDefinition(def)
       set({
         definition: def,
         nodes,
@@ -597,8 +619,8 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   },
 
   loadMoreVersions: async () => {
-    const defn = get().definition
-    if (!defn) return
+    const { definition: defn, versionsLoading, versionsHasMore } = get()
+    if (!defn || versionsLoading || !versionsHasMore) return
     const reqId = get()._versionsRequestId + 1
     const offset = get().versions.length
     set({ versionsLoading: true, _versionsRequestId: reqId })
@@ -653,11 +675,25 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         target_version: targetVersion,
         expected_version: defn.version,
       })
-      set({ definition: updated, saving: false, dirty: false, diffResult: null })
-      // Reload the definition to refresh editor state.
-      await useWorkflowEditorStore.getState().loadDefinition(updated.id)
-      // Check if loadDefinition set an error
-      if (get().error) return
+      // Hydrate editor state immediately from the rollback response
+      // so the UI reflects the rolled-back version even if the
+      // subsequent reload fails.
+      const { nodes, edges, yaml } = parseDefinition(updated)
+      set((prev) => ({
+        ...prev,
+        definition: updated,
+        nodes,
+        edges,
+        yamlPreview: yaml,
+        saving: false,
+        dirty: false,
+        diffResult: null,
+        _diffRequestId: prev._diffRequestId + 1,
+        selectedNodeId: null,
+        undoStack: [],
+        redoStack: [],
+        validationResult: null,
+      }))
       await useWorkflowEditorStore.getState().loadVersions()
     } catch (err) {
       log.warn('Rollback failed', sanitizeForLog(err))
