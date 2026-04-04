@@ -415,8 +415,9 @@ are stored in registration order and invoked sequentially after each
 successful mutation.
 
 **Notification semantics**: best-effort. Observer errors are logged at
-WARNING and swallowed -- a failing observer never blocks the mutation
-pipeline or prevents subsequent observers from running.
+WARNING and swallowed (`MemoryError` and `RecursionError` propagate) --
+a failing observer never blocks the mutation pipeline or prevents
+subsequent observers from running.
 
 **`WorkflowExecutionObserver`** is the first registered observer. It
 bridges TaskEngine state changes into the workflow execution lifecycle:

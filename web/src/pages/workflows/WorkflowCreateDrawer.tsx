@@ -7,6 +7,7 @@ import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
 import { WORKFLOW_TYPES } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
+import { formatLabel } from '@/utils/format'
 
 interface WorkflowCreateDrawerProps {
   open: boolean
@@ -27,7 +28,7 @@ const INITIAL_FORM: FormState = {
 
 const WORKFLOW_TYPE_OPTIONS = WORKFLOW_TYPES.map((t) => ({
   value: t,
-  label: t.charAt(0).toUpperCase() + t.slice(1).replaceAll('_', ' '),
+  label: formatLabel(t),
 }))
 
 export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProps) {
