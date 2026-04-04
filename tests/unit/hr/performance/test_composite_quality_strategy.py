@@ -261,6 +261,7 @@ class TestWeightedCombination:
         )
 
         assert abs(result.score - expected) < 0.01
+        assert result.strategy_name == "composite"
 
 
 @pytest.mark.unit

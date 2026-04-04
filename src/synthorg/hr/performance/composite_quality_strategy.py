@@ -181,7 +181,12 @@ class CompositeQualityStrategy:
                 acceptance_criteria=acceptance_criteria,
             )
             if llm_result is not None:
-                return llm_result
+                return QualityScoreResult(
+                    score=llm_result.score,
+                    strategy_name=NotBlankStr(self.name),
+                    breakdown=llm_result.breakdown,
+                    confidence=llm_result.confidence,
+                )
             # LLM failed and CI is disabled -- return zero-confidence
             # fallback so downstream knows scoring was inconclusive.
             return QualityScoreResult(
