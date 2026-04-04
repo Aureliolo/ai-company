@@ -23,7 +23,6 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
-from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -37,6 +36,7 @@ from synthorg.security.timeout.parked_context import ParkedContext
 from tests.unit.api.fakes_workflow import (
     FakeWorkflowDefinitionRepository,
     FakeWorkflowExecutionRepository,
+    FakeWorkflowVersionRepository,
 )
 
 
@@ -570,58 +570,6 @@ class FakePersonalityPresetRepository:
 
     async def count(self) -> int:
         return len(self._presets)
-
-
-class FakeWorkflowVersionRepository:
-    """In-memory workflow version repository for tests."""
-
-    def __init__(self) -> None:
-        self._versions: dict[tuple[str, int], WorkflowDefinitionVersion] = {}
-
-    async def save_version(
-        self,
-        version: WorkflowDefinitionVersion,
-    ) -> None:
-        import copy
-
-        key = (version.definition_id, version.version)
-        if key not in self._versions:
-            self._versions[key] = copy.deepcopy(version)
-
-    async def get_version(
-        self,
-        definition_id: str,
-        version: int,
-    ) -> WorkflowDefinitionVersion | None:
-        import copy
-
-        stored = self._versions.get((definition_id, version))
-        return copy.deepcopy(stored) if stored is not None else None
-
-    async def list_versions(
-        self,
-        definition_id: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[WorkflowDefinitionVersion, ...]:
-        matching = sorted(
-            (v for v in self._versions.values() if v.definition_id == definition_id),
-            key=lambda v: v.version,
-            reverse=True,
-        )
-        return tuple(matching[offset : offset + limit])
-
-    async def count_versions(self, definition_id: str) -> int:
-        return sum(
-            1 for v in self._versions.values() if v.definition_id == definition_id
-        )
-
-    async def delete_versions_for_definition(self, definition_id: str) -> int:
-        to_delete = [k for k in self._versions if k[0] == definition_id]
-        for k in to_delete:
-            del self._versions[k]
-        return len(to_delete)
 
 
 class FakePersistenceBackend:

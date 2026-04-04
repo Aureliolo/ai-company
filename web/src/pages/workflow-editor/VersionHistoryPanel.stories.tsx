@@ -8,6 +8,9 @@ const meta = {
     open: true,
     onClose: () => {},
   },
+  parameters: {
+    a11y: { test: 'error' },
+  },
 } satisfies Meta<typeof VersionHistoryPanel>
 
 export default meta

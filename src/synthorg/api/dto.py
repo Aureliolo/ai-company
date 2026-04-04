@@ -713,13 +713,18 @@ class CreateFromBlueprintRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    blueprint_name: NotBlankStr = Field(description="Blueprint to instantiate")
+    blueprint_name: NotBlankStr = Field(
+        max_length=128,
+        description="Blueprint to instantiate",
+    )
     name: NotBlankStr | None = Field(
         default=None,
+        max_length=256,
         description="Workflow name override",
     )
     description: str | None = Field(
         default=None,
+        max_length=4096,
         description="Description override",
     )
 

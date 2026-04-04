@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from synthorg.core.enums import WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
+    from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 
 
 class FakeWorkflowDefinitionRepository:
@@ -106,3 +107,51 @@ class FakeWorkflowExecutionRepository:
 
     async def delete(self, execution_id: str) -> bool:
         return self._executions.pop(execution_id, None) is not None
+
+
+class FakeWorkflowVersionRepository:
+    """In-memory workflow version repository for tests."""
+
+    def __init__(self) -> None:
+        self._versions: dict[tuple[str, int], WorkflowDefinitionVersion] = {}
+
+    async def save_version(
+        self,
+        version: WorkflowDefinitionVersion,
+    ) -> None:
+        key = (version.definition_id, version.version)
+        if key not in self._versions:
+            self._versions[key] = copy.deepcopy(version)
+
+    async def get_version(
+        self,
+        definition_id: str,
+        version: int,
+    ) -> WorkflowDefinitionVersion | None:
+        stored = self._versions.get((definition_id, version))
+        return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_versions(
+        self,
+        definition_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[WorkflowDefinitionVersion, ...]:
+        matching = sorted(
+            (v for v in self._versions.values() if v.definition_id == definition_id),
+            key=lambda v: v.version,
+            reverse=True,
+        )
+        return tuple(copy.deepcopy(v) for v in matching[offset : offset + limit])
+
+    async def count_versions(self, definition_id: str) -> int:
+        return sum(
+            1 for v in self._versions.values() if v.definition_id == definition_id
+        )
+
+    async def delete_versions_for_definition(self, definition_id: str) -> int:
+        to_delete = [k for k in self._versions if k[0] == definition_id]
+        for k in to_delete:
+            del self._versions[k]
+        return len(to_delete)

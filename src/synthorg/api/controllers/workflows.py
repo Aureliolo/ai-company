@@ -11,7 +11,10 @@ from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError
 
-from synthorg.api.auth.models import AuthenticatedUser
+from synthorg.api.controllers._workflow_helpers import (
+    build_version_snapshot,
+    get_auth_user_id,
+)
 from synthorg.api.dto import (
     ApiResponse,
     BlueprintInfoResponse,
@@ -46,7 +49,6 @@ from synthorg.engine.workflow.validation import (
 from synthorg.engine.workflow.validation import (
     validate_workflow as run_workflow_validation,
 )
-from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.engine.workflow.yaml_export import export_workflow_yaml
 from synthorg.observability import get_logger
 from synthorg.observability.events.blueprint import (
@@ -62,7 +64,10 @@ from synthorg.observability.events.workflow_definition import (
     WORKFLOW_DEF_UPDATED,
     WORKFLOW_DEF_VERSION_CONFLICT,
 )
-from synthorg.persistence.errors import VersionConflictError
+from synthorg.observability.events.workflow_version import (
+    WORKFLOW_VERSION_SNAPSHOT_FAILED,
+)
+from synthorg.persistence.errors import QueryError, VersionConflictError
 
 logger = get_logger(__name__)
 
@@ -111,37 +116,6 @@ def _build_update_fields(
     return updates
 
 
-def _build_version_snapshot(
-    definition: WorkflowDefinition,
-    saved_by: str,
-) -> WorkflowDefinitionVersion:
-    """Build a version snapshot from a definition.
-
-    The snapshot's ``saved_at`` is set to the definition's
-    ``updated_at`` timestamp, not the current time.
-    """
-    return WorkflowDefinitionVersion(
-        definition_id=definition.id,
-        version=definition.version,
-        name=definition.name,
-        description=definition.description,
-        workflow_type=definition.workflow_type,
-        nodes=definition.nodes,
-        edges=definition.edges,
-        created_by=definition.created_by,
-        saved_by=saved_by,
-        saved_at=definition.updated_at,
-    )
-
-
-def _get_auth_user_id(request: Request[Any, Any, Any]) -> str:
-    """Extract the authenticated user ID from a request."""
-    auth_user = request.scope.get("user")
-    if isinstance(auth_user, AuthenticatedUser):
-        return auth_user.user_id
-    return "api"
-
-
 def _nodes_from_blueprint(
     bp: BlueprintData,
 ) -> tuple[WorkflowNode, ...]:
@@ -173,6 +147,163 @@ def _edges_from_blueprint(
         )
         for e in bp.edges
     )
+
+
+def _build_definition_from_blueprint(
+    bp: BlueprintData,
+    data: CreateFromBlueprintRequest,
+    creator: str,
+    now: datetime,
+) -> WorkflowDefinition:
+    """Build a ``WorkflowDefinition`` from a loaded blueprint.
+
+    Args:
+        bp: The loaded blueprint data.
+        data: The creation request (may override name/description).
+        creator: Authenticated user ID.
+        now: Current UTC timestamp.
+
+    Returns:
+        A new ``WorkflowDefinition`` ready to persist.
+    """
+    return WorkflowDefinition(
+        id=f"wfdef-{uuid.uuid4().hex[:12]}",
+        name=data.name or bp.display_name,
+        description=(
+            data.description if data.description is not None else bp.description
+        ),
+        workflow_type=bp.workflow_type,
+        nodes=_nodes_from_blueprint(bp),
+        edges=_edges_from_blueprint(bp),
+        created_by=creator,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _apply_update(
+    existing: WorkflowDefinition,
+    data: UpdateWorkflowDefinitionRequest,
+) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
+    """Merge update fields into an existing definition and validate.
+
+    Builds the update dict, bumps the version, and validates the merged
+    model. Returns the updated definition on success or an error
+    ``Response`` on validation failure or field-level errors.
+
+    Args:
+        existing: The current persisted definition.
+        data: The partial-update request payload.
+
+    Returns:
+        The validated ``WorkflowDefinition``, or an error ``Response``.
+    """
+    result = _build_update_fields(data)
+    if isinstance(result, Response):
+        return result
+    updates = result
+    updates["version"] = existing.version + 1
+
+    try:
+        merged = existing.model_dump() | updates
+        return WorkflowDefinition.model_validate(merged)
+    except (ValueError, ValidationError) as exc:
+        logger.warning(
+            WORKFLOW_DEF_INVALID_REQUEST,
+            error=str(exc),
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error=f"Invalid update: {exc}",
+            ),
+            status_code=422,
+        )
+
+
+async def _fetch_existing_for_update(
+    repo: object,
+    workflow_id: str,
+    expected_version: int | None,
+) -> WorkflowDefinition | Response[ApiResponse[WorkflowDefinition]]:
+    """Fetch a definition and check for version conflicts before update.
+
+    Args:
+        repo: The workflow definition repository.
+        workflow_id: The workflow definition ID.
+        expected_version: Client-supplied expected version (``None`` to
+            skip the optimistic concurrency check).
+
+    Returns:
+        The existing ``WorkflowDefinition``, or a ``Response`` error.
+    """
+    existing = await repo.get(workflow_id)
+    if existing is None:
+        logger.warning(
+            WORKFLOW_DEF_NOT_FOUND,
+            definition_id=workflow_id,
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error="Workflow definition not found",
+            ),
+            status_code=404,
+        )
+
+    if expected_version is not None and expected_version != existing.version:
+        logger.warning(
+            WORKFLOW_DEF_VERSION_CONFLICT,
+            definition_id=workflow_id,
+            expected=expected_version,
+            actual=existing.version,
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error="Version conflict: the workflow was modified. Reload and retry.",
+            ),
+            status_code=409,
+        )
+
+    return existing
+
+
+async def _load_blueprint_or_error(
+    blueprint_name: str,
+) -> BlueprintData | Response[ApiResponse[WorkflowDefinition]]:
+    """Load a blueprint by name, returning an error response on failure.
+
+    Args:
+        blueprint_name: The blueprint identifier.
+
+    Returns:
+        The loaded ``BlueprintData``, or a ``Response`` error if the
+        blueprint is not found or fails validation.
+    """
+    try:
+        return await asyncio.to_thread(load_blueprint, blueprint_name)
+    except BlueprintNotFoundError as exc:
+        logger.warning(
+            BLUEPRINT_INSTANTIATE_FAILED,
+            blueprint_name=blueprint_name,
+            error=str(exc),
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error=f"Blueprint not found: {blueprint_name}",
+            ),
+            status_code=404,
+        )
+    except BlueprintValidationError as exc:
+        logger.warning(
+            BLUEPRINT_INSTANTIATE_FAILED,
+            blueprint_name=blueprint_name,
+            error=str(exc),
+        )
+        return Response(
+            content=ApiResponse[WorkflowDefinition](
+                error="Blueprint validation failed",
+            ),
+            status_code=422,
+        )
 
 
 WorkflowTypeFilter = Annotated[
@@ -261,60 +392,38 @@ class WorkflowController(Controller):
         data: CreateFromBlueprintRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition from a blueprint."""
-        creator = _get_auth_user_id(request)
+        creator = get_auth_user_id(request)
         logger.info(
             BLUEPRINT_INSTANTIATE_START,
             blueprint_name=data.blueprint_name,
         )
 
-        try:
-            bp = await asyncio.to_thread(load_blueprint, data.blueprint_name)
-        except BlueprintNotFoundError as exc:
-            logger.warning(
-                BLUEPRINT_INSTANTIATE_FAILED,
-                blueprint_name=data.blueprint_name,
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Blueprint not found: {data.blueprint_name}",
-                ),
-                status_code=404,
-            )
-        except BlueprintValidationError as exc:
-            logger.warning(
-                BLUEPRINT_INSTANTIATE_FAILED,
-                blueprint_name=data.blueprint_name,
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Blueprint validation failed",
-                ),
-                status_code=422,
-            )
+        result = await _load_blueprint_or_error(data.blueprint_name)
+        if isinstance(result, Response):
+            return result
+        bp = result
 
         now = datetime.now(UTC)
-        definition = WorkflowDefinition(
-            id=f"wfdef-{uuid.uuid4().hex[:12]}",
-            name=data.name or bp.display_name,
-            description=(
-                data.description if data.description is not None else bp.description
-            ),
-            workflow_type=bp.workflow_type,
-            nodes=_nodes_from_blueprint(bp),
-            edges=_edges_from_blueprint(bp),
-            created_by=creator,
-            created_at=now,
-            updated_at=now,
+        definition = _build_definition_from_blueprint(
+            bp,
+            data,
+            creator,
+            now,
         )
 
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
         version_repo = state.app_state.persistence.workflow_versions
-        snapshot = _build_version_snapshot(definition, creator)
-        await version_repo.save_version(snapshot)
+        snapshot = build_version_snapshot(definition, creator)
+        try:
+            await version_repo.save_version(snapshot)
+        except QueryError:
+            logger.exception(
+                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+                definition_id=definition.id,
+                version=definition.version,
+            )
 
         logger.info(
             BLUEPRINT_INSTANTIATE_SUCCESS,
@@ -358,7 +467,7 @@ class WorkflowController(Controller):
         data: CreateWorkflowDefinitionRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Create a new workflow definition."""
-        creator = _get_auth_user_id(request)
+        creator = get_auth_user_id(request)
         now = datetime.now(UTC)
         try:
             nodes = tuple(WorkflowNode.model_validate(n) for n in data.nodes)
@@ -389,10 +498,16 @@ class WorkflowController(Controller):
         repo = state.app_state.persistence.workflow_definitions
         await repo.save(definition)
 
-        # Auto-snapshot version.
         version_repo = state.app_state.persistence.workflow_versions
-        snapshot = _build_version_snapshot(definition, creator)
-        await version_repo.save_version(snapshot)
+        snapshot = build_version_snapshot(definition, creator)
+        try:
+            await version_repo.save_version(snapshot)
+        except QueryError:
+            logger.exception(
+                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+                definition_id=definition.id,
+                version=definition.version,
+            )
 
         logger.info(WORKFLOW_DEF_CREATED, definition_id=definition.id)
 
@@ -411,60 +526,19 @@ class WorkflowController(Controller):
     ) -> Response[ApiResponse[WorkflowDefinition]]:
         """Update an existing workflow definition."""
         repo = state.app_state.persistence.workflow_definitions
-        existing = await repo.get(workflow_id)
-        if existing is None:
-            logger.warning(
-                WORKFLOW_DEF_NOT_FOUND,
-                definition_id=workflow_id,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error="Workflow definition not found",
-                ),
-                status_code=404,
-            )
+        fetch_result = await _fetch_existing_for_update(
+            repo,
+            workflow_id,
+            data.expected_version,
+        )
+        if isinstance(fetch_result, Response):
+            return fetch_result
+        existing = fetch_result
 
-        if (
-            data.expected_version is not None
-            and data.expected_version != existing.version
-        ):
-            logger.warning(
-                WORKFLOW_DEF_VERSION_CONFLICT,
-                definition_id=workflow_id,
-                expected=data.expected_version,
-                actual=existing.version,
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=(
-                        f"Version conflict: expected "
-                        f"{data.expected_version}, "
-                        f"actual {existing.version}"
-                    ),
-                ),
-                status_code=409,
-            )
-
-        result = _build_update_fields(data)
-        if isinstance(result, Response):
-            return result
-        updates = result
-        updates["version"] = existing.version + 1
-
-        try:
-            merged = existing.model_dump() | updates
-            updated = WorkflowDefinition.model_validate(merged)
-        except (ValueError, ValidationError) as exc:
-            logger.warning(
-                WORKFLOW_DEF_INVALID_REQUEST,
-                error=str(exc),
-            )
-            return Response(
-                content=ApiResponse[WorkflowDefinition](
-                    error=f"Invalid update: {exc}",
-                ),
-                status_code=422,
-            )
+        update_result = _apply_update(existing, data)
+        if isinstance(update_result, Response):
+            return update_result
+        updated = update_result
 
         try:
             await repo.save(updated)
@@ -481,10 +555,17 @@ class WorkflowController(Controller):
                 status_code=409,
             )
 
-        updater = _get_auth_user_id(request)
+        updater = get_auth_user_id(request)
         version_repo = state.app_state.persistence.workflow_versions
-        snapshot = _build_version_snapshot(updated, updater)
-        await version_repo.save_version(snapshot)
+        snapshot = build_version_snapshot(updated, updater)
+        try:
+            await version_repo.save_version(snapshot)
+        except QueryError:
+            logger.exception(
+                WORKFLOW_VERSION_SNAPSHOT_FAILED,
+                definition_id=updated.id,
+                version=updated.version,
+            )
         logger.info(WORKFLOW_DEF_UPDATED, definition_id=updated.id)
 
         return Response(
@@ -511,6 +592,8 @@ class WorkflowController(Controller):
             )
             msg = "Workflow definition not found"
             raise NotFoundError(msg)
+        # Defense-in-depth: cascade delete also removes versions via FK,
+        # but explicit delete ensures cleanup if foreign keys are disabled.
         version_repo = state.app_state.persistence.workflow_versions
         await version_repo.delete_versions_for_definition(workflow_id)
         logger.info(

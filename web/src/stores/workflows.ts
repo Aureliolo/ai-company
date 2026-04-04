@@ -1,15 +1,22 @@
 import { create } from 'zustand'
 import {
   listWorkflows,
+  listBlueprints,
   createWorkflow as createWorkflowApi,
   createFromBlueprint as createFromBlueprintApi,
   deleteWorkflow as deleteWorkflowApi,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const log = createLogger('workflows')
-import type { CreateFromBlueprintRequest, CreateWorkflowDefinitionRequest, WorkflowDefinition } from '@/api/types'
+import type {
+  BlueprintInfo,
+  CreateFromBlueprintRequest,
+  CreateWorkflowDefinitionRequest,
+  WorkflowDefinition,
+} from '@/api/types'
 
 interface WorkflowsState {
   // List
@@ -18,12 +25,18 @@ interface WorkflowsState {
   listLoading: boolean
   listError: string | null
 
+  // Blueprints
+  blueprints: readonly BlueprintInfo[]
+  blueprintsLoading: boolean
+  blueprintsError: string | null
+
   // Filters
   searchQuery: string
   workflowTypeFilter: string | null
 
   // Actions
   fetchWorkflows: () => Promise<void>
+  loadBlueprints: () => Promise<void>
   createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition>
   createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition>
   deleteWorkflow: (id: string) => Promise<void>
@@ -43,8 +56,23 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   listLoading: false,
   listError: null,
 
+  blueprints: [],
+  blueprintsLoading: false,
+  blueprintsError: null,
+
   searchQuery: '',
   workflowTypeFilter: null,
+
+  loadBlueprints: async () => {
+    set({ blueprintsLoading: true, blueprintsError: null })
+    try {
+      const data = await listBlueprints()
+      set({ blueprints: data, blueprintsLoading: false })
+    } catch (err) {
+      log.warn('Failed to load blueprints', sanitizeForLog(err))
+      set({ blueprintsLoading: false, blueprintsError: getErrorMessage(err) })
+    }
+  },
 
   fetchWorkflows: async () => {
     const token = ++_listRequestToken
@@ -59,7 +87,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       })
     } catch (err) {
       if (isStaleListRequest(token)) return
-      log.warn('Failed to fetch workflows', err)
+      log.warn('Failed to fetch workflows', sanitizeForLog(err))
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },

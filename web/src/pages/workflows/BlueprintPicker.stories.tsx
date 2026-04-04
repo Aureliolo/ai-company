@@ -33,10 +33,16 @@ const meta = {
     onSelect: () => {},
   },
   parameters: {
+    a11y: { test: 'error' },
     msw: {
       handlers: [
         http.get('*/api/v1/workflows/blueprints', () =>
-          HttpResponse.json({ data: MOCK_BLUEPRINTS, error: null }),
+          HttpResponse.json({
+            data: MOCK_BLUEPRINTS,
+            error: null,
+            error_detail: null,
+            success: true,
+          }),
         ),
       ],
     },
@@ -54,7 +60,12 @@ export const Loading: Story = {
       handlers: [
         http.get('*/api/v1/workflows/blueprints', async () => {
           await delay('infinite')
-          return HttpResponse.json({ data: [], error: null })
+          return HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+          })
         }),
       ],
     },
@@ -72,7 +83,12 @@ export const Empty: Story = {
     msw: {
       handlers: [
         http.get('*/api/v1/workflows/blueprints', () =>
-          HttpResponse.json({ data: [], error: null }),
+          HttpResponse.json({
+            data: [],
+            error: null,
+            error_detail: null,
+            success: true,
+          }),
         ),
       ],
     },

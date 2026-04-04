@@ -27,3 +27,8 @@ WORKFLOW_VERSION_DELETE_FAILED: Final[str] = (
     "persistence.workflow_version.delete_failed"
 )
 """Failed to delete version snapshots."""
+
+WORKFLOW_VERSION_SNAPSHOT_FAILED: Final[str] = (
+    "persistence.workflow_version.snapshot_failed"
+)
+"""Supplementary version snapshot failed after successful definition save."""
