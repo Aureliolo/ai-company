@@ -57,7 +57,9 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
+    TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
     TASK_ENGINE_OBSERVER_FAILED,
+    TASK_ENGINE_OBSERVER_QUEUE_FULL,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
     TASK_ENGINE_STARTED,
@@ -122,6 +124,10 @@ class TaskEngine:
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
+        self._observer_queue: asyncio.Queue[TaskStateChanged] = asyncio.Queue(
+            maxsize=self._config.max_queue_size,
+        )
+        self._observer_task: asyncio.Task[None] | None = None
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -161,6 +167,10 @@ class TaskEngine:
         self._processing_task = asyncio.create_task(
             self._processing_loop(),
             name="task-engine-loop",
+        )
+        self._observer_task = asyncio.create_task(
+            self._observer_dispatch_loop(),
+            name="task-engine-observer-dispatcher",
         )
         logger.info(
             TASK_ENGINE_STARTED,
@@ -214,6 +224,24 @@ class TaskEngine:
                 raise
             finally:
                 self._processing_task = None
+
+        # Drain the observer queue so all pending events are delivered.
+        if self._observer_task is not None:
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(self._observer_task),
+                    timeout=effective_timeout,
+                )
+            except TimeoutError:
+                logger.warning(
+                    TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
+                    remaining=self._observer_queue.qsize(),
+                )
+                self._observer_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._observer_task
+            finally:
+                self._observer_task = None
 
         logger.info(TASK_ENGINE_STOPPED)
 
@@ -711,7 +739,14 @@ class TaskEngine:
                         channel=self._SNAPSHOT_CHANNEL,
                     )
                 if self._observers:
-                    await self._notify_observers(event)
+                    try:
+                        self._observer_queue.put_nowait(event)
+                    except asyncio.QueueFull:
+                        logger.warning(
+                            TASK_ENGINE_OBSERVER_QUEUE_FULL,
+                            request_id=event.request_id,
+                            task_id=event.task_id,
+                        )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -735,6 +770,22 @@ class TaskEngine:
             self._in_flight = None
 
     # -- Event building & notification ------------------------------------
+
+    async def _observer_dispatch_loop(self) -> None:
+        """Background loop: dequeue and dispatch observer events.
+
+        Mirrors ``_processing_loop`` but for observer notifications.
+        Continues draining after ``_running`` is ``False``.
+        """
+        while self._running or not self._observer_queue.empty():
+            try:
+                event = await asyncio.wait_for(
+                    self._observer_queue.get(),
+                    timeout=self._POLL_INTERVAL_SECONDS,
+                )
+            except TimeoutError:
+                continue
+            await self._notify_observers(event)
 
     async def _notify_observers(
         self,
