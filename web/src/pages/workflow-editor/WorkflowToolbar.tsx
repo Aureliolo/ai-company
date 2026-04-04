@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import {
   ClipboardList,
+  Clock,
   Copy,
   Download,
   GitBranch,
@@ -42,6 +43,7 @@ export interface WorkflowToolbarProps {
   onSave: () => void
   onValidate: () => void
   onExport: () => void
+  onHistory?: () => void
   onSaveAsNew?: () => void
   onSwitchWorkflow?: (id: string) => void
   currentWorkflowId?: string | null
@@ -62,6 +64,7 @@ export function WorkflowToolbar({
   onSave,
   onValidate,
   onExport,
+  onHistory,
   onSaveAsNew,
   onSwitchWorkflow,
   currentWorkflowId,
@@ -193,6 +196,20 @@ export function WorkflowToolbar({
           <Download className="size-4" aria-hidden="true" />
           <span className="text-xs">Export</span>
         </Button>
+
+        {onHistory && (
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Version History"
+            aria-label="Version history"
+            onClick={onHistory}
+            className="gap-1.5"
+          >
+            <Clock className="size-4" aria-hidden="true" />
+            <span className="text-xs">History</span>
+          </Button>
+        )}
 
         <Button
           variant="default"

@@ -571,6 +571,51 @@ class FakePersonalityPresetRepository:
         return len(self._presets)
 
 
+class FakeWorkflowVersionRepository:
+    """In-memory workflow version repository for tests."""
+
+    def __init__(self) -> None:
+        self._versions: dict[tuple[str, int], Any] = {}
+
+    async def save_version(self, version: Any) -> None:
+        import copy
+
+        key = (version.definition_id, version.version)
+        if key not in self._versions:
+            self._versions[key] = copy.deepcopy(version)
+
+    async def get_version(self, definition_id: str, version: int) -> Any | None:
+        import copy
+
+        stored = self._versions.get((definition_id, version))
+        return copy.deepcopy(stored) if stored is not None else None
+
+    async def list_versions(
+        self,
+        definition_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        matching = sorted(
+            (v for v in self._versions.values() if v.definition_id == definition_id),
+            key=lambda v: v.version,
+            reverse=True,
+        )
+        return tuple(matching[offset : offset + limit])
+
+    async def count_versions(self, definition_id: str) -> int:
+        return sum(
+            1 for v in self._versions.values() if v.definition_id == definition_id
+        )
+
+    async def delete_versions_for_definition(self, definition_id: str) -> int:
+        to_delete = [k for k in self._versions if k[0] == definition_id]
+        for k in to_delete:
+            del self._versions[k]
+        return len(to_delete)
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -580,6 +625,7 @@ class FakePersistenceBackend:
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
+        self._workflow_versions = FakeWorkflowVersionRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -698,6 +744,10 @@ class FakePersistenceBackend:
     @property
     def workflow_executions(self) -> FakeWorkflowExecutionRepository:
         return self._workflow_executions
+
+    @property
+    def workflow_versions(self) -> FakeWorkflowVersionRepository:
+        return self._workflow_versions
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

@@ -22,6 +22,8 @@ import { ParallelJoinNode } from './workflow-editor/ParallelJoinNode'
 import { SequentialEdge } from './workflow-editor/SequentialEdge'
 import { ConditionalEdge } from './workflow-editor/ConditionalEdge'
 import { WorkflowToolbar } from './workflow-editor/WorkflowToolbar'
+import { VersionHistoryPanel } from './workflow-editor/VersionHistoryPanel'
+import { VersionDiffViewer } from './workflow-editor/VersionDiffViewer'
 import { WorkflowNodeDrawer } from './workflow-editor/WorkflowNodeDrawer'
 import { WorkflowYamlPreview } from './workflow-editor/WorkflowYamlPreview'
 import { WorkflowEditorSkeleton } from './workflow-editor/WorkflowEditorSkeleton'
@@ -103,6 +105,8 @@ function WorkflowEditorInner() {
   const redo = useWorkflowEditorStore((s) => s.redo)
   const validate = useWorkflowEditorStore((s) => s.validate)
   const exportYaml = useWorkflowEditorStore((s) => s.exportYaml)
+  const versionHistoryOpen = useWorkflowEditorStore((s) => s.versionHistoryOpen)
+  const toggleVersionHistory = useWorkflowEditorStore((s) => s.toggleVersionHistory)
 
   const [editorMode, setEditorMode] = useState<'visual' | 'yaml'>('visual')
 
@@ -290,6 +294,7 @@ function WorkflowEditorInner() {
           onSave={handleSave}
           onValidate={handleValidate}
           onExport={handleExport}
+          onHistory={toggleVersionHistory}
           onSaveAsNew={handleSaveAsNew}
           onSwitchWorkflow={handleSwitchWorkflow}
           currentWorkflowId={defId}
@@ -366,7 +371,7 @@ function WorkflowEditorInner() {
 
       {editorMode === 'visual' && (
         <WorkflowNodeDrawer
-          open={selectedNode !== null}
+          open={selectedNode !== null && !versionHistoryOpen}
           onClose={handleDrawerClose}
           nodeId={selectedNodeId}
           nodeType={(selectedNode?.type as WorkflowNodeType) ?? null}
@@ -375,6 +380,13 @@ function WorkflowEditorInner() {
           onConfigChange={handleConfigChange}
         />
       )}
+
+      <VersionHistoryPanel
+        open={versionHistoryOpen}
+        onClose={toggleVersionHistory}
+      />
+
+      <VersionDiffViewer />
     </div>
   )
 }

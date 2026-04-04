@@ -1,0 +1,383 @@
+"""Workflow definition diff computation.
+
+Pure functions for computing structural differences between two
+workflow definition versions (node changes, edge changes, metadata
+changes).
+"""
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.version import WorkflowDefinitionVersion  # noqa: TC001
+
+#: Position changes below this threshold (pixels) are ignored.
+POSITION_CHANGE_THRESHOLD: float = 1.0
+
+
+class NodeChange(BaseModel):
+    """A single change to a workflow node between two versions.
+
+    Attributes:
+        node_id: The node affected.
+        change_type: Kind of change detected.
+        old_value: Previous state (None for added nodes).
+        new_value: New state (None for removed nodes).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    node_id: NotBlankStr
+    change_type: Literal[
+        "added",
+        "removed",
+        "moved",
+        "config_changed",
+        "label_changed",
+        "type_changed",
+    ]
+    old_value: dict[str, object] | None = None
+    new_value: dict[str, object] | None = None
+
+
+class EdgeChange(BaseModel):
+    """A single change to a workflow edge between two versions.
+
+    Attributes:
+        edge_id: The edge affected.
+        change_type: Kind of change detected.
+        old_value: Previous state (None for added edges).
+        new_value: New state (None for removed edges).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    edge_id: NotBlankStr
+    change_type: Literal[
+        "added",
+        "removed",
+        "reconnected",
+        "type_changed",
+        "label_changed",
+    ]
+    old_value: dict[str, object] | None = None
+    new_value: dict[str, object] | None = None
+
+
+class MetadataChange(BaseModel):
+    """A metadata field change between two versions.
+
+    Attributes:
+        field: Name of the changed field.
+        old_value: Previous value.
+        new_value: New value.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    field: NotBlankStr
+    old_value: str
+    new_value: str
+
+
+class WorkflowDiff(BaseModel):
+    """Complete diff result between two workflow definition versions.
+
+    Attributes:
+        definition_id: The workflow definition ID.
+        from_version: Source version number.
+        to_version: Target version number.
+        node_changes: All detected node changes.
+        edge_changes: All detected edge changes.
+        metadata_changes: Metadata field changes.
+        summary: Human-readable summary string.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    definition_id: NotBlankStr
+    from_version: int = Field(ge=1)
+    to_version: int = Field(ge=1)
+    node_changes: tuple[NodeChange, ...] = ()
+    edge_changes: tuple[EdgeChange, ...] = ()
+    metadata_changes: tuple[MetadataChange, ...] = ()
+    summary: str = ""
+
+
+def compute_diff(
+    old: WorkflowDefinitionVersion,
+    new: WorkflowDefinitionVersion,
+) -> WorkflowDiff:
+    """Compute the structural diff between two version snapshots.
+
+    Args:
+        old: The earlier version.
+        new: The later version.
+
+    Returns:
+        A :class:`WorkflowDiff` describing all changes.
+    """
+    node_changes = _diff_nodes(old, new)
+    edge_changes = _diff_edges(old, new)
+    metadata_changes = _diff_metadata(old, new)
+    summary = _build_summary(node_changes, edge_changes, metadata_changes)
+
+    return WorkflowDiff(
+        definition_id=old.definition_id,
+        from_version=old.version,
+        to_version=new.version,
+        node_changes=tuple(node_changes),
+        edge_changes=tuple(edge_changes),
+        metadata_changes=tuple(metadata_changes),
+        summary=summary,
+    )
+
+
+def _diff_nodes(
+    old: WorkflowDefinitionVersion,
+    new: WorkflowDefinitionVersion,
+) -> list[NodeChange]:
+    """Compare nodes between two versions."""
+    old_map = {n.id: n for n in old.nodes}
+    new_map = {n.id: n for n in new.nodes}
+    changes: list[NodeChange] = []
+
+    # Added nodes.
+    for nid in sorted(new_map.keys() - old_map.keys()):
+        n = new_map[nid]
+        changes.append(
+            NodeChange(
+                node_id=nid,
+                change_type="added",
+                new_value=n.model_dump(mode="json"),
+            )
+        )
+
+    # Removed nodes.
+    for nid in sorted(old_map.keys() - new_map.keys()):
+        n = old_map[nid]
+        changes.append(
+            NodeChange(
+                node_id=nid,
+                change_type="removed",
+                old_value=n.model_dump(mode="json"),
+            )
+        )
+
+    # Matched nodes -- check for modifications.
+    for nid in sorted(old_map.keys() & new_map.keys()):
+        o = old_map[nid]
+        n = new_map[nid]
+
+        if o.type != n.type:
+            changes.append(
+                NodeChange(
+                    node_id=nid,
+                    change_type="type_changed",
+                    old_value={"type": o.type.value},
+                    new_value={"type": n.type.value},
+                )
+            )
+
+        if o.label != n.label:
+            changes.append(
+                NodeChange(
+                    node_id=nid,
+                    change_type="label_changed",
+                    old_value={"label": o.label},
+                    new_value={"label": n.label},
+                )
+            )
+
+        dx = abs(o.position_x - n.position_x)
+        dy = abs(o.position_y - n.position_y)
+        if dx > POSITION_CHANGE_THRESHOLD or dy > POSITION_CHANGE_THRESHOLD:
+            changes.append(
+                NodeChange(
+                    node_id=nid,
+                    change_type="moved",
+                    old_value={
+                        "position_x": o.position_x,
+                        "position_y": o.position_y,
+                    },
+                    new_value={
+                        "position_x": n.position_x,
+                        "position_y": n.position_y,
+                    },
+                )
+            )
+
+        old_cfg = o.model_dump(mode="json")["config"]
+        new_cfg = n.model_dump(mode="json")["config"]
+        if old_cfg != new_cfg:
+            changes.append(
+                NodeChange(
+                    node_id=nid,
+                    change_type="config_changed",
+                    old_value={"config": old_cfg},
+                    new_value={"config": new_cfg},
+                )
+            )
+
+    return changes
+
+
+def _diff_edges(
+    old: WorkflowDefinitionVersion,
+    new: WorkflowDefinitionVersion,
+) -> list[EdgeChange]:
+    """Compare edges between two versions."""
+    old_map = {e.id: e for e in old.edges}
+    new_map = {e.id: e for e in new.edges}
+    changes: list[EdgeChange] = []
+
+    # Added edges.
+    for eid in sorted(new_map.keys() - old_map.keys()):
+        e = new_map[eid]
+        changes.append(
+            EdgeChange(
+                edge_id=eid,
+                change_type="added",
+                new_value=e.model_dump(mode="json"),
+            )
+        )
+
+    # Removed edges.
+    for eid in sorted(old_map.keys() - new_map.keys()):
+        e = old_map[eid]
+        changes.append(
+            EdgeChange(
+                edge_id=eid,
+                change_type="removed",
+                old_value=e.model_dump(mode="json"),
+            )
+        )
+
+    # Matched edges -- check for modifications.
+    for eid in sorted(old_map.keys() & new_map.keys()):
+        o = old_map[eid]
+        n = new_map[eid]
+
+        if o.source_node_id != n.source_node_id or o.target_node_id != n.target_node_id:
+            changes.append(
+                EdgeChange(
+                    edge_id=eid,
+                    change_type="reconnected",
+                    old_value={
+                        "source_node_id": o.source_node_id,
+                        "target_node_id": o.target_node_id,
+                    },
+                    new_value={
+                        "source_node_id": n.source_node_id,
+                        "target_node_id": n.target_node_id,
+                    },
+                )
+            )
+
+        if o.type != n.type:
+            changes.append(
+                EdgeChange(
+                    edge_id=eid,
+                    change_type="type_changed",
+                    old_value={"type": o.type.value},
+                    new_value={"type": n.type.value},
+                )
+            )
+
+        if o.label != n.label:
+            changes.append(
+                EdgeChange(
+                    edge_id=eid,
+                    change_type="label_changed",
+                    old_value={"label": o.label},
+                    new_value={"label": n.label},
+                )
+            )
+
+    return changes
+
+
+def _diff_metadata(
+    old: WorkflowDefinitionVersion,
+    new: WorkflowDefinitionVersion,
+) -> list[MetadataChange]:
+    """Compare metadata fields between two versions."""
+    changes: list[MetadataChange] = []
+
+    if old.name != new.name:
+        changes.append(
+            MetadataChange(
+                field="name",
+                old_value=old.name,
+                new_value=new.name,
+            )
+        )
+
+    if old.description != new.description:
+        changes.append(
+            MetadataChange(
+                field="description",
+                old_value=old.description,
+                new_value=new.description,
+            )
+        )
+
+    if old.workflow_type != new.workflow_type:
+        changes.append(
+            MetadataChange(
+                field="workflow_type",
+                old_value=old.workflow_type.value,
+                new_value=new.workflow_type.value,
+            )
+        )
+
+    return changes
+
+
+def _build_summary(
+    node_changes: list[NodeChange],
+    edge_changes: list[EdgeChange],
+    metadata_changes: list[MetadataChange],
+) -> str:
+    """Build a human-readable summary from change lists."""
+    parts: list[str] = []
+
+    # Count node changes by type.
+    node_counts: dict[str, int] = {}
+    for nc in node_changes:
+        node_counts[nc.change_type] = node_counts.get(nc.change_type, 0) + 1
+    _node_ct_order = (
+        "added",
+        "removed",
+        "moved",
+        "config_changed",
+        "label_changed",
+        "type_changed",
+    )
+    for ct in _node_ct_order:
+        count = node_counts.get(ct, 0)
+        if count > 0:
+            label = ct.replace("_", " ")
+            noun = "node" if count == 1 else "nodes"
+            parts.append(f"{count} {label} {noun}")
+
+    # Count edge changes by type.
+    edge_counts: dict[str, int] = {}
+    for ec in edge_changes:
+        edge_counts[ec.change_type] = edge_counts.get(ec.change_type, 0) + 1
+    for ct in ("added", "removed", "reconnected", "type_changed", "label_changed"):
+        count = edge_counts.get(ct, 0)
+        if count > 0:
+            label = ct.replace("_", " ")
+            noun = "edge" if count == 1 else "edges"
+            parts.append(f"{count} {label} {noun}")
+
+    if metadata_changes:
+        fields = ", ".join(mc.field for mc in metadata_changes)
+        parts.append(f"metadata changed: {fields}")
+
+    if not parts:
+        return "No changes"
+
+    return "; ".join(parts)

@@ -216,6 +216,7 @@ class TestEventConstants:
             "role",
             "routing",
             "backup",
+            "blueprint",
             "sandbox",
             "security",
             "stagnation",
