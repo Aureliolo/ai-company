@@ -29,6 +29,9 @@ from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
+from synthorg.memory.embedding.fine_tune_orchestrator import (
+    FineTuneOrchestrator,  # noqa: TC001
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
@@ -79,6 +82,7 @@ class AppState:
         "_coordinator",
         "_cost_tracker",
         "_delegation_record_store",
+        "_fine_tune_orchestrator",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
@@ -148,6 +152,7 @@ class AppState:
         self._provider_health_tracker = provider_health_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
         self._delegation_record_store = delegation_record_store
+        self._fine_tune_orchestrator: FineTuneOrchestrator | None = None
         self._config_resolver: ConfigResolver | None = (
             ConfigResolver(settings_service=settings_service, config=config)
             if settings_service is not None
@@ -367,6 +372,26 @@ class AppState:
     def has_settings_service(self) -> bool:
         """Check whether the settings service is configured."""
         return self._settings_service is not None
+
+    @property
+    def fine_tune_orchestrator(self) -> FineTuneOrchestrator:
+        """Return fine-tune orchestrator or raise 503."""
+        return self._require_service(
+            self._fine_tune_orchestrator,
+            "fine_tune_orchestrator",
+        )
+
+    @property
+    def has_fine_tune_orchestrator(self) -> bool:
+        """Check whether the fine-tune orchestrator is configured."""
+        return self._fine_tune_orchestrator is not None
+
+    def set_fine_tune_orchestrator(
+        self,
+        orchestrator: FineTuneOrchestrator,
+    ) -> None:
+        """Set the fine-tune orchestrator (lifecycle wiring)."""
+        self._fine_tune_orchestrator = orchestrator
 
     @property
     def has_config_resolver(self) -> bool:

@@ -60,6 +60,11 @@ class WsEventType(StrEnum):
     # Reserved for future status-update endpoint (not yet published).
     PROJECT_STATUS_CHANGED = "project.status_changed"
 
+    MEMORY_FINE_TUNE_PROGRESS = "memory.fine_tune.progress"
+    MEMORY_FINE_TUNE_STAGE_CHANGED = "memory.fine_tune.stage_changed"
+    MEMORY_FINE_TUNE_COMPLETED = "memory.fine_tune.completed"
+    MEMORY_FINE_TUNE_FAILED = "memory.fine_tune.failed"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.
