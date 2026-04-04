@@ -191,22 +191,30 @@ def _parse_atom_token(
     pos: int,
     context: Mapping[str, object],
 ) -> tuple[bool, int]:
-    """Parse an atom: parenthesized group or single comparison."""
+    """Parse an atom: parenthesized group or single comparison.
+
+    Raises:
+        ValueError: On missing operand, unclosed parenthesis, or
+            unexpected token.
+    """
     if pos >= len(tokens):
-        return False, pos
+        msg = "Missing operand"
+        raise ValueError(msg)
 
     if tokens[pos] == "(":
         pos += 1  # consume '('
         value, pos = _parse_or(tokens, pos, context)
-        if pos < len(tokens) and tokens[pos] == ")":
-            pos += 1  # consume ')'
-        return value, pos
+        if pos >= len(tokens) or tokens[pos] != ")":
+            msg = "Unclosed parenthesis"
+            raise ValueError(msg)
+        return value, pos + 1  # consume ')'
 
     # Anything else is an atom (comparison or key lookup)
     token = tokens[pos]
-    # Guard: skip bare operators that ended up as atoms
+    # Guard: bare operators that ended up as atoms are a parse error
     if token in ("AND", "OR", "NOT", ")"):
-        return False, pos + 1
+        msg = f"Unexpected token: {token}"
+        raise ValueError(msg)
     return _eval_atom(token, context), pos + 1
 
 

@@ -288,7 +288,8 @@ class TestCompoundConditions:
         assert evaluate_condition("AND true", {}) is False
 
     def test_unclosed_paren(self) -> None:
-        assert evaluate_condition("(a == 1 AND b == 2", {"a": "1", "b": "2"}) is True
+        # Unclosed paren is a parse error -- resolves to False.
+        assert evaluate_condition("(a == 1 AND b == 2", {"a": "1", "b": "2"}) is False
 
     def test_double_not(self) -> None:
         assert evaluate_condition("NOT NOT true", {}) is True

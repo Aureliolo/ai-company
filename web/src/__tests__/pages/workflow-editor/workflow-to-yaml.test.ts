@@ -90,6 +90,8 @@ describe('generateYamlPreview depends_on', () => {
     ]
     const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
     // parallel_branch edges should emit plain string depends_on
+    expect(yaml).toContain('depends_on')
+    expect(yaml).toContain('- fork')
     expect(yaml).not.toContain('branch:')
   })
 

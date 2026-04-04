@@ -186,7 +186,9 @@ class TaskEngine:
 
         await self._drain_processing(effective_timeout)
         # Signal the observer loop that no more events will arrive.
-        self._observer_queue.put_nowait(None)
+        # Use async put (not put_nowait) to avoid QueueFull aborting
+        # shutdown when the observer queue is backed up.
+        await self._observer_queue.put(None)
         observer_budget = max(0.0, deadline - asyncio.get_event_loop().time())
         await self._drain_observer(observer_budget)
 
@@ -767,10 +769,6 @@ class TaskEngine:
                     timeout=self._POLL_INTERVAL_SECONDS,
                 )
             except TimeoutError:
-                # Re-check: if not running and queue empty, the
-                # sentinel may have arrived while we were waiting.
-                if not self._running and self._observer_queue.empty():
-                    break
                 continue
             if event is None:
                 break  # sentinel -- processing loop is done

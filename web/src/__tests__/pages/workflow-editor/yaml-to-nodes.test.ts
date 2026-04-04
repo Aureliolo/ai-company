@@ -119,11 +119,11 @@ workflow_definition:
     - id: yes_step
       type: task
       depends_on:
-        - check
+        - id: check
     - id: no_step
       type: task
       depends_on:
-        - check
+        - id: check
 `
     const result = parseYamlToNodesEdges(yaml)
     expect(result.errors).toHaveLength(0)

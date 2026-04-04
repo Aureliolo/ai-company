@@ -264,8 +264,10 @@ export function parseYamlToNodesEdges(
           if (sourceStep.type !== 'conditional') {
             warnings.push(`Step '${stepId}': explicit branch '${explicitBranch}' on non-conditional dependency '${depId}'`)
           }
-          // Increment counter so mixed explicit+implicit entries stay in sync
-          if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
+          // Only advance the counter when the true slot is consumed so
+          // a subsequent implicit entry correctly gets the false slot.
+          // Explicit false does NOT advance -- the true slot is still open.
+          if (sourceStep.type === 'conditional' && sourceStep.step.condition && explicitBranch === 'true') {
             const branchIdx = conditionalBranchCounters.get(depId) ?? 0
             conditionalBranchCounters.set(depId, branchIdx + 1)
           }
