@@ -239,17 +239,20 @@ class TestContrastiveFineTune:
         value: float,
         match: str,
     ) -> None:
+        from typing import Any
+
         from synthorg.memory.embedding.fine_tune import (
             contrastive_fine_tune,
         )
 
+        kwargs: dict[str, Any] = {
+            "training_data_path": "/data",
+            "base_model": "test-model",
+            "output_dir": "/output",
+            param: value,
+        }
         with pytest.raises(ValueError, match=match):
-            await contrastive_fine_tune(  # type: ignore[arg-type]
-                training_data_path="/data",
-                base_model="test-model",
-                output_dir="/output",
-                **{param: value},
-            )
+            await contrastive_fine_tune(**kwargs)
 
 
 # -- Stage 4: Evaluation (mock-based) --------------------------------
