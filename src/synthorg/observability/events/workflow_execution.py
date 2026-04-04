@@ -15,7 +15,7 @@ WORKFLOW_EXEC_INVALID_DEFINITION: Final[str] = "workflow.execution.invalid_defin
 """Activation rejected -- workflow definition failed validation."""
 
 WORKFLOW_EXEC_NOT_FOUND: Final[str] = "workflow.execution.not_found"
-"""Workflow execution instance not found."""
+"""Workflow definition or execution instance not found."""
 
 # -- Node processing events ---------------------------------------------------
 

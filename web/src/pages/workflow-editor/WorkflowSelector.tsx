@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
-import { listWorkflows } from '@/api/endpoints/workflows'
-import type { WorkflowDefinition } from '@/api/types'
+import { useEffect } from 'react'
+import { useWorkflowsStore } from '@/stores/workflows'
 
 interface WorkflowSelectorProps {
   currentId: string | null
@@ -8,25 +7,13 @@ interface WorkflowSelectorProps {
 }
 
 export function WorkflowSelector({ currentId, onChange }: WorkflowSelectorProps) {
-  const [workflows, setWorkflows] = useState<readonly WorkflowDefinition[]>([])
-  const [loading, setLoading] = useState(true)
+  const workflows = useWorkflowsStore((s) => s.workflows)
+  const loading = useWorkflowsStore((s) => s.listLoading)
+  const fetchWorkflows = useWorkflowsStore((s) => s.fetchWorkflows)
 
   useEffect(() => {
-    let cancelled = false
-    listWorkflows({ limit: 100 })
-      .then((result) => {
-        if (!cancelled) setWorkflows(result.data)
-      })
-      .catch(() => {
-        // Silently ignore -- selector is non-critical
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    fetchWorkflows()
+  }, [fetchWorkflows])
 
   if (loading && workflows.length === 0) {
     return (

@@ -7,7 +7,7 @@ via the ``TaskEngine``.
 """
 
 from datetime import UTC, datetime
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -49,7 +49,7 @@ class WorkflowNodeExecution(BaseModel):
         description="Reason when status is SKIPPED",
     )
 
-    _TASK_LINKED_STATUSES = frozenset(
+    _TASK_LINKED_STATUSES: ClassVar[frozenset[WorkflowNodeExecutionStatus]] = frozenset(
         {
             WorkflowNodeExecutionStatus.TASK_CREATED,
             WorkflowNodeExecutionStatus.TASK_COMPLETED,

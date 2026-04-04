@@ -49,5 +49,10 @@ class WorkflowExecutionObserver:
         )
 
     async def __call__(self, event: TaskStateChanged) -> None:
-        """Handle a task state change event."""
+        """Delegate a task state change to the execution service.
+
+        Called by ``TaskEngine`` after every successful mutation.
+        Forwards the event to ``WorkflowExecutionService.handle_task_state_changed``,
+        which filters for terminal task transitions and updates execution state.
+        """
         await self._service.handle_task_state_changed(event)

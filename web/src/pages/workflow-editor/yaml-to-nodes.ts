@@ -63,7 +63,7 @@ export function parseYamlToNodesEdges(
 
   let parsed: unknown
   try {
-    parsed = yaml.load(yamlStr)
+    parsed = yaml.load(yamlStr, { schema: yaml.CORE_SCHEMA })
   } catch (err) {
     errors.push(`YAML parse error: ${err instanceof Error ? err.message : String(err)}`)
     return { nodes, edges, errors, warnings }
@@ -105,7 +105,8 @@ export function parseYamlToNodesEdges(
   const stepIds: string[] = []
 
   for (let i = 0; i < steps.length; i++) {
-    const step = steps[i]
+    const step = steps[i] as YamlStep | undefined
+    if (!step) continue
     const stepId = step.id ?? `auto-${++autoIdCounter}`
 
     if (!step.id) {

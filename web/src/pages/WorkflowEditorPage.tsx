@@ -4,7 +4,7 @@ import { ReactFlow, ReactFlowProvider, Background, MiniMap, type Node } from '@x
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Workflow } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { createWorkflow } from '@/api/endpoints/workflows'
+import { useWorkflowsStore } from '@/stores/workflows'
 import { ROUTES } from '@/router/routes'
 import { getErrorMessage } from '@/utils/errors'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -222,7 +222,7 @@ function WorkflowEditorInner() {
     try {
       const state = useWorkflowEditorStore.getState()
       if (!state.definition) return
-      const created = await createWorkflow({
+      const created = await useWorkflowsStore.getState().createWorkflow({
         name: `${state.definition.name} (Copy)`,
         description: state.definition.description || undefined,
         workflow_type: state.definition.workflow_type,
@@ -318,14 +318,14 @@ function WorkflowEditorInner() {
                     case 'end':
                       return 'var(--so-accent)'
                     case 'task':
-                      return 'var(--so-info)'
+                      return 'var(--so-accent)'
                     case 'conditional':
                       return 'var(--so-warning)'
                     case 'parallel_split':
                     case 'parallel_join':
                       return 'var(--so-success)'
                     case 'agent_assignment':
-                      return 'var(--so-purple)'
+                      return 'var(--so-accent-dim)'
                     default:
                       return 'var(--so-text-muted)'
                   }

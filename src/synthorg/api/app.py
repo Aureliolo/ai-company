@@ -362,7 +362,12 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             app_state,
         )
         # Wire workflow execution observer (needs connected persistence)
-        if task_engine is not None and persistence is not None:
+        if (
+            task_engine is not None
+            and persistence is not None
+            and hasattr(persistence, "workflow_definitions")
+            and hasattr(persistence, "workflow_executions")
+        ):
             from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
                 WorkflowExecutionObserver,
             )

@@ -5,7 +5,7 @@
  * visual canvas. Shows inline parse/validation errors.
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check } from 'lucide-react'
 import { LazyCodeMirrorEditor } from '@/components/ui/lazy-code-mirror-editor'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,13 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
   const [parseErrors, setParseErrors] = useState<string[]>([])
   const [parseWarnings, setParseWarnings] = useState<string[]>([])
   const [applied, setApplied] = useState(false)
+  const appliedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (appliedTimerRef.current !== null) clearTimeout(appliedTimerRef.current)
+    }
+  }, [])
 
   const handleApply = useCallback(() => {
     // Build position map from current nodes
@@ -52,16 +59,23 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
       },
     }))
 
-    // Push undo snapshot and update state
-    store.onNodesChange(
-      mappedNodes.map((n) => ({ type: 'reset' as const, item: n })),
-    )
-    store.onEdgesChange(
-      result.edges.map((e) => ({ type: 'reset' as const, item: e })),
-    )
+    // Push undo snapshot and replace nodes/edges directly
+    const snapshot = { nodes: structuredClone(store.nodes), edges: structuredClone(store.edges) }
+    useWorkflowEditorStore.setState((s) => ({
+      nodes: mappedNodes,
+      edges: result.edges,
+      dirty: true,
+      yamlPreview: yamlText,
+      undoStack: [...s.undoStack.slice(-49), snapshot],
+      redoStack: [],
+    }))
 
     setApplied(true)
-    setTimeout(() => setApplied(false), 2000)
+    if (appliedTimerRef.current !== null) clearTimeout(appliedTimerRef.current)
+    appliedTimerRef.current = setTimeout(() => {
+      setApplied(false)
+      appliedTimerRef.current = null
+    }, 2000)
   }, [yamlText])
 
   const handleRevert = useCallback(() => {

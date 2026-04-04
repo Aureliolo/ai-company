@@ -532,6 +532,55 @@ class TestHandleTaskStateChanged:
         )
 
     @pytest.mark.unit
+    async def test_in_progress_status_silently_ignored(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+        exec_repo: FakeExecutionRepo,
+    ) -> None:
+        """IN_PROGRESS task status is not terminal so the event is ignored."""
+        exe = await _activate_simple(service, def_repo)
+        task_ids = _get_task_ids(exe)
+
+        event = _make_task_event(
+            task_ids["task-1"],
+            TaskStatus.IN_PROGRESS,
+            previous_status=TaskStatus.ASSIGNED,
+        )
+        await service.handle_task_state_changed(event)
+
+        stored = await exec_repo.get(exe.id)
+        assert stored is not None
+        assert stored.status is WorkflowExecutionStatus.RUNNING
+        # Node status unchanged -- still TASK_CREATED
+        nmap = {ne.node_id: ne for ne in stored.node_executions}
+        assert nmap["task-1"].status is WorkflowNodeExecutionStatus.TASK_CREATED
+
+    @pytest.mark.unit
+    async def test_assigned_status_silently_ignored(
+        self,
+        service: WorkflowExecutionService,
+        def_repo: FakeDefinitionRepo,
+        exec_repo: FakeExecutionRepo,
+    ) -> None:
+        """ASSIGNED task status is not terminal so the event is ignored."""
+        exe = await _activate_simple(service, def_repo)
+        task_ids = _get_task_ids(exe)
+
+        event = _make_task_event(
+            task_ids["task-1"],
+            TaskStatus.ASSIGNED,
+            previous_status=TaskStatus.CREATED,
+        )
+        await service.handle_task_state_changed(event)
+
+        stored = await exec_repo.get(exe.id)
+        assert stored is not None
+        assert stored.status is WorkflowExecutionStatus.RUNNING
+        nmap = {ne.node_id: ne for ne in stored.node_executions}
+        assert nmap["task-1"].status is WorkflowNodeExecutionStatus.TASK_CREATED
+
+    @pytest.mark.unit
     async def test_non_transition_mutation_ignored(
         self,
         service: WorkflowExecutionService,
@@ -742,6 +791,32 @@ class TestAllTasksCompleted:
                     node_id="t2",
                     node_type=WorkflowNodeType.TASK,
                     status=WorkflowNodeExecutionStatus.TASK_CREATED,
+                    task_id="task-2",
+                ),
+            ),
+            activated_by="test",
+            project="proj-1",
+        )
+        assert _all_tasks_completed(exe) is False
+
+    @pytest.mark.unit
+    def test_task_failed_returns_false(self) -> None:
+        exe = WorkflowExecution(
+            id="wfexec-test",
+            definition_id="wf-1",
+            definition_version=1,
+            status=WorkflowExecutionStatus.RUNNING,
+            node_executions=(
+                WorkflowNodeExecution(
+                    node_id="t1",
+                    node_type=WorkflowNodeType.TASK,
+                    status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
+                    task_id="task-1",
+                ),
+                WorkflowNodeExecution(
+                    node_id="t2",
+                    node_type=WorkflowNodeType.TASK,
+                    status=WorkflowNodeExecutionStatus.TASK_FAILED,
                     task_id="task-2",
                 ),
             ),

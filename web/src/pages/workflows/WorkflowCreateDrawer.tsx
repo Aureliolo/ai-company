@@ -97,7 +97,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         <SelectField
           label="Workflow Type"
           value={form.workflowType}
-          onChange={(e) => updateField('workflowType', e.target.value)}
+          onChange={(val) => updateField('workflowType', val)}
           options={WORKFLOW_TYPE_OPTIONS}
         />
 

@@ -350,6 +350,7 @@ class TaskStateChanged(BaseModel):
         mutation_type: Type of mutation that triggered the event.
         request_id: Originating request identifier.
         requested_by: Identity of the requester.
+        task_id: Task identifier (always present, used for correlation).
         task: Task snapshot after mutation (``None`` on delete).
         previous_status: Status before the mutation (``None`` on create).
         new_status: Status after the mutation (``None`` on delete).

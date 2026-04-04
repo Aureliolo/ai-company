@@ -94,6 +94,7 @@ export function WorkflowToolbar({
       {onEditorModeChange && (
         <div className="border-r border-border pr-2">
           <SegmentedControl
+            label="Editor mode"
             value={editorMode}
             onChange={onEditorModeChange}
             options={[

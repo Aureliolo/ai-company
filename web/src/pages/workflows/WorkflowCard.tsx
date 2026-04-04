@@ -1,8 +1,7 @@
 import { Link } from 'react-router'
 import { MoreHorizontal, Pencil, Copy, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ROUTES } from '@/router/routes'
-import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { formatRelativeTime, formatLabel } from '@/utils/format'
@@ -17,6 +16,30 @@ interface WorkflowCardProps {
 export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+
+    function handleMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as globalThis.Node)) {
+        closeMenu()
+      }
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeMenu()
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [menuOpen, closeMenu])
 
   const editorUrl = `${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(workflow.id)}`
 
@@ -28,7 +51,9 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
             <span className="truncate text-sm font-semibold text-foreground">
               {workflow.name}
             </span>
-            <StatusBadge status="info" label={formatLabel(workflow.workflow_type)} />
+            <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
+              {formatLabel(workflow.workflow_type)}
+            </span>
           </div>
 
           {workflow.description && (
@@ -42,13 +67,13 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
             <StatPill label="Edges" value={workflow.edges.length} />
           </div>
 
-          <div className="flex items-center justify-between text-xs text-text-muted">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>v{workflow.version}</span>
             <span>Updated {formatRelativeTime(workflow.updated_at)}</span>
           </div>
         </Link>
 
-        <div className="absolute right-3 top-3">
+        <div ref={menuRef} className="absolute right-3 top-3">
           <button
             type="button"
             onClick={(e) => {
@@ -107,7 +132,7 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
 
       <ConfirmDialog
         open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(false) }}
         onConfirm={() => {
           onDelete(workflow.id)
           setConfirmDelete(false)

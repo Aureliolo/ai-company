@@ -402,6 +402,32 @@ at `ASSIGNED`).
 `"tasks"` channel (matching `CHANNEL_TASKS` in `api.channels`) so events
 reach the `MessageBusBridge` and WebSocket consumers.
 
+### Observer Mechanism
+
+In addition to message-bus publishing, `TaskEngine` supports an observer
+pattern for in-process consumers that need to react synchronously to task
+state changes.
+
+**Registration**: `register_observer()` accepts an async callback with
+signature `Callable[[TaskStateChanged], Coroutine[..., None]]`. Observers
+are stored in registration order and invoked sequentially after each
+successful mutation.
+
+**Notification semantics**: best-effort. Observer errors are logged at
+WARNING and swallowed -- a failing observer never blocks the mutation
+pipeline or prevents subsequent observers from running.
+
+**`WorkflowExecutionObserver`** is the first registered observer. It
+bridges TaskEngine state changes into the workflow execution lifecycle:
+
+- On `COMPLETED` or `FAILED` task transitions, `handle_task_state_changed`
+  looks up the workflow execution (if any) that owns the task.
+- It updates the corresponding `WorkflowNodeExecution` status and
+  evaluates whether the overall workflow execution should transition
+  (all tasks done -> `COMPLETED`, any task failed -> `FAILED`).
+- The node status update and execution transition are persisted in a
+  single repository save to avoid inconsistent intermediate states.
+
 ---
 
 ## Agent Execution Status

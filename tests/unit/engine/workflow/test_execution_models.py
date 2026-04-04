@@ -275,6 +275,62 @@ class TestNodeExecutionCrossFieldValidators:
             )
 
 
+class TestTaskLinkedStatusOnNonTaskNodes:
+    """Verify TASK_COMPLETED/TASK_FAILED rejected for non-TASK node types."""
+
+    @pytest.mark.unit
+    def test_task_completed_on_start_node_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="only valid for TASK nodes",
+        ):
+            WorkflowNodeExecution(
+                node_id="start-1",
+                node_type=WorkflowNodeType.START,
+                status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
+                task_id="task-abc",
+            )
+
+    @pytest.mark.unit
+    def test_task_failed_on_start_node_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="only valid for TASK nodes",
+        ):
+            WorkflowNodeExecution(
+                node_id="start-1",
+                node_type=WorkflowNodeType.START,
+                status=WorkflowNodeExecutionStatus.TASK_FAILED,
+                task_id="task-abc",
+            )
+
+    @pytest.mark.unit
+    def test_task_completed_on_end_node_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="only valid for TASK nodes",
+        ):
+            WorkflowNodeExecution(
+                node_id="end-1",
+                node_type=WorkflowNodeType.END,
+                status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
+                task_id="task-abc",
+            )
+
+    @pytest.mark.unit
+    def test_task_created_on_conditional_node_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="only valid for TASK nodes",
+        ):
+            WorkflowNodeExecution(
+                node_id="cond-1",
+                node_type=WorkflowNodeType.CONDITIONAL,
+                status=WorkflowNodeExecutionStatus.TASK_CREATED,
+                task_id="task-abc",
+            )
+
+
 class TestExecutionCrossFieldValidators:
     """Verify WorkflowExecution cross-field validators."""
 
