@@ -1,7 +1,7 @@
 import type { AxiosResponse } from 'axios'
 import { vi } from 'vitest'
 
-// Mock dev auth bypass OFF so the 401 interceptor actually clears localStorage.
+// Mock dev auth bypass OFF so the 401 interceptor actually clears sessionStorage.
 // Must be hoisted before client.ts imports @/utils/dev at module level.
 vi.mock('@/utils/dev', () => ({ IS_DEV_AUTH_BYPASS: false }))
 
@@ -189,18 +189,18 @@ function getRequestInterceptor(): (config: Record<string, unknown>) => Record<st
 
 describe('apiClient request interceptor', () => {
   afterEach(() => {
-    localStorage.removeItem('auth_token')
+    sessionStorage.removeItem('auth_token')
   })
 
-  it('injects auth token when present in localStorage', () => {
-    localStorage.setItem('auth_token', 'test-jwt-token')
+  it('injects auth token when present in sessionStorage', () => {
+    sessionStorage.setItem('auth_token', 'test-jwt-token')
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['Authorization']).toBe('Bearer test-jwt-token')
   })
 
-  it('does not inject token when not in localStorage', () => {
-    localStorage.removeItem('auth_token')
+  it('does not inject token when not in sessionStorage', () => {
+    sessionStorage.removeItem('auth_token')
     const fulfilled = getRequestInterceptor()
     const result = fulfilled({ headers: {} }) as { headers: Record<string, string> }
     expect(result.headers['Authorization']).toBeUndefined()
@@ -209,13 +209,13 @@ describe('apiClient request interceptor', () => {
 
 describe('apiClient 401 response interceptor', () => {
   afterEach(() => {
-    localStorage.clear()
+    sessionStorage.clear()
   })
 
-  it('clears auth localStorage keys on 401', async () => {
-    localStorage.setItem('auth_token', 'old-token')
-    localStorage.setItem('auth_token_expires_at', '99999999')
-    localStorage.setItem('auth_must_change_password', 'true')
+  it('clears auth sessionStorage keys on 401', async () => {
+    sessionStorage.setItem('auth_token', 'old-token')
+    sessionStorage.setItem('auth_token_expires_at', '99999999')
+    sessionStorage.setItem('auth_must_change_password', 'true')
 
     const error = new (await import('axios')).AxiosError(
       'Unauthorized',
@@ -225,12 +225,12 @@ describe('apiClient 401 response interceptor', () => {
       { status: 401, data: {}, headers: {}, statusText: 'Unauthorized', config: {} as AxiosResponse['config'] } as AxiosResponse,
     )
 
-    // The interceptor rejects with the error but clears localStorage as a side effect
+    // The interceptor rejects with the error but clears sessionStorage as a side effect
     await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
 
-    expect(localStorage.getItem('auth_token')).toBeNull()
-    expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
-    expect(localStorage.getItem('auth_must_change_password')).toBeNull()
+    expect(sessionStorage.getItem('auth_token')).toBeNull()
+    expect(sessionStorage.getItem('auth_token_expires_at')).toBeNull()
+    expect(sessionStorage.getItem('auth_must_change_password')).toBeNull()
   })
 
   it('passes through non-401 errors unchanged', async () => {
@@ -242,11 +242,11 @@ describe('apiClient 401 response interceptor', () => {
       { status: 500, data: {}, headers: {}, statusText: 'Error', config: {} as AxiosResponse['config'] } as AxiosResponse,
     )
 
-    localStorage.setItem('auth_token', 'should-remain')
+    sessionStorage.setItem('auth_token', 'should-remain')
 
     await expect(apiClient.interceptors.response.handlers?.[0]?.rejected?.(error)).rejects.toBeDefined()
 
     // Token should NOT be cleared on non-401
-    expect(localStorage.getItem('auth_token')).toBe('should-remain')
+    expect(sessionStorage.getItem('auth_token')).toBe('should-remain')
   })
 })

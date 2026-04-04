@@ -40,7 +40,7 @@ const mockUser: UserInfoResponse = {
 function resetStore() {
   // Use logout() to properly clean up module-scoped expiry timer
   useAuthStore.getState().logout()
-  localStorage.clear()
+  sessionStorage.clear()
   useAuthStore.setState({
     token: null,
     user: null,
@@ -59,11 +59,11 @@ describe('auth store', () => {
   })
 
   describe('setToken', () => {
-    it('stores token and persists to localStorage', () => {
+    it('stores token and persists to sessionStorage', () => {
       useAuthStore.getState().setToken('my-token', 3600)
       expect(useAuthStore.getState().token).toBe('my-token')
-      expect(localStorage.getItem('auth_token')).toBe('my-token')
-      expect(localStorage.getItem('auth_token_expires_at')).toBeTruthy()
+      expect(sessionStorage.getItem('auth_token')).toBe('my-token')
+      expect(sessionStorage.getItem('auth_token_expires_at')).toBeTruthy()
     })
 
     it('throws for invalid expiresIn', () => {
@@ -74,19 +74,19 @@ describe('auth store', () => {
   })
 
   describe('clearAuth', () => {
-    it('clears token, user, and localStorage', () => {
+    it('clears token, user, and sessionStorage', () => {
       useAuthStore.setState({ token: 'test', user: mockUser })
-      localStorage.setItem('auth_token', 'test')
-      localStorage.setItem('auth_token_expires_at', '999999999999')
-      localStorage.setItem('auth_must_change_password', 'true')
+      sessionStorage.setItem('auth_token', 'test')
+      sessionStorage.setItem('auth_token_expires_at', '999999999999')
+      sessionStorage.setItem('auth_must_change_password', 'true')
 
       useAuthStore.getState().clearAuth()
 
       expect(useAuthStore.getState().token).toBeNull()
       expect(useAuthStore.getState().user).toBeNull()
-      expect(localStorage.getItem('auth_token')).toBeNull()
-      expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
-      expect(localStorage.getItem('auth_must_change_password')).toBeNull()
+      expect(sessionStorage.getItem('auth_token')).toBeNull()
+      expect(sessionStorage.getItem('auth_token_expires_at')).toBeNull()
+      expect(sessionStorage.getItem('auth_must_change_password')).toBeNull()
     })
 
     it('redirects to /login when not already there', () => {
@@ -176,7 +176,7 @@ describe('auth store', () => {
 
       await useAuthStore.getState().fetchUser()
 
-      expect(localStorage.getItem('auth_must_change_password')).toBe('true')
+      expect(sessionStorage.getItem('auth_must_change_password')).toBe('true')
     })
 
     it('clears auth on 401 error', async () => {
@@ -188,13 +188,13 @@ describe('auth store', () => {
       } as import('axios').AxiosResponse)
       vi.mocked(authApi.getMe).mockRejectedValue(error401)
       useAuthStore.setState({ token: 'test-token' })
-      localStorage.setItem('auth_token', 'test-token')
+      sessionStorage.setItem('auth_token', 'test-token')
 
       // fetchUser now throws on 401 after clearing auth
       await expect(useAuthStore.getState().fetchUser()).rejects.toThrow('Session expired')
 
       expect(useAuthStore.getState().token).toBeNull()
-      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(sessionStorage.getItem('auth_token')).toBeNull()
     })
 
     it('throws on non-401 errors without clearing auth', async () => {
@@ -213,26 +213,26 @@ describe('auth store', () => {
       const updatedUser = { ...mockUser, must_change_password: false }
       vi.mocked(authApi.changePassword).mockResolvedValue(updatedUser)
       useAuthStore.setState({ token: 'test-token', user: { ...mockUser, must_change_password: true } })
-      localStorage.setItem('auth_must_change_password', 'true')
+      sessionStorage.setItem('auth_must_change_password', 'true')
 
       const result = await useAuthStore.getState().changePassword('old', 'new')
 
       expect(result).toEqual(updatedUser)
       expect(useAuthStore.getState().user).toEqual(updatedUser)
-      expect(localStorage.getItem('auth_must_change_password')).toBeNull()
+      expect(sessionStorage.getItem('auth_must_change_password')).toBeNull()
     })
   })
 
   describe('logout', () => {
     it('calls clearAuth', () => {
       useAuthStore.setState({ token: 'test', user: mockUser })
-      localStorage.setItem('auth_token', 'test')
+      sessionStorage.setItem('auth_token', 'test')
 
       useAuthStore.getState().logout()
 
       expect(useAuthStore.getState().token).toBeNull()
       expect(useAuthStore.getState().user).toBeNull()
-      expect(localStorage.getItem('auth_token')).toBeNull()
+      expect(sessionStorage.getItem('auth_token')).toBeNull()
     })
   })
 

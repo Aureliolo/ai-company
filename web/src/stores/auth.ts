@@ -2,7 +2,7 @@
  * Auth state management (Zustand).
  *
  * Manages JWT token lifecycle, login/logout flows, user profile, and session
- * expiry. Token is persisted to localStorage with expiry tracking.
+ * expiry. Token is persisted to sessionStorage (tab-scoped) with expiry tracking.
  */
 
 import { create } from 'zustand'
@@ -46,7 +46,7 @@ interface AuthState {
   logout: () => void
 }
 
-// ── Initial state from localStorage ─────────────────────────
+// ── Initial state from sessionStorage ─────────────────────────
 
 // Dev-only fake user for bypassing auth when no backend is running.
 const DEV_USER: UserInfoResponse | null = IS_DEV_AUTH_BYPASS
@@ -59,14 +59,14 @@ function getInitialToken(): string | null {
     log.warn('Auth bypass active -- UI-only, no real backend session')
     return 'dev-bypass-token'
   }
-  const storedToken = localStorage.getItem('auth_token')
-  const expiresAt = Number(localStorage.getItem('auth_token_expires_at') ?? 0)
+  const storedToken = sessionStorage.getItem('auth_token')
+  const expiresAt = Number(sessionStorage.getItem('auth_token_expires_at') ?? 0)
   if (storedToken && Date.now() < expiresAt) {
     return storedToken
   }
-  localStorage.removeItem('auth_token')
-  localStorage.removeItem('auth_token_expires_at')
-  localStorage.removeItem('auth_must_change_password')
+  sessionStorage.removeItem('auth_token')
+  sessionStorage.removeItem('auth_token_expires_at')
+  sessionStorage.removeItem('auth_must_change_password')
   return null
 }
 
@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 
   // Schedule expiry cleanup for restored token
   if (initialToken) {
-    const expiresAt = Number(localStorage.getItem('auth_token_expires_at') ?? 0)
+    const expiresAt = Number(sessionStorage.getItem('auth_token_expires_at') ?? 0)
     if (expiresAt > Date.now()) {
       expiryTimer = setTimeout(() => {
         get().clearAuth()
@@ -118,7 +118,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
     token: initialToken,
     user: DEV_USER,
     loading: false,
-    _mustChangePasswordFallback: localStorage.getItem('auth_must_change_password') === 'true',
+    _mustChangePasswordFallback: sessionStorage.getItem('auth_must_change_password') === 'true',
 
     setToken(newToken: string, expiresIn: number) {
       if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
@@ -132,8 +132,8 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 
       set({ token: newToken })
       const expiresAtMs = Date.now() + expiresIn * 1000
-      localStorage.setItem('auth_token', newToken)
-      localStorage.setItem('auth_token_expires_at', String(expiresAtMs))
+      sessionStorage.setItem('auth_token', newToken)
+      sessionStorage.setItem('auth_token_expires_at', String(expiresAtMs))
 
       // Schedule token cleanup
       expiryTimer = setTimeout(() => {
@@ -147,9 +147,9 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         expiryTimer = null
       }
       set({ token: null, user: null, _mustChangePasswordFallback: false })
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_token_expires_at')
-      localStorage.removeItem('auth_must_change_password')
+      sessionStorage.removeItem('auth_token')
+      sessionStorage.removeItem('auth_token_expires_at')
+      sessionStorage.removeItem('auth_must_change_password')
       // Hard redirect to login -- intentionally uses window.location (not
       // react-router) because this runs in a Zustand store outside the
       // React tree.
@@ -174,10 +174,10 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         set({ user })
         // Persist must_change_password for the auth guard on page refresh
         if (user?.must_change_password) {
-          localStorage.setItem('auth_must_change_password', 'true')
+          sessionStorage.setItem('auth_must_change_password', 'true')
           set({ _mustChangePasswordFallback: true })
         } else {
-          localStorage.removeItem('auth_must_change_password')
+          sessionStorage.removeItem('auth_must_change_password')
           set({ _mustChangePasswordFallback: false })
         }
       } catch (err) {
@@ -202,7 +202,7 @@ export const useAuthStore = create<AuthState>()((set, get) => {
         })
         set({ user: result })
         if (result && !result.must_change_password) {
-          localStorage.removeItem('auth_must_change_password')
+          sessionStorage.removeItem('auth_must_change_password')
           set({ _mustChangePasswordFallback: false })
         }
         return result

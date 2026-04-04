@@ -169,7 +169,7 @@ export async function pullModel(
 ): Promise<void> {
   const baseUrl = apiClient.defaults.baseURL ?? ''
   const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
-  const token = localStorage.getItem('auth_token')
+  const token = sessionStorage.getItem('auth_token')
 
   const response = await fetch(url, {
     method: 'POST',
@@ -183,9 +183,9 @@ export async function pullModel(
 
   if (!response.ok || !response.body) {
     if (response.status === 401) {
-      localStorage.removeItem('auth_token')
-      localStorage.removeItem('auth_token_expires_at')
-      localStorage.removeItem('auth_must_change_password')
+      sessionStorage.removeItem('auth_token')
+      sessionStorage.removeItem('auth_token_expires_at')
+      sessionStorage.removeItem('auth_must_change_password')
     }
     throw new Error(`Pull failed: HTTP ${response.status}`)
   }
