@@ -22,10 +22,16 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import defusedxml.ElementTree as DefusedET
+from defusedxml.common import DefusedXmlException
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SITEMAP_FILE = REPO_ROOT / "_site" / "docs" / "sitemap.xml"
 
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
+URLSET_TAG = f"{{{SITEMAP_NS}}}urlset"
+URL_TAG = f"{{{SITEMAP_NS}}}url"
+LOC_TAG = f"{{{SITEMAP_NS}}}loc"
 
 # Static artifacts that should be discoverable but live outside the
 # Markdown-driven nav tree. Paths are absolute URLs on the deployed site.
@@ -36,7 +42,12 @@ EXTRA_URLS: tuple[str, ...] = (
 
 
 def main() -> int:
-    """Insert EXTRA_URLS into the built sitemap, idempotent on rerun."""
+    """Patch the built sitemap to include the static OpenAPI artifact URLs.
+
+    Idempotent: on rerun (when all URLs are already present) the file is
+    not rewritten. Returns 1 if the sitemap file is missing, malformed,
+    has an unexpected root element, or cannot be written back; 0 otherwise.
+    """
     if not SITEMAP_FILE.exists():
         print(
             f"Error: sitemap not found at {SITEMAP_FILE.relative_to(REPO_ROOT)}",
@@ -48,30 +59,50 @@ def main() -> int:
         )
         return 1
 
-    # Register the default namespace BEFORE parsing so ElementTree
-    # emits clean `<url>` tags instead of `<ns0:url>` on write.
+    # Register the default namespace so ElementTree serialises tags as
+    # `<url>` rather than `<ns0:url>`. Must be called before tree.write(),
+    # not before parse -- parse is unaffected by the registry.
     ET.register_namespace("", SITEMAP_NS)
 
     try:
-        # S314: the sitemap is a trusted build artifact produced by our
-        # own zensical build step seconds earlier, not untrusted input.
-        tree = ET.parse(SITEMAP_FILE)  # noqa: S314
-    except ET.ParseError as exc:
-        print(f"Failed to parse sitemap: {exc}", file=sys.stderr)
+        # defusedxml guards against billion-laughs, XXE, and DTD abuse.
+        # The sitemap is produced by our own zensical build step, but
+        # using the hardened parser costs nothing and removes the
+        # supply-chain assumption from the code.
+        tree = DefusedET.parse(SITEMAP_FILE)
+    except (ET.ParseError, DefusedXmlException) as exc:
+        print(
+            f"Failed to parse sitemap at {SITEMAP_FILE.relative_to(REPO_ROOT)}: {exc}",
+            file=sys.stderr,
+        )
         return 1
 
     root = tree.getroot()
-    existing = {
-        loc.text for loc in root.findall(f"{{{SITEMAP_NS}}}url/{{{SITEMAP_NS}}}loc")
+    if root is None or root.tag != URLSET_TAG:
+        actual = "<empty tree>" if root is None else repr(root.tag)
+        print(
+            f"Error: sitemap root element is {actual}, expected {URLSET_TAG!r}.",
+            file=sys.stderr,
+        )
+        print(
+            "The sitemap may use a different schema version or be a "
+            "sitemap index; update patch_sitemap.py to match.",
+            file=sys.stderr,
+        )
+        return 1
+
+    existing: set[str] = {
+        (loc.text or "").strip() for loc in root.findall(f"{URL_TAG}/{LOC_TAG}")
     }
+    existing.discard("")
 
     added = 0
     for url in EXTRA_URLS:
         if url in existing:
             print(f"  skip (already present): {url}")
             continue
-        url_elem = ET.SubElement(root, f"{{{SITEMAP_NS}}}url")
-        loc_elem = ET.SubElement(url_elem, f"{{{SITEMAP_NS}}}loc")
+        url_elem = ET.SubElement(root, URL_TAG)
+        loc_elem = ET.SubElement(url_elem, LOC_TAG)
         loc_elem.text = url
         added += 1
         print(f"  added: {url}")
@@ -82,7 +113,15 @@ def main() -> int:
 
     # ET.indent keeps the file diff-friendly if it ever needs a human read.
     ET.indent(tree, space="  ")
-    tree.write(SITEMAP_FILE, encoding="utf-8", xml_declaration=True)
+    try:
+        tree.write(SITEMAP_FILE, encoding="utf-8", xml_declaration=True)
+    except OSError as exc:
+        print(
+            f"Failed to write patched sitemap to "
+            f"{SITEMAP_FILE.relative_to(REPO_ROOT)}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
     print(f"Wrote {added} extra URL(s) to {SITEMAP_FILE.relative_to(REPO_ROOT)}")
     return 0
 

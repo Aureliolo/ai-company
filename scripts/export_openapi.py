@@ -23,8 +23,12 @@ OUTPUT_DIR = REPO_ROOT / "docs" / "openapi"
 SCHEMA_FILE = OUTPUT_DIR / "openapi.json"
 HTML_FILE = OUTPUT_DIR / "reference.html"
 
-# Pinned for stability; update after testing newer releases in local preview
+# Pinned for stability; update after testing newer releases in local preview.
+# When bumping SCALAR_VERSION, recompute SCALAR_SRI:
+#   curl -sL "https://cdn.jsdelivr.net/npm/@scalar/api-reference@<VERSION>" \
+#     | openssl dgst -sha384 -binary | openssl base64 -A
 SCALAR_VERSION = "1.48.5"
+SCALAR_SRI = "sha384-l6LAVhtmxWg9mKRgVbB+DB/wFX+V9aQie5dzkMMvz+f4TO2B/0vRuSFsOdZraKZC"
 
 STANDALONE_HTML = """\
 <!DOCTYPE html>
@@ -76,7 +80,11 @@ STANDALONE_HTML = """\
     data-url="openapi.json"
     data-configuration='{"theme": "default", "layout": "modern"}'
   ></script>
-  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@SCALAR_VERSION"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@SCALAR_VERSION"
+    integrity="SCALAR_SRI"
+    crossorigin="anonymous"
+  ></script>
   <noscript>
     <p style="padding: 2rem; text-align: center;">
       This API reference requires JavaScript to render.
@@ -85,7 +93,7 @@ STANDALONE_HTML = """\
   </noscript>
 </body>
 </html>
-""".replace("SCALAR_VERSION", SCALAR_VERSION)
+""".replace("SCALAR_VERSION", SCALAR_VERSION).replace("SCALAR_SRI", SCALAR_SRI)
 
 
 def main() -> int:

@@ -2874,6 +2874,7 @@ fine-tune = [
 dev = [
     { name = "bandit" },
     { name = "commitizen" },
+    { name = "defusedxml" },
     { name = "griffe-pydantic" },
     { name = "hypothesis" },
     { name = "mkdocstrings", extra = ["python"] },
@@ -2894,6 +2895,7 @@ dev = [
     { name = "zensical" },
 ]
 docs = [
+    { name = "defusedxml" },
     { name = "griffe-pydantic" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "zensical" },
@@ -2937,6 +2939,7 @@ provides-extras = ["fine-tune"]
 dev = [
     { name = "bandit", specifier = "==1.9.4" },
     { name = "commitizen", specifier = "==4.13.9" },
+    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "griffe-pydantic", specifier = "==1.3.1" },
     { name = "hypothesis", specifier = "==6.151.10" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
@@ -2957,6 +2960,7 @@ dev = [
     { name = "zensical", specifier = "==0.0.31" },
 ]
 docs = [
+    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "griffe-pydantic", specifier = "==1.3.1" },
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.3" },
     { name = "zensical", specifier = "==0.0.31" },

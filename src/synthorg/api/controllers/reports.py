@@ -105,7 +105,7 @@ def _get_report_service(
 class ReportsController(Controller):
     """Automated report generation endpoints."""
 
-    path = "/api/v1/reports"
+    path = "/reports"
     guards = [require_read_access]  # noqa: RUF012
 
     @post(
