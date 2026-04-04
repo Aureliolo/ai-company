@@ -2,13 +2,14 @@ import { create } from 'zustand'
 import {
   listWorkflows,
   createWorkflow as createWorkflowApi,
+  createFromBlueprint as createFromBlueprintApi,
   deleteWorkflow as deleteWorkflowApi,
 } from '@/api/endpoints/workflows'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 
 const log = createLogger('workflows')
-import type { CreateWorkflowDefinitionRequest, WorkflowDefinition } from '@/api/types'
+import type { CreateFromBlueprintRequest, CreateWorkflowDefinitionRequest, WorkflowDefinition } from '@/api/types'
 
 interface WorkflowsState {
   // List
@@ -24,6 +25,7 @@ interface WorkflowsState {
   // Actions
   fetchWorkflows: () => Promise<void>
   createWorkflow: (data: CreateWorkflowDefinitionRequest) => Promise<WorkflowDefinition>
+  createFromBlueprint: (data: CreateFromBlueprintRequest) => Promise<WorkflowDefinition>
   deleteWorkflow: (id: string) => Promise<void>
   setSearchQuery: (q: string) => void
   setWorkflowTypeFilter: (t: string | null) => void
@@ -64,6 +66,19 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
 
   createWorkflow: async (data: CreateWorkflowDefinitionRequest) => {
     const workflow = await createWorkflowApi(data)
+    set((state) => {
+      const exists = state.workflows.some((w) => w.id === workflow.id)
+      const filtered = state.workflows.filter((w) => w.id !== workflow.id)
+      return {
+        workflows: [workflow, ...filtered],
+        totalWorkflows: exists ? state.totalWorkflows : state.totalWorkflows + 1,
+      }
+    })
+    return workflow
+  },
+
+  createFromBlueprint: async (data: CreateFromBlueprintRequest) => {
+    const workflow = await createFromBlueprintApi(data)
     set((state) => {
       const exists = state.workflows.some((w) => w.id === workflow.id)
       const filtered = state.workflows.filter((w) => w.id !== workflow.id)
