@@ -9,14 +9,14 @@ import {
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-
-const log = createLogger('workflows')
 import type {
   BlueprintInfo,
   CreateFromBlueprintRequest,
   CreateWorkflowDefinitionRequest,
   WorkflowDefinition,
 } from '@/api/types'
+
+const log = createLogger('workflows')
 
 interface WorkflowsState {
   // List

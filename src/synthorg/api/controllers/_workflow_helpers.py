@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.engine.workflow.version import WorkflowDefinitionVersion
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_AUTH_USER_FALLBACK
 
 if TYPE_CHECKING:
     from litestar import Request
@@ -23,7 +24,7 @@ def get_auth_user_id(request: Request[Any, Any, Any]) -> str:
     if isinstance(auth_user, AuthenticatedUser):
         return auth_user.user_id
     logger.debug(
-        "auth_user_fallback",
+        API_AUTH_USER_FALLBACK,
         reason="no AuthenticatedUser in scope",
         path=request.url.path,
     )

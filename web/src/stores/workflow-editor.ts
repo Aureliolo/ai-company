@@ -650,10 +650,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       // Reload the definition to refresh editor state.
       await useWorkflowEditorStore.getState().loadDefinition(updated.id)
       // Check if loadDefinition set an error
-      if (get().error) {
-        set({ saving: false })
-        return
-      }
+      if (get().error) return
       await useWorkflowEditorStore.getState().loadVersions()
     } catch (err) {
       log.warn('Rollback failed', sanitizeForLog(err))
