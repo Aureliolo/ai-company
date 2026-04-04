@@ -35,7 +35,7 @@ interface YamlStep {
   strategy?: string
   role?: string
   agent_name?: string
-  depends_on?: string[]
+  depends_on?: (string | number | { id: string; branch?: string })[]
 }
 
 /** Validated step with a guaranteed id and type. */
@@ -81,11 +81,9 @@ function edgeTypeToVisualType(edgeType: WorkflowEdgeType): string {
 /**
  * Infer the edge type from the source step's type and branch index.
  *
- * NOTE (#1060): Conditional branch assignment (true vs false) is
- * based on declaration order in depends_on, which can flip if the
- * user reorders steps in YAML.  A future improvement would store
- * explicit branch metadata in the YAML schema (e.g.
- * `{ id: "stepA", branch: "true" }`).
+ * Used as fallback when depends_on entries lack explicit branch
+ * metadata.  When an entry is `{ id, branch }`, the branch field
+ * takes precedence over this counter-based inference.
  */
 function inferDependsOnEdgeType(
   sourceStep: ValidatedStep,
@@ -231,17 +229,30 @@ export function parseYamlToNodesEdges(
   for (const [stepId, validated] of stepMap) {
     const { step } = validated
 
-    // Edges from depends_on
+    // Edges from depends_on (supports plain strings and { id, branch } objects)
     if (step.depends_on && !Array.isArray(step.depends_on)) {
       errors.push(`Step '${stepId}' has non-array depends_on (got ${typeof step.depends_on})`)
     }
     if (step.depends_on && Array.isArray(step.depends_on)) {
-      for (const rawDepId of step.depends_on) {
-        if (typeof rawDepId !== 'string' && typeof rawDepId !== 'number') {
-          errors.push(`Step '${stepId}' has non-string dependency: ${JSON.stringify(rawDepId)}`)
+      for (const rawDep of step.depends_on) {
+        // Parse entry: string, number, or { id, branch } object
+        let depId: string
+        let explicitBranch: 'true' | 'false' | undefined
+
+        if (typeof rawDep === 'object' && rawDep !== null && 'id' in rawDep) {
+          const obj = rawDep as Record<string, unknown>
+          depId = String(obj.id ?? '').trim()
+          const branch = obj.branch
+          if (branch === 'true' || branch === 'false') {
+            explicitBranch = branch
+          }
+        } else if (typeof rawDep === 'string' || typeof rawDep === 'number') {
+          depId = String(rawDep).trim()
+        } else {
+          errors.push(`Step '${stepId}' has invalid dependency: ${JSON.stringify(rawDep)}`)
           continue
         }
-        const depId = String(rawDepId).trim()
+
         if (!depId) {
           errors.push(`Step '${stepId}' has empty dependency`)
           continue
@@ -252,11 +263,18 @@ export function parseYamlToNodesEdges(
         }
 
         const sourceStep = stepMap.get(depId)!
-        const branchIdx = conditionalBranchCounters.get(depId) ?? 0
-        const edgeType = inferDependsOnEdgeType(sourceStep, branchIdx)
+        let edgeType: WorkflowEdgeType
 
-        if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
-          conditionalBranchCounters.set(depId, branchIdx + 1)
+        if (explicitBranch !== undefined) {
+          // Explicit branch metadata takes precedence
+          edgeType = explicitBranch === 'true' ? 'conditional_true' : 'conditional_false'
+        } else {
+          // Fall back to counter-based inference (backward compat)
+          const branchIdx = conditionalBranchCounters.get(depId) ?? 0
+          edgeType = inferDependsOnEdgeType(sourceStep, branchIdx)
+          if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
+            conditionalBranchCounters.set(depId, branchIdx + 1)
+          }
         }
 
         const edgeKey = `${depId}->${stepId}:${edgeType}`
