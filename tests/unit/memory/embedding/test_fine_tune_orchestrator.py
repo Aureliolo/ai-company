@@ -62,6 +62,13 @@ def orchestrator(
 
 
 def _request(tmp_path: Path) -> FineTuneRequest:
+    """Build a FineTuneRequest with synthetic POSIX paths.
+
+    Creates real files under *tmp_path* for diagnostics, but uses
+    synthetic ``/test/src`` and ``/test/out`` paths in the returned
+    ``FineTuneRequest`` because the orchestrator runs with mocked
+    stage functions that bypass filesystem access.
+    """
     src = tmp_path / "src"
     src.mkdir(exist_ok=True)
     (src / "doc.txt").write_text("Test content for training. " * 50)

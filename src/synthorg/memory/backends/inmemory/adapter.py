@@ -170,6 +170,8 @@ class InMemoryBackend:
         """
         self._require_connected()
         agent_store = self._store.setdefault(str(agent_id), {})
+        # Prune expired entries before checking quota.
+        _prune_expired(agent_store)
         if len(agent_store) >= self._max_memories_per_agent:
             msg = (
                 f"Agent {agent_id} has reached the memory limit "
@@ -347,7 +349,15 @@ class InMemoryBackend:
         return len(agent_store)
 
 
-# -- Filter helper (module-private) -----------------------------------
+# -- Filter helpers (module-private) ----------------------------------
+
+
+def _prune_expired(store: dict[str, MemoryEntry]) -> None:
+    """Remove expired entries from an agent store in-place."""
+    now = datetime.now(UTC)
+    expired = [mid for mid, entry in store.items() if _is_expired(entry, now)]
+    for mid in expired:
+        del store[mid]
 
 
 def _is_expired(entry: MemoryEntry, now: datetime) -> bool:

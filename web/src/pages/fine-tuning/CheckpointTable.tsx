@@ -1,11 +1,98 @@
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import type { CheckpointRecord } from '@/api/endpoints/fine-tuning'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
+
+interface CheckpointRowProps {
+  checkpoint: CheckpointRecord
+  onDeploy: (id: string) => void
+  onRollback: (id: string) => void
+  onDelete: (id: string) => void
+}
+
+function CheckpointRow({ checkpoint: cp, onDeploy, onRollback, onDelete }: CheckpointRowProps) {
+  return (
+    <tr className="border-b border-border/50">
+      <td className="py-2 pr-4 font-mono text-xs">
+        {new Date(cp.created_at).toLocaleDateString()}
+      </td>
+      <td className="py-2 pr-4">{cp.base_model}</td>
+      <td className="py-2 pr-4">{cp.doc_count}</td>
+      <td className="py-2 pr-4">
+        {cp.eval_metrics ? (
+          <span>
+            {(cp.eval_metrics.ndcg_at_10 * 100).toFixed(1)}%
+            <MetricDelta value={cp.eval_metrics.improvement_ndcg} />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">--</span>
+        )}
+      </td>
+      <td className="py-2 pr-4">
+        {cp.eval_metrics ? (
+          <span>
+            {(cp.eval_metrics.recall_at_10 * 100).toFixed(1)}%
+            <MetricDelta value={cp.eval_metrics.improvement_recall} />
+          </span>
+        ) : (
+          <span className="text-muted-foreground">--</span>
+        )}
+      </td>
+      <td className="py-2 pr-4 font-mono text-xs">
+        {formatBytes(cp.size_bytes)}
+      </td>
+      <td className="py-2 pr-4">
+        {cp.is_active ? (
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge status="active" />
+            <span className="text-xs">Active</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge status="idle" />
+            <span className="text-xs">Available</span>
+          </span>
+        )}
+      </td>
+      <td className="py-2">
+        <div className="flex gap-1">
+          {!cp.is_active && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onDeploy(cp.id)}
+            >
+              Deploy
+            </Button>
+          )}
+          {cp.is_active && cp.backup_config_json && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onRollback(cp.id)}
+            >
+              Rollback
+            </Button>
+          )}
+          {!cp.is_active && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDelete(cp.id)}
+            >
+              Delete
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
 
 export function CheckpointTable() {
   const { checkpoints, deployCheckpointAction, rollbackCheckpointAction, deleteCheckpointAction } =
@@ -43,80 +130,13 @@ export function CheckpointTable() {
         </thead>
         <tbody>
           {checkpoints.map((cp) => (
-            <tr key={cp.id} className="border-b border-border/50">
-              <td className="py-2 pr-4 font-mono text-xs">
-                {new Date(cp.created_at).toLocaleDateString()}
-              </td>
-              <td className="py-2 pr-4">{cp.base_model}</td>
-              <td className="py-2 pr-4">{cp.doc_count}</td>
-              <td className="py-2 pr-4">
-                {cp.eval_metrics ? (
-                  <span>
-                    {(cp.eval_metrics.ndcg_at_10 * 100).toFixed(1)}%
-                    <MetricDelta value={cp.eval_metrics.improvement_ndcg} />
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">--</span>
-                )}
-              </td>
-              <td className="py-2 pr-4">
-                {cp.eval_metrics ? (
-                  <span>
-                    {(cp.eval_metrics.recall_at_10 * 100).toFixed(1)}%
-                    <MetricDelta value={cp.eval_metrics.improvement_recall} />
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">--</span>
-                )}
-              </td>
-              <td className="py-2 pr-4 font-mono text-xs">
-                {formatBytes(cp.size_bytes)}
-              </td>
-              <td className="py-2 pr-4">
-                {cp.is_active ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <StatusBadge status="active" />
-                    <span className="text-xs">Active</span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5">
-                    <StatusBadge status="idle" />
-                    <span className="text-xs">Available</span>
-                  </span>
-                )}
-              </td>
-              <td className="py-2">
-                <div className="flex gap-1">
-                  {!cp.is_active && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void deployCheckpointAction(cp.id)}
-                    >
-                      Deploy
-                    </Button>
-                  )}
-                  {cp.is_active && cp.backup_config_json && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void rollbackCheckpointAction(cp.id)}
-                    >
-                      Rollback
-                    </Button>
-                  )}
-                  {!cp.is_active && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeletingId(cp.id)}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </td>
-            </tr>
+            <CheckpointRow
+              key={cp.id}
+              checkpoint={cp}
+              onDeploy={(id) => void deployCheckpointAction(id)}
+              onRollback={(id) => void rollbackCheckpointAction(id)}
+              onDelete={setDeletingId}
+            />
           ))}
         </tbody>
       </table>

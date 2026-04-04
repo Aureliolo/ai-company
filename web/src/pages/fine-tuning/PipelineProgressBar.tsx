@@ -6,7 +6,8 @@ interface PipelineProgressBarProps {
 }
 
 export function PipelineProgressBar({ stage, progress }: PipelineProgressBarProps) {
-  const rawPct = progress != null ? Math.round(progress * 100) : 0
+  const indeterminate = progress == null
+  const rawPct = indeterminate ? 0 : Math.round(progress * 100)
   const pct = Math.min(100, Math.max(0, rawPct))
 
   return (
@@ -15,20 +16,26 @@ export function PipelineProgressBar({ stage, progress }: PipelineProgressBarProp
         <span className="text-muted-foreground">
           Stage: <span className="font-medium text-foreground">{formatStage(stage)}</span>
         </span>
-        <span className="font-mono text-foreground">{pct}%</span>
+        <span className="font-mono text-foreground">
+          {indeterminate ? '...' : `${pct}%`}
+        </span>
       </div>
       <div
         className="h-2 w-full overflow-hidden rounded-full bg-muted"
         role="progressbar"
-        aria-valuenow={pct}
+        {...(indeterminate ? {} : { 'aria-valuenow': pct })}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label="Fine-tuning progress"
       >
-        <div
-          className="h-full rounded-full bg-accent transition-all duration-300"
-          style={{ width: `${pct}%` }}
-        />
+        {indeterminate ? (
+          <div className="h-full w-full animate-pulse rounded-full bg-accent/60" />
+        ) : (
+          <div
+            className="h-full rounded-full bg-accent transition-all duration-300"
+            style={{ width: `${pct}%` }}
+          />
+        )}
       </div>
     </div>
   )

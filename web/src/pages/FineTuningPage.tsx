@@ -25,10 +25,13 @@ export default function FineTuningPage() {
       fetchRuns: s.fetchRuns,
       handleWsEvent: s.handleWsEvent,
     })))
-  const { onChannelEvent, offChannelEvent } = useWebSocketStore(useShallow((s) => ({
-    onChannelEvent: s.onChannelEvent,
-    offChannelEvent: s.offChannelEvent,
-  })))
+  const { onChannelEvent, offChannelEvent, subscribe, unsubscribe } =
+    useWebSocketStore(useShallow((s) => ({
+      onChannelEvent: s.onChannelEvent,
+      offChannelEvent: s.offChannelEvent,
+      subscribe: s.subscribe,
+      unsubscribe: s.unsubscribe,
+    })))
 
   useEffect(() => {
     void fetchStatus()
@@ -45,9 +48,13 @@ export default function FineTuningPage() {
   )
 
   useEffect(() => {
+    subscribe(['system'])
     onChannelEvent('system', wsHandler)
-    return () => offChannelEvent('system', wsHandler)
-  }, [onChannelEvent, offChannelEvent, wsHandler])
+    return () => {
+      offChannelEvent('system', wsHandler)
+      unsubscribe(['system'])
+    }
+  }, [subscribe, unsubscribe, onChannelEvent, offChannelEvent, wsHandler])
 
   const isActive = status != null && ACTIVE_STAGES.has(status.stage)
   const hasDependencyFailure =

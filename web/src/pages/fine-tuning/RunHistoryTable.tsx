@@ -1,10 +1,9 @@
 import { useShallow } from 'zustand/react/shallow'
 
+import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
-
-import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
 
 const STAGE_STATUS_MAP: Record<string, 'active' | 'idle' | 'error' | 'offline'> = {
   complete: 'active',
@@ -15,6 +14,35 @@ const STAGE_STATUS_MAP: Record<string, 'active' | 'idle' | 'error' | 'offline'> 
   training: 'active',
   evaluating: 'active',
   deploying: 'active',
+}
+
+function RunRow({ run }: { run: FineTuneRun }) {
+  return (
+    <tr className="border-b border-border/50">
+      <td className="py-2 pr-4 font-mono text-xs">
+        {new Date(run.started_at).toLocaleString()}
+      </td>
+      <td className="py-2 pr-4 font-mono text-xs">
+        {run.duration_seconds != null
+          ? formatDuration(run.duration_seconds)
+          : '--'}
+      </td>
+      <td className="py-2 pr-4">
+        <span className="inline-flex items-center gap-1.5">
+          <StatusBadge
+            status={STAGE_STATUS_MAP[run.stage] ?? 'idle'}
+          />
+          <span className="text-xs">{formatStage(run.stage)}</span>
+        </span>
+      </td>
+      <td className="py-2 pr-4 text-xs text-muted-foreground">
+        {run.stages_completed.length}/5
+      </td>
+      <td className="py-2 font-mono text-xs text-muted-foreground">
+        {run.config.source_dir}
+      </td>
+    </tr>
+  )
 }
 
 export function RunHistoryTable() {
@@ -43,30 +71,7 @@ export function RunHistoryTable() {
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr key={run.id} className="border-b border-border/50">
-              <td className="py-2 pr-4 font-mono text-xs">
-                {new Date(run.started_at).toLocaleString()}
-              </td>
-              <td className="py-2 pr-4 font-mono text-xs">
-                {run.duration_seconds != null
-                  ? formatDuration(run.duration_seconds)
-                  : '--'}
-              </td>
-              <td className="py-2 pr-4">
-                <span className="inline-flex items-center gap-1.5">
-                  <StatusBadge
-                    status={STAGE_STATUS_MAP[run.stage] ?? 'idle'}
-                  />
-                  <span className="text-xs">{formatStage(run.stage)}</span>
-                </span>
-              </td>
-              <td className="py-2 pr-4 text-xs text-muted-foreground">
-                {run.stages_completed.length}/5
-              </td>
-              <td className="py-2 font-mono text-xs text-muted-foreground">
-                {run.config.source_dir}
-              </td>
-            </tr>
+            <RunRow key={run.id} run={run} />
           ))}
         </tbody>
       </table>

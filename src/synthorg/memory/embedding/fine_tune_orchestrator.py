@@ -211,15 +211,29 @@ class FineTuneOrchestrator:
             return resumed
 
     async def cancel(self) -> None:
-        """Cancel the active pipeline run.
+        """Cancel the active pipeline run and wait for it to stop.
 
-        Signals cooperative cancellation; the background task will
-        stop at the next cancellation check point.
+        Signals cooperative cancellation and awaits the background
+        task for up to 30 seconds. If the task does not stop in
+        time, the method returns anyway.
         """
         async with self._op_lock:
             if self._cancellation is not None:
                 self._cancellation.cancel()
                 logger.info(MEMORY_FINE_TUNE_CANCELLED)
+            task = self._current_task
+        # Await outside the lock so pipeline can complete.
+        if task is not None and not task.done():
+            try:
+                async with asyncio.timeout(30):
+                    await asyncio.shield(task)
+            except TimeoutError:
+                logger.warning(
+                    MEMORY_FINE_TUNE_CANCELLED,
+                    note="cancel timed out waiting for task",
+                )
+            except Exception:  # noqa: S110
+                pass  # Task failed/cancelled -- already logged by _on_task_done
 
     async def recover_interrupted(self) -> int:
         """Mark interrupted runs as FAILED on startup."""

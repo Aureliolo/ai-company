@@ -113,7 +113,9 @@ class TestGenerateTrainingData:
     ) -> None:
         src = tmp_path / "src"
         src.mkdir()
-        (src / "doc.txt").write_text("This is test content. " * 50)
+        # Need enough content for at least 2 chunks (512 words each).
+        (src / "doc1.txt").write_text("This is test content. " * 300)
+        (src / "doc2.txt").write_text("Another document here. " * 300)
         out = tmp_path / "out"
         train_path, val_path = await generate_training_data(
             source_dir=str(src),

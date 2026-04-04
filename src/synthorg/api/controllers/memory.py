@@ -245,12 +245,30 @@ class MemoryAdminController(Controller):
         if cp is None:
             msg = f"Checkpoint {checkpoint_id} not found"
             raise ClientException(detail=msg)
+        # Record prior active to allow rollback on failure.
+        prior = await repo.get_active_checkpoint()
         await repo.set_active(checkpoint_id)
         # Update runtime embedder config via settings if available.
-        if app_state.has_settings_service and cp.backup_config_json:
+        if app_state.has_settings_service:
             svc = app_state.settings_service
-            await svc.set("memory", "embedder_model", cp.model_path)
-            await svc.set("memory", "embedder_provider", "local")
+            try:
+                await svc.set("memory", "embedder_model", cp.model_path)
+                await svc.set("memory", "embedder_provider", "local")
+            except Exception as exc:
+                # Rollback activation on settings failure.
+                if prior is not None:
+                    await repo.set_active(prior.id)
+                else:
+                    await repo.deactivate_all()
+                logger.warning(
+                    MEMORY_FINE_TUNE_REQUESTED,
+                    error=f"Settings update failed: {exc}",
+                    checkpoint_id=checkpoint_id,
+                )
+                raise ClientException(
+                    detail="Failed to update embedder settings",
+                    status_code=HTTP_409_CONFLICT,
+                ) from exc
         updated = await repo.get_checkpoint(checkpoint_id)
         if updated is None:
             raise ClientException(
@@ -281,13 +299,27 @@ class MemoryAdminController(Controller):
             raise ClientException(detail=msg)
         # Restore backup config via settings service.
         if app_state.has_settings_service:
-            backup = json.loads(cp.backup_config_json)
+            try:
+                backup = json.loads(cp.backup_config_json)
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    MEMORY_FINE_TUNE_REQUESTED,
+                    error=f"Corrupt backup config: {exc}",
+                    checkpoint_id=checkpoint_id,
+                )
+                raise ClientException(
+                    detail="Backup config is corrupt and cannot be restored",
+                ) from exc
             svc = app_state.settings_service
             for key, value in backup.items():
                 await svc.set("memory", key, value)
         # Deactivate all checkpoints (no checkpoint is "active" now).
         await repo.deactivate_all()
         updated = await repo.get_checkpoint(checkpoint_id)
+        if updated is None:
+            raise ClientException(
+                detail="Checkpoint not found after rollback",
+            )
         return ApiResponse(data=updated)
 
     @delete("/fine-tune/checkpoints/{checkpoint_id:str}", status_code=200)
@@ -393,6 +425,7 @@ def _run_preflight_checks(
     checks.append(_check_dependencies())
     checks.append(_check_gpu())
     checks.append(_check_documents(request.source_dir))
+    checks.append(_check_disk_space(request.source_dir))
     return checks
 
 
@@ -522,3 +555,41 @@ def _recommend_batch_size() -> int | None:
             error=str(exc),
         )
         return None
+
+
+def _check_disk_space(source_dir: str) -> PreflightCheck:
+    """Check available disk space for fine-tuning output."""
+    import shutil  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    try:
+        path = Path(source_dir) if Path(source_dir).exists() else Path()
+        usage = shutil.disk_usage(path)
+        free_gb = usage.free / (1024**3)
+        if free_gb < 1:
+            return PreflightCheck(
+                name="disk_space",
+                status="fail",
+                message="Insufficient disk space",
+                detail=f"{free_gb:.1f} GB free",
+            )
+        if free_gb < 5:  # noqa: PLR2004
+            return PreflightCheck(
+                name="disk_space",
+                status="warn",
+                message="Low disk space",
+                detail=f"{free_gb:.1f} GB free, 5+ GB recommended",
+            )
+        return PreflightCheck(
+            name="disk_space",
+            status="pass",
+            message=f"{free_gb:.1f} GB available",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        return PreflightCheck(
+            name="disk_space",
+            status="warn",
+            message=f"Could not check disk space: {type(exc).__name__}",
+        )

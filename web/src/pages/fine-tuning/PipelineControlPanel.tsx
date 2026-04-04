@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
@@ -21,11 +21,22 @@ export function PipelineControlPanel() {
     })))
   const [sourceDir, setSourceDir] = useState('/data/documents')
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [epochs, setEpochs] = useState('3')
-  const [learningRate, setLearningRate] = useState('1e-5')
-  const [batchSize, setBatchSize] = useState(
-    String(preflight?.recommended_batch_size ?? 128),
-  )
+  const [epochs, setEpochs] = useState('')
+  const [learningRate, setLearningRate] = useState('')
+  const batchSizeTouchedRef = useRef(false)
+  const [batchSizeInput, setBatchSizeInput] = useState('')
+  const setBatchSize = useCallback((value: string) => {
+    batchSizeTouchedRef.current = true
+    setBatchSizeInput(value)
+  }, [])
+
+  // When preflight arrives with a recommended batch size and the user hasn't
+  // typed a value yet, use it as the initial value.
+  const recommendedBatch = preflight?.recommended_batch_size
+  const effectiveBatchSize =
+    !batchSizeTouchedRef.current && batchSizeInput === '' && recommendedBatch != null
+      ? String(recommendedBatch)
+      : batchSizeInput
 
   // Clear stale preflight when sourceDir changes.
   useEffect(() => {
@@ -36,12 +47,20 @@ export function PipelineControlPanel() {
 
   const buildRequest = (): StartFineTuneRequest => {
     const request: StartFineTuneRequest = { source_dir: sourceDir }
-    const parsedEpochs = Number(epochs)
-    if (!Number.isNaN(parsedEpochs) && parsedEpochs > 0) request.epochs = parsedEpochs
-    const parsedLr = Number(learningRate)
-    if (!Number.isNaN(parsedLr) && parsedLr > 0) request.learning_rate = parsedLr
-    const parsedBatch = Number(batchSize)
-    if (!Number.isNaN(parsedBatch) && parsedBatch > 0) request.batch_size = parsedBatch
+    if (showAdvanced) {
+      if (epochs !== '') {
+        const parsedEpochs = Number(epochs)
+        if (!Number.isNaN(parsedEpochs) && parsedEpochs > 0) request.epochs = parsedEpochs
+      }
+      if (learningRate !== '') {
+        const parsedLr = Number(learningRate)
+        if (!Number.isNaN(parsedLr) && parsedLr > 0) request.learning_rate = parsedLr
+      }
+      if (effectiveBatchSize !== '') {
+        const parsedBatch = Number(effectiveBatchSize)
+        if (!Number.isNaN(parsedBatch) && parsedBatch > 0) request.batch_size = parsedBatch
+      }
+    }
     return request
   }
 
@@ -95,7 +114,7 @@ export function PipelineControlPanel() {
         <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card">
           <InputField label="Epochs" value={epochs} onValueChange={setEpochs} hint="Training epochs" />
           <InputField label="Learning Rate" value={learningRate} onValueChange={setLearningRate} />
-          <InputField label="Batch Size" value={batchSize} onValueChange={setBatchSize} />
+          <InputField label="Batch Size" value={effectiveBatchSize} onValueChange={setBatchSize} />
         </div>
       )}
     </div>

@@ -186,6 +186,13 @@ async def generate_training_data(  # noqa: PLR0913
         msg = f"No documents found in {source_dir}"
         raise ValueError(msg)
 
+    if validation_split <= 0.0 or validation_split >= 1.0:
+        msg = (
+            f"validation_split must be between 0 and 1 exclusive, "
+            f"got {validation_split}"
+        )
+        raise ValueError(msg)
+
     out = _ensure_dir(output_dir)
     all_pairs: list[dict[str, str]] = []
 
@@ -201,7 +208,14 @@ async def generate_training_data(  # noqa: PLR0913
         if progress_callback:
             progress_callback((i + 1) / len(docs))
 
-    split_idx = max(1, int(len(all_pairs) * (1 - validation_split)))
+    if len(all_pairs) < 2:  # noqa: PLR2004
+        msg = (
+            f"Need at least 2 query-document pairs for "
+            f"train/validation split, got {len(all_pairs)}"
+        )
+        raise ValueError(msg)
+    raw_split = int(len(all_pairs) * (1 - validation_split))
+    split_idx = max(1, min(len(all_pairs) - 1, raw_split))
     training = all_pairs[:split_idx]
     validation = all_pairs[split_idx:]
 
@@ -696,6 +710,15 @@ async def deploy_checkpoint(
             checkpoint_path,
             now,
         )
+
+    if settings_service is None and config_path is None:
+        logger.warning(
+            MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
+            checkpoint_path=checkpoint_path,
+            note="no settings service or config path -- "
+            "checkpoint deployed but config not updated",
+        )
+        return json.dumps(backup) if backup else None
 
     logger.info(
         MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,

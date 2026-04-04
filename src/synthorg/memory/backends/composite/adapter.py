@@ -408,6 +408,9 @@ class CompositeBackend:
 
                 tg.create_task(_fetch())
         if errors:
+            if not results:
+                msg = f"All backends failed during retrieve: {'; '.join(errors)}"
+                raise MemoryRetrievalError(msg)
             logger.warning(
                 MEMORY_COMPOSITE_FANOUT_PARTIAL,
                 operation="retrieve",
