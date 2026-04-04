@@ -91,5 +91,17 @@ class FakeWorkflowExecutionRepository:
         )
         return tuple(copy.deepcopy(e) for e in result)
 
+    async def find_by_task_id(
+        self,
+        task_id: str,
+    ) -> WorkflowExecution | None:
+        for execution in self._executions.values():
+            if execution.status != WorkflowExecutionStatus.RUNNING:
+                continue
+            for ne in execution.node_executions:
+                if ne.task_id == task_id:
+                    return copy.deepcopy(execution)
+        return None
+
     async def delete(self, execution_id: str) -> bool:
         return self._executions.pop(execution_id, None) is not None

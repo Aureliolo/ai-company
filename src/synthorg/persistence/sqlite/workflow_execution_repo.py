@@ -27,6 +27,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_WORKFLOW_EXEC_DESERIALIZE_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCH_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_FETCHED,
+    PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
+    PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
     PERSISTENCE_WORKFLOW_EXEC_LIST_FAILED,
     PERSISTENCE_WORKFLOW_EXEC_LISTED,
     PERSISTENCE_WORKFLOW_EXEC_SAVE_FAILED,
@@ -412,6 +414,63 @@ WHERE id = ? AND version = ?""",
             count=len(executions),
         )
         return executions
+
+    async def find_by_task_id(
+        self,
+        task_id: NotBlankStr,
+    ) -> WorkflowExecution | None:
+        """Find a RUNNING execution containing a node with the given task ID.
+
+        Uses SQLite ``json_each()`` to search the ``node_executions``
+        JSON column, filtering by RUNNING status first (leverages the
+        existing status index).
+
+        Args:
+            task_id: The concrete task identifier to search for.
+
+        Returns:
+            The matching execution, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            cursor = await self._db.execute(
+                f"SELECT {_SELECT_COLUMNS} FROM workflow_executions"  # noqa: S608
+                " WHERE status = ?"
+                " AND EXISTS ("
+                "   SELECT 1 FROM json_each(node_executions)"
+                "   WHERE json_extract(value, '$.task_id') = ?"
+                " )"
+                " LIMIT 1",
+                (WorkflowExecutionStatus.RUNNING.value, task_id),
+            )
+            row = await cursor.fetchone()
+        except sqlite3.Error as exc:
+            msg = f"Failed to find execution by task_id {task_id!r}"
+            logger.exception(
+                PERSISTENCE_WORKFLOW_EXEC_FIND_BY_TASK_FAILED,
+                task_id=task_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+
+        if row is None:
+            logger.debug(
+                PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
+                task_id=task_id,
+                found=False,
+            )
+            return None
+
+        execution = _deserialize_row(row, task_id)
+        logger.debug(
+            PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
+            task_id=task_id,
+            found=True,
+            execution_id=execution.id,
+        )
+        return execution
 
     async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a workflow execution by primary key.
