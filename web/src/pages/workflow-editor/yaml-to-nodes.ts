@@ -261,6 +261,14 @@ export function parseYamlToNodesEdges(
         if (explicitBranch !== undefined) {
           // Explicit branch metadata takes precedence
           edgeType = explicitBranch === 'true' ? 'conditional_true' : 'conditional_false'
+          if (sourceStep.type !== 'conditional') {
+            warnings.push(`Step '${stepId}': explicit branch '${explicitBranch}' on non-conditional dependency '${depId}'`)
+          }
+          // Increment counter so mixed explicit+implicit entries stay in sync
+          if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
+            const branchIdx = conditionalBranchCounters.get(depId) ?? 0
+            conditionalBranchCounters.set(depId, branchIdx + 1)
+          }
         } else {
           // Fall back to counter-based inference (backward compat)
           const branchIdx = conditionalBranchCounters.get(depId) ?? 0

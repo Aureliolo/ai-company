@@ -1,7 +1,7 @@
 """Tests for config loader (parsing, merging, validation)."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 
 import pytest
 import structlog
@@ -66,10 +66,12 @@ class TestReadConfigText:
     ) -> None:
         f = tmp_path / "config.yaml"
         f.write_text("content", encoding="utf-8")
-        monkeypatch.setattr(
-            "pathlib.Path.read_text",
-            lambda *a, **kw: (_ for _ in ()).throw(PermissionError("denied")),
-        )
+
+        def _raise_permission(*a: object, **kw: object) -> Never:
+            msg = "denied"
+            raise PermissionError(msg)
+
+        monkeypatch.setattr("pathlib.Path.read_text", _raise_permission)
         with pytest.raises(ConfigParseError, match="Unable to read"):
             _read_config_text(f)
 

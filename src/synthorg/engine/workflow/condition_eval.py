@@ -7,7 +7,7 @@ in a future iteration.
 Supported expressions:
 
 - Boolean literals: ``"true"``, ``"false"`` (case-insensitive)
-- Key lookup (truthy): ``"has_budget"`` -- returns ``bool(context[key])``
+- Key lookup (truthy): ``"has_budget"`` -- returns ``bool(context.get(key))``
   Key lookup on a missing key returns ``False``
   (``context.get(key)`` is ``None``, which is falsy).
 - Equality: ``"priority == high"`` -- returns ``context[key] == value``
@@ -20,19 +20,34 @@ Supported expressions:
 Operator precedence (highest to lowest): NOT, AND, OR.
 
 .. note:: Context keys literally named ``AND``, ``OR``, or ``NOT``
-   (case-insensitive) are treated as operators in simple key-lookup
-   expressions.  Use comparison form (``AND == yes``) if a context
-   key collides with an operator name.
+   (case-insensitive) collide with operators in compound expressions.
+   When the entire expression is exactly one of these keywords it is
+   treated as a simple key lookup, but comparisons like
+   ``status == OR`` or values containing operator words
+   (``title == Research AND Development``) are **not** supported.
+   Use values that do not contain operator keywords, or restructure
+   the expression to avoid the ambiguity.
 
-This function does not raise -- all edge cases (empty expressions,
-missing keys, malformed comparisons) resolve to a boolean.
+This function aims to never raise -- all edge cases (empty
+expressions, missing keys, malformed comparisons) resolve to a
+boolean.  Parse errors are logged at WARNING level.
 """
 
 import re
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.condition_eval import (
+    CONDITION_EVAL_PARSE_ERROR,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+logger = get_logger(__name__)
+
+# Maximum number of tokens accepted before rejecting as too complex.
+_MAX_TOKEN_COUNT = 256
 
 
 def _eval_comparison(
@@ -200,6 +215,9 @@ def _parse_atom_token(
 _COMPOUND_RE = re.compile(r"\b(?:AND|OR|NOT)\b|[()]", re.IGNORECASE)
 
 
+_KEYWORDS = frozenset({"AND", "OR", "NOT"})
+
+
 def _has_compound_operators(expression: str) -> bool:
     """Check if expression contains compound operators or parens."""
     return _COMPOUND_RE.search(expression) is not None
@@ -214,10 +232,11 @@ def evaluate_condition(
 ) -> bool:
     """Evaluate a condition expression against a context dict.
 
-    This function does not raise -- all edge cases (empty
-    expressions, missing keys, malformed comparisons) resolve
-    to a boolean.  Callers should not rely on exceptions for
-    control flow from this function.
+    This function aims to never raise -- all edge cases (empty
+    expressions, missing keys, malformed comparisons) are caught
+    and resolve to ``False``.  ``MemoryError`` and
+    ``RecursionError`` propagate.  Parse errors are logged at
+    WARNING level before returning ``False``.
 
     Supports compound expressions with AND, OR, NOT operators
     and parenthesized groups.  Operator precedence: NOT > AND > OR.
@@ -233,17 +252,51 @@ def evaluate_condition(
     if not expr:
         return False
 
+    try:
+        return _evaluate_inner(expr, context)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            CONDITION_EVAL_PARSE_ERROR,
+            expression=expr[:200],
+            exc_info=True,
+        )
+        return False
+
+
+def _evaluate_inner(
+    expr: str,
+    context: Mapping[str, object],
+) -> bool:
+    """Core evaluation logic -- may raise on malformed input."""
     # Quick path: if no compound operators, use simple evaluation
-    # for zero-overhead backward compatibility.
-    if not _has_compound_operators(expr):
+    # for zero-overhead backward compatibility.  If the entire
+    # expression is exactly a keyword (AND/OR/NOT), treat it as
+    # a simple key lookup rather than routing to the compound parser.
+    if not _has_compound_operators(expr) or expr.upper() in _KEYWORDS:
         return _eval_atom(expr, context)
 
     # Compound path: tokenize and parse.
-    try:
-        tokens = _tokenize(expr)
-        if not tokens:
-            return False
-        result, _ = _parse_or(tokens, 0, context)
-    except Exception:
+    tokens = _tokenize(expr)
+    if not tokens:
+        return False
+    if len(tokens) > _MAX_TOKEN_COUNT:
+        logger.warning(
+            CONDITION_EVAL_PARSE_ERROR,
+            expression=expr[:200],
+            reason="expression too complex",
+            token_count=len(tokens),
+        )
+        return False
+    result, pos = _parse_or(tokens, 0, context)
+    if pos != len(tokens):
+        logger.warning(
+            CONDITION_EVAL_PARSE_ERROR,
+            expression=expr[:200],
+            reason="trailing tokens",
+            consumed=pos,
+            total=len(tokens),
+        )
         return False
     return result

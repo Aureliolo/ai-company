@@ -120,7 +120,7 @@ class TaskEngine:
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
-        self._observer_queue: asyncio.Queue[TaskStateChanged] = asyncio.Queue(
+        self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
             maxsize=self._config.max_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
@@ -182,56 +182,66 @@ class TaskEngine:
         effective_timeout = (
             timeout if timeout is not None else self._config.drain_timeout_seconds
         )
+        deadline = asyncio.get_event_loop().time() + effective_timeout
 
-        if self._processing_task is not None:
-            logger.info(
-                TASK_ENGINE_DRAIN_START,
-                pending=self._queue.qsize(),
-                timeout_seconds=effective_timeout,
-            )
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(self._processing_task),
-                    timeout=effective_timeout,
-                )
-                logger.info(TASK_ENGINE_DRAIN_COMPLETE)
-            except TimeoutError:
-                logger.warning(
-                    TASK_ENGINE_DRAIN_TIMEOUT,
-                    remaining=self._queue.qsize(),
-                )
-                # Capture in-flight ref before cancel -- the finally block
-                # in _process_one clears self._in_flight on CancelledError.
-                saved_in_flight = self._in_flight
-                self._processing_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await self._processing_task
-                self._fail_remaining_futures(saved_in_flight)
-            except BaseException:
-                self._fail_remaining_futures(self._in_flight)
-                raise
-            finally:
-                self._processing_task = None
-
-        # Drain the observer queue so all pending events are delivered.
-        if self._observer_task is not None:
-            try:
-                await asyncio.wait_for(
-                    asyncio.shield(self._observer_task),
-                    timeout=effective_timeout,
-                )
-            except TimeoutError:
-                logger.warning(
-                    TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
-                    remaining=self._observer_queue.qsize(),
-                )
-                self._observer_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await self._observer_task
-            finally:
-                self._observer_task = None
+        await self._drain_processing(effective_timeout)
+        # Signal the observer loop that no more events will arrive.
+        self._observer_queue.put_nowait(None)  # type: ignore[arg-type]
+        observer_budget = max(0.0, deadline - asyncio.get_event_loop().time())
+        await self._drain_observer(observer_budget)
 
         logger.info(TASK_ENGINE_STOPPED)
+
+    async def _drain_processing(self, budget: float) -> None:
+        """Drain the mutation processing loop within *budget* seconds."""
+        if self._processing_task is None:
+            return
+        logger.info(
+            TASK_ENGINE_DRAIN_START,
+            pending=self._queue.qsize(),
+            timeout_seconds=budget,
+        )
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._processing_task),
+                timeout=budget,
+            )
+            logger.info(TASK_ENGINE_DRAIN_COMPLETE)
+        except TimeoutError:
+            logger.warning(
+                TASK_ENGINE_DRAIN_TIMEOUT,
+                remaining=self._queue.qsize(),
+            )
+            saved_in_flight = self._in_flight
+            self._processing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._processing_task
+            self._fail_remaining_futures(saved_in_flight)
+        except BaseException:
+            self._fail_remaining_futures(self._in_flight)
+            raise
+        finally:
+            self._processing_task = None
+
+    async def _drain_observer(self, budget: float) -> None:
+        """Drain the observer dispatch loop within *budget* seconds."""
+        if self._observer_task is None:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(self._observer_task),
+                timeout=budget,
+            )
+        except TimeoutError:
+            logger.warning(
+                TASK_ENGINE_OBSERVER_DRAIN_TIMEOUT,
+                remaining=self._observer_queue.qsize(),
+            )
+            self._observer_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._observer_task
+        finally:
+            self._observer_task = None
 
     def _fail_remaining_futures(
         self,
@@ -716,6 +726,7 @@ class TaskEngine:
                             TASK_ENGINE_OBSERVER_QUEUE_FULL,
                             request_id=event.request_id,
                             task_id=event.task_id,
+                            mutation_type=event.mutation_type,
                             queue_size=self._observer_queue.qsize(),
                         )
         except MemoryError, RecursionError:
@@ -746,16 +757,23 @@ class TaskEngine:
         """Background loop: dequeue and dispatch observer events.
 
         Mirrors ``_processing_loop`` but for observer notifications.
-        Continues draining after ``_running`` is ``False``.
+        Exits when a ``None`` sentinel is dequeued (placed by
+        ``stop()`` after the processing loop finishes).
         """
-        while self._running or not self._observer_queue.empty():
+        while True:
             try:
                 event = await asyncio.wait_for(
                     self._observer_queue.get(),
                     timeout=self._POLL_INTERVAL_SECONDS,
                 )
             except TimeoutError:
+                # Re-check: if not running and queue empty, the
+                # sentinel may have arrived while we were waiting.
+                if not self._running and self._observer_queue.empty():
+                    break
                 continue
+            if event is None:
+                break  # sentinel -- processing loop is done
             try:
                 await self._notify_observers(event)
             except MemoryError, RecursionError:
@@ -764,6 +782,9 @@ class TaskEngine:
                 logger.exception(
                     TASK_ENGINE_LOOP_ERROR,
                     error="Unhandled exception in observer dispatch loop",
+                    task_id=event.task_id,
+                    request_id=event.request_id,
+                    mutation_type=event.mutation_type,
                 )
 
     async def _notify_observers(

@@ -219,7 +219,7 @@ A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph t
 
 ### YAML Export
 
-`export_workflow_yaml()` performs topological sort and emits a flat step list with `depends_on` references, `agent_assignment` config, conditional expressions, and parallel branch/join metadata. START and END nodes are omitted (structural markers only).
+`export_workflow_yaml()` performs topological sort and emits a flat step list with `depends_on` references, `agent_assignment` config, conditional expressions, and parallel branch/join metadata. START and END nodes are omitted (structural markers only). `depends_on` entries are either a plain string (sequential/parallel edges) or an object `{ id, branch: "true"|"false" }` (conditional edges with explicit branch metadata). The importer prefers explicit branch metadata when present and falls back to counter-based inference for backward compatibility with plain strings.
 
 ### Persistence
 
@@ -262,10 +262,13 @@ topology. The TaskEngine's existing status machine handles execution ordering.
 `TASK_COMPLETED` (task finished successfully), `TASK_FAILED` (task failed or
 cancelled), `COMPLETED` (control node processed).
 
-**Condition evaluator** (`condition_eval.py`): Safe, minimal string evaluator
+**Condition evaluator** (`condition_eval.py`): Safe string evaluator
 (no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
-key lookup (truthy check), equality (`key == value`), and inequality
-(`key != value`). Designed to be replaceable with a richer evaluator.
+key lookup (truthy check), equality (`key == value`), inequality
+(`key != value`), compound operators (`AND`, `OR`, `NOT` --
+case-insensitive), and parenthesized groups. Operator precedence:
+NOT > AND > OR. Simple expressions without compound operators take a
+zero-overhead quick path. Parse errors are logged and resolve to `False`.
 
 **Persistence**: `WorkflowExecutionRepository` with SQLite implementation.
 `node_executions` stored as JSON array (same pattern as definition
@@ -315,7 +318,8 @@ attempt concurrent transitions on the same task.
 Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop  ──▶  Persistence
                                                     │
                                                     ├──▶  Version tracking (optimistic concurrency)
-                                                    └──▶  Snapshot publishing (MessageBus)
+                                                    ├──▶  Snapshot publishing (MessageBus)
+                                                    └──▶  _observer_queue  ──▶  _observer_dispatch_loop  ──▶  Observers
 ```
 
 - **Single writer**: A background `asyncio.Task` consumes `TaskMutation`
@@ -363,9 +367,13 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 
 ### Lifecycle
 
-- **start()**: Spawns the background processing task.
-- **stop()**: Sets `_running = False`, drains the queue within a configurable
-  timeout, then cancels. Abandoned futures receive a failure result.
+- **start()**: Spawns two background tasks: the mutation processing loop
+  and the observer dispatch loop.
+- **stop()**: Sets `_running = False`, drains the mutation queue within a
+  configurable timeout, then places a `None` sentinel on the observer
+  queue to signal completion. The observer dispatch loop exits when it
+  dequeues the sentinel. Remaining timeout budget is used for observer
+  drain. Abandoned futures receive a failure result.
 
 ### AgentEngine ↔ TaskEngine Incremental Sync
 
@@ -406,13 +414,20 @@ reach the `MessageBusBridge` and WebSocket consumers.
 ### Observer Mechanism
 
 In addition to message-bus publishing, `TaskEngine` supports an observer
-pattern for in-process consumers that need to react synchronously to task
-state changes.
+pattern for in-process consumers that need to react asynchronously to
+task state changes.
 
 **Registration**: `register_observer()` accepts an async callback with
 signature `Callable[[TaskStateChanged], Awaitable[None]]`. Observers
-are stored in registration order and invoked sequentially after each
-successful mutation.
+are stored in registration order.
+
+**Dispatch architecture**: Observer notifications are decoupled from the
+mutation pipeline via a dedicated `_observer_queue` and background
+`_observer_dispatch_loop`. After a successful mutation, the processing
+loop enqueues a `TaskStateChanged` event with `put_nowait()`. The
+observer dispatch loop dequeues events and invokes all registered
+observers sequentially per event. If the observer queue is full, the
+event is logged at WARNING and dropped (best-effort delivery).
 
 **Notification semantics**: best-effort. Observer errors are logged at
 WARNING and swallowed (`MemoryError` and `RecursionError` propagate) --

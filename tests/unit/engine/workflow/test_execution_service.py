@@ -97,7 +97,9 @@ class FakeExecutionRepo:
         definition_id: str,
     ) -> tuple[WorkflowExecution, ...]:
         return tuple(
-            e for e in self._store.values() if e.definition_id == definition_id
+            copy.deepcopy(e)
+            for e in self._store.values()
+            if e.definition_id == definition_id
         )
 
     async def list_by_status(

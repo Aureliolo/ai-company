@@ -15,19 +15,25 @@ from synthorg.engine.task_engine_models import (
 )
 
 
-async def _flush_observers(engine: TaskEngine) -> None:
+async def _flush_observers(engine: TaskEngine, *, budget: float = 1.0) -> None:
     """Wait for the background observer dispatcher to drain its queue.
 
     Yields to the event loop repeatedly until the observer queue is
     empty, giving the dispatcher loop time to process all pending events.
+
+    Raises:
+        AssertionError: If the queue does not drain within *timeout*.
     """
-    for _ in range(50):
+    deadline = asyncio.get_event_loop().time() + budget
+    while asyncio.get_event_loop().time() < deadline:
         if engine._observer_queue.empty():
             # One extra yield to let the dispatcher finish its current
             # _notify_observers() call.
             await asyncio.sleep(0)
             return
         await asyncio.sleep(0.01)
+    msg = f"Observer queue did not drain within {budget}s"
+    raise AssertionError(msg)
 
 
 # ── Fake persistence ──────────────────────────────────────────────

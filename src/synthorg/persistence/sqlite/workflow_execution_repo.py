@@ -463,7 +463,7 @@ WHERE id = ? AND version = ?""",
             )
             return None
 
-        execution = _deserialize_row(row, task_id)
+        execution = _deserialize_row(row, str(dict(row).get("id", task_id)))
         logger.debug(
             PERSISTENCE_WORKFLOW_EXEC_FOUND_BY_TASK,
             task_id=task_id,

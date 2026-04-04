@@ -151,6 +151,30 @@ workflow_definition:
     expect(result.errors[0]).toContain('invalid dependency')
   })
 
+  it('warns for unrecognized branch value and falls back to inference', () => {
+    const yaml = `
+workflow_definition:
+  name: test
+  workflow_type: agile
+  steps:
+    - id: check
+      type: conditional
+      condition: ready
+    - id: step_b
+      type: task
+      depends_on:
+        - id: check
+          branch: "maybe"
+`
+    const result = parseYamlToNodesEdges(yaml)
+    expect(result.errors).toHaveLength(0)
+    expect(result.warnings.length).toBeGreaterThan(0)
+    expect(result.warnings[0]).toContain('unrecognized branch')
+    // Falls back to inference: first conditional edge is conditional_true
+    const edge = findEdge(result.edges, 'check', 'step_b')
+    expect(edge!.data?.edgeType).toBe('conditional_true')
+  })
+
   it('reports error for object with empty id', () => {
     const yaml = `
 workflow_definition:

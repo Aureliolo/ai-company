@@ -98,7 +98,7 @@ class WorkflowExecutionRepository(Protocol):
             execution contains this task ID.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 

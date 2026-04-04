@@ -90,12 +90,12 @@ class ProviderModelConfig(BaseModel):
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k input tokens in USD (base currency)",
+        description="Cost per 1k input tokens (base currency)",
     )
     cost_per_1k_output: float = Field(
         default=0.0,
         ge=0.0,
-        description="Cost per 1k output tokens in USD (base currency)",
+        description="Cost per 1k output tokens (base currency)",
     )
     max_context: int = Field(
         default=200_000,
@@ -182,7 +182,7 @@ class ProviderConfig(BaseModel):
     subscription_token: NotBlankStr | None = Field(
         default=None,
         repr=False,
-        description="OAuth bearer token for subscription-based auth",
+        description="Bearer token for subscription-based auth",
     )
     tos_accepted_at: AwareDatetime | None = Field(
         default=None,

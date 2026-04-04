@@ -69,8 +69,28 @@ describe('generateYamlPreview depends_on', () => {
     // Should contain branch metadata for conditional edges
     expect(yaml).toContain('branch:')
     expect(yaml).toMatch(/id:\s*check/)
-    expect(yaml).toMatch(/branch:\s*.true./)
-    expect(yaml).toMatch(/branch:\s*.false./)
+    expect(yaml).toMatch(/branch:\s*['"]true['"]/)
+    expect(yaml).toMatch(/branch:\s*['"]false['"]/)
+  })
+
+  it('emits plain string for parallel_branch edges (no branch metadata)', () => {
+    const nodes = [
+      makeNode('start', 'start'),
+      makeNode('fork', 'parallel_branch'),
+      makeNode('a', 'task', { title: 'A' }),
+      makeNode('b', 'task', { title: 'B' }),
+      makeNode('end', 'end'),
+    ]
+    const edges = [
+      makeEdge('start', 'fork'),
+      makeEdge('fork', 'a', 'parallel_branch'),
+      makeEdge('fork', 'b', 'parallel_branch'),
+      makeEdge('a', 'end'),
+      makeEdge('b', 'end'),
+    ]
+    const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
+    // parallel_branch edges should emit plain string depends_on
+    expect(yaml).not.toContain('branch:')
   })
 
   it('emits mixed plain strings and objects when both edge types exist', () => {

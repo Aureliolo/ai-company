@@ -85,7 +85,7 @@ surface:
 |---------|-----------|
 | **XSS prevention** | ESLint `no-restricted-syntax` rule bans `dangerouslySetInnerHTML` at write time. Override requires `// eslint-disable-next-line` with justification. |
 | **CSP nonce readiness** | `<MotionConfig nonce>` wrapper in `App.tsx` + `lib/csp.ts` reader. Framer Motion's dynamically injected `<style>` tags are nonce-ready. `react-style-singleton` (used by Radix Dialog/AlertDialog/Popover via `react-remove-scroll`) also supports nonces via the `get-nonce` package -- wiring `setNonce()` in `lib/csp.ts` is the remaining step. Currently staged -- see the activation checklist in `web/index.html` and the [accepted risk](#accepted-risk-inline-style-attributes) section below. |
-| **JWT storage** | `localStorage` with short-lived tokens, automatic expiry cleanup, and 401 interceptor. Cookie-based auth (httpOnly) is a future enhancement tracked separately. |
+| **JWT storage** | `sessionStorage` (tab-scoped) with short-lived tokens, automatic expiry cleanup, and 401 interceptor. Tokens do not persist across browser sessions or leak to other tabs. Cookie-based auth (httpOnly) is a future enhancement tracked separately. |
 
 ### Accepted Risk: Inline Style Attributes
 
