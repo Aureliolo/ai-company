@@ -43,12 +43,12 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('step_a', 'step_b'),
       makeEdge('step_b', 'end'),
     ]
-    const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
+    const output = generateYamlPreview(nodes, edges, 'test', 'agile')
     // Parse back to verify depends_on is a plain string
-    expect(yaml).toContain('depends_on')
-    expect(yaml).toContain('- step_a')
+    expect(output).toContain('depends_on')
+    expect(output).toContain('- step_a')
     // Should NOT contain { id: ... } format
-    expect(yaml).not.toContain('branch:')
+    expect(output).not.toContain('branch:')
   })
 
   it('emits object with branch for conditional edges', () => {
