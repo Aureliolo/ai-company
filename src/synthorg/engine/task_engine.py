@@ -186,7 +186,7 @@ class TaskEngine:
 
         await self._drain_processing(effective_timeout)
         # Signal the observer loop that no more events will arrive.
-        self._observer_queue.put_nowait(None)  # type: ignore[arg-type]
+        self._observer_queue.put_nowait(None)
         observer_budget = max(0.0, deadline - asyncio.get_event_loop().time())
         await self._drain_observer(observer_budget)
 
