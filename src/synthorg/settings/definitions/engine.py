@@ -36,3 +36,18 @@ _r.register(
         yaml_path="engine.personality_max_tokens_override",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="personality_trimming_notify",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Publish a WebSocket notification on the agents channel "
+            "when personality trimming activates for an agent"
+        ),
+        group="Personality Trimming",
+        yaml_path="engine.personality_trimming_notify",
+    )
+)

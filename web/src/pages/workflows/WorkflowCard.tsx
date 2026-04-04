@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router'
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Menu } from '@base-ui/react/menu'
 import { MoreHorizontal, Pencil, Copy, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { ROUTES } from '@/router/routes'
@@ -50,51 +50,51 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
           </div>
         </Link>
 
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-              }}
-              className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
-              aria-label="Workflow actions"
-            >
-              <MoreHorizontal className="size-4" />
-            </button>
-          </DropdownMenu.Trigger>
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
+                aria-label="Workflow actions"
+              >
+                <MoreHorizontal className="size-4" />
+              </button>
+            }
+          />
 
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              align="end"
-              sideOffset={4}
-              className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)]"
-            >
-              <DropdownMenu.Item
-                className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none hover:bg-surface focus:bg-surface"
-                onSelect={() => { void navigate(editorUrl) }}
-              >
-                <Pencil className="size-3.5" />
-                Edit
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none hover:bg-surface focus:bg-surface"
-                onSelect={() => { onDuplicate(workflow.id) }}
-              >
-                <Copy className="size-3.5" />
-                Duplicate
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-danger outline-none hover:bg-surface focus:bg-surface"
-                onSelect={() => { setConfirmDelete(true) }}
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+          <Menu.Portal>
+            <Menu.Positioner align="end" sideOffset={4}>
+              <Menu.Popup className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,transform,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
+                <Menu.Item
+                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
+                  onClick={() => { void navigate(editorUrl) }}
+                >
+                  <Pencil className="size-3.5" />
+                  Edit
+                </Menu.Item>
+                <Menu.Item
+                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
+                  onClick={() => { onDuplicate(workflow.id) }}
+                >
+                  <Copy className="size-3.5" />
+                  Duplicate
+                </Menu.Item>
+                <Menu.Item
+                  className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-danger outline-none data-[highlighted]:bg-surface"
+                  onClick={() => { setConfirmDelete(true) }}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
 
       <ConfirmDialog

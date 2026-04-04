@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Tabs } from 'radix-ui'
+import { Tabs } from '@base-ui/react/tabs'
 import { AlertTriangle, ArrowLeft, Building2, Settings, Users, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ const VALID_TABS: ReadonlySet<string> = new Set<string>(['general', 'agents', 'd
 
 const TRIGGER_CLASSES = cn(
   'px-4 py-2 text-sm font-medium text-text-secondary transition-colors',
-  'data-[state=active]:text-foreground data-[state=active]:border-b-2 data-[state=active]:border-accent',
+  'data-[active]:text-foreground data-[active]:border-b-2 data-[active]:border-accent',
   'hover:text-foreground',
 )
 
@@ -150,36 +150,36 @@ export default function OrgEditPage() {
       {yamlMode ? (
         <YamlEditorPanel config={config} onSave={handleYamlSave} saving={saving} />
       ) : (
-        <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
+        <Tabs.Root value={activeTab} onValueChange={(value: string) => handleTabChange(value as TabValue)}>
           <Tabs.List className="flex border-b border-border" aria-label="Organization sections">
-            <Tabs.Trigger value="general" className={TRIGGER_CLASSES}>
+            <Tabs.Tab value="general" className={TRIGGER_CLASSES}>
               <span className="flex items-center gap-1.5">
                 <Settings className="size-3.5" />
                 General
               </span>
-            </Tabs.Trigger>
-            <Tabs.Trigger value="agents" className={TRIGGER_CLASSES}>
+            </Tabs.Tab>
+            <Tabs.Tab value="agents" className={TRIGGER_CLASSES}>
               <span className="flex items-center gap-1.5">
                 <Users className="size-3.5" />
                 Agents
               </span>
-            </Tabs.Trigger>
-            <Tabs.Trigger value="departments" className={TRIGGER_CLASSES}>
+            </Tabs.Tab>
+            <Tabs.Tab value="departments" className={TRIGGER_CLASSES}>
               <span className="flex items-center gap-1.5">
                 <Building2 className="size-3.5" />
                 Departments
               </span>
-            </Tabs.Trigger>
+            </Tabs.Tab>
           </Tabs.List>
 
           <div className="pt-6">
-            <Tabs.Content value="general">
+            <Tabs.Panel value="general">
               <ErrorBoundary level="section">
                 <GeneralTab config={config} onUpdate={updateCompany} saving={saving} />
               </ErrorBoundary>
-            </Tabs.Content>
+            </Tabs.Panel>
 
-            <Tabs.Content value="agents">
+            <Tabs.Panel value="agents">
               <ErrorBoundary level="section">
                 <AgentsTab
                   config={config}
@@ -191,9 +191,9 @@ export default function OrgEditPage() {
                   optimisticReorderAgents={optimisticReorderAgents}
                 />
               </ErrorBoundary>
-            </Tabs.Content>
+            </Tabs.Panel>
 
-            <Tabs.Content value="departments">
+            <Tabs.Panel value="departments">
               <ErrorBoundary level="section">
                 <DepartmentsTab
                   config={config}
@@ -206,7 +206,7 @@ export default function OrgEditPage() {
                   optimisticReorderDepartments={optimisticReorderDepartments}
                 />
               </ErrorBoundary>
-            </Tabs.Content>
+            </Tabs.Panel>
           </div>
         </Tabs.Root>
       )}

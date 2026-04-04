@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHistory } from '@/api/endpoints/agents'
 import { listTasks } from '@/api/endpoints/tasks'
+import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -223,17 +224,34 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
-    if (event.event_type !== 'agent.status_changed') return
-    const payload = event.payload as Record<string, unknown>
-    const agentId = payload.agent_id
-    const status = payload.status
-    if (typeof agentId !== 'string' || typeof status !== 'string') return
-    if (!VALID_RUNTIME_STATUSES.has(status)) return
-    set((state) => ({
-      runtimeStatuses: {
-        ...state.runtimeStatuses,
-        [agentId]: status as AgentRuntimeStatus,
-      },
-    }))
+    if (event.event_type === 'agent.status_changed') {
+      const payload = event.payload as Record<string, unknown>
+      const agentId = payload.agent_id
+      const status = payload.status
+      if (typeof agentId !== 'string' || typeof status !== 'string') return
+      if (!VALID_RUNTIME_STATUSES.has(status)) return
+      set((state) => ({
+        runtimeStatuses: {
+          ...state.runtimeStatuses,
+          [agentId]: status as AgentRuntimeStatus,
+        },
+      }))
+      return
+    }
+    if (event.event_type === 'personality.trimmed') {
+      const payload = event.payload as Record<string, unknown>
+      const agentName = typeof payload.agent_name === 'string' ? payload.agent_name : 'An agent'
+      const before = typeof payload.before_tokens === 'number' ? payload.before_tokens : null
+      const after = typeof payload.after_tokens === 'number' ? payload.after_tokens : null
+      const description =
+        before !== null && after !== null
+          ? `${agentName} personality trimmed: ${before} → ${after} tokens`
+          : `${agentName} personality was trimmed to fit token budget`
+      useToastStore.getState().add({
+        variant: 'info',
+        title: 'Personality trimmed',
+        description,
+      })
+    }
   },
 }))

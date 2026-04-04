@@ -20,7 +20,7 @@ Rather than incrementally fixing each page within the Vue stack, the team evalua
 | **Component ownership** | npm dependency (PrimeVue owns components, updates can break) | Copy-paste model (shadcn generates into your codebase, full control) | Own components but smaller ecosystem | Server-rendered, minimal client components |
 | **Keyboard-first UX** | No established solution | cmdk (battle-tested command palette library) | No established solution | Not applicable |
 | **Animation ecosystem** | Limited (Vue Transition, no physics-based library at PrimeVue's level) | Framer Motion (spring physics, layout animations, gesture support) | Built-in transitions but limited physics | Not applicable |
-| **Accessibility primitives** | PrimeVue has ARIA support | Radix UI (headless, fully accessible, composable) | Limited headless options | Server-rendered (inherently accessible) |
+| **Accessibility primitives** | PrimeVue has ARIA support | Base UI (headless, fully accessible, composable) | Limited headless options | Server-rendered (inherently accessible) |
 | **TypeScript DX** | Good but JSX errors less descriptive | Better TS error messages, especially for AI-assisted development | Good | Minimal TS involvement |
 | **State management** | Pinia (Vue-specific) | Zustand (framework-agnostic, minimal API surface) | Runes (built-in) | Server state |
 | **Ecosystem maturity** | Large but smaller than React | Largest ecosystem, most third-party libraries | Growing rapidly | Niche |
@@ -38,7 +38,7 @@ The deciding factors were:
 
 3. **Animation language**: Framer Motion enables the "Warm Ops" design identity -- spring-based entrance animations, layout transitions, and gesture interactions that make an autonomous operations dashboard feel alive rather than static.
 
-4. **Accessibility**: Radix UI primitives handle WAI-ARIA compliance at the component level. Combined with shadcn/ui's composable approach, accessibility is built-in rather than bolted-on.
+4. **Accessibility**: Base UI primitives handle WAI-ARIA compliance at the component level. Combined with shadcn/ui's composable approach, accessibility is built-in rather than bolted-on.
 
 5. **AI-assisted development**: React's TypeScript integration produces more descriptive error messages, which improves the quality of AI-generated code contributions -- relevant given SynthOrg's development workflow.
 

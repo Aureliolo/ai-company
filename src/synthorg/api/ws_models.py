@@ -31,6 +31,8 @@ class WsEventType(StrEnum):
     AGENT_FIRED = "agent.fired"
     AGENT_STATUS_CHANGED = "agent.status_changed"
 
+    PERSONALITY_TRIMMED = "personality.trimmed"
+
     BUDGET_RECORD_ADDED = "budget.record_added"
     BUDGET_ALERT = "budget.alert"
 

@@ -4,18 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="SynthOrg -- monitoring and management dashboard for synthetic organizations" />
-    <!-- CSP nonce activation checklist (all four steps required):
-         1. Uncomment the meta tag below
-         2. Add sub_filter '__CSP_NONCE__' '$csp_nonce'; and sub_filter_once off;
-            to web/nginx.conf (with a map block to generate $csp_nonce per request)
-         3. Wire setNonce() from get-nonce in lib/csp.ts so react-style-singleton
-            applies nonces to its injected <style> tags (used by Dialog, Popover)
-         4. Replace style-src with split directives in web/security-headers.conf:
-            style-src-elem 'self' 'nonce-$csp_nonce'; style-src-attr 'unsafe-inline'
-         Runtime: App.tsx reads the nonce via lib/csp.ts and passes it to
-         MotionConfig so Framer Motion's injected <style> tags are CSP-compliant.
-         react-style-singleton picks up the nonce via get-nonce's getNonce(). -->
-    <!-- <meta name="csp-nonce" content="__CSP_NONCE__" /> -->
+    <!-- Per-request CSP nonce. Substituted by nginx sub_filter at serve time;
+         read at runtime by lib/csp.ts and propagated to CSPProvider (Base UI)
+         and MotionConfig (Framer Motion) for inline <style> tag signing. -->
+    <meta name="csp-nonce" content="__CSP_NONCE__" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>SynthOrg Dashboard</title>
   </head>

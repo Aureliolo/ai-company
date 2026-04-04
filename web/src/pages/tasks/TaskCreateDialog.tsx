@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Dialog } from 'radix-ui'
+import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -144,14 +144,14 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'transition-[opacity,transform,scale] duration-200 ease-out',
+            'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+            'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             'max-h-[85vh] overflow-y-auto',
           )}
         >
@@ -159,11 +159,13 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
             <Dialog.Title className="text-base font-semibold text-foreground">
               New Task
             </Dialog.Title>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close">
-                <X className="size-4" />
-              </Button>
-            </Dialog.Close>
+            <Dialog.Close
+              render={
+                <Button variant="ghost" size="icon" aria-label="Close">
+                  <X className="size-4" />
+                </Button>
+              }
+            />
           </div>
 
           <div className="space-y-4">
@@ -253,16 +255,18 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
             )}
 
             <div className="flex justify-end gap-3 pt-2">
-              <Dialog.Close asChild>
-                <Button variant="outline" disabled={submitting}>Cancel</Button>
-              </Dialog.Close>
+              <Dialog.Close
+                render={
+                  <Button variant="outline" disabled={submitting}>Cancel</Button>
+                }
+              />
               <Button disabled={submitting} onClick={handleSubmit}>
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create Task
               </Button>
             </div>
           </div>
-        </Dialog.Content>
+        </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
   )

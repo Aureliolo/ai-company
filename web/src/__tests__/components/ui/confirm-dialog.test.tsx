@@ -50,7 +50,10 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog {...defaultProps} onOpenChange={onOpenChange} />)
 
     await user.click(screen.getByRole('button', { name: /cancel/i }))
-    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // Base UI passes (open, eventDetails) to onOpenChange; we only assert on
+    // the first argument since consumers only destructure `open`.
+    expect(onOpenChange).toHaveBeenCalled()
+    expect(onOpenChange.mock.calls[0]![0]).toBe(false)
   })
 
   it('uses custom confirm/cancel labels', () => {
@@ -74,7 +77,13 @@ describe('ConfirmDialog', () => {
 
   it('loading state disables both buttons', () => {
     render(<ConfirmDialog {...defaultProps} loading />)
-    const buttons = screen.getAllByRole('button')
+    // Base UI renders internal focus-guard spans with role="button" to
+    // implement its focus trap -- filter those out and only assert on the
+    // real action buttons (Confirm + Cancel).
+    const buttons = screen
+      .getAllByRole('button')
+      .filter((el) => !el.hasAttribute('data-base-ui-focus-guard'))
+    expect(buttons).toHaveLength(2)
     for (const button of buttons) {
       expect(button).toBeDisabled()
     }

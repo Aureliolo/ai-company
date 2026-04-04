@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Dialog } from 'radix-ui'
+import { Dialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
@@ -245,14 +245,14 @@ export function ProviderFormModal({
     <>
       <Dialog.Root open={open} onOpenChange={handleOpenChange}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-          <Dialog.Content
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+          <Dialog.Popup
             className={cn(
               'fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2',
               'rounded-xl border border-border bg-card shadow-[var(--so-shadow-card-hover)]',
-              'data-[state=open]:animate-in data-[state=closed]:animate-out',
-              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+              'transition-[opacity,transform,scale] duration-200 ease-out',
+              'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+              'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
               'flex max-h-[85vh] flex-col',
             )}
           >
@@ -264,11 +264,13 @@ export function ProviderFormModal({
               <Dialog.Description className="sr-only">
                 {mode === 'create' ? 'Configure a new LLM provider' : 'Update provider settings'}
               </Dialog.Description>
-              <Dialog.Close asChild>
-                <Button variant="ghost" size="icon" aria-label="Close">
-                  <X className="size-4" />
-                </Button>
-              </Dialog.Close>
+              <Dialog.Close
+                render={
+                  <Button variant="ghost" size="icon" aria-label="Close">
+                    <X className="size-4" />
+                  </Button>
+                }
+              />
             </div>
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -380,11 +382,13 @@ export function ProviderFormModal({
 
                     {/* Submit */}
                     <div className="flex justify-end gap-3 pt-2">
-                      <Dialog.Close asChild>
-                        <Button variant="outline" disabled={submitting}>
-                          Cancel
-                        </Button>
-                      </Dialog.Close>
+                      <Dialog.Close
+                        render={
+                          <Button variant="outline" disabled={submitting}>
+                            Cancel
+                          </Button>
+                        }
+                      />
                       <Button
                         onClick={handleSubmit}
                         disabled={submitting || !name.trim() || (authType === 'subscription' && !tosAccepted) || (preset?.requires_base_url && !baseUrl.trim())}
@@ -396,7 +400,7 @@ export function ProviderFormModal({
                 )}
               </div>
             </div>
-          </Dialog.Content>
+          </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>
 

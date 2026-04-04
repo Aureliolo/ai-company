@@ -1,4 +1,5 @@
 import { useAgentsStore } from '@/stores/agents'
+import { useToastStore } from '@/stores/toast'
 import type { AgentConfig, AgentPerformanceSummary, Task } from '@/api/types'
 
 vi.mock('@/api/endpoints/agents', () => ({
@@ -465,6 +466,73 @@ describe('runtime statuses (org chart)', () => {
       channel: 'tasks',
       timestamp: '2026-03-27T10:00:00Z',
       payload: {},
+    })
+    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+  })
+})
+
+describe('personality.trimmed toast dispatch', () => {
+  beforeEach(() => {
+    useToastStore.getState().dismissAll()
+    useAgentsStore.setState({ runtimeStatuses: {} })
+  })
+
+  it('adds an info toast when personality.trimmed event arrives with numeric token fields', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'personality.trimmed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: {
+        agent_id: 'agent-1',
+        agent_name: 'Alice',
+        task_id: 'task-1',
+        before_tokens: 600,
+        after_tokens: 120,
+        max_tokens: 200,
+        trim_tier: 2,
+        budget_met: true,
+      },
+    })
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe('info')
+    expect(toasts[0]!.title).toBe('Personality trimmed')
+    expect(toasts[0]!.description).toBe('Alice personality trimmed: 600 → 120 tokens')
+  })
+
+  it('falls back to generic description when token fields are missing', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'personality.trimmed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_name: 'Bob' },
+    })
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.description).toBe('Bob personality was trimmed to fit token budget')
+  })
+
+  it('uses default label when agent_name is missing', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'personality.trimmed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: {},
+    })
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.description).toBe('An agent personality was trimmed to fit token budget')
+  })
+
+  it('does not affect runtimeStatuses', () => {
+    useAgentsStore.getState().updateFromWsEvent({
+      event_type: 'personality.trimmed',
+      channel: 'agents',
+      timestamp: '2026-03-27T10:00:00Z',
+      payload: { agent_name: 'Alice', before_tokens: 600, after_tokens: 120 },
     })
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })

@@ -220,8 +220,8 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `Skeleton` variants | `skeleton.tsx` | `shimmer?`, `lines?`, `rows?`, `columns?` | Loading placeholders: `Skeleton` (base), `SkeletonText`, `SkeletonCard`, `SkeletonMetric`, `SkeletonTable`. Shimmer respects `prefers-reduced-motion`. |
 | `EmptyState` | `empty-state.tsx` | `icon?`, `title`, `description?`, `action?` | No-data / no-results placeholder with optional action button. |
 | `ErrorBoundary` | `error-boundary.tsx` | `fallback?`, `onReset?`, `level?` | React error boundary with retry. Levels: `page` (full-height), `section` (card), `component` (inline). |
-| `ConfirmDialog` | `confirm-dialog.tsx` | `open`, `onOpenChange`, `title`, `onConfirm`, `variant?`, `loading?` | Confirmation modal built on Radix AlertDialog. Variants: `default`, `destructive`. |
-| `CommandPalette` | `command-palette.tsx` | `className?` | Global Cmd+K search built with cmdk. Focus-trapped, fuzzy search, scope toggle, recent items. |
+| `ConfirmDialog` | `confirm-dialog.tsx` | `open`, `onOpenChange`, `title`, `onConfirm`, `variant?`, `loading?` | Confirmation modal built on Base UI AlertDialog. Variants: `default`, `destructive`. |
+| `CommandPalette` | `command-palette.tsx` | `className?` | Global Cmd+K search built with cmdk-base. Hosted inside a Base UI Dialog for focus trapping, fuzzy search, scope toggle, recent items. |
 | `InlineEdit` | `inline-edit.tsx` | `value`, `onSave`, `validate?`, `type?`, `disabled?` | Click-to-edit with Enter/Escape, inline validation, optimistic save via `useFlash`. |
 | `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Framer Motion AnimatePresence with reduced-motion fallback. |
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
@@ -234,7 +234,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `TokenUsageBar` | `token-usage-bar.tsx` | `data`, `segments?`, `max?`, `animated?`, `className?` | Segmented horizontal meter bar for token usage (multi-segment with auto-colors, `role="meter"`, animated transitions). |
 | `CodeMirrorEditor` | `code-mirror-editor.tsx` | `value`, `onChange`, `language`, `readOnly?`, `aria-label?`, `className?` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, and `readOnly` support. |
 | `SegmentedControl` | `segmented-control.tsx` | `label`, `options`, `value`, `onChange`, `disabled?`, `size?`, `className?` | Accessible radiogroup with keyboard navigation (arrow keys + wrapping), size variants (`sm`/`md`), generic `<T extends string>` typing. |
-| `ThemeToggle` | `theme-toggle.tsx` | `className?` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
+| `ThemeToggle` | `theme-toggle.tsx` | `className?` | Base UI Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
 | `LiveRegion` | `live-region.tsx` | `children`, `politeness?`, `debounceMs?`, `className?` | Debounced ARIA live region wrapper for real-time WS updates without overwhelming screen readers. Default: 500ms polite, 0ms assertive. |
 | `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none -- self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
 | `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |

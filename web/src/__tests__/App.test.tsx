@@ -16,6 +16,13 @@ vi.mock('@/api/endpoints/setup', () => ({
   }),
 }))
 
+// Stub the global WebSocket subscription mounted in AppLayout -- it otherwise
+// tries to open a real WS connection during these tests and triggers an
+// EnvironmentTeardownError when the worker unmounts.
+vi.mock('@/hooks/useGlobalNotifications', () => ({
+  useGlobalNotifications: vi.fn(),
+}))
+
 // Prevent window.location side effects from auth store
 const originalLocation = window.location
 beforeAll(() => {

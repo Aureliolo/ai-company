@@ -234,7 +234,7 @@ describe('ApprovalDetailDrawer', () => {
     // Open approve confirm dialog
     await user.click(screen.getByRole('button', { name: /approve/i }))
     expect(screen.getByText('Approve Action')).toBeInTheDocument()
-    // Escape closes the Radix AlertDialog but should NOT close the drawer
+    // Escape closes the Base UI AlertDialog but should NOT close the drawer
     await user.keyboard('{Escape}')
     expect(defaultHandlers.onClose).not.toHaveBeenCalled()
     // Drawer itself is still mounted
