@@ -70,15 +70,6 @@ function edgeTypeToVisualType(edgeType: WorkflowEdgeType): string {
 }
 
 /**
- * Infer the backend edge type for a depends_on edge based on the
- * source step's configuration.
- *
- * - If the source is a conditional node (has condition_expression),
- *   assigns 'conditional_true' for the first branch and
- *   'conditional_false' for the second.
- * - Otherwise returns 'sequential'.
- */
-/**
  * Infer the edge type from the source step's type and branch index.
  *
  * Used as fallback when depends_on entries lack explicit branch
@@ -245,6 +236,8 @@ export function parseYamlToNodesEdges(
           const branch = obj.branch
           if (branch === 'true' || branch === 'false') {
             explicitBranch = branch
+          } else if (branch !== undefined) {
+            warnings.push(`Step '${stepId}' dependency '${depId}' has unrecognized branch value '${String(branch)}' -- falling back to inference`)
           }
         } else if (typeof rawDep === 'string' || typeof rawDep === 'number') {
           depId = String(rawDep).trim()

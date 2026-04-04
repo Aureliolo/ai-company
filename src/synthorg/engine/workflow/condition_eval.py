@@ -19,6 +19,11 @@ Supported expressions:
 
 Operator precedence (highest to lowest): NOT, AND, OR.
 
+.. note:: Context keys literally named ``AND``, ``OR``, or ``NOT``
+   (case-insensitive) are treated as operators in simple key-lookup
+   expressions.  Use comparison form (``AND == yes``) if a context
+   key collides with an operator name.
+
 This function does not raise -- all edge cases (empty expressions,
 missing keys, malformed comparisons) resolve to a boolean.
 """

@@ -287,6 +287,12 @@ class TestCompoundConditions:
     def test_leading_operator(self) -> None:
         assert evaluate_condition("AND true", {}) is False
 
+    def test_unclosed_paren(self) -> None:
+        assert evaluate_condition("(a == 1 AND b == 2", {"a": "1", "b": "2"}) is True
+
+    def test_double_not(self) -> None:
+        assert evaluate_condition("NOT NOT true", {}) is True
+
     # ── Complex real-world expression ─────────────────────────────
 
     def test_complex_expression(self) -> None:

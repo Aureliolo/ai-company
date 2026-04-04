@@ -1,13 +1,9 @@
 """Centralized single-writer task engine.
 
 Owns all task state mutations via an ``asyncio.Queue``.  A single
-background task consumes mutation requests sequentially, derives a new
-``Task`` instance from the current state and the mutation (e.g. via
-``Task.model_validate`` / ``Task.with_transition``), persists the result,
-and publishes snapshots to the message bus.
-
-Reads bypass the queue and go directly to persistence -- this is safe
-because the TaskEngine is the only writer.
+background task processes mutations sequentially, persists results,
+and publishes snapshots.  Reads bypass the queue (safe: single writer).
+Observer notifications are dispatched via a separate background queue.
 """
 
 import asyncio
@@ -94,10 +90,10 @@ class _MutationEnvelope:
 class TaskEngine:
     """Centralized single-writer for all task state mutations.
 
-    Uses an actor-like pattern: a single background ``asyncio.Task``
-    consumes ``TaskMutation`` requests from an ``asyncio.Queue``,
-    applies each mutation sequentially, persists the result, and
-    publishes state-change snapshots.
+    Actor-like pattern: mutations are queued, processed sequentially,
+    persisted, and published.  Observer notifications are dispatched
+    via a separate background queue so slow observers never block
+    the mutation pipeline.
 
     Args:
         persistence: Backend for task storage.
@@ -128,6 +124,7 @@ class TaskEngine:
             maxsize=self._config.max_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
+        self._observer_done = asyncio.Event()
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -140,11 +137,7 @@ class TaskEngine:
         self,
         callback: Callable[[TaskStateChanged], Awaitable[None]],
     ) -> None:
-        """Register an observer for successful task mutations.
-
-        Observers are called after each successful mutation with a
-        ``TaskStateChanged`` event.  Errors in observers are logged
-        and swallowed (best-effort).
+        """Register a best-effort observer for successful task mutations.
 
         Args:
             callback: Async callable receiving the event.
@@ -178,14 +171,10 @@ class TaskEngine:
         )
 
     async def stop(self, *, timeout: float | None = None) -> None:  # noqa: ASYNC109
-        """Stop the engine and drain pending mutations.
-
-        Acquires ``_lifecycle_lock`` to prevent a race with ``submit()``
-        where an envelope is enqueued after the processing loop exits.
+        """Stop the engine and drain pending mutations and observer events.
 
         Args:
-            timeout: Seconds to wait for drain.  Defaults to
-                ``config.drain_timeout_seconds``.
+            timeout: Seconds to wait for drain (default: config value).
         """
         async with self._lifecycle_lock:
             if not self._running:
@@ -225,6 +214,10 @@ class TaskEngine:
             finally:
                 self._processing_task = None
 
+        # Signal the observer dispatch loop that no more events will
+        # be produced (the processing loop is done).
+        self._observer_done.set()
+
         # Drain the observer queue so all pending events are delivered.
         if self._observer_task is not None:
             try:
@@ -249,14 +242,7 @@ class TaskEngine:
         self,
         saved_in_flight: _MutationEnvelope | None = None,
     ) -> None:
-        """Fail in-flight and remaining enqueued futures after drain timeout.
-
-        Args:
-            saved_in_flight: In-flight envelope captured before task
-                cancellation -- needed because ``_process_one``'s
-                ``finally`` block clears ``self._in_flight`` on
-                ``CancelledError``.
-        """
+        """Fail in-flight and queued futures after drain timeout."""
         shutdown_result_for = self._shutdown_result
         failed_count = 0
         in_flight = saved_in_flight if saved_in_flight is not None else self._in_flight
@@ -296,10 +282,6 @@ class TaskEngine:
 
     async def submit(self, mutation: TaskMutation) -> TaskMutationResult:
         """Submit a mutation and await its result.
-
-        Acquires ``_lifecycle_lock`` to prevent a race between
-        ``submit()`` and ``stop()`` where an envelope could be enqueued
-        after the processing loop has already drained and exited.
 
         Args:
             mutation: The mutation to apply.
@@ -645,23 +627,16 @@ class TaskEngine:
     # -- Background processing ---------------------------------------------
 
     _MAX_LIST_RESULTS: int = 10_000
-    """Safety cap on ``list_tasks`` results to bound memory usage.
-
-    Real pagination should be pushed into the persistence layer.
-    """
+    """Safety cap on ``list_tasks`` results (pagination TODO)."""
 
     _POLL_INTERVAL_SECONDS: float = 0.5
-    """How often the processing loop checks for ``_running = False``."""
+    """How often background loops check for shutdown."""
 
     _SNAPSHOT_SENDER: str = "task-engine"
-    """Sender identity used in snapshot ``Message`` envelopes."""
+    """Sender identity for snapshot ``Message`` envelopes."""
 
     _SNAPSHOT_CHANNEL: str = "tasks"
-    """Message bus channel for snapshot publication.
-
-    Must match ``CHANNEL_TASKS`` in ``api.channels`` so that events
-    reach the MessageBusBridge and WebSocket consumers.
-    """
+    """Snapshot channel (must match ``CHANNEL_TASKS`` in ``api.channels``)."""
 
     async def _processing_loop(self) -> None:
         """Background loop: dequeue and process mutations sequentially.
@@ -746,6 +721,7 @@ class TaskEngine:
                             TASK_ENGINE_OBSERVER_QUEUE_FULL,
                             request_id=event.request_id,
                             task_id=event.task_id,
+                            queue_size=self._observer_queue.qsize(),
                         )
         except MemoryError, RecursionError:
             raise
@@ -775,9 +751,10 @@ class TaskEngine:
         """Background loop: dequeue and dispatch observer events.
 
         Mirrors ``_processing_loop`` but for observer notifications.
-        Continues draining after ``_running`` is ``False``.
+        Keeps running until ``_observer_done`` is set (by ``stop()``
+        after the processing loop finishes) AND the queue is empty.
         """
-        while self._running or not self._observer_queue.empty():
+        while not self._observer_done.is_set() or not self._observer_queue.empty():
             try:
                 event = await asyncio.wait_for(
                     self._observer_queue.get(),
@@ -785,7 +762,15 @@ class TaskEngine:
                 )
             except TimeoutError:
                 continue
-            await self._notify_observers(event)
+            try:
+                await self._notify_observers(event)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    TASK_ENGINE_LOOP_ERROR,
+                    error="Unhandled exception in observer dispatch loop",
+                )
 
     async def _notify_observers(
         self,

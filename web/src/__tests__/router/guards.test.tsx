@@ -50,6 +50,7 @@ function resetStores() {
     loading: false,
     error: false,
   })
+  sessionStorage.clear()
   localStorage.clear()
 }
 

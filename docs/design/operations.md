@@ -1418,6 +1418,7 @@ performance:
   quality_llm_weight: 0.6         # Weight for LLM judge in composite score
   llm_sampling_rate: 0.01         # Fraction of events sampled by LLM calibration
   llm_sampling_model: null        # Model for calibration sampling (null = disabled)
+  collaboration_weights: null      # Custom weights for collaboration scoring (null = defaults)
   calibration_retention_days: 90  # Days to retain calibration records
 ```
 
@@ -1428,9 +1429,12 @@ performance:
 | `quality_ci_weight` | `float` | `0.4` | Weight for CI signal (0.0--1.0). Must sum to 1.0 with `quality_llm_weight`. |
 | `quality_llm_weight` | `float` | `0.6` | Weight for LLM judge (0.0--1.0). Must sum to 1.0 with `quality_ci_weight`. |
 | `min_data_points` | `int` | `5` | Minimum data points for meaningful metric aggregation. |
+| `windows` | `list[string]` | `["7d", "30d", "90d"]` | Time window labels for rolling metrics (at least one required). |
 | `improving_threshold` | `float` | `0.05` | Slope above which a metric trend is classified as "improving". |
 | `declining_threshold` | `float` | `-0.05` | Slope below which a metric trend is classified as "declining". |
+| `collaboration_weights` | `object` or `null` | `null` | Custom weights for collaboration scoring components. `null` uses defaults. |
 | `llm_sampling_rate` | `float` | `0.01` | Fraction of task events sampled for LLM calibration. |
+| `llm_sampling_model` | `string` or `null` | `null` | Model ID for LLM calibration sampling. `null` disables sampling. |
 | `calibration_retention_days` | `int` | `90` | Days to retain calibration records before expiry. |
 
 !!! note "Validation Rules"

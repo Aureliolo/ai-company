@@ -3,10 +3,11 @@
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import WorkflowExecutionStatus
 from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
 
 if TYPE_CHECKING:
-    from synthorg.core.enums import WorkflowExecutionStatus, WorkflowType
+    from synthorg.core.enums import WorkflowType
     from synthorg.engine.workflow.definition import WorkflowDefinition
     from synthorg.engine.workflow.execution_models import WorkflowExecution
 
