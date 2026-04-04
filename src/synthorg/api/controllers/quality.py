@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import (
+    ConflictError,
     NotFoundError,
     ServiceUnavailableError,
     UnauthorizedError,
@@ -167,6 +168,10 @@ class QualityController(Controller):
             ),
         )
 
+    # Guards intentionally use require_ceo_or_manager (not
+    # require_write_access) -- PAIR_PROGRAMMER is excluded because
+    # quality overrides affect evaluation scores and should only be
+    # set by management roles.
     @post("/override", guards=[require_ceo_or_manager], status_code=200)
     async def set_override(
         self,
@@ -221,7 +226,16 @@ class QualityController(Controller):
             applied_at=now,
             expires_at=expires_at,
         )
-        store.set_override(override)
+        try:
+            store.set_override(override)
+        except ValueError as exc:
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="quality/override",
+                reason="capacity_reached",
+                agent_id=agent_id,
+            )
+            raise ConflictError(str(exc)) from exc
 
         return ApiResponse(
             data=QualityOverrideResponse(

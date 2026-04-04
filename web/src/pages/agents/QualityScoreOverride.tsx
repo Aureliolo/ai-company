@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { AlertCircle, Shield, Trash2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { SliderField } from '@/components/ui/slider-field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { StatPill } from '@/components/ui/stat-pill'
 import { useToastStore } from '@/stores/toast'
+import { useAuth } from '@/hooks/useAuth'
 import {
   getQualityOverride,
   setQualityOverride,
@@ -15,6 +16,8 @@ import {
 import { getErrorMessage } from '@/utils/errors'
 import type { OverrideResponse } from '@/api/types'
 import type { AxiosError } from 'axios'
+
+const OVERRIDE_ROLES = ['ceo', 'manager'] as const
 
 interface QualityScoreOverrideProps {
   agentId: string
@@ -32,6 +35,10 @@ export function QualityScoreOverride({
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
   const addToast = useToastStore((s) => s.add)
+  const { userRole } = useAuth()
+  const canManageOverrides =
+    userRole !== null &&
+    (OVERRIDE_ROLES as readonly string[]).includes(userRole)
 
   // Form state.
   const [score, setScore] = useState(5.0)
@@ -39,22 +46,30 @@ export function QualityScoreOverride({
   const [reasonError, setReasonError] = useState<string | undefined>()
   const [expiresInDays, setExpiresInDays] = useState<number | null>(null)
 
+  // Guard against stale responses when agentId changes.
+  const activeAgentRef = useRef(agentId)
+
   const fetchOverride = useCallback(async () => {
+    activeAgentRef.current = agentId
+    setLoading(true)
+    setOverride(null)
+    setFetchError(null)
     try {
       const data = await getQualityOverride(agentId)
+      if (activeAgentRef.current !== agentId) return
       setOverride(data)
-      setFetchError(null)
     } catch (err) {
+      if (activeAgentRef.current !== agentId) return
       const status = (err as AxiosError)?.response?.status
       if (status === 404) {
         setOverride(null)
-        setFetchError(null)
       } else {
         setFetchError(getErrorMessage(err))
-        setOverride(null)
       }
     } finally {
-      setLoading(false)
+      if (activeAgentRef.current === agentId) {
+        setLoading(false)
+      }
     }
   }, [agentId])
 
@@ -76,6 +91,7 @@ export function QualityScoreOverride({
         expires_in_days: expiresInDays,
       })
       setOverride(data)
+      setScore(5.0)
       setReason('')
       setExpiresInDays(null)
       addToast({ variant: 'success', title: 'Quality override applied' })
@@ -108,7 +124,7 @@ export function QualityScoreOverride({
       icon={Shield}
       className={className}
       action={
-        override ? (
+        override && canManageOverrides ? (
           <Button
             variant="ghost"
             size="sm"
@@ -144,7 +160,7 @@ export function QualityScoreOverride({
           </div>
           <p className="text-sm text-muted-foreground">{override.reason}</p>
         </div>
-      ) : (
+      ) : canManageOverrides ? (
         <div className="space-y-3">
           <SliderField
             label="Quality Score"
@@ -169,6 +185,7 @@ export function QualityScoreOverride({
             min={0}
             max={365}
             step={1}
+            // Backend requires ge=1 when set; 0 maps to null (indefinite).
             onChange={(v) => setExpiresInDays(v === 0 ? null : v)}
             formatValue={(v) => (v === 0 ? 'Indefinite' : `${v} day${v === 1 ? '' : 's'}`)}
           />
@@ -179,18 +196,25 @@ export function QualityScoreOverride({
             {submitting ? 'Applying...' : 'Apply Override'}
           </Button>
         </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No active quality override. Only CEO and Manager roles can
+          set overrides.
+        </p>
       )}
 
-      <ConfirmDialog
-        open={clearDialogOpen}
-        onOpenChange={setClearDialogOpen}
-        title="Clear quality override"
-        description="This will remove the active quality score override. The composite scoring layers (CI signal + LLM judge) will determine the score."
-        confirmLabel="Clear Override"
-        variant="destructive"
-        loading={clearing}
-        onConfirm={handleClear}
-      />
+      {canManageOverrides && (
+        <ConfirmDialog
+          open={clearDialogOpen}
+          onOpenChange={setClearDialogOpen}
+          title="Clear quality override"
+          description="This will remove the active quality score override. The composite scoring layers (CI signal + LLM judge) will determine the score."
+          confirmLabel="Clear Override"
+          variant="destructive"
+          loading={clearing}
+          onConfirm={handleClear}
+        />
+      )}
     </SectionCard>
   )
 }

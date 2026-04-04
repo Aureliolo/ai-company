@@ -18,7 +18,6 @@ from synthorg.observability.events.performance import (
     PERF_LLM_JUDGE_FAILED,
     PERF_QUALITY_OVERRIDE_APPLIED,
 )
-from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.task import AcceptanceCriterion
@@ -43,6 +42,10 @@ class CompositeQualityStrategy:
     configurable weights.  When only CI succeeds (LLM not configured
     or failed), the CI score is used directly with reduced confidence.
 
+    When only CI is available (LLM not configured or failed), its
+    confidence is reduced by ``ci_only_confidence_discount`` (default
+    0.7) to signal lower scoring reliability.
+
     Args:
         ci_strategy: CI signal scoring strategy (Layer 1).
         llm_strategy: LLM judge scoring strategy (Layer 2, optional).
@@ -55,6 +58,10 @@ class CompositeQualityStrategy:
             must sum to 1.0 (within 1e-6 tolerance).
         confidence_discount: Multiplier applied to min(ci, llm)
             confidence when both layers contribute (default 0.9).
+            Must be finite and in [0.0, 1.0].
+        ci_only_confidence_discount: Multiplier applied to CI
+            confidence when only CI is available (default 0.7).
+            Must be finite and in [0.0, 1.0].
     """
 
     _WEIGHT_TOLERANCE: float = 1e-6
@@ -68,6 +75,7 @@ class CompositeQualityStrategy:
         ci_weight: float = 0.4,
         llm_weight: float = 0.6,
         confidence_discount: float = 0.9,
+        ci_only_confidence_discount: float = 0.7,
     ) -> None:
         if not math.isfinite(ci_weight) or not math.isfinite(llm_weight):
             msg = (
@@ -84,12 +92,20 @@ class CompositeQualityStrategy:
         if abs(ci_weight + llm_weight - 1.0) > self._WEIGHT_TOLERANCE:
             msg = f"ci_weight + llm_weight must equal 1.0, got {ci_weight + llm_weight}"
             raise ValueError(msg)
+        for name, val in (
+            ("confidence_discount", confidence_discount),
+            ("ci_only_confidence_discount", ci_only_confidence_discount),
+        ):
+            if not math.isfinite(val) or val < 0.0 or val > 1.0:
+                msg = f"{name} must be finite and in [0.0, 1.0], got {val}"
+                raise ValueError(msg)
         self._ci_strategy = ci_strategy
         self._llm_strategy = llm_strategy
         self._override_store = override_store
         self._ci_weight = ci_weight
         self._llm_weight = llm_weight
         self._confidence_discount = confidence_discount
+        self._ci_only_confidence_discount = ci_only_confidence_discount
 
     @property
     def name(self) -> str:
@@ -121,25 +137,29 @@ class CompositeQualityStrategy:
             return override_result
 
         # Layers 1+2: CI signal and LLM judge in parallel.
-        async with asyncio.TaskGroup() as tg:
-            ci_task = tg.create_task(
-                self._ci_strategy.score(
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    task_result=task_result,
-                    acceptance_criteria=acceptance_criteria,
-                ),
-            )
-            llm_task = tg.create_task(
-                self._try_llm(
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    task_result=task_result,
-                    acceptance_criteria=acceptance_criteria,
-                ),
-            )
-        ci_result = ci_task.result()
-        llm_result = llm_task.result()
+        # Skip layers with zero weight to avoid unnecessary calls.
+        score_kwargs = {
+            "agent_id": agent_id,
+            "task_id": task_id,
+            "task_result": task_result,
+            "acceptance_criteria": acceptance_criteria,
+        }
+        if self._ci_weight > 0.0 and self._llm_weight > 0.0:
+            async with asyncio.TaskGroup() as tg:
+                ci_task = tg.create_task(
+                    self._ci_strategy.score(**score_kwargs),
+                )
+                llm_task = tg.create_task(
+                    self._try_llm(**score_kwargs),
+                )
+            ci_result = ci_task.result()
+            llm_result = llm_task.result()
+        elif self._ci_weight > 0.0:
+            ci_result = await self._ci_strategy.score(**score_kwargs)
+            llm_result = None
+        else:
+            llm_result = await self._try_llm(**score_kwargs)
+            ci_result = await self._ci_strategy.score(**score_kwargs)
 
         # Combine layers.
         return self._combine(ci_result, llm_result)
@@ -183,8 +203,10 @@ class CompositeQualityStrategy:
     ) -> QualityScoreResult | None:
         """Attempt LLM judge scoring.
 
-        Returns ``None`` if the LLM strategy is not configured, fails,
-        or returns zero confidence.
+        Returns ``None`` if the LLM strategy is not configured,
+        encounters a non-critical failure, or returns zero confidence.
+        Critical errors (``MemoryError``, ``RecursionError``) are
+        re-raised.
         """
         if self._llm_strategy is None:
             return None
@@ -197,8 +219,6 @@ class CompositeQualityStrategy:
                 acceptance_criteria=acceptance_criteria,
             )
         except MemoryError, RecursionError:
-            raise
-        except RetryExhaustedError:
             raise
         except Exception:
             logger.warning(
@@ -248,7 +268,10 @@ class CompositeQualityStrategy:
         else:
             # CI-only fallback.
             combined_score = round(ci_result.score, 4)
-            confidence = round(ci_result.confidence * 0.7, 4)
+            confidence = round(
+                ci_result.confidence * self._ci_only_confidence_discount,
+                4,
+            )
             breakdown = ((NotBlankStr("ci_signal"), ci_result.score),)
 
         result = QualityScoreResult(

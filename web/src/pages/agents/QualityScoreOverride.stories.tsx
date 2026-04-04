@@ -16,6 +16,9 @@ const activeOverride = {
 const meta = {
   title: 'Agents/QualityScoreOverride',
   component: QualityScoreOverride,
+  parameters: {
+    a11y: { test: 'error' },
+  },
   decorators: [(Story) => <div className="max-w-lg p-6"><Story /></div>],
   args: { agentId: 'agent-001' },
 } satisfies Meta<typeof QualityScoreOverride>
@@ -56,6 +59,21 @@ export const WithExpiration: Story = {
             success: true,
             data: { ...activeOverride, expires_at: '2026-03-22T12:00:00Z' },
           }),
+        ),
+      ],
+    },
+  },
+}
+
+export const Error: Story = {
+  parameters: {
+    msw: {
+      handlers: [
+        http.get(API_BASE + '/override', () =>
+          HttpResponse.json(
+            { success: false, error: 'Internal server error' },
+            { status: 500 },
+          ),
         ),
       ],
     },

@@ -312,3 +312,70 @@ class TestQualityOverrideModel:
             make_quality_override(score=11.0, applied_at=NOW)
         with pytest.raises(ValidationError):
             make_quality_override(score=-1.0, applied_at=NOW)
+
+
+@pytest.mark.unit
+class TestCapacityLimit:
+    """Store capacity enforcement via max_overrides."""
+
+    def test_capacity_reached_raises_for_new_agent(self) -> None:
+        """Exceeding capacity for a new agent raises ValueError."""
+        store = QualityOverrideStore(max_overrides=2)
+        store.set_override(
+            make_quality_override(agent_id="a1", applied_at=NOW),
+        )
+        store.set_override(
+            make_quality_override(agent_id="a2", applied_at=NOW),
+        )
+
+        with pytest.raises(ValueError, match="capacity reached"):
+            store.set_override(
+                make_quality_override(agent_id="a3", applied_at=NOW),
+            )
+
+    def test_replace_existing_at_capacity_succeeds(self) -> None:
+        """Replacing an existing agent's override at capacity works."""
+        store = QualityOverrideStore(max_overrides=2)
+        store.set_override(
+            make_quality_override(agent_id="a1", score=5.0, applied_at=NOW),
+        )
+        store.set_override(
+            make_quality_override(agent_id="a2", applied_at=NOW),
+        )
+
+        store.set_override(
+            make_quality_override(agent_id="a1", score=9.0, applied_at=NOW),
+        )
+
+        result = store.get_active_override(
+            NotBlankStr("a1"),
+            now=NOW,
+        )
+        assert result is not None
+        assert result.score == 9.0
+
+    def test_expired_entries_swept_before_capacity_error(self) -> None:
+        """Expired entries are swept before raising capacity error."""
+        store = QualityOverrideStore(max_overrides=2)
+        store.set_override(
+            make_quality_override(
+                agent_id="a1",
+                applied_at=NOW - timedelta(hours=2),
+                expires_at=NOW - timedelta(hours=1),
+            ),
+        )
+        store.set_override(
+            make_quality_override(agent_id="a2", applied_at=NOW),
+        )
+
+        # a1 is expired -- should be swept, making room for a3.
+        store.set_override(
+            make_quality_override(agent_id="a3", applied_at=NOW),
+        )
+
+        assert store.get_active_override(NotBlankStr("a3"), now=NOW) is not None
+
+    def test_max_overrides_zero_raises(self) -> None:
+        """max_overrides < 1 raises ValueError at construction."""
+        with pytest.raises(ValueError, match="max_overrides"):
+            QualityOverrideStore(max_overrides=0)

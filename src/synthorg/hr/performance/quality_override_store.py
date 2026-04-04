@@ -43,6 +43,9 @@ class QualityOverrideStore:
         *,
         max_overrides: int = _DEFAULT_MAX_OVERRIDES,
     ) -> None:
+        if max_overrides < 1:
+            msg = f"max_overrides must be >= 1, got {max_overrides}"
+            raise ValueError(msg)
         self._overrides: dict[str, QualityOverride] = {}
         self._max_overrides = max_overrides
 
@@ -50,18 +53,38 @@ class QualityOverrideStore:
         """Set or replace the override for an agent.
 
         If a prior override (active or expired) exists for the agent,
-        it is silently discarded and replaced.
+        it is discarded and replaced.
 
         Args:
             override: The override to store.
+
+        Raises:
+            ValueError: If the store has reached ``max_overrides``
+                capacity and this is a new agent. Replacements for
+                existing agents always succeed.
         """
         agent_key = str(override.agent_id)
         if (
             agent_key not in self._overrides
             and len(self._overrides) >= self._max_overrides
         ):
-            msg = f"Override store capacity reached ({self._max_overrides})"
-            raise ValueError(msg)
+            # Sweep expired entries before failing.
+            now = datetime.now(UTC)
+            expired_keys = [
+                k
+                for k, v in self._overrides.items()
+                if v.expires_at is not None and v.expires_at <= now
+            ]
+            for ek in expired_keys:
+                expired = self._overrides.pop(ek)
+                logger.info(
+                    PERF_QUALITY_OVERRIDE_EXPIRED,
+                    agent_id=expired.agent_id,
+                    expired_at=str(expired.expires_at),
+                )
+            if len(self._overrides) >= self._max_overrides:
+                msg = f"Override store capacity reached ({self._max_overrides})"
+                raise ValueError(msg)
         self._overrides[agent_key] = override
         logger.info(
             PERF_QUALITY_OVERRIDE_SET,
@@ -112,8 +135,8 @@ class QualityOverrideStore:
     ) -> bool:
         """Remove the active (non-expired) override for an agent.
 
-        Expired overrides are silently evicted and not counted as
-        a successful clear.
+        Expired overrides are evicted (logged at INFO) and not
+        counted as a successful clear.
 
         Args:
             agent_id: Agent whose override to remove.

@@ -27,7 +27,6 @@ from synthorg.observability.events.performance import (
     PERF_SNAPSHOT_COMPUTED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
-from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -59,7 +58,7 @@ class PerformanceTracker:
     and trend detection to injected strategy implementations.
 
     When strategies are not provided, sensible defaults are constructed
-    using values from the ``PerformanceConfig``.
+    (window and trend strategies use values from ``PerformanceConfig``).
 
     Args:
         quality_strategy: Strategy for scoring task quality.
@@ -363,7 +362,7 @@ class PerformanceTracker:
                     window=window_label,
                     warning="unparseable_window_label",
                 )
-                window_records = records
+                continue
 
             # Quality score trend.
             quality_values = tuple(
@@ -504,8 +503,6 @@ class PerformanceTracker:
             )
         except MemoryError, RecursionError:
             raise
-        except RetryExhaustedError:
-            raise
         except Exception:
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
@@ -522,8 +519,6 @@ class PerformanceTracker:
                 behavioral_score=behavioral_result.score,
             )
         except MemoryError, RecursionError:
-            raise
-        except RetryExhaustedError:
             raise
         except Exception:
             logger.warning(

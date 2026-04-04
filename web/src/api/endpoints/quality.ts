@@ -23,7 +23,7 @@ export async function setQualityOverride(
 }
 
 export async function clearQualityOverride(agentId: string): Promise<void> {
-  const response = await apiClient.delete(
+  const response = await apiClient.delete<ApiResponse<null>>(
     `${basePath(agentId)}/override`,
   )
   unwrapVoid(response)

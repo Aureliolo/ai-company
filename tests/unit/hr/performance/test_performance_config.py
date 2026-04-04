@@ -59,3 +59,32 @@ class TestQualityWeightValidation:
         cfg = PerformanceConfig()
         assert cfg.quality_ci_weight == 0.4
         assert cfg.quality_llm_weight == 0.6
+
+
+@pytest.mark.unit
+class TestProviderRequiresModelValidation:
+    """quality_judge_provider requires quality_judge_model."""
+
+    def test_provider_without_model_raises(self) -> None:
+        """Setting provider without model raises ValidationError."""
+        with pytest.raises(ValidationError, match="quality_judge_provider requires"):
+            PerformanceConfig(
+                quality_judge_provider="test-provider",
+            )
+
+    def test_provider_with_model_valid(self) -> None:
+        """Setting both provider and model is accepted."""
+        cfg = PerformanceConfig(
+            quality_judge_model="test-small-001",
+            quality_judge_provider="test-provider",
+        )
+        assert cfg.quality_judge_model == "test-small-001"
+        assert cfg.quality_judge_provider == "test-provider"
+
+    def test_model_without_provider_valid(self) -> None:
+        """Setting model without provider is accepted (auto-resolve)."""
+        cfg = PerformanceConfig(
+            quality_judge_model="test-small-001",
+        )
+        assert cfg.quality_judge_model == "test-small-001"
+        assert cfg.quality_judge_provider is None

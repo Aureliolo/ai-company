@@ -319,8 +319,8 @@ class TestCostTracking:
             acceptance_criteria=(),
         )
 
-        cost_tracker.record.assert_called_once()
-        cost_record = cost_tracker.record.call_args[0][0]
+        cost_tracker.record.assert_awaited_once()
+        cost_record = cost_tracker.record.await_args[0][0]
         assert cost_record.cost_usd == 0.002
         assert cost_record.agent_id == "agent-001"
         assert cost_record.task_id == "task-001"

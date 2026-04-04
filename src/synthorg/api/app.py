@@ -760,6 +760,15 @@ def create_app(  # noqa: PLR0913, PLR0915
             channels_plugin,
         )
 
+    # Auto-wire performance tracker with composite quality strategy
+    # when not explicitly injected (production path).
+    if performance_tracker is None:
+        performance_tracker = _build_performance_tracker(
+            cost_tracker=cost_tracker,
+            provider_registry=provider_registry,
+            perf_config=effective_config.performance,
+        )
+
     app_state = AppState(
         config=effective_config,
         persistence=persistence,

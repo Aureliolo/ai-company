@@ -1,7 +1,7 @@
 """Tests for QualityController."""
 
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -149,7 +149,11 @@ class TestSetOverride:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["data"]["expires_at"] is not None
+        expires_at = body["data"]["expires_at"]
+        assert expires_at is not None
+        parsed = datetime.fromisoformat(expires_at)
+        expected = datetime.now(UTC) + timedelta(days=7)
+        assert abs((parsed - expected).total_seconds()) < 10
 
     def test_observer_denied_write(
         self,

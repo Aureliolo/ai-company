@@ -88,14 +88,22 @@ class PerformanceConfig(BaseModel):
         default=0.4,
         ge=0.0,
         le=1.0,
-        description="Weight for CI signal in composite quality score",
+        description=(
+            "Weight for CI signal in composite quality score. "
+            "Together with quality_llm_weight, must sum to 1.0."
+        ),
     )
     quality_llm_weight: float = Field(
         default=0.6,
         ge=0.0,
         le=1.0,
-        description="Weight for LLM judge in composite quality score",
+        description=(
+            "Weight for LLM judge in composite quality score. "
+            "Together with quality_ci_weight, must sum to 1.0."
+        ),
     )
+
+    _WEIGHT_TOLERANCE: ClassVar[float] = 1e-6
 
     @model_validator(mode="after")
     def _validate_quality_judge_provider_requires_model(self) -> Self:
@@ -115,8 +123,6 @@ class PerformanceConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
-
-    _WEIGHT_TOLERANCE: ClassVar[float] = 1e-6
 
     @model_validator(mode="after")
     def _validate_quality_weights_sum(self) -> Self:

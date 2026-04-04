@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.scheduler import MeetingScheduler
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
@@ -349,14 +350,16 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
+    performance_tracker: PerformanceTracker | None = None,
 ) -> None:
     """Stop services in reverse startup order.
 
     Approval timeout scheduler first, then meeting scheduler
     (depends on orchestrator), then task engine so it can drain queued
     mutations and publish final snapshots through the still-running
-    bridge.  Backup runs before persistence disconnect so shutdown
-    backup can still access the DB.
+    bridge.  Performance tracker closes after task engine (sampling
+    is triggered by task events).  Backup runs before persistence
+    disconnect so shutdown backup can still access the DB.
     """
     if approval_timeout_scheduler is not None:
         await _try_stop(
@@ -375,6 +378,12 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
             task_engine.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
+        )
+    if performance_tracker is not None:
+        await _try_stop(
+            performance_tracker.aclose(),
+            API_APP_SHUTDOWN,
+            "Failed to close performance tracker",
         )
     if backup_service is not None:
         # Create shutdown backup before stopping the backup scheduler

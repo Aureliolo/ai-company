@@ -11,6 +11,8 @@ from synthorg.hr.performance.composite_quality_strategy import (
 )
 from synthorg.hr.performance.models import QualityScoreResult
 from synthorg.hr.performance.quality_override_store import QualityOverrideStore
+from synthorg.providers.errors import ProviderInternalError
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 from .conftest import make_quality_override, make_task_metric
 
@@ -337,3 +339,96 @@ class TestConfidence:
         )
 
         assert both_result.confidence > ci_result.confidence
+
+
+@pytest.mark.unit
+class TestRetryExhaustedGracefulDegradation:
+    """RetryExhaustedError is caught and falls back to CI-only."""
+
+    async def test_llm_retry_exhausted_falls_back_to_ci(self) -> None:
+        """RetryExhaustedError from LLM degrades to CI-only."""
+        ci = _make_strategy(name="ci_signal", score=7.0, confidence=0.8)
+        llm = AsyncMock()
+        llm.name = "llm_judge"
+        llm.score.side_effect = RetryExhaustedError(
+            ProviderInternalError("upstream 500"),
+        )
+        composite = CompositeQualityStrategy(
+            ci_strategy=ci,
+            llm_strategy=llm,
+            ci_weight=0.4,
+            llm_weight=0.6,
+        )
+        record = make_task_metric(completed_at=NOW)
+
+        result = await composite.score(
+            agent_id=NotBlankStr("agent-001"),
+            task_id=NotBlankStr("task-001"),
+            task_result=record,
+            acceptance_criteria=(),
+        )
+
+        assert result.score == 7.0
+        assert result.strategy_name == "composite"
+
+
+@pytest.mark.unit
+class TestWeightValidation:
+    """Constructor validates weights and discount parameters."""
+
+    def test_negative_weight_raises(self) -> None:
+        """Negative weights are rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match="non-negative"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                ci_weight=-0.1,
+                llm_weight=1.1,
+            )
+
+    def test_nan_weight_raises(self) -> None:
+        """NaN weights are rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match="finite"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                ci_weight=float("nan"),
+                llm_weight=0.5,
+            )
+
+    def test_weights_not_summing_raises(self) -> None:
+        """Weights not summing to 1.0 are rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match=r"1\.0"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                ci_weight=0.3,
+                llm_weight=0.3,
+            )
+
+    def test_confidence_discount_nan_raises(self) -> None:
+        """NaN confidence_discount is rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match="confidence_discount"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                confidence_discount=float("nan"),
+            )
+
+    def test_confidence_discount_negative_raises(self) -> None:
+        """Negative confidence_discount is rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match="confidence_discount"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                confidence_discount=-0.1,
+            )
+
+    def test_ci_only_confidence_discount_out_of_range_raises(self) -> None:
+        """ci_only_confidence_discount > 1.0 is rejected."""
+        ci = _make_strategy()
+        with pytest.raises(ValueError, match="ci_only_confidence_discount"):
+            CompositeQualityStrategy(
+                ci_strategy=ci,
+                ci_only_confidence_discount=1.5,
+            )
