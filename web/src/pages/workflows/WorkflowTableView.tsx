@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Workflow, MoreHorizontal, Copy, Trash2, Pencil } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useState } from 'react'
@@ -57,20 +57,17 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
               return (
                 <tr
                   key={w.id}
-                  tabIndex={0}
-                  className="cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-muted/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-                  onClick={() => navigate(editorUrl)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter' && e.key !== ' ') return
-                    const target = e.target as HTMLElement
-                    if (target.closest('button, a, input, select, textarea, [role="menuitem"]')) return
-                    e.preventDefault()
-                    navigate(editorUrl)
-                  }}
-                  role="link"
-                  aria-label={`Open workflow ${w.name}`}
+                  className="border-b border-border last:border-0 transition-colors hover:bg-muted/30"
                 >
-                  <td className="px-4 py-2.5 font-medium text-foreground">{w.name}</td>
+                  <td className="px-4 py-2.5 font-medium text-foreground">
+                    <Link
+                      to={editorUrl}
+                      className="block w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                      aria-label={`Open workflow ${w.name}`}
+                    >
+                      {w.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5">
                     <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                       {w.workflow_type.replace(/_/g, ' ')}

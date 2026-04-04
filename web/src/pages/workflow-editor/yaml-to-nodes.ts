@@ -176,7 +176,7 @@ export function parseYamlToNodesEdges(
 
     const stepType = step.type ?? 'task'
     if (!VALID_TYPES.has(stepType)) {
-      warnings.push(`Unknown step type "${stepType}" for step ${stepId}, skipping`)
+      errors.push(`Unknown step type "${stepType}" for step "${stepId}"`)
       continue
     }
 
@@ -229,7 +229,15 @@ export function parseYamlToNodesEdges(
     // Edges from depends_on
     if (step.depends_on && Array.isArray(step.depends_on)) {
       for (const rawDepId of step.depends_on) {
-        const depId = String(rawDepId)
+        if (typeof rawDepId !== 'string' && typeof rawDepId !== 'number') {
+          errors.push(`Step '${stepId}' has non-string dependency: ${JSON.stringify(rawDepId)}`)
+          continue
+        }
+        const depId = String(rawDepId).trim()
+        if (!depId) {
+          errors.push(`Step '${stepId}' has empty dependency`)
+          continue
+        }
         if (!seenIds.has(depId)) {
           errors.push(`Step '${stepId}' references unknown dependency '${depId}'`)
           continue
@@ -252,7 +260,7 @@ export function parseYamlToNodesEdges(
         const isFalse = edgeType === 'conditional_false'
 
         edges.push({
-          id: `edge-${depId}-${stepId}`,
+          id: `edge-${depId}-${stepId}-${edgeType}`,
           source: depId,
           target: stepId,
           type: visualType,
@@ -268,7 +276,15 @@ export function parseYamlToNodesEdges(
     // Edges from branches (parallel_split)
     if (step.branches && Array.isArray(step.branches)) {
       for (const rawTarget of step.branches) {
-        const branchTarget = String(rawTarget)
+        if (typeof rawTarget !== 'string' && typeof rawTarget !== 'number') {
+          errors.push(`Step '${stepId}' has non-string branch target: ${JSON.stringify(rawTarget)}`)
+          continue
+        }
+        const branchTarget = String(rawTarget).trim()
+        if (!branchTarget) {
+          errors.push(`Step '${stepId}' has empty branch target`)
+          continue
+        }
         if (!seenIds.has(branchTarget)) {
           errors.push(`Step '${stepId}' references unknown branch target '${branchTarget}'`)
           continue
@@ -280,7 +296,7 @@ export function parseYamlToNodesEdges(
         emittedEdges.add(edgeKey)
 
         edges.push({
-          id: `edge-${stepId}-${branchTarget}`,
+          id: `edge-${stepId}-${branchTarget}-${edgeType}`,
           source: stepId,
           target: branchTarget,
           type: edgeTypeToVisualType(edgeType),

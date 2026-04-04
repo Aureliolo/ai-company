@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { ToggleField } from '@/components/ui/toggle-field'
@@ -582,13 +583,13 @@ export function ConditionExpressionBuilder({
           </div>
         </div>
       ) : (
-        <input
+        <InputField
+          label="Condition expression"
           type="text"
           value={freeText}
-          onChange={(e) => handleFreeTextChange(e.target.value)}
+          onValueChange={handleFreeTextChange}
           placeholder="e.g. status == completed AND priority != low"
-          className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground"
-          aria-label="Condition expression"
+          className="w-full"
         />
       )}
     </div>
