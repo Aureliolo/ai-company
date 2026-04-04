@@ -1,4 +1,4 @@
-import { AlertDialog } from 'radix-ui'
+import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
@@ -38,16 +38,16 @@ export function ConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay
-          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        <AlertDialog.Backdrop
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
         />
-        <AlertDialog.Content
+        <AlertDialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'transition-[opacity,transform,scale] duration-200 ease-out',
+            'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+            'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             className,
           )}
         >
@@ -61,11 +61,13 @@ export function ConfirmDialog({
           )}
           {children}
           <div className="mt-6 flex justify-end gap-3">
-            <AlertDialog.Cancel asChild>
-              <Button variant="outline" disabled={loading}>
-                {cancelLabel}
-              </Button>
-            </AlertDialog.Cancel>
+            <AlertDialog.Close
+              render={
+                <Button variant="outline" disabled={loading}>
+                  {cancelLabel}
+                </Button>
+              }
+            />
             <Button
               variant={variant === 'destructive' ? 'destructive' : 'default'}
               disabled={loading}
@@ -85,7 +87,7 @@ export function ConfirmDialog({
               {confirmLabel}
             </Button>
           </div>
-        </AlertDialog.Content>
+        </AlertDialog.Popup>
       </AlertDialog.Portal>
     </AlertDialog.Root>
   )

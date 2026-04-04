@@ -105,7 +105,7 @@ export function VersionDiffViewer() {
           clearTimerRef.current = null
         }
         if (!open) {
-          // Delay clearing so Radix exit animation can finish
+          // Delay clearing so the Base UI Dialog exit animation can finish
           // before diffResult content is unmounted.
           clearTimerRef.current = setTimeout(() => clearDiff(), 150)
         }

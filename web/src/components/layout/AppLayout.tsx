@@ -17,6 +17,7 @@ import {
 import { ROUTES } from '@/router/routes'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
+import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import {
   useThemeStore,
   COLOR_PALETTES,
@@ -57,6 +58,10 @@ export default function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false)
+
+  // Global WebSocket subscription for app-wide notifications (e.g. personality
+  // trimming toasts) so they render regardless of the current page.
+  useGlobalNotifications()
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
 

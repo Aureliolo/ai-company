@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Dialog } from 'radix-ui'
+import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, PackagePlus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -135,16 +135,16 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
   const busy = applying !== null
 
   return (
-    <Dialog.Root open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v) }}>
+    <Dialog.Root open={open} onOpenChange={(v: boolean) => { if (!busy) onOpenChange(v) }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
+        <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'transition-[opacity,transform,scale] duration-200 ease-out',
+            'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+            'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
           )}
         >
           <div className="flex items-center justify-between mb-4">
@@ -152,11 +152,13 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
               <PackagePlus className="size-4 text-accent" />
               Add Team
             </Dialog.Title>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close">
-                <X className="size-4" />
-              </Button>
-            </Dialog.Close>
+            <Dialog.Close
+              render={
+                <Button variant="ghost" size="icon" aria-label="Close">
+                  <X className="size-4" />
+                </Button>
+              }
+            />
           </div>
 
           <Dialog.Description className="text-sm text-text-secondary mb-4">
@@ -198,11 +200,13 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
           )}
 
           <div className="flex justify-end pt-4">
-            <Dialog.Close asChild>
-              <Button variant="outline" disabled={busy}>Close</Button>
-            </Dialog.Close>
+            <Dialog.Close
+              render={
+                <Button variant="outline" disabled={busy}>Close</Button>
+              }
+            />
           </div>
-        </Dialog.Content>
+        </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
   )

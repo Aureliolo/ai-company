@@ -1,4 +1,4 @@
-import { Dialog as RadixDialog } from 'radix-ui'
+import { Dialog as BaseDialog } from '@base-ui/react/dialog'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -10,9 +10,9 @@ export interface DialogProps {
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
-    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
+    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
       {children}
-    </RadixDialog.Root>
+    </BaseDialog.Root>
   )
 }
 
@@ -23,24 +23,24 @@ export interface DialogContentProps {
 
 export function DialogContent({ className, children }: DialogContentProps) {
   return (
-    <RadixDialog.Portal>
-      <RadixDialog.Overlay
-        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+    <BaseDialog.Portal>
+      <BaseDialog.Backdrop
+        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
       />
-      <RadixDialog.Content
+      <BaseDialog.Popup
         className={cn(
           'fixed top-1/2 left-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2',
           'rounded-xl border border-border bg-background shadow-lg',
           'max-h-[80vh] overflow-hidden',
-          'data-[state=open]:animate-in data-[state=closed]:animate-out',
-          'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-          'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'transition-[opacity,transform,scale] duration-200 ease-out',
+          'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+          'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
           className,
         )}
       >
         {children}
-      </RadixDialog.Content>
-    </RadixDialog.Portal>
+      </BaseDialog.Popup>
+    </BaseDialog.Portal>
   )
 }
 
@@ -64,9 +64,9 @@ export interface DialogTitleProps {
 
 export function DialogTitle({ className, children }: DialogTitleProps) {
   return (
-    <RadixDialog.Title className={cn('text-lg font-semibold text-foreground', className)}>
+    <BaseDialog.Title className={cn('text-lg font-semibold text-foreground', className)}>
       {children}
-    </RadixDialog.Title>
+    </BaseDialog.Title>
   )
 }
 
@@ -77,9 +77,9 @@ export interface DialogDescriptionProps {
 
 export function DialogDescription({ className, children }: DialogDescriptionProps) {
   return (
-    <RadixDialog.Description className={cn('text-sm text-muted', className)}>
+    <BaseDialog.Description className={cn('text-sm text-muted', className)}>
       {children}
-    </RadixDialog.Description>
+    </BaseDialog.Description>
   )
 }
 
@@ -89,19 +89,16 @@ export interface DialogCloseButtonProps {
 
 export function DialogCloseButton({ className }: DialogCloseButtonProps) {
   return (
-    <RadixDialog.Close asChild>
-      <button
-        type="button"
-        aria-label="Close"
-        className={cn(
-          'rounded-md p-1 text-muted-foreground transition-colors',
-          'hover:bg-card-hover hover:text-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-          className,
-        )}
-      >
-        <X className="size-4" />
-      </button>
-    </RadixDialog.Close>
+    <BaseDialog.Close
+      aria-label="Close"
+      className={cn(
+        'rounded-md p-1 text-muted-foreground transition-colors',
+        'hover:bg-card-hover hover:text-foreground',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+        className,
+      )}
+    >
+      <X className="size-4" />
+    </BaseDialog.Close>
   )
 }

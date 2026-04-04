@@ -93,6 +93,7 @@ function setOpen(value: boolean) {
  *
  * - `registerCommands(items)` registers commands with the palette; returns a cleanup function.
  * - `open()` / `close()` programmatically control the palette.
+ * - `setOpen(value)` sets the open state directly (useful as an `onOpenChange` callback).
  * - `commands` is the current list of all registered commands.
  * - `isOpen` reflects the palette's open state.
  */
@@ -103,6 +104,7 @@ export function useCommandPalette() {
   const open = useCallback(() => setOpen(true), [])
   const close = useCallback(() => setOpen(false), [])
   const toggle = useCallback(() => setOpen(!getOpenSnapshot()), [])
+  const setOpenCb = useCallback((value: boolean) => { setOpen(value) }, [])
 
   return {
     commands,
@@ -111,6 +113,7 @@ export function useCommandPalette() {
     open,
     close,
     toggle,
+    setOpen: setOpenCb,
   }
 }
 

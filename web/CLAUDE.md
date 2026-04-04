@@ -1,6 +1,8 @@
 # Web Dashboard
 
-React 19 + shadcn/ui + Radix UI + Tailwind CSS 4 + Framer Motion + Zustand
+React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Framer Motion + Zustand
+
+`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Framer Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive (replaces the old `asChild`); the local `<Slot>` in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to keep `<Button asChild>` working for existing call sites.
 
 ## Quick Commands
 
@@ -67,8 +69,8 @@ web/src/
 | `Skeleton` / `SkeletonCard` / `SkeletonMetric` / `SkeletonTable` / `SkeletonText` | `@/components/ui/skeleton` | Loading placeholders matching component shapes (shimmer animation, respects `prefers-reduced-motion`) |
 | `EmptyState` | `@/components/ui/empty-state` | No-data / no-results placeholder with icon, title, description, optional action button |
 | `ErrorBoundary` | `@/components/ui/error-boundary` | React error boundary with retry -- `level` prop: `page` / `section` / `component` |
-| `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Radix AlertDialog) with `default` / `destructive` variants and `loading` state |
-| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
+| `ConfirmDialog` | `@/components/ui/confirm-dialog` | Confirmation modal (Base UI AlertDialog) with `default` / `destructive` variants and `loading` state |
+| `CommandPalette` | `@/components/ui/command-palette` | Global Cmd+K search (cmdk-base + Base UI Dialog + React Router) -- mount once in AppLayout, register commands via `useCommandPalette` hook |
 | `InlineEdit` | `@/components/ui/inline-edit` | Click-to-edit text with Enter/Escape, validation, optimistic save with rollback |
 | `AnimatedPresence` | `@/components/ui/animated-presence` | Page transition wrapper (Framer Motion AnimatePresence keyed by route) |
 | `StaggerGroup` / `StaggerItem` | `@/components/ui/stagger-group` | Card entrance stagger container with configurable delay |
@@ -83,7 +85,7 @@ web/src/
 | `TokenUsageBar` | `@/components/ui/token-usage-bar` | Segmented horizontal meter bar for token usage (multi-segment with auto-colors, `role="meter"`, animated transitions) |
 | `CodeMirrorEditor` | `@/components/ui/code-mirror-editor` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, `readOnly` support |
 | `SegmentedControl` | `@/components/ui/segmented-control` | Accessible radiogroup with keyboard navigation, size variants (`sm`/`md`), generic `<T extends string>` typing |
-| `ThemeToggle` | `@/components/ui/theme-toggle` | Radix Popover with 5-axis theme controls (color, density, typography, animation, sidebar), rendered in StatusBar |
+| `ThemeToggle` | `@/components/ui/theme-toggle` | Base UI Popover with 5-axis theme controls (color, density, typography, animation, sidebar), rendered in StatusBar |
 | `LiveRegion` | `@/components/ui/live-region` | Debounced ARIA live region wrapper (`polite`/`assertive`) for real-time WS updates without overwhelming screen readers |
 | `MobileUnsupportedOverlay` | `@/components/ui/mobile-unsupported` | Full-screen overlay at `<768px` viewports directing users to desktop or CLI; self-manages visibility via `useBreakpoint` |
 | `LazyCodeMirrorEditor` | `@/components/ui/lazy-code-mirror-editor` | Suspense-wrapped lazy-loaded `CodeMirrorEditor` (drop-in replacement, defers ~200KB+ CodeMirror bundle) |
@@ -130,6 +132,23 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 - Complex `.map()` blocks that should be extracted
 
 Fix all violations before proceeding -- do not suppress or ignore hook output.
+
+## Base UI Adoption Decisions
+
+The dashboard uses Base UI as its primitive layer via shadcn/ui. Base UI ships several components that overlap with our existing custom implementations -- these are the current adoption decisions:
+
+| Component | Decision | Rationale |
+|-----------|----------|-----------|
+| `Dialog`, `AlertDialog`, `Popover`, `Tabs`, `Menu` | **Adopted** | Used directly (no shadcn wrapper layer) across the dashboard's primitive files and page-level dialogs. |
+| `CSPProvider` | **Adopted** | Wired in `App.tsx` alongside `MotionConfig` for end-to-end nonce propagation. |
+| `merge-props` | **Adopted** | Powers the local `<Slot>` helper in `components/ui/slot.tsx` (preserves the `asChild` ergonomic for `<Button>`). |
+| `Toast` | **Not adopted** | Our custom `components/ui/toast.tsx` is a Zustand-backed queue that integrates with the rest of the state stack; Base UI's Toast doesn't couple to external stores. |
+| `Drawer` | **Not adopted** | Our custom `components/ui/drawer.tsx` is Framer Motion-based and uses the `@/lib/motion` design-token presets enforced by the PostToolUse hook. Switching would break the motion-token enforcement. |
+| `Meter` | **Not adopted** | `ProgressGauge` already emits `role="meter"` + `aria-valuenow`/`valuemin`/`valuemax`. Base UI's Meter is a raw primitive without the styled circular/linear variants we need. |
+| `Select` | **Not adopted** | `SelectField` is a native `<select>` -- we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
+| `Combobox`, `Autocomplete` | **Not adopted (for now)** | No current typeahead call sites in the dashboard that would benefit. Re-evaluate when filterable selects become a feature requirement. |
+
+When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, Menu, Popover, Tabs, Select, Tooltip, etc.) and keep the custom Framer-Motion-based components (Drawer, Toast, animations) where they are.
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)
 

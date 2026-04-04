@@ -1112,6 +1112,7 @@ export type WsEventType =
   | 'agent.hired'
   | 'agent.fired'
   | 'agent.status_changed'
+  | 'personality.trimmed'
   | 'budget.record_added'
   | 'budget.alert'
   | 'message.sent'
@@ -1142,6 +1143,7 @@ export type WsEventType =
 export const WS_EVENT_TYPE_VALUES = [
   'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
   'agent.hired', 'agent.fired', 'agent.status_changed',
+  'personality.trimmed',
   'budget.record_added', 'budget.alert',
   'message.sent',
   'system.error', 'system.startup', 'system.shutdown',

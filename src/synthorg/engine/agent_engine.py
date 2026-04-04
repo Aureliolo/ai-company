@@ -7,6 +7,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 import asyncio
 import contextlib
 import time
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -94,6 +95,7 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
 )
 from synthorg.observability.events.prompt import (
+    PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
     PROMPT_PERSONALITY_TRIMMED,
     PROMPT_TOKEN_RATIO_HIGH,
 )
@@ -153,6 +155,18 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
+
+type PersonalityTrimNotifier = Callable[[dict[str, object]], Awaitable[None]]
+"""Async callback invoked when an agent's personality section is trimmed.
+
+The callback receives a payload dict with keys ``agent_id``, ``agent_name``,
+``task_id``, ``before_tokens``, ``after_tokens``, ``max_tokens``, ``trim_tier``,
+and ``budget_met``.  External runners (e.g. an API server hosting an
+``AgentEngine``) should wire this to ``channels_plugin.publish(...)`` with a
+``WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED, ...)`` so the dashboard
+can show a live toast when trimming activates.  Failures inside the callback
+are logged and swallowed -- they never break task execution.
+"""
 
 
 class AgentEngine:
@@ -240,6 +254,12 @@ class AgentEngine:
         config_resolver: Optional settings resolver for reading
             runtime ENGINE settings (personality trimming controls).
             When ``None``, built-in defaults are used.
+        personality_trim_notifier: Optional async callback invoked
+            when an agent's personality section is trimmed at prompt
+            build time.  See :data:`PersonalityTrimNotifier` for the
+            payload contract and recommended wiring.  When ``None``
+            (or when the ``engine.personality_trimming_notify`` setting
+            is ``False``), no callback fires.
     """
 
     def __init__(  # noqa: PLR0913, PLR0915
@@ -273,6 +293,7 @@ class AgentEngine:
         memory_backend: MemoryBackend | None = None,
         distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
+        personality_trim_notifier: PersonalityTrimNotifier | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -344,6 +365,7 @@ class AgentEngine:
         self._memory_backend = memory_backend
         self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver
+        self._personality_trim_notifier = personality_trim_notifier
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         if (
             procedural_memory_config is not None
@@ -975,17 +997,18 @@ class AgentEngine:
 
         if system_prompt.personality_trim_info is not None:
             ti = system_prompt.personality_trim_info
-            logger.info(
-                PROMPT_PERSONALITY_TRIMMED,
-                agent_id=agent_id,
-                agent_name=identity.name,
-                task_id=task_id,
-                before_tokens=ti.before_tokens,
-                after_tokens=ti.after_tokens,
-                max_tokens=ti.max_tokens,
-                trim_tier=ti.trim_tier,
-                budget_met=ti.budget_met,
-            )
+            trim_payload: dict[str, object] = {
+                "agent_id": agent_id,
+                "agent_name": identity.name,
+                "task_id": task_id,
+                "before_tokens": ti.before_tokens,
+                "after_tokens": ti.after_tokens,
+                "max_tokens": ti.max_tokens,
+                "trim_tier": ti.trim_tier,
+                "budget_met": ti.budget_met,
+            }
+            logger.info(PROMPT_PERSONALITY_TRIMMED, **trim_payload)
+            await self._maybe_notify_personality_trim(trim_payload)
 
         ctx = AgentContext.from_identity(
             identity,
@@ -1011,6 +1034,57 @@ class AgentEngine:
             self._task_engine,
         )
         return ctx, system_prompt
+
+    async def _maybe_notify_personality_trim(
+        self,
+        payload: dict[str, object],
+    ) -> None:
+        """Publish a personality-trim WebSocket notification, best-effort.
+
+        Reads the ``engine.personality_trimming_notify`` setting and, when
+        enabled and a ``personality_trim_notifier`` callback is wired, invokes
+        the callback with the trim payload.  Failures inside the callback are
+        logged (``PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED``) and swallowed --
+        notification never blocks task execution.
+
+        Args:
+            payload: The trim info dict logged via ``PROMPT_PERSONALITY_TRIMMED``.
+                Keys: ``agent_id``, ``agent_name``, ``task_id``, ``before_tokens``,
+                ``after_tokens``, ``max_tokens``, ``trim_tier``, ``budget_met``.
+        """
+        if self._personality_trim_notifier is None:
+            return
+        notify_enabled = True
+        if self._config_resolver is not None:
+            try:
+                notify_enabled = await self._config_resolver.get_bool(
+                    "engine",
+                    "personality_trimming_notify",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
+                    agent_id=payload.get("agent_id"),
+                    task_id=payload.get("task_id"),
+                    reason="failed to read personality_trimming_notify setting",
+                    exc_info=True,
+                )
+                return
+        if not notify_enabled:
+            return
+        try:
+            await self._personality_trim_notifier(payload)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
+                agent_id=payload.get("agent_id"),
+                task_id=payload.get("task_id"),
+                exc_info=True,
+            )
 
     # ── Helpers ──────────────────────────────────────────────────
 

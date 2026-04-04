@@ -1,5 +1,5 @@
 import { Palette } from 'lucide-react'
-import { Popover } from 'radix-ui'
+import { Popover } from '@base-ui/react/popover'
 import { Button } from '@/components/ui/button'
 import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
@@ -91,31 +91,32 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
 
   return (
     <Popover.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <Popover.Trigger asChild>
-        <button
-          type="button"
-          title="Theme preferences"
-          aria-label="Theme preferences"
-          className={cn(
-            'flex items-center text-muted-foreground transition-colors hover:text-foreground',
-            className,
-          )}
-        >
-          <Palette className="size-3.5" aria-hidden="true" />
-        </button>
-      </Popover.Trigger>
+      <Popover.Trigger
+        render={
+          <button
+            type="button"
+            title="Theme preferences"
+            aria-label="Theme preferences"
+            className={cn(
+              'flex items-center text-muted-foreground transition-colors hover:text-foreground',
+              className,
+            )}
+          >
+            <Palette className="size-3.5" aria-hidden="true" />
+          </button>
+        }
+      />
 
       <Popover.Portal>
-        <Popover.Content
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          className={cn(
-            'z-50 w-80 rounded-xl border border-border-bright bg-surface p-4',
-            'shadow-lg animate-in fade-in-0 zoom-in-95',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-          )}
-        >
+        <Popover.Positioner side="bottom" align="end" sideOffset={8}>
+          <Popover.Popup
+            className={cn(
+              'z-50 w-80 rounded-xl border border-border-bright bg-surface p-4 shadow-lg',
+              'transition-[opacity,transform,scale] duration-200 ease-out',
+              'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+              'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
+            )}
+          >
           <h3 className="mb-3 text-sm font-semibold text-foreground">
             Theme Preferences
           </h3>
@@ -189,7 +190,8 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
               Reset to defaults
             </Button>
           </div>
-        </Popover.Content>
+          </Popover.Popup>
+        </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
   )

@@ -1,5 +1,4 @@
-import { Command } from 'cmdk'
-import { FocusScope } from '@radix-ui/react-focus-scope'
+import { Command } from 'cmdk-base'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -45,23 +44,22 @@ export interface CommandPaletteProps {
 }
 
 export function CommandPalette({ className }: CommandPaletteProps) {
-  const { commands, isOpen, close, toggle } = useCommandPalette()
+  const { commands, isOpen, close, toggle, setOpen } = useCommandPalette()
   const [search, setSearch] = useState('')
   const [scope, setScope] = useState<'global' | 'local'>('global')
-  // Global keyboard shortcuts: Cmd+K / Ctrl+K to toggle, Escape to close
+
+  // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog inside
+  // cmdk-base's Command.Dialog, so we no longer need a manual Escape handler.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         toggle()
-      } else if (e.key === 'Escape' && isOpen) {
-        e.preventDefault()
-        close()
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [toggle, close, isOpen])
+  }, [toggle])
 
   // Reset search and scope when palette opens
   useEffect(() => {
@@ -132,96 +130,83 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     [commands],
   )
 
-  if (!isOpen) return null
-
   const hasLocalCommands = commands.some((c) => c.scope === 'local')
 
   return (
-    <div
-      className="fixed inset-0 z-50"
+    <Command.Dialog
+      open={isOpen}
+      onOpenChange={setOpen}
+      label="Command palette"
+      overlayClassName="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
+      contentClassName={cn(
+        'fixed left-1/2 top-[15vh] z-50 w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] -translate-x-1/2',
+        'rounded-xl border border-border-bright bg-surface shadow-lg',
+        'transition-[opacity,transform] duration-150 ease-out',
+        'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+        'data-[closed]:-translate-y-2 data-[starting-style]:-translate-y-2 data-[ending-style]:-translate-y-2',
+        className,
+      )}
       onKeyDown={handleScopeToggle}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command palette"
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-        onClick={close}
-        aria-hidden="true"
-      />
-      {/* Panel */}
-      <div className="flex items-start justify-center pt-[15vh]">
-        <FocusScope trapped loop>
-        <Command
-          className={cn(
-            'relative w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] rounded-xl border border-border-bright bg-surface shadow-lg',
-            className,
-          )}
-          label="Command palette"
-        >
-          {/* Search input */}
-          <div className="flex items-center gap-3 border-b border-border px-4">
-            <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <Command.Input
-              value={search}
-              onValueChange={setSearch}
-              placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
-              className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
-            />
-            {hasLocalCommands && (
-              <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                Tab: {scope}
-              </span>
-            )}
-          </div>
-
-          <Command.List className="max-h-[320px] overflow-y-auto p-2">
-            <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-              No results found.
-            </Command.Empty>
-
-            {/* Recent items */}
-            {recentItems.length > 0 && (
-              <Command.Group heading="Recent" className="mb-1">
-                {recentItems.map((cmd) => (
-                  <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={handleSelect} />
-                ))}
-              </Command.Group>
-            )}
-
-            {/* Command groups */}
-            {[...grouped.entries()].map(([groupName, items]) => (
-              <Command.Group
-                key={groupName}
-                heading={groupName}
-                className="mb-1"
-              >
-                {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
-                  <CommandItemRow key={cmd.id} item={cmd} onSelect={handleSelect} />
-                ))}
-              </Command.Group>
-            ))}
-          </Command.List>
-
-          {/* Footer hint */}
-          <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-            <span>
-              <kbd className="rounded border border-border px-1">Enter</kbd> select
-            </span>
-            <span>
-              <kbd className="rounded border border-border px-1">Esc</kbd> close
-            </span>
-            {hasLocalCommands && (
-              <span>
-                <kbd className="rounded border border-border px-1">Tab</kbd> scope
-              </span>
-            )}
-          </div>
-        </Command>
-        </FocusScope>
+      {/* Search input */}
+      <div className="flex items-center gap-3 border-b border-border px-4">
+        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Command.Input
+          value={search}
+          onValueChange={setSearch}
+          placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
+          className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
+        />
+        {hasLocalCommands && (
+          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            Tab: {scope}
+          </span>
+        )}
       </div>
-    </div>
+
+      <Command.List className="max-h-[320px] overflow-y-auto p-2">
+        <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
+          No results found.
+        </Command.Empty>
+
+        {/* Recent items */}
+        {recentItems.length > 0 && (
+          <Command.Group heading="Recent" className="mb-1">
+            {recentItems.map((cmd) => (
+              <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={handleSelect} />
+            ))}
+          </Command.Group>
+        )}
+
+        {/* Command groups */}
+        {[...grouped.entries()].map(([groupName, items]) => (
+          <Command.Group
+            key={groupName}
+            heading={groupName}
+            className="mb-1"
+          >
+            {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
+              <CommandItemRow key={cmd.id} item={cmd} onSelect={handleSelect} />
+            ))}
+          </Command.Group>
+        ))}
+      </Command.List>
+
+      {/* Footer hint */}
+      <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+        <span>
+          <kbd className="rounded border border-border px-1">Enter</kbd> select
+        </span>
+        <span>
+          <kbd className="rounded border border-border px-1">Esc</kbd> close
+        </span>
+        {hasLocalCommands && (
+          <span>
+            <kbd className="rounded border border-border px-1">Tab</kbd> scope
+          </span>
+        )}
+      </div>
+    </Command.Dialog>
   )
 }
 
