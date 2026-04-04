@@ -28,6 +28,7 @@ from synthorg.observability.events.security import (
     SECURITY_EVALUATE_START,
     SECURITY_INTERCEPTOR_ERROR,
     SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
+    SECURITY_SHADOW_WOULD_BLOCK,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
@@ -37,6 +38,7 @@ from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
 from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     SecurityConfig,
+    SecurityEnforcementMode,
 )
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
@@ -152,12 +154,19 @@ class SecOpsService:
         """Evaluate a tool invocation before execution.
 
         Steps:
-            1. Run rule engine.
-            2. If ESCALATE, create approval item (or convert to DENY).
-            3. Record audit entry.
-            4. Return verdict.
+            1. Check disabled/DISABLED enforcement mode.
+            2. Run rule engine.
+            3. LLM fallback for uncertain evaluations.
+            4. Autonomy augmentation (tighten only).
+            5. If ESCALATE, create approval item or convert to DENY.
+            6. Record audit entry.
+            7. Apply shadow mode conversion if applicable.
+            8. Return verdict.
         """
-        if not self._config.enabled:
+        if (
+            not self._config.enabled
+            or self._config.enforcement_mode == SecurityEnforcementMode.DISABLED
+        ):
             logger.warning(SECURITY_DISABLED, tool_name=context.tool_name)
             verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
@@ -213,6 +222,30 @@ class SecOpsService:
         # Record audit.
         if self._config.audit_enabled:
             self._record_audit(context, verdict)
+
+        # Shadow mode: log blocking verdicts but return ALLOW.
+        # Only replace non-ALLOW verdicts to preserve legitimate
+        # ALLOW reasons in the audit trail.
+        if (
+            self._config.enforcement_mode == SecurityEnforcementMode.SHADOW
+            and verdict.verdict != SecurityVerdictType.ALLOW
+        ):
+            logger.warning(
+                SECURITY_SHADOW_WOULD_BLOCK,
+                tool_name=context.tool_name,
+                original_verdict=verdict.verdict.value,
+                risk_level=verdict.risk_level.value,
+                reason=verdict.reason,
+            )
+            verdict = SecurityVerdict(
+                verdict=SecurityVerdictType.ALLOW,
+                reason=f"Shadow mode (original: {verdict.verdict.value})",
+                risk_level=verdict.risk_level,
+                confidence=verdict.confidence,
+                matched_rules=verdict.matched_rules,
+                evaluated_at=verdict.evaluated_at,
+                evaluation_duration_ms=verdict.evaluation_duration_ms,
+            )
 
         # Log verdict.
         event = {

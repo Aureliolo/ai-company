@@ -147,7 +147,8 @@ class TestSessionStoreList:
         )
         await store.create(_make_session(session_id="s3"))
 
-        result = await store.list_by_user("user-1")
+        with _patch_now():
+            result = await store.list_by_user("user-1")
         assert len(result) == 2
         ids = {s.session_id for s in result}
         assert ids == {"s1", "s3"}
@@ -160,7 +161,8 @@ class TestSessionStoreList:
         await store.create(_make_session(session_id="s2"))
         await store.revoke("s1")
 
-        result = await store.list_by_user("user-1")
+        with _patch_now():
+            result = await store.list_by_user("user-1")
         assert len(result) == 1
         assert result[0].session_id == "s2"
 
@@ -193,7 +195,8 @@ class TestSessionStoreList:
             ),
         )
 
-        result = await store.list_all()
+        with _patch_now():
+            result = await store.list_all()
         assert len(result) == 2
 
 
@@ -240,7 +243,8 @@ class TestSessionStoreRevoke:
             ),
         )
 
-        count = await store.revoke_all_for_user("user-1")
+        with _patch_now():
+            count = await store.revoke_all_for_user("user-1")
         assert count == 2
         assert store.is_revoked("s1") is True
         assert store.is_revoked("s2") is True
@@ -318,5 +322,6 @@ class TestSessionStoreLoadRevoked:
         # Create a new store (simulates restart).
         store2 = SessionStore(db)
         assert store2.is_revoked("sess-1") is False
-        await store2.load_revoked()
+        with _patch_now():
+            await store2.load_revoked()
         assert store2.is_revoked("sess-1") is True

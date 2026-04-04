@@ -32,6 +32,7 @@ from synthorg.security.config import (
     OutputScanPolicyType,
     RuleEngineConfig,
     SecurityConfig,
+    SecurityEnforcementMode,
     SecurityPolicyRule,
     VerdictReasonVisibility,
 )
@@ -56,6 +57,12 @@ from synthorg.security.output_scan_policy_factory import (
 )
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.security.risk_scorer import (
+    DefaultRiskScorer,
+    RiskScore,
+    RiskScorer,
+    RiskScorerWeights,
+)
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.protocol import SecurityRule
@@ -69,6 +76,7 @@ __all__ = [
     "AuditLog",
     "AutonomyTieredPolicy",
     "CustomPolicyRule",
+    "DefaultRiskScorer",
     "EvaluationConfidence",
     "LlmFallbackConfig",
     "LlmFallbackErrorPolicy",
@@ -78,12 +86,16 @@ __all__ = [
     "OutputScanResult",
     "OutputScanner",
     "RedactPolicy",
+    "RiskScore",
+    "RiskScorer",
+    "RiskScorerWeights",
     "RuleEngine",
     "RuleEngineConfig",
     "ScanOutcome",
     "SecOpsService",
     "SecurityConfig",
     "SecurityContext",
+    "SecurityEnforcementMode",
     "SecurityInterceptionStrategy",
     "SecurityPolicyRule",
     "SecurityRule",

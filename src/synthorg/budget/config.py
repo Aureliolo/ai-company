@@ -1,7 +1,8 @@
 """Budget configuration models.
 
 Implements the Cost Controls section of the Operations design page: alert
-thresholds, per-task and per-agent limits, and automatic model downgrade.
+thresholds, per-task and per-agent limits, automatic model downgrade,
+and risk budget configuration.
 """
 
 from collections import Counter
@@ -9,6 +10,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -205,6 +207,10 @@ class BudgetConfig(BaseModel):
         max_length=3,
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code for display formatting",
+    )
+    risk_budget: RiskBudgetConfig = Field(
+        default_factory=RiskBudgetConfig,
+        description="Cumulative risk-unit action budget configuration",
     )
 
     @model_validator(mode="after")

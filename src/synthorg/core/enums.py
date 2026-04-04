@@ -600,6 +600,7 @@ class DowngradeReason(StrEnum):
 
     HIGH_ERROR_RATE = "high_error_rate"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    RISK_BUDGET_EXHAUSTED = "risk_budget_exhausted"
     SECURITY_INCIDENT = "security_incident"
 
 

@@ -7,6 +7,8 @@ as described in the Cost Controls section of the Operations design page.
 """
 
 import copy
+from datetime import UTC, datetime
+from functools import partial
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -25,12 +27,14 @@ from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
+    RiskBudgetExhaustedError,
 )
 from synthorg.budget.quota import (
     DegradationAction,
     DegradationConfig,
     always_allowed_result,
 )
+from synthorg.budget.risk_check import RiskCheckResult
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -47,6 +51,14 @@ from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
     QUOTA_CHECK_DENIED,
 )
+from synthorg.observability.events.risk_budget import (
+    RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
+    RISK_BUDGET_ENFORCEMENT_CHECK,
+    RISK_BUDGET_LIMIT_EXCEEDED,
+    RISK_BUDGET_RECORD_ADDED,
+    RISK_BUDGET_RECORD_FAILED,
+    RISK_BUDGET_TASK_LIMIT_EXCEEDED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -55,11 +67,14 @@ if TYPE_CHECKING:
     from synthorg.budget.degradation import DegradationResult
     from synthorg.budget.quota import QuotaCheckResult
     from synthorg.budget.quota_tracker import QuotaTracker
+    from synthorg.budget.risk_record import RiskRecord
+    from synthorg.budget.risk_tracker import RiskTracker
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
     from synthorg.engine.loop_protocol import BudgetChecker
     from synthorg.providers.routing.resolver import ModelResolver
+    from synthorg.security.risk_scorer import RiskScorer
 
 logger = get_logger(__name__)
 
@@ -77,9 +92,11 @@ class BudgetEnforcer:
         model_resolver: Auto-downgrade alias lookup.
         quota_tracker: Provider-level quota enforcement.
         degradation_configs: Per-provider degradation strategies.
+        risk_tracker: Optional risk tracking service.
+        risk_scorer: Optional risk scoring implementation.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         budget_config: BudgetConfig,
@@ -87,6 +104,8 @@ class BudgetEnforcer:
         model_resolver: ModelResolver | None = None,
         quota_tracker: QuotaTracker | None = None,
         degradation_configs: Mapping[str, DegradationConfig] | None = None,
+        risk_tracker: RiskTracker | None = None,
+        risk_scorer: RiskScorer | None = None,
     ) -> None:
         self._budget_config = budget_config
         self._cost_tracker = cost_tracker
@@ -97,11 +116,28 @@ class BudgetEnforcer:
             if degradation_configs is not None
             else None
         )
+        self._risk_tracker = risk_tracker
+        self._risk_scorer = risk_scorer
+
+        if budget_config.risk_budget.enabled and (
+            risk_tracker is None or risk_scorer is None
+        ):
+            logger.warning(
+                RISK_BUDGET_ENFORCEMENT_CHECK,
+                reason="risk_budget_enabled_but_missing_deps",
+                has_tracker=risk_tracker is not None,
+                has_scorer=risk_scorer is not None,
+            )
 
     @property
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
         return self._cost_tracker
+
+    @property
+    def risk_tracker(self) -> RiskTracker | None:
+        """The optional risk tracker."""
+        return self._risk_tracker
 
     @property
     def currency(self) -> str:
@@ -469,6 +505,173 @@ class BudgetEnforcer:
             thresholds=thresholds,
             agent_id=agent_id,
         )
+
+    # ── Risk budget enforcement ─────────────────────────────────
+
+    async def check_risk_budget(
+        self,
+        agent_id: str,
+        task_id: str,
+        action_type: str,
+    ) -> RiskCheckResult:
+        """Pre-flight risk budget check.
+
+        Checks per-task, per-agent daily, and total daily risk limits
+        including the projected risk of the pending action.
+
+        Pre-flight checks are best-effort under concurrency (TOCTOU).
+        See class docstring.
+
+        Raises:
+            RiskBudgetExhaustedError: When a risk limit is exceeded
+                and enforcement is active.
+        """
+        risk_cfg = self._budget_config.risk_budget
+        if not risk_cfg.enabled or self._risk_tracker is None:
+            return RiskCheckResult()
+
+        logger.debug(
+            RISK_BUDGET_ENFORCEMENT_CHECK,
+            agent_id=agent_id,
+            task_id=task_id,
+            action_type=action_type,
+        )
+
+        try:
+            # Score the pending action for projected enforcement.
+            projected = 0.0
+            if self._risk_scorer is not None:
+                projected = self._risk_scorer.score(action_type).risk_units
+
+            day_start = daily_period_start()
+            t = self._risk_tracker
+            checks = (
+                (
+                    risk_cfg.per_task_risk_limit,
+                    partial(t.get_task_risk, task_id),
+                    RISK_BUDGET_TASK_LIMIT_EXCEEDED,
+                    "Per-task",
+                ),
+                (
+                    risk_cfg.per_agent_daily_risk_limit,
+                    partial(t.get_agent_risk, agent_id, start=day_start),
+                    RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
+                    "Per-agent daily",
+                ),
+                (
+                    risk_cfg.total_daily_risk_limit,
+                    partial(t.get_total_risk, start=day_start),
+                    RISK_BUDGET_LIMIT_EXCEEDED,
+                    "Total daily",
+                ),
+            )
+            for limit, get_risk, event, label in checks:
+                self._enforce_risk_limit(
+                    limit,
+                    await get_risk(),
+                    projected,
+                    event,
+                    label,
+                    agent_id,
+                    task_id,
+                )
+        except MemoryError, RecursionError:
+            raise
+        except RiskBudgetExhaustedError:
+            raise
+        except Exception:
+            logger.exception(
+                RISK_BUDGET_ENFORCEMENT_CHECK,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason="risk_check_error",
+            )
+
+        return RiskCheckResult(risk_units=projected)
+
+    def _enforce_risk_limit(  # noqa: PLR0913
+        self,
+        limit: float,
+        current: float,
+        projected: float,
+        event: str,
+        label: str,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Check a single risk limit and raise if exceeded."""
+        if limit <= 0:
+            return
+        total = current + projected
+        if total >= limit:
+            logger.warning(
+                event,
+                agent_id=agent_id,
+                task_id=task_id,
+                current=current,
+                projected=projected,
+                limit=limit,
+            )
+            msg = f"{label} risk limit exceeded: {total:.2f} >= {limit:.2f}"
+            raise RiskBudgetExhaustedError(
+                msg,
+                agent_id=agent_id,
+                task_id=task_id,
+                risk_units_used=total,
+                risk_limit=limit,
+            )
+
+    async def record_risk(
+        self,
+        agent_id: str,
+        task_id: str,
+        action_type: str,
+    ) -> RiskRecord | None:
+        """Score and record a risk entry for the given action.
+
+        Returns ``None`` when risk budgets are disabled, no tracker
+        is configured, or no scorer is available.
+        """
+        from synthorg.budget.risk_record import (  # noqa: PLC0415
+            RiskRecord as _RiskRecord,
+        )
+
+        risk_cfg = self._budget_config.risk_budget
+        if (
+            not risk_cfg.enabled
+            or self._risk_tracker is None
+            or self._risk_scorer is None
+        ):
+            return None
+
+        try:
+            score = self._risk_scorer.score(action_type)
+            record = _RiskRecord(
+                agent_id=agent_id,
+                task_id=task_id,
+                action_type=action_type,
+                risk_score=score,
+                risk_units=score.risk_units,
+                timestamp=datetime.now(UTC),
+            )
+            await self._risk_tracker.record(record)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                RISK_BUDGET_RECORD_FAILED,
+                agent_id=agent_id,
+                action_type=action_type,
+            )
+            return None
+        logger.info(
+            RISK_BUDGET_RECORD_ADDED,
+            agent_id=agent_id,
+            task_id=task_id,
+            action_type=action_type,
+            risk_units=score.risk_units,
+        )
+        return record
 
     # ── Private helpers ──────────────────────────────────────────
 

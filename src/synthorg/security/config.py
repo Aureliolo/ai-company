@@ -14,6 +14,27 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.security.models import SecurityVerdictType
 
 
+class SecurityEnforcementMode(StrEnum):
+    """Security enforcement mode for the SecOps service.
+
+    Controls whether security verdicts are enforced, logged only
+    (shadow mode for calibration), or fully disabled.
+
+    Members:
+        ACTIVE: Full enforcement -- verdicts are applied as-is.
+        SHADOW: Shadow mode -- full evaluation pipeline runs and
+            audit entries are recorded, but blocking verdicts (DENY,
+            ESCALATE) are converted to ALLOW.  Used for pre-deployment
+            calibration of risk budgets.
+        DISABLED: Security subsystem is disabled -- no evaluation,
+            always ALLOW.
+    """
+
+    ACTIVE = "active"
+    SHADOW = "shadow"
+    DISABLED = "disabled"
+
+
 class OutputScanPolicyType(StrEnum):
     """Declarative output scan policy selection.
 
@@ -192,6 +213,8 @@ class SecurityConfig(BaseModel):
 
     Attributes:
         enabled: Master switch for the security subsystem.
+        enforcement_mode: Security enforcement mode
+            (active/shadow/disabled).
         rule_engine: Rule engine configuration.
         llm_fallback: LLM-based fallback for uncertain evaluations.
         audit_enabled: Whether to record audit entries.
@@ -206,6 +229,10 @@ class SecurityConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = True
+    enforcement_mode: SecurityEnforcementMode = Field(
+        default=SecurityEnforcementMode.ACTIVE,
+        description="Security enforcement mode (active/shadow/disabled)",
+    )
     rule_engine: RuleEngineConfig = Field(
         default_factory=RuleEngineConfig,
     )
