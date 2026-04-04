@@ -4,7 +4,10 @@ import {
   createWorkflow as createWorkflowApi,
   deleteWorkflow as deleteWorkflowApi,
 } from '@/api/endpoints/workflows'
+import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+
+const log = createLogger('workflows')
 import type { CreateWorkflowDefinitionRequest, WorkflowDefinition } from '@/api/types'
 
 interface WorkflowsState {
@@ -54,6 +57,7 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
       })
     } catch (err) {
       if (isStaleListRequest(token)) return
+      log.warn('Failed to fetch workflows', err)
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },

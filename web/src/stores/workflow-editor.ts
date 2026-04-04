@@ -8,6 +8,9 @@
 import { create } from 'zustand'
 import type { Node, Edge, Connection, NodeChange, EdgeChange } from '@xyflow/react'
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('workflow-editor')
 import type {
   WorkflowDefinition,
   WorkflowValidationResult,
@@ -181,6 +184,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
+      log.warn('Failed to load workflow definition', err)
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -217,6 +221,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
+      log.warn('Failed to create workflow definition', err)
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -262,9 +267,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 409 && definition) {
+        log.warn('Version conflict saving workflow, reloading', err)
         set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
+        log.warn('Failed to save workflow definition', err)
         set({ saving: false, error: getErrorMessage(err) })
       }
     }
@@ -490,6 +497,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       })
       set({ validationResult: result, validating: false })
     } catch (err) {
+      log.warn('Workflow validation failed', err)
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })
     }
   },

@@ -215,7 +215,7 @@ export function parseYamlToNodesEdges(
       id: stepId,
       type: validated.type,
       position,
-      data: { label: validated.step.title ?? stepId, config },
+      data: { label: stringOrUndef(validated.step.title) ?? stepId, config },
     })
   }
 
@@ -364,25 +364,41 @@ export function parseYamlToNodesEdges(
   return { nodes, edges, errors, warnings }
 }
 
+/** Accept only string values from YAML-parsed data. */
+function stringOrUndef(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined
+}
+
 function buildConfig(step: YamlStep, stepType: string): Record<string, unknown> {
   const config: Record<string, unknown> = {}
 
   if (stepType === 'task') {
-    if (step.title) config.title = step.title
-    if (step.task_type) config.task_type = step.task_type
-    if (step.priority) config.priority = step.priority
-    if (step.complexity) config.complexity = step.complexity
-    if (step.coordination_topology) config.coordination_topology = step.coordination_topology
+    const title = stringOrUndef(step.title)
+    if (title) config.title = title
+    const taskType = stringOrUndef(step.task_type)
+    if (taskType) config.task_type = taskType
+    const priority = stringOrUndef(step.priority)
+    if (priority) config.priority = priority
+    const complexity = stringOrUndef(step.complexity)
+    if (complexity) config.complexity = complexity
+    const topology = stringOrUndef(step.coordination_topology)
+    if (topology) config.coordination_topology = topology
   } else if (stepType === 'conditional') {
-    if (step.condition) config.condition_expression = step.condition
+    const expr = stringOrUndef(step.condition)
+    if (expr) config.condition_expression = expr
   } else if (stepType === 'parallel_split') {
-    if (step.max_concurrency != null) config.max_concurrency = step.max_concurrency
+    if (typeof step.max_concurrency === 'number') {
+      config.max_concurrency = step.max_concurrency
+    }
   } else if (stepType === 'parallel_join') {
-    config.join_strategy = step.join_strategy ?? 'all'
+    config.join_strategy = stringOrUndef(step.join_strategy) ?? 'all'
   } else if (stepType === 'agent_assignment') {
-    if (step.strategy) config.routing_strategy = step.strategy
-    if (step.role) config.role_filter = step.role
-    if (step.agent_name) config.agent_name = step.agent_name
+    const strategy = stringOrUndef(step.strategy)
+    if (strategy) config.routing_strategy = strategy
+    const role = stringOrUndef(step.role)
+    if (role) config.role_filter = role
+    const agentName = stringOrUndef(step.agent_name)
+    if (agentName) config.agent_name = agentName
   }
 
   return config
