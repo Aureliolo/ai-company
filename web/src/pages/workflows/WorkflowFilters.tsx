@@ -2,14 +2,8 @@ import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import type { SelectOption } from '@/components/ui/select-field'
 import { useWorkflowsStore } from '@/stores/workflows'
+import { WORKFLOW_TYPES } from '@/utils/constants'
 import { formatLabel } from '@/utils/format'
-
-const WORKFLOW_TYPES = [
-  'sequential_pipeline',
-  'parallel_execution',
-  'kanban',
-  'agile_kanban',
-] as const
 
 const WORKFLOW_TYPE_OPTIONS: readonly SelectOption[] = [
   { value: '', label: 'All types' },

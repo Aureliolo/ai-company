@@ -5,6 +5,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
+import { WORKFLOW_TYPES } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
 
 interface WorkflowCreateDrawerProps {
@@ -24,12 +25,10 @@ const INITIAL_FORM: FormState = {
   workflowType: 'sequential_pipeline',
 }
 
-const WORKFLOW_TYPE_OPTIONS = [
-  { value: 'sequential_pipeline', label: 'Sequential Pipeline' },
-  { value: 'parallel_execution', label: 'Parallel Execution' },
-  { value: 'kanban', label: 'Kanban' },
-  { value: 'agile_kanban', label: 'Agile Kanban' },
-]
+const WORKFLOW_TYPE_OPTIONS = WORKFLOW_TYPES.map((t) => ({
+  value: t,
+  label: t.charAt(0).toUpperCase() + t.slice(1).replaceAll('_', ' '),
+}))
 
 export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)

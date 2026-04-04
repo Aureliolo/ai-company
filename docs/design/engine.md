@@ -426,7 +426,7 @@ bridges TaskEngine state changes into the workflow execution lifecycle:
   that owns the task.
 - It updates the corresponding `WorkflowNodeExecution` status and
   evaluates whether the overall workflow execution should transition
-  (all tasks done -> `COMPLETED`, any task failed -> `FAILED`).
+  (all tasks done -> `COMPLETED`, any task failed or cancelled -> `FAILED`).
 - The node status update and execution transition are persisted in a
   single repository save to avoid inconsistent intermediate states.
 
