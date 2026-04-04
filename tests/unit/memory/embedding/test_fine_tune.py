@@ -124,10 +124,10 @@ class TestGenerateTrainingData:
         )
         assert train_path.exists()
         assert val_path.exists()
-        train_lines = train_path.read_text().strip().split("\n")
-        val_lines = val_path.read_text().strip().split("\n")
-        assert len(train_lines) > 0
-        assert len(val_lines) > 0
+        train_lines = [ln for ln in train_path.read_text().splitlines() if ln.strip()]
+        val_lines = [ln for ln in val_path.read_text().splitlines() if ln.strip()]
+        assert len(train_lines) >= 1
+        assert len(val_lines) >= 1
         # Validate JSONL format.
         pair = json.loads(train_lines[0])
         assert "query" in pair
@@ -339,8 +339,8 @@ class TestComputeMetrics:
         n = 5
         embs = np.eye(n, dtype=np.float32)
         ndcg, recall = _compute_metrics(embs, embs)
-        assert ndcg == 1.0
-        assert recall == 1.0
+        assert ndcg == pytest.approx(1.0)
+        assert recall == pytest.approx(1.0)
 
     def test_random_embeddings_positive(self) -> None:
         import numpy as np
