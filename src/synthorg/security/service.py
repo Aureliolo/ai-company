@@ -19,6 +19,9 @@ from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
     AUTONOMY_ACTION_HUMAN_REQUIRED,
 )
+from synthorg.observability.events.risk_budget import (
+    RISK_BUDGET_SHADOW_LOGGED,
+)
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_RECORD_ERROR,
     SECURITY_DISABLED,
@@ -37,6 +40,7 @@ from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
 from synthorg.security.config import (
     LlmFallbackErrorPolicy,
     SecurityConfig,
+    SecurityEnforcementMode,
 )
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
@@ -157,7 +161,10 @@ class SecOpsService:
             3. Record audit entry.
             4. Return verdict.
         """
-        if not self._config.enabled:
+        if (
+            not self._config.enabled
+            or self._config.enforcement_mode == SecurityEnforcementMode.DISABLED
+        ):
             logger.warning(SECURITY_DISABLED, tool_name=context.tool_name)
             verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
@@ -213,6 +220,26 @@ class SecOpsService:
         # Record audit.
         if self._config.audit_enabled:
             self._record_audit(context, verdict)
+
+        # Shadow mode: log the real verdict but return ALLOW.
+        if self._config.enforcement_mode == SecurityEnforcementMode.SHADOW:
+            if verdict.verdict != SecurityVerdictType.ALLOW:
+                logger.warning(
+                    RISK_BUDGET_SHADOW_LOGGED,
+                    tool_name=context.tool_name,
+                    original_verdict=verdict.verdict.value,
+                    risk_level=verdict.risk_level.value,
+                    reason=verdict.reason,
+                )
+            verdict = SecurityVerdict(
+                verdict=SecurityVerdictType.ALLOW,
+                reason=f"Shadow mode (original: {verdict.verdict.value})",
+                risk_level=verdict.risk_level,
+                confidence=verdict.confidence,
+                matched_rules=verdict.matched_rules,
+                evaluated_at=verdict.evaluated_at,
+                evaluation_duration_ms=verdict.evaluation_duration_ms,
+            )
 
         # Log verdict.
         event = {

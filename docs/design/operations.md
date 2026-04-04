@@ -482,6 +482,107 @@ work) and logs structured events to the observability layer.
 Error categories derived from [Kim et al., 2025](https://arxiv.org/abs/2512.08296) and the
 Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025).
 
+### Risk Budget
+
+The framework tracks **cumulative risk** alongside monetary cost. While the
+`RiskClassifier` assigns per-action risk levels (LOW/MEDIUM/HIGH/CRITICAL),
+the risk budget tracks risk _accumulation_ -- an agent executing 50 MEDIUM-risk
+actions in a row should trigger escalation even though each individual action
+is approved.
+
+#### Risk Scoring Model
+
+Each action is scored on four dimensions (0.0--1.0):
+
+| Dimension | Meaning | 0.0 | 1.0 |
+|-----------|---------|-----|-----|
+| `reversibility` | How irreversible | Fully reversible | Irreversible |
+| `blast_radius` | Scope of impact | None | Global |
+| `data_sensitivity` | Data touched | Public | Secret |
+| `external_visibility` | External parties | Internal only | Fully public |
+
+A weighted sum produces a scalar `risk_units` value (default weights:
+0.3/0.3/0.2/0.2). The `RiskScorer` protocol is pluggable; the default
+implementation maps built-in `ActionType` values to pre-defined `RiskScore`
+instances (CRITICAL ~0.88, HIGH ~0.62, MEDIUM ~0.31, LOW ~0.05).
+
+#### Risk Budget Configuration
+
+```yaml
+budget:
+  risk_budget:
+    enabled: false                  # opt-in
+    per_task_risk_limit: 5.0
+    per_agent_daily_risk_limit: 20.0
+    total_daily_risk_limit: 100.0
+    alerts:
+      warn_at: 75                   # percent of daily limit
+      critical_at: 90
+```
+
+Zero limits mean unlimited. Risk budget is disabled by default.
+
+#### Risk Tracker
+
+`RiskTracker` mirrors `CostTracker`: append-only `RiskRecord` entries with
+TTL-based eviction (7 days), asyncio.Lock concurrency safety, and
+per-agent/per-task/total aggregation queries.
+
+#### Enforcement
+
+`BudgetEnforcer` checks risk limits alongside monetary limits:
+
+1. **Pre-flight**: `check_risk_budget()` checks per-task, per-agent daily,
+   and total daily risk limits. Raises `RiskBudgetExhaustedError` on breach.
+2. **Recording**: `record_risk()` scores and records each action via
+   the `RiskScorer` and `RiskTracker`.
+3. **Auto-downgrade**: `RISK_BUDGET_EXHAUSTED` added to `DowngradeReason`.
+
+#### Shadow Mode
+
+`SecurityEnforcementMode` (on `SecurityConfig`) controls enforcement:
+
+| Mode | Behavior |
+|------|----------|
+| `active` (default) | Full enforcement -- verdicts applied as-is |
+| `shadow` | Full pipeline runs, audit recorded, but blocking verdicts convert to ALLOW |
+| `disabled` | No evaluation, always ALLOW |
+
+Shadow mode enables pre-deployment calibration: operators can observe what
+_would_ have been blocked without disrupting agent work, then tune risk
+weights and limits before switching to active enforcement.
+
+### Automated Reporting
+
+The framework generates periodic reports summarizing spending, performance,
+task completion, and risk trends. Reports are generated on demand via API
+or on a schedule.
+
+#### Report Periods
+
+| Period | Coverage |
+|--------|----------|
+| `daily` | Previous day (00:00 UTC to 00:00 UTC) |
+| `weekly` | Previous week (Monday 00:00 UTC to Monday 00:00 UTC) |
+| `monthly` | Previous month (1st 00:00 UTC to 1st 00:00 UTC) |
+
+#### Report Templates
+
+| Template | Data Source | Contents |
+|----------|-----------|----------|
+| `spending_summary` | `CostTracker` | Per-task, per-provider, per-model cost breakdowns |
+| `performance_metrics` | `PerformanceTracker` | Per-agent quality scores, task counts, cost/risk totals |
+| `task_completion` | `CostTracker` | Completion rates, department breakdowns |
+| `risk_trends` | `RiskTracker` | Risk accumulation by agent and action type, daily trend |
+| `comprehensive` | All sources | Combines all templates into a single report |
+
+#### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/reports/generate` | Generate an on-demand report for a given period |
+| `GET` | `/api/v1/reports/periods` | List available report periods |
+
 ---
 
 ## Tool and Capability System

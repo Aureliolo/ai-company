@@ -5,6 +5,7 @@ tracking, budget hierarchy, and spending summaries as described in
 the Operations design page.
 """
 
+from synthorg.budget.automated_reports import AutomatedReportService
 from synthorg.budget.billing import billing_period_start, daily_period_start
 from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
 from synthorg.budget.category_analytics import CategoryBreakdown, OrchestrationRatio
@@ -51,6 +52,7 @@ from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
+    RiskBudgetExhaustedError,
 )
 from synthorg.budget.hierarchy import (
     BudgetHierarchy,
@@ -85,6 +87,21 @@ from synthorg.budget.quota import (
     effective_cost_per_1k,
 )
 from synthorg.budget.quota_tracker import QuotaTracker
+from synthorg.budget.report_config import (
+    AutomatedReportingConfig,
+    ReportPeriod,
+    ReportScheduleConfig,
+    ReportTemplateName,
+)
+from synthorg.budget.report_templates import (
+    AgentPerformanceSummary,
+    ComprehensiveReport,
+    DailyRiskPoint,
+    DepartmentTaskSummary,
+    PerformanceMetricsReport,
+    RiskTrendsReport,
+    TaskCompletionReport,
+)
 from synthorg.budget.reports import (
     ModelDistribution,
     PeriodComparison,
@@ -93,6 +110,10 @@ from synthorg.budget.reports import (
     SpendingReport,
     TaskSpending,
 )
+from synthorg.budget.risk_check import RiskCheckResult
+from synthorg.budget.risk_config import RiskBudgetAlertConfig, RiskBudgetConfig
+from synthorg.budget.risk_record import RiskRecord
+from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -107,12 +128,15 @@ __all__ = [
     "DEFAULT_CURRENCY",
     "MINOR_UNITS",
     "AgentEfficiency",
+    "AgentPerformanceSummary",
     "AgentSpending",
     "AnomalyDetectionResult",
     "AnomalySeverity",
     "AnomalyType",
     "ApprovalDecision",
     "AutoDowngradeConfig",
+    "AutomatedReportService",
+    "AutomatedReportingConfig",
     "BudgetAlertConfig",
     "BudgetAlertLevel",
     "BudgetConfig",
@@ -120,6 +144,7 @@ __all__ = [
     "BudgetExhaustedError",
     "BudgetHierarchy",
     "CategoryBreakdown",
+    "ComprehensiveReport",
     "CoordinationEfficiency",
     "CoordinationMetricName",
     "CoordinationMetrics",
@@ -132,11 +157,13 @@ __all__ = [
     "CostTiersConfig",
     "CostTracker",
     "DailyLimitExceededError",
+    "DailyRiskPoint",
     "DegradationAction",
     "DegradationConfig",
     "DegradationResult",
     "DepartmentBudget",
     "DepartmentSpending",
+    "DepartmentTaskSummary",
     "DowngradeAnalysis",
     "DowngradeRecommendation",
     "EfficiencyAnalysis",
@@ -150,6 +177,7 @@ __all__ = [
     "OrchestrationAlertLevel",
     "OrchestrationAlertThresholds",
     "OrchestrationRatio",
+    "PerformanceMetricsReport",
     "PeriodComparison",
     "PeriodSpending",
     "PreFlightResult",
@@ -163,12 +191,23 @@ __all__ = [
     "QuotaWindow",
     "RedundancyRate",
     "ReportGenerator",
+    "ReportPeriod",
+    "ReportScheduleConfig",
+    "ReportTemplateName",
+    "RiskBudgetAlertConfig",
+    "RiskBudgetConfig",
+    "RiskBudgetExhaustedError",
+    "RiskCheckResult",
+    "RiskRecord",
+    "RiskTracker",
+    "RiskTrendsReport",
     "RoutingOptimizationAnalysis",
     "RoutingSuggestion",
     "SpendingAnomaly",
     "SpendingReport",
     "SpendingSummary",
     "SubscriptionConfig",
+    "TaskCompletionReport",
     "TaskSpending",
     "TeamBudget",
     "billing_period_start",

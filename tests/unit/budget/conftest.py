@@ -28,6 +28,7 @@ from synthorg.budget.quota import (
 )
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.reports import ReportGenerator
+from synthorg.budget.risk_config import RiskBudgetAlertConfig, RiskBudgetConfig
 from synthorg.budget.spending_summary import (
     AgentSpending,
     DepartmentSpending,
@@ -57,6 +58,21 @@ class AutoDowngradeConfigFactory(ModelFactory[AutoDowngradeConfig]):
     downgrade_map = ()
 
 
+class RiskBudgetAlertConfigFactory(ModelFactory[RiskBudgetAlertConfig]):
+    __model__ = RiskBudgetAlertConfig
+    warn_at = 75
+    critical_at = 90
+
+
+class RiskBudgetConfigFactory(ModelFactory[RiskBudgetConfig]):
+    __model__ = RiskBudgetConfig
+    enabled = False
+    per_task_risk_limit = 5.0
+    per_agent_daily_risk_limit = 20.0
+    total_daily_risk_limit = 100.0
+    alerts = RiskBudgetAlertConfigFactory
+
+
 class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     __model__ = BudgetConfig
     total_monthly = 100.0
@@ -64,6 +80,7 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     per_agent_daily_limit = 10.0
     alerts = BudgetAlertConfigFactory
     auto_downgrade = AutoDowngradeConfigFactory
+    risk_budget = RiskBudgetConfigFactory
 
 
 class TeamBudgetFactory(ModelFactory[TeamBudget]):

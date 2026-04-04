@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 _DOWNGRADE_MAP: dict[DowngradeReason, AutonomyLevel] = {
     DowngradeReason.HIGH_ERROR_RATE: AutonomyLevel.SUPERVISED,
     DowngradeReason.BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
+    DowngradeReason.RISK_BUDGET_EXHAUSTED: AutonomyLevel.SUPERVISED,
     DowngradeReason.SECURITY_INCIDENT: AutonomyLevel.LOCKED,
 }
 
