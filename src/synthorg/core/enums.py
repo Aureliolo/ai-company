@@ -347,6 +347,8 @@ class WorkflowNodeExecutionStatus(StrEnum):
     PENDING = "pending"
     SKIPPED = "skipped"
     TASK_CREATED = "task_created"
+    TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
     COMPLETED = "completed"
 
 

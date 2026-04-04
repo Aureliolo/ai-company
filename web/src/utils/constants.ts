@@ -204,3 +204,10 @@ export const VELOCITY_CALC_TYPES: readonly VelocityCalcType[] = [
   'budget',
   'points_per_sprint',
 ] as const
+
+export const WORKFLOW_TYPES = [
+  'sequential_pipeline',
+  'parallel_execution',
+  'kanban',
+  'agile_kanban',
+] as const

@@ -160,6 +160,13 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 **API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-preset`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`
 
+#### Workflows (`/workflows`)
+
+Workflow definition list with card grid, search, and type filter. "Create Workflow" button opens a creation flow. Each card shows name, description, node count, edge count, creation time, and last-modified time. Actions per card: duplicate, delete (with confirmation dialog). Click navigates to the Workflow Editor at `/workflows/editor?id={workflowId}`.
+
+**API endpoints**: `GET /workflows`, `POST /workflows`, `DELETE /workflows/{id}`
+**WS channels**: (none)
+
 #### Workflow Editor (`/workflows/editor`)
 
 Visual workflow designer -- a DAG-based editor for creating and editing workflow definitions that orchestrate multi-step agent pipelines. Operators build workflows by placing nodes on a canvas, connecting them with edges, and configuring each node's properties via a side drawer.
@@ -170,7 +177,13 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 - **4 edge types**: sequential, conditional_true, conditional_false, parallel_branch
 - **Undo/redo**: full history stack for node/edge additions, deletions, moves, and config changes
 - **YAML preview**: live read-only YAML export of the current workflow graph
+- **Bidirectional YAML editing**: toggle between visual and YAML editor modes; parse YAML back into the visual graph with inline error/warning display and position preservation
 - **Validation**: client-side structural validation with inline error display
+- **Minimap**: pannable/zoomable overview of the full graph for navigation in large workflows
+- **Copy/paste**: clipboard operations for selected node groups with ID remapping and internal edge preservation
+- **Condition builder**: structured expression editor (Builder mode with field/operator/value rows and AND/OR/NOT logical operators, Advanced mode with free-text) for conditional nodes
+- **Workflow selector**: switch between saved workflow definitions from the editor toolbar
+- **Multi-workflow support**: "Save as New" duplicate action, quick-switch between workflows
 
 No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
 
@@ -259,7 +272,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 +-- WORKSPACE (collapsible label)
 |   +-- Agents             [Users]               /agents
 |   +-- Projects           [FolderKanban]        /projects
-|   +-- Workflows          [Workflow]            /workflows/editor
+|   +-- Workflows          [Workflow]            /workflows
 |   +-- Artifacts          [Package]             /artifacts
 |   +-- Messages           [MessageSquare]       /messages  [badge: unread count]
 |   +-- Meetings           [Video]               /meetings
@@ -317,6 +330,7 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
+| `/workflows` | Workflows | Card grid list with search, type filter, create/duplicate/delete |
 | `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation) |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
@@ -370,6 +384,7 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
 | **Providers** | (none) | N/A -- polling via TanStack Query |
+| **Workflows** (list) | (none) | N/A |
 | **Workflow Editor** | (none) | N/A -- REST API only, no real-time collaboration |
 | **Settings** | `system` | Restart-required notifications |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
@@ -448,7 +463,7 @@ Every backend controller has a home in the page structure. No orphans.
 | CoordinationController | Task Board (task detail action) |
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
-| WorkflowController | Workflow Editor |
+| WorkflowController | Workflows, Workflow Editor |
 
 ---
 

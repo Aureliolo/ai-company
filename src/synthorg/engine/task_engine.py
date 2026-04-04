@@ -13,7 +13,6 @@ because the TaskEngine is the only writer.
 import asyncio
 import contextlib
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
@@ -29,6 +28,10 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.task_engine_apply import dispatch as _dispatch_mutation
 from synthorg.engine.task_engine_config import TaskEngineConfig
+from synthorg.engine.task_engine_events import (
+    build_state_changed_event,
+    publish_snapshot,
+)
 from synthorg.engine.task_engine_models import (
     CancelTaskMutation,
     CreateTaskData,
@@ -54,15 +57,16 @@ from synthorg.observability.events.task_engine import (
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
+    TASK_ENGINE_OBSERVER_FAILED,
     TASK_ENGINE_QUEUE_FULL,
     TASK_ENGINE_READ_FAILED,
-    TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
-    TASK_ENGINE_SNAPSHOT_PUBLISHED,
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOPPED,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.core.enums import TaskStatus
     from synthorg.core.task import Task
@@ -117,11 +121,29 @@ class TaskEngine:
         self._in_flight: _MutationEnvelope | None = None
         self._running = False
         self._lifecycle_lock = asyncio.Lock()
+        self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
             publish_snapshots=self._config.publish_snapshots,
         )
+
+    # -- Observers ---------------------------------------------------------
+
+    def register_observer(
+        self,
+        callback: Callable[[TaskStateChanged], Awaitable[None]],
+    ) -> None:
+        """Register an observer for successful task mutations.
+
+        Observers are called after each successful mutation with a
+        ``TaskStateChanged`` event.  Errors in observers are logged
+        and swallowed (best-effort).
+
+        Args:
+            callback: Async callable receiving the event.
+        """
+        self._observers.append(callback)
 
     # -- Lifecycle ---------------------------------------------------------
 
@@ -678,8 +700,18 @@ class TaskEngine:
                     ),
                     new_status=(result.task.status.value if result.task else None),
                 )
-            if result.success and self._config.publish_snapshots:
-                await self._publish_snapshot(mutation, result)
+            if result.success and (self._config.publish_snapshots or self._observers):
+                event = build_state_changed_event(mutation, result)
+                if self._config.publish_snapshots:
+                    await publish_snapshot(
+                        mutation,
+                        event,
+                        message_bus=self._message_bus,
+                        sender=self._SNAPSHOT_SENDER,
+                        channel=self._SNAPSHOT_CHANNEL,
+                    )
+                if self._observers:
+                    await self._notify_observers(event)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -702,75 +734,29 @@ class TaskEngine:
         finally:
             self._in_flight = None
 
-    # -- Snapshot publishing -----------------------------------------------
+    # -- Event building & notification ------------------------------------
 
-    async def _publish_snapshot(
+    async def _notify_observers(
         self,
-        mutation: TaskMutation,
-        result: TaskMutationResult,
+        event: TaskStateChanged,
     ) -> None:
-        """Publish a TaskStateChanged event to the message bus.
+        """Notify registered observers of a successful mutation.
 
-        Best-effort: failures are logged and swallowed (except
-        ``MemoryError`` and ``RecursionError``, which propagate).
+        Best-effort: observer errors are logged and swallowed
+        (except ``MemoryError`` and ``RecursionError``, which
+        propagate).
         """
-        if self._message_bus is None:
-            return
-
-        if isinstance(mutation, DeleteTaskMutation):
-            new_status = None
-        elif result.task is not None:
-            new_status = result.task.status
-        else:
-            new_status = None
-
-        reason: str | None = getattr(mutation, "reason", None)
-        task_id: str | None = getattr(mutation, "task_id", None)
-        # For create mutations, task_id comes from the result
-        if task_id is None and result.task is not None:
-            task_id = result.task.id
-        effective_task_id = task_id or "unknown"
-
-        event = TaskStateChanged(
-            mutation_type=mutation.mutation_type,
-            request_id=mutation.request_id,
-            requested_by=mutation.requested_by,
-            task_id=effective_task_id,
-            task=result.task,
-            previous_status=result.previous_status,
-            new_status=new_status,
-            version=result.version,
-            reason=reason,
-            timestamp=datetime.now(UTC),
-        )
-        try:
-            # Deferred to break circular import:
-            # communication -> engine -> communication
-            from synthorg.communication.enums import MessageType  # noqa: PLC0415
-            from synthorg.communication.message import Message  # noqa: PLC0415
-
-            msg = Message(
-                timestamp=datetime.now(UTC),
-                sender=self._SNAPSHOT_SENDER,
-                to=self._SNAPSHOT_CHANNEL,
-                type=MessageType.TASK_UPDATE,
-                channel=self._SNAPSHOT_CHANNEL,
-                content=event.model_dump_json(),
-            )
-            await self._message_bus.publish(msg)
-            logger.debug(
-                TASK_ENGINE_SNAPSHOT_PUBLISHED,
-                mutation_type=mutation.mutation_type,
-                request_id=mutation.request_id,
-                task_id=task_id,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
-                mutation_type=mutation.mutation_type,
-                request_id=mutation.request_id,
-                task_id=task_id,
-                exc_info=True,
-            )
+        for observer in self._observers:
+            try:
+                await observer(event)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    TASK_ENGINE_OBSERVER_FAILED,
+                    observer=getattr(observer, "__qualname__", repr(observer)),
+                    mutation_type=event.mutation_type,
+                    request_id=event.request_id,
+                    task_id=event.task_id,
+                    exc_info=True,
+                )

@@ -7,7 +7,7 @@ via the ``TaskEngine``.
 """
 
 from datetime import UTC, datetime
-from typing import Self
+from typing import ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -49,21 +49,29 @@ class WorkflowNodeExecution(BaseModel):
         description="Reason when status is SKIPPED",
     )
 
+    _TASK_LINKED_STATUSES: ClassVar[frozenset[WorkflowNodeExecutionStatus]] = frozenset(
+        {
+            WorkflowNodeExecutionStatus.TASK_CREATED,
+            WorkflowNodeExecutionStatus.TASK_COMPLETED,
+            WorkflowNodeExecutionStatus.TASK_FAILED,
+        }
+    )
+
     @model_validator(mode="after")
     def _validate_status_fields(self) -> Self:
         """Enforce cross-field invariants between status and optional fields."""
-        if self.status is WorkflowNodeExecutionStatus.TASK_CREATED:
+        if self.status in self._TASK_LINKED_STATUSES:
             if self.node_type is not WorkflowNodeType.TASK:
                 msg = (
-                    "TASK_CREATED status is only valid for TASK nodes,"
-                    f" not {self.node_type.value!r}"
+                    f"{self.status.value!r} status is only valid for"
+                    f" TASK nodes, not {self.node_type.value!r}"
                 )
                 raise ValueError(msg)
             if self.task_id is None:
-                msg = "task_id is required when status is TASK_CREATED"
+                msg = f"task_id is required when status is {self.status.value!r}"
                 raise ValueError(msg)
         elif self.task_id is not None:
-            msg = "task_id must be None when status is not TASK_CREATED"
+            msg = "task_id must be None when status is not a task-linked status"
             raise ValueError(msg)
 
         if self.status is WorkflowNodeExecutionStatus.SKIPPED:

@@ -361,6 +361,24 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             approval_timeout_scheduler,
             app_state,
         )
+        # Wire workflow execution observer (needs connected persistence)
+        if (
+            task_engine is not None
+            and persistence is not None
+            and hasattr(persistence, "workflow_definitions")
+            and hasattr(persistence, "workflow_executions")
+        ):
+            from synthorg.engine.workflow.execution_observer import (  # noqa: PLC0415
+                WorkflowExecutionObserver,
+            )
+
+            _wf_observer = WorkflowExecutionObserver(
+                definition_repo=persistence.workflow_definitions,
+                execution_repo=persistence.workflow_executions,
+                task_engine=task_engine,
+            )
+            task_engine.register_observer(_wf_observer)
+
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
         if (
             should_auto_wire_settings

@@ -275,6 +275,36 @@ class TestNodeExecutionCrossFieldValidators:
             )
 
 
+class TestTaskLinkedStatusOnNonTaskNodes:
+    """Verify task-linked statuses rejected for non-TASK node types."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("node_type", "status"),
+        [
+            (WorkflowNodeType.START, WorkflowNodeExecutionStatus.TASK_COMPLETED),
+            (WorkflowNodeType.START, WorkflowNodeExecutionStatus.TASK_FAILED),
+            (WorkflowNodeType.END, WorkflowNodeExecutionStatus.TASK_COMPLETED),
+            (WorkflowNodeType.CONDITIONAL, WorkflowNodeExecutionStatus.TASK_CREATED),
+        ],
+    )
+    def test_task_linked_status_on_non_task_node_rejected(
+        self,
+        node_type: WorkflowNodeType,
+        status: WorkflowNodeExecutionStatus,
+    ) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="only valid for TASK nodes",
+        ):
+            WorkflowNodeExecution(
+                node_id="node-1",
+                node_type=node_type,
+                status=status,
+                task_id="task-abc",
+            )
+
+
 class TestExecutionCrossFieldValidators:
     """Verify WorkflowExecution cross-field validators."""
 

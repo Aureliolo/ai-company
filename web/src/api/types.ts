@@ -1644,6 +1644,51 @@ export interface WorkflowValidationResult {
   readonly errors: readonly WorkflowValidationError[]
 }
 
+// ── Workflow Executions ──────────────────────────────────────
+
+export type WorkflowExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export type WorkflowNodeExecutionStatus =
+  | 'pending'
+  | 'skipped'
+  | 'task_created'
+  | 'task_completed'
+  | 'task_failed'
+  | 'completed'
+
+export interface WorkflowNodeExecution {
+  readonly node_id: string
+  readonly node_type: WorkflowNodeType
+  readonly status: WorkflowNodeExecutionStatus
+  readonly task_id: string | null
+  readonly skipped_reason: string | null
+}
+
+export interface WorkflowExecution {
+  readonly id: string
+  readonly definition_id: string
+  readonly definition_version: number
+  readonly status: WorkflowExecutionStatus
+  readonly node_executions: readonly WorkflowNodeExecution[]
+  readonly activated_by: string
+  readonly project: string
+  readonly created_at: string
+  readonly updated_at: string
+  readonly completed_at: string | null
+  readonly error: string | null
+  readonly version: number
+}
+
+export interface ActivateWorkflowRequest {
+  readonly project: string
+  readonly context?: Record<string, string | number | boolean | null>
+}
+
 // ── Ceremony Policy ──────────────────────────────────────────
 
 export type CeremonyStrategyType =

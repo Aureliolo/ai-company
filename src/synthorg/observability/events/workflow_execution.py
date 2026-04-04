@@ -15,7 +15,10 @@ WORKFLOW_EXEC_INVALID_DEFINITION: Final[str] = "workflow.execution.invalid_defin
 """Activation rejected -- workflow definition failed validation."""
 
 WORKFLOW_EXEC_NOT_FOUND: Final[str] = "workflow.execution.not_found"
-"""Workflow execution instance not found."""
+"""Workflow definition or execution instance not found."""
+
+WORKFLOW_EXEC_INVALID_STATUS: Final[str] = "workflow.execution.invalid_status"
+"""Execution exists but is in an unexpected status for the operation."""
 
 # -- Node processing events ---------------------------------------------------
 
@@ -35,6 +38,12 @@ WORKFLOW_EXEC_CONDITION_EVAL_FAILED: Final[str] = (
     "workflow.execution.condition_eval_failed"
 )
 """Conditional node expression evaluation failed."""
+
+WORKFLOW_EXEC_NODE_TASK_COMPLETED: Final[str] = "workflow.execution.node_task_completed"
+"""Task linked to a TASK node completed successfully."""
+
+WORKFLOW_EXEC_NODE_TASK_FAILED: Final[str] = "workflow.execution.node_task_failed"
+"""Task linked to a TASK node failed."""
 
 # -- Lifecycle events ---------------------------------------------------------
 

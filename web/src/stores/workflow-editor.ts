@@ -8,6 +8,9 @@
 import { create } from 'zustand'
 import type { Node, Edge, Connection, NodeChange, EdgeChange } from '@xyflow/react'
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('workflow-editor')
 import type {
   WorkflowDefinition,
   WorkflowValidationResult,
@@ -20,6 +23,7 @@ import {
   validateWorkflowDraft,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
+import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workflow-editor/copy-paste'
 import { getErrorMessage } from '@/utils/errors'
 
 const MAX_UNDO = 50
@@ -53,6 +57,9 @@ export interface WorkflowEditorState {
   // YAML preview
   yamlPreview: string
 
+  // Clipboard
+  clipboard: ClipboardData | null
+
   // Actions
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
@@ -69,6 +76,8 @@ export interface WorkflowEditorState {
   redo: () => void
   validate: () => Promise<void>
   exportYaml: () => Promise<string>
+  copySelectedNodes: () => void
+  pasteNodes: () => void
   reset: () => void
 }
 
@@ -137,6 +146,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   undoStack: [],
   redoStack: [],
   yamlPreview: '',
+  clipboard: null,
 
   loadDefinition: async (id: string) => {
     set({ loading: true, error: null })
@@ -174,6 +184,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
+      log.warn('Failed to load workflow definition', err)
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -210,6 +221,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
+      log.warn('Failed to create workflow definition', err)
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -246,7 +258,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)!.edgeType as string,
+          type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
           label: (e.label as string) ?? null,
         })),
         expected_version: definition.version,
@@ -255,9 +267,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 409 && definition) {
+        log.warn('Version conflict saving workflow, reloading', err)
         set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
+        log.warn('Failed to save workflow definition', err)
         set({ saving: false, error: getErrorMessage(err) })
       }
     }
@@ -477,12 +491,13 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)!.edgeType as string,
+          type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
           label: (e.label as string) ?? null,
         })),
       })
       set({ validationResult: result, validating: false })
     } catch (err) {
+      log.warn('Workflow validation failed', err)
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })
     }
   },
@@ -491,6 +506,32 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     const { definition, yamlPreview } = get()
     if (!definition) throw new Error('Cannot export: no workflow loaded')
     return yamlPreview
+  },
+
+  copySelectedNodes: () => {
+    const { nodes, edges } = get()
+    const selectedIds = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
+    const clipboard = copyNodes(selectedIds, nodes, edges)
+    if (clipboard) set({ clipboard })
+  },
+
+  pasteNodes: () => {
+    const { clipboard, nodes, edges, definition } = get()
+    if (!clipboard) return
+    const pasted = pasteFromClipboard(clipboard)
+    const newNodes = [...nodes.map((n) => ({ ...n, selected: false })), ...pasted.nodes]
+    const newEdges = [...edges, ...pasted.edges]
+    const yamlPreview = definition
+      ? generateYamlPreview(newNodes, newEdges, definition.name, definition.workflow_type)
+      : ''
+    set({
+      nodes: newNodes,
+      edges: newEdges,
+      dirty: true,
+      yamlPreview,
+      undoStack: [...get().undoStack.slice(-(MAX_UNDO - 1)), { nodes, edges }],
+      redoStack: [],
+    })
   },
 
   reset: () => {
@@ -508,6 +549,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       undoStack: [],
       redoStack: [],
       yamlPreview: '',
+      clipboard: null,
     })
   },
 }))

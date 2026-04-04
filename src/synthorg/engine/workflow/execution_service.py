@@ -6,28 +6,27 @@ order, creating concrete tasks for TASK nodes, and wiring
 upstream task dependencies from the graph edges.
 """
 
-from collections import deque
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.enums import (
-    Complexity,
-    Priority,
-    TaskType,
+    TaskStatus,
     WorkflowEdgeType,
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
     WorkflowNodeType,
 )
 from synthorg.engine.errors import (
-    WorkflowConditionEvalError,
     WorkflowDefinitionInvalidError,
     WorkflowExecutionError,
     WorkflowExecutionNotFoundError,
 )
-from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.engine.workflow.condition_eval import evaluate_condition
+from synthorg.engine.workflow.execution_activation_helpers import (
+    find_downstream_task_ids,
+    process_conditional_node,
+    process_task_node,
+)
 from synthorg.engine.workflow.execution_models import (
     WorkflowExecution,
     WorkflowNodeExecution,
@@ -41,19 +40,22 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_ACTIVATED,
     WORKFLOW_EXEC_CANCELLED,
-    WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
-    WORKFLOW_EXEC_CONDITION_EVALUATED,
+    WORKFLOW_EXEC_COMPLETED,
+    WORKFLOW_EXEC_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
+    WORKFLOW_EXEC_INVALID_STATUS,
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
+    WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+    WORKFLOW_EXEC_NODE_TASK_FAILED,
     WORKFLOW_EXEC_NOT_FOUND,
-    WORKFLOW_EXEC_TASK_CREATED,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.engine.task_engine_models import TaskStateChanged
     from synthorg.engine.workflow.definition import (
         WorkflowDefinition,
         WorkflowNode,
@@ -67,340 +69,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_TASK_TYPE_MAP: dict[str, TaskType] = {t.value: t for t in TaskType}
-_PRIORITY_MAP: dict[str, Priority] = {p.value: p for p in Priority}
-_COMPLEXITY_MAP: dict[str, Complexity] = {c.value: c for c in Complexity}
-
-# Node types that produce no concrete task (control flow and metadata)
-_CONTROL_NODE_TYPES = frozenset(
-    {
-        WorkflowNodeType.START,
-        WorkflowNodeType.END,
-        WorkflowNodeType.AGENT_ASSIGNMENT,
-        WorkflowNodeType.CONDITIONAL,
-        WorkflowNodeType.PARALLEL_SPLIT,
-        WorkflowNodeType.PARALLEL_JOIN,
-    }
+_TERMINAL_TASK_STATUSES = frozenset(
+    {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
 )
-
-
-def _find_downstream_task_ids(
-    nid: str,
-    adjacency: dict[str, list[str]],
-    node_map: dict[str, WorkflowNode],
-) -> list[str]:
-    """Walk forward through control nodes to find downstream TASK nodes.
-
-    Used by AGENT_ASSIGNMENT to propagate assignments through
-    intervening control nodes (CONDITIONAL, SPLIT, JOIN, etc.)
-    to reach the actual TASK nodes.  Stops at other
-    AGENT_ASSIGNMENT nodes (which override).
-    """
-    result: list[str] = []
-    visited: set[str] = set()
-    queue: deque[str] = deque(adjacency.get(nid, []))
-    while queue:
-        tid = queue.popleft()
-        if tid in visited:
-            continue
-        visited.add(tid)
-        target_node = node_map[tid]
-        if target_node.type is WorkflowNodeType.TASK:
-            result.append(tid)
-        elif target_node.type is WorkflowNodeType.AGENT_ASSIGNMENT:
-            pass  # Another assignment overrides -- stop propagation
-        elif target_node.type in _CONTROL_NODE_TYPES:
-            queue.extend(adjacency.get(tid, []))
-    return result
-
-
-def _find_upstream_task_ids(
-    node_id: str,
-    reverse_adj: dict[str, list[str]],
-    node_map: dict[str, WorkflowNode],
-    node_task_ids: dict[str, str],
-    skipped: set[str],
-) -> tuple[str, ...]:
-    """Walk backwards to find the nearest upstream TASK node task IDs.
-
-    Skips through control nodes (START, END, AGENT_ASSIGNMENT,
-    CONDITIONAL, PARALLEL_SPLIT, PARALLEL_JOIN) to find the actual
-    TASK predecessors.  Skipped nodes are excluded entirely.
-    TASK nodes that have not yet produced a task ID (not in
-    ``node_task_ids``) are also excluded.
-    """
-    result: list[str] = []
-    visited: set[str] = set()
-    queue: deque[str] = deque(reverse_adj.get(node_id, []))
-
-    while queue:
-        pred_id = queue.popleft()
-        if pred_id in visited or pred_id in skipped:
-            continue
-        visited.add(pred_id)
-        pred_node = node_map[pred_id]
-        if pred_node.type is WorkflowNodeType.TASK and pred_id in node_task_ids:
-            result.append(node_task_ids[pred_id])
-        elif pred_node.type in _CONTROL_NODE_TYPES:
-            # Keep walking backwards through control nodes
-            queue.extend(reverse_adj.get(pred_id, []))
-
-    return tuple(sorted(set(result)))
-
-
-def _find_skipped_nodes(
-    untaken_target: str,
-    taken_target: str,
-    adjacency: dict[str, list[str]],
-) -> set[str]:
-    """Find nodes reachable only through the untaken branch.
-
-    BFS from the untaken target, collecting all downstream nodes
-    that are NOT reachable from the taken target.
-    """
-    # Find all nodes reachable from the taken branch
-    taken_reachable: set[str] = set()
-    queue: deque[str] = deque([taken_target])
-    while queue:
-        nid = queue.popleft()
-        if nid in taken_reachable:
-            continue
-        taken_reachable.add(nid)
-        queue.extend(adjacency.get(nid, []))
-
-    # BFS from untaken target, skip nodes in taken_reachable
-    skipped: set[str] = set()
-    queue = deque([untaken_target])
-    while queue:
-        nid = queue.popleft()
-        if nid in skipped or nid in taken_reachable:
-            continue
-        skipped.add(nid)
-        queue.extend(adjacency.get(nid, []))
-
-    return skipped
-
-
-def _process_conditional_node(  # noqa: PLR0913
-    nid: str,
-    node: WorkflowNode,
-    ctx: dict[str, object],
-    outgoing: dict[str, list[tuple[str, WorkflowEdgeType]]],
-    adjacency: dict[str, list[str]],
-    skipped_nodes: set[str],
-    execution_id: str,
-) -> WorkflowNodeExecution:
-    """Evaluate condition and mark untaken branch as skipped.
-
-    Args:
-        nid: The node ID being processed.
-        node: The CONDITIONAL workflow node.
-        ctx: Runtime context for condition evaluation.
-        outgoing: Typed outgoing edge map.
-        adjacency: Forward adjacency map.
-        skipped_nodes: Accumulator of skipped node IDs (mutated).
-        execution_id: Execution ID for logging.
-
-    Returns:
-        A completed ``WorkflowNodeExecution``.
-
-    Raises:
-        WorkflowConditionEvalError: On evaluation failure.
-    """
-    expr = str(node.config.get("condition_expression", "false"))
-    if not node.config.get("condition_expression"):
-        logger.warning(
-            WORKFLOW_EXEC_CONDITION_EVALUATED,
-            execution_id=execution_id,
-            node_id=nid,
-            expression=expr,
-            result=False,
-            note="missing condition_expression, defaulting to false",
-        )
-    try:
-        result = evaluate_condition(expr, ctx)
-    except (ValueError, TypeError, KeyError) as exc:
-        logger.exception(
-            WORKFLOW_EXEC_CONDITION_EVAL_FAILED,
-            execution_id=execution_id,
-            node_id=nid,
-            expression=expr,
-            error=str(exc),
-        )
-        msg = f"Failed to evaluate condition on node {nid!r}: {exc}"
-        raise WorkflowConditionEvalError(msg) from exc
-
-    logger.info(
-        WORKFLOW_EXEC_CONDITION_EVALUATED,
-        execution_id=execution_id,
-        node_id=nid,
-        expression=expr,
-        result=result,
-    )
-
-    # Determine taken/untaken edges
-    true_target: str | None = None
-    false_target: str | None = None
-    for target_id, edge_type in outgoing.get(nid, []):
-        if edge_type is WorkflowEdgeType.CONDITIONAL_TRUE:
-            true_target = target_id
-        elif edge_type is WorkflowEdgeType.CONDITIONAL_FALSE:
-            false_target = target_id
-
-    if result:
-        taken, untaken = true_target, false_target
-    else:
-        taken, untaken = false_target, true_target
-
-    if true_target is None or false_target is None:
-        logger.warning(
-            WORKFLOW_EXEC_CONDITION_EVALUATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note="conditional node missing true or false edge",
-            true_target=true_target,
-            false_target=false_target,
-        )
-
-    if untaken is not None and taken is not None:
-        skipped_nodes.update(
-            _find_skipped_nodes(untaken, taken, adjacency),
-        )
-
-    return WorkflowNodeExecution(
-        node_id=nid,
-        node_type=node.type,
-        status=WorkflowNodeExecutionStatus.COMPLETED,
-    )
-
-
-def _parse_task_config(
-    config: dict[str, object],
-    node: WorkflowNode,
-    execution_id: str,
-    nid: str,
-) -> tuple[str, str, TaskType, Priority, Complexity]:
-    """Parse TASK node config into validated task parameters.
-
-    Returns:
-        A 5-tuple of (title, description, task_type, priority, complexity).
-    """
-    title = str(config.get("title", node.label))
-    description = str(config.get("description", f"Task from workflow node {nid}"))
-
-    raw_type = str(config.get("task_type", "development"))
-    task_type = _TASK_TYPE_MAP.get(raw_type, TaskType.DEVELOPMENT)
-    if raw_type not in _TASK_TYPE_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized task_type {raw_type!r}, using development",
-        )
-
-    raw_priority = str(config.get("priority", "medium"))
-    priority = _PRIORITY_MAP.get(raw_priority, Priority.MEDIUM)
-    if raw_priority not in _PRIORITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized priority {raw_priority!r}, using medium",
-        )
-
-    raw_complexity = str(config.get("complexity", "medium"))
-    complexity = _COMPLEXITY_MAP.get(raw_complexity, Complexity.MEDIUM)
-    if raw_complexity not in _COMPLEXITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized complexity {raw_complexity!r}, using medium",
-        )
-
-    return title, description, task_type, priority, complexity
-
-
-async def _process_task_node(  # noqa: PLR0913
-    nid: str,
-    node: WorkflowNode,
-    *,
-    reverse_adj: dict[str, list[str]],
-    node_map: dict[str, WorkflowNode],
-    node_task_ids: dict[str, str],
-    skipped_nodes: set[str],
-    pending_assignments: dict[str, str],
-    project: str,
-    activated_by: str,
-    task_engine: TaskEngine,
-    execution_id: str,
-) -> WorkflowNodeExecution:
-    """Create a concrete task for a TASK node.
-
-    Args:
-        nid: The node ID being processed.
-        node: The TASK workflow node.
-        reverse_adj: Reverse adjacency map.
-        node_map: All nodes keyed by ID.
-        node_task_ids: Accumulator of node-to-task mappings (mutated).
-        skipped_nodes: Set of skipped node IDs.
-        pending_assignments: Agent assignments (mutated via pop).
-        project: Project ID for the created task.
-        activated_by: Identity of the activating user.
-        task_engine: Engine for creating tasks.
-        execution_id: Execution ID for logging.
-
-    Returns:
-        A ``WorkflowNodeExecution`` in TASK_CREATED status.
-    """
-    config = dict(node.config)
-    title, description, task_type, priority, complexity = _parse_task_config(
-        config,
-        node,
-        execution_id,
-        nid,
-    )
-    assigned_to = pending_assignments.pop(nid, None)
-    upstream_ids = _find_upstream_task_ids(
-        nid,
-        reverse_adj,
-        node_map,
-        node_task_ids,
-        skipped_nodes,
-    )
-
-    task_data = CreateTaskData(
-        title=title,
-        description=description,
-        type=task_type,
-        priority=priority,
-        project=project,
-        created_by=activated_by,
-        assigned_to=assigned_to,
-        dependencies=upstream_ids,
-        estimated_complexity=complexity,
-    )
-
-    task = await task_engine.create_task(
-        task_data,
-        requested_by="workflow-engine",
-    )
-
-    node_task_ids[nid] = task.id
-    logger.info(
-        WORKFLOW_EXEC_TASK_CREATED,
-        execution_id=execution_id,
-        node_id=nid,
-        task_id=task.id,
-        title=title,
-    )
-
-    return WorkflowNodeExecution(
-        node_id=nid,
-        node_type=node.type,
-        status=WorkflowNodeExecutionStatus.TASK_CREATED,
-        task_id=task.id,
-    )
 
 
 class WorkflowExecutionService:
@@ -647,7 +318,7 @@ class WorkflowExecutionService:
         if node.type is WorkflowNodeType.AGENT_ASSIGNMENT:
             agent_name = node.config.get("agent_name")
             if agent_name:
-                task_targets = _find_downstream_task_ids(
+                task_targets = find_downstream_task_ids(
                     nid,
                     adjacency,
                     node_map,
@@ -674,7 +345,7 @@ class WorkflowExecutionService:
             )
 
         if node.type is WorkflowNodeType.CONDITIONAL:
-            return _process_conditional_node(
+            return process_conditional_node(
                 nid,
                 node,
                 ctx,
@@ -695,7 +366,7 @@ class WorkflowExecutionService:
             )
             raise WorkflowExecutionError(msg)
 
-        return await _process_task_node(
+        return await process_task_node(
             nid,
             node,
             reverse_adj=reverse_adj,
@@ -800,3 +471,302 @@ class WorkflowExecutionService:
         )
 
         return cancelled
+
+    # -- Lifecycle transitions ---------------------------------------------
+
+    async def complete_execution(
+        self,
+        execution_id: str,
+    ) -> WorkflowExecution:
+        """Transition a running execution to COMPLETED.
+
+        Args:
+            execution_id: The execution identifier.
+
+        Returns:
+            The updated execution in COMPLETED status.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If execution is not RUNNING.
+        """
+        execution = await self._load_running(execution_id)
+        now = datetime.now(UTC)
+        completed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.COMPLETED,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await self._execution_repo.save(completed)
+        logger.info(
+            WORKFLOW_EXEC_COMPLETED,
+            execution_id=execution_id,
+        )
+        return completed
+
+    async def fail_execution(
+        self,
+        execution_id: str,
+        *,
+        error: str,
+    ) -> WorkflowExecution:
+        """Transition a running execution to FAILED.
+
+        Args:
+            execution_id: The execution identifier.
+            error: Error message describing the failure.
+
+        Returns:
+            The updated execution in FAILED status.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If execution is not RUNNING.
+        """
+        execution = await self._load_running(execution_id)
+        now = datetime.now(UTC)
+        failed = execution.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.FAILED,
+                "error": error,
+                "updated_at": now,
+                "completed_at": now,
+                "version": execution.version + 1,
+            },
+        )
+        await self._execution_repo.save(failed)
+        logger.info(
+            WORKFLOW_EXEC_FAILED,
+            execution_id=execution_id,
+            error=error,
+        )
+        return failed
+
+    async def handle_task_state_changed(
+        self,
+        event: TaskStateChanged,
+    ) -> None:
+        """React to a task state change from the TaskEngine.
+
+        Correlates the task to a running workflow execution and
+        transitions the execution to COMPLETED or FAILED as
+        appropriate.  Task cancellations are treated as failures
+        at the workflow level.  Silently ignores events for tasks
+        not belonging to any running execution.
+
+        Node status update and execution-level transition are
+        combined into a single save to avoid version conflicts.
+
+        Args:
+            event: The task state change event.
+        """
+        if event.mutation_type != "transition":
+            return
+        if event.new_status not in _TERMINAL_TASK_STATUSES:
+            return
+
+        execution = await self._find_execution_by_task(event.task_id)
+        if execution is None:
+            return
+
+        if event.new_status in {TaskStatus.FAILED, TaskStatus.CANCELLED}:
+            await self._handle_task_failed(execution, event)
+        else:
+            await self._handle_task_completed(execution, event)
+
+    async def _handle_task_failed(
+        self,
+        execution: WorkflowExecution,
+        event: TaskStateChanged,
+    ) -> None:
+        """Handle a task failure or cancellation event.
+
+        Updates the node to TASK_FAILED and transitions the
+        execution to FAILED in a single repository save.
+        """
+        updated = _update_node_status(
+            execution,
+            event.task_id,
+            WorkflowNodeExecutionStatus.TASK_FAILED,
+        )
+        now = datetime.now(UTC)
+        verb = "cancelled" if event.new_status is TaskStatus.CANCELLED else "failed"
+        error_msg = f"Task {event.task_id} {verb}"
+        # Combine node update + execution terminal status in one save
+        # (version already bumped by _update_node_status)
+        failed = updated.model_copy(
+            update={
+                "status": WorkflowExecutionStatus.FAILED,
+                "error": error_msg,
+                "updated_at": now,
+                "completed_at": now,
+            },
+        )
+        await self._execution_repo.save(failed)
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_FAILED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
+        logger.info(
+            WORKFLOW_EXEC_FAILED,
+            execution_id=execution.id,
+            error=error_msg,
+        )
+
+    async def _handle_task_completed(
+        self,
+        execution: WorkflowExecution,
+        event: TaskStateChanged,
+    ) -> None:
+        """Handle a task completion event.
+
+        Updates the node to TASK_COMPLETED. If all task nodes are
+        now complete, transitions the execution to COMPLETED in
+        a single save.
+        """
+        updated = _update_node_status(
+            execution,
+            event.task_id,
+            WorkflowNodeExecutionStatus.TASK_COMPLETED,
+        )
+        logger.info(
+            WORKFLOW_EXEC_NODE_TASK_COMPLETED,
+            execution_id=execution.id,
+            task_id=event.task_id,
+        )
+        if _all_tasks_completed(updated):
+            now = datetime.now(UTC)
+            # Combine node update + execution terminal status in one save
+            # (version already bumped by _update_node_status)
+            completed = updated.model_copy(
+                update={
+                    "status": WorkflowExecutionStatus.COMPLETED,
+                    "updated_at": now,
+                    "completed_at": now,
+                },
+            )
+            await self._execution_repo.save(completed)
+            logger.info(
+                WORKFLOW_EXEC_COMPLETED,
+                execution_id=execution.id,
+            )
+        else:
+            await self._execution_repo.save(updated)
+
+    # -- Private helpers ---------------------------------------------------
+
+    async def _load_running(
+        self,
+        execution_id: str,
+    ) -> WorkflowExecution:
+        """Load an execution and validate it is RUNNING.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If not found.
+            WorkflowExecutionError: If not in RUNNING status.
+        """
+        execution = await self._execution_repo.get(execution_id)
+        if execution is None:
+            logger.warning(
+                WORKFLOW_EXEC_NOT_FOUND,
+                execution_id=execution_id,
+            )
+            msg = f"Workflow execution {execution_id!r} not found"
+            raise WorkflowExecutionNotFoundError(msg)
+
+        if execution.status is not WorkflowExecutionStatus.RUNNING:
+            msg = (
+                f"Cannot transition execution {execution_id!r}"
+                f" in status {execution.status.value!r}"
+                " (expected 'running')"
+            )
+            logger.warning(
+                WORKFLOW_EXEC_INVALID_STATUS,
+                execution_id=execution_id,
+                current_status=execution.status.value,
+                error=msg,
+            )
+            raise WorkflowExecutionError(msg)
+
+        return execution
+
+    async def _find_execution_by_task(
+        self,
+        task_id: str,
+    ) -> WorkflowExecution | None:
+        """Find a RUNNING execution containing a node with the task ID.
+
+        TODO(#1060): Replace O(R*N) full scan with an indexed lookup
+        (task_id -> execution_id map or repository method).
+        """
+        running = await self._execution_repo.list_by_status(
+            WorkflowExecutionStatus.RUNNING,
+        )
+        for execution in running:
+            for ne in execution.node_executions:
+                if ne.task_id == task_id:
+                    return execution
+        return None
+
+
+def _update_node_status(
+    execution: WorkflowExecution,
+    task_id: str,
+    new_status: WorkflowNodeExecutionStatus,
+) -> WorkflowExecution:
+    """Return a copy with one node's status updated.
+
+    Args:
+        execution: The source execution (not mutated).
+        task_id: Task ID of the node to update.
+        new_status: New status for the matching node.
+
+    Returns:
+        A new ``WorkflowExecution`` with the updated node and
+        bumped ``version`` / ``updated_at``.
+
+    Raises:
+        ValueError: If no node matches the given task_id.
+    """
+    found = False
+    updated_nodes: list[WorkflowNodeExecution] = []
+    for ne in execution.node_executions:
+        if ne.task_id == task_id:
+            updated_nodes.append(ne.model_copy(update={"status": new_status}))
+            found = True
+        else:
+            updated_nodes.append(ne)
+
+    if not found:
+        msg = f"task_id {task_id!r} not found in execution {execution.id!r}"
+        logger.warning(
+            WORKFLOW_EXEC_NOT_FOUND,
+            execution_id=execution.id,
+            task_id=task_id,
+            error=msg,
+        )
+        raise ValueError(msg)
+
+    return execution.model_copy(
+        update={
+            "node_executions": tuple(updated_nodes),
+            "updated_at": datetime.now(UTC),
+            "version": execution.version + 1,
+        },
+    )
+
+
+def _all_tasks_completed(execution: WorkflowExecution) -> bool:
+    """Check if all non-skipped TASK nodes have completed."""
+    for ne in execution.node_executions:
+        if ne.node_type is not WorkflowNodeType.TASK:
+            continue
+        if ne.status is WorkflowNodeExecutionStatus.SKIPPED:
+            continue
+        if ne.status is not WorkflowNodeExecutionStatus.TASK_COMPLETED:
+            return False
+    return True
