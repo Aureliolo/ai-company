@@ -33,6 +33,11 @@ vi.mock('@/api/endpoints/health', () => ({
   getHealth: vi.fn().mockResolvedValue({ status: 'ok', persistence: true, message_bus: true, version: '0.4.9', uptime_seconds: 3600 }),
 }))
 
+vi.mock('@/api/endpoints/analytics', () => ({
+  getOverviewMetrics: vi.fn().mockResolvedValue(null),
+  getForecast: vi.fn().mockResolvedValue(null),
+}))
+
 function resetStore() {
   useAnalyticsStore.setState({
     overview: null,
