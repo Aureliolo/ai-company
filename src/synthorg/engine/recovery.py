@@ -9,23 +9,58 @@ task can be reassigned (based on retry count vs max retries).
 See the Crash Recovery section of the Engine design page.
 """
 
+import copy
 import json
-from typing import Final, Protocol, Self, runtime_checkable
+from typing import Any, Final, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.enums import FailureCategory, TaskStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import AgentContext, AgentContextSnapshot  # noqa: TC001
+from synthorg.engine.stagnation.models import StagnationResult  # noqa: TC001
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_COMPLETE,
+    EXECUTION_RECOVERY_DIAGNOSIS,
     EXECUTION_RECOVERY_SNAPSHOT,
     EXECUTION_RECOVERY_START,
 )
 
 logger = get_logger(__name__)
+
+
+# Keyword rules for inferring failure category from error messages.
+# Evaluated in order; first match wins.
+_FAILURE_CATEGORY_RULES: tuple[tuple[tuple[str, ...], FailureCategory], ...] = (
+    (("budget",), FailureCategory.BUDGET_EXCEEDED),
+    (("timeout", "timed out"), FailureCategory.TIMEOUT),
+    (("stagnation",), FailureCategory.STAGNATION),
+    (("delegation",), FailureCategory.DELEGATION_FAILED),
+    (("quality", "criteria"), FailureCategory.QUALITY_GATE_FAILED),
+)
+
+
+def infer_failure_category(error_message: str) -> FailureCategory:
+    """Infer a failure category from an error message via keyword matching.
+
+    Simple heuristic for v1 -- matches keywords case-insensitively.
+    Future versions may use the error classification pipeline or
+    provider-specific error codes for more precise categorization.
+
+    Args:
+        error_message: The error message to classify.
+
+    Returns:
+        The inferred ``FailureCategory``.  Defaults to
+        ``TOOL_FAILURE`` when no keyword matches.
+    """
+    lower = error_message.lower()
+    for keywords, category in _FAILURE_CATEGORY_RULES:
+        if any(kw in lower for kw in keywords):
+            return category
+    return FailureCategory.TOOL_FAILURE
 
 
 class RecoveryResult(BaseModel):
@@ -40,6 +75,11 @@ class RecoveryResult(BaseModel):
             ``retry_count`` when creating the next ``TaskExecution``.
         context_snapshot: Redacted snapshot (no message contents).
         error_message: The error that triggered recovery.
+        failure_category: Machine-readable failure classification.
+        failure_context: Structured metadata for the failure (strategy-specific).
+        criteria_failed: Acceptance criteria that were not met.
+        stagnation_evidence: Stagnation detection result when failure
+            involves stagnation.
         checkpoint_context_json: Serialized ``AgentContext`` for resume
             (set by ``CheckpointRecoveryStrategy``, ``None`` otherwise).
         resume_attempt: Current resume attempt number (0 when not resuming).
@@ -59,6 +99,20 @@ class RecoveryResult(BaseModel):
     error_message: NotBlankStr = Field(
         description="The error that triggered recovery",
     )
+    failure_category: FailureCategory = Field(
+        description="Machine-readable failure classification",
+    )
+    failure_context: dict[str, Any] = Field(
+        description="Structured metadata for the failure",
+    )
+    criteria_failed: tuple[str, ...] = Field(
+        default=(),
+        description="Acceptance criteria that were not met",
+    )
+    stagnation_evidence: StagnationResult | None = Field(
+        default=None,
+        description="Stagnation detection result when applicable",
+    )
     checkpoint_context_json: str | None = Field(
         default=None,
         description="Serialized AgentContext from checkpoint for resume",
@@ -68,6 +122,12 @@ class RecoveryResult(BaseModel):
         ge=0,
         description="Current resume attempt number",
     )
+
+    def __init__(self, **data: object) -> None:
+        """Deep-copy failure_context at construction boundary."""
+        if "failure_context" in data and isinstance(data["failure_context"], dict):
+            data["failure_context"] = copy.deepcopy(data["failure_context"])
+        super().__init__(**data)
 
     @model_validator(mode="after")
     def _validate_checkpoint_consistency(self) -> Self:
@@ -208,13 +268,24 @@ class FailAndReassignStrategy:
             reason=error_message,
         )
 
+        category = infer_failure_category(error_message)
         result = RecoveryResult(
             task_execution=failed_execution,
             strategy_type=self.STRATEGY_TYPE,
             context_snapshot=snapshot,
             error_message=error_message,
+            failure_category=category,
+            failure_context={
+                "strategy_type": self.STRATEGY_TYPE,
+            },
         )
 
+        logger.info(
+            EXECUTION_RECOVERY_DIAGNOSIS,
+            task_id=task_execution.task.id,
+            failure_category=category.value,
+            criteria_failed=result.criteria_failed,
+        )
         logger.info(
             EXECUTION_RECOVERY_COMPLETE,
             task_id=task_execution.task.id,

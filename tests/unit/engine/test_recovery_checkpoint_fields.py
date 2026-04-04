@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.enums import FailureCategory, TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.recovery import (
     FailAndReassignStrategy,
@@ -42,6 +42,8 @@ class TestCanResumeField:
             strategy_type="checkpoint",
             context_snapshot=ctx.to_snapshot(),
             error_message="crash",
+            failure_category=FailureCategory.TOOL_FAILURE,
+            failure_context={},
             checkpoint_context_json='{"state": "partial"}',
             resume_attempt=1,
         )
@@ -68,6 +70,8 @@ class TestCanResumeField:
             strategy_type="fail_reassign",
             context_snapshot=ctx.to_snapshot(),
             error_message="crash",
+            failure_category=FailureCategory.TOOL_FAILURE,
+            failure_context={},
         )
 
         assert result.can_resume is False
@@ -97,6 +101,8 @@ class TestCheckpointConsistencyValidator:
                 strategy_type="checkpoint",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
+                failure_category=FailureCategory.TOOL_FAILURE,
+                failure_context={},
                 checkpoint_context_json='{"state": "partial"}',
             )
 
@@ -119,6 +125,8 @@ class TestCheckpointConsistencyValidator:
                 strategy_type="checkpoint",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
+                failure_category=FailureCategory.TOOL_FAILURE,
+                failure_context={},
                 resume_attempt=1,
             )
 
@@ -146,6 +154,8 @@ class TestResumeAttemptDefault:
             strategy_type="fail_reassign",
             context_snapshot=ctx.to_snapshot(),
             error_message="crash",
+            failure_category=FailureCategory.TOOL_FAILURE,
+            failure_context={},
         )
 
         assert result.resume_attempt == 0
@@ -222,6 +232,8 @@ class TestRecoveryResultCheckpointJsonValidation:
                 strategy_type="checkpoint",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
+                failure_category=FailureCategory.TOOL_FAILURE,
+                failure_context={},
                 checkpoint_context_json="{not valid}",
                 resume_attempt=1,
             )
@@ -248,6 +260,8 @@ class TestRecoveryResultCheckpointJsonValidation:
                 strategy_type="checkpoint",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
+                failure_category=FailureCategory.TOOL_FAILURE,
+                failure_context={},
                 checkpoint_context_json="[1, 2, 3]",
                 resume_attempt=1,
             )
@@ -274,6 +288,8 @@ class TestRecoveryResultCheckpointJsonValidation:
                 strategy_type="checkpoint",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
+                failure_category=FailureCategory.TOOL_FAILURE,
+                failure_context={},
                 checkpoint_context_json='"just a string"',
                 resume_attempt=1,
             )

@@ -604,6 +604,35 @@ class DowngradeReason(StrEnum):
     SECURITY_INCIDENT = "security_incident"
 
 
+class FailureCategory(StrEnum):
+    """Machine-readable failure classification for recovery results.
+
+    Used by ``RecoveryResult`` to provide structured failure diagnosis
+    that enables smarter checkpoint reconciliation and task reassignment
+    routing.
+    """
+
+    TOOL_FAILURE = "tool_failure"
+    STAGNATION = "stagnation"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    QUALITY_GATE_FAILED = "quality_gate_failed"
+    TIMEOUT = "timeout"
+    DELEGATION_FAILED = "delegation_failed"
+
+
+class DecisionOutcome(StrEnum):
+    """Outcome of a review gate decision.
+
+    Used by ``DecisionRecord`` for the auditable decisions drop-box.
+    """
+
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    AUTO_APPROVED = "auto_approved"
+    AUTO_REJECTED = "auto_rejected"
+    ESCALATED = "escalated"
+
+
 class ExecutionStatus(StrEnum):
     """Runtime execution status of an agent.
 

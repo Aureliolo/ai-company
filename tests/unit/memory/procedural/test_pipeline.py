@@ -9,7 +9,7 @@ import pytest
 import structlog.testing
 
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.enums import MemoryCategory, TaskStatus, TaskType
+from synthorg.core.enums import FailureCategory, MemoryCategory, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext, AgentContextSnapshot
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason, TurnRecord
@@ -86,6 +86,8 @@ def _make_recovery_result(
         strategy_type="fail_reassign",
         context_snapshot=snapshot,
         error_message=error_message,
+        failure_category=FailureCategory.TOOL_FAILURE,
+        failure_context={},
     )
 
 

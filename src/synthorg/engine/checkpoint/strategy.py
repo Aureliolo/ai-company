@@ -19,6 +19,7 @@ from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
+    infer_failure_category,
 )
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
 from synthorg.observability import get_logger
@@ -275,6 +276,13 @@ class CheckpointRecoveryStrategy:
             strategy_type=self.STRATEGY_TYPE,
             context_snapshot=snapshot,
             error_message=error_message,
+            failure_category=infer_failure_category(error_message),
+            failure_context={
+                "strategy_type": self.STRATEGY_TYPE,
+                "checkpoint_id": checkpoint.id,
+                "turn_number": checkpoint.turn_number,
+                "resume_attempt": resume_attempt,
+            },
             checkpoint_context_json=checkpoint.context_json,
             resume_attempt=resume_attempt,
         )

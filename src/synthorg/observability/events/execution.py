@@ -67,6 +67,7 @@ EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
 EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"
 EXECUTION_RECOVERY_SNAPSHOT: Final[str] = "execution.recovery.snapshot"
+EXECUTION_RECOVERY_DIAGNOSIS: Final[str] = "execution.recovery.diagnosis"
 
 # Checkpoint callback & resume events
 EXECUTION_CHECKPOINT_CALLBACK_FAILED: Final[str] = (

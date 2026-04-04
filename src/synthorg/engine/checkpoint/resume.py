@@ -8,6 +8,7 @@ Used by ``AgentEngine`` to keep resume orchestration concise.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import FailureCategory  # noqa: TC001
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
 from synthorg.engine.context import AgentContext
@@ -38,11 +39,14 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def deserialize_and_reconcile(
+def deserialize_and_reconcile(  # noqa: PLR0913
     checkpoint_json: str,
     error_message: str,
     agent_id: str,
     task_id: str,
+    *,
+    failure_category: FailureCategory,
+    criteria_failed: tuple[str, ...] = (),
 ) -> AgentContext:
     """Deserialize checkpoint context and inject reconciliation message.
 
@@ -53,6 +57,8 @@ def deserialize_and_reconcile(
             specific failure that preceded the resume).
         agent_id: Agent identifier (for logging).
         task_id: Task identifier (for logging).
+        failure_category: Machine-readable failure classification.
+        criteria_failed: Acceptance criteria that were not met.
 
     Returns:
         Reconstituted ``AgentContext`` with reconciliation message.
@@ -82,9 +88,14 @@ def deserialize_and_reconcile(
     # May reduce to "details redacted" if no alphanumeric content remains --
     # leak prevention takes priority over detail in LLM context.
     safe_error = sanitize_message(error_message)
+    category_note = f"Failure category: {failure_category.value}. "
+    criteria_note = (
+        f"Unmet criteria: {'; '.join(criteria_failed)}. " if criteria_failed else ""
+    )
     reconciliation_content = (
         f"Execution resumed from checkpoint at turn "
         f"{checkpoint_ctx.turn_count}. {compaction_note}"
+        f"{category_note}{criteria_note}"
         f"Previous error: {safe_error}. "
         "Review progress and continue."
     )

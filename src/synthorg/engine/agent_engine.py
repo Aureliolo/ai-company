@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
+from synthorg.core.enums import FailureCategory  # noqa: TC001
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
@@ -85,6 +86,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
+    EXECUTION_RECOVERY_DIAGNOSIS,
     EXECUTION_RECOVERY_FAILED,
     EXECUTION_RESUME_COMPLETE,
     EXECUTION_RESUME_FAILED,
@@ -653,6 +655,14 @@ class AgentEngine:
                 effective_autonomy=effective_autonomy,
                 provider=provider,
             )
+            if recovery_result is not None:
+                logger.info(
+                    EXECUTION_RECOVERY_DIAGNOSIS,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    failure_category=recovery_result.failure_category.value,
+                    criteria_failed_count=len(recovery_result.criteria_failed),
+                )
             # Sync post-recovery status to TaskEngine (typically FAILED,
             # depends on recovery strategy).
             ctx = execution_result.context
@@ -1133,6 +1143,8 @@ class AgentEngine:
                 recovery_result.error_message,
                 agent_id,
                 task_id,
+                failure_category=recovery_result.failure_category,
+                criteria_failed=recovery_result.criteria_failed,
                 completion_config=completion_config,
                 effective_autonomy=effective_autonomy,
                 provider=provider,
@@ -1163,6 +1175,8 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
         *,
+        failure_category: FailureCategory,
+        criteria_failed: tuple[str, ...] = (),
         completion_config: CompletionConfig | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
@@ -1178,6 +1192,8 @@ class AgentEngine:
             error_message,
             agent_id,
             task_id,
+            failure_category=failure_category,
+            criteria_failed=criteria_failed,
         )
         result = await self._execute_resumed_loop(
             checkpoint_ctx,

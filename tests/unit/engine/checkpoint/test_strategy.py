@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from synthorg.core.enums import TaskStatus, TaskType
+from synthorg.core.enums import FailureCategory, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.checkpoint.models import Checkpoint, CheckpointConfig
 from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
@@ -294,6 +294,8 @@ class TestCheckpointRecoveryFallback:
             strategy_type="custom_fallback",
             context_snapshot=snapshot,
             error_message="crash",
+            failure_category=FailureCategory.TOOL_FAILURE,
+            failure_context={},
         )
         mock_fallback.recover = AsyncMock(return_value=fallback_result)
 

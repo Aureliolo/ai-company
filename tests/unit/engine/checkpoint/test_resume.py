@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.core.enums import FailureCategory
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -70,6 +71,7 @@ class TestDeserializeAndReconcileSuccess:
             error_message="LLM timeout",
             agent_id="agent-1",
             task_id="task-1",
+            failure_category=FailureCategory.TIMEOUT,
         )
         from synthorg.engine.context import AgentContext
 
@@ -90,6 +92,7 @@ class TestDeserializeAndReconcileSuccess:
             error_message="rate limit exceeded",
             agent_id="agent-1",
             task_id="task-1",
+            failure_category=FailureCategory.TOOL_FAILURE,
         )
         # Last message should be the reconciliation message
         last_msg = result.conversation[-1]
@@ -98,6 +101,50 @@ class TestDeserializeAndReconcileSuccess:
         assert "turn 5" in last_msg.content
         assert "rate limit exceeded" in last_msg.content
         assert "Review progress and continue" in last_msg.content
+
+    def test_reconciliation_includes_failure_category(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Reconciliation message includes the failure_category value."""
+        ctx_json = _make_ctx_json(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        result = deserialize_and_reconcile(
+            ctx_json,
+            error_message="budget exceeded",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.BUDGET_EXCEEDED,
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "budget_exceeded" in last_msg.content
+
+    def test_reconciliation_includes_criteria_failed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Reconciliation message lists unmet criteria when provided."""
+        ctx_json = _make_ctx_json(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        result = deserialize_and_reconcile(
+            ctx_json,
+            error_message="quality gate failed",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.QUALITY_GATE_FAILED,
+            criteria_failed=("Login endpoint returns JWT", "Tests pass"),
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "Login endpoint returns JWT" in last_msg.content
+        assert "Tests pass" in last_msg.content
 
     def test_preserves_original_turn_count(
         self,
@@ -114,6 +161,7 @@ class TestDeserializeAndReconcileSuccess:
             error_message="crash",
             agent_id="a",
             task_id="t",
+            failure_category=FailureCategory.TOOL_FAILURE,
         )
         assert result.turn_count == 7
 
@@ -156,6 +204,7 @@ class TestDeserializeAndReconcileSanitization:
             error_message=error_message,
             agent_id="agent-1",
             task_id="task-1",
+            failure_category=FailureCategory.TOOL_FAILURE,
         )
         last_msg = result.conversation[-1]
         assert last_msg.content is not None
@@ -188,6 +237,7 @@ class TestDeserializeAndReconcileError:
                 error_message="crash",
                 agent_id="agent-1",
                 task_id="task-1",
+                failure_category=FailureCategory.TOOL_FAILURE,
             )
 
 
