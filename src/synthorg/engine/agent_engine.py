@@ -865,16 +865,23 @@ class AgentEngine:
         trimming_enabled = True
         tokens_override: int | None = None
         if self._config_resolver is not None:
-            trimming_enabled = await self._config_resolver.get_bool(
-                "engine",
-                "personality_trimming_enabled",
-            )
-            raw_override = await self._config_resolver.get_int(
-                "engine",
-                "personality_max_tokens_override",
-            )
-            if raw_override > 0:
-                tokens_override = raw_override
+            try:
+                trimming_enabled = await self._config_resolver.get_bool(
+                    "engine",
+                    "personality_trimming_enabled",
+                )
+                raw_override = await self._config_resolver.get_int(
+                    "engine",
+                    "personality_max_tokens_override",
+                )
+                if raw_override > 0:
+                    tokens_override = raw_override
+            except Exception:
+                logger.warning(
+                    PROMPT_PERSONALITY_TRIMMED,
+                    msg="failed to read ENGINE settings, using defaults",
+                    exc_info=True,
+                )
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
