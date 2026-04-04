@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('useSettingsDirtyState')
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 import { saveSettingsBatch } from '@/pages/settings/utils'
+
+const log = createLogger('useSettingsDirtyState')
 
 export interface UseSettingsDirtyStateReturn {
   dirtyValues: Map<string, string>

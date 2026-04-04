@@ -67,6 +67,7 @@ export function createDetailActions(set: ProvidersSet) {
         })
       } catch (err) {
         if (_detailRequestName !== name) return
+        log.error('Failed to fetch provider detail:', err)
         set({ detailLoading: false, detailError: getErrorMessage(err) })
       }
     },

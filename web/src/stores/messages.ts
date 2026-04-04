@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as messagesApi from '@/api/endpoints/messages'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type { Channel, Message, WsEvent } from '@/api/types'
 
@@ -36,7 +37,7 @@ function parseWsMessage(
     log.error(
       'Malformed WS payload, skipping',
       {
-        id: c.id,
+        id: sanitizeForLog(c.id),
         hasSender: typeof c.sender === 'string',
         hasChannel: typeof c.channel === 'string',
       },

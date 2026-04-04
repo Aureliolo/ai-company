@@ -3,8 +3,6 @@ import { listAgents, getAgent, getAgentPerformance, getAgentActivity, getAgentHi
 import { listTasks } from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('agents')
 import type {
   AgentActivityEvent,
   AgentConfig,
@@ -18,6 +16,8 @@ import type {
 } from '@/api/types'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'
+
+const log = createLogger('agents')
 
 const MAX_ACTIVITIES = 100
 

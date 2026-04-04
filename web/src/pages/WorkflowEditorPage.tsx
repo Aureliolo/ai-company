@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('WorkflowEditor')
 import { ReactFlow, ReactFlowProvider, Background, type Node } from '@xyflow/react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Workflow } from 'lucide-react'
@@ -24,6 +22,8 @@ import { WorkflowToolbar } from './workflow-editor/WorkflowToolbar'
 import { WorkflowNodeDrawer } from './workflow-editor/WorkflowNodeDrawer'
 import { WorkflowYamlPreview } from './workflow-editor/WorkflowYamlPreview'
 import { WorkflowEditorSkeleton } from './workflow-editor/WorkflowEditorSkeleton'
+
+const log = createLogger('WorkflowEditor')
 
 // Declared outside component for stable reference identity
 const nodeTypes = {

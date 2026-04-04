@@ -9,7 +9,11 @@ export interface Logger {
 function sanitizeArg(value: unknown): unknown {
   if (typeof value === 'string') return sanitizeForLog(value)
   if (value instanceof Error) return sanitizeForLog(value)
-  return value
+  // Structured objects pass through for devtools inspection
+  if (value !== null && typeof value === 'object') return value
+  // Sanitize other primitives (numbers pass through String() harmlessly,
+  // but null/undefined/boolean/symbol get consistent treatment)
+  return sanitizeForLog(value)
 }
 
 /**

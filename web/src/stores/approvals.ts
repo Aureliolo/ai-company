@@ -3,8 +3,6 @@ import * as approvalsApi from '@/api/endpoints/approvals'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('approvals')
 import type {
   ApprovalFilters,
   ApprovalResponse,
@@ -12,6 +10,8 @@ import type {
   RejectRequest,
   WsEvent,
 } from '@/api/types'
+
+const log = createLogger('approvals')
 
 interface ApprovalsState {
   // Data

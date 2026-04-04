@@ -45,6 +45,7 @@ export function createListActions(set: ProvidersSet, get: ProvidersGet) {
         set({ healthMap, listLoading: false })
       } catch (err) {
         if (requestId !== _listRequestId) return
+        log.error('Failed to fetch providers:', err)
         set({ listLoading: false, listError: getErrorMessage(err) })
       }
     },

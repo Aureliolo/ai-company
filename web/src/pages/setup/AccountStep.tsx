@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { InputField } from '@/components/ui/input-field'
-
-const log = createLogger('setup')
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupWizardStore } from '@/stores/setup-wizard'
 import { getPasswordStrength } from '@/utils/password-strength'
 import { getSetupStatus } from '@/api/endpoints/setup'
 import { cn } from '@/lib/utils'
+
+const log = createLogger('setup')
 
 const DEFAULT_MIN_PASSWORD_LENGTH = 12
 

@@ -1,7 +1,5 @@
 import { createLogger } from '@/lib/logger'
 import { apiClient, unwrap, unwrapVoid } from '../client'
-
-const log = createLogger('providers-api')
 import type {
   AddAllowlistEntryRequest,
   ApiResponse,
@@ -21,6 +19,8 @@ import type {
   TestConnectionResponse,
   UpdateProviderRequest,
 } from '../types'
+
+const log = createLogger('providers-api')
 
 export async function listProviders(): Promise<Record<string, ProviderConfig>> {
   const response = await apiClient.get<ApiResponse<Record<string, ProviderConfig>>>('/providers')

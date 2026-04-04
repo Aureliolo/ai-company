@@ -24,8 +24,6 @@ import {
 } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-
-const log = createLogger('Sidebar')
 import { useAuth } from '@/hooks/useAuth'
 import { useBreakpoint } from '@/hooks/useBreakpoint'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
@@ -36,6 +34,8 @@ import { ROUTES } from '@/router/routes'
 import { Drawer } from '@/components/ui/drawer'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
+
+const log = createLogger('Sidebar')
 
 export const STORAGE_KEY = 'sidebar_collapsed'
 

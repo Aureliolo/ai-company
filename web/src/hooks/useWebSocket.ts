@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { createLogger } from '@/lib/logger'
+import type { WsChannel, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 
 const log = createLogger('useWebSocket')
-import type { WsChannel, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 
 /** A binding from a WebSocket channel to an event handler. */
 export interface ChannelBinding {

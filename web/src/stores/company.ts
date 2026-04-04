@@ -14,8 +14,6 @@ import {
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('company')
 import type {
   AgentConfig,
   CompanyConfig,
@@ -29,6 +27,8 @@ import type {
   UpdateDepartmentRequest,
   WsEvent,
 } from '@/api/types'
+
+const log = createLogger('company')
 
 interface CompanyState {
   config: CompanyConfig | null

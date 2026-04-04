@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import type { SettingDefinition } from '@/api/types'
-
-const log = createLogger('settings')
 import { InputField } from '@/components/ui/input-field'
 import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
 import { SIMPLE_ARRAY_SETTINGS } from '@/utils/constants'
+
+const log = createLogger('settings')
 
 export interface SettingFieldProps {
   definition: SettingDefinition

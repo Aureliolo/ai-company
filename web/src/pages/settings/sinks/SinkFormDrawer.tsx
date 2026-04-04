@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import type { LogLevel, SinkInfo, TestSinkResult } from '@/api/types'
-
-const log = createLogger('sinks')
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { TagInput } from '@/components/ui/tag-input'
 import { ToggleField } from '@/components/ui/toggle-field'
+
+const log = createLogger('sinks')
 
 const LOG_LEVELS = [
   { value: 'DEBUG', label: 'Debug' },

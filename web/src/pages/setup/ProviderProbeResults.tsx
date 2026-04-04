@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { createLogger } from '@/lib/logger'
 import { Check, X, Loader2, RefreshCw } from 'lucide-react'
-
-const log = createLogger('setup')
 import { Button } from '@/components/ui/button'
 import type { ProviderPreset, ProbePresetResponse, ProviderConfig } from '@/api/types'
+
+const log = createLogger('setup')
 
 interface ProbeResultItemProps {
   preset: ProviderPreset

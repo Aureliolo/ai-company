@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Dialog } from 'radix-ui'
 import { X } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('providers')
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
@@ -13,6 +11,8 @@ import { useProvidersStore } from '@/stores/providers'
 import { cn } from '@/lib/utils'
 import type { AuthType, CreateFromPresetRequest, CreateProviderRequest, ProviderConfig, ProviderPreset, UpdateProviderRequest } from '@/api/types'
 import type { ProviderWithName } from '@/utils/providers'
+
+const log = createLogger('providers')
 
 const AUTH_OPTIONS: { value: AuthType; label: string }[] = [
   { value: 'api_key', label: 'API Key' },

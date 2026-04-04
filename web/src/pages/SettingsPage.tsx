@@ -16,8 +16,6 @@ import {
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 import { createLogger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
-
-const log = createLogger('settings')
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -47,6 +45,8 @@ import { buildControllerDisabledMap, matchesSetting, saveSettingsBatch } from '.
 
 import { useToastStore } from '@/stores/toast'
 import { ROUTES } from '@/router/routes'
+
+const log = createLogger('settings')
 
 type ViewMode = 'gui' | 'code'
 

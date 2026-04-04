@@ -12,8 +12,6 @@ import { AlertTriangle, GitBranch, Loader2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { createLogger } from '@/lib/logger'
 import { useOrgChartData } from '@/hooks/useOrgChartData'
-
-const log = createLogger('OrgChart')
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -33,6 +31,8 @@ import { OrgChartSkeleton } from './org/OrgChartSkeleton'
 import { NodeContextMenu } from './org/NodeContextMenu'
 import type { AgentNodeData, DepartmentGroupData } from './org/build-org-tree'
 import { ROUTES } from '@/router/routes'
+
+const log = createLogger('OrgChart')
 
 const VALID_NODE_TYPES = new Set(['agent', 'ceo', 'department'])
 

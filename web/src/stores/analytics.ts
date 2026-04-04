@@ -6,8 +6,6 @@ import { listActivities } from '@/api/endpoints/activities'
 import { computeOrgHealth, wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('analytics')
 import type {
   ActivityItem,
   BudgetConfig,
@@ -16,6 +14,8 @@ import type {
   OverviewMetrics,
   WsEvent,
 } from '@/api/types'
+
+const log = createLogger('analytics')
 
 const MAX_ACTIVITIES = 50
 

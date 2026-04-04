@@ -2,8 +2,6 @@ import {
   DEPARTMENT_NAME_VALUES,
 } from '@/api/types'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('dashboard')
 import type {
   ActivityItem,
   BudgetConfig,
@@ -16,6 +14,8 @@ import type {
 } from '@/api/types'
 import type { MetricCardProps } from '@/components/ui/metric-card'
 import { formatCurrency } from '@/utils/format'
+
+const log = createLogger('dashboard')
 
 export type DashboardMetricCardData = Omit<MetricCardProps, 'className'>
 

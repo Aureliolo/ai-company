@@ -8,6 +8,7 @@ import {
   discoverModels as apiDiscoverModels,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
 import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
@@ -17,6 +18,8 @@ import type {
 } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
+
+const log = createLogger('providers')
 
 export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
   return {
@@ -28,6 +31,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         const presets = await listPresets()
         set({ presets, presetsLoading: false })
       } catch (err) {
+        log.warn('Failed to fetch presets:', err)
         set({ presetsLoading: false, presetsError: getErrorMessage(err) })
       }
     },

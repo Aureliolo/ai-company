@@ -50,10 +50,10 @@ describe('createLogger', () => {
     expect(warnSpy).toHaveBeenCalledWith('[m]', 'context', ctx)
   })
 
-  it('passes numbers through unchanged', () => {
+  it('sanitizes number primitives to strings', () => {
     const log = createLogger('m')
     log.error('code', 404)
-    expect(errorSpy).toHaveBeenCalledWith('[m]', 'code', 404)
+    expect(errorSpy).toHaveBeenCalledWith('[m]', 'code', '404')
   })
 
   it('handles multiple arguments', () => {

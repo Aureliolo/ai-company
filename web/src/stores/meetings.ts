@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as meetingsApi from '@/api/endpoints/meetings'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   MeetingFilters,
@@ -139,7 +140,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       get().upsertMeeting(candidate as unknown as MeetingResponse)
     } else {
       log.error('Received malformed meeting WS payload, skipping upsert', {
-        meeting_id: candidate.meeting_id,
+        meeting_id: sanitizeForLog(candidate.meeting_id),
         hasStatus: typeof candidate.status === 'string',
         hasTypeName: typeof candidate.meeting_type_name === 'string',
         hasTokenBudget: typeof candidate.token_budget === 'number',

@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('CommandPalette')
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
+
+const log = createLogger('CommandPalette')
 
 const RECENT_STORAGE_KEY = 'so_recent_commands'
 const MAX_RECENT = 5

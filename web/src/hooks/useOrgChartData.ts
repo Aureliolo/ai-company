@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('useOrgChartData')
 import type { Node, Edge } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
@@ -15,6 +13,8 @@ import type { CommunicationLink } from '@/pages/org/aggregate-messages'
 import type { CommunicationEdgeData } from '@/pages/org/CommunicationEdge'
 import type { ViewMode } from '@/pages/org/OrgChartToolbar'
 import type { WsChannel } from '@/api/types'
+
+const log = createLogger('useOrgChartData')
 
 const ORG_POLL_INTERVAL = 30_000
 const ORG_CHANNELS = ['agents'] as const satisfies readonly WsChannel[]

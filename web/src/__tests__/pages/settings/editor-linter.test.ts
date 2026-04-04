@@ -64,21 +64,27 @@ describe('validateSchema', () => {
     expect(validateSchema(parsed, schema, text, 'json')).toEqual([])
   })
 
-  it('flags unknown namespace in JSON', () => {
+  it('flags unknown namespace in JSON with correct position', () => {
     const text = '{"unknown_ns": {"key": "val"}}'
     const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
     const diagnostics = validateSchema(parsed, schema, text, 'json')
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]!.message).toContain('Unknown namespace')
     expect(diagnostics[0]!.severity).toBe('warning')
+    // "unknown_ns" starts at index 1 (after opening {"), spans 10 chars + 2 quotes
+    expect(diagnostics[0]!.from).toBe(1)
+    expect(diagnostics[0]!.to).toBe(13)
   })
 
-  it('flags unknown key within known namespace in JSON', () => {
+  it('flags unknown key within known namespace in JSON with correct position', () => {
     const text = '{"api": {"max_retries": 10, "bogus_key": true}}'
     const parsed = JSON.parse(text) as Record<string, Record<string, unknown>>
     const diagnostics = validateSchema(parsed, schema, text, 'json')
     expect(diagnostics).toHaveLength(1)
     expect(diagnostics[0]!.message).toContain('Unknown setting key "bogus_key"')
+    // "bogus_key" appears after the api namespace scope
+    expect(diagnostics[0]!.from).toBe(28)
+    expect(diagnostics[0]!.to).toBe(39)
   })
 
   it('flags unknown namespace in YAML', () => {

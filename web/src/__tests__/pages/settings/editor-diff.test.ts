@@ -24,6 +24,7 @@ describe('computeLineDiff', () => {
     const server = 'a\nb\nc'
     const edited = 'a\nx\nc'
     const diffs = computeLineDiff(server, edited)
+    expect(diffs).toHaveLength(2)
     expect(diffs).toContainEqual({ line: 2, kind: 'added' })
     expect(diffs).toContainEqual({ line: 2, kind: 'removed' })
   })
