@@ -138,19 +138,31 @@ class AutomatedReportService:
     ) -> TaskCompletionReport:
         """Generate a task completion report.
 
-        Derives task counts from cost records. Note: actual completion
-        status requires a task repository -- this is an approximation
-        where each unique task_id with cost records is counted as
-        both assigned and completed.
+        Prefers ``PerformanceTracker`` metrics when available for
+        accurate success/failure counts. Falls back to a cost-record
+        heuristic where each unique task_id is counted as assigned
+        and completed.
         """
         now = datetime.now(UTC)
+        if self._performance_tracker is not None:
+            metrics = self._performance_tracker.get_task_metrics(
+                since=start,
+                until=end,
+            )
+            completed = sum(1 for m in metrics if m.is_success)
+            failed = sum(1 for m in metrics if not m.is_success)
+            return TaskCompletionReport(
+                total_assigned=len(metrics),
+                total_completed=completed,
+                total_failed=failed,
+                generated_at=now,
+            )
+        # Fallback: cost records imply the task ran.
         records = await self._cost_tracker.get_records(
             start=start,
             end=end,
         )
         task_ids = {r.task_id for r in records}
-        # Approximation: cost records imply the task ran. Actual
-        # completion/failure status requires task state integration.
         return TaskCompletionReport(
             total_assigned=len(task_ids),
             total_completed=len(task_ids),
@@ -361,8 +373,11 @@ def _build_performance_report(
             risk_by_agent.get(agent_id, []),
         )
         snapshots.append(snap)
-        if snap.average_quality_score is not None:
-            all_quality.append(snap.average_quality_score)
+        # Collect per-task scores (not per-agent averages) so each
+        # task contributes equally to the org-wide average.
+        all_quality.extend(
+            m.quality_score for m in by_agent[agent_id] if m.quality_score is not None
+        )
 
     org_avg = (
         round(math.fsum(all_quality) / len(all_quality), 2) if all_quality else None

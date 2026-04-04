@@ -533,37 +533,37 @@ class BudgetEnforcer:
                 projected = self._risk_scorer.score(action_type).risk_units
 
             day_start = daily_period_start()
-            # Per-task check (task lifetime, not daily).
-            self._enforce_risk_limit(
-                risk_cfg.per_task_risk_limit,
-                await self._risk_tracker.get_task_risk(task_id),
-                projected,
-                RISK_BUDGET_TASK_LIMIT_EXCEEDED,
-                "Per-task",
-                agent_id,
-                task_id,
-            )
-            self._enforce_risk_limit(
-                risk_cfg.per_agent_daily_risk_limit,
-                await self._risk_tracker.get_agent_risk(
-                    agent_id,
-                    start=day_start,
+            tracker = self._risk_tracker
+            checks = (
+                (
+                    risk_cfg.per_task_risk_limit,
+                    lambda: tracker.get_task_risk(task_id),
+                    RISK_BUDGET_TASK_LIMIT_EXCEEDED,
+                    "Per-task",
                 ),
-                projected,
-                RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
-                "Per-agent daily",
-                agent_id,
-                task_id,
+                (
+                    risk_cfg.per_agent_daily_risk_limit,
+                    lambda: tracker.get_agent_risk(agent_id, start=day_start),
+                    RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
+                    "Per-agent daily",
+                ),
+                (
+                    risk_cfg.total_daily_risk_limit,
+                    lambda: tracker.get_total_risk(start=day_start),
+                    RISK_BUDGET_LIMIT_EXCEEDED,
+                    "Total daily",
+                ),
             )
-            self._enforce_risk_limit(
-                risk_cfg.total_daily_risk_limit,
-                await self._risk_tracker.get_total_risk(start=day_start),
-                projected,
-                RISK_BUDGET_LIMIT_EXCEEDED,
-                "Total daily",
-                agent_id,
-                task_id,
-            )
+            for limit, get_risk, event, label in checks:
+                self._enforce_risk_limit(
+                    limit,
+                    await get_risk(),
+                    projected,
+                    event,
+                    label,
+                    agent_id,
+                    task_id,
+                )
         except MemoryError, RecursionError:
             raise
         except RiskBudgetExhaustedError:
