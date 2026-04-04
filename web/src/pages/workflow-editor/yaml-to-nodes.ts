@@ -233,11 +233,11 @@ export function parseYamlToNodesEdges(
         if (typeof rawDep === 'object' && rawDep !== null && 'id' in rawDep) {
           const obj = rawDep as Record<string, unknown>
           depId = String(obj.id ?? '').trim()
-          const branch = obj.branch
+          const branch = obj.branch !== undefined ? String(obj.branch) : undefined
           if (branch === 'true' || branch === 'false') {
             explicitBranch = branch
           } else if (branch !== undefined) {
-            warnings.push(`Step '${stepId}' dependency '${depId}' has unrecognized branch value '${String(branch)}' -- falling back to inference`)
+            warnings.push(`Step '${stepId}' dependency '${depId}' has unrecognized branch value '${branch}' -- falling back to inference`)
           }
         } else if (typeof rawDep === 'string' || typeof rawDep === 'number') {
           depId = String(rawDep).trim()

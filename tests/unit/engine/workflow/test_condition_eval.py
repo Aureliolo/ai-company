@@ -158,84 +158,104 @@ class TestEvaluateCondition:
 class TestCompoundConditions:
     """Compound expression evaluation (AND / OR / NOT / parentheses)."""
 
-    # ── AND ───────────────────────────────────────────────────────
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param(
+                "priority == high AND env == prod",
+                {"priority": "high", "env": "prod"},
+                True,
+                id="and-both-true",
+            ),
+            pytest.param(
+                "priority == high AND env == prod",
+                {"priority": "low", "env": "prod"},
+                False,
+                id="and-left-false",
+            ),
+            pytest.param(
+                "priority == high AND env == staging2",
+                {"priority": "high", "env": "staging"},
+                False,
+                id="and-right-false",
+            ),
+            pytest.param("a == 1 AND b == 2", {}, False, id="and-both-false"),
+        ],
+    )
+    def test_and(self, expression: str, ctx: dict[str, str], expected: bool) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
-    def test_and_both_true(self) -> None:
-        ctx = {"priority": "high", "env": "prod"}
-        assert evaluate_condition("priority == high AND env == prod", ctx) is True
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param(
+                "a == 1 OR b == 2", {"a": "1", "b": "2"}, True, id="or-both-true"
+            ),
+            pytest.param("a == 1 OR b == 2", {"a": "1"}, True, id="or-left-true"),
+            pytest.param("a == 1 OR b == 2", {"b": "2"}, True, id="or-right-true"),
+            pytest.param("a == 1 OR b == 2", {}, False, id="or-both-false"),
+        ],
+    )
+    def test_or(self, expression: str, ctx: dict[str, str], expected: bool) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
-    def test_and_left_false(self) -> None:
-        ctx = {"priority": "low", "env": "prod"}
-        assert evaluate_condition("priority == high AND env == prod", ctx) is False
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param("NOT true", {}, False, id="not-true"),
+            pytest.param("NOT false", {}, True, id="not-false"),
+            pytest.param("NOT enabled", {"enabled": True}, False, id="not-key-truthy"),
+            pytest.param("NOT enabled", {"enabled": False}, True, id="not-key-falsy"),
+            pytest.param(
+                "NOT priority == low",
+                {"priority": "high"},
+                True,
+                id="not-comparison-true",
+            ),
+            pytest.param(
+                "NOT priority == low",
+                {"priority": "low"},
+                False,
+                id="not-comparison-false",
+            ),
+        ],
+    )
+    def test_not(self, expression: str, ctx: dict[str, object], expected: bool) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
-    def test_and_right_false(self) -> None:
-        ctx = {"priority": "high", "env": "staging"}
-        assert evaluate_condition("priority == high AND env == staging2", ctx) is False
-
-    def test_and_both_false(self) -> None:
-        assert evaluate_condition("a == 1 AND b == 2", {}) is False
-
-    # ── OR ────────────────────────────────────────────────────────
-
-    def test_or_both_true(self) -> None:
-        ctx = {"a": "1", "b": "2"}
-        assert evaluate_condition("a == 1 OR b == 2", ctx) is True
-
-    def test_or_left_true(self) -> None:
-        ctx = {"a": "1"}
-        assert evaluate_condition("a == 1 OR b == 2", ctx) is True
-
-    def test_or_right_true(self) -> None:
-        ctx = {"b": "2"}
-        assert evaluate_condition("a == 1 OR b == 2", ctx) is True
-
-    def test_or_both_false(self) -> None:
-        assert evaluate_condition("a == 1 OR b == 2", {}) is False
-
-    # ── NOT ───────────────────────────────────────────────────────
-
-    def test_not_true_becomes_false(self) -> None:
-        assert evaluate_condition("NOT true", {}) is False
-
-    def test_not_false_becomes_true(self) -> None:
-        assert evaluate_condition("NOT false", {}) is True
-
-    def test_not_key_truthy(self) -> None:
-        assert evaluate_condition("NOT enabled", {"enabled": True}) is False
-
-    def test_not_key_falsy(self) -> None:
-        assert evaluate_condition("NOT enabled", {"enabled": False}) is True
-
-    def test_not_comparison_true(self) -> None:
-        ctx = {"priority": "high"}
-        assert evaluate_condition("NOT priority == low", ctx) is True
-
-    def test_not_comparison_false(self) -> None:
-        ctx = {"priority": "low"}
-        assert evaluate_condition("NOT priority == low", ctx) is False
-
-    # ── Precedence (AND binds tighter than OR) ────────────────────
-
-    def test_and_binds_tighter_than_or(self) -> None:
-        # "a OR b AND c" is "a OR (b AND c)"
-        ctx = {"a": "1"}
-        assert evaluate_condition("a == 1 OR b == 2 AND c == 3", ctx) is True
-
-    def test_and_binds_tighter_both_false(self) -> None:
-        # "a OR b AND c" -- a=false, b=true, c=false -> false OR false = false
-        ctx = {"b": "2"}
-        assert evaluate_condition("a == 1 OR b == 2 AND c == 3", ctx) is False
-
-    # ── Parenthesized groups ──────────────────────────────────────
-
-    def test_parens_override_precedence(self) -> None:
-        # "(a OR b) AND c" -- a=true, c=false -> true AND false = false
-        ctx = {"a": "1"}
-        assert evaluate_condition("(a == 1 OR b == 2) AND c == 3", ctx) is False
-
-    def test_parens_group_true(self) -> None:
-        ctx = {"a": "1", "c": "3"}
-        assert evaluate_condition("(a == 1 OR b == 2) AND c == 3", ctx) is True
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param(
+                "a == 1 OR b == 2 AND c == 3",
+                {"a": "1"},
+                True,
+                id="and-binds-tighter-true",
+            ),
+            pytest.param(
+                "a == 1 OR b == 2 AND c == 3",
+                {"b": "2"},
+                False,
+                id="and-binds-tighter-false",
+            ),
+            pytest.param(
+                "(a == 1 OR b == 2) AND c == 3",
+                {"a": "1"},
+                False,
+                id="parens-override-false",
+            ),
+            pytest.param(
+                "(a == 1 OR b == 2) AND c == 3",
+                {"a": "1", "c": "3"},
+                True,
+                id="parens-override-true",
+            ),
+        ],
+    )
+    def test_precedence_and_parens(
+        self, expression: str, ctx: dict[str, str], expected: bool
+    ) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
     def test_nested_parens(self) -> None:
         ctx = {"a": "1", "b": "2", "c": "3"}
@@ -244,75 +264,84 @@ class TestCompoundConditions:
         assert result is False
 
     def test_nested_parens_inner_false(self) -> None:
-        ctx = {"a": "1"}
+        ctx: dict[str, str] = {"a": "1"}
         result = evaluate_condition("NOT (a == 1 AND (b == 2 OR c == 99))", ctx)
         # a==1 AND (False OR False) -> True AND False -> False; NOT False -> True
         assert result is True
 
-    # ── Case insensitivity of operators ───────────────────────────
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param(
+                "a == 1 and b == 2",
+                {"a": "1", "b": "2"},
+                True,
+                id="lowercase",
+            ),
+            pytest.param("a == 1 Or not b", {"a": "1"}, True, id="mixed-case"),
+        ],
+    )
+    def test_case_insensitive_operators(
+        self, expression: str, ctx: dict[str, str], expected: bool
+    ) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
-    def test_lowercase_operators(self) -> None:
-        ctx = {"a": "1", "b": "2"}
-        assert evaluate_condition("a == 1 and b == 2", ctx) is True
+    @pytest.mark.parametrize(
+        ("expression", "ctx"),
+        [
+            pytest.param("brand == ORLANDO", {"brand": "ORLANDO"}, id="and"),
+            pytest.param("city == YORK", {"city": "YORK"}, id="or"),
+            pytest.param("tag == NOTICE", {"tag": "NOTICE"}, id="not"),
+        ],
+    )
+    def test_keyword_in_value(self, expression: str, ctx: dict[str, str]) -> None:
+        assert evaluate_condition(expression, ctx) is True
 
-    def test_mixed_case_operators(self) -> None:
-        ctx = {"a": "1"}
-        assert evaluate_condition("a == 1 Or not b", ctx) is True
-
-    # ── Keyword in value (must not split) ─────────────────────────
-
-    def test_keyword_in_value_and(self) -> None:
-        ctx = {"brand": "ORLANDO"}
-        assert evaluate_condition("brand == ORLANDO", ctx) is True
-
-    def test_keyword_in_value_or(self) -> None:
-        ctx = {"city": "YORK"}
-        assert evaluate_condition("city == YORK", ctx) is True
-
-    def test_keyword_in_value_not(self) -> None:
-        ctx = {"tag": "NOTICE"}
-        assert evaluate_condition("tag == NOTICE", ctx) is True
-
-    # ── Edge cases ────────────────────────────────────────────────
-
-    def test_empty_parens_returns_false(self) -> None:
-        assert evaluate_condition("() AND true", {}) is False
-
-    def test_malformed_double_operator(self) -> None:
-        assert evaluate_condition("AND AND", {}) is False
-
-    def test_trailing_operator(self) -> None:
-        assert evaluate_condition("true AND", {}) is False
-
-    def test_leading_operator(self) -> None:
-        assert evaluate_condition("AND true", {}) is False
-
-    def test_unclosed_paren(self) -> None:
-        # Unclosed paren is a parse error -- resolves to False.
-        assert evaluate_condition("(a == 1 AND b == 2", {"a": "1", "b": "2"}) is False
+    @pytest.mark.parametrize(
+        ("expression", "ctx"),
+        [
+            pytest.param("() AND true", {}, id="empty-parens"),
+            pytest.param("AND AND", {}, id="double-operator"),
+            pytest.param("true AND", {}, id="trailing-operator"),
+            pytest.param("AND true", {}, id="leading-operator"),
+            pytest.param(
+                "(a == 1 AND b == 2",
+                {"a": "1", "b": "2"},
+                id="unclosed-paren",
+            ),
+        ],
+    )
+    def test_malformed_resolves_false(
+        self, expression: str, ctx: dict[str, str]
+    ) -> None:
+        assert evaluate_condition(expression, ctx) is False
 
     def test_double_not(self) -> None:
         assert evaluate_condition("NOT NOT true", {}) is True
 
-    # ── Complex real-world expression ─────────────────────────────
-
-    def test_complex_expression(self) -> None:
-        ctx = {"has_budget": "yes", "priority": "critical", "env": "staging"}
-        result = evaluate_condition(
-            "has_budget AND (priority == high OR priority == critical)"
-            " AND NOT env == prod",
-            ctx,
-        )
-        assert result is True
-
-    def test_complex_expression_fails(self) -> None:
-        ctx = {"has_budget": "yes", "priority": "low", "env": "staging"}
-        result = evaluate_condition(
-            "has_budget AND (priority == high OR priority == critical)"
-            " AND NOT env == prod",
-            ctx,
-        )
-        assert result is False
+    @pytest.mark.parametrize(
+        ("expression", "ctx", "expected"),
+        [
+            pytest.param(
+                "has_budget AND (priority == high OR priority == critical)"
+                " AND NOT env == prod",
+                {"has_budget": "yes", "priority": "critical", "env": "staging"},
+                True,
+                id="complex-true",
+            ),
+            pytest.param(
+                "has_budget AND (priority == high OR priority == critical)"
+                " AND NOT env == prod",
+                {"has_budget": "yes", "priority": "low", "env": "staging"},
+                False,
+                id="complex-false",
+            ),
+        ],
+    )
+    def test_complex_expression(
+        self, expression: str, ctx: dict[str, str], expected: bool
+    ) -> None:
+        assert evaluate_condition(expression, ctx) is expected
 
     # ── Backward compatibility ────────────────────────────────────
 

@@ -2,6 +2,7 @@
  * Tests for workflow-to-YAML exporter (depends_on branch metadata).
  */
 import { describe, it, expect } from 'vitest'
+import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 
@@ -65,18 +66,22 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('yes_step', 'end'),
       makeEdge('no_step', 'end'),
     ]
-    const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
-    // Should contain branch metadata for conditional edges
-    expect(yaml).toContain('branch:')
-    expect(yaml).toMatch(/id:\s*check/)
-    expect(yaml).toMatch(/branch:\s*['"]true['"]/)
-    expect(yaml).toMatch(/branch:\s*['"]false['"]/)
+    const output = generateYamlPreview(nodes, edges, 'test', 'agile')
+    // Parse the YAML and assert on the depends_on structure directly
+    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
+    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    const yesStep = steps.find((s) => s.id === 'yes_step')
+    const noStep = steps.find((s) => s.id === 'no_step')
+    expect(yesStep).toBeDefined()
+    expect(noStep).toBeDefined()
+    expect(yesStep!.depends_on).toEqual([{ id: 'check', branch: 'true' }])
+    expect(noStep!.depends_on).toEqual([{ id: 'check', branch: 'false' }])
   })
 
-  it('emits plain string for parallel_branch edges (no branch metadata)', () => {
+  it('emits branches field for parallel_split node (no branch metadata in depends_on)', () => {
     const nodes = [
       makeNode('start', 'start'),
-      makeNode('fork', 'parallel_branch'),
+      makeNode('fork', 'parallel_split'),
       makeNode('a', 'task', { title: 'A' }),
       makeNode('b', 'task', { title: 'B' }),
       makeNode('end', 'end'),
@@ -88,11 +93,18 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('a', 'end'),
       makeEdge('b', 'end'),
     ]
-    const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
-    // parallel_branch edges should emit plain string depends_on
-    expect(yaml).toContain('depends_on')
-    expect(yaml).toContain('- fork')
-    expect(yaml).not.toContain('branch:')
+    const output = generateYamlPreview(nodes, edges, 'test', 'agile')
+    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
+    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    // The split node should have a branches field listing targets
+    const forkStep = steps.find((s) => s.id === 'fork')
+    expect(forkStep).toBeDefined()
+    expect(forkStep!.branches).toEqual(expect.arrayContaining(['a', 'b']))
+    // Child tasks should have plain string depends_on (no branch metadata)
+    const aStep = steps.find((s) => s.id === 'a')
+    expect(aStep).toBeDefined()
+    expect(aStep!.depends_on).toEqual(['fork'])
+    expect(output).not.toContain('branch:')
   })
 
   it('emits mixed plain strings and objects when both edge types exist', () => {
@@ -109,8 +121,16 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('check', 'run', 'conditional_true', 'true'),
       makeEdge('run', 'end'),
     ]
-    const yaml = generateYamlPreview(nodes, edges, 'test', 'agile')
-    // 'run' should have depends_on with { id: check, branch: true }
-    expect(yaml).toContain('branch:')
+    const output = generateYamlPreview(nodes, edges, 'test', 'agile')
+    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
+    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    // 'run' should have depends_on with { id: check, branch: 'true' }
+    const runStep = steps.find((s) => s.id === 'run')
+    expect(runStep).toBeDefined()
+    expect(runStep!.depends_on).toEqual([{ id: 'check', branch: 'true' }])
+    // 'check' should have plain string depends_on from setup
+    const checkStep = steps.find((s) => s.id === 'check')
+    expect(checkStep).toBeDefined()
+    expect(checkStep!.depends_on).toEqual(['setup'])
   })
 })
