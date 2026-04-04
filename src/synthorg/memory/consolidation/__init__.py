@@ -17,6 +17,7 @@ from synthorg.memory.consolidation.dual_mode_strategy import (
     DualModeConsolidationStrategy,
 )
 from synthorg.memory.consolidation.extractive import ExtractivePreserver
+from synthorg.memory.consolidation.llm_strategy import LLMConsolidationStrategy
 from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ArchivalIndexEntry,
@@ -48,6 +49,7 @@ __all__ = [
     "DualModeConfig",
     "DualModeConsolidationStrategy",
     "ExtractivePreserver",
+    "LLMConsolidationStrategy",
     "MemoryConsolidationService",
     "RetentionConfig",
     "RetentionEnforcer",

@@ -64,3 +64,8 @@ ARCHIVAL_INDEX_BUILT: Final[str] = "consolidation.archival.index_built"
 
 MAX_MEMORIES_ENFORCED: Final[str] = "consolidation.max_memories.enforced"
 MAX_MEMORIES_ENFORCE_FAILED: Final[str] = "consolidation.max_memories.failed"
+
+# ── LLM consolidation strategy ──────────────────────────────────
+
+LLM_STRATEGY_SYNTHESIZED: Final[str] = "consolidation.llm.synthesized"
+LLM_STRATEGY_FALLBACK: Final[str] = "consolidation.llm.fallback"
