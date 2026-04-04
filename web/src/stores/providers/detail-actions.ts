@@ -9,12 +9,12 @@ import type { ProvidersSet } from './types'
 
 const log = createLogger('providers')
 
-let _detailRequestName = ''
+let _detailRequestId = 0
 
 export function createDetailActions(set: ProvidersSet) {
   return {
     fetchProviderDetail: async (name: string) => {
-      _detailRequestName = name
+      const requestId = ++_detailRequestId
       set({ detailLoading: true, detailError: null })
       try {
         const [providerResult, modelsResult, healthResult] =
@@ -24,7 +24,7 @@ export function createDetailActions(set: ProvidersSet) {
             getProviderHealth(name),
           ])
 
-        if (_detailRequestName !== name) return
+        if (requestId !== _detailRequestId) return
 
         const provider = providerResult.status === 'fulfilled'
           ? { ...providerResult.value, name }
@@ -66,14 +66,14 @@ export function createDetailActions(set: ProvidersSet) {
             : null,
         })
       } catch (err) {
-        if (_detailRequestName !== name) return
+        if (requestId !== _detailRequestId) return
         log.error('Failed to fetch provider detail:', err)
         set({ detailLoading: false, detailError: getErrorMessage(err) })
       }
     },
 
     clearDetail: () => {
-      _detailRequestName = ''
+      _detailRequestId++ // invalidate in-flight requests
       set({
         selectedProvider: null,
         selectedProviderModels: [],

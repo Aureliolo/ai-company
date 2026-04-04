@@ -21,6 +21,18 @@ import type { ProvidersSet, ProvidersGet } from './types'
 
 const log = createLogger('providers')
 
+let _mutationCount = 0
+
+function beginMutation(set: ProvidersSet): void {
+  _mutationCount++
+  set({ mutating: true })
+}
+
+function endMutation(set: ProvidersSet): void {
+  _mutationCount = Math.max(0, _mutationCount - 1)
+  if (_mutationCount === 0) set({ mutating: false })
+}
+
 export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
   return {
     fetchPresets: async () => {
@@ -31,13 +43,13 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         const presets = await listPresets()
         set({ presets, presetsLoading: false })
       } catch (err) {
-        log.warn('Failed to fetch presets:', err)
+        log.warn('Failed to fetch presets:', getErrorMessage(err))
         set({ presetsLoading: false, presetsError: getErrorMessage(err) })
       }
     },
 
     createProvider: async (data: CreateProviderRequest) => {
-      set({ mutating: true })
+      beginMutation(set)
       try {
         const config = await apiCreateProvider(data)
         useToastStore.getState().add({
@@ -54,12 +66,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return null
       } finally {
-        set({ mutating: false })
+        endMutation(set)
       }
     },
 
     createFromPreset: async (data: CreateFromPresetRequest) => {
-      set({ mutating: true })
+      beginMutation(set)
       try {
         const config = await apiCreateFromPreset(data)
         useToastStore.getState().add({
@@ -76,12 +88,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return null
       } finally {
-        set({ mutating: false })
+        endMutation(set)
       }
     },
 
     updateProvider: async (name: string, data: UpdateProviderRequest) => {
-      set({ mutating: true })
+      beginMutation(set)
       try {
         const config = await apiUpdateProvider(name, data)
         useToastStore.getState().add({
@@ -102,12 +114,12 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         })
         return null
       } finally {
-        set({ mutating: false })
+        endMutation(set)
       }
     },
 
     deleteProvider: async (name: string) => {
-      set({ mutating: true })
+      beginMutation(set)
       try {
         await apiDeleteProvider(name)
         // Clear detail view first if we're deleting the selected provider
@@ -137,7 +149,7 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         await get().fetchProviders()
         return false
       } finally {
-        set({ mutating: false })
+        endMutation(set)
       }
     },
 
