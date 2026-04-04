@@ -140,6 +140,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
@@ -258,6 +259,7 @@ class AgentEngine:
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
         memory_backend: MemoryBackend | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -327,6 +329,7 @@ class AgentEngine:
         self._memory_injection_strategy = memory_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
+        self._config_resolver = config_resolver
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         if (
             procedural_memory_config is not None
@@ -859,9 +862,19 @@ class AgentEngine:
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
         )
-        # TODO(#1045): wire ENGINE settings (personality_trimming_enabled,
-        # personality_max_tokens_override) from ConfigResolver once the
-        # resolver is available in the engine context.
+        trimming_enabled = True
+        tokens_override: int | None = None
+        if self._config_resolver is not None:
+            trimming_enabled = await self._config_resolver.get_bool(
+                "engine",
+                "personality_trimming_enabled",
+            )
+            raw_override = await self._config_resolver.get_int(
+                "engine",
+                "personality_max_tokens_override",
+            )
+            if raw_override > 0:
+                tokens_override = raw_override
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
@@ -869,6 +882,8 @@ class AgentEngine:
             effective_autonomy=effective_autonomy,
             currency=cur_code,
             model_tier=identity.model.model_tier,
+            personality_trimming_enabled=trimming_enabled,
+            max_personality_tokens_override=tokens_override,
         )
 
         if system_prompt.personality_trim_info is not None:
@@ -881,6 +896,7 @@ class AgentEngine:
                 after_tokens=ti.after_tokens,
                 max_tokens=ti.max_tokens,
                 trim_tier=ti.trim_tier,
+                budget_met=ti.budget_met,
             )
 
         ctx = AgentContext.from_identity(

@@ -167,8 +167,9 @@ def build_system_prompt(  # noqa: PLR0913
         personality_trimming_enabled: When ``True`` (default), the
             personality section is progressively trimmed if it exceeds
             the profile's ``max_personality_tokens``.
-        max_personality_tokens_override: When set, overrides the
-            profile's ``max_personality_tokens`` limit.
+        max_personality_tokens_override: When set to a positive value,
+            overrides the profile's ``max_personality_tokens`` limit.
+            Values ``<= 0`` are ignored (profile default is used).
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -180,13 +181,17 @@ def build_system_prompt(  # noqa: PLR0913
     _validate_org_policies(agent, org_policies)
 
     profile = get_prompt_profile(model_tier)
-    if (
-        max_personality_tokens_override is not None
-        and max_personality_tokens_override > 0
-    ):
-        profile = profile.model_copy(
-            update={"max_personality_tokens": max_personality_tokens_override},
-        )
+    if max_personality_tokens_override is not None:
+        if max_personality_tokens_override > 0:
+            profile = profile.model_copy(
+                update={"max_personality_tokens": max_personality_tokens_override},
+            )
+        else:
+            logger.warning(
+                PROMPT_PROFILE_SELECTED,
+                override_ignored=max_personality_tokens_override,
+                reason="max_personality_tokens_override must be > 0",
+            )
     logger.info(
         PROMPT_PROFILE_SELECTED,
         requested_tier=model_tier,
@@ -368,6 +373,7 @@ def _build_template_context(  # noqa: PLR0913
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
     trimming_enabled: bool = True,
+    estimator: PromptTokenEstimator | None = None,
 ) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -383,6 +389,7 @@ def _build_template_context(  # noqa: PLR0913
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
         trimming_enabled: Whether personality trimming is active.
+        estimator: Token estimator for personality trimming.
 
     Returns:
         Tuple of (template variables dict, personality trim info or None).
@@ -393,6 +400,7 @@ def _build_template_context(  # noqa: PLR0913
         effective_autonomy,
         profile,
         trimming_enabled=trimming_enabled,
+        estimator=estimator,
     )
 
     context["currency_symbol"] = get_currency_symbol(currency)
@@ -487,8 +495,6 @@ def _trim_sections(  # noqa: PLR0913
     so the caller can reuse the final render.
     """
     trimmed_sections: list[str] = []
-    # Personality trimming already ran on the first render; skip it
-    # during section-level re-renders to avoid redundant work.
 
     for section in _TRIMMABLE_SECTIONS:
         content, estimated, _ = _render_and_estimate(
@@ -504,7 +510,6 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=False,
         )
         if estimated <= max_tokens:
             break
@@ -538,7 +543,6 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=False,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -722,6 +726,7 @@ def _render_and_estimate(  # noqa: PLR0913
         currency=currency,
         profile=profile,
         trimming_enabled=trimming_enabled,
+        estimator=estimator,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content), trim_info

@@ -67,6 +67,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'coordination',
   'observability',
   'backup',
+  'engine',
 ] as const
 
 /** Human-readable display names for setting namespaces. */
@@ -80,6 +81,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   coordination: 'Coordination',
   observability: 'Observability',
   backup: 'Backup',
+  engine: 'Engine',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

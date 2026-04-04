@@ -759,8 +759,7 @@ Trimming metadata is attached to `SystemPrompt.personality_trim_info`
 (`PersonalityTrimInfo` model with `before_tokens`, `after_tokens`,
 `max_tokens`, `trim_tier`, and `budget_met` computed field). Runtime
 settings in the `ENGINE` namespace control trimming
-(`personality_trimming_enabled`, `personality_trimming_notify`,
-`personality_max_tokens_override`).
+(`personality_trimming_enabled`, `personality_max_tokens_override`).
 
 ### Tier Flow
 

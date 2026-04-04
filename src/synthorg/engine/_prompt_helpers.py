@@ -17,7 +17,7 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
 )
-from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.engine.token_estimation import DefaultTokenEstimator, PromptTokenEstimator
 from synthorg.observability import get_logger
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 
@@ -146,48 +146,52 @@ def _resolve_profile_flags(
 def _estimate_personality_tokens(
     ctx: dict[str, Any],
     personality_mode: PersonalityMode,
-    estimator: DefaultTokenEstimator,
+    estimator: PromptTokenEstimator,
 ) -> int:
     """Estimate token count of the personality section as the template renders it.
 
     Assembles the text that the Jinja2 template would produce for the
-    given *personality_mode*, including markdown overhead, and runs it
-    through the estimator.
+    given *personality_mode*, including inline markdown formatting
+    (bold labels, list prefixes), and runs it through the estimator.
+    The section heading and template whitespace are not included.
 
     Args:
         ctx: Template context dict with personality fields populated.
         personality_mode: Which rendering mode to estimate for.
-        estimator: Token estimator (char/4 heuristic).
+        estimator: Token estimator instance.
 
     Returns:
         Estimated token count.
     """
     parts: list[str] = []
     desc = ctx.get("personality_description", "")
+    style = ctx.get("communication_style", "")
 
     if personality_mode == "full":
         if desc:
             parts.append(desc)
-        parts.append(f"- **Communication style**: {ctx['communication_style']}")
-        parts.append(f"- **Verbosity**: {ctx['verbosity']}")
-        parts.append(f"- **Risk tolerance**: {ctx['risk_tolerance']}")
-        parts.append(f"- **Creativity**: {ctx['creativity']}")
-        parts.append(f"- **Decision-making**: {ctx['decision_making']}")
-        parts.append(f"- **Collaboration preference**: {ctx['collaboration']}")
-        parts.append(f"- **Conflict approach**: {ctx['conflict_approach']}")
+        parts.append(f"- **Communication style**: {style}")
+        parts.append(f"- **Verbosity**: {ctx.get('verbosity', '')}")
+        parts.append(f"- **Risk tolerance**: {ctx.get('risk_tolerance', '')}")
+        parts.append(f"- **Creativity**: {ctx.get('creativity', '')}")
+        parts.append(f"- **Decision-making**: {ctx.get('decision_making', '')}")
+        parts.append(
+            f"- **Collaboration preference**: {ctx.get('collaboration', '')}",
+        )
+        parts.append(f"- **Conflict approach**: {ctx.get('conflict_approach', '')}")
         traits = ctx.get("personality_traits", ())
         if traits:
             parts.append(f"- **Traits**: {', '.join(traits)}")
     elif personality_mode == "condensed":
         if desc:
             parts.append(desc)
-        parts.append(f"- **Style**: {ctx['communication_style']}")
+        parts.append(f"- **Style**: {style}")
         traits = ctx.get("personality_traits", ())
         if traits:
             parts.append(f"- **Traits**: {', '.join(traits)}")
     else:
         # minimal
-        parts.append(f"- **Style**: {ctx['communication_style']}")
+        parts.append(f"- **Style**: {style}")
 
     text = "\n".join(parts)
     return estimator.estimate_tokens(text)
@@ -197,36 +201,46 @@ def _truncate_description(description: str, max_chars: int) -> str:
     """Truncate a description to fit within a character limit.
 
     Truncates at the last word boundary before *max_chars*, appending
-    ``"..."`` as a suffix.  Returns an empty string when *max_chars*
-    is too small to hold any meaningful content.
+    ``"..."`` as a suffix.  Returns an empty string when *description*
+    is empty or when *max_chars* is too small to hold at least one
+    character plus the suffix.  Returns *description* unchanged when
+    it already fits within *max_chars*.
 
     Args:
         description: Original description text.
         max_chars: Maximum character count for the result.
 
     Returns:
-        Truncated description or empty string.
+        Original, truncated, or empty string.
     """
-    ellipsis = "..."
-    # Need at least room for one word + ellipsis.
-    if max_chars < len(ellipsis) + 1:
+    if not description:
         return ""
+    suffix = "..."
+    # Need at least room for one character + suffix.
+    if max_chars < len(suffix) + 1:
+        return ""
+    if len(description) <= max_chars:
+        return description
 
-    budget = max_chars - len(ellipsis)
+    budget = max_chars - len(suffix)
     truncated = description[:budget]
     # Find last space to avoid splitting mid-word.
     last_space = truncated.rfind(" ")
     if last_space > 0:
         truncated = truncated[:last_space]
-    return truncated.rstrip() + ellipsis
+    return truncated.rstrip() + suffix
 
 
 def _try_condensed(
     ctx: dict[str, Any],
     max_tokens: int,
-    estimator: DefaultTokenEstimator,
+    estimator: PromptTokenEstimator,
 ) -> int | None:
     """Tier 1: drop enums by switching to condensed mode.
+
+    Mutates ``ctx["personality_mode"]`` to ``"condensed"`` regardless
+    of whether the budget is met.  Subsequent tiers build on this
+    side-effect.
 
     Returns the new token count if within budget, else ``None``.
     """
@@ -239,9 +253,13 @@ def _try_truncate_description(
     ctx: dict[str, Any],
     mode: PersonalityMode,
     max_tokens: int,
-    estimator: DefaultTokenEstimator,
+    estimator: PromptTokenEstimator,
 ) -> int | None:
     """Tier 2: truncate description to fit remaining budget.
+
+    Mutates ``ctx["personality_description"]`` to a truncated (or
+    empty) value regardless of whether the budget is met.  Subsequent
+    tiers may overwrite the description further.
 
     Returns the new token count if within budget, else ``None``.
     """
@@ -264,6 +282,7 @@ def _try_truncate_description(
 def _trim_personality(
     ctx: dict[str, Any],
     profile: PromptProfile,
+    estimator: PromptTokenEstimator | None = None,
 ) -> PersonalityTrimInfo | None:
     """Progressively trim personality fields to fit the token budget.
 
@@ -271,18 +290,22 @@ def _trim_personality(
     within ``profile.max_personality_tokens``:
 
     1. Drop behavioral enum fields (override mode to ``"condensed"``).
+       Only applied when starting mode is ``"full"``.
     2. Truncate ``personality_description`` to fit remaining budget.
     3. Fall back to ``"minimal"`` (communication_style only).
 
     Args:
         ctx: Mutable template context dict.  Modified in place.
         profile: Prompt profile with ``max_personality_tokens`` limit.
+        estimator: Token estimator.  Defaults to
+            :class:`DefaultTokenEstimator` when ``None``.
 
     Returns:
         :class:`PersonalityTrimInfo` when trimming was applied, or
         ``None`` when the section was already within budget.
     """
-    estimator = DefaultTokenEstimator()
+    if estimator is None:
+        estimator = DefaultTokenEstimator()
     max_tokens = profile.max_personality_tokens
     mode: PersonalityMode = ctx["personality_mode"]
     before = _estimate_personality_tokens(ctx, mode, estimator)
@@ -299,7 +322,7 @@ def _trim_personality(
 
     # Tier 2: Truncate description.
     desc = ctx.get("personality_description", "")
-    if desc and mode in {"full", "condensed"}:
+    if desc and mode == "condensed":
         after = _try_truncate_description(
             ctx,
             mode,
@@ -324,8 +347,8 @@ def _make_trim_info(
 ) -> PersonalityTrimInfo:
     """Create trim info and log at DEBUG level.
 
-    The engine layer logs at INFO with agent context; this log
-    provides lower-level detail for debugging.
+    The engine layer separately logs at INFO with agent context.
+    Emits a WARNING when the budget was not met (tier 3 best-effort).
     """
     logger.debug(
         PROMPT_PERSONALITY_TRIMMED,
@@ -334,6 +357,15 @@ def _make_trim_info(
         max_tokens=max_tokens,
         trim_tier=tier,
     )
+    if after > max_tokens:
+        logger.warning(
+            PROMPT_PERSONALITY_TRIMMED,
+            budget_met=False,
+            after_tokens=after,
+            max_tokens=max_tokens,
+            trim_tier=tier,
+            msg="personality trimming reached tier 3 but budget not met",
+        )
     return PersonalityTrimInfo(
         before_tokens=before,
         after_tokens=after,
@@ -342,13 +374,14 @@ def _make_trim_info(
     )
 
 
-def build_core_context(
+def build_core_context(  # noqa: PLR0913
     agent: AgentIdentity,
     role: Role | None,
     effective_autonomy: EffectiveAutonomy | None = None,
     profile: PromptProfile | None = None,
     *,
     trimming_enabled: bool = True,
+    estimator: PromptTokenEstimator | None = None,
 ) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
     """Build core template variables from agent identity and profile.
 
@@ -360,6 +393,8 @@ def build_core_context(
             defaults to full rendering.
         trimming_enabled: When ``True``, enforce
             ``profile.max_personality_tokens`` via progressive trimming.
+        estimator: Token estimator for personality trimming.  Defaults
+            to :class:`DefaultTokenEstimator` when ``None``.
 
     Returns:
         Tuple of (template context dict, personality trim info or None).
@@ -403,7 +438,7 @@ def build_core_context(
 
     trim_info: PersonalityTrimInfo | None = None
     if trimming_enabled and profile is not None:
-        trim_info = _trim_personality(ctx, profile)
+        trim_info = _trim_personality(ctx, profile, estimator=estimator)
 
     return ctx, trim_info
 

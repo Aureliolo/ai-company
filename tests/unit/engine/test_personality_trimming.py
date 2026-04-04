@@ -117,7 +117,8 @@ class TestEstimatePersonalityTokens:
 
         tokens = _estimate_personality_tokens(ctx, "full", estimator)
 
-        assert tokens > 0
+        # Full mode with all fields populated should produce a reasonable estimate.
+        assert tokens >= 20
 
     def test_condensed_mode_excludes_enums(self) -> None:
         """Condensed mode estimate is smaller than full mode."""
@@ -222,11 +223,10 @@ class TestTrimPersonality:
         result = _trim_personality(ctx, profile)
 
         assert result is not None
-        assert result.trim_tier in {2, 3}
+        assert result.trim_tier == 2
         trimmed_desc = ctx["personality_description"]
         assert len(str(trimmed_desc)) < len(original_desc)
-        if trimmed_desc:
-            assert str(trimmed_desc).endswith("...")
+        assert str(trimmed_desc).endswith("...")
 
     def test_severe_over_budget_falls_back_to_minimal(self) -> None:
         """Severely over budget falls back to minimal mode."""
@@ -308,13 +308,14 @@ class TestTrimPersonalityLogging:
             _trim_personality(ctx, profile)
 
         trim_events = [e for e in logs if e["event"] == PROMPT_PERSONALITY_TRIMMED]
-        assert len(trim_events) == 1
-        entry = trim_events[0]
-        assert "before_tokens" in entry
-        assert "after_tokens" in entry
-        assert "max_tokens" in entry
-        assert "trim_tier" in entry
-        assert entry["after_tokens"] <= entry["before_tokens"]
+        # DEBUG log always emitted; WARNING may also be emitted when budget not met.
+        assert len(trim_events) >= 1
+        debug_entry = next(e for e in trim_events if e["log_level"] == "debug")
+        assert "before_tokens" in debug_entry
+        assert "after_tokens" in debug_entry
+        assert "max_tokens" in debug_entry
+        assert "trim_tier" in debug_entry
+        assert debug_entry["after_tokens"] <= debug_entry["before_tokens"]
 
     def test_no_log_when_within_budget(self) -> None:
         """No trim event when personality is within budget."""
@@ -336,45 +337,15 @@ class TestTrimPersonalityLogging:
 class TestTierLimits:
     """Tests for trimming at each tier's default token limit."""
 
-    def test_small_tier_80_token_cap(self) -> None:
-        """Small tier (80 tokens) trims verbose personality."""
+    @pytest.mark.parametrize(
+        "tier",
+        ["small", "medium", "large"],
+        ids=["small_80", "medium_200", "large_500"],
+    )
+    def test_tier_respects_token_cap(self, tier: str) -> None:
+        """Each tier trims verbose personality to fit its token budget."""
         agent = _verbose_agent()
-        profile = get_prompt_profile("small")
-        # build_core_context with trimming enabled enforces the cap.
-        ctx, _ = build_core_context(
-            agent,
-            role=None,
-            profile=profile,
-        )
-        estimator = DefaultTokenEstimator()
-
-        tokens = _estimate_personality_tokens(
-            ctx,
-            ctx["personality_mode"],
-            estimator,
-        )
-
-        assert tokens <= profile.max_personality_tokens
-
-    def test_medium_tier_200_token_cap(self) -> None:
-        """Medium tier (200 tokens) trims verbose personality."""
-        agent = _verbose_agent()
-        profile = get_prompt_profile("medium")
-        ctx, _ = build_core_context(agent, role=None, profile=profile)
-        estimator = DefaultTokenEstimator()
-
-        tokens = _estimate_personality_tokens(
-            ctx,
-            ctx["personality_mode"],
-            estimator,
-        )
-
-        assert tokens <= profile.max_personality_tokens
-
-    def test_large_tier_500_token_cap(self) -> None:
-        """Large tier (500 tokens) trims verbose personality."""
-        agent = _verbose_agent()
-        profile = get_prompt_profile("large")
+        profile = get_prompt_profile(tier)  # type: ignore[arg-type]
         ctx, _ = build_core_context(agent, role=None, profile=profile)
         estimator = DefaultTokenEstimator()
 
@@ -501,15 +472,15 @@ class TestTruncateDescription:
             ("hello world", 3, ""),
             ("hello world", 4, "h..."),
             ("abcdefgh", 7, "abcd..."),
-            ("hello world foo", 16, "hello world..."),
-            ("a b c d e", 12, "a b c d..."),
+            ("The quick brown fox", 15, "The quick..."),
+            ("a b c d e f g", 10, "a b c..."),
         ],
         ids=[
             "truncate_at_word_boundary",
             "too_small_returns_empty",
             "minimal_room",
             "single_word_no_space",
-            "longer_text",
+            "longer_text_exceeds_limit",
             "exact_fit_with_ellipsis",
         ],
     )
@@ -523,9 +494,14 @@ class TestTruncateDescription:
         assert _truncate_description(text, max_chars) == expected
 
     def test_empty_input(self) -> None:
-        """Empty string truncation returns ellipsis."""
+        """Empty string truncation returns empty string."""
         result = _truncate_description("", 100)
-        assert result == "..."
+        assert result == ""
+
+    def test_input_fits_within_limit(self) -> None:
+        """Input that fits within limit is returned unchanged."""
+        result = _truncate_description("Short text.", 200)
+        assert result == "Short text."
 
     def test_result_within_limit(self) -> None:
         """Truncated result never exceeds max_chars."""
@@ -610,15 +586,32 @@ class TestPersonalityTrimInfoValidation:
 class TestAdditionalEdgeCases:
     """Additional edge case tests from review findings."""
 
-    def test_condensed_direct_entry_tier_is_2(self) -> None:
-        """Condensed mode over budget reports trim_tier == 2."""
+    def test_full_mode_tier1_fail_tier2_succeed(self) -> None:
+        """Full mode over budget: tier 1 fails, tier 2 truncation succeeds."""
         agent = _verbose_agent()
-        profile = _make_profile(max_tokens=60, personality_mode="condensed")
+        estimator = DefaultTokenEstimator()
+        # Probe condensed cost to find a budget that tier 1 can't meet
+        # but tier 2 (truncation in condensed mode) can.
+        ctx_probe = _build_ctx(agent, _make_profile(max_tokens=10000))
+        condensed = _estimate_personality_tokens(
+            ctx_probe,
+            "condensed",
+            estimator,
+        )
+        minimal = _estimate_personality_tokens(
+            ctx_probe,
+            "minimal",
+            estimator,
+        )
+        budget = (condensed + minimal) // 2
+
+        profile = _make_profile(max_tokens=budget, personality_mode="full")
         ctx = _build_ctx(agent, profile)
         result = _trim_personality(ctx, profile)
 
         assert result is not None
         assert result.trim_tier == 2
+        assert ctx["personality_mode"] == "condensed"
 
     def test_tier2_to_tier3_fallthrough(self) -> None:
         """When tier 2 fails (style+traits exceed budget), falls to tier 3."""
@@ -660,9 +653,13 @@ class TestAdditionalEdgeCases:
         # Context should still have full mode (no trimming applied).
         assert ctx["personality_mode"] == "full"
 
-    def test_ws_event_type_exists(self) -> None:
-        """PERSONALITY_TRIMMED is a valid WsEventType member."""
-        from synthorg.api.ws_models import WsEventType
-
-        assert hasattr(WsEventType, "PERSONALITY_TRIMMED")
-        assert WsEventType.PERSONALITY_TRIMMED.value == "personality.trimmed"
+    def test_personality_trim_info_is_frozen(self) -> None:
+        """PersonalityTrimInfo rejects attribute assignment after construction."""
+        info = PersonalityTrimInfo(
+            before_tokens=200,
+            after_tokens=50,
+            max_tokens=100,
+            trim_tier=2,
+        )
+        with pytest.raises(ValidationError):
+            info.before_tokens = 999  # type: ignore[misc]

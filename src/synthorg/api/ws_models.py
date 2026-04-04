@@ -60,8 +60,6 @@ class WsEventType(StrEnum):
     # Reserved for future status-update endpoint (not yet published).
     PROJECT_STATUS_CHANGED = "project.status_changed"
 
-    PERSONALITY_TRIMMED = "personality.trimmed"
-
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

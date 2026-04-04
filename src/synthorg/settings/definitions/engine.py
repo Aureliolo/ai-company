@@ -16,17 +16,7 @@ _r.register(
             "Enable token-based personality trimming when section exceeds budget"
         ),
         group="Personality Trimming",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.ENGINE,
-        key="personality_trimming_notify",
-        type=SettingType.BOOLEAN,
-        default="true",
-        description="Push WebSocket notification when personality trimming activates",
-        group="Personality Trimming",
+        yaml_path="engine.personality_trimming_enabled",
     )
 )
 
@@ -43,5 +33,6 @@ _r.register(
         group="Personality Trimming",
         min_value=0,
         max_value=10000,
+        yaml_path="engine.personality_max_tokens_override",
     )
 )

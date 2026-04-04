@@ -57,7 +57,7 @@ class PromptProfile(BaseModel):
     tier: ModelTier = Field(description="Target model tier")
     max_personality_tokens: int = Field(
         gt=0,
-        description="Soft limit on personality section token count",
+        description="Hard cap on personality section token count",
     )
     include_org_policies: bool = Field(
         default=True,

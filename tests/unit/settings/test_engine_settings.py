@@ -24,14 +24,6 @@ class TestEngineSettingDefinitions:
         assert defn.type == SettingType.BOOLEAN
         assert defn.default == "true"
 
-    def test_personality_trimming_notify_registered(self) -> None:
-        """personality_trimming_notify is a BOOLEAN setting."""
-        defn = get_registry().get("engine", "personality_trimming_notify")
-
-        assert defn is not None
-        assert defn.type == SettingType.BOOLEAN
-        assert defn.default == "true"
-
     def test_personality_max_tokens_override_registered(self) -> None:
         """personality_max_tokens_override is an INTEGER setting."""
         defn = get_registry().get("engine", "personality_max_tokens_override")
@@ -43,11 +35,11 @@ class TestEngineSettingDefinitions:
         assert defn.max_value == 10000
 
     def test_engine_settings_count(self) -> None:
-        """Engine namespace has exactly 3 settings."""
+        """Engine namespace has exactly 2 settings."""
         registry = get_registry()
         engine_defs = [
             d
             for d in registry.list_all()
             if d.namespace == SettingNamespace.ENGINE.value
         ]
-        assert len(engine_defs) == 3
+        assert len(engine_defs) == 2
