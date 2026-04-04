@@ -18,7 +18,12 @@ logger = get_logger(__name__)
 def get_auth_user_id(request: Request[Any, Any, Any]) -> str:
     """Extract the authenticated user ID from a request.
 
-    Returns ``"api"`` when no ``AuthenticatedUser`` is in scope.
+    Args:
+        request: The incoming Litestar request.
+
+    Returns:
+        The user ID string, or ``"api"`` when no
+        ``AuthenticatedUser`` is in scope.
     """
     auth_user = request.scope.get("user")
     if isinstance(auth_user, AuthenticatedUser):
@@ -39,6 +44,13 @@ def build_version_snapshot(
 
     The snapshot's ``saved_at`` is set to the definition's
     ``updated_at`` timestamp, not the current time.
+
+    Args:
+        definition: The workflow definition to snapshot.
+        saved_by: User ID of who triggered the save.
+
+    Returns:
+        An immutable ``WorkflowDefinitionVersion`` snapshot.
     """
     return WorkflowDefinitionVersion(
         definition_id=definition.id,
