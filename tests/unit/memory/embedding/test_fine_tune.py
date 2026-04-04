@@ -224,56 +224,31 @@ class TestContrastiveFineTune:
                 output_dir="/output",
             )
 
-    async def test_rejects_zero_epochs(self) -> None:
+    @pytest.mark.parametrize(
+        ("param", "value", "match"),
+        [
+            ("epochs", 0, "epochs"),
+            ("batch_size", 0, "batch_size"),
+            ("learning_rate", -0.001, "learning_rate"),
+            ("temperature", 0.0, "temperature"),
+        ],
+    )
+    async def test_rejects_invalid_hyperparameters(
+        self,
+        param: str,
+        value: float,
+        match: str,
+    ) -> None:
         from synthorg.memory.embedding.fine_tune import (
             contrastive_fine_tune,
         )
 
-        with pytest.raises(ValueError, match="epochs"):
+        with pytest.raises(ValueError, match=match):
             await contrastive_fine_tune(
                 training_data_path="/data",
                 base_model="test-model",
                 output_dir="/output",
-                epochs=0,
-            )
-
-    async def test_rejects_zero_batch_size(self) -> None:
-        from synthorg.memory.embedding.fine_tune import (
-            contrastive_fine_tune,
-        )
-
-        with pytest.raises(ValueError, match="batch_size"):
-            await contrastive_fine_tune(
-                training_data_path="/data",
-                base_model="test-model",
-                output_dir="/output",
-                batch_size=0,
-            )
-
-    async def test_rejects_negative_learning_rate(self) -> None:
-        from synthorg.memory.embedding.fine_tune import (
-            contrastive_fine_tune,
-        )
-
-        with pytest.raises(ValueError, match="learning_rate"):
-            await contrastive_fine_tune(
-                training_data_path="/data",
-                base_model="test-model",
-                output_dir="/output",
-                learning_rate=-0.001,
-            )
-
-    async def test_rejects_zero_temperature(self) -> None:
-        from synthorg.memory.embedding.fine_tune import (
-            contrastive_fine_tune,
-        )
-
-        with pytest.raises(ValueError, match="temperature"):
-            await contrastive_fine_tune(
-                training_data_path="/data",
-                base_model="test-model",
-                output_dir="/output",
-                temperature=0.0,
+                **{param: value},
             )
 
 
