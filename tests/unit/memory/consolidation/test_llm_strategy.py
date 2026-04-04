@@ -353,3 +353,340 @@ class TestLLMConsolidationStrategyErrorHandling:
 
         result = await strategy.consolidate(entries, agent_id="agent-1")
         assert result.consolidated_count == 2
+
+    async def test_recursion_error_propagates(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=RecursionError("deep"))
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+
+        with pytest.raises(RecursionError):
+            await strategy.consolidate(entries, agent_id="agent-1")
+
+
+@pytest.mark.unit
+class TestLLMConsolidationStrategyDetails:
+    async def test_select_entries_tiebreaker_prefers_most_recent(self) -> None:
+        """Equal relevance scores: most-recent created_at wins."""
+        from datetime import timedelta
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+
+        base = datetime.now(UTC) - timedelta(hours=5)
+        entries = (
+            _make_entry(entry_id="old", relevance_score=0.5, created_at=base),
+            _make_entry(
+                entry_id="mid",
+                relevance_score=0.5,
+                created_at=base + timedelta(hours=1),
+            ),
+            _make_entry(
+                entry_id="new",
+                relevance_score=0.5,
+                created_at=base + timedelta(hours=2),
+            ),
+        )
+        result = await strategy.consolidate(entries, agent_id="agent-1")
+        # "new" is the most recent among equal relevance: it stays.
+        assert "new" not in result.removed_ids
+        assert "old" in result.removed_ids
+        assert "mid" in result.removed_ids
+
+    async def test_select_entries_none_relevance_treated_as_zero(self) -> None:
+        """Entry with explicit score beats entries with ``None`` relevance."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = (
+            _make_entry(entry_id="n1", relevance_score=None),
+            _make_entry(entry_id="n2", relevance_score=None),
+            _make_entry(entry_id="scored", relevance_score=0.1),
+        )
+        result = await strategy.consolidate(entries, agent_id="agent-1")
+        assert "scored" not in result.removed_ids
+
+    async def test_fallback_summary_truncates_long_content(self) -> None:
+        """Fallback concat truncates entries longer than the cap."""
+        long_content = "x" * 500
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(
+            side_effect=RateLimitError("rate limited"),
+        )
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(
+                entry_id=f"e{i}",
+                content=long_content,
+                relevance_score=0.5,
+            )
+            for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        stored_request = backend.store.call_args[0][1]
+        assert "..." in stored_request.content
+        # 500-char raw content must NOT appear whole in the output.
+        assert long_content not in stored_request.content
+
+    async def test_successful_synthesis_stores_llm_response_verbatim(
+        self,
+    ) -> None:
+        """Stored summary content equals (stripped) LLM response."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(
+            return_value=_make_response(content="  synthesized answer  "),
+        )
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        stored_request = backend.store.call_args[0][1]
+        assert stored_request.content == "synthesized answer"
+        assert stored_request.metadata.source == "consolidation"
+        assert "llm-synthesized" in stored_request.metadata.tags
+
+    async def test_fallback_tagged_as_concat_fallback(self) -> None:
+        """Fallback summaries use the ``concat-fallback`` tag."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response(content=""))
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        stored_request = backend.store.call_args[0][1]
+        assert "concat-fallback" in stored_request.metadata.tags
+        assert "llm-synthesized" not in stored_request.metadata.tags
+
+    async def test_partial_delete_failure_records_only_deleted_ids(self) -> None:
+        """When a delete fails mid-loop, only successful IDs are reported."""
+        from synthorg.memory.errors import MemoryStoreError
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        # 3 entries: first succeeds, second fails, third succeeds.
+        backend.delete = AsyncMock(
+            side_effect=[True, MemoryStoreError("disk full"), True],
+        )
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=4,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(
+                entry_id=f"e{i}",
+                relevance_score=0.5 + i * 0.01,
+            )
+            for i in range(4)
+        )
+        result = await strategy.consolidate(entries, agent_id="agent-1")
+
+        # 4 entries, best kept, 3 attempted deletes: 2 succeeded.
+        assert result.consolidated_count == 2
+        # Summary was still stored -- consolidation degrades gracefully.
+        backend.store.assert_called_once()
+
+    async def test_trajectory_context_fetched_from_backend(self) -> None:
+        """Distillation entries are fetched and included in the prompt."""
+        from synthorg.memory.models import MemoryEntry
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        distillation_entry = MemoryEntry(
+            id="dist-1",
+            agent_id="agent-1",
+            category=MemoryCategory.EPISODIC,
+            content="Distillation: Task completed. Trajectory: 3 turns.",
+            metadata=MemoryMetadata(source="distillation", tags=("distillation",)),
+            created_at=datetime.now(UTC),
+        )
+        backend.retrieve = AsyncMock(return_value=(distillation_entry,))
+
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=True,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        # Verify distillation lookup happened.
+        backend.retrieve.assert_called_once()
+        # Verify the LLM call's system prompt includes trajectory context.
+        messages = provider.complete.call_args[0][0]
+        system_prompt = messages[0].content
+        assert "trajectory context" in system_prompt.lower()
+        assert "Task completed" in system_prompt
+
+    async def test_trajectory_context_disabled_skips_lookup(self) -> None:
+        """``include_distillation_context=False`` skips the backend query."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        backend.retrieve = AsyncMock(return_value=())
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        backend.retrieve.assert_not_called()
+
+    async def test_trajectory_context_lookup_failure_degrades(self) -> None:
+        """A failed distillation lookup degrades to plain synthesis."""
+        from synthorg.memory.errors import MemoryRetrievalError
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        backend.retrieve = AsyncMock(side_effect=MemoryRetrievalError("db down"))
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=True,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        result = await strategy.consolidate(entries, agent_id="agent-1")
+
+        # Consolidation still succeeds -- lookup failure degraded quietly.
+        assert result.consolidated_count == 2
+
+    async def test_multi_category_groups_processed_in_parallel(self) -> None:
+        """Multiple category groups are dispatched via TaskGroup."""
+        backend = AsyncMock()
+        store_ids = iter(["sum-a", "sum-b"])
+        backend.store = AsyncMock(side_effect=lambda *_a, **_kw: next(store_ids))
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+
+        now = datetime.now(UTC)
+        episodic = tuple(
+            _make_entry(
+                entry_id=f"ep{i}",
+                category=MemoryCategory.EPISODIC,
+                relevance_score=0.5,
+                created_at=now,
+            )
+            for i in range(3)
+        )
+        semantic = tuple(
+            _make_entry(
+                entry_id=f"sem{i}",
+                category=MemoryCategory.SEMANTIC,
+                relevance_score=0.5,
+                created_at=now,
+            )
+            for i in range(3)
+        )
+        result = await strategy.consolidate(
+            (*episodic, *semantic),
+            agent_id="agent-1",
+        )
+
+        assert provider.complete.call_count == 2
+        assert backend.store.call_count == 2
+        assert result.consolidated_count == 4

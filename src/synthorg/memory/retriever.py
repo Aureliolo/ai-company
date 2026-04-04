@@ -202,16 +202,7 @@ class ContextInjectionStrategy:
                 token_budget=token_budget,
                 categories=categories,
             )
-        except builtins.MemoryError:
-            logger.error(
-                MEMORY_RETRIEVAL_DEGRADED,
-                source="pipeline",
-                agent_id=agent_id,
-                error_type="system",
-                exc_info=True,
-            )
-            raise
-        except RecursionError:
+        except builtins.MemoryError, RecursionError:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="pipeline",
@@ -319,7 +310,11 @@ class ContextInjectionStrategy:
                 )
                 raise
             except Exception as exc:
-                logger.warning(
+                # Fail closed: a filter failure must not silently
+                # bypass a privacy / non-inferability filter.  Callers
+                # that configured a filter rely on it; if it raises we
+                # return nothing rather than leaking unfiltered memories.
+                logger.error(
                     MEMORY_RETRIEVAL_DEGRADED,
                     source="memory_filter",
                     agent_id=agent_id,
@@ -327,9 +322,10 @@ class ContextInjectionStrategy:
                     filter_strategy=getattr(
                         self._memory_filter, "strategy_name", "unknown"
                     ),
+                    reason="filter_failed_failing_closed",
                     exc_info=True,
                 )
-                # Graceful degradation: use unfiltered ranked memories.
+                return ()
             if not ranked:
                 logger.info(
                     MEMORY_RETRIEVAL_SKIPPED,

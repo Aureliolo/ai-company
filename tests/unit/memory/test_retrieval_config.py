@@ -359,3 +359,38 @@ class TestPersonalBoostRRFWarning:
             and e.get("field") == "personal_boost"
         ]
         assert len(events) == 0
+
+
+@pytest.mark.unit
+class TestDiversityStrategyConsistency:
+    def test_diversity_with_tool_based_warns(self) -> None:
+        """Diversity penalty only applies to CONTEXT; warn on TOOL_BASED."""
+        with structlog.testing.capture_logs() as cap:
+            c = MemoryRetrievalConfig(
+                strategy=InjectionStrategy.TOOL_BASED,
+                diversity_penalty_enabled=True,
+            )
+        assert c.diversity_penalty_enabled is True
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "diversity_penalty_enabled"
+        ]
+        assert len(events) == 1
+        assert "ContextInjectionStrategy" in events[0]["reason"]
+
+    def test_diversity_with_context_no_warning(self) -> None:
+        """Diversity penalty with CONTEXT strategy is the supported path."""
+        with structlog.testing.capture_logs() as cap:
+            MemoryRetrievalConfig(
+                strategy=InjectionStrategy.CONTEXT,
+                diversity_penalty_enabled=True,
+            )
+        events = [
+            e
+            for e in cap
+            if e.get("event") == CONFIG_VALIDATION_FAILED
+            and e.get("field") == "diversity_penalty_enabled"
+        ]
+        assert len(events) == 0

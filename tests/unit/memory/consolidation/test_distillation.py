@@ -18,7 +18,7 @@ from synthorg.memory.consolidation.distillation import (
     build_outcome,
     build_trajectory_summary,
     capture_distillation,
-    extract_memory_ids,
+    extract_memory_tool_invocations,
 )
 from synthorg.memory.errors import MemoryStoreError
 from synthorg.providers.enums import FinishReason
@@ -74,12 +74,12 @@ class TestDistillationRequest:
             task_id="task-1",
             trajectory_summary="3 turns, 450 tokens",
             outcome="Task completed successfully.",
-            retrieved_memory_ids=("search_memory",),
+            memory_tool_invocations=("search_memory",),
             created_at=now,
         )
         assert req.agent_id == "agent-1"
         assert req.task_id == "task-1"
-        assert req.retrieved_memory_ids == ("search_memory",)
+        assert req.memory_tool_invocations == ("search_memory",)
 
     def test_frozen_rejects_mutation(self) -> None:
         now = datetime.now(UTC)
@@ -93,7 +93,7 @@ class TestDistillationRequest:
         with pytest.raises(ValidationError):
             req.agent_id = "other"  # type: ignore[misc]
 
-    def test_default_retrieved_memory_ids(self) -> None:
+    def test_default_memory_tool_invocations(self) -> None:
         now = datetime.now(UTC)
         req = DistillationRequest(
             agent_id="agent-1",
@@ -102,7 +102,7 @@ class TestDistillationRequest:
             outcome="outcome",
             created_at=now,
         )
-        assert req.retrieved_memory_ids == ()
+        assert req.memory_tool_invocations == ()
 
     def test_blank_agent_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -172,14 +172,14 @@ class TestBuildOutcome:
         assert "budget_exhausted" in result
 
 
-# ── extract_memory_ids ──────────────────────────────────────────
+# ── extract_memory_tool_invocations ──────────────────────────────────────────
 
 
 @pytest.mark.unit
 class TestExtractMemoryIds:
     def test_no_tool_calls(self) -> None:
         turns = (_make_turn(),)
-        result = extract_memory_ids(turns)
+        result = extract_memory_tool_invocations(turns)
         assert result == ()
 
     def test_memory_tools_found(self) -> None:
@@ -187,18 +187,18 @@ class TestExtractMemoryIds:
             _make_turn(tool_calls_made=("search_memory", "code_execute")),
             _make_turn(tool_calls_made=("recall_memory",)),
         )
-        result = extract_memory_ids(turns)
+        result = extract_memory_tool_invocations(turns)
         assert "search_memory" in result
         assert "recall_memory" in result
         assert "code_execute" not in result
 
     def test_non_memory_tools_ignored(self) -> None:
         turns = (_make_turn(tool_calls_made=("code_execute", "web_search")),)
-        result = extract_memory_ids(turns)
+        result = extract_memory_tool_invocations(turns)
         assert result == ()
 
     def test_empty_turns(self) -> None:
-        result = extract_memory_ids(())
+        result = extract_memory_tool_invocations(())
         assert result == ()
 
 
@@ -228,7 +228,7 @@ class TestCaptureDistillation:
         assert result is not None
         assert result.agent_id == "agent-1"
         assert result.task_id == "task-1"
-        assert "search_memory" in result.retrieved_memory_ids
+        assert "search_memory" in result.memory_tool_invocations
         backend.store.assert_called_once()
 
     async def test_backend_error_returns_none(self) -> None:
@@ -281,3 +281,51 @@ class TestCaptureDistillation:
         assert result is not None
         assert "Task failed" in result.outcome
         assert "something broke" in result.outcome
+
+    async def test_recursion_error_propagates(self) -> None:
+        backend = AsyncMock()
+        backend.store = AsyncMock(side_effect=RecursionError("stack overflow"))
+
+        exec_result = _make_execution_result()
+
+        with pytest.raises(RecursionError):
+            await capture_distillation(
+                exec_result,
+                agent_id="agent-1",
+                task_id="task-1",
+                backend=backend,
+            )
+
+    async def test_error_without_message_falls_through(self) -> None:
+        """ERROR termination without error_message hits the fallback branch."""
+        result = build_outcome(TerminationReason.ERROR, None)
+        assert "terminated" in result.lower()
+        assert "error" in result.lower()
+
+    async def test_store_request_shape(self) -> None:
+        """Verify capture_distillation stores the expected EPISODIC tag shape."""
+        from synthorg.core.enums import MemoryCategory
+
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="dist-3")
+
+        exec_result = _make_execution_result(
+            turns=(_make_turn(tool_calls_made=("search_memory",)),),
+        )
+
+        await capture_distillation(
+            exec_result,
+            agent_id="agent-7",
+            task_id="task-7",
+            backend=backend,
+        )
+
+        backend.store.assert_called_once()
+        args, _ = backend.store.call_args
+        assert args[0] == "agent-7"
+        store_request = args[1]
+        assert store_request.category == MemoryCategory.EPISODIC
+        assert store_request.metadata.source == "distillation"
+        assert "distillation" in store_request.metadata.tags
+        assert "Trajectory:" in store_request.content
+        assert "Memory lookups: 1" in store_request.content

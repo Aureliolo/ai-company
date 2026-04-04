@@ -12,7 +12,7 @@ pre-ranked lists via Reciprocal Rank Fusion (multi-source).
 import math
 from collections.abc import Callable  # noqa: TC003
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -50,15 +50,27 @@ class FusionStrategy(StrEnum):
 class ScoredMemory(BaseModel):
     """Memory entry with computed ranking scores.
 
+    Produced by either ``rank_memories`` (LINEAR fusion) or
+    ``fuse_ranked_lists`` (RRF fusion).  Field semantics depend on
+    which producer created the instance:
+
+    - **LINEAR**: ``relevance_score`` is raw backend relevance plus
+      ``personal_boost`` (for personal entries), ``recency_score`` is
+      the exponential decay based on age, and ``combined_score`` is
+      the weighted linear combination of the two.
+    - **RRF**: ``relevance_score`` preserves the raw backend relevance
+      (or ``0.0`` if absent), ``recency_score`` is always ``0.0``
+      (RRF is rank-based, not time-based), and ``combined_score`` is
+      the min-max-normalized fusion score.
+
     Attributes:
         entry: The original memory entry.
-        relevance_score: Relevance score after pipeline-specific
-            transformations (0.0-1.0).
-        recency_score: Exponential decay based on age (0.0-1.0).
-            Always 0.0 for RRF-produced results.
-        combined_score: Final ranking signal (0.0-1.0).  For linear
-            ranking this is a weighted combination; for RRF this is
-            the normalized fusion score.
+        relevance_score: For LINEAR, post-boost relevance; for RRF,
+            raw backend relevance (0.0-1.0).
+        recency_score: Exponential decay based on age (LINEAR) or
+            always 0.0 (RRF).
+        combined_score: Final ranking signal (0.0-1.0).  LINEAR
+            weighted combination or RRF normalized fusion score.
         is_shared: Whether this came from SharedKnowledgeStore.
     """
 
@@ -68,17 +80,17 @@ class ScoredMemory(BaseModel):
     relevance_score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Relevance score (after boost)",
+        description=("LINEAR: post-boost relevance. RRF: raw backend relevance."),
     )
     recency_score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Recency decay score",
+        description="Recency decay score (always 0.0 for RRF).",
     )
     combined_score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Weighted combination score",
+        description=("LINEAR: weighted combination. RRF: normalized fusion score."),
     )
     is_shared: bool = Field(
         default=False,
@@ -383,19 +395,23 @@ def fuse_ranked_lists(
 # ── Diversity re-ranking (MMR) ────────────────────────────────────
 
 
-def _word_bigrams(text: str) -> set[tuple[str, str]]:
-    """Extract word-level bigrams from *text*.
+_MIN_BIGRAM_WORDS: Final[int] = 2
+
+
+def _word_bigrams(text: str) -> frozenset[tuple[str, str]]:
+    """Extract word-level bigrams from ``text``.
 
     Args:
         text: Input text.
 
     Returns:
-        Set of consecutive (word_i, word_i+1) pairs (lowercased).
+        Frozen set of consecutive (word_i, word_i+1) pairs (lowercased).
+        Empty when the text has fewer than two words.
     """
     words = text.lower().split()
-    if len(words) < 2:  # noqa: PLR2004
-        return set()
-    return {(words[i], words[i + 1]) for i in range(len(words) - 1)}
+    if len(words) < _MIN_BIGRAM_WORDS:
+        return frozenset()
+    return frozenset((words[i], words[i + 1]) for i in range(len(words) - 1))
 
 
 def _bigram_jaccard(text_a: str, text_b: str) -> float:
@@ -434,46 +450,126 @@ def apply_diversity_penalty(
 
     MMR score: ``lambda * combined_score - (1 - lambda) * max_sim``
 
+    When ``similarity_fn`` is ``None`` (the default), the implementation
+    pre-computes each entry's word bigrams once and computes Jaccard
+    from the cached sets, avoiding ``O(n**2 * k)`` re-tokenization of
+    already-selected content on each iteration.
+
     Args:
         scored: Pre-ranked scored memories.
         diversity_lambda: Trade-off between relevance (1.0) and
             diversity (0.0).  Must be in [0.0, 1.0].
         similarity_fn: Optional pairwise text similarity function.
-            Defaults to ``_bigram_jaccard`` when ``None``.
+            Defaults to bigram Jaccard (with precomputed bigram cache)
+            when ``None``.
 
     Returns:
-        Re-ordered tuple of the same length as *scored*.
+        Re-ordered tuple of the same length as ``scored``.
 
     Raises:
         ValueError: If ``diversity_lambda`` is outside [0.0, 1.0].
     """
     if diversity_lambda < 0.0 or diversity_lambda > 1.0:
         msg = f"diversity_lambda must be in [0.0, 1.0], got {diversity_lambda}"
+        logger.warning(
+            MEMORY_DIVERSITY_RERANKED,
+            param="diversity_lambda",
+            value=diversity_lambda,
+            reason=msg,
+        )
         raise ValueError(msg)
 
     if len(scored) <= 1:
         return scored
 
-    sim_fn = similarity_fn or _bigram_jaccard
+    if similarity_fn is None:
+        return _mmr_rerank_bigram_cached(
+            scored,
+            diversity_lambda=diversity_lambda,
+        )
+
+    return _mmr_rerank_generic(
+        scored,
+        diversity_lambda=diversity_lambda,
+        similarity_fn=similarity_fn,
+    )
+
+
+def _mmr_rerank_bigram_cached(
+    scored: tuple[ScoredMemory, ...],
+    *,
+    diversity_lambda: float,
+) -> tuple[ScoredMemory, ...]:
+    """MMR re-ranking with pre-computed bigram sets for each entry."""
+    bigrams_by_idx = [_word_bigrams(s.entry.content) for s in scored]
+    remaining_indices = list(range(len(scored)))
+    selected_indices: list[int] = []
+
+    while remaining_indices:
+        best_position = 0
+        best_mmr = -math.inf
+
+        for position, idx in enumerate(remaining_indices):
+            relevance = diversity_lambda * scored[idx].combined_score
+            if selected_indices:
+                max_sim = max(
+                    _bigram_jaccard_cached(bigrams_by_idx[idx], bigrams_by_idx[sel])
+                    for sel in selected_indices
+                )
+            else:
+                max_sim = 0.0
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_position = position
+
+        selected_indices.append(remaining_indices.pop(best_position))
+
+    logger.debug(
+        MEMORY_DIVERSITY_RERANKED,
+        input_count=len(scored),
+        diversity_lambda=diversity_lambda,
+    )
+
+    return tuple(scored[i] for i in selected_indices)
+
+
+def _bigram_jaccard_cached(
+    bigrams_a: frozenset[tuple[str, str]],
+    bigrams_b: frozenset[tuple[str, str]],
+) -> float:
+    """Jaccard similarity between two pre-computed bigram sets."""
+    if not bigrams_a or not bigrams_b:
+        return 0.0
+    intersection = len(bigrams_a & bigrams_b)
+    union = len(bigrams_a | bigrams_b)
+    return intersection / union
+
+
+def _mmr_rerank_generic(
+    scored: tuple[ScoredMemory, ...],
+    *,
+    diversity_lambda: float,
+    similarity_fn: Callable[[str, str], float],
+) -> tuple[ScoredMemory, ...]:
+    """MMR re-ranking with a caller-supplied similarity function."""
     remaining = list(scored)
     selected: list[ScoredMemory] = []
 
     while remaining:
         best_idx = 0
-        best_mmr = -1.0
+        best_mmr = -math.inf
 
         for i, candidate in enumerate(remaining):
             relevance = diversity_lambda * candidate.combined_score
-
             if selected:
                 max_sim = max(
-                    sim_fn(candidate.entry.content, s.entry.content) for s in selected
+                    similarity_fn(candidate.entry.content, s.entry.content)
+                    for s in selected
                 )
             else:
                 max_sim = 0.0
-
             mmr = relevance - (1.0 - diversity_lambda) * max_sim
-
             if mmr > best_mmr:
                 best_mmr = mmr
                 best_idx = i

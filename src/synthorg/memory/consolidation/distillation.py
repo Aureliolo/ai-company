@@ -1,8 +1,9 @@
 """Distillation request capture at task completion.
 
-Captures trajectory summaries, outcomes, and retrieved memory IDs
-from execution results to feed into the consolidation pipeline for
-outcome-driven memory curation.
+Captures trajectory summaries, outcomes, and the memory tool calls
+invoked during a task from execution results, then stores an EPISODIC
+memory entry tagged ``"distillation"`` that downstream consolidation
+strategies can read as trajectory context.
 """
 
 from datetime import UTC, datetime
@@ -30,16 +31,28 @@ from synthorg.observability.events.consolidation import (
 
 logger = get_logger(__name__)
 
+#: Tag applied to EPISODIC entries produced by ``capture_distillation``.
+#: Downstream consolidation reads entries with this tag as trajectory context.
+DISTILLATION_TAG: NotBlankStr = "distillation"
+
 
 class DistillationRequest(BaseModel):
     """Captured distillation data from a completed task execution.
+
+    ``memory_tool_invocations`` records the names of memory tools the
+    agent invoked (``"search_memory"``, ``"recall_memory"``) rather
+    than the IDs of the specific entries those tools returned.  Actual
+    entry IDs are internal to tool results and are not surfaced on
+    ``TurnRecord``; consumers that need them must query the backend
+    for entries tagged ``"distillation"`` and correlate by task.
 
     Attributes:
         agent_id: Which agent completed the task.
         task_id: Which task was completed.
         trajectory_summary: Summarized execution trajectory.
         outcome: Task outcome description.
-        retrieved_memory_ids: IDs of memories retrieved during execution.
+        memory_tool_invocations: Names of memory tools invoked during
+            execution (not memory entry IDs).
         created_at: Capture timestamp.
     """
 
@@ -51,9 +64,12 @@ class DistillationRequest(BaseModel):
         description="Summarized execution trajectory",
     )
     outcome: NotBlankStr = Field(description="Task outcome description")
-    retrieved_memory_ids: tuple[NotBlankStr, ...] = Field(
+    memory_tool_invocations: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="IDs of memories retrieved during execution",
+        description=(
+            "Names of memory tools invoked during execution "
+            "(e.g. 'search_memory', 'recall_memory')"
+        ),
     )
     created_at: AwareDatetime = Field(description="Capture timestamp")
 
@@ -74,16 +90,14 @@ def build_trajectory_summary(turns: tuple[TurnRecord, ...]) -> str:
         return "No turns recorded."
 
     total_tokens = sum(t.total_tokens for t in turns)
-    all_tools: list[str] = []
-    for turn in turns:
-        all_tools.extend(turn.tool_calls_made)
-    unique_tools = sorted(set(all_tools))
+    tool_call_count = sum(len(turn.tool_calls_made) for turn in turns)
+    unique_tools = sorted({tool for turn in turns for tool in turn.tool_calls_made})
 
     parts = [f"{len(turns)} turns, {total_tokens} tokens"]
     if unique_tools:
         parts.append(f"tools: {', '.join(unique_tools)}")
-    if all_tools:
-        parts.append(f"{len(all_tools)} tool calls total")
+    if tool_call_count:
+        parts.append(f"{tool_call_count} tool calls total")
 
     return "; ".join(parts)
 
@@ -108,21 +122,22 @@ def build_outcome(
     return f"Task terminated: {termination_reason.value}"
 
 
-def extract_memory_ids(
+def extract_memory_tool_invocations(
     turns: tuple[TurnRecord, ...],
 ) -> tuple[NotBlankStr, ...]:
-    """Extract memory tool call names from turn records.
+    """Extract memory tool invocation names from turn records.
 
-    Identifies turns where ``search_memory`` or ``recall_memory``
-    tools were invoked.  Returns the tool names as identifiers
-    (actual memory IDs are internal to the tool results, not
-    available in ``TurnRecord``).
+    Scans turns for invocations of ``search_memory`` or
+    ``recall_memory`` and returns the tool names (one per invocation).
+    These are NOT memory entry IDs -- ``TurnRecord`` does not surface
+    the IDs of entries each tool call returned.
 
     Args:
         turns: Per-turn metadata from the execution.
 
     Returns:
-        Tuple of memory-related tool call names found.
+        Tuple of memory-related tool call names, preserving invocation
+        order and counting repeats.
     """
     return tuple(
         NotBlankStr(tool_name)
@@ -141,9 +156,11 @@ async def capture_distillation(
 ) -> DistillationRequest | None:
     """Capture distillation data at task completion.
 
-    Non-critical -- returns ``None`` on failure and logs a warning.
-    The captured data is stored as an EPISODIC memory entry tagged
-    with ``"distillation"`` for later consolidation.
+    Non-critical -- returns ``None`` on non-system failures and logs
+    a warning.  The captured data is stored as an EPISODIC memory
+    entry tagged with ``"distillation"`` so downstream consolidation
+    strategies (notably ``LLMConsolidationStrategy``) can read it as
+    trajectory context.
 
     Args:
         execution_result: The completed execution result.
@@ -152,7 +169,12 @@ async def capture_distillation(
         backend: Memory backend for storing the distillation entry.
 
     Returns:
-        The captured ``DistillationRequest``, or ``None`` on failure.
+        The captured ``DistillationRequest``, or ``None`` on
+        non-system failure.
+
+    Raises:
+        builtins.MemoryError: Re-raised (system-level OOM).
+        RecursionError: Re-raised (system-level).
     """
     try:
         trajectory = build_trajectory_summary(execution_result.turns)
@@ -160,21 +182,21 @@ async def capture_distillation(
             execution_result.termination_reason,
             execution_result.error_message,
         )
-        memory_ids = extract_memory_ids(execution_result.turns)
+        tool_invocations = extract_memory_tool_invocations(execution_result.turns)
 
         request = DistillationRequest(
             agent_id=agent_id,
             task_id=task_id,
             trajectory_summary=trajectory,
             outcome=outcome,
-            retrieved_memory_ids=memory_ids,
+            memory_tool_invocations=tool_invocations,
             created_at=datetime.now(UTC),
         )
 
         store_content = (
-            f"Distillation -- {outcome}\n"
+            f"Distillation: {outcome}\n"
             f"Trajectory: {trajectory}\n"
-            f"Memory lookups: {len(memory_ids)}"
+            f"Memory lookups: {len(tool_invocations)}"
         )
 
         store_request = MemoryStoreRequest(
@@ -182,11 +204,18 @@ async def capture_distillation(
             content=store_content,
             metadata=MemoryMetadata(
                 source="distillation",
-                tags=("distillation",),
+                tags=(DISTILLATION_TAG,),
             ),
         )
         await backend.store(agent_id, store_request)
     except MemoryError, RecursionError:
+        logger.error(
+            DISTILLATION_CAPTURE_FAILED,
+            agent_id=agent_id,
+            task_id=task_id,
+            error_type="system",
+            exc_info=True,
+        )
         raise
     except Exception as exc:
         logger.warning(
@@ -204,6 +233,6 @@ async def capture_distillation(
             agent_id=agent_id,
             task_id=task_id,
             turns=len(execution_result.turns),
-            memory_ids=len(memory_ids),
+            tool_invocation_count=len(tool_invocations),
         )
         return request

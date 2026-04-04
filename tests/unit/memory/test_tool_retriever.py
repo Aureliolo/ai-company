@@ -546,6 +546,120 @@ class TestSearchWithReformulation:
         # Should stop after one reformulation attempt
         assert backend.retrieve.call_count == 1
 
+    async def test_reformulation_dedupes_results_across_rounds(self) -> None:
+        """Entries with the same ID across rounds are merged, not duplicated."""
+        shared = _make_entry(
+            entry_id="shared",
+            content="shared content",
+            relevance_score=0.5,
+        )
+        new_entry = _make_entry(entry_id="new-1", content="new content")
+
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(side_effect=[(shared,), (shared, new_entry)])
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(side_effect=[False, True])
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(return_value="refined")
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=2),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "start"},
+            agent_id="agent-1",
+        )
+        # "shared" appears exactly once in the formatted output.
+        assert result.count("shared content") == 1
+        assert "new content" in result
+
+    async def test_sufficiency_checker_error_returns_current_entries(
+        self,
+    ) -> None:
+        """A sufficiency checker exception degrades to current entries."""
+        entries = (_make_entry(entry_id="a", content="initial"),)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=entries)
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(
+            side_effect=RuntimeError("checker down"),
+        )
+        reformulator = AsyncMock()
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=2),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "test"},
+            agent_id="agent-1",
+        )
+        # Initial entries should still be returned, no error leaked.
+        assert "initial" in result
+        assert "checker down" not in result
+        # Reformulator never reached.
+        reformulator.reformulate.assert_not_called()
+
+    async def test_reformulator_error_returns_current_entries(self) -> None:
+        """A reformulator exception degrades to current entries."""
+        entries = (_make_entry(entry_id="a", content="initial"),)
+        backend = AsyncMock()
+        backend.retrieve = AsyncMock(return_value=entries)
+
+        sufficiency = AsyncMock()
+        sufficiency.check_sufficiency = AsyncMock(return_value=False)
+        reformulator = AsyncMock()
+        reformulator.reformulate = AsyncMock(
+            side_effect=RuntimeError("reformulator down"),
+        )
+
+        strategy = ToolBasedInjectionStrategy(
+            backend=backend,
+            config=_reformulation_config(max_rounds=2),
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency,
+        )
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={"query": "test"},
+            agent_id="agent-1",
+        )
+        assert "initial" in result
+        assert "reformulator down" not in result
+
+
+@pytest.mark.unit
+class TestInvalidCategoryHandling:
+    async def test_invalid_categories_surface_to_llm(self) -> None:
+        """Invalid category values appear in the response for LLM correction."""
+        entry = _make_entry(content="memory")
+        strategy = ToolBasedInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=_tool_config(),
+        )
+        result = await strategy.handle_tool_call(
+            tool_name="search_memory",
+            arguments={
+                "query": "test",
+                "categories": ["episodic", "long_term", "foo"],
+            },
+            agent_id="agent-1",
+        )
+        assert "long_term" in result
+        assert "foo" in result
+        assert "Ignored invalid categories" in result
+
 
 @pytest.mark.unit
 class TestMergeResults:

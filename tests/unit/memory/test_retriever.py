@@ -557,8 +557,14 @@ class TestMemoryFilterIntegration:
         assert "tagged memory" in content
         assert "untagged memory" not in content
 
-    async def test_filter_graceful_degradation(self) -> None:
-        """Filter error falls back to unfiltered ranked memories."""
+    async def test_filter_failure_fails_closed(self) -> None:
+        """Filter error returns no messages (fail closed, never leak).
+
+        Callers who configured a filter rely on it for privacy /
+        non-inferability enforcement.  A filter exception must NOT
+        silently pass through unfiltered memories -- that would
+        bypass the configured safety boundary.
+        """
 
         class _BrokenFilter:
             def filter_for_injection(
@@ -572,7 +578,7 @@ class TestMemoryFilterIntegration:
             def strategy_name(self) -> str:
                 return "broken"
 
-        entry = _make_entry(content="survives filter error")
+        entry = _make_entry(content="should not leak")
         strategy = ContextInjectionStrategy(
             backend=_make_backend((entry,)),
             config=MemoryRetrievalConfig(min_relevance=0.0),
@@ -583,11 +589,8 @@ class TestMemoryFilterIntegration:
             query_text="query",
             token_budget=5000,
         )
-        # Graceful degradation: unfiltered memories are still returned.
-        assert len(result) == 1
-        content = result[0].content
-        assert content is not None
-        assert "survives filter error" in content
+        # Fail-closed: no messages returned on filter failure.
+        assert result == ()
 
     async def test_filter_memory_error_propagates(self) -> None:
         """MemoryError through the filter path is re-raised."""

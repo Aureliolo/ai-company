@@ -16,11 +16,13 @@ from synthorg.memory.errors import MemoryError as DomainMemoryError
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_REFORMULATION_FAILED,
     MEMORY_REFORMULATION_ROUND,
     MEMORY_REFORMULATION_SUFFICIENT,
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
     MEMORY_RETRIEVAL_START,
+    MEMORY_SUFFICIENCY_CHECK_FAILED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, ToolDefinition
@@ -38,13 +40,17 @@ logger = get_logger(__name__)
 SEARCH_MEMORY_TOOL_NAME = "search_memory"
 RECALL_MEMORY_TOOL_NAME = "recall_memory"
 
-# Error message constants -- imported by memory/tools.py for error detection.
+# Error message constants.  ``memory/tools.py`` performs PREFIX matching
+# on these exact strings to detect user-facing tool errors.  All error
+# messages start with ``ERROR_PREFIX`` so the matcher can check via
+# ``startswith(ERROR_PREFIX)`` rather than substring matching.  Do not
+# rename, reorder, or drop the prefix without updating the matcher.
 ERROR_PREFIX = "Error:"
-SEARCH_UNAVAILABLE = "Memory search is temporarily unavailable."
-SEARCH_UNEXPECTED = "Memory search encountered an unexpected error."
-RECALL_UNAVAILABLE = "Memory recall is temporarily unavailable."
-RECALL_UNEXPECTED = "Memory recall encountered an unexpected error."
-RECALL_NOT_FOUND_PREFIX = "Memory not found:"
+SEARCH_UNAVAILABLE = f"{ERROR_PREFIX} Memory search is temporarily unavailable."
+SEARCH_UNEXPECTED = f"{ERROR_PREFIX} Memory search encountered an unexpected error."
+RECALL_UNAVAILABLE = f"{ERROR_PREFIX} Memory recall is temporarily unavailable."
+RECALL_UNEXPECTED = f"{ERROR_PREFIX} Memory recall encountered an unexpected error."
+RECALL_NOT_FOUND_PREFIX = f"{ERROR_PREFIX} Memory not found:"
 
 _INSTRUCTION = (
     "You have access to memory recall tools. Use search_memory "
@@ -114,25 +120,45 @@ def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
 
 def _parse_categories(
     raw: Any,
-) -> frozenset[MemoryCategory] | None:
+    *,
+    agent_id: str | None = None,
+) -> tuple[frozenset[MemoryCategory] | None, tuple[str, ...]]:
     """Parse category filter from LLM arguments.
 
-    Invalid category values are skipped with a debug log.
+    Invalid category values are logged at WARNING (so operators can
+    see the agent's hallucinated categories) and returned in the
+    rejected tuple so callers can surface them back to the LLM for
+    self-correction.
+
+    Args:
+        raw: Raw value from tool arguments (expected list[str]).
+        agent_id: Optional agent identifier for log context.
+
+    Returns:
+        Tuple of ``(parsed_categories, rejected_values)``.
+        ``parsed_categories`` is ``None`` when input is empty / not a
+        list, else a frozenset of valid categories.  ``rejected_values``
+        is a tuple of the raw values that failed to parse.
     """
     if not raw or not isinstance(raw, list):
-        return None
+        return None, ()
     categories: list[MemoryCategory] = []
+    rejected: list[str] = []
     for val in raw:
         try:
             categories.append(MemoryCategory(val))
         except ValueError:
-            logger.debug(
+            rejected_value = str(val)
+            rejected.append(rejected_value)
+            logger.warning(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="category_parse",
-                invalid_category=str(val),
+                agent_id=agent_id,
+                invalid_category=rejected_value,
                 reason="unknown category value, skipped",
             )
-    return frozenset(categories) if categories else None
+    parsed = frozenset(categories) if categories else None
+    return parsed, tuple(rejected)
 
 
 def _merge_results(
@@ -176,20 +202,26 @@ def _merge_results(
 def _parse_search_args(
     arguments: dict[str, Any],
     config_max_memories: int,
-) -> tuple[str | None, int, frozenset[MemoryCategory] | None]:
+    *,
+    agent_id: str | None = None,
+) -> tuple[str | None, int, frozenset[MemoryCategory] | None, tuple[str, ...]]:
     """Extract and validate search_memory arguments.
 
     Args:
         arguments: Raw tool arguments from LLM.
         config_max_memories: System-configured max memories limit.
+        agent_id: Optional agent identifier for log context.
 
     Returns:
-        Tuple of (query_text, limit, categories).  ``query_text``
-        is ``None`` when the query is empty or whitespace-only.
+        Tuple of ``(query_text, limit, categories, rejected_categories)``.
+        ``query_text`` is ``None`` when the query is empty or
+        whitespace-only.  ``rejected_categories`` contains raw values
+        that failed to parse as ``MemoryCategory`` so the caller can
+        surface them back to the LLM for self-correction.
     """
     query_text = arguments.get("query", "")
     if not query_text or not str(query_text).strip():
-        return None, 0, None
+        return None, 0, None, ()
 
     limit_raw = arguments.get("limit", 10)
     if isinstance(limit_raw, bool) or not isinstance(limit_raw, int | float):
@@ -200,8 +232,11 @@ def _parse_search_args(
     effective_max = min(50, config_max_memories)
     limit = min(max(limit, 1), effective_max)
 
-    categories = _parse_categories(arguments.get("categories"))
-    return query_text, limit, categories
+    categories, rejected = _parse_categories(
+        arguments.get("categories"),
+        agent_id=agent_id,
+    )
+    return query_text, limit, categories, rejected
 
 
 class ToolBasedInjectionStrategy:
@@ -210,6 +245,12 @@ class ToolBasedInjectionStrategy:
     Implements ``MemoryInjectionStrategy`` protocol.  Instead of
     pre-loading memories, exposes ``search_memory`` and
     ``recall_memory`` tools for the agent to invoke during execution.
+
+    When ``config.query_reformulation_enabled`` is True and both
+    ``reformulator`` and ``sufficiency_checker`` are provided, the
+    ``search_memory`` handler runs an iterative Search-and-Ask loop:
+    retrieve -> check sufficiency -> reformulate query -> re-retrieve,
+    up to ``config.max_reformulation_rounds`` rounds.
 
     Note: Tool-based strategies expose additional methods
     (``handle_tool_call``, ``get_tool_definitions``) beyond the
@@ -220,10 +261,23 @@ class ToolBasedInjectionStrategy:
         backend: Memory backend for personal memories.
         config: Retrieval pipeline configuration.
         shared_store: Optional shared knowledge store.
-        token_estimator: Accepts for constructor parity with
-            ``ContextInjectionStrategy`` (unused).
-        memory_filter: Accepts for constructor parity with
-            ``ContextInjectionStrategy`` (unused).
+        token_estimator: Ignored -- accepted for constructor parity
+            with ``ContextInjectionStrategy`` so both strategies can
+            be constructed with the same kwargs.  Tool-based retrieval
+            has no token estimation step.
+        memory_filter: Ignored -- accepted for constructor parity
+            with ``ContextInjectionStrategy``.  Callers needing
+            tag-based filtering on tool-based retrieval should wrap
+            the backend instead.  Use ``ContextInjectionStrategy``
+            when post-ranking filtering is required.
+        reformulator: Optional ``QueryReformulator`` that produces a
+            new query string given the current query and retrieved
+            entries.  Required alongside ``sufficiency_checker`` for
+            Search-and-Ask iteration; the loop silently no-ops when
+            either is missing.
+        sufficiency_checker: Optional ``SufficiencyChecker`` that
+            decides whether retrieved entries answer the current
+            query.  Pairs with ``reformulator`` for Search-and-Ask.
     """
 
     __slots__ = (
@@ -285,8 +339,11 @@ class ToolBasedInjectionStrategy:
         Returns:
             Two tool definitions with JSON Schema parameters.
         """
-        # dict() converts MappingProxyType (not deepcopy-able) to a
-        # plain dict before deepcopy creates an independent schema copy.
+        # ToolDefinition.parameters_schema expects a plain ``dict``,
+        # not ``MappingProxyType``.  dict() unwraps the proxy so each
+        # ToolDefinition gets an independent mutable copy -- callers
+        # that mutate the schema in-place won't affect the module-level
+        # template or other tool definitions built from it.
         return (
             ToolDefinition(
                 name=NotBlankStr(SEARCH_MEMORY_TOOL_NAME),
@@ -342,12 +399,13 @@ class ToolBasedInjectionStrategy:
         agent_id: str,
     ) -> str:
         """Handle a search_memory tool call."""
-        query_text, limit, categories = _parse_search_args(
+        query_text, limit, categories, rejected_categories = _parse_search_args(
             arguments,
             self._config.max_memories,
+            agent_id=agent_id,
         )
         if query_text is None:
-            return "Error: query must be a non-empty string."
+            return f"{ERROR_PREFIX} query must be a non-empty string."
 
         logger.info(
             MEMORY_RETRIEVAL_START,
@@ -391,7 +449,12 @@ class ToolBasedInjectionStrategy:
             ranked_count=len(entries),
         )
 
-        return _format_entries(entries)
+        formatted = _format_entries(entries)
+        if rejected_categories:
+            formatted += (
+                f"\n\n(Ignored invalid categories: {', '.join(rejected_categories)})"
+            )
+        return formatted
 
     async def _retrieve_with_reformulation(
         self,
@@ -405,62 +468,94 @@ class ToolBasedInjectionStrategy:
 
         When ``query_reformulation_enabled`` is True and both the
         reformulator and sufficiency checker are configured, performs
-        up to ``max_reformulation_rounds`` rounds of:
-        search -> check sufficiency -> reformulate query.
+        up to ``max_reformulation_rounds`` rounds of
+        ``search -> check sufficiency -> reformulate query``.
 
-        Returns the merged results from all rounds.
+        Returns the cumulative merged results across all rounds.
+        Duplicates (by entry ID) are deduplicated across rounds,
+        keeping the higher-relevance-score version; ``None`` relevance
+        is treated as ``0.0``.
         """
-        query = MemoryQuery(
-            text=query_text,
-            limit=limit,
-            categories=categories,
-        )
-        entries = await self._backend.retrieve(
-            NotBlankStr(agent_id),
-            query,
-        )
-
-        if not self._should_reformulate():
-            return entries
+        reformulator = self._reformulator
+        sufficiency_checker = self._sufficiency_checker
+        if (
+            not self._config.query_reformulation_enabled
+            or reformulator is None
+            or sufficiency_checker is None
+        ):
+            query = MemoryQuery(
+                text=query_text,
+                limit=limit,
+                categories=categories,
+            )
+            return await self._backend.retrieve(NotBlankStr(agent_id), query)
 
         return await self._reformulation_loop(
-            initial_entries=entries,
+            reformulator=reformulator,
+            sufficiency_checker=sufficiency_checker,
             query_text=query_text,
             limit=limit,
             categories=categories,
             agent_id=agent_id,
         )
 
-    def _should_reformulate(self) -> bool:
-        """Check whether reformulation should be attempted."""
-        return (
-            self._config.query_reformulation_enabled
-            and self._reformulator is not None
-            and self._sufficiency_checker is not None
-        )
-
-    async def _reformulation_loop(
+    async def _reformulation_loop(  # noqa: PLR0913
         self,
         *,
-        initial_entries: tuple[MemoryEntry, ...],
+        reformulator: QueryReformulator,
+        sufficiency_checker: SufficiencyChecker,
         query_text: str,
         limit: int,
         categories: frozenset[MemoryCategory] | None,
         agent_id: str,
     ) -> tuple[MemoryEntry, ...]:
-        """Run the iterative reformulation loop."""
-        assert self._reformulator is not None  # noqa: S101
-        assert self._sufficiency_checker is not None  # noqa: S101
+        """Run the iterative Search-and-Ask reformulation loop.
 
-        entries = initial_entries
-        current_query = query_text
+        Starts with the initial query, retrieves, checks sufficiency,
+        reformulates if insufficient, and re-retrieves -- up to
+        ``config.max_reformulation_rounds`` rounds.  Results across
+        rounds are merged by ID, keeping the higher-relevance version
+        of any duplicate.
+
+        Reformulator and sufficiency checker calls are wrapped in
+        error isolation: if either raises, the loop logs the failure
+        (``MEMORY_REFORMULATION_FAILED`` /
+        ``MEMORY_SUFFICIENCY_CHECK_FAILED``) and returns the current
+        cumulative entries rather than propagating.  System errors
+        (builtins.MemoryError, RecursionError) still propagate.
+        """
         max_rounds = self._config.max_reformulation_rounds
+        current_query = query_text
+
+        initial_query = MemoryQuery(
+            text=current_query,
+            limit=limit,
+            categories=categories,
+        )
+        entries = await self._backend.retrieve(
+            NotBlankStr(agent_id),
+            initial_query,
+        )
 
         for round_idx in range(max_rounds):
-            is_sufficient = await self._sufficiency_checker.check_sufficiency(
-                current_query,
-                entries,
-            )
+            try:
+                is_sufficient = await sufficiency_checker.check_sufficiency(
+                    current_query,
+                    entries,
+                )
+            except builtins.MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    MEMORY_SUFFICIENCY_CHECK_FAILED,
+                    agent_id=agent_id,
+                    round=round_idx,
+                    error=str(exc),
+                    error_type=type(exc).__qualname__,
+                    exc_info=True,
+                )
+                return entries
+
             if is_sufficient:
                 logger.info(
                     MEMORY_REFORMULATION_SUFFICIENT,
@@ -470,11 +565,36 @@ class ToolBasedInjectionStrategy:
                 )
                 return entries
 
-            new_query = await self._reformulator.reformulate(
-                current_query,
-                entries,
-            )
+            try:
+                new_query = await reformulator.reformulate(
+                    current_query,
+                    entries,
+                )
+            except builtins.MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    MEMORY_REFORMULATION_FAILED,
+                    agent_id=agent_id,
+                    round=round_idx,
+                    error=str(exc),
+                    error_type=type(exc).__qualname__,
+                    exc_info=True,
+                )
+                return entries
+
             if new_query is None or new_query == current_query:
+                logger.debug(
+                    MEMORY_REFORMULATION_ROUND,
+                    agent_id=agent_id,
+                    round=round_idx + 1,
+                    result_count=len(entries),
+                    reason=(
+                        "reformulator_stable"
+                        if new_query == current_query
+                        else "reformulator_gave_up"
+                    ),
+                )
                 return entries
 
             logger.debug(
@@ -497,6 +617,13 @@ class ToolBasedInjectionStrategy:
             entries = _merge_results(entries, new_entries)
             current_query = new_query
 
+        logger.info(
+            MEMORY_REFORMULATION_ROUND,
+            agent_id=agent_id,
+            rounds_exhausted=max_rounds,
+            result_count=len(entries),
+            reason="max_rounds_reached",
+        )
         return entries
 
     async def _handle_recall(
@@ -507,11 +634,11 @@ class ToolBasedInjectionStrategy:
         """Handle a recall_memory tool call."""
         memory_id = arguments.get("memory_id", "")
         if not memory_id or not str(memory_id).strip():
-            return "Error: memory_id is required."
+            return f"{ERROR_PREFIX} memory_id is required."
 
         memory_id = str(memory_id).strip()
         if len(memory_id) > _MAX_MEMORY_ID_LEN:
-            return "Error: memory_id exceeds maximum allowed length."
+            return f"{ERROR_PREFIX} memory_id exceeds maximum allowed length."
 
         logger.info(
             MEMORY_RETRIEVAL_START,

@@ -232,7 +232,7 @@ class AgentEngine:
             When ``None``, built-in defaults are used.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913, PLR0915
         self,
         *,
         provider: CompletionProvider,
@@ -261,6 +261,7 @@ class AgentEngine:
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
         memory_backend: MemoryBackend | None = None,
+        distillation_capture_enabled: bool = False,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
@@ -331,6 +332,7 @@ class AgentEngine:
         self._memory_injection_strategy = memory_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
+        self._distillation_capture_enabled = distillation_capture_enabled
         self._config_resolver = config_resolver
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         if (
@@ -702,7 +704,43 @@ class AgentEngine:
             agent_id,
             task_id,
         )
+        await self._try_capture_distillation(
+            execution_result,
+            agent_id,
+            task_id,
+        )
         return execution_result
+
+    async def _try_capture_distillation(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Capture trajectory distillation at task completion (non-critical).
+
+        Skips silently when distillation capture is disabled or no
+        memory backend is configured.  Captures regardless of
+        termination reason -- successful runs, errors, timeouts, and
+        budget exhaustions all produce useful trajectory context for
+        downstream consolidation.  Non-system failures are swallowed
+        and logged by ``capture_distillation``; system errors
+        (``MemoryError``, ``RecursionError``) propagate.
+        """
+        if not self._distillation_capture_enabled:
+            return
+        if self._memory_backend is None:  # pragma: no cover -- guarded by opt-in
+            return
+        from synthorg.memory.consolidation import (  # noqa: PLC0415
+            capture_distillation,
+        )
+
+        await capture_distillation(
+            execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            backend=self._memory_backend,
+        )
 
     async def _try_procedural_memory(
         self,

@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 
 _WEIGHT_SUM_TOLERANCE = 1e-6
 _DEFAULT_RRF_K = 60
+_DEFAULT_DIVERSITY_LAMBDA = 0.7
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -120,7 +121,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     diversity_lambda: float = Field(
-        default=0.7,
+        default=_DEFAULT_DIVERSITY_LAMBDA,
         ge=0.0,
         le=1.0,
         description=(
@@ -131,9 +132,15 @@ class MemoryRetrievalConfig(BaseModel):
     query_reformulation_enabled: bool = Field(
         default=False,
         description=(
-            "Reserved for future query reformulation support in the "
-            "TOOL_BASED strategy. Not yet wired into the retrieval "
-            "pipeline -- must remain False until implemented."
+            "Enables iterative query reformulation in the TOOL_BASED "
+            "strategy.  When True, ``ToolBasedInjectionStrategy`` "
+            "runs a Search-and-Ask loop (retrieve -> check sufficiency "
+            "-> reformulate -> re-retrieve) up to "
+            "``max_reformulation_rounds`` rounds.  Requires "
+            "``reformulator`` and ``sufficiency_checker`` to be "
+            "provided at strategy construction; silently no-ops if "
+            "either is missing.  A validator rejects this flag with "
+            "strategies other than TOOL_BASED."
         ),
     )
     max_reformulation_rounds: int = Field(
@@ -141,8 +148,8 @@ class MemoryRetrievalConfig(BaseModel):
         ge=1,
         le=5,
         description=(
-            "Reserved for future query reformulation support (1-5). "
-            "Currently unused until reformulation is wired."
+            "Maximum rounds of query reformulation in the Search-and-Ask "
+            "loop when ``query_reformulation_enabled`` is True (1-5)."
         ),
     )
 
@@ -187,7 +194,7 @@ class MemoryRetrievalConfig(BaseModel):
         """Warn when diversity_lambda is customized but penalty is disabled."""
         if (
             not self.diversity_penalty_enabled
-            and self.diversity_lambda != 0.7  # noqa: PLR2004
+            and self.diversity_lambda != _DEFAULT_DIVERSITY_LAMBDA
             and "diversity_lambda" in self.model_fields_set
         ):
             logger.warning(
@@ -197,6 +204,26 @@ class MemoryRetrievalConfig(BaseModel):
                 reason=(
                     "diversity_lambda is ignored when "
                     "diversity_penalty_enabled is False"
+                ),
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_diversity_strategy_consistency(self) -> Self:
+        """Warn when diversity penalty is enabled with a strategy that ignores it."""
+        if (
+            self.diversity_penalty_enabled
+            and self.strategy != InjectionStrategy.CONTEXT
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="diversity_penalty_enabled",
+                value=self.diversity_penalty_enabled,
+                strategy=self.strategy.value,
+                reason=(
+                    "diversity_penalty_enabled is only applied by "
+                    "ContextInjectionStrategy; other strategies "
+                    "silently skip the MMR re-ranking step"
                 ),
             )
         return self
@@ -234,9 +261,9 @@ class MemoryRetrievalConfig(BaseModel):
                 field="personal_boost",
                 value=self.personal_boost,
                 reason=(
-                    "personal_boost may not be applied when pure RRF "
-                    "is used; fallback to rank_memories (when sparse "
-                    "is empty) does apply personal_boost"
+                    "personal_boost has no effect when pure RRF "
+                    "fusion runs, but IS applied on the sparse-empty "
+                    "fallback path that runs linear ranking"
                 ),
             )
         return self

@@ -555,19 +555,27 @@ class TestIsErrorResponse:
         assert _is_error_response("Error: query must be a non-empty string.")
 
     def test_search_unavailable_matches(self) -> None:
-        assert _is_error_response("Memory search is temporarily unavailable.")
+        assert _is_error_response(
+            "Error: Memory search is temporarily unavailable.",
+        )
 
     def test_search_unexpected_matches(self) -> None:
-        assert _is_error_response("Memory search encountered an unexpected error.")
+        assert _is_error_response(
+            "Error: Memory search encountered an unexpected error.",
+        )
 
     def test_recall_unavailable_matches(self) -> None:
-        assert _is_error_response("Memory recall is temporarily unavailable.")
+        assert _is_error_response(
+            "Error: Memory recall is temporarily unavailable.",
+        )
 
     def test_recall_unexpected_matches(self) -> None:
-        assert _is_error_response("Memory recall encountered an unexpected error.")
+        assert _is_error_response(
+            "Error: Memory recall encountered an unexpected error.",
+        )
 
     def test_not_found_prefix_matches(self) -> None:
-        assert _is_error_response("Memory not found: mem-123")
+        assert _is_error_response("Error: Memory not found: mem-123")
 
     def test_no_memories_found_is_not_error(self) -> None:
         """Successful empty result must NOT be classified as error."""
