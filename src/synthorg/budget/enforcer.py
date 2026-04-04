@@ -119,6 +119,16 @@ class BudgetEnforcer:
         self._risk_tracker = risk_tracker
         self._risk_scorer = risk_scorer
 
+        if budget_config.risk_budget.enabled and (
+            risk_tracker is None or risk_scorer is None
+        ):
+            logger.warning(
+                RISK_BUDGET_ENFORCEMENT_CHECK,
+                reason="risk_budget_enabled_but_missing_deps",
+                has_tracker=risk_tracker is not None,
+                has_scorer=risk_scorer is not None,
+            )
+
     @property
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
@@ -654,9 +664,10 @@ class BudgetEnforcer:
                 action_type=action_type,
             )
             return None
-        logger.debug(
+        logger.info(
             RISK_BUDGET_RECORD_ADDED,
             agent_id=agent_id,
+            task_id=task_id,
             action_type=action_type,
             risk_units=score.risk_units,
         )

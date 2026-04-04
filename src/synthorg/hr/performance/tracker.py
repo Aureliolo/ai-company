@@ -415,7 +415,7 @@ class PerformanceTracker:
         if since is not None:
             records = [r for r in records if r.completed_at >= since]
         if until is not None:
-            records = [r for r in records if r.completed_at <= until]
+            records = [r for r in records if r.completed_at < until]
         return tuple(records)
 
     def get_collaboration_metrics(

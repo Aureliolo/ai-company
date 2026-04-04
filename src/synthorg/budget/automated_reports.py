@@ -203,17 +203,18 @@ class AutomatedReportService:
                 Defaults to current UTC time.
         """
         ref = reference_time or datetime.now(UTC)
-        start, end = compute_period_range(period, ref)
-        now = datetime.now(UTC)
-
-        logger.info(
-            REPORTING_GENERATION_STARTED,
-            period=period.value,
-            start=start.isoformat(),
-            end=end.isoformat(),
-        )
 
         try:
+            start, end = compute_period_range(period, ref)
+            now = datetime.now(UTC)
+
+            logger.info(
+                REPORTING_GENERATION_STARTED,
+                period=period.value,
+                start=start.isoformat(),
+                end=end.isoformat(),
+            )
+
             async with asyncio.TaskGroup() as tg:
                 sp = tg.create_task(
                     self.generate_spending_report(start=start, end=end),
