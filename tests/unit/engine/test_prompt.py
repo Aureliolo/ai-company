@@ -1218,8 +1218,12 @@ class TestBuildCoreContextDefaults:
         """When profile is None, context uses full-profile defaults."""
         from synthorg.engine._prompt_helpers import build_core_context
 
-        ctx = build_core_context(sample_agent_with_personality, role=None)
+        ctx, trim_info = build_core_context(
+            sample_agent_with_personality,
+            role=None,
+        )
 
         assert ctx["personality_mode"] == "full"
         assert ctx["include_org_policies"] is True
         assert ctx["simplify_acceptance_criteria"] is False
+        assert trim_info is None

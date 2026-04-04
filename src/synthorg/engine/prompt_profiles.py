@@ -38,9 +38,10 @@ class PromptProfile(BaseModel):
 
     Attributes:
         tier: The model tier this profile targets.
-        max_personality_tokens: Soft limit on personality section length.
-            Not yet consumed by the rendering pipeline -- reserved for
-            future token-based trimming.
+        max_personality_tokens: Hard cap on personality section token
+            count.  Enforced by :func:`build_core_context` via
+            progressive trimming (drop enums, truncate description,
+            fall back to minimal mode).
         include_org_policies: Whether to include the org policies section.
         simplify_acceptance_criteria: Whether to render acceptance
             criteria as a flat semicolon-separated line instead of a

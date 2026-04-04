@@ -15,15 +15,21 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_MINIMAL,
     AUTONOMY_SUMMARY,
 )
+from synthorg.engine.token_estimation import DefaultTokenEstimator
+from synthorg.observability import get_logger
+from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.company import Company
     from synthorg.core.role import Role
     from synthorg.core.task import Task
+    from synthorg.engine.prompt import PersonalityTrimInfo
     from synthorg.engine.prompt_profiles import PromptProfile
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
+
+logger = get_logger(__name__)
 
 _AUTONOMY_LOOKUP: MappingProxyType[
     AutonomyDetailLevel,
@@ -88,12 +94,203 @@ def _resolve_profile_flags(
     )
 
 
+def _estimate_personality_tokens(
+    ctx: dict[str, Any],
+    personality_mode: PersonalityMode,
+    estimator: DefaultTokenEstimator,
+) -> int:
+    """Estimate token count of the personality section as the template renders it.
+
+    Assembles the text that the Jinja2 template would produce for the
+    given *personality_mode*, including markdown overhead, and runs it
+    through the estimator.
+
+    Args:
+        ctx: Template context dict with personality fields populated.
+        personality_mode: Which rendering mode to estimate for.
+        estimator: Token estimator (char/4 heuristic).
+
+    Returns:
+        Estimated token count.
+    """
+    parts: list[str] = []
+    desc = ctx.get("personality_description", "")
+
+    if personality_mode == "full":
+        if desc:
+            parts.append(desc)
+        parts.append(f"- **Communication style**: {ctx['communication_style']}")
+        parts.append(f"- **Verbosity**: {ctx['verbosity']}")
+        parts.append(f"- **Risk tolerance**: {ctx['risk_tolerance']}")
+        parts.append(f"- **Creativity**: {ctx['creativity']}")
+        parts.append(f"- **Decision-making**: {ctx['decision_making']}")
+        parts.append(f"- **Collaboration preference**: {ctx['collaboration']}")
+        parts.append(f"- **Conflict approach**: {ctx['conflict_approach']}")
+        traits = ctx.get("personality_traits", ())
+        if traits:
+            parts.append(f"- **Traits**: {', '.join(traits)}")
+    elif personality_mode == "condensed":
+        if desc:
+            parts.append(desc)
+        parts.append(f"- **Style**: {ctx['communication_style']}")
+        traits = ctx.get("personality_traits", ())
+        if traits:
+            parts.append(f"- **Traits**: {', '.join(traits)}")
+    else:
+        # minimal
+        parts.append(f"- **Style**: {ctx['communication_style']}")
+
+    text = "\n".join(parts)
+    return estimator.estimate_tokens(text)
+
+
+def _truncate_description(description: str, max_chars: int) -> str:
+    """Truncate a description to fit within a character limit.
+
+    Truncates at the last word boundary before *max_chars*, appending
+    ``"..."`` as a suffix.  Returns an empty string when *max_chars*
+    is too small to hold any meaningful content.
+
+    Args:
+        description: Original description text.
+        max_chars: Maximum character count for the result.
+
+    Returns:
+        Truncated description or empty string.
+    """
+    ellipsis = "..."
+    # Need at least room for one word + ellipsis.
+    if max_chars < len(ellipsis) + 1:
+        return ""
+
+    budget = max_chars - len(ellipsis)
+    truncated = description[:budget]
+    # Find last space to avoid splitting mid-word.
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space]
+    return truncated.rstrip() + ellipsis
+
+
+def _trim_personality(
+    ctx: dict[str, Any],
+    profile: PromptProfile,
+) -> PersonalityTrimInfo | None:
+    """Progressively trim personality fields to fit the token budget.
+
+    Applies three tiers of trimming until the personality section fits
+    within ``profile.max_personality_tokens``:
+
+    1. Drop behavioral enum fields (override mode to ``"condensed"``).
+    2. Truncate ``personality_description`` to fit remaining budget.
+    3. Fall back to ``"minimal"`` (communication_style only).
+
+    Args:
+        ctx: Mutable template context dict.  Modified in place.
+        profile: Prompt profile with ``max_personality_tokens`` limit.
+
+    Returns:
+        :class:`PersonalityTrimInfo` when trimming was applied, or
+        ``None`` when the section was already within budget.
+    """
+    # Deferred import to avoid circular dependency at module level.
+    from synthorg.engine.prompt import PersonalityTrimInfo  # noqa: PLC0415
+
+    estimator = DefaultTokenEstimator()
+    max_tokens = profile.max_personality_tokens
+    current_mode: PersonalityMode = ctx["personality_mode"]
+    before_tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
+
+    if before_tokens <= max_tokens:
+        return None
+
+    trim_tier = 0
+
+    # Tier 1: Drop enums (switch to condensed).
+    if current_mode == "full":
+        trim_tier = 1
+        ctx["personality_mode"] = "condensed"
+        current_mode = "condensed"
+        tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
+        if tokens <= max_tokens:
+            _log_trim(before_tokens, tokens, max_tokens, trim_tier)
+            return PersonalityTrimInfo(
+                before_tokens=before_tokens,
+                after_tokens=tokens,
+                max_tokens=max_tokens,
+                trim_tier=trim_tier,
+            )
+
+    # Tier 2: Truncate description.
+    desc = ctx.get("personality_description", "")
+    if desc and current_mode in {"full", "condensed"}:
+        trim_tier = max(trim_tier, 2)
+        # Estimate tokens WITHOUT description to find remaining budget.
+        saved_desc = ctx["personality_description"]
+        ctx["personality_description"] = ""
+        tokens_without_desc = _estimate_personality_tokens(
+            ctx,
+            current_mode,
+            estimator,
+        )
+        remaining_tokens = max_tokens - tokens_without_desc
+        if remaining_tokens > 0:
+            max_chars = remaining_tokens * 4  # Inverse of char/4 heuristic.
+            ctx["personality_description"] = _truncate_description(
+                saved_desc,
+                max_chars,
+            )
+        else:
+            ctx["personality_description"] = ""
+
+        tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
+        if tokens <= max_tokens:
+            _log_trim(before_tokens, tokens, max_tokens, trim_tier)
+            return PersonalityTrimInfo(
+                before_tokens=before_tokens,
+                after_tokens=tokens,
+                max_tokens=max_tokens,
+                trim_tier=trim_tier,
+            )
+
+    # Tier 3: Fall back to minimal (communication_style only).
+    trim_tier = 3
+    ctx["personality_mode"] = "minimal"
+    ctx["personality_description"] = ""
+    tokens = _estimate_personality_tokens(ctx, "minimal", estimator)
+    _log_trim(before_tokens, tokens, max_tokens, trim_tier)
+    return PersonalityTrimInfo(
+        before_tokens=before_tokens,
+        after_tokens=tokens,
+        max_tokens=max_tokens,
+        trim_tier=trim_tier,
+    )
+
+
+def _log_trim(
+    before_tokens: int,
+    after_tokens: int,
+    max_tokens: int,
+    trim_tier: int,
+) -> None:
+    """Log a personality trimming event."""
+    logger.info(
+        PROMPT_PERSONALITY_TRIMMED,
+        before_tokens=before_tokens,
+        after_tokens=after_tokens,
+        max_tokens=max_tokens,
+        trim_tier=trim_tier,
+    )
+
+
 def build_core_context(
     agent: AgentIdentity,
     role: Role | None,
     effective_autonomy: EffectiveAutonomy | None = None,
     profile: PromptProfile | None = None,
-) -> dict[str, Any]:
+    *,
+    trimming_enabled: bool = True,
+) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
     """Build core template variables from agent identity and profile.
 
     Args:
@@ -102,9 +299,11 @@ def build_core_context(
         effective_autonomy: Resolved autonomy for the current run.
         profile: Prompt profile controlling verbosity.  ``None``
             defaults to full rendering.
+        trimming_enabled: When ``True``, enforce
+            ``profile.max_personality_tokens`` via progressive trimming.
 
     Returns:
-        Dict of core template variables.
+        Tuple of (template context dict, personality trim info or None).
     """
     personality = agent.personality
     authority = agent.authority
@@ -151,7 +350,12 @@ def build_core_context(
     else:
         ctx["effective_autonomy"] = None
 
-    return ctx
+    # Apply personality trimming after the context is fully built.
+    trim_info: PersonalityTrimInfo | None = None
+    if trimming_enabled and profile is not None:
+        trim_info = _trim_personality(ctx, profile)
+
+    return ctx, trim_info
 
 
 def build_metadata(agent: AgentIdentity) -> dict[str, str]:

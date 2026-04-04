@@ -92,7 +92,10 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
 )
-from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
+from synthorg.observability.events.prompt import (
+    PROMPT_PERSONALITY_TRIMMED,
+    PROMPT_TOKEN_RATIO_HIGH,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage
@@ -864,6 +867,18 @@ class AgentEngine:
             currency=cur_code,
             model_tier=identity.model.model_tier,
         )
+
+        if system_prompt.personality_trim_info is not None:
+            ti = system_prompt.personality_trim_info
+            logger.info(
+                PROMPT_PERSONALITY_TRIMMED,
+                agent_id=agent_id,
+                agent_name=identity.name,
+                before_tokens=ti.before_tokens,
+                after_tokens=ti.after_tokens,
+                max_tokens=ti.max_tokens,
+                trim_tier=ti.trim_tier,
+            )
 
         ctx = AgentContext.from_identity(
             identity,
