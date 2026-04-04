@@ -182,7 +182,7 @@ class TestMineHardNegatives:
         with pytest.raises(ValueError, match="training_data_path"):
             await mine_hard_negatives(
                 training_data_path="   ",
-                base_model="test-model",
+                base_model="test-small-001",
                 output_dir="/output",
             )
 
@@ -202,7 +202,7 @@ class TestMineHardNegatives:
         ):
             await mine_hard_negatives(
                 training_data_path="/data/train.jsonl",
-                base_model="test-model",
+                base_model="test-small-001",
                 output_dir="/output",
             )
 
@@ -220,7 +220,7 @@ class TestContrastiveFineTune:
         with pytest.raises(ValueError, match="training_data_path"):
             await contrastive_fine_tune(
                 training_data_path="   ",
-                base_model="test-model",
+                base_model="test-small-001",
                 output_dir="/output",
             )
 
@@ -247,7 +247,7 @@ class TestContrastiveFineTune:
 
         kwargs: dict[str, Any] = {
             "training_data_path": "/data",
-            "base_model": "test-model",
+            "base_model": "test-small-001",
             "output_dir": "/output",
             param: value,
         }
@@ -268,7 +268,7 @@ class TestEvaluateCheckpoint:
         with pytest.raises(ValueError, match="checkpoint_path"):
             await evaluate_checkpoint(
                 checkpoint_path="   ",
-                base_model="test-model",
+                base_model="test-small-001",
                 validation_data_path="/val.jsonl",
                 output_dir="/out",
             )
@@ -290,7 +290,7 @@ class TestEvaluateCheckpoint:
         ):
             await evaluate_checkpoint(
                 checkpoint_path="/cp",
-                base_model="test-model",
+                base_model="test-small-001",
                 validation_data_path="/val.jsonl",
                 output_dir="/out",
             )
