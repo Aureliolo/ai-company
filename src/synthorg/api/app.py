@@ -766,7 +766,6 @@ def create_app(  # noqa: PLR0913, PLR0915
         performance_tracker = _build_performance_tracker(
             cost_tracker=cost_tracker,
             provider_registry=provider_registry,
-            perf_config=effective_config.performance,
         )
 
     app_state = AppState(

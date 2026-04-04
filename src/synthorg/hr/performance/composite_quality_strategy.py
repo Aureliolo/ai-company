@@ -138,28 +138,47 @@ class CompositeQualityStrategy:
 
         # Layers 1+2: CI signal and LLM judge in parallel.
         # Skip layers with zero weight to avoid unnecessary calls.
-        score_kwargs = {
-            "agent_id": agent_id,
-            "task_id": task_id,
-            "task_result": task_result,
-            "acceptance_criteria": acceptance_criteria,
-        }
         if self._ci_weight > 0.0 and self._llm_weight > 0.0:
             async with asyncio.TaskGroup() as tg:
                 ci_task = tg.create_task(
-                    self._ci_strategy.score(**score_kwargs),
+                    self._ci_strategy.score(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        task_result=task_result,
+                        acceptance_criteria=acceptance_criteria,
+                    ),
                 )
                 llm_task = tg.create_task(
-                    self._try_llm(**score_kwargs),
+                    self._try_llm(
+                        agent_id=agent_id,
+                        task_id=task_id,
+                        task_result=task_result,
+                        acceptance_criteria=acceptance_criteria,
+                    ),
                 )
             ci_result = ci_task.result()
             llm_result = llm_task.result()
         elif self._ci_weight > 0.0:
-            ci_result = await self._ci_strategy.score(**score_kwargs)
+            ci_result = await self._ci_strategy.score(
+                agent_id=agent_id,
+                task_id=task_id,
+                task_result=task_result,
+                acceptance_criteria=acceptance_criteria,
+            )
             llm_result = None
         else:
-            llm_result = await self._try_llm(**score_kwargs)
-            ci_result = await self._ci_strategy.score(**score_kwargs)
+            llm_result = await self._try_llm(
+                agent_id=agent_id,
+                task_id=task_id,
+                task_result=task_result,
+                acceptance_criteria=acceptance_criteria,
+            )
+            ci_result = await self._ci_strategy.score(
+                agent_id=agent_id,
+                task_id=task_id,
+                task_result=task_result,
+                acceptance_criteria=acceptance_criteria,
+            )
 
         # Combine layers.
         return self._combine(ci_result, llm_result)
