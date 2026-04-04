@@ -19,10 +19,9 @@ from synthorg.persistence.sqlite.migrations import apply_schema
 
 pytestmark = pytest.mark.unit
 
-# Use a fixed "now" far enough in the future that sessions never expire
-# during test runs.  _FROZEN_NOW is used by _patch_now() to freeze time
-# at a point where non-expired sessions are still valid.
-_NOW = datetime(2099, 1, 1, 12, 0, 0, tzinfo=UTC)
+# Use a fixed "now" and patch datetime.now in the store module
+# so tests are deterministic regardless of wall clock time.
+_NOW = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
 _FROZEN_NOW = _NOW + timedelta(minutes=5)
 
 
