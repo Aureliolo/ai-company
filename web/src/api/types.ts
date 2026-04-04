@@ -1445,6 +1445,7 @@ export type SettingNamespace =
   | 'coordination'
   | 'observability'
   | 'backup'
+  | 'engine'
 
 export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
 

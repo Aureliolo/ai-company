@@ -92,7 +92,10 @@ from synthorg.observability.events.execution import (
 from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
 )
-from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
+from synthorg.observability.events.prompt import (
+    PROMPT_PERSONALITY_TRIMMED,
+    PROMPT_TOKEN_RATIO_HIGH,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
 from synthorg.providers.models import ChatMessage
@@ -137,6 +140,7 @@ if TYPE_CHECKING:
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.registry import ToolRegistry
 
@@ -224,6 +228,9 @@ class AgentEngine:
             procedural memory entries.  When omitted, procedural
             memory generation is silently skipped even if
             ``procedural_memory_config`` is set.
+        config_resolver: Optional settings resolver for reading
+            runtime ENGINE settings (personality trimming controls).
+            When ``None``, built-in defaults are used.
     """
 
     def __init__(  # noqa: PLR0913
@@ -255,6 +262,7 @@ class AgentEngine:
         memory_injection_strategy: MemoryInjectionStrategy | None = None,
         procedural_memory_config: ProceduralMemoryConfig | None = None,
         memory_backend: MemoryBackend | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -324,6 +332,7 @@ class AgentEngine:
         self._memory_injection_strategy = memory_injection_strategy
         self._procedural_memory_config = procedural_memory_config
         self._memory_backend = memory_backend
+        self._config_resolver = config_resolver
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         if (
             procedural_memory_config is not None
@@ -856,6 +865,32 @@ class AgentEngine:
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
         )
+        trimming_enabled = True
+        tokens_override: int | None = None
+        if self._config_resolver is not None:
+            try:
+                resolved_enabled = await self._config_resolver.get_bool(
+                    "engine",
+                    "personality_trimming_enabled",
+                )
+                resolved_override = await self._config_resolver.get_int(
+                    "engine",
+                    "personality_max_tokens_override",
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    msg="failed to read ENGINE settings, using defaults",
+                    exc_info=True,
+                )
+            else:
+                trimming_enabled = resolved_enabled
+                if resolved_override > 0:
+                    tokens_override = resolved_override
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,
@@ -863,7 +898,23 @@ class AgentEngine:
             effective_autonomy=effective_autonomy,
             currency=cur_code,
             model_tier=identity.model.model_tier,
+            personality_trimming_enabled=trimming_enabled,
+            max_personality_tokens_override=tokens_override,
         )
+
+        if system_prompt.personality_trim_info is not None:
+            ti = system_prompt.personality_trim_info
+            logger.info(
+                PROMPT_PERSONALITY_TRIMMED,
+                agent_id=agent_id,
+                agent_name=identity.name,
+                task_id=task_id,
+                before_tokens=ti.before_tokens,
+                after_tokens=ti.after_tokens,
+                max_tokens=ti.max_tokens,
+                trim_tier=ti.trim_tier,
+                budget_met=ti.budget_met,
+            )
 
         ctx = AgentContext.from_identity(
             identity,

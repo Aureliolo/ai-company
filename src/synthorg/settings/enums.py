@@ -19,6 +19,7 @@ class SettingNamespace(StrEnum):
     COORDINATION = "coordination"
     OBSERVABILITY = "observability"
     BACKUP = "backup"
+    ENGINE = "engine"
 
 
 class SettingType(StrEnum):

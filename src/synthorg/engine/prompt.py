@@ -27,27 +27,16 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost, get_currency_symbol
-from synthorg.engine._prompt_helpers import (
-    SECTION_COMPANY as _SECTION_COMPANY,
-)
+from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
 )
-from synthorg.engine._prompt_helpers import (
-    SECTION_TASK as _SECTION_TASK,
-)
-from synthorg.engine._prompt_helpers import (
-    TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS,
-)
-from synthorg.engine._prompt_helpers import (
-    build_core_context as _build_core_context,
-)
-from synthorg.engine._prompt_helpers import (
-    build_metadata as _build_metadata,
-)
-from synthorg.engine._prompt_helpers import (
-    compute_sections as _compute_sections,
-)
+from synthorg.engine._prompt_helpers import SECTION_TASK as _SECTION_TASK
+from synthorg.engine._prompt_helpers import TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS
+from synthorg.engine._prompt_helpers import PersonalityTrimInfo
+from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
+from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
+from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
@@ -103,6 +92,8 @@ class SystemPrompt(BaseModel):
         sections: Names of sections included in the prompt.
         metadata: Agent identity metadata (agent_id, name, role,
             department, level, and optionally profile_tier).
+        personality_trim_info: Populated when personality section was
+            trimmed to fit the profile's token budget.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -120,6 +111,10 @@ class SystemPrompt(BaseModel):
     )
     metadata: dict[str, str] = Field(
         description="Agent identity metadata (string-only values; shallow-frozen)",
+    )
+    personality_trim_info: PersonalityTrimInfo | None = Field(
+        default=None,
+        description="Populated when personality section was trimmed",
     )
 
 
@@ -141,6 +136,8 @@ def build_system_prompt(  # noqa: PLR0913
     context_budget_indicator: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     model_tier: ModelTier | None = None,
+    personality_trimming_enabled: bool = True,
+    max_personality_tokens_override: int | None = None,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -167,6 +164,12 @@ def build_system_prompt(  # noqa: PLR0913
             (e.g. ``"USD"``, ``"EUR"``).
         model_tier: Model capability tier for prompt profile selection.
             ``None`` defaults to the full (large) profile.
+        personality_trimming_enabled: When ``True`` (default), the
+            personality section is progressively trimmed if it exceeds
+            the profile's ``max_personality_tokens``.
+        max_personality_tokens_override: When set to a positive value,
+            overrides the profile's ``max_personality_tokens`` limit.
+            Values ``<= 0`` are ignored (profile default is used).
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -178,6 +181,17 @@ def build_system_prompt(  # noqa: PLR0913
     _validate_org_policies(agent, org_policies)
 
     profile = get_prompt_profile(model_tier)
+    if max_personality_tokens_override is not None:
+        if max_personality_tokens_override > 0:
+            profile = profile.model_copy(
+                update={"max_personality_tokens": max_personality_tokens_override},
+            )
+        else:
+            logger.warning(
+                PROMPT_PROFILE_SELECTED,
+                override_ignored=max_personality_tokens_override,
+                reason="max_personality_tokens_override must be > 0",
+            )
     logger.info(
         PROMPT_PROFILE_SELECTED,
         requested_tier=model_tier,
@@ -229,6 +243,7 @@ def build_system_prompt(  # noqa: PLR0913
             context_budget_indicator=context_budget_indicator,
             currency=currency,
             profile=profile,
+            trimming_enabled=personality_trimming_enabled,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -357,7 +372,9 @@ def _build_template_context(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-) -> dict[str, Any]:
+    trimming_enabled: bool = True,
+    estimator: PromptTokenEstimator | None = None,
+) -> tuple[dict[str, Any], PersonalityTrimInfo | None]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
     Args:
@@ -371,11 +388,20 @@ def _build_template_context(  # noqa: PLR0913
         context_budget: Formatted context budget indicator string.
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
+        trimming_enabled: Whether personality trimming is active.
+        estimator: Token estimator for personality trimming.
 
     Returns:
-        Dict of template variables.
+        Tuple of (template variables dict, personality trim info or None).
     """
-    context = _build_core_context(agent, role, effective_autonomy, profile)
+    context, trim_info = _build_core_context(
+        agent,
+        role,
+        effective_autonomy,
+        profile,
+        trimming_enabled=trimming_enabled,
+        estimator=estimator,
+    )
 
     context["currency_symbol"] = get_currency_symbol(currency)
     context["currency"] = currency
@@ -416,7 +442,7 @@ def _build_template_context(  # noqa: PLR0913
         context["company"] = None
         context["company_departments"] = None
 
-    return context
+    return context, trim_info
 
 
 def _render_template(template_str: str, context: dict[str, Any]) -> str:
@@ -456,6 +482,7 @@ def _trim_sections(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
+    trimming_enabled: bool = True,
 ) -> tuple[
     str,
     int,
@@ -471,7 +498,7 @@ def _trim_sections(  # noqa: PLR0913
     trimmed_sections: list[str] = []
 
     for section in _TRIMMABLE_SECTIONS:
-        content, estimated = _render_and_estimate(
+        content, estimated, _ = _render_and_estimate(
             template_str,
             agent,
             role,
@@ -484,6 +511,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
         if estimated <= max_tokens:
             break
@@ -504,7 +532,7 @@ def _trim_sections(  # noqa: PLR0913
         trimmed_sections.append(section)
     else:
         # All sections exhausted -- do a final render.
-        content, estimated = _render_and_estimate(
+        content, estimated, _ = _render_and_estimate(
             template_str,
             agent,
             role,
@@ -517,6 +545,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -563,9 +592,10 @@ def _render_with_trimming(  # noqa: PLR0913
     context_budget_indicator: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
+    trimming_enabled: bool = True,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
-    content, estimated = _render_and_estimate(
+    content, estimated, trim_info = _render_and_estimate(
         template_str,
         agent,
         role,
@@ -578,6 +608,7 @@ def _render_with_trimming(  # noqa: PLR0913
         context_budget=context_budget_indicator,
         currency=currency,
         profile=profile,
+        trimming_enabled=trimming_enabled,
     )
 
     if max_tokens is not None and estimated > max_tokens:
@@ -595,6 +626,7 @@ def _render_with_trimming(  # noqa: PLR0913
             context_budget=context_budget_indicator,
             currency=currency,
             profile=profile,
+            trimming_enabled=trimming_enabled,
         )
 
     return _build_prompt_result(
@@ -608,6 +640,7 @@ def _render_with_trimming(  # noqa: PLR0913
         custom_template=template_str is not DEFAULT_TEMPLATE,
         context_budget=context_budget_indicator,
         profile=profile,
+        personality_trim_info=trim_info,
     )
 
 
@@ -623,6 +656,7 @@ def _build_prompt_result(  # noqa: PLR0913
     custom_template: bool = False,
     context_budget: str | None = None,
     profile: PromptProfile | None = None,
+    personality_trim_info: PersonalityTrimInfo | None = None,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
     sections = _compute_sections(
@@ -643,6 +677,7 @@ def _build_prompt_result(  # noqa: PLR0913
         estimated_tokens=estimated,
         sections=sections,
         metadata=metadata,
+        personality_trim_info=personality_trim_info,
     )
 
 
@@ -660,7 +695,8 @@ def _render_and_estimate(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-) -> tuple[str, int]:
+    trimming_enabled: bool = True,
+) -> tuple[str, int, PersonalityTrimInfo | None]:
     """Render the template and estimate its token count.
 
     Args:
@@ -676,11 +712,13 @@ def _render_and_estimate(  # noqa: PLR0913
         context_budget: Formatted context budget indicator string.
         currency: ISO 4217 currency code for budget displays.
         profile: Prompt profile controlling rendering verbosity.
+        trimming_enabled: Whether personality trimming is active.
 
     Returns:
-        Tuple of (rendered content, estimated token count).
+        Tuple of (rendered content, estimated token count,
+        personality trim info or None).
     """
-    context = _build_template_context(
+    context, trim_info = _build_template_context(
         agent=agent,
         role=role,
         task=task,
@@ -691,9 +729,11 @@ def _render_and_estimate(  # noqa: PLR0913
         context_budget=context_budget,
         currency=currency,
         profile=profile,
+        trimming_enabled=trimming_enabled,
+        estimator=estimator,
     )
     content = _render_template(template_str, context)
-    return content, estimator.estimate_tokens(content)
+    return content, estimator.estimate_tokens(content), trim_info
 
 
 def build_error_prompt(
