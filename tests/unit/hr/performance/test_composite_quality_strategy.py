@@ -111,8 +111,8 @@ class TestOverride:
             acceptance_criteria=(),
         )
 
-        # Should fall through to CI.
-        assert result.score != 9.0
+        # Should fall through to CI-only (score=6.0).
+        assert result.score == 6.0
         ci.score.assert_called_once()
 
     async def test_no_override_store(self) -> None:
@@ -132,7 +132,7 @@ class TestOverride:
         )
 
         ci.score.assert_called_once()
-        assert result.score > 0.0
+        assert result.score == 7.0
 
 
 @pytest.mark.unit

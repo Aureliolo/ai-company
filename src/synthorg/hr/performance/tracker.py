@@ -27,6 +27,7 @@ from synthorg.observability.events.performance import (
     PERF_SNAPSHOT_COMPUTED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -138,6 +139,19 @@ class PerformanceTracker:
             improving_threshold=cfg.improving_threshold,
             declining_threshold=cfg.declining_threshold,
         )
+
+    async def aclose(self) -> None:
+        """Cancel and await all pending background tasks.
+
+        Should be called during application shutdown to prevent
+        ``RuntimeError: Task was destroyed but it is pending!``
+        warnings.
+        """
+        tasks = list(self._background_tasks)
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.clear()
 
     async def record_task_metric(
         self,
@@ -490,6 +504,8 @@ class PerformanceTracker:
             )
         except MemoryError, RecursionError:
             raise
+        except RetryExhaustedError:
+            raise
         except Exception:
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
@@ -506,6 +522,8 @@ class PerformanceTracker:
                 behavioral_score=behavioral_result.score,
             )
         except MemoryError, RecursionError:
+            raise
+        except RetryExhaustedError:
             raise
         except Exception:
             logger.warning(

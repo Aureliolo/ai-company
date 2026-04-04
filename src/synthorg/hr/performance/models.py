@@ -264,8 +264,8 @@ class LlmCalibrationRecord(BaseModel):
     )
 
 
-class CollaborationOverride(BaseModel):
-    """Human-applied override for an agent's collaboration score.
+class _BaseOverride(BaseModel):
+    """Shared base for human-applied score overrides.
 
     Attributes:
         id: Unique override identifier.
@@ -318,58 +318,12 @@ class CollaborationOverride(BaseModel):
         return self
 
 
-class QualityOverride(BaseModel):
-    """Human-applied override for an agent's quality score.
+class CollaborationOverride(_BaseOverride):
+    """Human-applied override for an agent's collaboration score."""
 
-    Attributes:
-        id: Unique override identifier.
-        agent_id: Agent whose quality score is overridden.
-        score: Override score (0.0-10.0).
-        reason: Why the override was applied.
-        applied_by: Identity of the human who applied it.
-        applied_at: When the override was applied.
-        expires_at: When the override expires (None = indefinite).
-    """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    id: NotBlankStr = Field(
-        default_factory=lambda: NotBlankStr(str(uuid4())),
-        description="Unique override identifier",
-    )
-    agent_id: NotBlankStr = Field(
-        description="Agent whose quality score is overridden",
-    )
-    score: float = Field(
-        ge=0.0,
-        le=10.0,
-        description="Override score",
-    )
-    reason: NotBlankStr = Field(
-        max_length=4096,
-        description="Why the override was applied",
-    )
-    applied_by: NotBlankStr = Field(
-        description="Identity of the human who applied it",
-    )
-    applied_at: AwareDatetime = Field(
-        description="When the override was applied",
-    )
-    expires_at: AwareDatetime | None = Field(
-        default=None,
-        description="When the override expires (None = indefinite)",
-    )
-
-    @model_validator(mode="after")
-    def _validate_expiration_ordering(self) -> Self:
-        """Ensure expires_at is strictly after applied_at when set."""
-        if self.expires_at is not None and self.expires_at <= self.applied_at:
-            msg = (
-                f"expires_at ({self.expires_at}) must be after "
-                f"applied_at ({self.applied_at})"
-            )
-            raise ValueError(msg)
-        return self
+class QualityOverride(_BaseOverride):
+    """Human-applied override for an agent's quality score."""
 
 
 class TrendResult(BaseModel):

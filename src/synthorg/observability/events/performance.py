@@ -35,5 +35,8 @@ PERF_LLM_JUDGE_STARTED: Final[str] = "perf.llm_judge.started"
 PERF_LLM_JUDGE_COMPLETED: Final[str] = "perf.llm_judge.completed"
 PERF_LLM_JUDGE_FAILED: Final[str] = "perf.llm_judge.failed"
 
+# ── LLM quality judge cost ──────────────────────────────────
+PERF_JUDGE_COST_RECORDING_FAILED: Final[str] = "perf.judge_cost.recording_failed"
+
 # ── Composite quality scoring ────────────────────────────────
 PERF_COMPOSITE_SCORED: Final[str] = "perf.composite_quality.scored"

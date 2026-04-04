@@ -6,6 +6,8 @@ Human override has the highest priority and short-circuits
 the other layers.
 """
 
+import asyncio
+import math
 from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
@@ -13,8 +15,10 @@ from synthorg.hr.performance.models import QualityScoreResult
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
     PERF_COMPOSITE_SCORED,
+    PERF_LLM_JUDGE_FAILED,
     PERF_QUALITY_OVERRIDE_APPLIED,
 )
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.core.task import AcceptanceCriterion
@@ -43,11 +47,19 @@ class CompositeQualityStrategy:
         ci_strategy: CI signal scoring strategy (Layer 1).
         llm_strategy: LLM judge scoring strategy (Layer 2, optional).
         override_store: Quality override store (Layer 3, optional).
-        ci_weight: Weight for CI signal (default 0.4).
-        llm_weight: Weight for LLM judge (default 0.6).
+        ci_weight: Weight for CI signal (default 0.4). Must be
+            non-negative and finite. Together with ``llm_weight``
+            must sum to 1.0 (within 1e-6 tolerance).
+        llm_weight: Weight for LLM judge (default 0.6). Must be
+            non-negative and finite. Together with ``ci_weight``
+            must sum to 1.0 (within 1e-6 tolerance).
+        confidence_discount: Multiplier applied to min(ci, llm)
+            confidence when both layers contribute (default 0.9).
     """
 
-    def __init__(
+    _WEIGHT_TOLERANCE: float = 1e-6
+
+    def __init__(  # noqa: PLR0913
         self,
         *,
         ci_strategy: QualityScoringStrategy,
@@ -55,18 +67,29 @@ class CompositeQualityStrategy:
         override_store: QualityOverrideStore | None = None,
         ci_weight: float = 0.4,
         llm_weight: float = 0.6,
+        confidence_discount: float = 0.9,
     ) -> None:
+        if not math.isfinite(ci_weight) or not math.isfinite(llm_weight):
+            msg = (
+                f"Weights must be finite, got "
+                f"ci_weight={ci_weight}, llm_weight={llm_weight}"
+            )
+            raise ValueError(msg)
         if ci_weight < 0.0 or llm_weight < 0.0:
             msg = (
                 f"Weights must be non-negative, got "
                 f"ci_weight={ci_weight}, llm_weight={llm_weight}"
             )
             raise ValueError(msg)
+        if abs(ci_weight + llm_weight - 1.0) > self._WEIGHT_TOLERANCE:
+            msg = f"ci_weight + llm_weight must equal 1.0, got {ci_weight + llm_weight}"
+            raise ValueError(msg)
         self._ci_strategy = ci_strategy
         self._llm_strategy = llm_strategy
         self._override_store = override_store
         self._ci_weight = ci_weight
         self._llm_weight = llm_weight
+        self._confidence_discount = confidence_discount
 
     @property
     def name(self) -> str:
@@ -97,21 +120,26 @@ class CompositeQualityStrategy:
         if override_result is not None:
             return override_result
 
-        # Layer 1: CI signal (always runs).
-        ci_result = await self._ci_strategy.score(
-            agent_id=agent_id,
-            task_id=task_id,
-            task_result=task_result,
-            acceptance_criteria=acceptance_criteria,
-        )
-
-        # Layer 2: LLM judge (optional).
-        llm_result = await self._try_llm(
-            agent_id=agent_id,
-            task_id=task_id,
-            task_result=task_result,
-            acceptance_criteria=acceptance_criteria,
-        )
+        # Layers 1+2: CI signal and LLM judge in parallel.
+        async with asyncio.TaskGroup() as tg:
+            ci_task = tg.create_task(
+                self._ci_strategy.score(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    task_result=task_result,
+                    acceptance_criteria=acceptance_criteria,
+                ),
+            )
+            llm_task = tg.create_task(
+                self._try_llm(
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    task_result=task_result,
+                    acceptance_criteria=acceptance_criteria,
+                ),
+            )
+        ci_result = ci_task.result()
+        llm_result = llm_task.result()
 
         # Combine layers.
         return self._combine(ci_result, llm_result)
@@ -170,9 +198,11 @@ class CompositeQualityStrategy:
             )
         except MemoryError, RecursionError:
             raise
+        except RetryExhaustedError:
+            raise
         except Exception:
             logger.warning(
-                PERF_COMPOSITE_SCORED,
+                PERF_LLM_JUDGE_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
                 note="llm_strategy_failed",
@@ -207,7 +237,8 @@ class CompositeQualityStrategy:
                 4,
             )
             confidence = round(
-                min(ci_result.confidence, llm_result.confidence) * 0.9,
+                min(ci_result.confidence, llm_result.confidence)
+                * self._confidence_discount,
                 4,
             )
             breakdown: tuple[tuple[NotBlankStr, float], ...] = (

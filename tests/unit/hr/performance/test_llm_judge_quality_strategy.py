@@ -170,8 +170,8 @@ class TestScoring:
 
         assert result.score == 0.0
 
-    async def test_breakdown_contains_rationale(self) -> None:
-        """Breakdown includes the LLM rationale."""
+    async def test_breakdown_contains_llm_score(self) -> None:
+        """Breakdown includes the LLM score component."""
         provider = _make_provider(
             content='{"score": 7.0, "rationale": "Solid work overall"}',
         )
@@ -449,7 +449,7 @@ class TestPromptConstruction:
         call_args = provider.complete.call_args
         messages = call_args.kwargs.get("messages") or call_args[0][0]
         prompt_text = messages[0].content
-        assert "{{valid JSON}}" in prompt_text
+        assert "{valid JSON}" in prompt_text
 
 
 @pytest.mark.unit

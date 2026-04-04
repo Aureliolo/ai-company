@@ -188,7 +188,9 @@ class QualityController(Controller):
 
         Raises:
             ServiceUnavailableError: If the override store is not
-                configured or user identity cannot be determined.
+                configured.
+            UnauthorizedError: If the authenticated user identity
+                cannot be resolved from the request scope.
         """
         store = self._require_quality_override_store(state)
 

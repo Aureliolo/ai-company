@@ -23,24 +23,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+_DEFAULT_MAX_OVERRIDES = 10_000
+
+
 class QualityOverrideStore:
     """In-memory store for human quality score overrides.
 
     Maintains at most one override per agent. Expiration is checked
     at query time -- expired overrides are not returned by
     :meth:`get_active_override`.
+
+    Args:
+        max_overrides: Maximum number of overrides stored. Prevents
+            unbounded memory growth. Defaults to 10,000.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_overrides: int = _DEFAULT_MAX_OVERRIDES,
+    ) -> None:
         self._overrides: dict[str, QualityOverride] = {}
+        self._max_overrides = max_overrides
 
     def set_override(self, override: QualityOverride) -> None:
         """Set or replace the override for an agent.
+
+        If a prior override (active or expired) exists for the agent,
+        it is silently discarded and replaced.
 
         Args:
             override: The override to store.
         """
         agent_key = str(override.agent_id)
+        if (
+            agent_key not in self._overrides
+            and len(self._overrides) >= self._max_overrides
+        ):
+            msg = f"Override store capacity reached ({self._max_overrides})"
+            raise ValueError(msg)
         self._overrides[agent_key] = override
         logger.info(
             PERF_QUALITY_OVERRIDE_SET,
@@ -78,7 +99,7 @@ class QualityOverrideStore:
                 agent_id=agent_id,
                 expired_at=str(override.expires_at),
             )
-            del self._overrides[str(agent_id)]
+            self._overrides.pop(str(agent_id), None)
             return None
 
         return override
@@ -116,10 +137,10 @@ class QualityOverrideStore:
                 agent_id=agent_id,
                 expired_at=str(override.expires_at),
             )
-            del self._overrides[agent_key]
+            self._overrides.pop(agent_key, None)
             return False
 
-        del self._overrides[agent_key]
+        self._overrides.pop(agent_key, None)
         logger.info(
             PERF_QUALITY_OVERRIDE_CLEARED,
             agent_id=agent_id,
@@ -133,6 +154,11 @@ class QualityOverrideStore:
         now: AwareDatetime | None = None,
     ) -> tuple[QualityOverride, ...]:
         """List all overrides, optionally including expired ones.
+
+        When ``include_expired=True``, returns all overrides still in
+        the internal dict. Entries previously evicted by
+        :meth:`get_active_override` or :meth:`clear_override` are not
+        included -- this method only covers un-evicted entries.
 
         Args:
             include_expired: Whether to include expired overrides.

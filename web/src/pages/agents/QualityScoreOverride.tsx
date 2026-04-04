@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Shield, Trash2 } from 'lucide-react'
+import { AlertCircle, Shield, Trash2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/section-card'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -14,6 +14,7 @@ import {
 } from '@/api/endpoints/quality'
 import { getErrorMessage } from '@/utils/errors'
 import type { OverrideResponse } from '@/api/types'
+import type { AxiosError } from 'axios'
 
 interface QualityScoreOverrideProps {
   agentId: string
@@ -26,21 +27,32 @@ export function QualityScoreOverride({
 }: QualityScoreOverrideProps) {
   const [override, setOverride] = useState<OverrideResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const addToast = useToastStore((s) => s.add)
 
   // Form state.
   const [score, setScore] = useState(5.0)
   const [reason, setReason] = useState('')
   const [reasonError, setReasonError] = useState<string | undefined>()
+  const [expiresInDays, setExpiresInDays] = useState<number | null>(null)
 
   const fetchOverride = useCallback(async () => {
     try {
       const data = await getQualityOverride(agentId)
       setOverride(data)
-    } catch {
-      setOverride(null)
+      setFetchError(null)
+    } catch (err) {
+      const status = (err as AxiosError)?.response?.status
+      if (status === 404) {
+        setOverride(null)
+        setFetchError(null)
+      } else {
+        setFetchError(getErrorMessage(err))
+        setOverride(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -61,16 +73,18 @@ export function QualityScoreOverride({
       const data = await setQualityOverride(agentId, {
         score,
         reason: reason.trim(),
+        expires_in_days: expiresInDays,
       })
       setOverride(data)
       setReason('')
-      useToastStore.getState().add({ variant: 'success', title: 'Quality override applied' })
+      setExpiresInDays(null)
+      addToast({ variant: 'success', title: 'Quality override applied' })
     } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: getErrorMessage(err) })
+      addToast({ variant: 'error', title: getErrorMessage(err) })
     } finally {
       setSubmitting(false)
     }
-  }, [agentId, score, reason])
+  }, [agentId, score, reason, expiresInDays, addToast])
 
   const handleClear = useCallback(async () => {
     setClearing(true)
@@ -78,13 +92,13 @@ export function QualityScoreOverride({
       await clearQualityOverride(agentId)
       setOverride(null)
       setClearDialogOpen(false)
-      useToastStore.getState().add({ variant: 'success', title: 'Quality override cleared' })
+      addToast({ variant: 'success', title: 'Quality override cleared' })
     } catch (err) {
-      useToastStore.getState().add({ variant: 'error', title: getErrorMessage(err) })
+      addToast({ variant: 'error', title: getErrorMessage(err) })
     } finally {
       setClearing(false)
     }
-  }, [agentId])
+  }, [agentId, addToast])
 
   if (loading) return null
 
@@ -99,6 +113,7 @@ export function QualityScoreOverride({
             variant="ghost"
             size="sm"
             onClick={() => setClearDialogOpen(true)}
+            aria-label="Clear quality override"
           >
             <Trash2 className="size-3.5" />
             Clear
@@ -106,7 +121,12 @@ export function QualityScoreOverride({
         ) : undefined
       }
     >
-      {override ? (
+      {fetchError ? (
+        <div className="flex items-center gap-2 text-sm text-danger">
+          <AlertCircle className="size-4" />
+          <span>{fetchError}</span>
+        </div>
+      ) : override ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-grid-gap">
             <StatPill label="Score" value={override.score.toFixed(1)} />
@@ -142,6 +162,15 @@ export function QualityScoreOverride({
             error={reasonError}
             placeholder="Why are you overriding the quality score?"
             multiline
+          />
+          <SliderField
+            label="Expires in (days)"
+            value={expiresInDays ?? 0}
+            min={0}
+            max={365}
+            step={1}
+            onChange={(v) => setExpiresInDays(v === 0 ? null : v)}
+            formatValue={(v) => (v === 0 ? 'Indefinite' : `${v} day${v === 1 ? '' : 's'}`)}
           />
           <Button
             onClick={handleSubmit}

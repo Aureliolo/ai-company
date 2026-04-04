@@ -16,12 +16,14 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult, TaskMetricRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
+    PERF_JUDGE_COST_RECORDING_FAILED,
     PERF_LLM_JUDGE_COMPLETED,
     PERF_LLM_JUDGE_FAILED,
     PERF_LLM_JUDGE_STARTED,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.resilience.errors import RetryExhaustedError
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
@@ -89,7 +91,7 @@ class LlmJudgeQualityStrategy:
         cost_tracker: CostTracker | None = None,
     ) -> None:
         self._provider = provider
-        self._model = str(model)
+        self._model = model
         self._cost_tracker = cost_tracker
 
     @property
@@ -131,6 +133,8 @@ class LlmJudgeQualityStrategy:
                 acceptance_criteria,
             )
         except MemoryError, RecursionError:
+            raise
+        except RetryExhaustedError:
             raise
         except Exception:
             logger.warning(
@@ -199,10 +203,9 @@ class LlmJudgeQualityStrategy:
             raise
         except Exception:
             logger.warning(
-                PERF_LLM_JUDGE_FAILED,
+                PERF_JUDGE_COST_RECORDING_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                reason="cost_recording_failed",
                 exc_info=True,
             )
 
@@ -221,9 +224,7 @@ class LlmJudgeQualityStrategy:
             criteria_lines = []
             for c in acceptance_criteria:
                 status = "[MET]" if c.met else "[NOT MET]"
-                # Escape braces in user text for str.format().
-                safe_desc = str(c.description).replace("{", "{{").replace("}", "}}")
-                criteria_lines.append(f"- {status} {safe_desc}")
+                criteria_lines.append(f"- {status} {c.description}")
             criteria_list = "\n".join(criteria_lines)
         else:
             criteria_list = "(no acceptance criteria provided)"
@@ -261,7 +262,13 @@ class LlmJudgeQualityStrategy:
             parsed = json.loads(raw_content)
             llm_score = float(parsed["score"])
             rationale = str(parsed["rationale"])[:2048].strip()
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        except (
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ) as exc:
             logger.warning(
                 PERF_LLM_JUDGE_FAILED,
                 agent_id=agent_id,
