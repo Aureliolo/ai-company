@@ -110,15 +110,17 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
       set({ mutating: true })
       try {
         await apiDeleteProvider(name)
-        // Remove from local state after successful deletion
+        // Clear detail view first if we're deleting the selected provider
+        // (resets _detailRequestName guard so in-flight fetches are ignored)
+        if (get().selectedProvider?.name === name) {
+          get().clearDetail()
+        }
+        // Remove from list and health map
         set((state) => ({
           providers: state.providers.filter((p) => p.name !== name),
           healthMap: Object.fromEntries(
             Object.entries(state.healthMap).filter(([k]) => k !== name),
           ),
-          ...(state.selectedProvider?.name === name
-            ? { selectedProvider: null, selectedProviderModels: [], selectedProviderHealth: null, detailError: null }
-            : {}),
         }))
         useToastStore.getState().add({
           variant: 'success',
