@@ -90,7 +90,17 @@ export interface StartFineTuneRequest {
   top_k?: number | null
   batch_size?: number | null
   validation_split?: number | null
+  resume_run_id?: string | null
 }
+
+/** Pipeline stages considered "active" (in progress). */
+export const ACTIVE_STAGES: ReadonlySet<FineTuneStage> = new Set<FineTuneStage>([
+  'generating_data',
+  'mining_negatives',
+  'training',
+  'evaluating',
+  'deploying',
+])
 
 // -- API functions ---------------------------------------------------
 

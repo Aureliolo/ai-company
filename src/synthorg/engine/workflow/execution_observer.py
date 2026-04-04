@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine

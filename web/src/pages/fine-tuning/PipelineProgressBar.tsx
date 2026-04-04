@@ -16,7 +16,14 @@ export function PipelineProgressBar({ stage, progress }: PipelineProgressBarProp
         </span>
         <span className="font-mono text-foreground">{pct}%</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Fine-tuning progress"
+      >
         <div
           className="h-full rounded-full bg-accent transition-all duration-300"
           style={{ width: `${pct}%` }}

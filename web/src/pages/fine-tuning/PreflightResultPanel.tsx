@@ -3,8 +3,8 @@ import { StatusBadge } from '@/components/ui/status-badge'
 
 const STATUS_MAP = {
   pass: 'active' as const,
-  warn: 'on_leave' as const,
-  fail: 'terminated' as const,
+  warn: 'idle' as const,
+  fail: 'error' as const,
 }
 
 interface PreflightResultPanelProps {
@@ -17,9 +17,15 @@ export function PreflightResultPanel({ result }: PreflightResultPanelProps) {
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-foreground">Pre-flight Results</span>
         {result.can_proceed ? (
-          <StatusBadge status="active" label="Ready" />
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge status="active" />
+            <span className="text-xs">Ready</span>
+          </span>
         ) : (
-          <StatusBadge status="terminated" label="Blocked" />
+          <span className="inline-flex items-center gap-1.5">
+            <StatusBadge status="error" />
+            <span className="text-xs">Blocked</span>
+          </span>
         )}
       </div>
       <div className="flex flex-col gap-1">

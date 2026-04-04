@@ -27,6 +27,7 @@ const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
 const WorkflowEditorPage = lazy(() => import('@/pages/WorkflowEditorPage'))
+const FineTuningPage = lazy(() => import('@/pages/FineTuningPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 const SettingsNamespacePage = lazy(() => import('@/pages/SettingsNamespacePage'))
 const SettingsSinksPage = lazy(() => import('@/pages/SettingsSinksPage'))
@@ -118,6 +119,7 @@ export const router = createBrowserRouter([
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },
               { path: 'workflows/editor', element: <WorkflowEditorPage /> },
+              { path: ROUTES.SETTINGS_FINE_TUNING.slice(1), element: <FineTuningPage /> },
               { path: 'settings', element: <SettingsPage /> },
               { path: 'settings/observability/sinks', element: <SettingsSinksPage /> },
               { path: ROUTES.SETTINGS_CEREMONY_POLICY.slice(1), element: <CeremonyPolicyPage /> },

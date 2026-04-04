@@ -386,7 +386,7 @@ CREATE INDEX IF NOT EXISTS idx_wfe_project
 -- ── Fine-tuning pipeline runs ───────────────────────────────────
 CREATE TABLE IF NOT EXISTS fine_tune_runs (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-    stage TEXT NOT NULL,
+    stage TEXT NOT NULL CHECK(stage IN ('idle', 'generating_data', 'mining_negatives', 'training', 'evaluating', 'deploying', 'complete', 'failed')),
     progress REAL CHECK(progress IS NULL OR (progress >= 0.0 AND progress <= 1.0)),
     error TEXT,
     config_json TEXT NOT NULL,
@@ -402,10 +402,13 @@ CREATE INDEX IF NOT EXISTS idx_ftr_stage
 CREATE INDEX IF NOT EXISTS idx_ftr_started_at
     ON fine_tune_runs(started_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_ftr_updated_at
+    ON fine_tune_runs(updated_at DESC);
+
 -- ── Fine-tuning checkpoints ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS fine_tune_checkpoints (
     id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
-    run_id TEXT NOT NULL REFERENCES fine_tune_runs(id),
+    run_id TEXT NOT NULL REFERENCES fine_tune_runs(id) ON DELETE CASCADE,
     model_path TEXT NOT NULL,
     base_model TEXT NOT NULL,
     doc_count INTEGER NOT NULL CHECK(doc_count >= 0),

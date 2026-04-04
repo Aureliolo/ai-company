@@ -33,6 +33,8 @@ _EXPECTED_TABLES = {
     "custom_presets",
     "workflow_definitions",
     "workflow_executions",
+    "fine_tune_runs",
+    "fine_tune_checkpoints",
 }
 
 _EXPECTED_INDEXES = {
@@ -84,6 +86,12 @@ _EXPECTED_INDEXES = {
     "idx_wfe_definition_updated",
     "idx_wfe_status_updated",
     "idx_wfe_project",
+    "idx_ftr_stage",
+    "idx_ftr_started_at",
+    "idx_ftr_updated_at",
+    "idx_ftc_run_id",
+    "idx_ftc_active",
+    "idx_ftc_created_at",
 }
 
 

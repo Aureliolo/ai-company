@@ -4,10 +4,10 @@ import { useFineTuningStore } from '@/stores/fine-tuning'
 
 import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
 
-const STAGE_STATUS_MAP: Record<string, 'active' | 'on_leave' | 'terminated'> = {
+const STAGE_STATUS_MAP: Record<string, 'active' | 'idle' | 'error' | 'offline'> = {
   complete: 'active',
-  failed: 'terminated',
-  idle: 'on_leave',
+  failed: 'error',
+  idle: 'idle',
 }
 
 export function RunHistoryTable() {
@@ -46,10 +46,12 @@ export function RunHistoryTable() {
                   : '--'}
               </td>
               <td className="py-2 pr-4">
-                <StatusBadge
-                  status={STAGE_STATUS_MAP[run.stage] ?? 'on_leave'}
-                  label={formatStage(run.stage)}
-                />
+                <span className="inline-flex items-center gap-1.5">
+                  <StatusBadge
+                    status={STAGE_STATUS_MAP[run.stage] ?? 'idle'}
+                  />
+                  <span className="text-xs">{formatStage(run.stage)}</span>
+                </span>
               </td>
               <td className="py-2 pr-4 text-xs text-muted-foreground">
                 {run.stages_completed.length}/5

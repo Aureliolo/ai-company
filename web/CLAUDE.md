@@ -23,14 +23,14 @@ npm --prefix web run storybook:build       # Storybook production build
 
 ```text
 web/src/
-  api/            # Axios client, endpoint modules (22 domains), shared types
+  api/            # Axios client, endpoint modules (23 domains), shared types
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact/project data composition, useWorkflowsData)
   lib/            # Utilities (cn() class merging, semantic color mappers), Framer Motion presets, CSP nonce reader, structured logger factory
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
-  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/)
+  pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, workflows, ceremony-policy, setup, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, workflows, fine-tuning, ceremony-policy, setup, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)

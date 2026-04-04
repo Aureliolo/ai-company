@@ -1,5 +1,6 @@
 """Tests for fine-tuning pipeline SQLite repositories."""
 
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -67,13 +68,13 @@ def _checkpoint(
 
 
 @pytest.fixture
-async def db() -> aiosqlite.Connection:
+async def db() -> AsyncGenerator[aiosqlite.Connection]:
     """In-memory SQLite with schema applied."""
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
     schema = _SCHEMA_PATH.read_text()  # noqa: ASYNC240
     await conn.executescript(schema)
-    yield conn  # type: ignore[misc]
+    yield conn
     await conn.close()
 
 

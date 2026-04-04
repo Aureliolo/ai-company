@@ -6,9 +6,11 @@ from last completed stage.
 """
 
 import asyncio
+import json
 import time
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from synthorg.memory.embedding.cancellation import CancellationToken
@@ -34,6 +36,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_PROGRESS,
     MEMORY_FINE_TUNE_STAGE_ENTERED,
     MEMORY_FINE_TUNE_STARTED,
+    MEMORY_FINE_TUNE_WS_EMIT_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -71,7 +74,7 @@ class FineTuneOrchestrator:
         run_repo: SQLiteFineTuneRunRepository,
         checkpoint_repo: SQLiteFineTuneCheckpointRepository,
         settings_service: object | None = None,
-        channels_plugin: object | None = None,
+        channels_plugin: Any | None = None,
         llm_provider: object | None = None,
     ) -> None:
         self._run_repo = run_repo
@@ -135,6 +138,7 @@ class FineTuneOrchestrator:
         self._current_task = asyncio.create_task(
             self._execute_pipeline(run),
         )
+        self._current_task.add_done_callback(self._on_task_done)
         return run
 
     async def resume(self, run_id: str) -> FineTuneRun:
@@ -187,6 +191,7 @@ class FineTuneOrchestrator:
         self._current_task = asyncio.create_task(
             self._execute_pipeline(resumed),
         )
+        self._current_task.add_done_callback(self._on_task_done)
         return resumed
 
     async def cancel(self) -> None:
@@ -247,10 +252,18 @@ class FineTuneOrchestrator:
                 run,
                 "cancelled by user",
             )
-            self._emit_ws("memory.fine_tune.failed", run)
+            self._emit_ws(
+                "memory.fine_tune.failed",
+                self._current_run if self._current_run is not None else run,
+            )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             await self._mark_failed(run, str(exc))
-            self._emit_ws("memory.fine_tune.failed", run)
+            self._emit_ws(
+                "memory.fine_tune.failed",
+                self._current_run if self._current_run is not None else run,
+            )
             logger.exception(
                 MEMORY_FINE_TUNE_FAILED,
                 run_id=run.id,
@@ -285,8 +298,8 @@ class FineTuneOrchestrator:
                 "generating_data",
             )
         else:
-            train_path = f"{out_dir}/training.jsonl"
-            val_path = f"{out_dir}/validation.jsonl"
+            train_path = Path(f"{out_dir}/training.jsonl")
+            val_path = Path(f"{out_dir}/validation.jsonl")
 
         # Stage 2: Mine hard negatives.
         if "mining_negatives" not in completed:
@@ -307,7 +320,7 @@ class FineTuneOrchestrator:
                 "mining_negatives",
             )
         else:
-            triples_path = f"{out_dir}/training_triples.jsonl"
+            triples_path = Path(f"{out_dir}/training_triples.jsonl")
 
         # Stage 3: Contrastive fine-tuning.
         if "training" not in completed:
@@ -328,7 +341,7 @@ class FineTuneOrchestrator:
             )
             run = await self._complete_stage(run, "training")
         else:
-            checkpoint_path = f"{out_dir}/checkpoint"
+            checkpoint_path = Path(f"{out_dir}/checkpoint")
 
         # Stage 4: Evaluation.
         if "evaluating" not in completed:
@@ -432,7 +445,13 @@ class FineTuneOrchestrator:
         self,
         run: FineTuneRun,
     ) -> Any:
-        """Create a throttled progress callback for a stage."""
+        """Create a throttled progress callback for a stage.
+
+        The callback captures the run ID and reads ``self._current_run``
+        at call time so it always reflects the latest stage/progress,
+        even when invoked from a worker thread via ``asyncio.to_thread``.
+        """
+        run_id = run.id
         last_emit = 0.0
 
         def _cb(progress: float) -> None:
@@ -441,15 +460,26 @@ class FineTuneOrchestrator:
             if now - last_emit < _PROGRESS_THROTTLE_SEC:
                 return
             last_emit = now
-            self._current_run = run.model_copy(
-                update={"progress": progress},
-            )
+            current = self._current_run
+            if current is not None and current.id == run_id:
+                updated = current.model_copy(
+                    update={"progress": progress},
+                )
+                self._current_run = updated
+            else:
+                updated = run.model_copy(
+                    update={"progress": progress},
+                )
+                self._current_run = updated
             logger.debug(
                 MEMORY_FINE_TUNE_PROGRESS,
-                run_id=run.id,
+                run_id=run_id,
                 progress=progress,
             )
-            self._emit_ws("memory.fine_tune.progress", run)
+            self._emit_ws(
+                "memory.fine_tune.progress",
+                self._current_run if self._current_run is not None else run,
+            )
 
         return _cb
 
@@ -462,8 +492,6 @@ class FineTuneOrchestrator:
         if self._channels_plugin is None:
             return
         try:
-            import json  # noqa: PLC0415
-
             payload = json.dumps(
                 {
                     "event_type": event_type,
@@ -479,10 +507,25 @@ class FineTuneOrchestrator:
                 payload,
                 channels=["system"],
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
-            logger.debug(
-                "memory.fine_tune.ws_emit_failed",
+            logger.warning(
+                MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
+            )
+
+    @staticmethod
+    def _on_task_done(task: asyncio.Task[None]) -> None:
+        """Log unhandled exceptions from pipeline background tasks."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                MEMORY_FINE_TUNE_FAILED,
+                error=str(exc),
+                note="unhandled exception in pipeline task",
             )
 
 
@@ -491,14 +534,17 @@ class FineTuneOrchestrator:
 
 def _build_config(request: FineTuneRequest) -> FineTuneRunConfig:
     """Build a frozen config snapshot from a request."""
+    r = request
     return FineTuneRunConfig(
-        source_dir=request.source_dir,
-        base_model=request.base_model or "auto",
-        output_dir=request.output_dir or "/data/fine-tune",
-        epochs=request.epochs or 3,
-        learning_rate=request.learning_rate or 1e-5,
-        temperature=request.temperature or 0.02,
-        top_k=request.top_k or 4,
-        batch_size=request.batch_size or 128,
-        validation_split=request.validation_split or 0.1,
+        source_dir=r.source_dir,
+        base_model=(r.base_model if r.base_model is not None else "auto"),
+        output_dir=(r.output_dir if r.output_dir is not None else "/data/fine-tune"),
+        epochs=r.epochs if r.epochs is not None else 3,
+        learning_rate=(r.learning_rate if r.learning_rate is not None else 1e-5),
+        temperature=(r.temperature if r.temperature is not None else 0.02),
+        top_k=r.top_k if r.top_k is not None else 4,
+        batch_size=(r.batch_size if r.batch_size is not None else 128),
+        validation_split=(
+            r.validation_split if r.validation_split is not None else 0.1
+        ),
     )

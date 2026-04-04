@@ -23,6 +23,7 @@ from synthorg.memory.embedding.fine_tune_models import (
     PreflightCheck,
     PreflightResult,
 )
+from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
@@ -179,6 +180,8 @@ class MemoryAdminController(Controller):
         offset: int = 0,
     ) -> ApiResponse[tuple[CheckpointRecord, ...]]:
         """List fine-tuning checkpoints."""
+        limit = min(max(limit, 1), 200)
+        offset = max(offset, 0)
         app_state: AppState = state.app_state
         db = app_state.persistence.get_db()
         from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
@@ -236,7 +239,7 @@ class MemoryAdminController(Controller):
             msg = f"No backup config for checkpoint {checkpoint_id}"
             raise ClientException(detail=msg)
         # Deactivate the checkpoint.
-        await repo.set_active("")
+        await repo.deactivate_all()
         updated = await repo.get_checkpoint(checkpoint_id)
         return ApiResponse(data=updated)
 
@@ -275,6 +278,8 @@ class MemoryAdminController(Controller):
         offset: int = 0,
     ) -> ApiResponse[tuple[FineTuneRun, ...]]:
         """List historical pipeline runs."""
+        limit = min(max(limit, 1), 200)
+        offset = max(offset, 0)
         app_state: AppState = state.app_state
         db = app_state.persistence.get_db()
         from synthorg.persistence.sqlite.fine_tune_repo import (  # noqa: PLC0415
@@ -334,13 +339,45 @@ class MemoryAdminController(Controller):
 
 
 def _run_preflight_checks(
-    request: FineTuneRequest,  # noqa: ARG001
+    request: FineTuneRequest,
 ) -> list[PreflightCheck]:
     """Run all pre-flight validation checks."""
     checks: list[PreflightCheck] = []
     checks.append(_check_dependencies())
     checks.append(_check_gpu())
+    checks.append(_check_documents(request.source_dir))
     return checks
+
+
+def _check_documents(source_dir: str) -> PreflightCheck:
+    """Check source directory has enough documents."""
+    from pathlib import Path  # noqa: PLC0415
+
+    src = Path(source_dir)
+    if not src.exists():
+        return PreflightCheck(
+            name="documents",
+            status="fail",
+            message=f"Source directory not found: {source_dir}",
+        )
+    count = sum(1 for ext in ("*.txt", "*.md", "*.rst") for _ in src.rglob(ext))
+    if count < 10:  # noqa: PLR2004
+        return PreflightCheck(
+            name="documents",
+            status="fail",
+            message=f"Too few documents ({count}), minimum 10 required",
+        )
+    if count < 50:  # noqa: PLR2004
+        return PreflightCheck(
+            name="documents",
+            status="warn",
+            message=f"Low document count ({count}), 50+ recommended",
+        )
+    return PreflightCheck(
+        name="documents",
+        status="pass",
+        message=f"{count} documents found",
+    )
 
 
 def _check_dependencies() -> PreflightCheck:
@@ -353,11 +390,20 @@ def _check_dependencies() -> PreflightCheck:
 
         _import_torch()
         _import_sentence_transformers()
-    except Exception as exc:
+    except (ImportError, FineTuneDependencyError) as exc:
         return PreflightCheck(
             name="dependencies",
             status="fail",
             message="Missing ML dependencies",
+            detail=str(exc),
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        return PreflightCheck(
+            name="dependencies",
+            status="fail",
+            message=f"Dependency check failed: {type(exc).__name__}",
             detail=str(exc),
         )
     return PreflightCheck(
@@ -370,7 +416,7 @@ def _check_dependencies() -> PreflightCheck:
 def _check_gpu() -> PreflightCheck:
     """Best-effort GPU availability check."""
     try:
-        import torch  # noqa: PLC0415
+        import torch  # type: ignore[import-not-found]  # noqa: PLC0415
 
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
@@ -387,11 +433,20 @@ def _check_gpu() -> PreflightCheck:
             message="No GPU detected -- training will be slow",
             detail="CPU-only mode",
         )
-    except Exception:
+    except ImportError:
         return PreflightCheck(
             name="gpu",
             status="warn",
             message="Cannot detect GPU (torch not installed)",
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        return PreflightCheck(
+            name="gpu",
+            status="warn",
+            message=f"GPU detection error: {type(exc).__name__}",
+            detail=str(exc),
         )
 
 

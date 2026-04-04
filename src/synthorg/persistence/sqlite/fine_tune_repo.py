@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 
 import aiosqlite
 
@@ -15,7 +16,7 @@ from synthorg.memory.embedding.fine_tune_models import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_INTERRUPTED,
-    MEMORY_FINE_TUNE_STARTED,
+    MEMORY_FINE_TUNE_PERSIST_FAILED,
 )
 from synthorg.persistence.errors import QueryError
 
@@ -103,7 +104,7 @@ class SQLiteFineTuneRunRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to save fine-tune run {run.id}"
             logger.exception(
-                MEMORY_FINE_TUNE_STARTED,
+                MEMORY_FINE_TUNE_PERSIST_FAILED,
                 run_id=run.id,
                 error=str(exc),
             )
@@ -202,9 +203,10 @@ class SQLiteFineTuneRunRepository:
             Number of runs marked as interrupted.
         """
         placeholders = ", ".join("?" for _ in _ACTIVE_STAGES)
+        now = datetime.now(UTC).isoformat()
         query = (
             f"UPDATE fine_tune_runs SET "  # noqa: S608
-            f"stage = ?, error = ? "
+            f"stage = ?, error = ?, updated_at = ?, completed_at = ? "
             f"WHERE stage IN ({placeholders})"
         )
         try:
@@ -213,6 +215,8 @@ class SQLiteFineTuneRunRepository:
                 (
                     FineTuneStage.FAILED.value,
                     "interrupted by restart",
+                    now,
+                    now,
                     *_ACTIVE_STAGES,
                 ),
             )
@@ -319,51 +323,72 @@ class SQLiteFineTuneCheckpointRepository:
         return tuple(_checkpoint_from_row(r) for r in rows), total
 
     async def set_active(self, checkpoint_id: str) -> None:
-        """Deactivate all checkpoints and activate the given one."""
+        """Deactivate all checkpoints and activate the given one.
+
+        Uses a single transaction to ensure atomicity.
+
+        Raises:
+            QueryError: If the checkpoint does not exist or DB fails.
+        """
+        try:
+            await self._db.execute("BEGIN IMMEDIATE")
+            await self._db.execute(
+                "UPDATE fine_tune_checkpoints SET is_active = 0",
+            )
+            cursor = await self._db.execute(
+                "UPDATE fine_tune_checkpoints SET is_active = 1 WHERE id = ?",
+                (checkpoint_id,),
+            )
+            affected = cursor.rowcount
+            await self._db.execute("COMMIT")
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._db.execute("ROLLBACK")
+            msg = f"Failed to activate checkpoint {checkpoint_id}"
+            raise QueryError(msg) from exc
+        if affected == 0:
+            msg = f"Checkpoint {checkpoint_id} not found"
+            raise QueryError(msg)
+
+    async def deactivate_all(self) -> None:
+        """Deactivate all checkpoints (for rollback)."""
         try:
             await self._db.execute(
                 "UPDATE fine_tune_checkpoints SET is_active = 0",
             )
-            await self._db.execute(
-                "UPDATE fine_tune_checkpoints SET is_active = 1 WHERE id = ?",
-                (checkpoint_id,),
-            )
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to activate checkpoint {checkpoint_id}"
+            msg = "Failed to deactivate all checkpoints"
             raise QueryError(msg) from exc
-
-    async def _check_not_active(
-        self,
-        checkpoint_id: str,
-    ) -> None:
-        """Raise ``QueryError`` if checkpoint is active."""
-        cursor = await self._db.execute(
-            "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",
-            (checkpoint_id,),
-        )
-        row = await cursor.fetchone()
-        if row is not None and bool(row["is_active"]):
-            msg = f"Cannot delete active checkpoint {checkpoint_id}"
-            raise QueryError(msg)
 
     async def delete_checkpoint(
         self,
         checkpoint_id: str,
     ) -> None:
-        """Delete a checkpoint. Raises if it is the active one."""
+        """Delete a checkpoint atomically. Raises if it is the active one.
+
+        Uses a conditional DELETE to avoid TOCTOU races.
+        """
+        is_active = False
         try:
-            await self._check_not_active(checkpoint_id)
-            await self._db.execute(
-                "DELETE FROM fine_tune_checkpoints WHERE id = ?",
+            cursor = await self._db.execute(
+                "DELETE FROM fine_tune_checkpoints WHERE id = ? AND is_active = 0",
                 (checkpoint_id,),
             )
             await self._db.commit()
-        except QueryError:
-            raise
+            if cursor.rowcount == 0:
+                # Check if it exists but is active.
+                check = await self._db.execute(
+                    "SELECT is_active FROM fine_tune_checkpoints WHERE id = ?",
+                    (checkpoint_id,),
+                )
+                row = await check.fetchone()
+                is_active = row is not None and bool(row["is_active"])
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete checkpoint {checkpoint_id}"
             raise QueryError(msg) from exc
+        if is_active:
+            msg = f"Cannot delete active checkpoint {checkpoint_id}"
+            raise QueryError(msg)
 
     async def get_active_checkpoint(
         self,

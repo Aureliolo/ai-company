@@ -95,7 +95,7 @@ export function WorkflowNodeDrawer({
       title={`${nodeLabel} Properties`}
       ariaLabel={`Edit ${nodeLabel} properties`}
     >
-      <div className="flex flex-col gap-4 p-card">
+      <div className="flex flex-col gap-section-gap p-card">
         <div className="text-xs text-muted-foreground">
           ID: {nodeId}
         </div>

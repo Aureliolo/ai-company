@@ -4,7 +4,7 @@ Provides a cooperative cancellation mechanism: the orchestrator
 sets the token, and each stage checks it between batches.
 """
 
-import asyncio
+import threading
 
 from synthorg.memory.errors import FineTuneCancelledError
 
@@ -12,12 +12,16 @@ from synthorg.memory.errors import FineTuneCancelledError
 class CancellationToken:
     """Cooperative cancellation signal for pipeline stages.
 
-    Thread-safe via ``asyncio.Event``.  The orchestrator calls
-    ``cancel()``; stage functions call ``check()`` between batches.
+    Thread-safe via ``threading.Event``.  The orchestrator calls
+    ``cancel()`` from the event loop; stage functions call ``check()``
+    between batches, potentially from worker threads (via
+    ``asyncio.to_thread``).
     """
 
+    __slots__ = ("_event",)
+
     def __init__(self) -> None:
-        self._event = asyncio.Event()
+        self._event = threading.Event()
 
     def cancel(self) -> None:
         """Signal cancellation."""

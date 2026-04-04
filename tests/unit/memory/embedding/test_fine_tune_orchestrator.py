@@ -1,8 +1,11 @@
 """Tests for FineTuneOrchestrator."""
 
 import asyncio
+import contextlib
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import aiosqlite
@@ -26,12 +29,12 @@ _SCHEMA_PATH = Path("src/synthorg/persistence/sqlite/schema.sql")
 
 
 @pytest.fixture
-async def db() -> aiosqlite.Connection:
+async def db() -> AsyncGenerator[aiosqlite.Connection]:
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
     schema = _SCHEMA_PATH.read_text()  # noqa: ASYNC240
     await conn.executescript(schema)
-    yield conn  # type: ignore[misc]
+    yield conn
     await conn.close()
 
 
@@ -200,24 +203,27 @@ class TestOrchestratorStatus:
 
 # -- Helpers ----------------------------------------------------------
 
-import contextlib  # noqa: E402
-
 
 @contextlib.contextmanager
-def _mock_all_stages(*, block: bool = False):
+def _mock_all_stages(
+    *,
+    block: bool = False,
+) -> Any:
     """Mock all pipeline stage functions.
 
     If block=True, generate_training_data blocks until cancelled.
     """
 
-    async def _gen_data(**kwargs):
+    async def _gen_data(**kwargs: Any) -> tuple[Path, Path]:
         if block:
             token = kwargs.get("cancellation")
             if token:
-                await token._event.wait()
+                # Wait on the threading.Event directly (CancellationToken
+                # now uses threading.Event internally).
+                await asyncio.to_thread(token._event.wait)
                 token.check()
             else:
-                await asyncio.sleep(10)
+                await asyncio.Event().wait()
         p = Path(kwargs.get("output_dir", "."))
         await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
         train = p / "training.jsonl"
@@ -227,7 +233,7 @@ def _mock_all_stages(*, block: bool = False):
         await asyncio.to_thread(val.write_text, data)
         return train, val
 
-    async def _mine(**kwargs):
+    async def _mine(**kwargs: Any) -> Path:
         p = Path(kwargs.get("output_dir", "."))
         await asyncio.to_thread(p.mkdir, parents=True, exist_ok=True)
         out = p / "training_triples.jsonl"
@@ -235,13 +241,13 @@ def _mock_all_stages(*, block: bool = False):
         await asyncio.to_thread(out.write_text, data)
         return out
 
-    async def _train(**kwargs):
+    async def _train(**kwargs: Any) -> Path:
         p = Path(kwargs.get("output_dir", "."))
         cp = p / "checkpoint"
         await asyncio.to_thread(cp.mkdir, parents=True, exist_ok=True)
         return cp
 
-    async def _eval(**kwargs):
+    async def _eval(**kwargs: Any) -> Any:
         from synthorg.memory.embedding.fine_tune_models import (
             EvalMetrics,
         )
@@ -253,7 +259,7 @@ def _mock_all_stages(*, block: bool = False):
             base_recall_at_10=0.6,
         )
 
-    async def _deploy(**kwargs):
+    async def _deploy(**kwargs: Any) -> None:
         pass
 
     base = "synthorg.memory.embedding.fine_tune_orchestrator"

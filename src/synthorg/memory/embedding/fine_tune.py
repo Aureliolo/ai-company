@@ -17,13 +17,16 @@ import asyncio
 import json
 import math
 from collections.abc import Callable
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
+    MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
     MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
     MEMORY_FINE_TUNE_EVAL_COMPLETED,
     MEMORY_FINE_TUNE_VALIDATION_FAILED,
@@ -59,7 +62,7 @@ class FineTuneStage(StrEnum):
 def _import_sentence_transformers() -> ModuleType:
     """Lazy-import sentence-transformers with friendly error."""
     try:
-        import sentence_transformers  # noqa: PLC0415
+        import sentence_transformers  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "sentence-transformers is required for fine-tuning. "
@@ -71,13 +74,13 @@ def _import_sentence_transformers() -> ModuleType:
         )
         raise FineTuneDependencyError(msg) from exc
     else:
-        return sentence_transformers
+        return sentence_transformers  # type: ignore[no-any-return]
 
 
 def _import_torch() -> ModuleType:
     """Lazy-import torch with friendly error."""
     try:
-        import torch  # noqa: PLC0415
+        import torch  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "torch is required for fine-tuning. "
@@ -89,7 +92,7 @@ def _import_torch() -> ModuleType:
         )
         raise FineTuneDependencyError(msg) from exc
     else:
-        return torch
+        return torch  # type: ignore[no-any-return]
 
 
 # -- Validation helpers -----------------------------------------------
@@ -169,8 +172,7 @@ async def generate_training_data(  # noqa: PLR0913
         Tuple of (training_path, validation_path).
 
     Raises:
-        ValueError: If inputs are blank.
-        FineTuneDependencyError: If required deps are missing.
+        ValueError: If inputs are blank or no documents found.
     """
     _require_not_blank(source_dir, "source_dir")
     _require_not_blank(output_dir, "output_dir")
@@ -268,7 +270,7 @@ async def mine_hard_negatives(  # noqa: PLR0913
     _require_not_blank(output_dir, "output_dir")
 
     st = _import_sentence_transformers()
-    pairs = _read_jsonl(Path(training_data_path))
+    pairs = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
     passages = [p["positive_passage"] for p in pairs]
     queries = [p["query"] for p in pairs]
 
@@ -314,9 +316,9 @@ async def mine_hard_negatives(  # noqa: PLR0913
     return triples_path
 
 
-def _read_jsonl(path: Path) -> list[dict[str, str]]:
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     """Read a JSONL file into a list of dicts."""
-    records: list[dict[str, str]] = []
+    records: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as f:
         for raw_line in f:
             stripped = raw_line.strip()
@@ -347,7 +349,7 @@ def _cosine_similarities(
     q_norm = q / (np.linalg.norm(q) + 1e-10)
     p_norms = p / (np.linalg.norm(p, axis=1, keepdims=True) + 1e-10)
     sims = p_norms @ q_norm
-    return sims.tolist()
+    return sims.tolist()  # type: ignore[no-any-return]
 
 
 # -- Stage 3: Contrastive fine-tuning ---------------------------------
@@ -402,7 +404,7 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     st = _import_sentence_transformers()
     _import_torch()
 
-    triples = _read_jsonl(Path(training_data_path))
+    triples = await asyncio.to_thread(_read_jsonl, Path(training_data_path))
     model = await asyncio.to_thread(st.SentenceTransformer, base_model)
 
     examples = _build_training_examples(st, triples)
@@ -450,7 +452,7 @@ async def contrastive_fine_tune(  # noqa: PLR0913
 
 def _build_training_examples(
     st: ModuleType,
-    triples: list[dict[str, object]],
+    triples: list[dict[str, Any]],
 ) -> list[object]:
     """Build sentence-transformers InputExample from triples."""
     examples = []
@@ -503,7 +505,7 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         EvalMetrics,
     )
 
-    pairs = _read_jsonl(Path(validation_data_path))
+    pairs = await asyncio.to_thread(_read_jsonl, Path(validation_data_path))
     if not pairs:
         msg = "Validation data is empty"
         raise ValueError(msg)
@@ -659,9 +661,11 @@ async def deploy_checkpoint(
                 sv = await settings_service.get("memory", key)
                 if sv and hasattr(sv, "value") and sv.value:
                     backup[key] = sv.value
+            except MemoryError, RecursionError:
+                raise
             except Exception:
-                logger.debug(
-                    "memory.fine_tune.backup_read_skipped",
+                logger.warning(
+                    MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
                     key=key,
                 )
 
@@ -677,8 +681,6 @@ async def deploy_checkpoint(
         settings_service,
         "set",
     ):
-        from datetime import UTC, datetime  # noqa: PLC0415
-
         now = datetime.now(UTC).isoformat()
         await settings_service.set(
             "memory",
@@ -688,7 +690,7 @@ async def deploy_checkpoint(
         )
 
     logger.info(
-        "memory.fine_tune.checkpoint_deployed",
+        MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
         checkpoint_path=checkpoint_path,
         config_path=config_path,
         backup_keys=list(backup.keys()),

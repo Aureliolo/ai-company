@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   Video,
   Workflow,
@@ -232,6 +233,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
           <SidebarNavItem to={ROUTES.MEETINGS} icon={Video} label="Meetings" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.PROVIDERS} icon={Cpu} label="Providers" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.DOCUMENTATION} icon={BookOpen} label="Docs" collapsed={collapsed} external />
+          <SidebarNavItem to={ROUTES.SETTINGS_FINE_TUNING} icon={Sparkles} label="Fine-Tuning" collapsed={collapsed} />
           <SidebarNavItem to={ROUTES.SETTINGS} icon={Settings} label="Settings" collapsed={collapsed} />
         </div>
       </div>

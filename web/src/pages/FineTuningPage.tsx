@@ -1,5 +1,7 @@
 import { useCallback, useEffect } from 'react'
+import { Activity, Clock, Database, Settings } from 'lucide-react'
 
+import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import { SectionCard } from '@/components/ui/section-card'
 import { useFineTuningStore } from '@/stores/fine-tuning'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -10,14 +12,6 @@ import { PipelineControlPanel } from './fine-tuning/PipelineControlPanel'
 import { PipelineProgressBar } from './fine-tuning/PipelineProgressBar'
 import { PipelineStepper } from './fine-tuning/PipelineStepper'
 import { RunHistoryTable } from './fine-tuning/RunHistoryTable'
-
-const ACTIVE_STAGES = new Set([
-  'generating_data',
-  'mining_negatives',
-  'training',
-  'evaluating',
-  'deploying',
-])
 
 export default function FineTuningPage() {
   const { status, preflight, fetchStatus, fetchCheckpoints, fetchRuns, handleWsEvent } =
@@ -53,12 +47,12 @@ export default function FineTuningPage() {
 
       {hasDependencyFailure && <DependencyMissingBanner />}
 
-      <SectionCard title="Pipeline Control" icon="settings">
+      <SectionCard title="Pipeline Control" icon={Settings}>
         <PipelineControlPanel />
       </SectionCard>
 
       {isActive && (
-        <SectionCard title="Progress" icon="activity">
+        <SectionCard title="Progress" icon={Activity}>
           <PipelineStepper stage={status.stage} />
           <PipelineProgressBar
             stage={status.stage}
@@ -67,11 +61,11 @@ export default function FineTuningPage() {
         </SectionCard>
       )}
 
-      <SectionCard title="Checkpoints" icon="database">
+      <SectionCard title="Checkpoints" icon={Database}>
         <CheckpointTable />
       </SectionCard>
 
-      <SectionCard title="Run History" icon="clock">
+      <SectionCard title="Run History" icon={Clock}>
         <RunHistoryTable />
       </SectionCard>
     </div>

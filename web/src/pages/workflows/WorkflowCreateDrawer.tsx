@@ -79,7 +79,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
 
   return (
     <Drawer open={open} onClose={handleClose} title="Create Workflow">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-section-gap">
         <InputField
           label="Name"
           value={form.name}

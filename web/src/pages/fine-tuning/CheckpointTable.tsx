@@ -1,4 +1,7 @@
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
@@ -6,6 +9,7 @@ import { useFineTuningStore } from '@/stores/fine-tuning'
 export function CheckpointTable() {
   const { checkpoints, deployCheckpointAction, rollbackCheckpointAction, deleteCheckpointAction } =
     useFineTuningStore()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   if (checkpoints.length === 0) {
     return (
@@ -64,9 +68,15 @@ export function CheckpointTable() {
               </td>
               <td className="py-2 pr-4">
                 {cp.is_active ? (
-                  <StatusBadge status="active" label="Active" />
+                  <span className="inline-flex items-center gap-1.5">
+                    <StatusBadge status="active" />
+                    <span className="text-xs">Active</span>
+                  </span>
                 ) : (
-                  <StatusBadge status="on_leave" label="Available" />
+                  <span className="inline-flex items-center gap-1.5">
+                    <StatusBadge status="idle" />
+                    <span className="text-xs">Available</span>
+                  </span>
                 )}
               </td>
               <td className="py-2">
@@ -93,7 +103,7 @@ export function CheckpointTable() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void deleteCheckpointAction(cp.id)}
+                      onClick={() => setDeletingId(cp.id)}
                     >
                       Delete
                     </Button>
@@ -104,6 +114,18 @@ export function CheckpointTable() {
           ))}
         </tbody>
       </table>
+      <ConfirmDialog
+        open={deletingId != null}
+        onOpenChange={(open) => { if (!open) setDeletingId(null) }}
+        title="Delete checkpoint"
+        description="This will permanently delete the fine-tuned model checkpoint and its artifacts. This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => {
+          if (deletingId) void deleteCheckpointAction(deletingId)
+          setDeletingId(null)
+        }}
+      />
     </div>
   )
 }

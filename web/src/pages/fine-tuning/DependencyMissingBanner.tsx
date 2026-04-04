@@ -1,6 +1,6 @@
 export function DependencyMissingBanner() {
   return (
-    <div className="rounded-lg border border-danger/30 bg-danger/5 p-card">
+    <div className="rounded-lg border border-danger/30 bg-danger/5 p-card" role="alert">
       <h3 className="text-sm font-medium text-danger">
         Fine-tuning dependencies not installed
       </h3>

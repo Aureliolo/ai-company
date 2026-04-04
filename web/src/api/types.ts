@@ -1134,6 +1134,10 @@ export type WsEventType =
   | 'artifact.content_uploaded'
   | 'project.created'
   | 'project.status_changed'
+  | 'memory.fine_tune.progress'
+  | 'memory.fine_tune.stage_changed'
+  | 'memory.fine_tune.completed'
+  | 'memory.fine_tune.failed'
 
 export const WS_EVENT_TYPE_VALUES = [
   'task.created', 'task.updated', 'task.status_changed', 'task.assigned',
@@ -1146,6 +1150,7 @@ export const WS_EVENT_TYPE_VALUES = [
   'coordination.started', 'coordination.phase_completed', 'coordination.completed', 'coordination.failed',
   'artifact.created', 'artifact.deleted', 'artifact.content_uploaded',
   'project.created', 'project.status_changed',
+  'memory.fine_tune.progress', 'memory.fine_tune.stage_changed', 'memory.fine_tune.completed', 'memory.fine_tune.failed',
 ] as const satisfies readonly WsEventType[]
 
 export const DEPARTMENT_NAME_VALUES = [
