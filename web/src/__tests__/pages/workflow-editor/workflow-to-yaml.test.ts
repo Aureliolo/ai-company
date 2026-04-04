@@ -31,6 +31,14 @@ function makeEdge(
   }
 }
 
+/** Parse YAML output and return the workflow steps array. */
+function parseSteps(output: string): Array<Record<string, unknown>> {
+  const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as {
+    workflow_definition: { steps: Array<Record<string, unknown>> }
+  }
+  return parsed.workflow_definition.steps
+}
+
 describe('generateYamlPreview depends_on', () => {
   it('emits plain string for sequential edges', () => {
     const nodes = [
@@ -68,9 +76,7 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('no_step', 'end'),
     ]
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
-    // Parse the YAML and assert on the depends_on structure directly
-    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
-    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    const steps = parseSteps(output)
     const yesStep = steps.find((s) => s.id === 'yes_step')
     const noStep = steps.find((s) => s.id === 'no_step')
     expect(yesStep).toBeDefined()
@@ -95,8 +101,7 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('b', 'end'),
     ]
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
-    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
-    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    const steps = parseSteps(output)
     // The split node should have a branches field listing targets
     const forkStep = steps.find((s) => s.id === 'fork')
     expect(forkStep).toBeDefined()
@@ -123,8 +128,7 @@ describe('generateYamlPreview depends_on', () => {
       makeEdge('run', 'end'),
     ]
     const output = generateYamlPreview(nodes, edges, 'test', 'agile')
-    const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as Record<string, unknown>
-    const steps = (parsed as { workflow_definition: { steps: Array<Record<string, unknown>> } }).workflow_definition.steps
+    const steps = parseSteps(output)
     // 'run' should have depends_on with { id: check, branch: 'true' }
     const runStep = steps.find((s) => s.id === 'run')
     expect(runStep).toBeDefined()
@@ -165,10 +169,7 @@ describe('generateYamlPreview depends_on', () => {
         edges.push(makeEdge('no', 'end'))
 
         const output = generateYamlPreview(nodes, edges, 'test', 'agile')
-        const parsed = yaml.load(output, { schema: yaml.CORE_SCHEMA }) as {
-          workflow_definition: { steps: Array<Record<string, unknown>> }
-        }
-        const steps = parsed.workflow_definition.steps
+        const steps = parseSteps(output)
 
         for (const step of steps) {
           if (!step.depends_on) continue

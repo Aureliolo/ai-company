@@ -192,6 +192,9 @@ export async function pullModel(
         useAuthStore.getState().logout()
       }).catch((importErr: unknown) => {
         log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
+          window.location.href = '/login'
+        }
       })
     }
     throw new Error(`Pull failed: HTTP ${response.status}`)

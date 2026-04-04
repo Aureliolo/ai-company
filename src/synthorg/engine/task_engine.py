@@ -121,7 +121,7 @@ class TaskEngine:
         self._lifecycle_lock = asyncio.Lock()
         self._observers: list[Callable[[TaskStateChanged], Awaitable[None]]] = []
         self._observer_queue: asyncio.Queue[TaskStateChanged | None] = asyncio.Queue(
-            maxsize=self._config.max_queue_size,
+            maxsize=self._config.effective_observer_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
         logger.debug(
@@ -182,14 +182,15 @@ class TaskEngine:
         effective_timeout = (
             timeout if timeout is not None else self._config.drain_timeout_seconds
         )
-        deadline = asyncio.get_event_loop().time() + effective_timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + effective_timeout
 
         await self._drain_processing(effective_timeout)
         # Signal the observer loop that no more events will arrive.
         # Use async put (not put_nowait) to avoid QueueFull aborting
         # shutdown when the observer queue is backed up.
         await self._observer_queue.put(None)
-        observer_budget = max(0.0, deadline - asyncio.get_event_loop().time())
+        observer_budget = max(0.0, deadline - loop.time())
         await self._drain_observer(observer_budget)
 
         logger.info(TASK_ENGINE_STOPPED)
