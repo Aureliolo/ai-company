@@ -859,6 +859,9 @@ class AgentEngine:
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
         )
+        # TODO(#1045): wire ENGINE settings (personality_trimming_enabled,
+        # personality_max_tokens_override) from ConfigResolver once the
+        # resolver is available in the engine context.
         system_prompt = build_system_prompt(
             agent=identity,
             task=task,

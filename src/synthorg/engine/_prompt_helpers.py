@@ -6,7 +6,9 @@ template context, metadata dicts, and section tracking.  Separated to keep
 """
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, get_args
+from typing import TYPE_CHECKING, Any, Final, Self, get_args
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import SeniorityLevel  # noqa: TC001 -- used in type annotation
 from synthorg.core.types import AutonomyDetailLevel, PersonalityMode
@@ -24,12 +26,59 @@ if TYPE_CHECKING:
     from synthorg.core.company import Company
     from synthorg.core.role import Role
     from synthorg.core.task import Task
-    from synthorg.engine.prompt import PersonalityTrimInfo
     from synthorg.engine.prompt_profiles import PromptProfile
     from synthorg.providers.models import ToolDefinition
     from synthorg.security.autonomy.models import EffectiveAutonomy
 
 logger = get_logger(__name__)
+
+
+# ── Personality trim metadata ─────────────────────────────────
+
+
+class PersonalityTrimInfo(BaseModel):
+    """Metadata about personality section trimming.
+
+    Populated when the personality section exceeded the profile's
+    ``max_personality_tokens`` and was progressively trimmed.
+    Tier 3 (minimal fallback) is best-effort and may still exceed
+    the budget if ``communication_style`` alone is too long.
+
+    Attributes:
+        before_tokens: Estimated tokens before trimming.
+        after_tokens: Estimated tokens after trimming.
+        max_tokens: The budget that was enforced.
+        trim_tier: Highest trimming tier applied (1=drop enums,
+            2=truncate description, 3=minimal fallback).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    before_tokens: int = Field(ge=0, description="Tokens before trimming")
+    after_tokens: int = Field(ge=0, description="Tokens after trimming")
+    max_tokens: int = Field(gt=0, description="Budget that was enforced")
+    trim_tier: int = Field(
+        ge=1,
+        le=3,
+        description="Highest trim tier applied (1-3)",
+    )
+
+    @model_validator(mode="after")
+    def _check_cross_field_invariants(self) -> Self:
+        if self.before_tokens <= self.max_tokens:
+            msg = "before_tokens must exceed max_tokens (trimming was not needed)"
+            raise ValueError(msg)
+        if self.after_tokens > self.before_tokens:
+            msg = "after_tokens must not exceed before_tokens"
+            raise ValueError(msg)
+        return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def budget_met(self) -> bool:
+        """Whether trimming brought the section within budget."""
+        return self.after_tokens <= self.max_tokens
+
 
 _AUTONOMY_LOOKUP: MappingProxyType[
     AutonomyDetailLevel,
@@ -172,13 +221,53 @@ def _truncate_description(description: str, max_chars: int) -> str:
     return truncated.rstrip() + ellipsis
 
 
+def _try_condensed(
+    ctx: dict[str, Any],
+    max_tokens: int,
+    estimator: DefaultTokenEstimator,
+) -> int | None:
+    """Tier 1: drop enums by switching to condensed mode.
+
+    Returns the new token count if within budget, else ``None``.
+    """
+    ctx["personality_mode"] = "condensed"
+    tokens = _estimate_personality_tokens(ctx, "condensed", estimator)
+    return tokens if tokens <= max_tokens else None
+
+
+def _try_truncate_description(
+    ctx: dict[str, Any],
+    mode: PersonalityMode,
+    max_tokens: int,
+    estimator: DefaultTokenEstimator,
+) -> int | None:
+    """Tier 2: truncate description to fit remaining budget.
+
+    Returns the new token count if within budget, else ``None``.
+    """
+    saved_desc = ctx["personality_description"]
+    ctx["personality_description"] = ""
+    tokens_without = _estimate_personality_tokens(ctx, mode, estimator)
+    remaining = max_tokens - tokens_without
+    if remaining > 0:
+        max_chars = remaining * 4  # Inverse of char/4 heuristic.
+        ctx["personality_description"] = _truncate_description(
+            saved_desc,
+            max_chars,
+        )
+    else:
+        ctx["personality_description"] = ""
+    tokens = _estimate_personality_tokens(ctx, mode, estimator)
+    return tokens if tokens <= max_tokens else None
+
+
 def _trim_personality(
     ctx: dict[str, Any],
     profile: PromptProfile,
 ) -> PersonalityTrimInfo | None:
     """Progressively trim personality fields to fit the token budget.
 
-    Applies three tiers of trimming until the personality section fits
+    Applies up to three tiers until the personality section fits
     within ``profile.max_personality_tokens``:
 
     1. Drop behavioral enum fields (override mode to ``"condensed"``).
@@ -193,93 +282,63 @@ def _trim_personality(
         :class:`PersonalityTrimInfo` when trimming was applied, or
         ``None`` when the section was already within budget.
     """
-    # Deferred import to avoid circular dependency at module level.
-    from synthorg.engine.prompt import PersonalityTrimInfo  # noqa: PLC0415
-
     estimator = DefaultTokenEstimator()
     max_tokens = profile.max_personality_tokens
-    current_mode: PersonalityMode = ctx["personality_mode"]
-    before_tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
+    mode: PersonalityMode = ctx["personality_mode"]
+    before = _estimate_personality_tokens(ctx, mode, estimator)
 
-    if before_tokens <= max_tokens:
+    if before <= max_tokens:
         return None
 
-    trim_tier = 0
-
     # Tier 1: Drop enums (switch to condensed).
-    if current_mode == "full":
-        trim_tier = 1
-        ctx["personality_mode"] = "condensed"
-        current_mode = "condensed"
-        tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
-        if tokens <= max_tokens:
-            _log_trim(before_tokens, tokens, max_tokens, trim_tier)
-            return PersonalityTrimInfo(
-                before_tokens=before_tokens,
-                after_tokens=tokens,
-                max_tokens=max_tokens,
-                trim_tier=trim_tier,
-            )
+    if mode == "full":
+        after = _try_condensed(ctx, max_tokens, estimator)
+        if after is not None:
+            return _make_trim_info(before, after, max_tokens, 1)
+        mode = "condensed"
 
     # Tier 2: Truncate description.
     desc = ctx.get("personality_description", "")
-    if desc and current_mode in {"full", "condensed"}:
-        trim_tier = max(trim_tier, 2)
-        # Estimate tokens WITHOUT description to find remaining budget.
-        saved_desc = ctx["personality_description"]
-        ctx["personality_description"] = ""
-        tokens_without_desc = _estimate_personality_tokens(
+    if desc and mode in {"full", "condensed"}:
+        after = _try_truncate_description(
             ctx,
-            current_mode,
+            mode,
+            max_tokens,
             estimator,
         )
-        remaining_tokens = max_tokens - tokens_without_desc
-        if remaining_tokens > 0:
-            max_chars = remaining_tokens * 4  # Inverse of char/4 heuristic.
-            ctx["personality_description"] = _truncate_description(
-                saved_desc,
-                max_chars,
-            )
-        else:
-            ctx["personality_description"] = ""
-
-        tokens = _estimate_personality_tokens(ctx, current_mode, estimator)
-        if tokens <= max_tokens:
-            _log_trim(before_tokens, tokens, max_tokens, trim_tier)
-            return PersonalityTrimInfo(
-                before_tokens=before_tokens,
-                after_tokens=tokens,
-                max_tokens=max_tokens,
-                trim_tier=trim_tier,
-            )
+        if after is not None:
+            return _make_trim_info(before, after, max_tokens, 2)
 
     # Tier 3: Fall back to minimal (communication_style only).
-    trim_tier = 3
     ctx["personality_mode"] = "minimal"
     ctx["personality_description"] = ""
-    tokens = _estimate_personality_tokens(ctx, "minimal", estimator)
-    _log_trim(before_tokens, tokens, max_tokens, trim_tier)
-    return PersonalityTrimInfo(
-        before_tokens=before_tokens,
-        after_tokens=tokens,
-        max_tokens=max_tokens,
-        trim_tier=trim_tier,
-    )
+    after = _estimate_personality_tokens(ctx, "minimal", estimator)
+    return _make_trim_info(before, after, max_tokens, 3)
 
 
-def _log_trim(
-    before_tokens: int,
-    after_tokens: int,
+def _make_trim_info(
+    before: int,
+    after: int,
     max_tokens: int,
-    trim_tier: int,
-) -> None:
-    """Log a personality trimming event."""
-    logger.info(
+    tier: int,
+) -> PersonalityTrimInfo:
+    """Create trim info and log at DEBUG level.
+
+    The engine layer logs at INFO with agent context; this log
+    provides lower-level detail for debugging.
+    """
+    logger.debug(
         PROMPT_PERSONALITY_TRIMMED,
-        before_tokens=before_tokens,
-        after_tokens=after_tokens,
+        before_tokens=before,
+        after_tokens=after,
         max_tokens=max_tokens,
-        trim_tier=trim_tier,
+        trim_tier=tier,
+    )
+    return PersonalityTrimInfo(
+        before_tokens=before,
+        after_tokens=after,
+        max_tokens=max_tokens,
+        trim_tier=tier,
     )
 
 
@@ -340,22 +399,29 @@ def build_core_context(
         "simplify_acceptance_criteria": simplify_criteria,
     }
 
-    if effective_autonomy is not None:
-        ctx["effective_autonomy"] = {
-            "level": effective_autonomy.level.value,
-            "auto_approve_actions": sorted(effective_autonomy.auto_approve_actions),
-            "human_approval_actions": sorted(effective_autonomy.human_approval_actions),
-            "security_agent": effective_autonomy.security_agent,
-        }
-    else:
-        ctx["effective_autonomy"] = None
+    ctx["effective_autonomy"] = _format_autonomy(effective_autonomy)
 
-    # Apply personality trimming after the context is fully built.
     trim_info: PersonalityTrimInfo | None = None
     if trimming_enabled and profile is not None:
         trim_info = _trim_personality(ctx, profile)
 
     return ctx, trim_info
+
+
+def _format_autonomy(
+    effective_autonomy: EffectiveAutonomy | None,
+) -> dict[str, object] | None:
+    """Format effective autonomy for template context."""
+    if effective_autonomy is None:
+        return None
+    return {
+        "level": effective_autonomy.level.value,
+        "auto_approve_actions": sorted(effective_autonomy.auto_approve_actions),
+        "human_approval_actions": sorted(
+            effective_autonomy.human_approval_actions,
+        ),
+        "security_agent": effective_autonomy.security_agent,
+    }
 
 
 def build_metadata(agent: AgentIdentity) -> dict[str, str]:

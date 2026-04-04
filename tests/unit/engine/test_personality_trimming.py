@@ -4,6 +4,7 @@ from datetime import date
 
 import pytest
 import structlog.testing
+from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, PersonalityConfig
 from synthorg.core.enums import (
@@ -16,11 +17,13 @@ from synthorg.core.enums import (
     SeniorityLevel,
 )
 from synthorg.engine._prompt_helpers import (
+    PersonalityTrimInfo,
     _estimate_personality_tokens,
     _trim_personality,
+    _truncate_description,
     build_core_context,
 )
-from synthorg.engine.prompt import PersonalityTrimInfo, build_system_prompt
+from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
 from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.observability.events.prompt import PROMPT_PERSONALITY_TRIMMED
@@ -219,7 +222,7 @@ class TestTrimPersonality:
         result = _trim_personality(ctx, profile)
 
         assert result is not None
-        assert result.trim_tier >= 2
+        assert result.trim_tier in {2, 3}
         trimmed_desc = ctx["personality_description"]
         assert len(str(trimmed_desc)) < len(original_desc)
         if trimmed_desc:
@@ -471,3 +474,195 @@ class TestBuildSystemPromptIntegration:
 
         # Normal personality fits in 500 tokens, no trimming.
         assert result.personality_trim_info is None
+
+    def test_negative_override_uses_profile_default(self) -> None:
+        """Negative max_personality_tokens_override uses profile default."""
+        agent = _make_agent()
+        result = build_system_prompt(
+            agent=agent,
+            model_tier="large",
+            max_personality_tokens_override=-5,
+        )
+
+        assert result.personality_trim_info is None
+
+
+# ── TestTruncateDescription ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTruncateDescription:
+    """Direct unit tests for _truncate_description."""
+
+    @pytest.mark.parametrize(
+        ("text", "max_chars", "expected"),
+        [
+            ("hello world", 8, "hello..."),
+            ("hello world", 3, ""),
+            ("hello world", 4, "h..."),
+            ("abcdefgh", 7, "abcd..."),
+            ("hello world foo", 16, "hello world..."),
+            ("a b c d e", 12, "a b c d..."),
+        ],
+        ids=[
+            "truncate_at_word_boundary",
+            "too_small_returns_empty",
+            "minimal_room",
+            "single_word_no_space",
+            "longer_text",
+            "exact_fit_with_ellipsis",
+        ],
+    )
+    def test_truncation_cases(
+        self,
+        text: str,
+        max_chars: int,
+        expected: str,
+    ) -> None:
+        """Parametrized truncation edge cases."""
+        assert _truncate_description(text, max_chars) == expected
+
+    def test_empty_input(self) -> None:
+        """Empty string truncation returns ellipsis."""
+        result = _truncate_description("", 100)
+        assert result == "..."
+
+    def test_result_within_limit(self) -> None:
+        """Truncated result never exceeds max_chars."""
+        text = "The quick brown fox jumps over the lazy dog"
+        for limit in range(1, len(text) + 5):
+            result = _truncate_description(text, limit)
+            assert len(result) <= limit
+
+
+# ── TestPersonalityTrimInfoValidation ──────────────────────────
+
+
+@pytest.mark.unit
+class TestPersonalityTrimInfoValidation:
+    """Tests for PersonalityTrimInfo Pydantic validation."""
+
+    def test_valid_construction(self) -> None:
+        """Valid trim info is accepted."""
+        info = PersonalityTrimInfo(
+            before_tokens=200,
+            after_tokens=50,
+            max_tokens=100,
+            trim_tier=2,
+        )
+        assert info.budget_met is True
+
+    def test_budget_not_met(self) -> None:
+        """budget_met is False when after_tokens > max_tokens."""
+        info = PersonalityTrimInfo(
+            before_tokens=200,
+            after_tokens=150,
+            max_tokens=100,
+            trim_tier=3,
+        )
+        assert info.budget_met is False
+
+    def test_negative_before_tokens_rejected(self) -> None:
+        """Negative before_tokens raises ValidationError."""
+        with pytest.raises(ValidationError):
+            PersonalityTrimInfo(
+                before_tokens=-1,
+                after_tokens=50,
+                max_tokens=100,
+                trim_tier=1,
+            )
+
+    def test_trim_tier_out_of_range_rejected(self) -> None:
+        """trim_tier outside 1-3 raises ValidationError."""
+        with pytest.raises(ValidationError):
+            PersonalityTrimInfo(
+                before_tokens=200,
+                after_tokens=50,
+                max_tokens=100,
+                trim_tier=4,
+            )
+
+    def test_before_not_exceeding_max_rejected(self) -> None:
+        """before_tokens <= max_tokens is rejected (no trim needed)."""
+        with pytest.raises(ValidationError, match="before_tokens"):
+            PersonalityTrimInfo(
+                before_tokens=50,
+                after_tokens=50,
+                max_tokens=100,
+                trim_tier=1,
+            )
+
+    def test_after_exceeding_before_rejected(self) -> None:
+        """after_tokens > before_tokens is rejected."""
+        with pytest.raises(ValidationError, match="after_tokens"):
+            PersonalityTrimInfo(
+                before_tokens=200,
+                after_tokens=250,
+                max_tokens=100,
+                trim_tier=1,
+            )
+
+
+# ── TestAdditionalEdgeCases ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAdditionalEdgeCases:
+    """Additional edge case tests from review findings."""
+
+    def test_condensed_direct_entry_tier_is_2(self) -> None:
+        """Condensed mode over budget reports trim_tier == 2."""
+        agent = _verbose_agent()
+        profile = _make_profile(max_tokens=60, personality_mode="condensed")
+        ctx = _build_ctx(agent, profile)
+        result = _trim_personality(ctx, profile)
+
+        assert result is not None
+        assert result.trim_tier == 2
+
+    def test_tier2_to_tier3_fallthrough(self) -> None:
+        """When tier 2 fails (style+traits exceed budget), falls to tier 3."""
+        agent = _make_agent(
+            description="Short desc.",
+            communication_style="concise",
+            traits=(
+                "analytical",
+                "methodical",
+                "detail-oriented",
+                "perfectionist",
+                "systematic",
+                "meticulous",
+            ),
+        )
+        # Budget so small that condensed with traits can't fit.
+        profile = _make_profile(max_tokens=3, personality_mode="condensed")
+        ctx = _build_ctx(agent, profile)
+        result = _trim_personality(ctx, profile)
+
+        assert result is not None
+        assert result.trim_tier == 3
+        assert ctx["personality_mode"] == "minimal"
+
+    def test_build_core_context_trimming_disabled_with_profile(
+        self,
+    ) -> None:
+        """trimming_enabled=False returns None trim_info even with profile."""
+        agent = _verbose_agent()
+        profile = _make_profile(max_tokens=10, personality_mode="full")
+        ctx, trim_info = build_core_context(
+            agent,
+            role=None,
+            profile=profile,
+            trimming_enabled=False,
+        )
+
+        assert trim_info is None
+        # Context should still have full mode (no trimming applied).
+        assert ctx["personality_mode"] == "full"
+
+    def test_ws_event_type_exists(self) -> None:
+        """PERSONALITY_TRIMMED is a valid WsEventType member."""
+        from synthorg.api.ws_models import WsEventType
+
+        assert hasattr(WsEventType, "PERSONALITY_TRIMMED")
+        assert WsEventType.PERSONALITY_TRIMMED.value == "personality.trimmed"

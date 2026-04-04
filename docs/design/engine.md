@@ -637,7 +637,10 @@ async run(
    `DailyLimitExceededError` on violation.
 3. **Build system prompt** -- calls `build_system_prompt()` with agent identity,
    task, and resolved model tier. The tier determines a `PromptProfile` that
-   controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below).
+   controls prompt verbosity (see [Prompt Profiles](#prompt-profiles) below),
+   including personality token trimming when the section exceeds the profile's
+   `max_personality_tokens` budget. Trimming metadata is returned in
+   `SystemPrompt.personality_trim_info`.
    Tool definitions are NOT included in the prompt; they are supplied via the
    API's `tools` parameter ([Decision Log](../architecture/decisions.md) D22).
    Follows the **non-inferable-only principle**: system prompts include only
@@ -734,11 +737,30 @@ each model tier.
 
 ### Built-in Profiles
 
-| Profile    | Tier   | Personality          | Org Policies | Acceptance Criteria | Autonomy |
-|------------|--------|----------------------|--------------|---------------------|----------|
-| **full**   | large  | Full behavioral enums | Included    | Nested list         | Full     |
-| **standard** | medium | Description + style + traits | Included | Bullet list      | Summary  |
-| **basic**  | small  | Style keyword only   | Excluded     | Flat semicolon line | Minimal  |
+| Profile    | Tier   | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
+|------------|--------|----------------------|------------------------|--------------|---------------------|----------|
+| **full**   | large  | Full behavioral enums | 500                   | Included     | Nested list         | Full     |
+| **standard** | medium | Description + style + traits | 200              | Included     | Bullet list         | Summary  |
+| **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
+
+### Personality Trimming
+
+When the personality section exceeds `max_personality_tokens`, progressive
+trimming enforces the budget as a secondary control after `personality_mode`:
+
+1. **Tier 1 -- Drop enums**: override mode to `"condensed"` (removes behavioral
+   enum fields like risk_tolerance, creativity, verbosity, etc.)
+2. **Tier 2 -- Truncate description**: shorten `personality_description` to fit
+   the remaining budget (word-boundary aware, appends `"..."`)
+3. **Tier 3 -- Minimal fallback**: override mode to `"minimal"`
+   (`communication_style` only)
+
+Trimming metadata is attached to `SystemPrompt.personality_trim_info`
+(`PersonalityTrimInfo` model with `before_tokens`, `after_tokens`,
+`max_tokens`, `trim_tier`, and `budget_met` computed field). Runtime
+settings in the `ENGINE` namespace control trimming
+(`personality_trimming_enabled`, `personality_trimming_notify`,
+`personality_max_tokens_override`).
 
 ### Tier Flow
 
@@ -762,6 +784,8 @@ each model tier.
   `requested_tier`, `selected_tier`, and `defaulted` flag);
   `prompt.profile.default` is emitted at DEBUG level when falling back
   to the full profile
+- Personality trimming is logged via `prompt.personality.trimmed` (with
+  `before_tokens`, `after_tokens`, `max_tokens`, and `trim_tier`)
 
 ---
 

@@ -27,27 +27,16 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost, get_currency_symbol
-from synthorg.engine._prompt_helpers import (
-    SECTION_COMPANY as _SECTION_COMPANY,
-)
+from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
 )
-from synthorg.engine._prompt_helpers import (
-    SECTION_TASK as _SECTION_TASK,
-)
-from synthorg.engine._prompt_helpers import (
-    TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS,
-)
-from synthorg.engine._prompt_helpers import (
-    build_core_context as _build_core_context,
-)
-from synthorg.engine._prompt_helpers import (
-    build_metadata as _build_metadata,
-)
-from synthorg.engine._prompt_helpers import (
-    compute_sections as _compute_sections,
-)
+from synthorg.engine._prompt_helpers import SECTION_TASK as _SECTION_TASK
+from synthorg.engine._prompt_helpers import TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS
+from synthorg.engine._prompt_helpers import PersonalityTrimInfo
+from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
+from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
+from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
 from synthorg.engine.prompt_profiles import PromptProfile, get_prompt_profile
@@ -91,32 +80,6 @@ _SANDBOX_ENV = SandboxedEnvironment()
 
 
 # ── Result model ─────────────────────────────────────────────────
-
-
-class PersonalityTrimInfo(BaseModel):
-    """Metadata about personality section trimming.
-
-    Populated when the personality section exceeded the profile's
-    ``max_personality_tokens`` and was progressively trimmed.
-
-    Attributes:
-        before_tokens: Estimated tokens before trimming.
-        after_tokens: Estimated tokens after trimming.
-        max_tokens: The budget that was enforced.
-        trim_tier: Highest trimming tier applied (1=drop enums,
-            2=truncate description, 3=minimal fallback).
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
-
-    before_tokens: int = Field(ge=0, description="Tokens before trimming")
-    after_tokens: int = Field(ge=0, description="Tokens after trimming")
-    max_tokens: int = Field(gt=0, description="Budget that was enforced")
-    trim_tier: int = Field(
-        ge=1,
-        le=3,
-        description="Highest trim tier applied (1-3)",
-    )
 
 
 class SystemPrompt(BaseModel):
@@ -511,7 +474,6 @@ def _trim_sections(  # noqa: PLR0913
     context_budget: str | None = None,
     currency: str = DEFAULT_CURRENCY,
     profile: PromptProfile | None = None,
-    trimming_enabled: bool = True,
 ) -> tuple[
     str,
     int,
@@ -525,6 +487,8 @@ def _trim_sections(  # noqa: PLR0913
     so the caller can reuse the final render.
     """
     trimmed_sections: list[str] = []
+    # Personality trimming already ran on the first render; skip it
+    # during section-level re-renders to avoid redundant work.
 
     for section in _TRIMMABLE_SECTIONS:
         content, estimated, _ = _render_and_estimate(
@@ -540,7 +504,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=trimming_enabled,
+            trimming_enabled=False,
         )
         if estimated <= max_tokens:
             break
@@ -574,7 +538,7 @@ def _trim_sections(  # noqa: PLR0913
             context_budget=context_budget,
             currency=currency,
             profile=profile,
-            trimming_enabled=trimming_enabled,
+            trimming_enabled=False,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -655,7 +619,6 @@ def _render_with_trimming(  # noqa: PLR0913
             context_budget=context_budget_indicator,
             currency=currency,
             profile=profile,
-            trimming_enabled=trimming_enabled,
         )
 
     return _build_prompt_result(
