@@ -89,8 +89,14 @@ def deserialize_and_reconcile(  # noqa: PLR0913
     # leak prevention takes priority over detail in LLM context.
     safe_error = sanitize_message(error_message)
     category_note = f"Failure category: {failure_category.value}. "
+    # Criteria descriptions are user- or LLM-authored free text and
+    # must be sanitized alongside error_message to keep the reconcile
+    # message safe against path/URL leaks and prompt-injection fragments.
+    sanitized_criteria = tuple(sanitize_message(c) for c in criteria_failed)
     criteria_note = (
-        f"Unmet criteria: {'; '.join(criteria_failed)}. " if criteria_failed else ""
+        f"Unmet criteria: {'; '.join(sanitized_criteria)}. "
+        if sanitized_criteria
+        else ""
     )
     reconciliation_content = (
         f"Execution resumed from checkpoint at turn "

@@ -459,11 +459,13 @@ CREATE INDEX IF NOT EXISTS idx_wdv_definition_saved
 -- ── Decision records (auditable decisions drop-box) ─────────────
 CREATE TABLE IF NOT EXISTS decision_records (
     id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(id),
     approval_id TEXT,
     executing_agent_id TEXT NOT NULL,
-    reviewer_agent_id TEXT NOT NULL,
-    decision TEXT NOT NULL,
+    reviewer_agent_id TEXT NOT NULL CHECK(reviewer_agent_id != executing_agent_id),
+    decision TEXT NOT NULL CHECK(decision IN (
+        'approved', 'rejected', 'auto_approved', 'auto_rejected', 'escalated'
+    )),
     reason TEXT,
     criteria_snapshot TEXT NOT NULL DEFAULT '[]',
     recorded_at TEXT NOT NULL,
@@ -472,11 +474,11 @@ CREATE TABLE IF NOT EXISTS decision_records (
     UNIQUE(task_id, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_dr_task_id
-    ON decision_records(task_id);
-CREATE INDEX IF NOT EXISTS idx_dr_executing_agent
-    ON decision_records(executing_agent_id);
-CREATE INDEX IF NOT EXISTS idx_dr_reviewer_agent
-    ON decision_records(reviewer_agent_id);
-CREATE INDEX IF NOT EXISTS idx_dr_recorded_at
-    ON decision_records(recorded_at);
+-- idx_dr_task_id is intentionally omitted -- the UNIQUE(task_id, version)
+-- constraint already creates a covering index on task_id as the leading
+-- key.  Adding a separate idx on task_id alone would be redundant write
+-- overhead with no planner benefit.
+CREATE INDEX IF NOT EXISTS idx_dr_executing_agent_recorded
+    ON decision_records(executing_agent_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dr_reviewer_agent_recorded
+    ON decision_records(reviewer_agent_id, recorded_at DESC);

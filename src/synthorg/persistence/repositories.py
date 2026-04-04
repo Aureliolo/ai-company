@@ -4,7 +4,7 @@ Each entity type has its own protocol so that application code depends
 only on abstract interfaces, never on a concrete backend.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002
 
@@ -14,6 +14,7 @@ from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,  # noqa: TC001
+    DecisionOutcome,  # noqa: TC001
     TaskStatus,  # noqa: TC001
 )
 from synthorg.core.task import Task  # noqa: TC001
@@ -339,6 +340,10 @@ class AuditRepository(Protocol):
         ...
 
 
+DecisionRole = Literal["executor", "reviewer"]
+"""Valid role filters for ``DecisionRepository.list_by_agent``."""
+
+
 @runtime_checkable
 class DecisionRepository(Protocol):
     """Append-only persistence + query interface for ``DecisionRecord``.
@@ -348,15 +353,47 @@ class DecisionRepository(Protocol):
     audit integrity.
     """
 
-    async def append(self, record: DecisionRecord) -> None:
-        """Persist a decision record (append-only).
+    async def append_with_next_version(  # noqa: PLR0913
+        self,
+        *,
+        record_id: NotBlankStr,
+        task_id: NotBlankStr,
+        approval_id: NotBlankStr | None,
+        executing_agent_id: NotBlankStr,
+        reviewer_agent_id: NotBlankStr,
+        decision: DecisionOutcome,
+        reason: str | None,
+        criteria_snapshot: tuple[NotBlankStr, ...],
+        recorded_at: AwareDatetime,
+        metadata: dict[str, object],
+    ) -> DecisionRecord:
+        """Atomically append a decision record computing version in SQL.
+
+        Computes ``version = COALESCE(MAX(version), 0) + 1`` for the
+        given ``task_id`` inside a single transaction, eliminating the
+        TOCTOU race that a ``list_by_task`` + ``len(...) + 1`` pattern
+        would create under concurrent reviewers.
 
         Args:
-            record: The decision record to persist.
+            record_id: Unique record identifier (UUID recommended).
+            task_id: Task that was reviewed.
+            approval_id: Associated ``ApprovalItem`` identifier, or ``None``.
+            executing_agent_id: Agent that performed the work.
+            reviewer_agent_id: Agent or human that reviewed.
+            decision: Outcome of the review.
+            reason: Optional rationale.
+            criteria_snapshot: Acceptance criteria at decision time.
+            recorded_at: Decision timestamp (must be timezone-aware).
+            metadata: Forward-compatible metadata.
+
+        Returns:
+            The persisted ``DecisionRecord`` with the server-assigned
+            ``version``.
 
         Raises:
-            DuplicateRecordError: If a record with the same ID exists.
-            PersistenceError: If the operation fails.
+            DuplicateRecordError: If a record with ``record_id`` already
+                exists.
+            QueryError: If the operation fails.
         """
         ...
 
@@ -370,7 +407,7 @@ class DecisionRepository(Protocol):
             The record, or ``None`` if not found.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
@@ -384,7 +421,7 @@ class DecisionRepository(Protocol):
             Matching records as a tuple (oldest first).
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
         """
         ...
 
@@ -392,7 +429,7 @@ class DecisionRepository(Protocol):
         self,
         agent_id: NotBlankStr,
         *,
-        role: str,
+        role: DecisionRole,
     ) -> tuple[DecisionRecord, ...]:
         """List decision records where the agent acted in the given role.
 
@@ -404,7 +441,7 @@ class DecisionRepository(Protocol):
             Matching records as a tuple, ordered by ``recorded_at`` DESC.
 
         Raises:
-            PersistenceError: If the operation fails.
+            QueryError: If the operation fails.
             ValueError: If ``role`` is not a recognised value.
         """
         ...

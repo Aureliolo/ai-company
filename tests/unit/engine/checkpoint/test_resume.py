@@ -146,6 +146,50 @@ class TestDeserializeAndReconcileSuccess:
         assert "Login endpoint returns JWT" in last_msg.content
         assert "Tests pass" in last_msg.content
 
+    def test_reconciliation_without_criteria_omits_unmet_criteria(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """When criteria_failed is empty the 'Unmet criteria:' line is omitted."""
+        ctx_json = _make_ctx_json(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        result = deserialize_and_reconcile(
+            ctx_json,
+            error_message="tool crashed",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.TOOL_FAILURE,
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "Unmet criteria" not in last_msg.content
+
+    def test_reconciliation_sanitizes_criteria(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Criteria strings are sanitized before injection into LLM context."""
+        ctx_json = _make_ctx_json(
+            sample_agent_with_personality,
+            sample_task_with_criteria,
+        )
+        result = deserialize_and_reconcile(
+            ctx_json,
+            error_message="quality gate failed",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.QUALITY_GATE_FAILED,
+            criteria_failed=(r"File at C:\Users\dev\secret.key must exist",),
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "C:\\Users" not in last_msg.content
+        assert "[REDACTED_PATH]" in last_msg.content
+
     def test_preserves_original_turn_count(
         self,
         sample_agent_with_personality: AgentIdentity,

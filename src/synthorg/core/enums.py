@@ -609,7 +609,9 @@ class FailureCategory(StrEnum):
 
     Used by ``RecoveryResult`` to provide structured failure diagnosis
     that enables smarter checkpoint reconciliation and task reassignment
-    routing.
+    routing.  ``UNKNOWN`` is the honest default for error messages that
+    cannot be confidently classified -- it is explicit rather than a
+    silent ``TOOL_FAILURE`` lie.
     """
 
     TOOL_FAILURE = "tool_failure"
@@ -618,6 +620,7 @@ class FailureCategory(StrEnum):
     QUALITY_GATE_FAILED = "quality_gate_failed"
     TIMEOUT = "timeout"
     DELEGATION_FAILED = "delegation_failed"
+    UNKNOWN = "unknown"
 
 
 class DecisionOutcome(StrEnum):

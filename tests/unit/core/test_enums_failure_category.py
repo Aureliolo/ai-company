@@ -17,10 +17,11 @@ class TestFailureCategory:
         assert FailureCategory.QUALITY_GATE_FAILED.value == "quality_gate_failed"
         assert FailureCategory.TIMEOUT.value == "timeout"
         assert FailureCategory.DELEGATION_FAILED.value == "delegation_failed"
+        assert FailureCategory.UNKNOWN.value == "unknown"
 
     def test_member_count(self) -> None:
-        """Exactly 6 members."""
-        assert len(FailureCategory) == 6
+        """Exactly 7 members."""
+        assert len(FailureCategory) == 7
 
     @pytest.mark.parametrize(
         "value",
@@ -31,6 +32,7 @@ class TestFailureCategory:
             "quality_gate_failed",
             "timeout",
             "delegation_failed",
+            "unknown",
         ],
     )
     def test_round_trip(self, value: str) -> None:

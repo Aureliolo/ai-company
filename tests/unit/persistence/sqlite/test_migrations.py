@@ -96,10 +96,8 @@ _EXPECTED_INDEXES = {
     "idx_ftc_single_active",
     "idx_ftc_created_at",
     "idx_wdv_definition_saved",
-    "idx_dr_task_id",
-    "idx_dr_executing_agent",
-    "idx_dr_reviewer_agent",
-    "idx_dr_recorded_at",
+    "idx_dr_executing_agent_recorded",
+    "idx_dr_reviewer_agent_recorded",
 }
 
 

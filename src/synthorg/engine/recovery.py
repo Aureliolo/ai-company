@@ -9,15 +9,22 @@ task can be reassigned (based on retry count vs max retries).
 See the Crash Recovery section of the Engine design page.
 """
 
-import copy
 import json
 from typing import Any, Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.enums import FailureCategory, TaskStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.context import AgentContext, AgentContextSnapshot  # noqa: TC001
+from synthorg.engine.immutable import deep_copy_mapping
 from synthorg.engine.stagnation.models import StagnationResult  # noqa: TC001
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
 from synthorg.observability import get_logger
@@ -45,22 +52,29 @@ _FAILURE_CATEGORY_RULES: tuple[tuple[tuple[str, ...], FailureCategory], ...] = (
 def infer_failure_category(error_message: str) -> FailureCategory:
     """Infer a failure category from an error message via keyword matching.
 
-    Simple heuristic for v1 -- matches keywords case-insensitively.
-    Future versions may use the error classification pipeline or
-    provider-specific error codes for more precise categorization.
+    Simple heuristic for v1 -- matches keywords case-insensitively in
+    the declared rule order (first match wins).  Returns
+    ``FailureCategory.UNKNOWN`` when nothing matches: honest failure
+    classification is better than silently defaulting to
+    ``TOOL_FAILURE``, which would masquerade unknown causes as tool
+    failures in dashboards, reports, and reconciliation prompts.
+
+    Future versions may derive categories from typed exceptions
+    (e.g. ``BudgetExhaustedError`` -> ``BUDGET_EXCEEDED``) or from
+    provider-specific error codes instead of string sniffing.
 
     Args:
         error_message: The error message to classify.
 
     Returns:
-        The inferred ``FailureCategory``.  Defaults to
-        ``TOOL_FAILURE`` when no keyword matches.
+        The inferred ``FailureCategory`` or ``UNKNOWN`` when no rule
+        matches.
     """
     lower = error_message.lower()
     for keywords, category in _FAILURE_CATEGORY_RULES:
         if any(kw in lower for kw in keywords):
             return category
-    return FailureCategory.TOOL_FAILURE
+    return FailureCategory.UNKNOWN
 
 
 class RecoveryResult(BaseModel):
@@ -105,7 +119,7 @@ class RecoveryResult(BaseModel):
     failure_context: dict[str, Any] = Field(
         description="Structured metadata for the failure",
     )
-    criteria_failed: tuple[str, ...] = Field(
+    criteria_failed: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Acceptance criteria that were not met",
     )
@@ -123,11 +137,11 @@ class RecoveryResult(BaseModel):
         description="Current resume attempt number",
     )
 
-    def __init__(self, **data: object) -> None:
+    @field_validator("failure_context", mode="before")
+    @classmethod
+    def _deep_copy_failure_context(cls, value: object) -> object:
         """Deep-copy failure_context at construction boundary."""
-        if "failure_context" in data and isinstance(data["failure_context"], dict):
-            data["failure_context"] = copy.deepcopy(data["failure_context"])
-        super().__init__(**data)
+        return deep_copy_mapping(value)
 
     @model_validator(mode="after")
     def _validate_checkpoint_consistency(self) -> Self:
@@ -149,6 +163,43 @@ class RecoveryResult(BaseModel):
             if not isinstance(parsed, dict):
                 msg = "checkpoint_context_json must be a JSON object"
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_failure_category_invariants(self) -> Self:
+        """Enforce cross-field invariants between failure_category and evidence.
+
+        - ``stagnation_evidence`` is set iff ``failure_category`` is
+          ``STAGNATION`` (carrying evidence alongside a mismatched
+          category is a lie; a STAGNATION verdict without evidence is
+          missing data).
+        - ``criteria_failed`` must be non-empty when
+          ``failure_category`` is ``QUALITY_GATE_FAILED`` (if we know
+          the quality gate failed we must record which criterion).
+        """
+        if self.failure_category is FailureCategory.STAGNATION:
+            if self.stagnation_evidence is None:
+                msg = (
+                    "stagnation_evidence is required when failure_category "
+                    "is STAGNATION"
+                )
+                raise ValueError(msg)
+        elif self.stagnation_evidence is not None:
+            msg = (
+                "stagnation_evidence must be None when failure_category is "
+                f"{self.failure_category.value!r}"
+            )
+            raise ValueError(msg)
+
+        if (
+            self.failure_category is FailureCategory.QUALITY_GATE_FAILED
+            and not self.criteria_failed
+        ):
+            msg = (
+                "criteria_failed must be non-empty when failure_category "
+                "is QUALITY_GATE_FAILED"
+            )
+            raise ValueError(msg)
         return self
 
     @computed_field(  # type: ignore[prop-decorator]

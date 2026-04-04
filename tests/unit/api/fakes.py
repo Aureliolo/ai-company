@@ -14,6 +14,7 @@ from synthorg.core.artifact import Artifact
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ArtifactType,
+    DecisionOutcome,
     ExecutionStatus,
     ProjectStatus,
     TaskStatus,
@@ -290,27 +291,50 @@ class FakeAuditRepository:
 
 
 class FakeDecisionRepository:
-    """In-memory decision record repository for tests."""
+    """In-memory decision record repository for tests.
+
+    Mirrors the SQLite implementation's server-assigned monotonic
+    version contract: ``append_with_next_version`` computes the next
+    version for each ``task_id`` atomically.
+    """
 
     def __init__(self) -> None:
         self._records: dict[str, DecisionRecord] = {}
 
-    async def append(self, record: DecisionRecord) -> None:
-        if record.id in self._records:
-            msg = f"Duplicate decision record {record.id!r}"
+    async def append_with_next_version(  # noqa: PLR0913
+        self,
+        *,
+        record_id: str,
+        task_id: str,
+        approval_id: str | None,
+        executing_agent_id: str,
+        reviewer_agent_id: str,
+        decision: DecisionOutcome,
+        reason: str | None,
+        criteria_snapshot: tuple[str, ...],
+        recorded_at: datetime,
+        metadata: dict[str, object],
+    ) -> DecisionRecord:
+        if record_id in self._records:
+            msg = f"Duplicate decision record {record_id!r}"
             raise DuplicateRecordError(msg)
-        # Also enforce (task_id, version) uniqueness like SQLite
-        for existing in self._records.values():
-            if (
-                existing.task_id == record.task_id
-                and existing.version == record.version
-            ):
-                msg = (
-                    f"Duplicate decision record for task {record.task_id!r} "
-                    f"version {record.version}"
-                )
-                raise DuplicateRecordError(msg)
-        self._records[record.id] = record
+        existing_for_task = [r for r in self._records.values() if r.task_id == task_id]
+        next_version = len(existing_for_task) + 1
+        record = DecisionRecord(
+            id=record_id,
+            task_id=task_id,
+            approval_id=approval_id,
+            executing_agent_id=executing_agent_id,
+            reviewer_agent_id=reviewer_agent_id,
+            decision=decision,
+            reason=reason,
+            criteria_snapshot=criteria_snapshot,
+            recorded_at=recorded_at,
+            version=next_version,
+            metadata=metadata,
+        )
+        self._records[record_id] = record
+        return record
 
     async def get(self, record_id: str) -> DecisionRecord | None:
         return self._records.get(record_id)

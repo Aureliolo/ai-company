@@ -236,8 +236,17 @@ class TestSignalResumeIntent:
 
         mock_review.complete_review.assert_not_awaited()
 
-    async def test_flow2_exception_swallowed(self) -> None:
-        """Errors from review gate are logged and swallowed."""
+    async def test_flow2_unknown_exception_propagates(self) -> None:
+        """Unknown errors from the review gate propagate -- not swallowed.
+
+        The old behavior of catching ``Exception`` and logging a warning
+        masked real workflow failures (task mutation errors, persistence
+        failures, etc.) while returning 200 OK to the caller.  The fix
+        narrows exception handling to specific typed errors the API
+        layer knows how to map (SelfReviewError -> 403, TaskNotFoundError
+        -> 404, TaskVersionConflictError -> 409).  Everything else
+        propagates to the caller as an unhandled error.
+        """
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock(
             side_effect=RuntimeError("transition failed"),
@@ -247,14 +256,14 @@ class TestSignalResumeIntent:
         app_state.approval_gate = None
         app_state.review_gate_service = mock_review
 
-        # Should not raise
-        await _signal_resume_intent(
-            app_state,
-            "approval-1",
-            approved=True,
-            decided_by="admin",
-            task_id="task-1",
-        )
+        with pytest.raises(RuntimeError, match="transition failed"):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+                task_id="task-1",
+            )
 
         mock_review.complete_review.assert_awaited_once()
 

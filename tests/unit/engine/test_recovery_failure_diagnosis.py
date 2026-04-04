@@ -55,7 +55,7 @@ class TestRecoveryResultDiagnosisFields:
         assert ctx.task_execution is not None
         failed = ctx.task_execution.with_transition(TaskStatus.FAILED, reason="crash")
         with pytest.raises(ValidationError, match="failure_category"):
-            RecoveryResult(
+            RecoveryResult(  # type: ignore[call-arg]
                 task_execution=failed,
                 strategy_type="fail_reassign",
                 context_snapshot=ctx.to_snapshot(),
@@ -75,12 +75,61 @@ class TestRecoveryResultDiagnosisFields:
         assert ctx.task_execution is not None
         failed = ctx.task_execution.with_transition(TaskStatus.FAILED, reason="crash")
         with pytest.raises(ValidationError, match="failure_context"):
-            RecoveryResult(
+            RecoveryResult(  # type: ignore[call-arg]
                 task_execution=failed,
                 strategy_type="fail_reassign",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
                 failure_category=FailureCategory.TOOL_FAILURE,
+            )
+
+    def test_stagnation_category_requires_evidence(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """failure_category=STAGNATION without stagnation_evidence is rejected."""
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        with pytest.raises(ValidationError, match="stagnation_evidence is required"):
+            _make_recovery_result(
+                ctx,
+                failure_category=FailureCategory.STAGNATION,
+                stagnation_evidence=None,
+            )
+
+    def test_stagnation_evidence_forbidden_without_stagnation_category(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """stagnation_evidence set with a non-STAGNATION category is rejected."""
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        stag = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        with pytest.raises(ValidationError, match="stagnation_evidence must be None"):
+            _make_recovery_result(
+                ctx,
+                failure_category=FailureCategory.TOOL_FAILURE,
+                stagnation_evidence=stag,
+            )
+
+    def test_quality_gate_failed_requires_criteria(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """failure_category=QUALITY_GATE_FAILED with empty criteria is rejected."""
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        with pytest.raises(ValidationError, match="criteria_failed must be non-empty"):
+            _make_recovery_result(
+                ctx,
+                failure_category=FailureCategory.QUALITY_GATE_FAILED,
+                criteria_failed=(),
             )
 
     def test_all_fields_populated(
@@ -211,13 +260,28 @@ class TestInferFailureCategory:
             ),
             pytest.param(
                 "Unknown error: something went wrong",
-                FailureCategory.TOOL_FAILURE,
+                FailureCategory.UNKNOWN,
                 id="unknown-default",
             ),
             pytest.param(
-                "NullPointerException in tool handler",
-                FailureCategory.TOOL_FAILURE,
+                "NullPointerException in handler",
+                FailureCategory.UNKNOWN,
                 id="generic-error",
+            ),
+            pytest.param(
+                "",
+                FailureCategory.UNKNOWN,
+                id="empty-string",
+            ),
+            pytest.param(
+                "Budget timeout stagnation",
+                FailureCategory.BUDGET_EXCEEDED,
+                id="first-rule-wins-budget",
+            ),
+            pytest.param(
+                "Delegation failed: criteria not met",
+                FailureCategory.DELEGATION_FAILED,
+                id="first-rule-wins-delegation-over-quality",
             ),
         ],
     )

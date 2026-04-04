@@ -8,13 +8,20 @@ See the security and approval gate sections of the Operations design
 page.
 """
 
-import copy
-from typing import Any
+from typing import Any, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.immutable import deep_copy_mapping
 
 
 class DecisionRecord(BaseModel):
@@ -26,14 +33,23 @@ class DecisionRecord(BaseModel):
         approval_id: Associated ``ApprovalItem`` ID (``None`` for
             programmatic decisions without an explicit approval item).
         executing_agent_id: Agent that performed the work.
-        reviewer_agent_id: Agent or human that reviewed.
+        reviewer_agent_id: Agent or human that reviewed.  Must differ
+            from ``executing_agent_id`` -- no-self-review is a type
+            invariant, not just a service-layer policy.
         decision: The outcome of the review.
-        reason: Optional rationale for the decision.
+        reason: Optional rationale for the decision.  Empty or
+            whitespace-only strings are coerced to ``None`` at
+            construction so the model never carries a tri-state
+            ("", None, populated).
         criteria_snapshot: Acceptance criteria at decision time (empty
-            tuple when the task has no acceptance criteria).
+            tuple when the task has no acceptance criteria).  Each
+            element must be non-blank.
         recorded_at: When the decision was recorded.
-        version: Monotonic version per task (1-indexed).
-        metadata: Forward-compatible structured metadata.
+        version: Monotonic version per task (1-indexed).  Server-
+            assigned by the persistence layer; the service never picks
+            the value itself to avoid TOCTOU races.
+        metadata: Forward-compatible structured metadata (deep-copied
+            at construction).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -51,11 +67,11 @@ class DecisionRecord(BaseModel):
         description="Agent or human that reviewed",
     )
     decision: DecisionOutcome = Field(description="Outcome of the review")
-    reason: str | None = Field(
+    reason: NotBlankStr | None = Field(
         default=None,
         description="Optional rationale for the decision",
     )
-    criteria_snapshot: tuple[str, ...] = Field(
+    criteria_snapshot: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Acceptance criteria at decision time",
     )
@@ -63,8 +79,27 @@ class DecisionRecord(BaseModel):
     version: int = Field(ge=1, description="Monotonic version per task")
     metadata: dict[str, Any] = Field(description="Forward-compatible metadata")
 
-    def __init__(self, **data: object) -> None:
-        """Deep-copy metadata dict at construction boundary."""
-        if "metadata" in data and isinstance(data["metadata"], dict):
-            data["metadata"] = copy.deepcopy(data["metadata"])
-        super().__init__(**data)
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _coerce_empty_reason_to_none(cls, value: object) -> object:
+        """Normalize empty / whitespace-only reasons to ``None``."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _deep_copy_metadata(cls, value: object) -> object:
+        """Deep-copy metadata at construction boundary."""
+        return deep_copy_mapping(value)
+
+    @model_validator(mode="after")
+    def _forbid_self_review(self) -> Self:
+        """Enforce no-self-review as a type-level invariant."""
+        if self.executing_agent_id == self.reviewer_agent_id:
+            msg = (
+                f"executing_agent_id and reviewer_agent_id must differ "
+                f"(got {self.executing_agent_id!r} for both)"
+            )
+            raise ValueError(msg)
+        return self

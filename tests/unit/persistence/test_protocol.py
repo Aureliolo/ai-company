@@ -203,8 +203,11 @@ class _FakeAuditRepository:
 
 
 class _FakeDecisionRepository:
-    async def append(self, record: DecisionRecord) -> None:
-        pass
+    async def append_with_next_version(
+        self,
+        **_kwargs: object,
+    ) -> DecisionRecord:
+        raise NotImplementedError
 
     async def get(self, record_id: str) -> DecisionRecord | None:
         return None

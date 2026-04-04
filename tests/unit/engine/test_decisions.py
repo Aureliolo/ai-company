@@ -22,7 +22,7 @@ def _make_record(**overrides: object) -> DecisionRecord:
         "metadata": {},
     }
     defaults.update(overrides)
-    return DecisionRecord(**defaults)
+    return DecisionRecord(**defaults)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
@@ -68,7 +68,7 @@ class TestDecisionRecordConstruction:
     def test_metadata_required(self) -> None:
         """metadata is required -- omitting it raises ValidationError."""
         with pytest.raises(ValidationError, match="metadata"):
-            DecisionRecord(
+            DecisionRecord(  # type: ignore[call-arg]
                 id="decision-001",
                 task_id="task-1",
                 executing_agent_id="alice",

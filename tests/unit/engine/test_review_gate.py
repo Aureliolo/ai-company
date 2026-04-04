@@ -35,9 +35,39 @@ def _make_mock_task_engine(
 def _make_mock_decision_repo(
     existing: tuple[DecisionRecord, ...] = (),
 ) -> MagicMock:
-    """Build a mock DecisionRepository."""
+    """Build a mock DecisionRepository.
+
+    ``append_with_next_version`` echoes the kwargs back as a record so
+    tests can inspect the arguments the service passed in.
+    """
     repo = MagicMock()
-    repo.append = AsyncMock(return_value=None)
+
+    def _next_version_for(task_id: str) -> int:
+        return (
+            max(
+                (r.version for r in existing if r.task_id == task_id),
+                default=0,
+            )
+            + 1
+        )
+
+    async def _append(**kwargs: object) -> DecisionRecord:
+        version = _next_version_for(str(kwargs["task_id"]))
+        return DecisionRecord(
+            id=str(kwargs["record_id"]),
+            task_id=str(kwargs["task_id"]),
+            approval_id=kwargs["approval_id"],  # type: ignore[arg-type]
+            executing_agent_id=str(kwargs["executing_agent_id"]),
+            reviewer_agent_id=str(kwargs["reviewer_agent_id"]),
+            decision=kwargs["decision"],  # type: ignore[arg-type]
+            reason=kwargs["reason"],  # type: ignore[arg-type]
+            criteria_snapshot=kwargs["criteria_snapshot"],  # type: ignore[arg-type]
+            recorded_at=kwargs["recorded_at"],  # type: ignore[arg-type]
+            version=version,
+            metadata=kwargs["metadata"],  # type: ignore[arg-type]
+        )
+
+    repo.append_with_next_version = AsyncMock(side_effect=_append)
     repo.list_by_task = AsyncMock(return_value=existing)
     repo.get = AsyncMock(return_value=None)
     repo.list_by_agent = AsyncMock(return_value=())
@@ -169,7 +199,7 @@ class TestReviewGateServiceSelfReview:
         assert exc_info.value.agent_id == "alice"
         # No transition should have been attempted
         mock_te.submit.assert_not_awaited()
-        repo.append.assert_not_awaited()
+        repo.append_with_next_version.assert_not_awaited()
 
     async def test_different_reviewer_allowed(self) -> None:
         """When decided_by != task.assigned_to, review proceeds normally."""
@@ -246,14 +276,12 @@ class TestReviewGateServiceDecisionRecording:
             decided_by="bob",
         )
 
-        repo.append.assert_awaited_once()
-        record: DecisionRecord = repo.append.call_args.args[0]
-        assert isinstance(record, DecisionRecord)
-        assert record.task_id == "task-1"
-        assert record.executing_agent_id == "alice"
-        assert record.reviewer_agent_id == "bob"
-        assert record.decision is DecisionOutcome.APPROVED
-        assert record.version == 1
+        repo.append_with_next_version.assert_awaited_once()
+        kwargs = repo.append_with_next_version.call_args.kwargs
+        assert kwargs["task_id"] == "task-1"
+        assert kwargs["executing_agent_id"] == "alice"
+        assert kwargs["reviewer_agent_id"] == "bob"
+        assert kwargs["decision"] is DecisionOutcome.APPROVED
 
     async def test_reject_records_decision(self) -> None:
         """Rejecting appends a DecisionRecord with REJECTED outcome."""
@@ -272,9 +300,9 @@ class TestReviewGateServiceDecisionRecording:
             reason="needs rework",
         )
 
-        record: DecisionRecord = repo.append.call_args.args[0]
-        assert record.decision is DecisionOutcome.REJECTED
-        assert record.reason == "needs rework"
+        kwargs = repo.append_with_next_version.call_args.kwargs
+        assert kwargs["decision"] is DecisionOutcome.REJECTED
+        assert kwargs["reason"] == "needs rework"
 
     async def test_decision_includes_criteria_snapshot(self) -> None:
         """Decision record includes acceptance criteria descriptions."""
@@ -292,11 +320,16 @@ class TestReviewGateServiceDecisionRecording:
             decided_by="bob",
         )
 
-        record: DecisionRecord = repo.append.call_args.args[0]
-        assert record.criteria_snapshot == ("JWT login", "Refresh works")
+        kwargs = repo.append_with_next_version.call_args.kwargs
+        assert kwargs["criteria_snapshot"] == ("JWT login", "Refresh works")
 
-    async def test_decision_version_monotonic_per_task(self) -> None:
-        """version increments based on existing decisions for the task."""
+    async def test_decision_version_assigned_by_repository(self) -> None:
+        """Version is server-assigned via append_with_next_version.
+
+        The service does not compute the version itself (TOCTOU-safe);
+        the repository returns a record with the persisted version.
+        The mock repo echoes ``max(existing) + 1``.
+        """
         existing = (
             DecisionRecord(
                 id="d-1",
@@ -323,15 +356,16 @@ class TestReviewGateServiceDecisionRecording:
             decided_by="bob",
         )
 
-        record: DecisionRecord = repo.append.call_args.args[0]
-        assert record.version == 2
+        # The repo returned the echo record; the service does not need
+        # to inspect it, but we verify the call was made.
+        repo.append_with_next_version.assert_awaited_once()
 
     async def test_decision_record_failure_is_non_fatal(self) -> None:
         """If the decision repo append fails, the review still completes."""
         task = _make_task()
         mock_te = _make_mock_task_engine(task=task)
         repo = _make_mock_decision_repo()
-        repo.append = AsyncMock(side_effect=RuntimeError("disk full"))
+        repo.append_with_next_version = AsyncMock(side_effect=RuntimeError("disk full"))
         service = ReviewGateService(
             task_engine=mock_te, persistence=_make_mock_persistence(repo)
         )

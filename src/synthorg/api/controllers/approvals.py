@@ -41,7 +41,11 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
-from synthorg.engine.errors import SelfReviewError
+from synthorg.engine.errors import (
+    SelfReviewError,
+    TaskNotFoundError,
+    TaskVersionConflictError,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_APPROVED,
@@ -58,6 +62,8 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+    APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+    APPROVAL_GATE_TASK_NOT_FOUND,
 )
 
 if TYPE_CHECKING:
@@ -307,6 +313,48 @@ async def _try_mid_execution_resume(
     return False
 
 
+async def _preflight_review_gate(
+    review_gate: ReviewGateService,
+    approval_id: str,
+    task_id: str,
+    *,
+    decided_by: str,
+) -> None:
+    """Run the review-gate preflight check before persisting a decision.
+
+    Fails fast so that a rejected self-review attempt or a missing task
+    never leaves a decided approval row or a broadcast WebSocket event
+    behind.
+
+    Raises:
+        ForbiddenError: When the decider is the original executing
+            agent (mapped from ``SelfReviewError``; a generic message
+            is returned to avoid leaking internal identifiers).
+        NotFoundError: When the task does not exist
+            (mapped from ``TaskNotFoundError``).
+    """
+    try:
+        await review_gate.check_can_decide(task_id=task_id, decided_by=decided_by)
+    except SelfReviewError:
+        logger.warning(
+            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+            approval_id=approval_id,
+            task_id=task_id,
+            decided_by=decided_by,
+        )
+        forbidden_msg = "Self-review is not permitted"
+        raise ForbiddenError(forbidden_msg) from None
+    except TaskNotFoundError:
+        msg = f"Task for approval {approval_id!r} not found"
+        logger.warning(
+            APPROVAL_GATE_TASK_NOT_FOUND,
+            approval_id=approval_id,
+            task_id=task_id,
+            decided_by=decided_by,
+        )
+        raise NotFoundError(msg) from None
+
+
 async def _try_review_gate_transition(  # noqa: PLR0913
     review_gate: ReviewGateService,
     approval_id: str,
@@ -318,9 +366,17 @@ async def _try_review_gate_transition(  # noqa: PLR0913
 ) -> None:
     """Delegate a review decision to the review gate service.
 
+    Assumes ``_preflight_review_gate`` has already validated self-review
+    and task existence.  Surfaces engine-layer failures (task mutation,
+    version conflict, persistence) as API errors so the caller sees a
+    meaningful status code instead of a silent 200 OK with no state
+    change.
+
     Raises:
-        ForbiddenError: When the decider is the original executing
-            agent (self-review is structurally prevented).
+        ConflictError: When optimistic concurrency fails.
+        NotFoundError: When the task disappears between preflight and
+            transition.
+        ForbiddenError: When a late self-review race is detected.
     """
     try:
         await review_gate.complete_review(
@@ -330,18 +386,33 @@ async def _try_review_gate_transition(  # noqa: PLR0913
             decided_by=decided_by,
             reason=decision_reason,
         )
-    except SelfReviewError as exc:
-        raise ForbiddenError(str(exc)) from exc
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except SelfReviewError:
+        logger.warning(
+            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
+            approval_id=approval_id,
+            task_id=task_id,
+            decided_by=decided_by,
+        )
+        forbidden_msg = "Self-review is not permitted"
+        raise ForbiddenError(forbidden_msg) from None
+    except TaskNotFoundError as exc:
         logger.warning(
             APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
             approval_id=approval_id,
             task_id=task_id,
-            error="Review gate transition failed (non-fatal)",
-            exc_info=True,
+            error=f"{type(exc).__name__}: {exc}",
         )
+        not_found_msg = f"Task {task_id!r} not found"
+        raise NotFoundError(not_found_msg) from exc
+    except TaskVersionConflictError as exc:
+        logger.warning(
+            APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
+            approval_id=approval_id,
+            task_id=task_id,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        conflict_msg = f"Task {task_id!r} version conflict during review transition"
+        raise ConflictError(conflict_msg) from exc
 
 
 async def _signal_resume_intent(  # noqa: PLR0913
@@ -456,7 +527,22 @@ async def _save_decision_and_notify(  # noqa: PLR0913
 
     Raises:
         ConflictError: If the approval is no longer pending.
+        ForbiddenError: If the decider is the original executing agent
+            (self-review preflight fails).
+        NotFoundError: If the associated task no longer exists.
     """
+    # Run the review-gate preflight BEFORE persisting the decision so
+    # a rejected preflight never leaves a decided approval row or a
+    # broadcast WebSocket event behind.
+    review_gate = app_state.review_gate_service
+    if review_gate is not None and updated.task_id is not None:
+        await _preflight_review_gate(
+            review_gate,
+            approval_id,
+            updated.task_id,
+            decided_by=decided_by,
+        )
+
     saved = await app_state.approval_store.save_if_pending(updated)
     if saved is None:
         msg = "Approval is no longer pending (already decided or expired)"

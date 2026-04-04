@@ -678,12 +678,26 @@ class AgentEngine:
                     from_status=pre_recovery_status.value,
                     to_status=ctx.task_execution.status.value,
                 )
+                # Embed the failure category in the transition reason so
+                # the downstream task router / reassignment selector can
+                # read it from the task's status history and make a more
+                # informed decision (e.g. route TOOL_FAILURE retries to
+                # an agent with different tool access, BUDGET_EXCEEDED to
+                # a cheaper tier, etc.).
+                category = (
+                    recovery_result.failure_category.value
+                    if recovery_result is not None
+                    else "unknown"
+                )
                 await sync_to_task_engine(
                     self._task_engine,
                     target_status=ctx.task_execution.status,
                     task_id=task_id,
                     agent_id=agent_id,
-                    reason=f"Post-recovery status: {ctx.task_execution.status.value}",
+                    reason=(
+                        f"Post-recovery status: {ctx.task_execution.status.value} "
+                        f"(failure_category={category})"
+                    ),
                 )
         # Clean up checkpoints and heartbeat on non-ERROR exits.
         # The ERROR path is handled inside _finalize_resume (resume)
