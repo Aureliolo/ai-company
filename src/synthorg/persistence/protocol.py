@@ -22,6 +22,7 @@ from synthorg.persistence.repositories import (
     AuditRepository,  # noqa: TC001
     CheckpointRepository,  # noqa: TC001
     CostRecordRepository,  # noqa: TC001
+    DecisionRepository,  # noqa: TC001
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
@@ -161,6 +162,11 @@ class PersistenceBackend(Protocol):
     @property
     def audit_entries(self) -> AuditRepository:
         """Repository for AuditEntry persistence."""
+        ...
+
+    @property
+    def decision_records(self) -> DecisionRepository:
+        """Repository for DecisionRecord persistence (decisions drop-box)."""
         ...
 
     @property

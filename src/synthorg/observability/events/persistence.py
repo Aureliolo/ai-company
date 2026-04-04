@@ -123,6 +123,19 @@ PERSISTENCE_AUDIT_ENTRY_DESERIALIZE_FAILED: Final[str] = (
     "persistence.audit_entry.deserialize_failed"
 )
 
+# Decision record events
+PERSISTENCE_DECISION_RECORD_SAVED: Final[str] = "persistence.decision_record.saved"
+PERSISTENCE_DECISION_RECORD_SAVE_FAILED: Final[str] = (
+    "persistence.decision_record.save_failed"
+)
+PERSISTENCE_DECISION_RECORD_QUERIED: Final[str] = "persistence.decision_record.queried"
+PERSISTENCE_DECISION_RECORD_QUERY_FAILED: Final[str] = (
+    "persistence.decision_record.query_failed"
+)
+PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.decision_record.deserialize_failed"
+)
+
 PERSISTENCE_USER_SAVED: Final[str] = "persistence.user.saved"
 PERSISTENCE_USER_SAVE_FAILED: Final[str] = "persistence.user.save_failed"
 PERSISTENCE_USER_FETCHED: Final[str] = "persistence.user.fetched"

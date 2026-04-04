@@ -36,6 +36,7 @@ _EXPECTED_TABLES = {
     "workflow_executions",
     "fine_tune_runs",
     "fine_tune_checkpoints",
+    "decision_records",
 }
 
 _EXPECTED_INDEXES = {
@@ -95,6 +96,10 @@ _EXPECTED_INDEXES = {
     "idx_ftc_single_active",
     "idx_ftc_created_at",
     "idx_wdv_definition_saved",
+    "idx_dr_task_id",
+    "idx_dr_executing_agent",
+    "idx_dr_reviewer_agent",
+    "idx_dr_recorded_at",
 }
 
 

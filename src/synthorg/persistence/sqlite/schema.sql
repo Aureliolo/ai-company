@@ -455,3 +455,28 @@ CREATE TABLE IF NOT EXISTS workflow_definition_versions (
 
 CREATE INDEX IF NOT EXISTS idx_wdv_definition_saved
     ON workflow_definition_versions(definition_id, saved_at DESC);
+
+-- ── Decision records (auditable decisions drop-box) ─────────────
+CREATE TABLE IF NOT EXISTS decision_records (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    approval_id TEXT,
+    executing_agent_id TEXT NOT NULL,
+    reviewer_agent_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    reason TEXT,
+    criteria_snapshot TEXT NOT NULL DEFAULT '[]',
+    recorded_at TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK(version >= 1),
+    metadata TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(task_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dr_task_id
+    ON decision_records(task_id);
+CREATE INDEX IF NOT EXISTS idx_dr_executing_agent
+    ON decision_records(executing_agent_id);
+CREATE INDEX IF NOT EXISTS idx_dr_reviewer_agent
+    ON decision_records(reviewer_agent_id);
+CREATE INDEX IF NOT EXISTS idx_dr_recorded_at
+    ON decision_records(recorded_at);

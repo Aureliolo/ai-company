@@ -23,6 +23,7 @@ from synthorg.api.dto import (
 from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
+    ForbiddenError,
     NotFoundError,
     UnauthorizedError,
 )
@@ -40,6 +41,7 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
+from synthorg.engine.errors import SelfReviewError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_APPROVED,
@@ -314,7 +316,12 @@ async def _try_review_gate_transition(  # noqa: PLR0913
     decided_by: str,
     decision_reason: str | None,
 ) -> None:
-    """Delegate a review decision to the review gate service."""
+    """Delegate a review decision to the review gate service.
+
+    Raises:
+        ForbiddenError: When the decider is the original executing
+            agent (self-review is structurally prevented).
+    """
     try:
         await review_gate.complete_review(
             task_id=task_id,
@@ -323,6 +330,8 @@ async def _try_review_gate_transition(  # noqa: PLR0913
             decided_by=decided_by,
             reason=decision_reason,
         )
+    except SelfReviewError as exc:
+        raise ForbiddenError(str(exc)) from exc
     except MemoryError, RecursionError:
         raise
     except Exception:

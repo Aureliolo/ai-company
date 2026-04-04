@@ -701,6 +701,13 @@ async run(
       ``ApprovalTimeoutScheduler`` applies a configured timeout policy
       (auto-approve, auto-deny, or escalate).  Both paths delegate to
       ``ReviewGateService`` for the actual state transition.
+      ``ReviewGateService`` structurally enforces no-self-review: if the
+      decider equals ``task.assigned_to``, it raises ``SelfReviewError``
+      (surfaced as HTTP 403 at the approval controller) and no
+      transition occurs.  Every completed review is appended to the
+      auditable decisions drop-box (``DecisionRepository``) as an
+      immutable ``DecisionRecord`` capturing executor, reviewer,
+      outcome, and acceptance-criteria snapshot.
     - `SHUTDOWN` termination: current status -> INTERRUPTED
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default
@@ -982,10 +989,16 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `strategy_type` | `NotBlankStr` | Strategy identifier |
 | `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns -- no message contents) |
 | `error_message` | `NotBlankStr` | Error that triggered recovery |
+| `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`) |
+| `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction) |
+| `criteria_failed` | `tuple[str, ...]` | Acceptance criteria that were not met |
+| `stagnation_evidence` | `StagnationResult \| None` | Stagnation detection result when applicable |
 | `checkpoint_context_json` | `str \| None` | Serialized `AgentContext` for resume (`None` for non-checkpoint strategies) |
 | `resume_attempt` | `int` (ge=0) | Current resume attempt number (0 when not resuming) |
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
+
+`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  Both `FailAndReassignStrategy` and `CheckpointRecoveryStrategy` populate it on every result.  Checkpoint reconciliation messages include the category and any unmet criteria so the resumed agent has structured context about what failed.
 
 ### Recovery Strategies
 

@@ -23,6 +23,7 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.engine.decisions import DecisionRecord
 from synthorg.hr.enums import LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
 from synthorg.hr.performance.models import (
@@ -286,6 +287,56 @@ class FakeAuditRepository:
         if until is not None:
             results = [e for e in results if e.timestamp <= until]
         return tuple(results[:limit])
+
+
+class FakeDecisionRepository:
+    """In-memory decision record repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: dict[str, DecisionRecord] = {}
+
+    async def append(self, record: DecisionRecord) -> None:
+        if record.id in self._records:
+            msg = f"Duplicate decision record {record.id!r}"
+            raise DuplicateRecordError(msg)
+        # Also enforce (task_id, version) uniqueness like SQLite
+        for existing in self._records.values():
+            if (
+                existing.task_id == record.task_id
+                and existing.version == record.version
+            ):
+                msg = (
+                    f"Duplicate decision record for task {record.task_id!r} "
+                    f"version {record.version}"
+                )
+                raise DuplicateRecordError(msg)
+        self._records[record.id] = record
+
+    async def get(self, record_id: str) -> DecisionRecord | None:
+        return self._records.get(record_id)
+
+    async def list_by_task(self, task_id: str) -> tuple[DecisionRecord, ...]:
+        matching = [r for r in self._records.values() if r.task_id == task_id]
+        return tuple(sorted(matching, key=lambda r: r.version))
+
+    async def list_by_agent(
+        self,
+        agent_id: str,
+        *,
+        role: str,
+    ) -> tuple[DecisionRecord, ...]:
+        if role not in {"executor", "reviewer"}:
+            msg = f"role must be 'executor' or 'reviewer', got {role!r}"
+            raise ValueError(msg)
+        if role == "executor":
+            matching = [
+                r for r in self._records.values() if r.executing_agent_id == agent_id
+            ]
+        else:
+            matching = [
+                r for r in self._records.values() if r.reviewer_agent_id == agent_id
+            ]
+        return tuple(sorted(matching, key=lambda r: r.recorded_at, reverse=True))
 
 
 class FakeUserRepository:
@@ -590,6 +641,7 @@ class FakePersistenceBackend:
         self._collaboration_metrics = FakeCollaborationMetricRepository()
         self._parked_contexts = FakeParkedContextRepository()
         self._audit_entries = FakeAuditRepository()
+        self._decision_records = FakeDecisionRepository()
         self._users = FakeUserRepository()
         self._api_keys = FakeApiKeyRepository()
         self._checkpoints = FakeCheckpointRepository()
@@ -664,6 +716,10 @@ class FakePersistenceBackend:
     @property
     def audit_entries(self) -> FakeAuditRepository:
         return self._audit_entries
+
+    @property
+    def decision_records(self) -> FakeDecisionRepository:
+        return self._decision_records
 
     @property
     def users(self) -> FakeUserRepository:

@@ -29,6 +29,7 @@ from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC00
 if TYPE_CHECKING:
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+    from synthorg.engine.decisions import DecisionRecord
 
 __all__ = [
     "AgentStateRepository",
@@ -38,6 +39,7 @@ __all__ = [
     "CheckpointRepository",
     "CollaborationMetricRepository",
     "CostRecordRepository",
+    "DecisionRepository",
     "HeartbeatRepository",
     "LifecycleEventRepository",
     "MessageRepository",
@@ -333,6 +335,77 @@ class AuditRepository(Protocol):
         Raises:
             QueryError: If the operation fails, *limit* < 1, or
                 *until* is earlier than *since*.
+        """
+        ...
+
+
+@runtime_checkable
+class DecisionRepository(Protocol):
+    """Append-only persistence + query interface for ``DecisionRecord``.
+
+    Decision records are immutable audit entries of review gate
+    decisions.  No update or delete operations are provided to preserve
+    audit integrity.
+    """
+
+    async def append(self, record: DecisionRecord) -> None:
+        """Persist a decision record (append-only).
+
+        Args:
+            record: The decision record to persist.
+
+        Raises:
+            DuplicateRecordError: If a record with the same ID exists.
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
+        """Retrieve a decision record by ID.
+
+        Args:
+            record_id: The record identifier.
+
+        Returns:
+            The record, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
+        """List decision records for a task, ordered by version ascending.
+
+        Args:
+            task_id: The task identifier.
+
+        Returns:
+            Matching records as a tuple (oldest first).
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def list_by_agent(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        role: str,
+    ) -> tuple[DecisionRecord, ...]:
+        """List decision records where the agent acted in the given role.
+
+        Args:
+            agent_id: The agent identifier.
+            role: Either ``"executor"`` or ``"reviewer"``.
+
+        Returns:
+            Matching records as a tuple, ordered by ``recorded_at`` DESC.
+
+        Raises:
+            PersistenceError: If the operation fails.
+            ValueError: If ``role`` is not a recognised value.
         """
         ...
 

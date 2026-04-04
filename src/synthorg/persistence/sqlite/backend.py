@@ -34,6 +34,9 @@ from synthorg.persistence.sqlite.audit_repository import (
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
+from synthorg.persistence.sqlite.decision_repo import (
+    SQLiteDecisionRepository,
+)
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
@@ -115,6 +118,7 @@ class SQLitePersistenceBackend:
         self._workflow_definitions: SQLiteWorkflowDefinitionRepository | None = None
         self._workflow_executions: SQLiteWorkflowExecutionRepository | None = None
         self._workflow_versions: SQLiteWorkflowVersionRepository | None = None
+        self._decision_records: SQLiteDecisionRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -139,6 +143,7 @@ class SQLitePersistenceBackend:
         self._workflow_definitions = None
         self._workflow_executions = None
         self._workflow_versions = None
+        self._decision_records = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -224,6 +229,7 @@ class SQLitePersistenceBackend:
         self._workflow_definitions = SQLiteWorkflowDefinitionRepository(self._db)
         self._workflow_executions = SQLiteWorkflowExecutionRepository(self._db)
         self._workflow_versions = SQLiteWorkflowVersionRepository(self._db)
+        self._decision_records = SQLiteDecisionRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -405,6 +411,15 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._audit_entries, "audit_entries")
+
+    @property
+    def decision_records(self) -> SQLiteDecisionRepository:
+        """Repository for DecisionRecord persistence (decisions drop-box).
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._decision_records, "decision_records")
 
     @property
     def users(self) -> SQLiteUserRepository:
