@@ -1,12 +1,21 @@
 """Tests for workflow blueprint API endpoints."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.engine.workflow import blueprint_loader
 from synthorg.engine.workflow.blueprint_loader import BUILTIN_BLUEPRINTS
 from tests.unit.api.conftest import make_auth_headers
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_blueprints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent user-override blueprints from leaking into builtin tests."""
+    monkeypatch.setattr(blueprint_loader, "_USER_BLUEPRINTS_DIR", tmp_path)
+
 
 # ── GET /workflows/blueprints ────────────────────────────────────
 

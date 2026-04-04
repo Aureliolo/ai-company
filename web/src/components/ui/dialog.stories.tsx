@@ -145,3 +145,64 @@ function DialogWithForm({ open: initialOpen = true }: { open?: boolean }) {
 export const WithForm: Story = {
   render: () => <DialogWithForm />,
 }
+
+function DialogEmpty({ open: initialOpen = true }: { open?: boolean }) {
+  const [open, setOpen] = useState(initialOpen)
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open Dialog</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <div>
+              <DialogTitle>No Items</DialogTitle>
+              <DialogDescription>There is nothing to display.</DialogDescription>
+            </div>
+            <DialogCloseButton />
+          </DialogHeader>
+          <div className="flex flex-col items-center justify-center gap-2 px-6 py-8 text-center">
+            <p className="text-sm text-muted">No results found.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+export const Empty: Story = {
+  render: () => <DialogEmpty />,
+}
+
+function DialogWithHover({ open: initialOpen = true }: { open?: boolean }) {
+  const [open, setOpen] = useState(initialOpen)
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open Dialog</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <div>
+              <DialogTitle>Hover Example</DialogTitle>
+              <DialogDescription>Hover over the items below.</DialogDescription>
+            </div>
+            <DialogCloseButton />
+          </DialogHeader>
+          <div className="flex flex-col gap-2 px-6 py-4">
+            {['Item A', 'Item B', 'Item C'].map((item) => (
+              <div
+                key={item}
+                className="rounded-md border border-border bg-card p-card text-sm text-foreground transition-colors hover:border-accent/50 hover:bg-card-hover"
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+export const Hover: Story = {
+  render: () => <DialogWithHover />,
+}

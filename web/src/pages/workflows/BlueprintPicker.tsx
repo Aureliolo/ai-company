@@ -25,6 +25,7 @@ export function BlueprintCard({ blueprint, isSelected, onSelect }: BlueprintCard
   return (
     <motion.button
       type="button"
+      aria-pressed={isSelected}
       variants={cardEntrance}
       onClick={() => onSelect(isSelected ? null : blueprint.name)}
       className={cn(
@@ -76,6 +77,17 @@ export function BlueprintPicker({
   const filtered = workflowTypeFilter
     ? blueprints.filter((bp) => bp.workflow_type === workflowTypeFilter)
     : blueprints
+
+  // Clear selection if the selected blueprint is no longer in the filtered list.
+  useEffect(() => {
+    if (
+      selectedBlueprint &&
+      filtered.length > 0 &&
+      !filtered.some((bp) => bp.name === selectedBlueprint)
+    ) {
+      onSelect(null)
+    }
+  }, [filtered, selectedBlueprint, onSelect])
 
   if (loading) {
     return (

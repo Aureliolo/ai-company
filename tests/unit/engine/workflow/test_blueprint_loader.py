@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from synthorg.core.enums import WorkflowNodeType
+from synthorg.engine.workflow import blueprint_loader as _bl_module
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
     BlueprintValidationError,
@@ -17,6 +18,13 @@ from synthorg.engine.workflow.blueprint_loader import (
     list_builtin_blueprints,
     load_blueprint,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_user_blueprints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent user-override blueprints from leaking into tests."""
+    monkeypatch.setattr(_bl_module, "_USER_BLUEPRINTS_DIR", tmp_path)
+
 
 # Minimal valid YAML for user-override testing.
 _USER_YAML = """\

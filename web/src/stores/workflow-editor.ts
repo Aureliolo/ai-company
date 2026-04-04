@@ -17,7 +17,6 @@ import type {
   WorkflowNodeType,
 } from '@/api/types'
 
-const log = createLogger('workflow-editor')
 import {
   getWorkflow,
   createWorkflow,
@@ -32,6 +31,7 @@ import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workf
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 
+const log = createLogger('workflow-editor')
 const MAX_UNDO = 50
 
 interface WorkflowSnapshot {
@@ -723,8 +723,8 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       versionsHasMore: false,
       diffResult: null,
       diffLoading: false,
-      _versionsRequestId: 0,
-      _diffRequestId: 0,
+      _versionsRequestId: get()._versionsRequestId + 1,
+      _diffRequestId: get()._diffRequestId + 1,
     })
   },
 }))

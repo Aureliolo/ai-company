@@ -50,6 +50,26 @@ function isStaleListRequest(token: number): boolean {
   return _listRequestToken !== token
 }
 
+let _blueprintRequestToken = 0
+function isStaleBlueprintRequest(token: number): boolean {
+  return _blueprintRequestToken !== token
+}
+
+/** Upsert a workflow into the store list (prepends, deduplicates). */
+function upsertWorkflow(
+  set: (fn: (state: WorkflowsState) => Partial<WorkflowsState>) => void,
+  workflow: WorkflowDefinition,
+): void {
+  set((state) => {
+    const exists = state.workflows.some((w) => w.id === workflow.id)
+    const filtered = state.workflows.filter((w) => w.id !== workflow.id)
+    return {
+      workflows: [workflow, ...filtered],
+      totalWorkflows: exists ? state.totalWorkflows : state.totalWorkflows + 1,
+    }
+  })
+}
+
 export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   workflows: [],
   totalWorkflows: 0,
@@ -64,11 +84,14 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
   workflowTypeFilter: null,
 
   loadBlueprints: async () => {
+    const token = ++_blueprintRequestToken
     set({ blueprintsLoading: true, blueprintsError: null })
     try {
       const data = await listBlueprints()
+      if (isStaleBlueprintRequest(token)) return
       set({ blueprints: data, blueprintsLoading: false })
     } catch (err) {
+      if (isStaleBlueprintRequest(token)) return
       log.warn('Failed to load blueprints', sanitizeForLog(err))
       set({ blueprintsLoading: false, blueprintsError: getErrorMessage(err) })
     }
@@ -94,27 +117,13 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
 
   createWorkflow: async (data: CreateWorkflowDefinitionRequest) => {
     const workflow = await createWorkflowApi(data)
-    set((state) => {
-      const exists = state.workflows.some((w) => w.id === workflow.id)
-      const filtered = state.workflows.filter((w) => w.id !== workflow.id)
-      return {
-        workflows: [workflow, ...filtered],
-        totalWorkflows: exists ? state.totalWorkflows : state.totalWorkflows + 1,
-      }
-    })
+    upsertWorkflow(set, workflow)
     return workflow
   },
 
   createFromBlueprint: async (data: CreateFromBlueprintRequest) => {
     const workflow = await createFromBlueprintApi(data)
-    set((state) => {
-      const exists = state.workflows.some((w) => w.id === workflow.id)
-      const filtered = state.workflows.filter((w) => w.id !== workflow.id)
-      return {
-        workflows: [workflow, ...filtered],
-        totalWorkflows: exists ? state.totalWorkflows : state.totalWorkflows + 1,
-      }
-    })
+    upsertWorkflow(set, workflow)
     return workflow
   },
 

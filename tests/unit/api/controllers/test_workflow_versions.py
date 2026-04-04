@@ -104,6 +104,7 @@ class TestAutoSnapshot:
             f"/api/v1/workflows/{wf['id']}/versions",
             headers=make_auth_headers("ceo"),
         )
+        assert resp.status_code == 200
         versions = resp.json()["data"]
         assert len(versions) == 2
         # Newest first.
@@ -125,6 +126,54 @@ class TestListVersions:
         )
         assert resp.status_code == 200
         assert resp.json()["data"] == []
+
+    @pytest.mark.unit
+    def test_list_versions_ordering(self, test_client: TestClient[Any]) -> None:
+        wf = _create_workflow(test_client, name="V1")
+        wf_id = wf["id"]
+        _update_workflow(test_client, wf_id, 1, name="V2")
+        _update_workflow(test_client, wf_id, 2, name="V3")
+
+        resp = test_client.get(
+            f"/api/v1/workflows/{wf_id}/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        versions = resp.json()["data"]
+        assert len(versions) == 3
+        # Newest first.
+        assert [v["version"] for v in versions] == [3, 2, 1]
+        assert versions[0]["name"] == "V3"
+        assert versions[2]["name"] == "V1"
+
+    @pytest.mark.unit
+    def test_list_versions_paginated(self, test_client: TestClient[Any]) -> None:
+        wf = _create_workflow(test_client, name="V1")
+        wf_id = wf["id"]
+        _update_workflow(test_client, wf_id, 1, name="V2")
+        _update_workflow(test_client, wf_id, 2, name="V3")
+
+        # First page: limit=2
+        resp = test_client.get(
+            f"/api/v1/workflows/{wf_id}/versions?limit=2&offset=0",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["data"]) == 2
+        assert body["data"][0]["version"] == 3
+        assert body["data"][1]["version"] == 2
+        assert body["pagination"]["total"] == 3
+
+        # Second page: offset=2
+        resp2 = test_client.get(
+            f"/api/v1/workflows/{wf_id}/versions?limit=2&offset=2",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp2.status_code == 200
+        body2 = resp2.json()
+        assert len(body2["data"]) == 1
+        assert body2["data"][0]["version"] == 1
 
 
 # ── GET /workflows/{id}/versions/{version} ────────────────────────
