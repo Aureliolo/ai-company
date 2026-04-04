@@ -104,7 +104,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
         />
 
         {submitError && (
-          <div className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
+          <div role="alert" aria-live="assertive" className="rounded-md border border-danger/30 bg-danger/5 p-card text-sm text-danger">
             {submitError}
           </div>
         )}

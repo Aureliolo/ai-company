@@ -259,6 +259,11 @@ def parse_task_config(
             f"Node {nid!r} has unrecognized task_type {raw_type!r}"
             f" (valid: {sorted(_TASK_TYPE_MAP)})"
         )
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            node_id=nid,
+            error=msg,
+        )
         raise ValueError(msg)
     task_type = _TASK_TYPE_MAP[raw_type]
 
@@ -268,6 +273,11 @@ def parse_task_config(
             f"Node {nid!r} has unrecognized priority {raw_priority!r}"
             f" (valid: {sorted(_PRIORITY_MAP)})"
         )
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            node_id=nid,
+            error=msg,
+        )
         raise ValueError(msg)
     priority = _PRIORITY_MAP[raw_priority]
 
@@ -276,6 +286,11 @@ def parse_task_config(
         msg = (
             f"Node {nid!r} has unrecognized complexity {raw_complexity!r}"
             f" (valid: {sorted(_COMPLEXITY_MAP)})"
+        )
+        logger.warning(
+            WORKFLOW_EXEC_TASK_CREATED,
+            node_id=nid,
+            error=msg,
         )
         raise ValueError(msg)
     complexity = _COMPLEXITY_MAP[raw_complexity]

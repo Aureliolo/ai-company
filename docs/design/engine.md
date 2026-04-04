@@ -410,7 +410,7 @@ pattern for in-process consumers that need to react synchronously to task
 state changes.
 
 **Registration**: `register_observer()` accepts an async callback with
-signature `Callable[[TaskStateChanged], Coroutine[..., None]]`. Observers
+signature `Callable[[TaskStateChanged], Awaitable[None]]`. Observers
 are stored in registration order and invoked sequentially after each
 successful mutation.
 

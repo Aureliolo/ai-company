@@ -364,15 +364,17 @@ function WorkflowEditorInner() {
         </div>
       )}
 
-      <WorkflowNodeDrawer
-        open={selectedNode !== null}
-        onClose={handleDrawerClose}
-        nodeId={selectedNodeId}
-        nodeType={(selectedNode?.type as WorkflowNodeType) ?? null}
-        nodeLabel={String((selectedNode?.data as Record<string, unknown>)?.label ?? 'Node')}
-        config={((selectedNode?.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {}}
-        onConfigChange={handleConfigChange}
-      />
+      {editorMode === 'visual' && (
+        <WorkflowNodeDrawer
+          open={selectedNode !== null}
+          onClose={handleDrawerClose}
+          nodeId={selectedNodeId}
+          nodeType={(selectedNode?.type as WorkflowNodeType) ?? null}
+          nodeLabel={String((selectedNode?.data as Record<string, unknown>)?.label ?? 'Node')}
+          config={((selectedNode?.data as Record<string, unknown>)?.config as Record<string, unknown>) ?? {}}
+          onConfigChange={handleConfigChange}
+        />
+      )}
     </div>
   )
 }

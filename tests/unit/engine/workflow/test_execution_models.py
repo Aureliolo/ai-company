@@ -276,57 +276,31 @@ class TestNodeExecutionCrossFieldValidators:
 
 
 class TestTaskLinkedStatusOnNonTaskNodes:
-    """Verify TASK_COMPLETED/TASK_FAILED rejected for non-TASK node types."""
+    """Verify task-linked statuses rejected for non-TASK node types."""
 
     @pytest.mark.unit
-    def test_task_completed_on_start_node_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("node_type", "status"),
+        [
+            (WorkflowNodeType.START, WorkflowNodeExecutionStatus.TASK_COMPLETED),
+            (WorkflowNodeType.START, WorkflowNodeExecutionStatus.TASK_FAILED),
+            (WorkflowNodeType.END, WorkflowNodeExecutionStatus.TASK_COMPLETED),
+            (WorkflowNodeType.CONDITIONAL, WorkflowNodeExecutionStatus.TASK_CREATED),
+        ],
+    )
+    def test_task_linked_status_on_non_task_node_rejected(
+        self,
+        node_type: WorkflowNodeType,
+        status: WorkflowNodeExecutionStatus,
+    ) -> None:
         with pytest.raises(
             ValidationError,
             match="only valid for TASK nodes",
         ):
             WorkflowNodeExecution(
-                node_id="start-1",
-                node_type=WorkflowNodeType.START,
-                status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                task_id="task-abc",
-            )
-
-    @pytest.mark.unit
-    def test_task_failed_on_start_node_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="only valid for TASK nodes",
-        ):
-            WorkflowNodeExecution(
-                node_id="start-1",
-                node_type=WorkflowNodeType.START,
-                status=WorkflowNodeExecutionStatus.TASK_FAILED,
-                task_id="task-abc",
-            )
-
-    @pytest.mark.unit
-    def test_task_completed_on_end_node_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="only valid for TASK nodes",
-        ):
-            WorkflowNodeExecution(
-                node_id="end-1",
-                node_type=WorkflowNodeType.END,
-                status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                task_id="task-abc",
-            )
-
-    @pytest.mark.unit
-    def test_task_created_on_conditional_node_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="only valid for TASK nodes",
-        ):
-            WorkflowNodeExecution(
-                node_id="cond-1",
-                node_type=WorkflowNodeType.CONDITIONAL,
-                status=WorkflowNodeExecutionStatus.TASK_CREATED,
+                node_id="node-1",
+                node_type=node_type,
+                status=status,
                 task_id="task-abc",
             )
 

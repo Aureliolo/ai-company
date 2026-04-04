@@ -399,10 +399,11 @@ export function ConditionExpressionBuilder({
 
   const handleRemoveRow = useCallback((index: number) => {
     setEntries((prev) => {
-      if (prev.length <= 1) return prev
+      // Allow removing the last entry if sub-groups exist
+      if (prev.length <= 1 && subGroups.length === 0) return prev
       return prev.filter((_, i) => i !== index)
     })
-  }, [])
+  }, [subGroups.length])
 
   const handleAddRow = useCallback(() => {
     setEntries((prev) => [
@@ -550,7 +551,7 @@ export function ConditionExpressionBuilder({
               entry={entry}
               index={index}
               baseId={datalistId}
-              canRemove={entries.length > 1}
+              canRemove={entries.length > 1 || subGroups.length > 0}
               showOperator={index > 0}
               logicalOperator={logicalOperator === 'NOT' ? 'AND' : logicalOperator}
               onOperatorChange={setLogicalOperator}

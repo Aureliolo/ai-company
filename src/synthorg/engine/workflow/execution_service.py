@@ -743,6 +743,12 @@ def _update_node_status(
 
     if not found:
         msg = f"task_id {task_id!r} not found in execution {execution.id!r}"
+        logger.warning(
+            WORKFLOW_EXEC_NOT_FOUND,
+            execution_id=execution.id,
+            task_id=task_id,
+            error=msg,
+        )
         raise ValueError(msg)
 
     return execution.model_copy(

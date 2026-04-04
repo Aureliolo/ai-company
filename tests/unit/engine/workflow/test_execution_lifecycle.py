@@ -95,14 +95,18 @@ class FakeExecutionRepo:
         definition_id: str,
     ) -> tuple[WorkflowExecution, ...]:
         return tuple(
-            e for e in self._store.values() if e.definition_id == definition_id
+            copy.deepcopy(e)
+            for e in self._store.values()
+            if e.definition_id == definition_id
         )
 
     async def list_by_status(
         self,
         status: object,
     ) -> tuple[WorkflowExecution, ...]:
-        return tuple(e for e in self._store.values() if e.status == status)
+        return tuple(
+            copy.deepcopy(e) for e in self._store.values() if e.status == status
+        )
 
     async def delete(self, execution_id: str) -> bool:
         return self._store.pop(execution_id, None) is not None
