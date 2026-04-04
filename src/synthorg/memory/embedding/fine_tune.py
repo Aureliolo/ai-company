@@ -2,7 +2,7 @@
 
 Five-stage offline pipeline for domain-specific embedding fine-tuning:
 
-1. Synthetic data generation (LLM-powered, no manual annotation)
+1. Synthetic data generation (extractive fallback; LLM path stubbed)
 2. Hard negative mining (base model embedding + similarity search)
 3. Contrastive fine-tuning (InfoNCE loss, biencoder training)
 4. Evaluation (NDCG@10, Recall@10 comparison)
@@ -717,6 +717,15 @@ async def deploy_checkpoint(
                     key=key,
                 )
 
+    # Only proceed with deployment if we have a settings service.
+    if settings_service is None:
+        logger.warning(
+            MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
+            checkpoint_path=checkpoint_path,
+            note="no settings service -- checkpoint deployed but config not updated",
+        )
+        return json.dumps(backup) if backup else None
+
     # Write backup to checkpoint dir for rollback.
     backup_path = cp.parent / "backup_config.json"
     await asyncio.to_thread(
@@ -725,24 +734,12 @@ async def deploy_checkpoint(
     )
 
     # Update settings to point to the fine-tuned model.
-    if settings_service is not None and hasattr(
-        settings_service,
-        "set",
-    ):
+    if hasattr(settings_service, "set"):
         await settings_service.set(
             "memory",
             "embedder_model",
             checkpoint_path,
         )
-
-    if settings_service is None and config_path is None:
-        logger.warning(
-            MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
-            checkpoint_path=checkpoint_path,
-            note="no settings service or config path -- "
-            "checkpoint deployed but config not updated",
-        )
-        return json.dumps(backup) if backup else None
 
     logger.info(
         MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,

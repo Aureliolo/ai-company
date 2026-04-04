@@ -298,17 +298,17 @@ class TestDeployCheckpoint:
                 checkpoint_path=str(missing),
             )
 
-    async def test_creates_backup_config(
+    async def test_returns_none_without_settings_service(
         self,
         tmp_path: Path,
     ) -> None:
         cp_dir = tmp_path / "checkpoint"
         cp_dir.mkdir()
-        await deploy_checkpoint(checkpoint_path=str(cp_dir))
+        result = await deploy_checkpoint(checkpoint_path=str(cp_dir))
+        assert result is None
+        # No backup file created when no settings_service.
         backup = cp_dir.parent / "backup_config.json"
-        assert backup.exists()
-        data = json.loads(backup.read_text())
-        assert isinstance(data, dict)
+        assert not backup.exists()
 
 
 # -- Compute metrics --------------------------------------------------

@@ -56,41 +56,57 @@ def _parse_required_ts(value: str) -> datetime:
 
 
 def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
-    """Build a ``FineTuneRun`` from a database row."""
-    config = FineTuneRunConfig.model_validate_json(row["config_json"])
-    stages = tuple(json.loads(row["stages_completed"]))
-    return FineTuneRun(
-        id=row["id"],
-        stage=FineTuneStage(row["stage"]),
-        progress=row["progress"],
-        error=row["error"],
-        config=config,
-        started_at=_parse_required_ts(row["started_at"]),
-        updated_at=_parse_required_ts(row["updated_at"]),
-        completed_at=_parse_ts(row["completed_at"]),
-        stages_completed=stages,
-    )
+    """Build a ``FineTuneRun`` from a database row.
+
+    Raises:
+        QueryError: If the row contains invalid data.
+    """
+    try:
+        config = FineTuneRunConfig.model_validate_json(row["config_json"])
+        stages = tuple(json.loads(row["stages_completed"]))
+        return FineTuneRun(
+            id=row["id"],
+            stage=FineTuneStage(row["stage"]),
+            progress=row["progress"],
+            error=row["error"],
+            config=config,
+            started_at=_parse_required_ts(row["started_at"]),
+            updated_at=_parse_required_ts(row["updated_at"]),
+            completed_at=_parse_ts(row["completed_at"]),
+            stages_completed=stages,
+        )
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        msg = f"Corrupt fine-tune run row: {exc}"
+        raise QueryError(msg) from exc
 
 
 def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
-    """Build a ``CheckpointRecord`` from a database row."""
-    eval_metrics = None
-    if row["eval_metrics_json"]:
-        eval_metrics = EvalMetrics.model_validate_json(
-            row["eval_metrics_json"],
+    """Build a ``CheckpointRecord`` from a database row.
+
+    Raises:
+        QueryError: If the row contains invalid data.
+    """
+    try:
+        eval_metrics = None
+        if row["eval_metrics_json"]:
+            eval_metrics = EvalMetrics.model_validate_json(
+                row["eval_metrics_json"],
+            )
+        return CheckpointRecord(
+            id=row["id"],
+            run_id=row["run_id"],
+            model_path=row["model_path"],
+            base_model=row["base_model"],
+            doc_count=row["doc_count"],
+            eval_metrics=eval_metrics,
+            size_bytes=row["size_bytes"],
+            created_at=_parse_required_ts(row["created_at"]),
+            is_active=bool(row["is_active"]),
+            backup_config_json=row["backup_config_json"],
         )
-    return CheckpointRecord(
-        id=row["id"],
-        run_id=row["run_id"],
-        model_path=row["model_path"],
-        base_model=row["base_model"],
-        doc_count=row["doc_count"],
-        eval_metrics=eval_metrics,
-        size_bytes=row["size_bytes"],
-        created_at=_parse_required_ts(row["created_at"]),
-        is_active=bool(row["is_active"]),
-        backup_config_json=row["backup_config_json"],
-    )
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        msg = f"Corrupt checkpoint row: {exc}"
+        raise QueryError(msg) from exc
 
 
 class SQLiteFineTuneRunRepository:

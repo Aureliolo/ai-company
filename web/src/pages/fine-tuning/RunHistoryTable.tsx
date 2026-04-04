@@ -37,7 +37,7 @@ function RunRow({ run }: { run: FineTuneRun }) {
         </span>
       </td>
       <td className="py-2 pr-4 text-xs text-muted-foreground">
-        {run.stages_completed.length}/{ACTIVE_STAGES.size}
+        {new Set(run.stages_completed.filter((s) => ACTIVE_STAGES.has(s as FineTuneStage))).size}/{ACTIVE_STAGES.size}
       </td>
       <td className="py-2 font-mono text-xs text-muted-foreground">
         {run.config.source_dir}

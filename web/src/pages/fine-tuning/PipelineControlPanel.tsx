@@ -116,7 +116,6 @@ export function PipelineControlPanel() {
       {showAdvanced && (
         <div
           id="advanced-options-panel"
-          aria-hidden={!showAdvanced}
           className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card"
         >
           <InputField label="Epochs" value={epochs} onValueChange={setEpochs} hint="Training epochs" />
