@@ -382,3 +382,45 @@ CREATE INDEX IF NOT EXISTS idx_wfe_status_updated
 
 CREATE INDEX IF NOT EXISTS idx_wfe_project
     ON workflow_executions(project);
+
+-- ── Fine-tuning pipeline runs ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS fine_tune_runs (
+    id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
+    stage TEXT NOT NULL,
+    progress REAL CHECK(progress IS NULL OR (progress >= 0.0 AND progress <= 1.0)),
+    error TEXT,
+    config_json TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    stages_completed TEXT NOT NULL DEFAULT '[]'
+);
+
+CREATE INDEX IF NOT EXISTS idx_ftr_stage
+    ON fine_tune_runs(stage);
+
+CREATE INDEX IF NOT EXISTS idx_ftr_started_at
+    ON fine_tune_runs(started_at DESC);
+
+-- ── Fine-tuning checkpoints ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS fine_tune_checkpoints (
+    id TEXT PRIMARY KEY NOT NULL CHECK(length(id) > 0),
+    run_id TEXT NOT NULL REFERENCES fine_tune_runs(id),
+    model_path TEXT NOT NULL,
+    base_model TEXT NOT NULL,
+    doc_count INTEGER NOT NULL CHECK(doc_count >= 0),
+    eval_metrics_json TEXT,
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+    created_at TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    backup_config_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ftc_run_id
+    ON fine_tune_checkpoints(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_ftc_active
+    ON fine_tune_checkpoints(is_active);
+
+CREATE INDEX IF NOT EXISTS idx_ftc_created_at
+    ON fine_tune_checkpoints(created_at DESC);
