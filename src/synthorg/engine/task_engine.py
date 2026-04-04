@@ -124,7 +124,6 @@ class TaskEngine:
             maxsize=self._config.max_queue_size,
         )
         self._observer_task: asyncio.Task[None] | None = None
-        self._observer_done = asyncio.Event()
         logger.debug(
             TASK_ENGINE_CREATED,
             max_queue_size=self._config.max_queue_size,
@@ -213,10 +212,6 @@ class TaskEngine:
                 raise
             finally:
                 self._processing_task = None
-
-        # Signal the observer dispatch loop that no more events will
-        # be produced (the processing loop is done).
-        self._observer_done.set()
 
         # Drain the observer queue so all pending events are delivered.
         if self._observer_task is not None:
@@ -751,10 +746,9 @@ class TaskEngine:
         """Background loop: dequeue and dispatch observer events.
 
         Mirrors ``_processing_loop`` but for observer notifications.
-        Keeps running until ``_observer_done`` is set (by ``stop()``
-        after the processing loop finishes) AND the queue is empty.
+        Continues draining after ``_running`` is ``False``.
         """
-        while not self._observer_done.is_set() or not self._observer_queue.empty():
+        while self._running or not self._observer_queue.empty():
             try:
                 event = await asyncio.wait_for(
                     self._observer_queue.get(),
