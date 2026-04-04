@@ -879,6 +879,8 @@ class AgentEngine:
                 )
                 if raw_override > 0:
                     tokens_override = raw_override
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
