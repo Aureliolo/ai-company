@@ -15,9 +15,9 @@ class TestReportPeriod:
     """Tests for ReportPeriod enum."""
 
     def test_values(self) -> None:
-        assert ReportPeriod.DAILY == "daily"
-        assert ReportPeriod.WEEKLY == "weekly"
-        assert ReportPeriod.MONTHLY == "monthly"
+        assert ReportPeriod.DAILY.value == "daily"
+        assert ReportPeriod.WEEKLY.value == "weekly"
+        assert ReportPeriod.MONTHLY.value == "monthly"
 
 
 @pytest.mark.unit
@@ -25,11 +25,11 @@ class TestReportTemplateName:
     """Tests for ReportTemplateName enum."""
 
     def test_values(self) -> None:
-        assert ReportTemplateName.SPENDING_SUMMARY == "spending_summary"
-        assert ReportTemplateName.PERFORMANCE_METRICS == "performance_metrics"
-        assert ReportTemplateName.TASK_COMPLETION == "task_completion"
-        assert ReportTemplateName.RISK_TRENDS == "risk_trends"
-        assert ReportTemplateName.COMPREHENSIVE == "comprehensive"
+        assert ReportTemplateName.SPENDING_SUMMARY.value == "spending_summary"
+        assert ReportTemplateName.PERFORMANCE_METRICS.value == "performance_metrics"
+        assert ReportTemplateName.TASK_COMPLETION.value == "task_completion"
+        assert ReportTemplateName.RISK_TRENDS.value == "risk_trends"
+        assert ReportTemplateName.COMPREHENSIVE.value == "comprehensive"
 
 
 @pytest.mark.unit

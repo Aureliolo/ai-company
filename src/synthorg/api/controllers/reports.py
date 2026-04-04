@@ -1,6 +1,6 @@
 """Reports controller -- automated report generation and retrieval."""
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -87,7 +87,11 @@ def _get_report_service(
 ) -> AutomatedReportService:
     """Resolve the report service from app state."""
     app_state: AppState = state._app_state  # noqa: SLF001
-    service = getattr(app_state, "report_service", None)
+    service: AutomatedReportService | None = getattr(
+        app_state,
+        "report_service",
+        None,
+    )
     if service is None:
         raise ServiceUnavailableError(_SERVICE_UNAVAILABLE_MSG)
     return service
@@ -100,7 +104,7 @@ class ReportsController(Controller):
     """Automated report generation endpoints."""
 
     path = "/api/v1/reports"
-    guards: ClassVar = [require_read_access]
+    guards = [require_read_access]  # noqa: RUF012
 
     @post(
         "/generate",

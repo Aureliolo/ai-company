@@ -8,15 +8,19 @@ from synthorg.budget.risk_record import RiskRecord
 from synthorg.security.risk_scorer import RiskScore
 
 
-def _make_risk_score(**kwargs: float) -> RiskScore:
-    defaults = {
-        "reversibility": 0.5,
-        "blast_radius": 0.3,
-        "data_sensitivity": 0.2,
-        "external_visibility": 0.1,
-    }
-    defaults.update(kwargs)
-    return RiskScore(**defaults)
+def _make_risk_score(
+    *,
+    reversibility: float = 0.5,
+    blast_radius: float = 0.3,
+    data_sensitivity: float = 0.2,
+    external_visibility: float = 0.1,
+) -> RiskScore:
+    return RiskScore(
+        reversibility=reversibility,
+        blast_radius=blast_radius,
+        data_sensitivity=data_sensitivity,
+        external_visibility=external_visibility,
+    )
 
 
 @pytest.mark.unit

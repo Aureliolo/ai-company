@@ -57,13 +57,13 @@ class TestSecurityEnforcementMode:
     """Tests for the SecurityEnforcementMode enum."""
 
     def test_active_value(self) -> None:
-        assert SecurityEnforcementMode.ACTIVE == "active"
+        assert SecurityEnforcementMode.ACTIVE.value == "active"
 
     def test_shadow_value(self) -> None:
-        assert SecurityEnforcementMode.SHADOW == "shadow"
+        assert SecurityEnforcementMode.SHADOW.value == "shadow"
 
     def test_disabled_value(self) -> None:
-        assert SecurityEnforcementMode.DISABLED == "disabled"
+        assert SecurityEnforcementMode.DISABLED.value == "disabled"
 
     def test_default_on_config(self) -> None:
         cfg = SecurityConfig()
