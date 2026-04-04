@@ -244,7 +244,7 @@ class TestContrastiveFineTune:
         )
 
         with pytest.raises(ValueError, match=match):
-            await contrastive_fine_tune(
+            await contrastive_fine_tune(  # type: ignore[arg-type]
                 training_data_path="/data",
                 base_model="test-model",
                 output_dir="/output",
