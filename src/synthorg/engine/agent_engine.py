@@ -228,6 +228,9 @@ class AgentEngine:
             procedural memory entries.  When omitted, procedural
             memory generation is silently skipped even if
             ``procedural_memory_config`` is set.
+        config_resolver: Optional settings resolver for reading
+            runtime ENGINE settings (personality trimming controls).
+            When ``None``, built-in defaults are used.
     """
 
     def __init__(  # noqa: PLR0913
