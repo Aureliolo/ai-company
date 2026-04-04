@@ -15,6 +15,7 @@ from types import MappingProxyType
 from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from synthorg.engine.workflow.blueprint_errors import (
     BlueprintNotFoundError,
@@ -74,6 +75,9 @@ class BlueprintInfo:
         if not self.name or not self.name.strip():
             msg = "BlueprintInfo.name must not be blank"
             raise ValueError(msg)
+        if not self.display_name or not self.display_name.strip():
+            msg = "BlueprintInfo.display_name must not be blank"
+            raise ValueError(msg)
         if self.node_count < 0:
             msg = "node_count must be non-negative"
             raise ValueError(msg)
@@ -106,16 +110,11 @@ def list_blueprints() -> tuple[BlueprintInfo, ...]:
             try:
                 data = _load_builtin(name)
                 seen[name] = _blueprint_info_from_data(data, "builtin")
-            except (
-                BlueprintNotFoundError,
-                BlueprintValidationError,
-                OSError,
-            ) as exc:
-                logger.warning(
+            except BlueprintNotFoundError, BlueprintValidationError, OSError:
+                logger.exception(
                     BLUEPRINT_LIST,
                     blueprint_name=name,
                     action="skip_invalid",
-                    error=str(exc),
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
@@ -139,29 +138,9 @@ def load_blueprint(name: str) -> BlueprintData:
     name_clean = _validate_blueprint_name(name)
     logger.debug(BLUEPRINT_LOAD_START, blueprint_name=name_clean)
 
-    # Try user directory first.
-    if _USER_BLUEPRINTS_DIR.is_dir():
-        user_path = _USER_BLUEPRINTS_DIR / f"{name_clean}.yaml"
-        if user_path.is_file():
-            try:
-                result = _load_from_file(user_path, name_clean)
-            except (BlueprintValidationError, OSError) as exc:
-                if name_clean in BUILTIN_BLUEPRINTS:
-                    logger.warning(
-                        BLUEPRINT_LOAD_NOT_FOUND,
-                        blueprint_name=name_clean,
-                        action="user_failed_fallback_builtin",
-                        error=str(exc),
-                    )
-                else:
-                    raise
-            else:
-                logger.debug(
-                    BLUEPRINT_LOAD_SUCCESS,
-                    blueprint_name=name_clean,
-                    source="user",
-                )
-                return result
+    user_result = _try_load_user_blueprint(name_clean)
+    if user_result is not None:
+        return user_result
 
     # Fall back to builtins.
     if name_clean in BUILTIN_BLUEPRINTS:
@@ -181,6 +160,60 @@ def load_blueprint(name: str) -> BlueprintData:
     )
     msg = f"Unknown workflow blueprint {name!r}. Available: {list(available)}"
     raise BlueprintNotFoundError(msg)
+
+
+def _try_load_user_blueprint(name: str) -> BlueprintData | None:
+    """Attempt to load a blueprint from the user directory.
+
+    Performs symlink escape checking before loading.
+
+    Args:
+        name: Validated blueprint name.
+
+    Returns:
+        Loaded blueprint data, or ``None`` if not found
+        in the user directory.
+
+    Raises:
+        BlueprintValidationError: If found but invalid.
+    """
+    if not _USER_BLUEPRINTS_DIR.is_dir():
+        return None
+
+    user_path = _USER_BLUEPRINTS_DIR / f"{name}.yaml"
+    if not user_path.is_file():
+        return None
+
+    # Guard against symlink escape (TOCTOU hardening).
+    resolved_base = _USER_BLUEPRINTS_DIR.resolve()
+    resolved = user_path.resolve()
+    if not resolved.is_relative_to(resolved_base):
+        logger.warning(
+            BLUEPRINT_LIST,
+            blueprint_path=str(user_path),
+            action="skip_symlink_escape",
+        )
+        return None
+
+    try:
+        result = _load_from_file(user_path, name)
+    except (BlueprintValidationError, OSError) as exc:
+        if name in BUILTIN_BLUEPRINTS:
+            logger.warning(
+                BLUEPRINT_LOAD_NOT_FOUND,
+                blueprint_name=name,
+                action="user_failed_fallback_builtin",
+                error=str(exc),
+            )
+            return None
+        raise
+
+    logger.debug(
+        BLUEPRINT_LOAD_SUCCESS,
+        blueprint_name=name,
+        source="user",
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -233,17 +266,34 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
         raw = yaml.safe_load(yaml_text)
     except yaml.YAMLError as exc:
         msg = f"Failed to parse YAML from {source_name}: {exc}"
+        logger.warning(
+            BLUEPRINT_LIST,
+            source=source_name,
+            action="yaml_parse_failed",
+            error=str(exc),
+        )
         raise BlueprintValidationError(msg) from exc
 
     if not isinstance(raw, dict) or "blueprint" not in raw:
         msg = f"Blueprint YAML from {source_name} must have a top-level 'blueprint' key"
+        logger.warning(
+            BLUEPRINT_LIST,
+            source=source_name,
+            action="missing_blueprint_key",
+        )
         raise BlueprintValidationError(msg)
 
     blueprint_dict: dict[str, Any] = raw["blueprint"]
     try:
         return BlueprintData.model_validate(blueprint_dict)
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, ValidationError) as exc:
         msg = f"Blueprint validation failed for {source_name}: {exc}"
+        logger.warning(
+            BLUEPRINT_LIST,
+            source=source_name,
+            action="schema_validation_failed",
+            error=str(exc),
+        )
         raise BlueprintValidationError(msg) from exc
 
 
@@ -296,12 +346,18 @@ def _load_from_file(path: Path, name: str) -> BlueprintData:
     data = _parse_blueprint_yaml(yaml_text, source_name)
     # Verify the parsed name matches the file stem.
     if data.name != name:
+        msg = (
+            f"Blueprint name mismatch in {source_name}: "
+            f"file stem is {name!r} but YAML declares "
+            f"{data.name!r}"
+        )
         logger.warning(
             BLUEPRINT_LIST,
             blueprint_name=name,
             parsed_name=data.name,
-            action="name_mismatch_warning",
+            action="name_mismatch_rejected",
         )
+        raise BlueprintValidationError(msg)
     return data
 
 

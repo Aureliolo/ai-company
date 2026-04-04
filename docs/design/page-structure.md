@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (23 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (32 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
 
@@ -191,7 +191,7 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 
 No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
 
-**API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`
+**API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`, `GET /workflows/{id}/versions`, `GET /workflows/{id}/versions/{version_num}`, `GET /workflows/{id}/diff?from_version=N&to_version=M`, `POST /workflows/{id}/rollback`
 **WS channels**: (none)
 
 #### Settings (`/settings`)
@@ -472,6 +472,7 @@ Every backend controller has a home in the page structure. No orphans.
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
 | WorkflowController | Workflows, Workflow Editor |
+| WorkflowVersionController | Workflows, Workflow Editor |
 
 ---
 

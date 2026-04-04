@@ -206,18 +206,33 @@ class TestRollback:
 
     @pytest.mark.unit
     def test_rollback_success(self, test_client: TestClient[Any]) -> None:
-        # Tested via direct unit test of the rollback logic
-        # (Litestar TestClient + xdist hangs on multi-step rollback flows).
+        # 1. Create a workflow with name "Original" (auto-creates v1).
         wf = _create_workflow(test_client, name="Original")
         wf_id = wf["id"]
 
-        # Verify version 1 snapshot was auto-created.
-        v_resp = test_client.get(
-            f"/api/v1/workflows/{wf_id}/versions/1",
+        # 2. Update it to name "Updated" (auto-creates v2).
+        _update_workflow(test_client, wf_id, 1, name="Updated")
+
+        # 3. POST rollback to v1.
+        resp = test_client.post(
+            f"/api/v1/workflows/{wf_id}/rollback",
+            json={"target_version": 1, "expected_version": 2},
             headers=make_auth_headers("ceo"),
         )
-        assert v_resp.status_code == 200
-        assert v_resp.json()["data"]["name"] == "Original"
+        assert resp.status_code == 200
+        assert resp.json()["data"]["name"] == "Original"
+
+        # 4. Verify version history has v3 with name "Original".
+        hist_resp = test_client.get(
+            f"/api/v1/workflows/{wf_id}/versions",
+            headers=make_auth_headers("ceo"),
+        )
+        assert hist_resp.status_code == 200
+        versions = hist_resp.json()["data"]
+        assert len(versions) == 3
+        # Newest first -- v3 should be the rollback snapshot.
+        assert versions[0]["version"] == 3
+        assert versions[0]["name"] == "Original"
 
     @pytest.mark.unit
     def test_rollback_version_conflict(self, test_client: TestClient[Any]) -> None:

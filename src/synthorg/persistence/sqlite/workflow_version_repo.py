@@ -1,13 +1,11 @@
 """SQLite repository implementation for WorkflowDefinitionVersion."""
 
 import json
+import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
+import aiosqlite
 from pydantic import ValidationError
-
-if TYPE_CHECKING:
-    import aiosqlite
 
 from synthorg.core.enums import WorkflowType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -83,6 +81,9 @@ class SQLiteWorkflowVersionRepository:
     Version records are immutable.  ``save_version`` uses INSERT OR
     IGNORE for idempotency (safe for retries).
 
+    Naive timestamps in ``saved_at`` are interpreted as UTC via
+    ``replace(tzinfo=UTC)``.
+
     Args:
         db: An open aiosqlite connection with ``row_factory``
             set to ``aiosqlite.Row``.
@@ -128,7 +129,7 @@ class SQLiteWorkflowVersionRepository:
                 definition_id=version.definition_id,
                 version=version.version,
             )
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = (
                 f"Failed to save version {version.version} for {version.definition_id}"
             )
@@ -152,7 +153,7 @@ class SQLiteWorkflowVersionRepository:
                 (definition_id, version),
             )
             row = await cursor.fetchone()
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to fetch version {version} for {definition_id}"
             logger.exception(
                 WORKFLOW_VERSION_FETCH_FAILED,
@@ -181,7 +182,7 @@ class SQLiteWorkflowVersionRepository:
                 (definition_id, limit, offset),
             )
             rows = list(await cursor.fetchall())
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to list versions for {definition_id}"
             logger.exception(
                 WORKFLOW_VERSION_LIST_FAILED,
@@ -211,7 +212,7 @@ class SQLiteWorkflowVersionRepository:
                 (definition_id,),
             )
             row = await cursor.fetchone()
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to count versions for {definition_id}"
             logger.exception(
                 WORKFLOW_VERSION_COUNT_FAILED,
@@ -234,7 +235,7 @@ class SQLiteWorkflowVersionRepository:
             )
             await self._db.commit()
             count = cursor.rowcount
-        except Exception as exc:
+        except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete versions for {definition_id}"
             logger.exception(
                 WORKFLOW_VERSION_DELETE_FAILED,

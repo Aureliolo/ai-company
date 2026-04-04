@@ -6,7 +6,62 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useWorkflowEditorStore } from '@/stores/workflow-editor'
 import { useState } from 'react'
 import { formatRelativeTime } from '@/utils/format'
-import type { WorkflowDefinitionVersionSummary } from '@/api/types'
+import type { WorkflowDefinition, WorkflowDefinitionVersionSummary } from '@/api/types'
+
+export interface VersionCardProps {
+  v: WorkflowDefinitionVersionSummary
+  definition: WorkflowDefinition | null
+  saving: boolean
+  onCompare: (version: WorkflowDefinitionVersionSummary) => void
+  onRestore: (version: number) => void
+}
+
+export function VersionCard({ v, definition, saving, onCompare, onRestore }: VersionCardProps) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border p-card">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
+            v{v.version}
+          </span>
+          <span className="text-sm text-foreground">{v.name}</span>
+        </div>
+        {v.version === definition?.version && (
+          <span className="text-xs text-success">Current</span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <Clock className="size-3" aria-hidden="true" />
+        <time dateTime={v.saved_at}>{formatRelativeTime(v.saved_at)}</time>
+        <span>by {v.saved_by}</span>
+      </div>
+
+      <div className="flex gap-1 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onCompare(v)}
+          disabled={v.version === definition?.version}
+          title="Compare with current"
+        >
+          <GitCompare className="size-3.5" />
+          <span className="ml-1">Compare</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onRestore(v.version)}
+          disabled={v.version === definition?.version || saving}
+          title="Restore this version"
+        >
+          <RotateCcw className="size-3.5" />
+          <span className="ml-1">Restore</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 interface VersionHistoryPanelProps {
   open: boolean
@@ -16,9 +71,11 @@ interface VersionHistoryPanelProps {
 export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps) {
   const versions = useWorkflowEditorStore((s) => s.versions)
   const versionsLoading = useWorkflowEditorStore((s) => s.versionsLoading)
+  const versionsHasMore = useWorkflowEditorStore((s) => s.versionsHasMore)
   const definition = useWorkflowEditorStore((s) => s.definition)
   const loadDiff = useWorkflowEditorStore((s) => s.loadDiff)
   const rollback = useWorkflowEditorStore((s) => s.rollback)
+  const loadMoreVersions = useWorkflowEditorStore((s) => s.loadMoreVersions)
   const saving = useWorkflowEditorStore((s) => s.saving)
 
   const [restoreTarget, setRestoreTarget] = useState<number | null>(null)
@@ -47,7 +104,7 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
         side="right"
       >
         <div className="flex flex-col gap-section-gap">
-          {versionsLoading && (
+          {versionsLoading && versions.length === 0 && (
             <div className="flex flex-col gap-2">
               {Array.from({ length: 3 }, (_, i) => (
                 <Skeleton key={i} className="h-16 rounded-lg" />
@@ -61,56 +118,28 @@ export function VersionHistoryPanel({ open, onClose }: VersionHistoryPanelProps)
             </p>
           )}
 
-          {!versionsLoading &&
-            versions.map((v) => (
-              <div
-                key={v.version}
-                className="flex flex-col gap-1.5 rounded-lg border border-border p-card"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-xs font-medium text-accent">
-                      v{v.version}
-                    </span>
-                    <span className="text-sm text-foreground">{v.name}</span>
-                  </div>
-                  {v.version === definition?.version && (
-                    <span className="text-xs text-success">Current</span>
-                  )}
-                </div>
+          {versions.map((v) => (
+            <VersionCard
+              key={v.version}
+              v={v}
+              definition={definition}
+              saving={saving}
+              onCompare={handleCompare}
+              onRestore={handleRestore}
+            />
+          ))}
 
-                <div className="flex items-center gap-2 text-xs text-muted">
-                  <Clock className="size-3" />
-                  <span>{formatRelativeTime(v.saved_at)}</span>
-                  <span>by {v.saved_by}</span>
-                </div>
-
-                <div className="flex gap-1 pt-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCompare(v)}
-                    disabled={v.version === definition?.version}
-                    title="Compare with current"
-                  >
-                    <GitCompare className="size-3.5" />
-                    <span className="ml-1">Compare</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRestore(v.version)}
-                    disabled={
-                      v.version === definition?.version || saving
-                    }
-                    title="Restore this version"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    <span className="ml-1">Restore</span>
-                  </Button>
-                </div>
-              </div>
-            ))}
+          {versionsHasMore && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadMoreVersions}
+              disabled={versionsLoading}
+              className="self-center"
+            >
+              {versionsLoading ? 'Loading...' : 'Load more'}
+            </Button>
+          )}
         </div>
       </Drawer>
 

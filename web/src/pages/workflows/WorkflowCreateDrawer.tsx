@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
@@ -6,15 +6,10 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Button } from '@/components/ui/button'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
-import { createLogger } from '@/lib/logger'
 import { WORKFLOW_TYPES } from '@/utils/constants'
 import { getErrorMessage } from '@/utils/errors'
 import { formatLabel } from '@/utils/format'
 import { BlueprintPicker } from './BlueprintPicker'
-import { listBlueprints } from '@/api/endpoints/workflows'
-import type { BlueprintInfo } from '@/api/types'
-
-const log = createLogger('workflow-create-drawer')
 
 interface WorkflowCreateDrawerProps {
   open: boolean
@@ -48,20 +43,12 @@ const WORKFLOW_TYPE_OPTIONS = WORKFLOW_TYPES.map((t) => ({
 export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProps) {
   const [mode, setMode] = useState<CreateMode>('blank')
   const [selectedBlueprint, setSelectedBlueprint] = useState<string | null>(null)
-  const [blueprintCache, setBlueprintCache] = useState<readonly BlueprintInfo[]>([])
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Fetch blueprints when drawer opens in blueprint mode
-  useEffect(() => {
-    if (open && mode === 'blueprint' && blueprintCache.length === 0) {
-      listBlueprints()
-        .then(setBlueprintCache)
-        .catch((err: unknown) => { log.warn('Failed to pre-fetch blueprints', err) })
-    }
-  }, [open, mode, blueprintCache.length])
+  const blueprints = useWorkflowsStore((s) => s.blueprints)
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -73,7 +60,7 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
     setSelectedBlueprint(name)
     setSubmitError(null)
     if (name) {
-      const bp = blueprintCache.find((b) => b.name === name)
+      const bp = blueprints.find((b) => b.name === name)
       if (bp) {
         setForm((prev) => ({
           ...prev,
@@ -98,9 +85,9 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
 
     setSubmitting(true)
     try {
-      if (mode === 'blueprint' && selectedBlueprint) {
+      if (mode === 'blueprint') {
         await useWorkflowsStore.getState().createFromBlueprint({
-          blueprint_name: selectedBlueprint,
+          blueprint_name: selectedBlueprint!,
           name: form.name.trim(),
           description: form.description.trim() || undefined,
         })

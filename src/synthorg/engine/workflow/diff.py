@@ -11,10 +11,39 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.workflow.definition import (
+    WorkflowEdge,  # noqa: TC001
+    WorkflowNode,  # noqa: TC001
+)
 from synthorg.engine.workflow.version import WorkflowDefinitionVersion  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.workflow_definition import (
+    WORKFLOW_DEF_INVALID_REQUEST,
+)
+
+logger = get_logger(__name__)
 
 #: Position changes below this threshold (pixels) are ignored.
 POSITION_CHANGE_THRESHOLD: float = 1.0
+
+
+def _validate_change_values(
+    change_type: str,
+    old_value: dict[str, object] | None,
+    new_value: dict[str, object] | None,
+) -> None:
+    """Validate old_value/new_value presence rules per change_type."""
+    if change_type == "added":
+        if old_value is not None or new_value is None:
+            msg = "added change must have new_value only"
+            raise ValueError(msg)
+    elif change_type == "removed":
+        if old_value is None or new_value is not None:
+            msg = "removed change must have old_value only"
+            raise ValueError(msg)
+    elif old_value is None or new_value is None:
+        msg = f"{change_type} change must have both old_value and new_value"
+        raise ValueError(msg)
 
 
 class NodeChange(BaseModel):
@@ -44,17 +73,11 @@ class NodeChange(BaseModel):
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
         """Enforce old_value/new_value presence rules per change_type."""
-        if self.change_type == "added":
-            if self.old_value is not None or self.new_value is None:
-                msg = "added change must have new_value only"
-                raise ValueError(msg)
-        elif self.change_type == "removed":
-            if self.old_value is None or self.new_value is not None:
-                msg = "removed change must have old_value only"
-                raise ValueError(msg)
-        elif self.old_value is None or self.new_value is None:
-            msg = f"{self.change_type} change must have both old_value and new_value"
-            raise ValueError(msg)
+        _validate_change_values(
+            self.change_type,
+            self.old_value,
+            self.new_value,
+        )
         return self
 
 
@@ -84,17 +107,11 @@ class EdgeChange(BaseModel):
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
         """Enforce old_value/new_value presence rules per change_type."""
-        if self.change_type == "added":
-            if self.old_value is not None or self.new_value is None:
-                msg = "added change must have new_value only"
-                raise ValueError(msg)
-        elif self.change_type == "removed":
-            if self.old_value is None or self.new_value is not None:
-                msg = "removed change must have old_value only"
-                raise ValueError(msg)
-        elif self.old_value is None or self.new_value is None:
-            msg = f"{self.change_type} change must have both old_value and new_value"
-            raise ValueError(msg)
+        _validate_change_values(
+            self.change_type,
+            self.old_value,
+            self.new_value,
+        )
         return self
 
 
@@ -139,9 +156,9 @@ class WorkflowDiff(BaseModel):
 
     @model_validator(mode="after")
     def _validate_version_range(self) -> Self:
-        """Reject diffs where source and target are the same."""
-        if self.from_version == self.to_version:
-            msg = "from_version and to_version must differ"
+        """Reject diffs where source version is not less than target."""
+        if self.from_version >= self.to_version:
+            msg = "from_version must be less than to_version"
             raise ValueError(msg)
         return self
 
@@ -164,6 +181,12 @@ def compute_diff(
     """
     if old.definition_id != new.definition_id:
         msg = "Cannot diff versions from different definitions"
+        logger.warning(
+            WORKFLOW_DEF_INVALID_REQUEST,
+            old_definition_id=old.definition_id,
+            new_definition_id=new.definition_id,
+            reason=msg,
+        )
         raise ValueError(msg)
 
     node_changes = _diff_nodes(old, new)
@@ -180,6 +203,76 @@ def compute_diff(
         metadata_changes=tuple(metadata_changes),
         summary=summary,
     )
+
+
+def _compare_matched_node(
+    node_id: str,
+    old_node: WorkflowNode,
+    new_node: WorkflowNode,
+) -> list[NodeChange]:
+    """Compare a single matched node pair and return all changes.
+
+    Args:
+        node_id: The shared node ID.
+        old_node: The node from the earlier version.
+        new_node: The node from the later version.
+
+    Returns:
+        A list of ``NodeChange`` items for every detected difference.
+    """
+    changes: list[NodeChange] = []
+
+    if old_node.type != new_node.type:
+        changes.append(
+            NodeChange(
+                node_id=node_id,
+                change_type="type_changed",
+                old_value={"type": old_node.type.value},
+                new_value={"type": new_node.type.value},
+            )
+        )
+
+    if old_node.label != new_node.label:
+        changes.append(
+            NodeChange(
+                node_id=node_id,
+                change_type="label_changed",
+                old_value={"label": old_node.label},
+                new_value={"label": new_node.label},
+            )
+        )
+
+    dx = abs(old_node.position_x - new_node.position_x)
+    dy = abs(old_node.position_y - new_node.position_y)
+    if dx > POSITION_CHANGE_THRESHOLD or dy > POSITION_CHANGE_THRESHOLD:
+        changes.append(
+            NodeChange(
+                node_id=node_id,
+                change_type="moved",
+                old_value={
+                    "position_x": old_node.position_x,
+                    "position_y": old_node.position_y,
+                },
+                new_value={
+                    "position_x": new_node.position_x,
+                    "position_y": new_node.position_y,
+                },
+            )
+        )
+
+    old_cfg = dict(old_node.config) if old_node.config else {}
+    new_cfg = dict(new_node.config) if new_node.config else {}
+    if old_cfg != new_cfg:
+        changes.append(
+            NodeChange(
+                node_id=node_id,
+                change_type="config_changed",
+                old_value={"config": old_cfg},
+                new_value={"config": new_cfg},
+            )
+        )
+
+    return changes
 
 
 def _diff_nodes(
@@ -215,58 +308,68 @@ def _diff_nodes(
 
     # Matched nodes -- check for modifications.
     for nid in sorted(old_map.keys() & new_map.keys()):
-        o = old_map[nid]
-        n = new_map[nid]
+        changes.extend(
+            _compare_matched_node(nid, old_map[nid], new_map[nid]),
+        )
 
-        if o.type != n.type:
-            changes.append(
-                NodeChange(
-                    node_id=nid,
-                    change_type="type_changed",
-                    old_value={"type": o.type.value},
-                    new_value={"type": n.type.value},
-                )
-            )
+    return changes
 
-        if o.label != n.label:
-            changes.append(
-                NodeChange(
-                    node_id=nid,
-                    change_type="label_changed",
-                    old_value={"label": o.label},
-                    new_value={"label": n.label},
-                )
-            )
 
-        dx = abs(o.position_x - n.position_x)
-        dy = abs(o.position_y - n.position_y)
-        if dx > POSITION_CHANGE_THRESHOLD or dy > POSITION_CHANGE_THRESHOLD:
-            changes.append(
-                NodeChange(
-                    node_id=nid,
-                    change_type="moved",
-                    old_value={
-                        "position_x": o.position_x,
-                        "position_y": o.position_y,
-                    },
-                    new_value={
-                        "position_x": n.position_x,
-                        "position_y": n.position_y,
-                    },
-                )
-            )
+def _compare_matched_edge(
+    edge_id: str,
+    old_edge: WorkflowEdge,
+    new_edge: WorkflowEdge,
+) -> list[EdgeChange]:
+    """Compare a single matched edge pair and return all changes.
 
-        old_cfg = dict(o.config) if o.config else {}
-        new_cfg = dict(n.config) if n.config else {}
-        if old_cfg != new_cfg:
-            changes.append(
-                NodeChange(
-                    node_id=nid,
-                    change_type="config_changed",
-                    old_value={"config": old_cfg},
-                    new_value={"config": new_cfg},
-                )
+    Args:
+        edge_id: The shared edge ID.
+        old_edge: The edge from the earlier version.
+        new_edge: The edge from the later version.
+
+    Returns:
+        A list of ``EdgeChange`` items for every detected difference.
+    """
+    changes: list[EdgeChange] = []
+
+    if (
+        old_edge.source_node_id != new_edge.source_node_id
+        or old_edge.target_node_id != new_edge.target_node_id
+    ):
+        changes.append(
+            EdgeChange(
+                edge_id=edge_id,
+                change_type="reconnected",
+                old_value={
+                    "source_node_id": old_edge.source_node_id,
+                    "target_node_id": old_edge.target_node_id,
+                },
+                new_value={
+                    "source_node_id": new_edge.source_node_id,
+                    "target_node_id": new_edge.target_node_id,
+                },
             )
+        )
+
+    if old_edge.type != new_edge.type:
+        changes.append(
+            EdgeChange(
+                edge_id=edge_id,
+                change_type="type_changed",
+                old_value={"type": old_edge.type.value},
+                new_value={"type": new_edge.type.value},
+            )
+        )
+
+    if old_edge.label != new_edge.label:
+        changes.append(
+            EdgeChange(
+                edge_id=edge_id,
+                change_type="label_changed",
+                old_value={"label": old_edge.label},
+                new_value={"label": new_edge.label},
+            )
+        )
 
     return changes
 
@@ -304,44 +407,9 @@ def _diff_edges(
 
     # Matched edges -- check for modifications.
     for eid in sorted(old_map.keys() & new_map.keys()):
-        o = old_map[eid]
-        n = new_map[eid]
-
-        if o.source_node_id != n.source_node_id or o.target_node_id != n.target_node_id:
-            changes.append(
-                EdgeChange(
-                    edge_id=eid,
-                    change_type="reconnected",
-                    old_value={
-                        "source_node_id": o.source_node_id,
-                        "target_node_id": o.target_node_id,
-                    },
-                    new_value={
-                        "source_node_id": n.source_node_id,
-                        "target_node_id": n.target_node_id,
-                    },
-                )
-            )
-
-        if o.type != n.type:
-            changes.append(
-                EdgeChange(
-                    edge_id=eid,
-                    change_type="type_changed",
-                    old_value={"type": o.type.value},
-                    new_value={"type": n.type.value},
-                )
-            )
-
-        if o.label != n.label:
-            changes.append(
-                EdgeChange(
-                    edge_id=eid,
-                    change_type="label_changed",
-                    old_value={"label": o.label},
-                    new_value={"label": n.label},
-                )
-            )
+        changes.extend(
+            _compare_matched_edge(eid, old_map[eid], new_map[eid]),
+        )
 
     return changes
 

@@ -12,6 +12,9 @@ from synthorg.core.enums import (
 from synthorg.engine.workflow.definition import WorkflowEdge, WorkflowNode
 from synthorg.engine.workflow.diff import (
     POSITION_CHANGE_THRESHOLD,
+    EdgeChange,
+    NodeChange,
+    WorkflowDiff,
     compute_diff,
 )
 from synthorg.engine.workflow.version import WorkflowDefinitionVersion
@@ -48,6 +51,20 @@ def _ver(version: int = 1, **overrides: object) -> WorkflowDefinitionVersion:
     }
     defaults.update(overrides)
     return WorkflowDefinitionVersion.model_validate(defaults)
+
+
+# ── Cross-definition error ──────────────────────────────────────
+
+
+class TestCrossDefinitionError:
+    """compute_diff rejects versions from different definitions."""
+
+    @pytest.mark.unit
+    def test_different_definition_ids_raises(self) -> None:
+        v1 = _ver(1, definition_id="wfdef-alpha")
+        v2 = _ver(2, definition_id="wfdef-beta")
+        with pytest.raises(ValueError, match="different definitions"):
+            compute_diff(v1, v2)
 
 
 # ── Identical versions ──────────────────────────────────────────
@@ -322,3 +339,112 @@ class TestSummary:
         v2 = _ver(2)
         diff = compute_diff(v1, v2)
         assert diff.summary == "No changes"
+
+
+# ── Model validator tests ────────────────────────────────────────
+
+
+class TestNodeChangeValidation:
+    """NodeChange._validate_values enforcement."""
+
+    @pytest.mark.unit
+    def test_added_with_old_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="added"):
+            NodeChange(
+                node_id="n1",
+                change_type="added",
+                old_value={"x": 1},
+                new_value={"x": 2},
+            )
+
+    @pytest.mark.unit
+    def test_removed_with_new_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="removed"):
+            NodeChange(
+                node_id="n1",
+                change_type="removed",
+                old_value={"x": 1},
+                new_value={"x": 2},
+            )
+
+    @pytest.mark.unit
+    def test_moved_missing_old_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="moved"):
+            NodeChange(
+                node_id="n1",
+                change_type="moved",
+                new_value={"position_x": 10.0},
+            )
+
+    @pytest.mark.unit
+    def test_moved_missing_new_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="moved"):
+            NodeChange(
+                node_id="n1",
+                change_type="moved",
+                old_value={"position_x": 5.0},
+            )
+
+
+class TestEdgeChangeValidation:
+    """EdgeChange._validate_values enforcement."""
+
+    @pytest.mark.unit
+    def test_added_with_old_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="added"):
+            EdgeChange(
+                edge_id="e1",
+                change_type="added",
+                old_value={"source_node_id": "a"},
+                new_value={"source_node_id": "b"},
+            )
+
+    @pytest.mark.unit
+    def test_removed_with_new_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="removed"):
+            EdgeChange(
+                edge_id="e1",
+                change_type="removed",
+                old_value={"source_node_id": "a"},
+                new_value={"source_node_id": "b"},
+            )
+
+    @pytest.mark.unit
+    def test_reconnected_missing_old_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="reconnected"):
+            EdgeChange(
+                edge_id="e1",
+                change_type="reconnected",
+                new_value={"source_node_id": "b"},
+            )
+
+    @pytest.mark.unit
+    def test_reconnected_missing_new_value_raises(self) -> None:
+        with pytest.raises(ValueError, match="reconnected"):
+            EdgeChange(
+                edge_id="e1",
+                change_type="reconnected",
+                old_value={"source_node_id": "a"},
+            )
+
+
+class TestWorkflowDiffVersionRangeValidation:
+    """WorkflowDiff._validate_version_range enforcement."""
+
+    @pytest.mark.unit
+    def test_same_from_to_version_raises(self) -> None:
+        with pytest.raises(ValueError, match="from_version must be less"):
+            WorkflowDiff(
+                definition_id="wfdef-test",
+                from_version=3,
+                to_version=3,
+            )
+
+    @pytest.mark.unit
+    def test_from_greater_than_to_raises(self) -> None:
+        with pytest.raises(ValueError, match="from_version must be less"):
+            WorkflowDiff(
+                definition_id="wfdef-test",
+                from_version=5,
+                to_version=2,
+            )

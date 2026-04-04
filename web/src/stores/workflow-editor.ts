@@ -30,6 +30,7 @@ import {
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workflow-editor/copy-paste'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const MAX_UNDO = 50
 
@@ -69,6 +70,7 @@ export interface WorkflowEditorState {
   versionHistoryOpen: boolean
   versions: readonly WorkflowDefinitionVersionSummary[]
   versionsLoading: boolean
+  versionsHasMore: boolean
   diffResult: WorkflowDiff | null
   diffLoading: boolean
 
@@ -92,6 +94,7 @@ export interface WorkflowEditorState {
   pasteNodes: () => void
   toggleVersionHistory: () => void
   loadVersions: () => Promise<void>
+  loadMoreVersions: () => Promise<void>
   loadDiff: (fromVersion: number, toVersion: number) => Promise<void>
   clearDiff: () => void
   rollback: (targetVersion: number) => Promise<void>
@@ -168,6 +171,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   versionHistoryOpen: false,
   versions: [],
   versionsLoading: false,
+  versionsHasMore: false,
   diffResult: null,
   diffLoading: false,
 
@@ -207,7 +211,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
-      log.warn('Failed to load workflow definition', err)
+      log.warn('Failed to load workflow definition', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -244,7 +248,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
-      log.warn('Failed to create workflow definition', err)
+      log.warn('Failed to create workflow definition', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -290,11 +294,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 409 && definition) {
-        log.warn('Version conflict saving workflow, reloading', err)
+        log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
         set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
-        log.warn('Failed to save workflow definition', err)
+        log.warn('Failed to save workflow definition', sanitizeForLog(err))
         set({ saving: false, error: getErrorMessage(err) })
       }
     }
@@ -520,7 +524,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       })
       set({ validationResult: result, validating: false })
     } catch (err) {
-      log.warn('Workflow validation failed', err)
+      log.warn('Workflow validation failed', sanitizeForLog(err))
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })
     }
   },
@@ -568,12 +572,45 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   loadVersions: async () => {
     const defn = get().definition
     if (!defn) return
+    const capturedDefnId = defn.id
     set({ versionsLoading: true })
     try {
-      const result = await listWorkflowVersions(defn.id, { limit: 50 })
-      set({ versions: result.data, versionsLoading: false })
+      const limit = 50
+      const result = await listWorkflowVersions(capturedDefnId, { limit })
+      if (get().definition?.id !== capturedDefnId) return
+      set({
+        versions: result.data,
+        versionsLoading: false,
+        versionsHasMore: result.data.length >= limit,
+      })
     } catch (err) {
-      log.warn('Failed to load versions', err)
+      if (get().definition?.id !== capturedDefnId) return
+      log.warn('Failed to load versions', sanitizeForLog(err))
+      set({ versionsLoading: false, error: getErrorMessage(err) })
+    }
+  },
+
+  loadMoreVersions: async () => {
+    const defn = get().definition
+    if (!defn) return
+    const capturedDefnId = defn.id
+    const currentVersions = get().versions
+    set({ versionsLoading: true })
+    try {
+      const limit = 50
+      const result = await listWorkflowVersions(capturedDefnId, {
+        limit,
+        offset: currentVersions.length,
+      })
+      if (get().definition?.id !== capturedDefnId) return
+      set({
+        versions: [...currentVersions, ...result.data],
+        versionsLoading: false,
+        versionsHasMore: result.data.length >= limit,
+      })
+    } catch (err) {
+      if (get().definition?.id !== capturedDefnId) return
+      log.warn('Failed to load more versions', sanitizeForLog(err))
       set({ versionsLoading: false, error: getErrorMessage(err) })
     }
   },
@@ -581,12 +618,17 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   loadDiff: async (fromVersion: number, toVersion: number) => {
     const defn = get().definition
     if (!defn) return
+    const capturedDefnId = defn.id
+    const capturedFrom = fromVersion
+    const capturedTo = toVersion
     set({ diffLoading: true })
     try {
-      const diff = await getWorkflowDiff(defn.id, fromVersion, toVersion)
+      const diff = await getWorkflowDiff(capturedDefnId, capturedFrom, capturedTo)
+      if (get().definition?.id !== capturedDefnId) return
       set({ diffResult: diff, diffLoading: false })
     } catch (err) {
-      log.warn('Failed to load diff', err)
+      if (get().definition?.id !== capturedDefnId) return
+      log.warn('Failed to load diff', sanitizeForLog(err))
       set({ diffLoading: false, error: getErrorMessage(err) })
     }
   },
@@ -604,12 +646,17 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         target_version: targetVersion,
         expected_version: defn.version,
       })
-      set({ definition: updated, saving: false, dirty: false })
+      set({ definition: updated, saving: false, dirty: false, diffResult: null })
       // Reload the definition to refresh editor state.
       await useWorkflowEditorStore.getState().loadDefinition(updated.id)
+      // Check if loadDefinition set an error
+      if (get().error) {
+        set({ saving: false })
+        return
+      }
       await useWorkflowEditorStore.getState().loadVersions()
     } catch (err) {
-      log.warn('Rollback failed', err)
+      log.warn('Rollback failed', sanitizeForLog(err))
       set({ saving: false, error: getErrorMessage(err) })
     }
   },
@@ -633,6 +680,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       versionHistoryOpen: false,
       versions: [],
       versionsLoading: false,
+      versionsHasMore: false,
       diffResult: null,
       diffLoading: false,
     })
