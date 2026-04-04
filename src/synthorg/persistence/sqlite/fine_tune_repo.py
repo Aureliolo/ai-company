@@ -488,6 +488,7 @@ class SQLiteFineTuneCheckpointRepository:
             )
             if cursor.rowcount == 0:
                 # Race: became active between SELECT and DELETE.
+                await self._db.rollback()
                 msg = f"Cannot delete active checkpoint {checkpoint_id}"
                 logger.warning(
                     MEMORY_FINE_TUNE_PERSIST_FAILED,

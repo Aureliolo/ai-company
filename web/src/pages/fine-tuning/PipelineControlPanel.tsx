@@ -107,12 +107,18 @@ export function PipelineControlPanel() {
         size="sm"
         onClick={() => setShowAdvanced(!showAdvanced)}
         className="self-start"
+        aria-expanded={showAdvanced}
+        aria-controls="advanced-options-panel"
       >
         {showAdvanced ? 'Hide' : 'Show'} Advanced Options
       </Button>
 
       {showAdvanced && (
-        <div className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card">
+        <div
+          id="advanced-options-panel"
+          aria-hidden={!showAdvanced}
+          className="grid grid-cols-3 gap-grid-gap rounded-lg border border-border p-card"
+        >
           <InputField label="Epochs" value={epochs} onValueChange={setEpochs} hint="Training epochs" />
           <InputField label="Learning Rate" value={learningRate} onValueChange={setLearningRate} />
           <InputField label="Batch Size" value={effectiveBatchSize} onValueChange={setBatchSize} />

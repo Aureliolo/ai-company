@@ -212,8 +212,8 @@ class TestStoreAndGet:
         connected: InMemoryBackend,
     ) -> None:
         mid = await connected.store("agent-a", _req())
-        assert mid
-        assert len(mid) > 0
+        assert isinstance(mid, str)
+        assert mid != ""
 
     async def test_get_returns_entry(
         self,

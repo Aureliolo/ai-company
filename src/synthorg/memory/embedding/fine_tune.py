@@ -559,11 +559,15 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         queries,
         show_progress_bar=False,
     )
+    if cancellation is not None:
+        cancellation.check()
     ft_p_embs = await asyncio.to_thread(
         finetuned.encode,
         passages,
         show_progress_bar=False,
     )
+    if cancellation is not None:
+        cancellation.check()
     if progress_callback:
         progress_callback(0.5)
 
@@ -572,6 +576,8 @@ async def evaluate_checkpoint(  # noqa: PLR0913
         queries,
         show_progress_bar=False,
     )
+    if cancellation is not None:
+        cancellation.check()
     base_p_embs = await asyncio.to_thread(
         base.encode,
         passages,
@@ -686,6 +692,7 @@ async def deploy_checkpoint(
             reason="config_path provided without settings_service"
             " -- file-based config update not implemented",
         )
+        return None
 
     # Back up current config if settings service is available.
     backup: dict[str, str] = {}

@@ -383,7 +383,7 @@ class TestRetrieveFanout:
         # Should NOT raise -- graceful degradation.
         result = await connected.retrieve("a", MemoryQuery())
         # Only the durable backend's entry survives.
-        assert len(result) >= 1
+        assert len(result) == 1
         contents = {e.content for e in result}
         assert "durable-item" in contents
 

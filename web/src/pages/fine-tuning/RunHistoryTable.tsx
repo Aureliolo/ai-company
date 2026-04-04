@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow'
 
 import type { FineTuneRun, FineTuneStage } from '@/api/endpoints/fine-tuning'
+import { ACTIVE_STAGES } from '@/api/endpoints/fine-tuning'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useFineTuningStore } from '@/stores/fine-tuning'
@@ -36,7 +37,7 @@ function RunRow({ run }: { run: FineTuneRun }) {
         </span>
       </td>
       <td className="py-2 pr-4 text-xs text-muted-foreground">
-        {run.stages_completed.length}/5
+        {run.stages_completed.length}/{ACTIVE_STAGES.size}
       </td>
       <td className="py-2 font-mono text-xs text-muted-foreground">
         {run.config.source_dir}
@@ -87,16 +88,17 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}m`
 }
 
+const STAGE_LABELS: Record<FineTuneStage, string> = {
+  complete: 'Completed',
+  failed: 'Failed',
+  idle: 'Idle',
+  generating_data: 'Generating',
+  mining_negatives: 'Mining',
+  training: 'Training',
+  evaluating: 'Evaluating',
+  deploying: 'Deploying',
+}
+
 function formatStage(stage: FineTuneStage): string {
-  const labels: Record<FineTuneStage, string> = {
-    complete: 'Completed',
-    failed: 'Failed',
-    idle: 'Idle',
-    generating_data: 'Generating',
-    mining_negatives: 'Mining',
-    training: 'Training',
-    evaluating: 'Evaluating',
-    deploying: 'Deploying',
-  }
-  return labels[stage] ?? stage
+  return STAGE_LABELS[stage] ?? stage
 }
