@@ -40,8 +40,9 @@ export function computeLineDiff(
   serverText: string,
   editedText: string,
 ): LineDiff[] {
-  const serverLines = serverText.split('\n')
-  const editedLines = editedText.split('\n')
+  if (serverText === editedText) return []
+  const serverLines = serverText.replace(/\r\n/g, '\n').split('\n')
+  const editedLines = editedText.replace(/\r\n/g, '\n').split('\n')
   const diffs: LineDiff[] = []
 
   // LCS-based diff: find longest common subsequence to identify
@@ -85,7 +86,7 @@ export function computeLineDiff(
   // Unmatched server lines are removals (shown at nearest edited position)
   for (let i = 0; i < n; i++) {
     if (!serverMatched.has(i)) {
-      diffs.push({ line: Math.min(i + 1, m), kind: 'removed' })
+      diffs.push({ line: Math.max(1, Math.min(i + 1, m)), kind: 'removed' })
     }
   }
 
@@ -186,8 +187,8 @@ export function diffGutterExtension(): Extension {
         const builder = new RangeSetBuilder<GutterMarker>()
         const doc = view.state.doc
 
-        // Sort diffs by line to satisfy RangeSetBuilder ordering
-        const sorted = [...diffs].sort((a, b) => a.line - b.line)
+        // diffs are already sorted by line from computeLineDiff
+        const sorted = diffs
         const seen = new Set<number>()
 
         for (const diff of sorted) {

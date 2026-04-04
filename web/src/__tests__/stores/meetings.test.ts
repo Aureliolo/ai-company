@@ -234,7 +234,7 @@ describe('handleWsEvent', () => {
   })
 
   it('ignores event without meeting field', () => {
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const event: WsEvent = {
       channel: 'meetings',
       event_type: 'meeting.completed',
@@ -245,12 +245,12 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
-    expect(debugSpy).toHaveBeenCalledOnce()
-    debugSpy.mockRestore()
+    expect(warnSpy).toHaveBeenCalledOnce()
+    warnSpy.mockRestore()
   })
 
   it('ignores event where meeting is an array', () => {
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const event: WsEvent = {
       channel: 'meetings',
       event_type: 'meeting.completed',
@@ -261,12 +261,12 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
-    expect(debugSpy).toHaveBeenCalledOnce()
-    debugSpy.mockRestore()
+    expect(warnSpy).toHaveBeenCalledOnce()
+    warnSpy.mockRestore()
   })
 
   it('ignores event where meeting is a primitive', () => {
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const event: WsEvent = {
       channel: 'meetings',
       event_type: 'meeting.completed',
@@ -277,8 +277,8 @@ describe('handleWsEvent', () => {
     useMeetingsStore.getState().handleWsEvent(event)
 
     expect(useMeetingsStore.getState().meetings).toHaveLength(0)
-    expect(debugSpy).toHaveBeenCalledOnce()
-    debugSpy.mockRestore()
+    expect(warnSpy).toHaveBeenCalledOnce()
+    warnSpy.mockRestore()
   })
 })
 

@@ -1,9 +1,9 @@
 /**
  * Tests for the settings editor autocomplete extension.
  *
- * Tests the exported settingsAutocompleteExtension indirectly
- * by verifying the completion schema builder and the JSON/YAML
- * completion sources via minimal CompletionContext mocks.
+ * Verifies that settingsAutocompleteExtension can be constructed for
+ * representative JSON/YAML formats and entry shapes, and returns a
+ * truthy CodeMirror Extension for those inputs.
  */
 
 import { settingsAutocompleteExtension } from '@/pages/settings/editor-autocomplete'

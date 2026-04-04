@@ -75,7 +75,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       })
     } catch (err) {
       if (seq !== listRequestSeq) {
-        log.warn('Discarding error from stale list request:', err)
+        log.warn('Discarding error from stale list request:', getErrorMessage(err))
         return
       }
       set({ loading: false, error: getErrorMessage(err) })
@@ -96,7 +96,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       set({ selectedMeeting: meeting, loadingDetail: false, detailError: null })
     } catch (err) {
       if (seq !== detailRequestSeq) {
-        log.warn('Discarding error from stale detail request:', err)
+        log.warn('Discarding error from stale detail request:', getErrorMessage(err))
         return
       }
       set({ loadingDetail: false, detailError: getErrorMessage(err) })
@@ -114,7 +114,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
       }))
       return meetings
     } catch (err) {
-      log.error('triggerMeeting failed:', err)
+      log.error('triggerMeeting failed:', getErrorMessage(err))
       set({ triggering: false })
       throw err
     }
@@ -123,7 +123,7 @@ export const useMeetingsStore = create<MeetingsState>()((set, get) => ({
   handleWsEvent: (event) => {
     const { payload } = event
     if (!payload.meeting || typeof payload.meeting !== 'object' || Array.isArray(payload.meeting)) {
-      console.debug('[meetings/ws] Event has no meeting payload, skipping:', event.event_type)
+      log.warn('Event has no meeting payload, skipping:', event.event_type)
       return
     }
     const candidate = payload.meeting as Record<string, unknown>

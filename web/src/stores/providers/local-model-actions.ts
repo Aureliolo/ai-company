@@ -4,9 +4,12 @@ import {
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
 import type { LocalModelParams } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
+
+const log = createLogger('providers')
 
 let _pullAbortController: AbortController | null = null
 
@@ -49,6 +52,7 @@ export function createLocalModelActions(set: ProvidersSet, get: ProvidersGet) {
         return true
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
+          log.error('Model pull failed:', getErrorMessage(err))
           useToastStore.getState().add({
             variant: 'error',
             title: 'Model pull failed',
@@ -85,6 +89,7 @@ export function createLocalModelActions(set: ProvidersSet, get: ProvidersGet) {
         }
         return true
       } catch (err) {
+        log.error('Failed to delete model:', getErrorMessage(err))
         useToastStore.getState().add({
           variant: 'error',
           title: 'Failed to delete model',
@@ -103,12 +108,14 @@ export function createLocalModelActions(set: ProvidersSet, get: ProvidersGet) {
           variant: 'success',
           title: `Model "${modelId}" config updated`,
         })
+        await get().fetchProviders()
         const detail = get().selectedProvider
         if (detail?.name === name) {
           await get().fetchProviderDetail(name)
         }
         return true
       } catch (err) {
+        log.error('Failed to update model config:', getErrorMessage(err))
         useToastStore.getState().add({
           variant: 'error',
           title: 'Failed to update model config',

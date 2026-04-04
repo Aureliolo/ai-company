@@ -113,6 +113,9 @@ export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {
         // Remove from local state after successful deletion
         set((state) => ({
           providers: state.providers.filter((p) => p.name !== name),
+          healthMap: Object.fromEntries(
+            Object.entries(state.healthMap).filter(([k]) => k !== name),
+          ),
         }))
         useToastStore.getState().add({
           variant: 'success',

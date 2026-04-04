@@ -110,7 +110,7 @@ function findYamlKeyPosition(
   const searchFrom = nsMatch ? nsMatch.index + nsMatch[0].length : 0
   const sub = text.slice(searchFrom)
   // eslint-disable-next-line security/detect-non-literal-regexp -- input is escaped via escapeRegex
-  const keyPattern = new RegExp(`^(\\s+)${escapeRegex(key)}\\s*:`, 'm')
+  const keyPattern = new RegExp(`^(\\s+)["']?${escapeRegex(key)}["']?\\s*:`, 'm')
   const keyMatch = keyPattern.exec(sub)
   if (keyMatch) {
     const offset = searchFrom + keyMatch.index + (keyMatch[1]?.length ?? 0)

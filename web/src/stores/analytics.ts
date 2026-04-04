@@ -106,8 +106,8 @@ export const useAnalyticsStore = create<AnalyticsState>()((set, get) => ({
     try {
       const overview = await getOverviewMetrics()
       set({ overview })
-    } catch {
-      // Lightweight refresh -- don't set error for polling failures
+    } catch (err) {
+      log.warn('Failed to refresh overview (polling):', getErrorMessage(err))
     }
   },
 

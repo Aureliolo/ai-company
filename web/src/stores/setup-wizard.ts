@@ -56,7 +56,7 @@ async function runProbeAll(
     if (entry.status === 'fulfilled') {
       results[entry.value[0]] = entry.value[1]
     } else {
-      log.error(`${label} failed:`, entry.reason)
+      log.error(`${label} failed:`, getErrorMessage(entry.reason))
     }
   }
   return results
@@ -391,7 +391,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const templates = await listTemplates()
       set({ templates, templatesLoading: false })
     } catch (err) {
-      log.error('fetchTemplates failed:', err)
+      log.error('fetchTemplates failed:', getErrorMessage(err))
       set({ templatesError: getErrorMessage(err), templatesLoading: false })
     }
   },
@@ -458,7 +458,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         companyLoading: false,
       })
     } catch (err) {
-      log.error('submitCompany failed:', err)
+      log.error('submitCompany failed:', getErrorMessage(err))
       set({ companyError: getErrorMessage(err), companyLoading: false })
     }
   },
@@ -471,7 +471,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const agents = await getAgents()
       set({ agents: [...agents], agentsLoading: false })
     } catch (err) {
-      log.error('fetchAgents failed:', err)
+      log.error('fetchAgents failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err), agentsLoading: false })
     }
   },
@@ -487,7 +487,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      log.error('updateAgentModel failed:', err)
+      log.error('updateAgentModel failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -500,7 +500,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      log.error('updateAgentName failed:', err)
+      log.error('updateAgentName failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -513,7 +513,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      log.error('randomizeAgentName failed:', err)
+      log.error('randomizeAgentName failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -526,7 +526,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
         agents: s.agents.map((a, i) => i === index ? updated : a),
       }))
     } catch (err) {
-      log.error('updateAgentPersonality failed:', err)
+      log.error('updateAgentPersonality failed:', getErrorMessage(err))
       set({ agentsError: getErrorMessage(err) })
     }
   },
@@ -537,7 +537,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const presets = await listPersonalityPresets()
       set({ personalityPresets: [...presets], personalityPresetsLoading: false })
     } catch (err) {
-      log.error('fetchPersonalityPresets failed:', err)
+      log.error('fetchPersonalityPresets failed:', getErrorMessage(err))
       set({ personalityPresetsError: getErrorMessage(err), personalityPresetsLoading: false })
     }
   },
@@ -550,7 +550,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const providers = await listProviders()
       set({ providers, providersLoading: false })
     } catch (err) {
-      log.error('fetchProviders failed:', err)
+      log.error('fetchProviders failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err), providersLoading: false })
     }
   },
@@ -561,7 +561,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       const presets = await listPresets()
       set({ presets, presetsLoading: false })
     } catch (err) {
-      log.error('fetchPresets failed:', err)
+      log.error('fetchPresets failed:', getErrorMessage(err))
       set({ presetsError: getErrorMessage(err), presetsLoading: false })
     }
   },
@@ -685,7 +685,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
     try {
       return await testConnection(name)
     } catch (err) {
-      log.error('testProviderConnection failed:', err)
+      log.error('testProviderConnection failed:', getErrorMessage(err))
       set({ providersError: getErrorMessage(err) })
       throw err
     }
@@ -733,7 +733,7 @@ export const useSetupWizardStore = create<SetupWizardState>()((set, get) => ({
       await completeSetup()
       set({ completing: false })
     } catch (err) {
-      log.error('completeSetup failed:', err)
+      log.error('completeSetup failed:', getErrorMessage(err))
       set({ completionError: getErrorMessage(err), completing: false })
       throw err
     }

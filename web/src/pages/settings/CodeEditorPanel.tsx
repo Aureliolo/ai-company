@@ -258,7 +258,7 @@ export function CodeEditorPanel({ entries, onSave, saving, onDirtyChange }: Code
         )}
       </div>
 
-      <div className={cn('gap-3', splitView ? 'grid grid-cols-1 md:grid-cols-2' : 'grid grid-cols-1')}>
+      <div className={cn('gap-grid-gap', splitView ? 'grid grid-cols-1 md:grid-cols-2' : 'grid grid-cols-1')}>
         {splitView && (
           <div className="space-y-1">
             <span className="text-micro font-medium uppercase tracking-wider text-text-muted">Current</span>

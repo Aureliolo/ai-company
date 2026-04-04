@@ -56,7 +56,7 @@ export function formatCurrency(value: number, currencyCode: string = 'EUR'): str
       currency: currencyCode,
     }).format(value)
   } catch (error) {
-    log.error(`Intl.NumberFormat failed for currency "${currencyCode}":`, error)
+    log.error('Intl.NumberFormat failed for currency:', currencyCode, error)
     const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : THREE_DECIMAL_CURRENCIES.has(currencyCode) ? 3 : 2
     return `${currencyCode} ${value.toFixed(digits)}`
   }

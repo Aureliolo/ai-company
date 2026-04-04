@@ -44,9 +44,7 @@ class ErrorBoundaryInner extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    if (import.meta.env.DEV) {
-      log.error('ErrorBoundary caught:', error, info.componentStack)
-    }
+    log.error('ErrorBoundary caught:', error, info.componentStack)
   }
 
   resetErrorBoundary = () => {
@@ -54,9 +52,7 @@ class ErrorBoundaryInner extends Component<
     try {
       this.props.onReset?.()
     } catch (err) {
-      if (import.meta.env.DEV) {
-        log.error('ErrorBoundary onReset failed:', err)
-      }
+      log.error('ErrorBoundary onReset failed:', err)
     }
   }
 

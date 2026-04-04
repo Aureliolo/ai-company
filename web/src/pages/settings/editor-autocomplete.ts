@@ -139,7 +139,9 @@ function jsonCompletionSource(
         options: keyInfo.map((k) => ({
           label: k.key,
           type: 'property',
-          detail: `${k.type}${k.enumValues.length > 0 ? ` (${k.enumValues.join(' | ')})` : ''}`,
+          detail: k.enumValues.length > 0
+            ? `${k.type} (${k.enumValues.join(' | ')})`
+            : k.type,
           info: k.description,
         })),
       }
@@ -178,8 +180,8 @@ function yamlCompletionSource(
     const indent = indentMatch?.[1]?.length ?? 0
 
     // Check if we're typing a value after "key: " for enum autocomplete
-    const valueMatch = /^\s{2,}(\w[\w_]*)\s*:\s*(\S*)$/.exec(beforeOnLine)
-    if (valueMatch && indent >= 2) {
+    const valueMatch = /^\s+(\w[\w_]*)\s*:\s*(\S*)$/.exec(beforeOnLine)
+    if (valueMatch && indent > 0) {
       const settingKey = valueMatch[1] ?? ''
       const partial = valueMatch[2] ?? ''
 
@@ -220,7 +222,7 @@ function yamlCompletionSource(
     const partial = keyTyping
     const from = pos - partial.length
 
-    if (indent >= 2) {
+    if (indent > 0) {
       // Indented -- inside a namespace, suggest setting keys
       const linesAbove = text.slice(0, lineObj.from).split('\n')
       let ns: string | null = null
@@ -239,7 +241,9 @@ function yamlCompletionSource(
         options: keyInfo.map((k) => ({
           label: k.key,
           type: 'property',
-          detail: `${k.type}${k.enumValues.length > 0 ? ` (${k.enumValues.join(' | ')})` : ''}`,
+          detail: k.enumValues.length > 0
+            ? `${k.type} (${k.enumValues.join(' | ')})`
+            : k.type,
           info: k.description,
           apply: `${k.key}: `,
         })),
@@ -262,6 +266,20 @@ function yamlCompletionSource(
 
 // ── Extension factory ─────────────────────────────────────────
 
+let _cachedEntries: SettingEntry[] | null = null
+let _cachedSchema: CompletionSchemaInfo | null = null
+
+function getOrBuildSchema(
+  entries: SettingEntry[],
+): CompletionSchemaInfo {
+  if (_cachedEntries === entries && _cachedSchema) {
+    return _cachedSchema
+  }
+  _cachedSchema = buildCompletionSchema(entries)
+  _cachedEntries = entries
+  return _cachedSchema
+}
+
 /**
  * Create a schema-aware autocomplete extension for the settings editor.
  *
@@ -277,7 +295,7 @@ export function settingsAutocompleteExtension(
       (ctx: CompletionContext) => {
         const entries = getEntries()
         if (entries.length === 0) return null
-        const schema = buildCompletionSchema(entries)
+        const schema = getOrBuildSchema(entries)
         const format = getFormat()
         const source = format === 'json'
           ? jsonCompletionSource(schema)

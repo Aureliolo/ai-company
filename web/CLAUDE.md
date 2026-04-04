@@ -30,11 +30,20 @@ web/src/
   mocks/          # MSW request handlers for Storybook API mocking (handlers/)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/)
   router/         # React Router config, route constants (incl. DOCUMENTATION -- external, not SPA-routed), auth/setup guards
-  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, budget, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, ceremony-policy, and per-domain stores for each page)
+  stores/         # Zustand stores (auth, WebSocket, toast, analytics, setup wizard, company, agents, approvals, budget, meetings, messages, tasks, settings, sinks, providers (split into providers/ sub-modules), artifacts, projects, theme, workflow-editor, ceremony-policy, setup, and per-domain stores for each page)
   styles/         # Design tokens (--so-* CSS custom properties, single source of truth) and Tailwind theme bridge
   utils/          # Constants, error handling, formatting, logging
   __tests__/      # Vitest unit + property tests (mirrors src/ structure)
 ```
+
+## Logging
+
+- **Always** use `createLogger` from `@/lib/logger` -- never bare `console.warn`/`console.error`/`console.debug` in application code
+- **Variable name**: always `log` (e.g. `const log = createLogger('module-name')`)
+- **Only `logger.ts` itself** may use bare console methods
+- **Levels**: `log.debug()` (DEV-only, stripped in production), `log.warn()`, `log.error()`
+- **Static messages**: pass dynamic/untrusted values as separate args (not interpolated into the message string) so they go through `sanitizeArg`
+- **Attacker-controlled fields** inside structured objects must be wrapped in `sanitizeForLog()` before embedding
 
 ## Design System (MANDATORY)
 

@@ -2,6 +2,8 @@ import { sanitizeForLog } from '@/utils/logging'
 
 /** Structured logger returned by {@link createLogger}. */
 export interface Logger {
+  /** Debug-level log, only emitted in development builds. */
+  debug(message: string, ...args: unknown[]): void
   warn(message: string, ...args: unknown[]): void
   error(message: string, ...args: unknown[]): void
 }
@@ -25,6 +27,11 @@ function sanitizeArg(value: unknown): unknown {
 export function createLogger(module: string): Logger {
   const prefix = `[${module}]`
   return {
+    debug(message: string, ...args: unknown[]) {
+      if (import.meta.env.DEV) {
+        console.debug(prefix, message, ...args.map(sanitizeArg))
+      }
+    },
     warn(message: string, ...args: unknown[]) {
       console.warn(prefix, message, ...args.map(sanitizeArg))
     },

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   CancelTaskRequest,
@@ -122,7 +123,7 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
         get().upsertTask(candidate as unknown as Task)
       } else {
         log.error('Received malformed task WS payload, skipping upsert', {
-          id: candidate.id,
+          id: sanitizeForLog(candidate.id),
           hasTitle: typeof candidate.title === 'string',
           hasStatus: typeof candidate.status === 'string',
         })

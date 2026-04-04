@@ -37,7 +37,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   deletingModel: false,
 
   // -- Actions (delegated to focused modules) --
-  ...createListActions(set, get),
+  ...createListActions(set),
   ...createDetailActions(set),
   ...createCrudActions(set, get),
   ...createLocalModelActions(set, get),

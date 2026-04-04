@@ -7,18 +7,15 @@ import { createLogger } from '@/lib/logger'
 import { normalizeProviders } from '@/utils/providers'
 import type { ProviderHealthStatus, ProviderHealthSummary } from '@/api/types'
 import type { ProviderSortKey } from '@/utils/providers'
-import type { ProvidersSet, ProvidersGet } from './types'
+import type { ProvidersSet } from './types'
 
 const log = createLogger('providers')
 
 let _listRequestId = 0
 
-export function createListActions(set: ProvidersSet, get: ProvidersGet) {
+export function createListActions(set: ProvidersSet) {
   return {
     fetchProviders: async () => {
-      // Skip if a CRUD mutation is in flight
-      if (get().mutating) return
-
       const requestId = ++_listRequestId
       set({ listLoading: true, listError: null })
       try {

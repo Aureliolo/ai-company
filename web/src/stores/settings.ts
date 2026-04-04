@@ -71,7 +71,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         return
       }
       if (!CURRENCY_PATTERN.test(currencyEntry.value)) {
-        log.warn(`Invalid currency value: ${currencyEntry.value}, keeping default`)
+        log.warn('Invalid currency value, keeping default:', currencyEntry.value)
         return
       }
       set({ currency: currencyEntry.value })

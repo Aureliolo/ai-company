@@ -1,8 +1,11 @@
 /**
- * Pure utility functions for the Settings code editor.
+ * Utility functions for the Settings code editor.
  *
  * Handles serialization, parsing, validation, and diffing of
  * settings entries in JSON/YAML format.
+ *
+ * Note: this module has a side effect (logger instance) for
+ * structured error reporting in entriesToObject.
  */
 
 import YAML from 'js-yaml'
@@ -14,26 +17,33 @@ const log = createLogger('settings')
 
 export const MAX_EDITOR_BYTES = 65_536
 
-export type CodeFormat = CodeMirrorEditorProps['language']
+export type CodeFormat = Extract<
+  CodeMirrorEditorProps['language'],
+  'json' | 'yaml'
+>
 
 export type ParsedSettings = Record<string, Record<string, unknown>>
 
-export function entriesToObject(entries: SettingEntry[]): Record<string, Record<string, unknown>> {
-  const obj: Record<string, Record<string, unknown>> = {}
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+
+export function entriesToObject(entries: SettingEntry[]): ParsedSettings {
+  const obj = Object.create(null) as ParsedSettings
   for (const entry of entries) {
     const ns = entry.definition.namespace
-    if (!obj[ns]) obj[ns] = {}
+    const key = entry.definition.key
+    if (UNSAFE_KEYS.has(ns) || UNSAFE_KEYS.has(key)) continue
+    if (!obj[ns]) obj[ns] = Object.create(null) as Record<string, unknown>
     // Parse JSON-type values so they embed as real objects/arrays
     // instead of escaped string representations (e.g. "[\"http://...\"]")
     if (entry.definition.type === 'json') {
       try {
-        obj[ns][entry.definition.key] = JSON.parse(entry.value)
+        obj[ns][key] = JSON.parse(entry.value)
       } catch (err) {
-        log.warn(`Failed to parse JSON for ${ns}/${entry.definition.key}:`, err)
-        obj[ns][entry.definition.key] = entry.value
+        log.warn('Failed to parse JSON for setting:', `${ns}/${key}`, err)
+        obj[ns][key] = entry.value
       }
     } else {
-      obj[ns][entry.definition.key] = entry.value
+      obj[ns][key] = entry.value
     }
   }
   return obj
@@ -44,7 +54,10 @@ export function serializeEntries(entries: SettingEntry[], format: CodeFormat): s
   if (format === 'json') {
     return JSON.stringify(obj, null, 2)
   }
-  return YAML.dump(obj, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false })
+  if (format === 'yaml') {
+    return YAML.dump(obj, { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false })
+  }
+  throw new Error(`Unsupported format: ${String(format)}`)
 }
 
 /** Find keys present in original but absent in parsed. */
@@ -107,11 +120,17 @@ export function parseText(text: string, format: CodeFormat): ParsedSettings {
     throw new Error(`Input too large (max ${MAX_EDITOR_BYTES / 1024} KiB)`)
   }
 
-  const raw: unknown = format === 'json'
-    ? JSON.parse(text)
-    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp tags
-    // that could execute arbitrary code. Do not change to DEFAULT_SCHEMA.
-    : YAML.load(text, { schema: YAML.CORE_SCHEMA })
+  let raw: unknown
+  if (format === 'json') {
+    raw = JSON.parse(text)
+  } else if (format === 'yaml') {
+    // CORE_SCHEMA is intentional: disables !!js/function and !!js/regexp
+    // tags that could execute arbitrary code. Do not change to
+    // DEFAULT_SCHEMA.
+    raw = YAML.load(text, { schema: YAML.CORE_SCHEMA })
+  } else {
+    throw new Error(`Unsupported format: ${String(format)}`)
+  }
 
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error(`${format.toUpperCase()} must be an object at the top level`)

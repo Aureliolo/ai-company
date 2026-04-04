@@ -133,6 +133,16 @@ describe('buildChanges', () => {
     const { envKeys } = buildChanges(parsed, original, entryLookup)
     expect(envKeys).toEqual(['api/retries'])
   })
+
+  it('returns empty changes when values are unchanged', () => {
+    const entryLookup = new Map<string, SettingEntry>([
+      ['api/retries', makeEntry({ namespace: 'api', key: 'retries', value: '5' })],
+    ])
+    const original = { api: { retries: '5' } }
+    const parsed = { api: { retries: '5' } }
+    const { changes } = buildChanges(parsed, original, entryLookup)
+    expect(changes.size).toBe(0)
+  })
 })
 
 describe('parseText', () => {
@@ -165,5 +175,15 @@ describe('parseText', () => {
 
   it('rejects invalid JSON syntax', () => {
     expect(() => parseText('{bad json', 'json')).toThrow()
+  })
+
+  it('rejects invalid YAML syntax', () => {
+    expect(() => parseText('api:\n  key: [unclosed', 'yaml')).toThrow()
+  })
+
+  it('rejects dangerous YAML tags (CORE_SCHEMA safety)', () => {
+    // CORE_SCHEMA disables !!js/function and !!js/regexp
+    const malicious = '!!js/function "return 1"'
+    expect(() => parseText(malicious, 'yaml')).toThrow()
   })
 })

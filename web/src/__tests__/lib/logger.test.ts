@@ -61,4 +61,25 @@ describe('createLogger', () => {
     log.warn('a', 'b', { c: 1 })
     expect(warnSpy).toHaveBeenCalledWith('[multi]', 'a', 'b', { c: 1 })
   })
+
+  it('sanitizes null to string "null"', () => {
+    const log = createLogger('m')
+    log.warn('val', null)
+    expect(warnSpy).toHaveBeenCalledWith('[m]', 'val', 'null')
+  })
+
+  it('sanitizes undefined to string "undefined"', () => {
+    const log = createLogger('m')
+    log.warn('val', undefined)
+    expect(warnSpy).toHaveBeenCalledWith('[m]', 'val', 'undefined')
+  })
+
+  it('emits debug only in DEV mode', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const log = createLogger('m')
+    log.debug('test')
+    // In test env, import.meta.env.DEV is true
+    expect(debugSpy).toHaveBeenCalledWith('[m]', 'test')
+    debugSpy.mockRestore()
+  })
 })
