@@ -315,7 +315,8 @@ class TestSessionStoreLoadRevoked:
     ) -> None:
         """Revocations survive store recreation (simulates restart)."""
         store1 = SessionStore(db)
-        await store1.load_revoked()
+        with _patch_now():
+            await store1.load_revoked()
         await store1.create(_make_session())
         await store1.revoke("sess-1")
 

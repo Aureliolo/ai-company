@@ -1,0 +1,170 @@
+"""Tests for workflow blueprint API endpoints."""
+
+from typing import Any
+
+import pytest
+from litestar.testing import TestClient
+
+from synthorg.engine.workflow.blueprint_loader import BUILTIN_BLUEPRINTS
+from tests.unit.api.conftest import make_auth_headers
+
+# ── GET /workflows/blueprints ────────────────────────────────────
+
+
+class TestListWorkflowBlueprints:
+    """Tests for the blueprint listing endpoint."""
+
+    @pytest.mark.unit
+    def test_returns_200_with_blueprints(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get(
+            "/api/v1/workflows/blueprints",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"] is not None
+        assert len(body["data"]) == len(BUILTIN_BLUEPRINTS)
+
+    @pytest.mark.unit
+    def test_returns_blueprint_info_fields(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get(
+            "/api/v1/workflows/blueprints",
+            headers=make_auth_headers("ceo"),
+        )
+        body = resp.json()
+        bp = body["data"][0]
+        assert "name" in bp
+        assert "display_name" in bp
+        assert "description" in bp
+        assert "source" in bp
+        assert "tags" in bp
+        assert "workflow_type" in bp
+        assert "node_count" in bp
+        assert "edge_count" in bp
+
+    @pytest.mark.unit
+    def test_all_builtins_present(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get(
+            "/api/v1/workflows/blueprints",
+            headers=make_auth_headers("ceo"),
+        )
+        names = {bp["name"] for bp in resp.json()["data"]}
+        for builtin_name in BUILTIN_BLUEPRINTS:
+            assert builtin_name in names
+
+
+# ── POST /workflows/from-blueprint ───────────────────────────────
+
+
+class TestCreateFromBlueprint:
+    """Tests for the blueprint instantiation endpoint."""
+
+    @pytest.mark.unit
+    def test_creates_workflow_from_valid_blueprint(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "feature-pipeline"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        data = body["data"]
+        assert data["id"].startswith("wfdef-")
+        assert data["name"] == "Feature Pipeline"
+        assert data["workflow_type"] == "sequential_pipeline"
+
+    @pytest.mark.unit
+    def test_created_workflow_has_correct_nodes_and_edges(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "feature-pipeline"},
+            headers=make_auth_headers("ceo"),
+        )
+        data = resp.json()["data"]
+        # Feature pipeline: start + 5 tasks + end = 7 nodes, 6 edges
+        assert len(data["nodes"]) == 7
+        assert len(data["edges"]) == 6
+
+    @pytest.mark.unit
+    def test_custom_name_overrides(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={
+                "blueprint_name": "feature-pipeline",
+                "name": "My Custom Pipeline",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["name"] == "My Custom Pipeline"
+
+    @pytest.mark.unit
+    def test_custom_description_overrides(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={
+                "blueprint_name": "feature-pipeline",
+                "description": "My custom description",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["description"] == "My custom description"
+
+    @pytest.mark.unit
+    def test_unknown_blueprint_returns_404(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "nonexistent"},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 404
+
+    @pytest.mark.unit
+    def test_blank_blueprint_name_returns_400(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": ""},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.unit
+    def test_created_workflow_is_editable(self, test_client: TestClient[Any]) -> None:
+        """Workflow created from blueprint can be updated like any other."""
+        create_resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": "feature-pipeline"},
+            headers=make_auth_headers("ceo"),
+        )
+        wf_id = create_resp.json()["data"]["id"]
+
+        patch_resp = test_client.patch(
+            f"/api/v1/workflows/{wf_id}",
+            json={"name": "Renamed Pipeline", "expected_version": 1},
+            headers=make_auth_headers("ceo"),
+        )
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["data"]["name"] == "Renamed Pipeline"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("blueprint_name", sorted(BUILTIN_BLUEPRINTS))
+    def test_all_builtins_instantiate(
+        self, test_client: TestClient[Any], blueprint_name: str
+    ) -> None:
+        """Every built-in blueprint can be instantiated successfully."""
+        resp = test_client.post(
+            "/api/v1/workflows/from-blueprint",
+            json={"blueprint_name": blueprint_name},
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["id"].startswith("wfdef-")
+        assert len(data["nodes"]) >= 3

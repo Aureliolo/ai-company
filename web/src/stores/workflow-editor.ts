@@ -9,22 +9,28 @@ import { create } from 'zustand'
 import type { Node, Edge, Connection, NodeChange, EdgeChange } from '@xyflow/react'
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react'
 import { createLogger } from '@/lib/logger'
-
-const log = createLogger('workflow-editor')
 import type {
   WorkflowDefinition,
+  WorkflowDefinitionVersionSummary,
+  WorkflowDiff,
   WorkflowValidationResult,
   WorkflowNodeType,
 } from '@/api/types'
+
+const log = createLogger('workflow-editor')
 import {
   getWorkflow,
   createWorkflow,
   updateWorkflow,
   validateWorkflowDraft,
+  listWorkflowVersions,
+  getWorkflowDiff,
+  rollbackWorkflow,
 } from '@/api/endpoints/workflows'
 import { generateYamlPreview } from '@/pages/workflow-editor/workflow-to-yaml'
 import { copyNodes, pasteFromClipboard, type ClipboardData } from '@/pages/workflow-editor/copy-paste'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const MAX_UNDO = 50
 
@@ -60,6 +66,18 @@ export interface WorkflowEditorState {
   // Clipboard
   clipboard: ClipboardData | null
 
+  // Version history
+  versionHistoryOpen: boolean
+  versions: readonly WorkflowDefinitionVersionSummary[]
+  versionsLoading: boolean
+  versionsHasMore: boolean
+  diffResult: WorkflowDiff | null
+  diffLoading: boolean
+  /** @internal Request counter to discard stale version responses. */
+  _versionsRequestId: number
+  /** @internal Request counter to discard stale diff responses. */
+  _diffRequestId: number
+
   // Actions
   loadDefinition: (id: string) => Promise<void>
   createDefinition: (name: string, workflowType: string) => Promise<void>
@@ -78,6 +96,12 @@ export interface WorkflowEditorState {
   exportYaml: () => Promise<string>
   copySelectedNodes: () => void
   pasteNodes: () => void
+  toggleVersionHistory: () => void
+  loadVersions: () => Promise<void>
+  loadMoreVersions: () => Promise<void>
+  loadDiff: (fromVersion: number, toVersion: number) => Promise<void>
+  clearDiff: () => void
+  rollback: (targetVersion: number) => Promise<void>
   reset: () => void
 }
 
@@ -148,6 +172,15 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
   yamlPreview: '',
   clipboard: null,
 
+  versionHistoryOpen: false,
+  versions: [],
+  versionsLoading: false,
+  versionsHasMore: false,
+  diffResult: null,
+  diffLoading: false,
+  _versionsRequestId: 0,
+  _diffRequestId: 0,
+
   loadDefinition: async (id: string) => {
     set({ loading: true, error: null })
     try {
@@ -184,7 +217,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
-      log.warn('Failed to load workflow definition', err)
+      log.warn('Failed to load workflow definition', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -221,7 +254,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
         validationResult: null,
       })
     } catch (err) {
-      log.warn('Failed to create workflow definition', err)
+      log.warn('Failed to create workflow definition', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
@@ -267,11 +300,11 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 409 && definition) {
-        log.warn('Version conflict saving workflow, reloading', err)
+        log.warn('Version conflict saving workflow, reloading', sanitizeForLog(err))
         set({ saving: false, error: 'Version conflict -- another save occurred. Reloading...' })
         await get().loadDefinition(definition.id)
       } else {
-        log.warn('Failed to save workflow definition', err)
+        log.warn('Failed to save workflow definition', sanitizeForLog(err))
         set({ saving: false, error: getErrorMessage(err) })
       }
     }
@@ -497,7 +530,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       })
       set({ validationResult: result, validating: false })
     } catch (err) {
-      log.warn('Workflow validation failed', err)
+      log.warn('Workflow validation failed', sanitizeForLog(err))
       set({ validating: false, validationResult: null, error: getErrorMessage(err) })
     }
   },
@@ -534,6 +567,104 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
     })
   },
 
+  toggleVersionHistory: () => {
+    const open = !get().versionHistoryOpen
+    set({ versionHistoryOpen: open })
+    if (open) {
+      useWorkflowEditorStore.getState().loadVersions()
+    }
+  },
+
+  loadVersions: async () => {
+    const defn = get().definition
+    if (!defn) return
+    const reqId = get()._versionsRequestId + 1
+    set({ versionsLoading: true, _versionsRequestId: reqId })
+    try {
+      const limit = 50
+      const result = await listWorkflowVersions(defn.id, { limit })
+      if (get()._versionsRequestId !== reqId) return
+      set({
+        versions: result.data,
+        versionsLoading: false,
+        versionsHasMore: result.data.length >= limit,
+      })
+    } catch (err) {
+      if (get()._versionsRequestId !== reqId) return
+      log.warn('Failed to load versions', sanitizeForLog(err))
+      set({ versionsLoading: false, error: getErrorMessage(err) })
+    }
+  },
+
+  loadMoreVersions: async () => {
+    const defn = get().definition
+    if (!defn) return
+    const reqId = get()._versionsRequestId + 1
+    const offset = get().versions.length
+    set({ versionsLoading: true, _versionsRequestId: reqId })
+    try {
+      const limit = 50
+      const result = await listWorkflowVersions(defn.id, { limit, offset })
+      if (get()._versionsRequestId !== reqId) return
+      set((prev) => ({
+        ...prev,
+        versions: [...prev.versions, ...result.data],
+        versionsLoading: false,
+        versionsHasMore: result.data.length >= limit,
+      }))
+    } catch (err) {
+      if (get()._versionsRequestId !== reqId) return
+      log.warn('Failed to load more versions', sanitizeForLog(err))
+      set({ versionsLoading: false, error: getErrorMessage(err) })
+    }
+  },
+
+  loadDiff: async (fromVersion: number, toVersion: number) => {
+    const defn = get().definition
+    if (!defn) return
+    const reqId = get()._diffRequestId + 1
+    set({ diffLoading: true, _diffRequestId: reqId })
+    try {
+      const diff = await getWorkflowDiff(defn.id, fromVersion, toVersion)
+      if (get()._diffRequestId !== reqId) return
+      set({ diffResult: diff, diffLoading: false })
+    } catch (err) {
+      if (get()._diffRequestId !== reqId) return
+      log.warn('Failed to load diff', sanitizeForLog(err))
+      set({ diffLoading: false, error: getErrorMessage(err) })
+    }
+  },
+
+  clearDiff: () => {
+    // Increment token to discard any in-flight diff response.
+    set((prev) => ({
+      ...prev,
+      diffResult: null,
+      _diffRequestId: prev._diffRequestId + 1,
+    }))
+  },
+
+  rollback: async (targetVersion: number) => {
+    const defn = get().definition
+    if (!defn) return
+    set({ saving: true, error: null })
+    try {
+      const updated = await rollbackWorkflow(defn.id, {
+        target_version: targetVersion,
+        expected_version: defn.version,
+      })
+      set({ definition: updated, saving: false, dirty: false, diffResult: null })
+      // Reload the definition to refresh editor state.
+      await useWorkflowEditorStore.getState().loadDefinition(updated.id)
+      // Check if loadDefinition set an error
+      if (get().error) return
+      await useWorkflowEditorStore.getState().loadVersions()
+    } catch (err) {
+      log.warn('Rollback failed', sanitizeForLog(err))
+      set({ saving: false, error: getErrorMessage(err) })
+    }
+  },
+
   reset: () => {
     set({
       definition: null,
@@ -550,6 +681,14 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
       redoStack: [],
       yamlPreview: '',
       clipboard: null,
+      versionHistoryOpen: false,
+      versions: [],
+      versionsLoading: false,
+      versionsHasMore: false,
+      diffResult: null,
+      diffLoading: false,
+      _versionsRequestId: 0,
+      _diffRequestId: 0,
     })
   },
 }))

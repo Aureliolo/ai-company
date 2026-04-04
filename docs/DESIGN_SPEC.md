@@ -14,7 +14,7 @@ The design specification has been split into focused documentation pages for bet
 | [Agents & HR](design/agents.md) | Agent System, HR | Agent identity, roles, hiring, performance, evaluation, promotions |
 | [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus, delegation, conflict resolution, meetings |
-| [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown, workflow definitions, workflow execution |
+| [Task & Workflow Engine](design/engine.md) | Task Engine | Task lifecycle, execution loops, routing, recovery, shutdown, workflow definitions, blueprints, versioning, workflow execution |
 | [Memory & Persistence](design/memory.md) | Memory & Persistence | Memory types, backends, retrieval, operational data |
 | [Operations](design/operations.md) | Providers, Budget, Tools, Security, Human Interaction | Provider layer, cost management, sandboxing, security, API |
 | [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |

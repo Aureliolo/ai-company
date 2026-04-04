@@ -223,7 +223,7 @@ A **WorkflowDefinition** is a design-time blueprint -- a visual directed graph t
 
 ### Persistence
 
-`WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 7 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, and export.
+`WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 14 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, validate draft, export, list blueprints, create from blueprint, list version history, get version diff, rollback to previous version, and get single version.
 
 ### Workflow Execution
 

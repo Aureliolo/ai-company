@@ -36,6 +36,7 @@ from synthorg.security.timeout.parked_context import ParkedContext
 from tests.unit.api.fakes_workflow import (
     FakeWorkflowDefinitionRepository,
     FakeWorkflowExecutionRepository,
+    FakeWorkflowVersionRepository,
 )
 
 
@@ -580,6 +581,7 @@ class FakePersistenceBackend:
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
+        self._workflow_versions = FakeWorkflowVersionRepository()
         self._tasks = FakeTaskRepository()
         self._cost_records = FakeCostRecordRepository()
         self._messages = FakeMessageRepository()
@@ -698,6 +700,10 @@ class FakePersistenceBackend:
     @property
     def workflow_executions(self) -> FakeWorkflowExecutionRepository:
         return self._workflow_executions
+
+    @property
+    def workflow_versions(self) -> FakeWorkflowVersionRepository:
+        return self._workflow_versions
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

@@ -431,3 +431,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ftc_single_active
 
 CREATE INDEX IF NOT EXISTS idx_ftc_created_at
     ON fine_tune_checkpoints(created_at DESC);
+
+-- ── Workflow Definition Versions ─────────────────────────────
+
+CREATE TABLE IF NOT EXISTS workflow_definition_versions (
+    definition_id TEXT NOT NULL CHECK(length(definition_id) > 0),
+    version INTEGER NOT NULL CHECK(version >= 1),
+    name TEXT NOT NULL CHECK(length(name) > 0),
+    description TEXT NOT NULL DEFAULT '',
+    workflow_type TEXT NOT NULL CHECK(workflow_type IN (
+        'sequential_pipeline', 'parallel_execution', 'kanban', 'agile_kanban'
+    )),
+    nodes TEXT NOT NULL,
+    edges TEXT NOT NULL,
+    created_by TEXT NOT NULL CHECK(length(created_by) > 0),
+    saved_by TEXT NOT NULL CHECK(length(saved_by) > 0),
+    saved_at TEXT NOT NULL,
+    PRIMARY KEY (definition_id, version),
+    FOREIGN KEY (definition_id)
+        REFERENCES workflow_definitions(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_wdv_definition_saved
+    ON workflow_definition_versions(definition_id, saved_at DESC);

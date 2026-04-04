@@ -1,0 +1,145 @@
+blueprint:
+  name: "onboarding-workflow"
+  display_name: "Onboarding Workflow"
+  description: >-
+    An agent onboarding workflow with parallel setup tasks. After
+    credential creation, three setup tasks run in parallel (tools,
+    mentor assignment, workspace), then converge for orientation.
+  workflow_type: "parallel_execution"
+  tags:
+    - "onboarding"
+    - "setup"
+    - "parallel"
+
+  nodes:
+    - id: "start"
+      type: "start"
+      label: "Start"
+      position_x: 0.0
+      position_y: 200.0
+
+    - id: "task-credentials"
+      type: "task"
+      label: "Create Credentials"
+      position_x: 200.0
+      position_y: 200.0
+      config:
+        title: "Provision agent credentials and access"
+        task_type: "admin"
+        priority: "high"
+        complexity: "simple"
+
+    - id: "split"
+      type: "parallel_split"
+      label: "Setup Tasks"
+      position_x: 400.0
+      position_y: 200.0
+      config:
+        max_concurrency: 3
+
+    - id: "task-tools"
+      type: "task"
+      label: "Configure Tools"
+      position_x: 600.0
+      position_y: 60.0
+      config:
+        title: "Configure tools and permissions"
+        task_type: "admin"
+        priority: "medium"
+        complexity: "simple"
+
+    - id: "assign-mentor"
+      type: "agent_assignment"
+      label: "Assign Mentor"
+      position_x: 600.0
+      position_y: 200.0
+      config:
+        routing_strategy: "role_filter"
+        role_filter: "senior"
+
+    - id: "task-workspace"
+      type: "task"
+      label: "Setup Workspace"
+      position_x: 600.0
+      position_y: 340.0
+      config:
+        title: "Initialize development workspace"
+        task_type: "admin"
+        priority: "medium"
+        complexity: "simple"
+
+    - id: "join"
+      type: "parallel_join"
+      label: "Ready"
+      position_x: 800.0
+      position_y: 200.0
+      config:
+        join_strategy: "all"
+
+    - id: "task-orientation"
+      type: "task"
+      label: "Orientation"
+      position_x: 1000.0
+      position_y: 200.0
+      config:
+        title: "Complete orientation review"
+        task_type: "meeting"
+        priority: "medium"
+        complexity: "simple"
+
+    - id: "end"
+      type: "end"
+      label: "End"
+      position_x: 1200.0
+      position_y: 200.0
+
+  edges:
+    - id: "e-start-creds"
+      source_node_id: "start"
+      target_node_id: "task-credentials"
+      type: "sequential"
+
+    - id: "e-creds-split"
+      source_node_id: "task-credentials"
+      target_node_id: "split"
+      type: "sequential"
+
+    - id: "e-split-tools"
+      source_node_id: "split"
+      target_node_id: "task-tools"
+      type: "parallel_branch"
+
+    - id: "e-split-mentor"
+      source_node_id: "split"
+      target_node_id: "assign-mentor"
+      type: "parallel_branch"
+
+    - id: "e-split-workspace"
+      source_node_id: "split"
+      target_node_id: "task-workspace"
+      type: "parallel_branch"
+
+    - id: "e-tools-join"
+      source_node_id: "task-tools"
+      target_node_id: "join"
+      type: "sequential"
+
+    - id: "e-mentor-join"
+      source_node_id: "assign-mentor"
+      target_node_id: "join"
+      type: "sequential"
+
+    - id: "e-workspace-join"
+      source_node_id: "task-workspace"
+      target_node_id: "join"
+      type: "sequential"
+
+    - id: "e-join-orientation"
+      source_node_id: "join"
+      target_node_id: "task-orientation"
+      type: "sequential"
+
+    - id: "e-orientation-end"
+      source_node_id: "task-orientation"
+      target_node_id: "end"
+      type: "sequential"

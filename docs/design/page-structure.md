@@ -7,7 +7,7 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (23 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the v0.5.0 web dashboard rebuild. It was validated against the backend API surface (32 controllers, 9 WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
 
 **Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "Coming Soon" stubs. ProjectController and ArtifactController have full persistence backends (v0.5.3, #612) and dashboard pages (v0.5.4, #946).
 
@@ -162,9 +162,9 @@ No WebSocket subscription -- provider changes are low-frequency admin operations
 
 #### Workflows (`/workflows`)
 
-Workflow definition list with card grid, search, and type filter. "Create Workflow" button opens a creation flow. Each card shows name, description, node count, edge count, creation time, and last-modified time. Actions per card: duplicate, delete (with confirmation dialog). Click navigates to the Workflow Editor at `/workflows/editor?id={workflowId}`.
+Workflow definition list with card grid, search, and type filter. "Create Workflow" button opens a creation drawer with blank or blueprint picker mode (5 starter blueprints). Each card shows name, description, node count, edge count, creation time, and last-modified time. Actions per card: duplicate, delete (with confirmation dialog). Click navigates to the Workflow Editor at `/workflows/editor?id={workflowId}`.
 
-**API endpoints**: `GET /workflows`, `POST /workflows`, `DELETE /workflows/{id}`
+**API endpoints**: `GET /workflows`, `POST /workflows`, `DELETE /workflows/{id}`, `GET /workflows/blueprints`, `POST /workflows/from-blueprint`
 **WS channels**: (none)
 
 #### Workflow Editor (`/workflows/editor`)
@@ -185,9 +185,13 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 - **Workflow selector**: switch between saved workflow definitions from the editor toolbar
 - **Multi-workflow support**: "Save as New" duplicate action, quick-switch between workflows
 
+- **Version history**: slide-in drawer listing all saved versions with compare (diff viewer) and restore (rollback) actions per entry
+- **Diff viewer**: modal overlay showing node changes, edge changes, and metadata changes between any two versions
+- **Rollback**: restore a previous version's content as a new version (no history lost)
+
 No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
 
-**API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`
+**API endpoints**: `GET /workflows`, `POST /workflows`, `GET /workflows/{id}`, `PATCH /workflows/{id}`, `DELETE /workflows/{id}`, `POST /workflows/{id}/validate`, `POST /workflows/{id}/export`, `GET /workflows/{id}/versions`, `GET /workflows/{id}/versions/{version_num}`, `GET /workflows/{id}/diff?from_version=N&to_version=M`, `POST /workflows/{id}/rollback`
 **WS channels**: (none)
 
 #### Settings (`/settings`)
@@ -333,8 +337,8 @@ SIDEBAR (220px expanded / 56px icon rail)
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
-| `/workflows` | Workflows | Card grid list with search, type filter, create/duplicate/delete |
-| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation) |
+| `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
+| `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (7 node types, 4 edge types, YAML preview, validation, version history with diff/rollback) |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
 | `/messages` | Messages | Channel feed |
@@ -468,6 +472,7 @@ Every backend controller has a home in the page structure. No orphans.
 | ProjectController | Projects page (list, detail, create), Task Board (project filter) |
 | ArtifactController | Artifacts page (list, detail, content preview, download) |
 | WorkflowController | Workflows, Workflow Editor |
+| WorkflowVersionController | Workflows, Workflow Editor |
 
 ---
 

@@ -1695,6 +1695,86 @@ export interface ActivateWorkflowRequest {
   readonly context?: Record<string, string | number | boolean | null>
 }
 
+// ── Workflow Blueprints ──────────────────────────────────────
+
+export interface BlueprintInfo {
+  readonly name: string
+  readonly display_name: string
+  readonly description: string
+  readonly source: 'builtin' | 'user'
+  readonly tags: readonly string[]
+  readonly workflow_type: string
+  readonly node_count: number
+  readonly edge_count: number
+}
+
+export interface CreateFromBlueprintRequest {
+  readonly blueprint_name: string
+  readonly name?: string
+  readonly description?: string
+}
+
+// ── Workflow Versioning ──────────────────────────────────────
+
+export interface WorkflowDefinitionVersionSummary {
+  readonly definition_id: string
+  readonly version: number
+  readonly name: string
+  readonly description: string
+  readonly workflow_type: string
+  readonly nodes: readonly WorkflowNodeData[]
+  readonly edges: readonly WorkflowEdgeData[]
+  readonly created_by: string
+  readonly saved_by: string
+  readonly saved_at: string
+}
+
+export interface NodeChange {
+  readonly node_id: string
+  readonly change_type:
+    | 'added'
+    | 'removed'
+    | 'moved'
+    | 'config_changed'
+    | 'label_changed'
+    | 'type_changed'
+  readonly old_value: Record<string, unknown> | null
+  readonly new_value: Record<string, unknown> | null
+}
+
+export interface EdgeChange {
+  readonly edge_id: string
+  readonly change_type:
+    | 'added'
+    | 'removed'
+    | 'reconnected'
+    | 'type_changed'
+    | 'label_changed'
+  readonly old_value: Record<string, unknown> | null
+  readonly new_value: Record<string, unknown> | null
+}
+
+export interface MetadataChange {
+  readonly field: string
+  readonly old_value: string
+  readonly new_value: string
+}
+
+export interface WorkflowDiff {
+  readonly definition_id: string
+  readonly from_version: number
+  readonly to_version: number
+  readonly node_changes: readonly NodeChange[]
+  readonly edge_changes: readonly EdgeChange[]
+  readonly metadata_changes: readonly MetadataChange[]
+  readonly summary: string
+}
+
+export interface RollbackWorkflowRequest {
+  readonly target_version: number
+  readonly expected_version: number
+}
+
 // ── Ceremony Policy ──────────────────────────────────────────
 
 export type CeremonyStrategyType =

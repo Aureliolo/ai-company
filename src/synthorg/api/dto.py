@@ -6,7 +6,7 @@ models because they omit server-generated fields).
 """
 
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -672,16 +672,100 @@ class ActivateWorkflowRequest(BaseModel):
     )
 
 
+class BlueprintInfoResponse(BaseModel):
+    """Response body for a single workflow blueprint entry.
+
+    Attributes:
+        name: Blueprint identifier.
+        display_name: Human-readable name.
+        description: Short description.
+        source: Origin of the blueprint.
+        tags: Categorization tags.
+        workflow_type: Target execution topology.
+        node_count: Number of nodes in the graph.
+        edge_count: Number of edges in the graph.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    name: NotBlankStr = Field(description="Blueprint identifier")
+    display_name: NotBlankStr = Field(description="Human-readable name")
+    description: str = Field(default="", description="Short description")
+    source: Literal["builtin", "user"] = Field(
+        description="Origin: builtin or user",
+    )
+    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Tags")
+    workflow_type: WorkflowType = Field(
+        description="Target workflow type",
+    )
+    node_count: int = Field(ge=0, description="Number of nodes")
+    edge_count: int = Field(ge=0, description="Number of edges")
+
+
+class CreateFromBlueprintRequest(BaseModel):
+    """Request body for creating a workflow from a blueprint.
+
+    Attributes:
+        blueprint_name: Name of the blueprint to instantiate.
+        name: Optional name override (defaults to blueprint display_name).
+        description: Optional description override.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    blueprint_name: NotBlankStr = Field(
+        max_length=128,
+        description="Blueprint to instantiate",
+    )
+    name: NotBlankStr | None = Field(
+        default=None,
+        max_length=256,
+        description="Workflow name override",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Description override",
+    )
+
+
+class RollbackWorkflowRequest(BaseModel):
+    """Request body for rolling back a workflow to a previous version.
+
+    Attributes:
+        target_version: Version number to restore content from.
+        expected_version: Current version for optimistic concurrency.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    target_version: int = Field(ge=1, description="Version to rollback to")
+    expected_version: int = Field(
+        ge=1,
+        description="Optimistic concurrency guard",
+    )
+
+    @model_validator(mode="after")
+    def _validate_version_order(self) -> Self:
+        """Reject rollback where target >= expected."""
+        if self.target_version >= self.expected_version:
+            msg = "target_version must be less than expected_version"
+            raise ValueError(msg)
+        return self
+
+
 __all__ = [
     "ActivateWorkflowRequest",
     "ApiResponse",
     "ApproveRequest",
+    "BlueprintInfoResponse",
     "CancelTaskRequest",
     "CoordinateTaskRequest",
     "CoordinationPhaseResponse",
     "CoordinationResultResponse",
     "CreateApprovalRequest",
     "CreateArtifactRequest",
+    "CreateFromBlueprintRequest",
     "CreateFromPresetRequest",
     "CreateProjectRequest",
     "CreateProviderRequest",
@@ -696,6 +780,7 @@ __all__ = [
     "ProblemDetail",
     "ProviderResponse",
     "RejectRequest",
+    "RollbackWorkflowRequest",
     "TestConnectionRequest",
     "TestConnectionResponse",
     "TransitionTaskRequest",
