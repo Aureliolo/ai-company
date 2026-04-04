@@ -256,12 +256,12 @@ class MemoryAdminController(Controller):
             prior_model = prior_provider = None
             try:
                 sv = await svc.get("memory", "embedder_model")
-                prior_model = sv.value if sv else None
+                prior_model = sv.value if sv is not None else None
             except Exception:  # noqa: S110
                 pass  # Best-effort read for rollback
             try:
                 sv = await svc.get("memory", "embedder_provider")
-                prior_provider = sv.value if sv else None
+                prior_provider = sv.value if sv is not None else None
             except Exception:  # noqa: S110
                 pass  # Best-effort read for rollback
             try:
