@@ -1,3 +1,6 @@
+import { InputField } from '@/components/ui/input-field'
+import { SelectField } from '@/components/ui/select-field'
+import type { SelectOption } from '@/components/ui/select-field'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { formatLabel } from '@/utils/format'
 
@@ -8,6 +11,11 @@ const WORKFLOW_TYPES = [
   'agile_kanban',
 ] as const
 
+const WORKFLOW_TYPE_OPTIONS: readonly SelectOption[] = [
+  { value: '', label: 'All types' },
+  ...WORKFLOW_TYPES.map((t) => ({ value: t, label: formatLabel(t) })),
+]
+
 export function WorkflowFilters() {
   const searchQuery = useWorkflowsStore((s) => s.searchQuery)
   const workflowTypeFilter = useWorkflowsStore((s) => s.workflowTypeFilter)
@@ -16,31 +24,22 @@ export function WorkflowFilters() {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <input
+      <InputField
+        label="Search workflows"
         type="text"
         placeholder="Search workflows..."
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="h-9 w-64 rounded-md border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent"
-        aria-label="Search workflows"
+        onValueChange={setSearchQuery}
+        className="h-9 w-64"
       />
 
-      <select
+      <SelectField
+        label="Workflow type"
+        options={WORKFLOW_TYPE_OPTIONS}
         value={workflowTypeFilter ?? ''}
-        onChange={(e) => {
-          const val = e.target.value
-          setWorkflowTypeFilter(val || null)
-        }}
-        className="h-9 rounded-md border border-border bg-surface px-2 text-sm text-foreground"
-        aria-label="Filter by workflow type"
-      >
-        <option value="">All types</option>
-        {WORKFLOW_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {formatLabel(t)}
-          </option>
-        ))}
-      </select>
+        onChange={(value) => setWorkflowTypeFilter(value || null)}
+        className="h-9"
+      />
     </div>
   )
 }

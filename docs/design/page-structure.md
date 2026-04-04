@@ -177,7 +177,13 @@ Visual workflow designer -- a DAG-based editor for creating and editing workflow
 - **4 edge types**: sequential, conditional_true, conditional_false, parallel_branch
 - **Undo/redo**: full history stack for node/edge additions, deletions, moves, and config changes
 - **YAML preview**: live read-only YAML export of the current workflow graph
+- **Bidirectional YAML editing**: toggle between visual and YAML editor modes; parse YAML back into the visual graph with inline error/warning display and position preservation
 - **Validation**: client-side structural validation with inline error display
+- **Minimap**: pannable/zoomable overview of the full graph for navigation in large workflows
+- **Copy/paste**: clipboard operations for selected node groups with ID remapping and internal edge preservation
+- **Condition builder**: structured expression editor (Builder mode with field/operator/value rows and AND/OR/NOT logical operators, Advanced mode with free-text) for conditional nodes
+- **Workflow selector**: switch between saved workflow definitions from the editor toolbar
+- **Multi-workflow support**: "Save as New" duplicate action, quick-switch between workflows
 
 No WebSocket subscription -- workflow definitions are persisted via REST and do not require real-time collaboration.
 

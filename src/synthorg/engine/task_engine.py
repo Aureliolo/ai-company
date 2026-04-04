@@ -742,7 +742,9 @@ class TaskEngine:
     ) -> None:
         """Notify registered observers of a successful mutation.
 
-        Best-effort: observer errors are logged and swallowed.
+        Best-effort: observer errors are logged and swallowed
+        (except ``MemoryError`` and ``RecursionError``, which
+        propagate).
         """
         for observer in self._observers:
             try:

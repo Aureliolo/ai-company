@@ -17,6 +17,9 @@ WORKFLOW_EXEC_INVALID_DEFINITION: Final[str] = "workflow.execution.invalid_defin
 WORKFLOW_EXEC_NOT_FOUND: Final[str] = "workflow.execution.not_found"
 """Workflow definition or execution instance not found."""
 
+WORKFLOW_EXEC_INVALID_STATUS: Final[str] = "workflow.execution.invalid_status"
+"""Execution exists but is in an unexpected status for the operation."""
+
 # -- Node processing events ---------------------------------------------------
 
 WORKFLOW_EXEC_TASK_CREATED: Final[str] = "workflow.execution.task_created"

@@ -12,7 +12,6 @@ from synthorg.core.enums import (
     WorkflowEdgeType,
     WorkflowExecutionStatus,
     WorkflowNodeExecutionStatus,
-    WorkflowNodeType,
 )
 from synthorg.core.task import Task
 from synthorg.engine.errors import (
@@ -21,14 +20,9 @@ from synthorg.engine.errors import (
 )
 from synthorg.engine.task_engine_models import CreateTaskData, TaskStateChanged
 from synthorg.engine.workflow.definition import WorkflowDefinition
-from synthorg.engine.workflow.execution_models import (
-    WorkflowExecution,
-    WorkflowNodeExecution,
-)
+from synthorg.engine.workflow.execution_models import WorkflowExecution
 from synthorg.engine.workflow.execution_service import (
     WorkflowExecutionService,
-    _all_tasks_completed,
-    _update_node_status,
 )
 from synthorg.persistence.errors import DuplicateRecordError, VersionConflictError
 from tests.unit.engine.workflow.conftest import (
@@ -454,36 +448,50 @@ class TestHandleTaskStateChanged:
         assert stored.status is WorkflowExecutionStatus.COMPLETED
 
     @pytest.mark.unit
-    async def test_task_failed_transitions_to_failed(
+    @pytest.mark.parametrize(
+        ("terminal_status", "expected_word"),
+        [
+            (TaskStatus.FAILED, "failed"),
+            (TaskStatus.CANCELLED, "cancelled"),
+        ],
+    )
+    async def test_terminal_task_transitions_to_failed(
         self,
         service: WorkflowExecutionService,
         def_repo: FakeDefinitionRepo,
         exec_repo: FakeExecutionRepo,
+        terminal_status: TaskStatus,
+        expected_word: str,
     ) -> None:
         exe = await _activate_simple(service, def_repo)
         task_ids = _get_task_ids(exe)
 
         await service.handle_task_state_changed(
-            _make_task_event(task_ids["task-1"], TaskStatus.FAILED),
+            _make_task_event(task_ids["task-1"], terminal_status),
         )
 
         stored = await exec_repo.get(exe.id)
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.FAILED
-        assert "failed" in (stored.error or "").lower()
+        assert expected_word in (stored.error or "").lower()
 
     @pytest.mark.unit
-    async def test_task_failed_updates_node_to_task_failed(
+    @pytest.mark.parametrize(
+        "terminal_status",
+        [TaskStatus.FAILED, TaskStatus.CANCELLED],
+    )
+    async def test_terminal_task_updates_node_to_task_failed(
         self,
         service: WorkflowExecutionService,
         def_repo: FakeDefinitionRepo,
         exec_repo: FakeExecutionRepo,
+        terminal_status: TaskStatus,
     ) -> None:
         exe = await _activate_parallel(service, def_repo)
         task_ids = _get_task_ids(exe)
 
         await service.handle_task_state_changed(
-            _make_task_event(task_ids["task-a"], TaskStatus.FAILED),
+            _make_task_event(task_ids["task-a"], terminal_status),
         )
 
         stored = await exec_repo.get(exe.id)
@@ -666,187 +674,3 @@ class TestHandleTaskStateChanged:
         stored = await exec_repo.get(exe.id)
         assert stored is not None
         assert stored.status is WorkflowExecutionStatus.COMPLETED
-
-
-# ── _update_node_status helper tests ──────────────────────────────
-
-
-class TestUpdateNodeStatus:
-    """Tests for the _update_node_status helper."""
-
-    @pytest.mark.unit
-    def test_updates_matching_node(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="task-1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_CREATED,
-                    task_id="t-1",
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        result = _update_node_status(
-            exe,
-            "t-1",
-            WorkflowNodeExecutionStatus.TASK_COMPLETED,
-        )
-        assert result.node_executions[0].status is (
-            WorkflowNodeExecutionStatus.TASK_COMPLETED
-        )
-        assert result.node_executions[0].task_id == "t-1"
-        assert result.version == exe.version + 1
-
-    @pytest.mark.unit
-    def test_preserves_other_nodes(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="task-1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_CREATED,
-                    task_id="t-1",
-                ),
-                WorkflowNodeExecution(
-                    node_id="task-2",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_CREATED,
-                    task_id="t-2",
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        result = _update_node_status(
-            exe,
-            "t-1",
-            WorkflowNodeExecutionStatus.TASK_COMPLETED,
-        )
-        nmap = {ne.node_id: ne for ne in result.node_executions}
-        assert nmap["task-1"].status is WorkflowNodeExecutionStatus.TASK_COMPLETED
-        assert nmap["task-2"].status is WorkflowNodeExecutionStatus.TASK_CREATED
-
-
-# ── _all_tasks_completed helper tests ─────────────────────────────
-
-
-class TestAllTasksCompleted:
-    """Tests for the _all_tasks_completed helper."""
-
-    @pytest.mark.unit
-    def test_all_completed(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="s",
-                    node_type=WorkflowNodeType.START,
-                    status=WorkflowNodeExecutionStatus.COMPLETED,
-                ),
-                WorkflowNodeExecution(
-                    node_id="t1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                    task_id="task-1",
-                ),
-                WorkflowNodeExecution(
-                    node_id="e",
-                    node_type=WorkflowNodeType.END,
-                    status=WorkflowNodeExecutionStatus.COMPLETED,
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        assert _all_tasks_completed(exe) is True
-
-    @pytest.mark.unit
-    def test_not_all_completed(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="t1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                    task_id="task-1",
-                ),
-                WorkflowNodeExecution(
-                    node_id="t2",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_CREATED,
-                    task_id="task-2",
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        assert _all_tasks_completed(exe) is False
-
-    @pytest.mark.unit
-    def test_task_failed_returns_false(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="t1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                    task_id="task-1",
-                ),
-                WorkflowNodeExecution(
-                    node_id="t2",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_FAILED,
-                    task_id="task-2",
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        assert _all_tasks_completed(exe) is False
-
-    @pytest.mark.unit
-    def test_skipped_tasks_ignored(self) -> None:
-        exe = WorkflowExecution(
-            id="wfexec-test",
-            definition_id="wf-1",
-            definition_version=1,
-            status=WorkflowExecutionStatus.RUNNING,
-            node_executions=(
-                WorkflowNodeExecution(
-                    node_id="t1",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.TASK_COMPLETED,
-                    task_id="task-1",
-                ),
-                WorkflowNodeExecution(
-                    node_id="t2",
-                    node_type=WorkflowNodeType.TASK,
-                    status=WorkflowNodeExecutionStatus.SKIPPED,
-                    skipped_reason="Branch not taken",
-                ),
-            ),
-            activated_by="test",
-            project="proj-1",
-        )
-        assert _all_tasks_completed(exe) is True

@@ -195,11 +195,12 @@ def process_conditional_node(  # noqa: PLR0913
         msg = f"Failed to evaluate condition on node {nid!r}: {exc}"
         raise WorkflowConditionEvalError(msg) from exc
 
+    safe_expr = expr.replace("\n", " ").replace("\r", " ")
     logger.info(
         WORKFLOW_EXEC_CONDITION_EVALUATED,
         execution_id=execution_id,
         node_id=nid,
-        expression=expr,
+        expression=safe_expr,
         result=result,
     )
 
@@ -242,7 +243,6 @@ def process_conditional_node(  # noqa: PLR0913
 def parse_task_config(
     config: dict[str, object],
     node: WorkflowNode,
-    execution_id: str,
     nid: str,
 ) -> tuple[str, str, TaskType, Priority, Complexity]:
     """Parse TASK node config into validated task parameters.
@@ -254,34 +254,31 @@ def parse_task_config(
     description = str(config.get("description", f"Task from workflow node {nid}"))
 
     raw_type = str(config.get("task_type", "development"))
-    task_type = _TASK_TYPE_MAP.get(raw_type, TaskType.DEVELOPMENT)
     if raw_type not in _TASK_TYPE_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized task_type {raw_type!r}, using development",
+        msg = (
+            f"Node {nid!r} has unrecognized task_type {raw_type!r}"
+            f" (valid: {sorted(_TASK_TYPE_MAP)})"
         )
+        raise ValueError(msg)
+    task_type = _TASK_TYPE_MAP[raw_type]
 
     raw_priority = str(config.get("priority", "medium"))
-    priority = _PRIORITY_MAP.get(raw_priority, Priority.MEDIUM)
     if raw_priority not in _PRIORITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized priority {raw_priority!r}, using medium",
+        msg = (
+            f"Node {nid!r} has unrecognized priority {raw_priority!r}"
+            f" (valid: {sorted(_PRIORITY_MAP)})"
         )
+        raise ValueError(msg)
+    priority = _PRIORITY_MAP[raw_priority]
 
     raw_complexity = str(config.get("complexity", "medium"))
-    complexity = _COMPLEXITY_MAP.get(raw_complexity, Complexity.MEDIUM)
     if raw_complexity not in _COMPLEXITY_MAP:
-        logger.warning(
-            WORKFLOW_EXEC_TASK_CREATED,
-            execution_id=execution_id,
-            node_id=nid,
-            note=f"unrecognized complexity {raw_complexity!r}, using medium",
+        msg = (
+            f"Node {nid!r} has unrecognized complexity {raw_complexity!r}"
+            f" (valid: {sorted(_COMPLEXITY_MAP)})"
         )
+        raise ValueError(msg)
+    complexity = _COMPLEXITY_MAP[raw_complexity]
 
     return title, description, task_type, priority, complexity
 
@@ -322,7 +319,6 @@ async def process_task_node(  # noqa: PLR0913
     title, description, task_type, priority, complexity = parse_task_config(
         config,
         node,
-        execution_id,
         nid,
     )
     assigned_to = pending_assignments.pop(nid, None)

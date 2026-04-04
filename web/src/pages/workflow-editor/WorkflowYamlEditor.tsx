@@ -1,8 +1,9 @@
 /**
- * Bidirectional YAML editor for workflow definitions.
+ * YAML editor for workflow definitions.
  *
  * Allows editing YAML directly and applying changes back to the
- * visual canvas. Shows inline parse/validation errors.
+ * visual canvas via an explicit Apply action. Shows inline
+ * parse/validation errors.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -29,6 +30,21 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
       if (appliedTimerRef.current !== null) clearTimeout(appliedTimerRef.current)
     }
   }, [])
+
+  // Sync local YAML text when the store's YAML preview changes
+  // (e.g., undo/redo, workflow switch)
+  /* eslint-disable @eslint-react/set-state-in-effect -- intentional prop-to-state sync on external change */
+  useEffect(() => {
+    setYamlText(initialYaml)
+    setParseErrors([])
+    setParseWarnings([])
+    setApplied(false)
+    if (appliedTimerRef.current !== null) {
+      clearTimeout(appliedTimerRef.current)
+      appliedTimerRef.current = null
+    }
+  }, [initialYaml])
+  /* eslint-enable @eslint-react/set-state-in-effect */
 
   const handleApply = useCallback(() => {
     // Build position map from current nodes
@@ -64,6 +80,7 @@ export function WorkflowYamlEditor({ initialYaml }: WorkflowYamlEditorProps) {
     useWorkflowEditorStore.setState((s) => ({
       nodes: mappedNodes,
       edges: result.edges,
+      selectedNodeId: null,
       dirty: true,
       yamlPreview: yamlText,
       undoStack: [...s.undoStack.slice(-49), snapshot],

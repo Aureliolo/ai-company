@@ -53,35 +53,22 @@ class TestWorkflowExecutionObserver:
         assert service._task_engine is task_engine
 
     @pytest.mark.unit
-    async def test_call_delegates_to_service(self) -> None:
-        """__call__ forwards the event to service.handle_task_state_changed."""
+    @pytest.mark.parametrize(
+        "status",
+        [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED],
+    )
+    async def test_call_delegates_to_service(
+        self,
+        status: TaskStatus,
+    ) -> None:
+        """__call__ forwards all task events to service."""
         observer = WorkflowExecutionObserver(
             definition_repo=MagicMock(),
             execution_repo=MagicMock(),
             task_engine=MagicMock(),
         )
 
-        event = _make_event()
-        mock_handle = AsyncMock()
-        with patch.object(
-            observer._service,
-            "handle_task_state_changed",
-            mock_handle,
-        ):
-            await observer(event)
-
-        mock_handle.assert_awaited_once_with(event)
-
-    @pytest.mark.unit
-    async def test_call_with_failed_task_delegates(self) -> None:
-        """__call__ forwards FAILED task events to the service."""
-        observer = WorkflowExecutionObserver(
-            definition_repo=MagicMock(),
-            execution_repo=MagicMock(),
-            task_engine=MagicMock(),
-        )
-
-        event = _make_event(new_status=TaskStatus.FAILED)
+        event = _make_event(new_status=status)
         mock_handle = AsyncMock()
         with patch.object(
             observer._service,

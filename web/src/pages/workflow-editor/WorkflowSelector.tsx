@@ -1,4 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
+import { SelectField } from '@/components/ui/select-field'
+import type { SelectOption } from '@/components/ui/select-field'
 import { useWorkflowsStore } from '@/stores/workflows'
 
 interface WorkflowSelectorProps {
@@ -15,33 +17,24 @@ export function WorkflowSelector({ currentId, onChange }: WorkflowSelectorProps)
     fetchWorkflows()
   }, [fetchWorkflows])
 
-  if (loading && workflows.length === 0) {
-    return (
-      <select
-        disabled
-        className="h-7 w-44 rounded-md border border-border bg-surface px-2 text-xs text-muted-foreground"
-        aria-label="Loading workflows"
-      >
-        <option>Loading...</option>
-      </select>
-    )
-  }
+  const options: readonly SelectOption[] = useMemo(
+    () => workflows.map((w) => ({ value: w.id, label: w.name })),
+    [workflows],
+  )
+
+  const isLoadingEmpty = loading && workflows.length === 0
 
   return (
-    <select
+    <SelectField
+      label="Select workflow"
+      options={isLoadingEmpty ? [] : options}
       value={currentId ?? ''}
-      onChange={(e) => {
-        if (e.target.value) onChange(e.target.value)
+      onChange={(value) => {
+        if (value) onChange(value)
       }}
-      className="h-7 w-44 truncate rounded-md border border-border bg-surface px-2 text-xs text-foreground"
-      aria-label="Select workflow"
-    >
-      {!currentId && <option value="">Select workflow</option>}
-      {workflows.map((w) => (
-        <option key={w.id} value={w.id}>
-          {w.name}
-        </option>
-      ))}
-    </select>
+      disabled={isLoadingEmpty}
+      placeholder={isLoadingEmpty ? 'Loading...' : 'Select workflow'}
+      className="h-7 w-44 truncate text-xs"
+    />
   )
 }

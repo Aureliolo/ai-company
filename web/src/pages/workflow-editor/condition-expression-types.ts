@@ -8,7 +8,7 @@
 
 export type ComparisonOperator = '==' | '!='
 
-export type LogicalOperator = 'AND' | 'OR'
+export type LogicalOperator = 'AND' | 'OR' | 'NOT'
 
 export interface ConditionComparison {
   readonly kind: 'comparison'
@@ -56,6 +56,14 @@ export function serializeCondition(expr: ConditionExpression): string {
     return `${expr.field} ${expr.operator} ${expr.value}`
   }
 
+  if (expr.conditions.length === 0) return ''
+
+  // NOT wraps its single child in parentheses
+  if (expr.logicalOperator === 'NOT') {
+    const inner = expr.conditions.map((c) => serializeCondition(c)).join(' AND ')
+    return `NOT (${inner})`
+  }
+
   const parts = expr.conditions.map((c) => {
     // Nested groups get parenthesized to preserve precedence
     if (c.kind === 'group' && c.conditions.length > 1) {
@@ -96,7 +104,8 @@ function splitByOperator(
   const parts: string[] = []
   let depth = 0
   let current = ''
-  const token = ` ${op} `
+  // Build a regex that matches the operator with flexible whitespace
+  const tokenRegex = new RegExp(`\\s+${op}\\s+`) // eslint-disable-line security/detect-non-literal-regexp -- op is from LogicalOperator literal union
   let i = 0
 
   while (i < str.length) {
@@ -106,12 +115,14 @@ function splitByOperator(
       i++
     } else if (str[i] === ')') {
       depth--
+      if (depth < 0) return null // Unbalanced parens
       current += ')'
       i++
-    } else if (depth === 0 && str.substring(i, i + token.length) === token) {
+    } else if (depth === 0 && str.substring(i).match(tokenRegex)?.index === 0) {
+      const match = str.substring(i).match(tokenRegex)!
       parts.push(current.trim())
       current = ''
-      i += token.length
+      i += match[0].length
     } else {
       current += str[i]
       i++
@@ -122,6 +133,7 @@ function splitByOperator(
     parts.push(current.trim())
   }
 
+  if (depth !== 0) return null // Unbalanced parens
   return parts.length > 1 ? parts : null
 }
 
@@ -159,10 +171,19 @@ export function parseConditionString(str: string): ConditionExpression | null {
   const trimmed = str.trim()
   if (!trimmed) return null
 
+  // Handle NOT prefix
+  const notMatch = /^NOT\s*\((.+)\)\s*$/i.exec(trimmed)
+  if (notMatch?.[1]) {
+    const inner = parseConditionString(notMatch[1])
+    if (!inner) return null
+    const children = inner.kind === 'group' ? inner.conditions : [inner]
+    return createGroup('NOT', children)
+  }
+
   const unwrapped = unwrapParens(trimmed)
 
-  // Try splitting by AND first (arbitrary precedence choice)
-  for (const op of ['AND', 'OR'] as const) {
+  // Split by OR first (lower precedence), then AND (higher precedence)
+  for (const op of ['OR', 'AND'] as const) {
     const parts = splitByOperator(unwrapped, op)
     if (parts) {
       const conditions: ConditionExpression[] = []

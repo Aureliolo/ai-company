@@ -259,7 +259,8 @@ topology. The TaskEngine's existing status machine handles execution ordering.
 
 **Per-node tracking** (`WorkflowNodeExecutionStatus`): `PENDING`, `SKIPPED`
 (conditional branch not taken), `TASK_CREATED` (concrete task instantiated),
-`COMPLETED` (control node processed).
+`TASK_COMPLETED` (task finished successfully), `TASK_FAILED` (task failed or
+cancelled), `COMPLETED` (control node processed).
 
 **Condition evaluator** (`condition_eval.py`): Safe, minimal string evaluator
 (no `eval()`/`exec()`). Supports boolean literals (`true`/`false`), context
@@ -420,8 +421,9 @@ pipeline or prevents subsequent observers from running.
 **`WorkflowExecutionObserver`** is the first registered observer. It
 bridges TaskEngine state changes into the workflow execution lifecycle:
 
-- On `COMPLETED` or `FAILED` task transitions, `handle_task_state_changed`
-  looks up the workflow execution (if any) that owns the task.
+- On `COMPLETED`, `FAILED`, or `CANCELLED` task transitions,
+  `handle_task_state_changed` looks up the workflow execution (if any)
+  that owns the task.
 - It updates the corresponding `WorkflowNodeExecution` status and
   evaluates whether the overall workflow execution should transition
   (all tasks done -> `COMPLETED`, any task failed -> `FAILED`).

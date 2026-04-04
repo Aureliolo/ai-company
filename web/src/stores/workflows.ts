@@ -73,10 +73,15 @@ export const useWorkflowsStore = create<WorkflowsState>()((set) => ({
 
   deleteWorkflow: async (id: string) => {
     await deleteWorkflowApi(id)
-    set((state) => ({
-      workflows: state.workflows.filter((w) => w.id !== id),
-      totalWorkflows: state.totalWorkflows - 1,
-    }))
+    set((state) => {
+      const filtered = state.workflows.filter((w) => w.id !== id)
+      return {
+        workflows: filtered,
+        totalWorkflows: filtered.length < state.workflows.length
+          ? Math.max(0, state.totalWorkflows - 1)
+          : state.totalWorkflows,
+      }
+    })
   },
 
   setSearchQuery: (q) => set({ searchQuery: q }),

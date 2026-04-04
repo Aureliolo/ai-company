@@ -60,6 +60,8 @@ export function WorkflowCreateDrawer({ open, onClose }: WorkflowCreateDrawerProp
       })
       useToastStore.getState().add({ variant: 'success', title: 'Workflow created' })
       setForm(INITIAL_FORM)
+      setErrors({})
+      setSubmitError(null)
       onClose()
     } catch (err) {
       setSubmitError(getErrorMessage(err))

@@ -10,7 +10,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SelectField } from '@/components/ui/select-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { ToggleField } from '@/components/ui/toggle-field'
 import {
   CONDITION_FIELDS,
   CONDITION_VALUES,
@@ -29,6 +31,13 @@ import {
 interface ComparisonEntry {
   key: number
   comparison: ConditionComparison
+}
+
+/** A sub-group containing its own operator and comparison rows. */
+interface SubGroupEntry {
+  key: number
+  operator: 'AND' | 'OR'
+  entries: ComparisonEntry[]
 }
 
 interface ConditionExpressionBuilderProps {
@@ -54,22 +63,22 @@ function parseForBuilder(
   return flattenExpression(parsed)
 }
 
-/** Determine initial mode from the incoming value string. */
-function getInitialMode(str: string): 'builder' | 'advanced' {
-  if (!str) return 'builder'
-  const flat = parseForBuilder(str)
-  return flat ? 'builder' : 'advanced'
-}
-
-/** Build a ConditionExpression from the flat builder state. */
+/** Build a ConditionExpression from the builder state (comparisons + sub-groups). */
 function buildExpression(
   comparisons: ConditionComparison[],
   logicalOperator: LogicalOperator,
+  subGroups: SubGroupEntry[] = [],
 ): ConditionExpression {
-  if (comparisons.length === 1) {
-    return comparisons[0]!
+  const items: ConditionExpression[] = [...comparisons]
+  for (const group of subGroups) {
+    if (group.entries.length === 1) {
+      items.push(group.entries[0]!.comparison)
+    } else if (group.entries.length > 1) {
+      items.push(createGroup(group.operator, group.entries.map((e) => e.comparison)))
+    }
   }
-  return createGroup(logicalOperator, comparisons)
+  if (items.length === 1) return items[0]!
+  return createGroup(logicalOperator, items)
 }
 
 // ---- Sub-component: single comparison row ----
@@ -117,24 +126,18 @@ function ComparisonRow({
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-muted-foreground">Operator</label>
-        <select
+        <SelectField
+          label="Operator"
+          options={OPERATORS}
           value={comparison.operator}
-          onChange={(e) =>
+          onChange={(val) =>
             onUpdate(index, {
               ...comparison,
-              operator: e.target.value as ComparisonOperator,
+              operator: val as ComparisonOperator,
             })
           }
-          className="h-8 w-24 rounded-md border border-border bg-surface px-2 text-sm text-foreground"
-          aria-label={`Comparison operator ${index + 1}`}
-        >
-          {OPERATORS.map((op) => (
-            <option key={op.value} value={op.value}>
-              {op.label}
-            </option>
-          ))}
-        </select>
+          className="h-8 w-24"
+        />
       </div>
 
       <div className="flex flex-col gap-1">
@@ -189,32 +192,66 @@ export function ConditionExpressionBuilder({
     [allocKey],
   )
 
+  // Fix #41: Parse once during initialization and reuse the result.
+  const initialFlat = useMemo(() => (value ? parseForBuilder(value) : null), []) // eslint-disable-line @eslint-react/exhaustive-deps -- intentionally mount-only
+
   const [mode, setMode] = useState<'builder' | 'advanced'>(() =>
-    getInitialMode(value),
+    !value ? 'builder' : initialFlat ? 'builder' : 'advanced',
   )
 
   const [entries, setEntries] = useState<ComparisonEntry[]>(() => {
-    const flat = parseForBuilder(value)
-    if (flat) return toEntries(flat.comparisons)
+    if (initialFlat) return toEntries(initialFlat.comparisons)
     return toEntries([createComparison()])
   })
 
-  const [logicalOperator, setLogicalOperator] = useState<LogicalOperator>(() => {
-    const flat = parseForBuilder(value)
-    return flat?.logicalOperator ?? 'AND'
-  })
+  const [logicalOperator, setLogicalOperator] = useState<LogicalOperator>(
+    () => initialFlat?.logicalOperator ?? 'AND',
+  )
 
+  const [negate, setNegate] = useState(() => /^NOT\s*\(/i.test(value))
+  const [subGroups, setSubGroups] = useState<SubGroupEntry[]>([])
   const [freeText, setFreeText] = useState(value)
+
+  // Fix #12: Resync internal state when `value` changes externally.
+  const lastSyncedRef = useRef(value)
+  useEffect(() => {
+    // Skip if the value matches what we last synced or what the builder
+    // would currently serialize (avoids infinite loops from our own onChange).
+    const currentComparisons = entries.map((e) => e.comparison)
+    const currentSerialized =
+      mode === 'builder'
+        ? serializeCondition(buildExpression(currentComparisons, logicalOperator))
+        : freeText
+
+    if (value === lastSyncedRef.current || value === currentSerialized) {
+      lastSyncedRef.current = value
+      return
+    }
+    lastSyncedRef.current = value
+
+    /* eslint-disable @eslint-react/set-state-in-effect -- legitimate prop-to-local-state sync */
+    const flat = parseForBuilder(value)
+    if (flat) {
+      setEntries(toEntries(flat.comparisons))
+      setLogicalOperator(flat.logicalOperator)
+      setMode('builder')
+    } else {
+      setFreeText(value)
+      setMode('advanced')
+    }
+    /* eslint-enable @eslint-react/set-state-in-effect */
+  }, [value]) // eslint-disable-line @eslint-react/exhaustive-deps -- resync only when external value changes
 
   // Sync builder state -> parent
   const comparisons = useMemo(() => entries.map((e) => e.comparison), [entries])
   useEffect(() => {
     if (mode === 'builder') {
-      const expr = buildExpression(comparisons, logicalOperator)
-      const serialized = serializeCondition(expr)
+      const expr = buildExpression(comparisons, logicalOperator, subGroups)
+      let serialized = serializeCondition(expr)
+      if (negate && serialized) serialized = `NOT (${serialized})`
       if (serialized !== value) onChange(serialized)
     }
-  }, [comparisons, logicalOperator, mode]) // eslint-disable-line @eslint-react/exhaustive-deps -- onChange is stable store callback
+  }, [comparisons, logicalOperator, mode, value, negate, subGroups]) // eslint-disable-line @eslint-react/exhaustive-deps -- onChange is stable store callback
 
   const handleUpdateRow = useCallback(
     (index: number, updated: ConditionComparison) => {
@@ -241,6 +278,68 @@ export function ConditionExpressionBuilder({
     ])
   }, [allocKey])
 
+  const handleAddGroup = useCallback(() => {
+    setSubGroups((prev) => [
+      ...prev,
+      {
+        key: allocKey(),
+        operator: 'AND' as const,
+        entries: [{ key: allocKey(), comparison: createComparison() }],
+      },
+    ])
+  }, [allocKey])
+
+  const handleRemoveGroup = useCallback((groupKey: number) => {
+    setSubGroups((prev) => prev.filter((g) => g.key !== groupKey))
+  }, [])
+
+  const handleGroupOperatorChange = useCallback((groupKey: number, op: 'AND' | 'OR') => {
+    setSubGroups((prev) =>
+      prev.map((g) => (g.key === groupKey ? { ...g, operator: op } : g)),
+    )
+  }, [])
+
+  const handleGroupAddRow = useCallback(
+    (groupKey: number) => {
+      setSubGroups((prev) =>
+        prev.map((g) =>
+          g.key === groupKey
+            ? { ...g, entries: [...g.entries, { key: allocKey(), comparison: createComparison() }] }
+            : g,
+        ),
+      )
+    },
+    [allocKey],
+  )
+
+  const handleGroupUpdateRow = useCallback(
+    (groupKey: number, index: number, updated: ConditionComparison) => {
+      setSubGroups((prev) =>
+        prev.map((g) =>
+          g.key === groupKey
+            ? {
+                ...g,
+                entries: g.entries.map((e, i) =>
+                  i === index ? { ...e, comparison: updated } : e,
+                ),
+              }
+            : g,
+        ),
+      )
+    },
+    [],
+  )
+
+  const handleGroupRemoveRow = useCallback((groupKey: number, index: number) => {
+    setSubGroups((prev) =>
+      prev.map((g) =>
+        g.key === groupKey
+          ? { ...g, entries: g.entries.filter((_, i) => i !== index) }
+          : g,
+      ).filter((g) => g.entries.length > 0),
+    )
+  }, [])
+
   const handleFreeTextChange = useCallback(
     (text: string) => {
       setFreeText(text)
@@ -252,18 +351,18 @@ export function ConditionExpressionBuilder({
   const handleModeChange = useCallback(
     (newMode: 'builder' | 'advanced') => {
       if (newMode === 'advanced') {
-        const expr = buildExpression(comparisons, logicalOperator)
+        const expr = buildExpression(comparisons, logicalOperator, subGroups)
         setFreeText(serializeCondition(expr))
       } else {
+        // Fix #16: If the free text cannot be parsed, block the switch.
         const flat = parseForBuilder(freeText)
-        if (flat) {
-          setEntries(toEntries(flat.comparisons))
-          setLogicalOperator(flat.logicalOperator)
-        }
+        if (!flat) return
+        setEntries(toEntries(flat.comparisons))
+        setLogicalOperator(flat.logicalOperator)
       }
       setMode(newMode)
     },
-    [comparisons, logicalOperator, freeText, toEntries],
+    [comparisons, logicalOperator, freeText, toEntries, subGroups],
   )
 
   return (
@@ -281,6 +380,12 @@ export function ConditionExpressionBuilder({
 
       {mode === 'builder' ? (
         <div className="space-y-2">
+          <ToggleField
+            label="Negate (NOT)"
+            description="Wrap the entire expression in NOT"
+            checked={negate}
+            onChange={setNegate}
+          />
           {entries.map((entry, index) => (
             <div key={entry.key} className="flex flex-col gap-2">
               {index > 0 && (
@@ -307,15 +412,61 @@ export function ConditionExpressionBuilder({
               />
             </div>
           ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleAddRow}
-            className="mt-1"
-          >
-            <Plus data-icon="inline-start" className="size-3.5" />
-            Add condition
-          </Button>
+          {/* Sub-groups */}
+          {subGroups.map((group) => (
+            <div key={group.key} className="ml-4 space-y-2 rounded-md border border-border p-2">
+              <div className="flex items-center justify-between">
+                <SegmentedControl
+                  label="Group operator"
+                  value={group.operator}
+                  onChange={(op) => handleGroupOperatorChange(group.key, op)}
+                  options={[
+                    { value: 'AND' as const, label: 'AND' },
+                    { value: 'OR' as const, label: 'OR' },
+                  ]}
+                  size="sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveGroup(group.key)}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-danger"
+                  aria-label="Remove group"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+              {group.entries.map((entry, idx) => (
+                <ComparisonRow
+                  key={entry.key}
+                  comparison={entry.comparison}
+                  index={idx}
+                  baseId={`${datalistId}-g${group.key}`}
+                  canRemove={group.entries.length > 1}
+                  onUpdate={(i, updated) => handleGroupUpdateRow(group.key, i, updated)}
+                  onRemove={(i) => handleGroupRemoveRow(group.key, i)}
+                />
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleGroupAddRow(group.key)}
+              >
+                <Plus data-icon="inline-start" className="size-3.5" />
+                Add condition
+              </Button>
+            </div>
+          ))}
+
+          <div className="mt-1 flex gap-2">
+            <Button variant="ghost" size="sm" onClick={handleAddRow}>
+              <Plus data-icon="inline-start" className="size-3.5" />
+              Add condition
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleAddGroup}>
+              <Plus data-icon="inline-start" className="size-3.5" />
+              Add group
+            </Button>
+          </div>
         </div>
       ) : (
         <input

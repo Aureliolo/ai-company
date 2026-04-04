@@ -7,13 +7,23 @@ import { useWorkflowsStore } from '@/stores/workflows'
 import { useToastStore } from '@/stores/toast'
 import { getErrorMessage } from '@/utils/errors'
 import { Button } from '@/components/ui/button'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import { WorkflowsSkeleton } from './workflows/WorkflowsSkeleton'
 import { WorkflowFilters } from './workflows/WorkflowFilters'
 import { WorkflowGridView } from './workflows/WorkflowGridView'
+import { WorkflowTableView } from './workflows/WorkflowTableView'
 import { WorkflowCreateDrawer } from './workflows/WorkflowCreateDrawer'
+
+type ViewMode = 'grid' | 'table'
+
+const VIEW_MODE_OPTIONS = [
+  { value: 'grid' as const, label: 'Grid' },
+  { value: 'table' as const, label: 'Table' },
+]
 
 export default function WorkflowsPage() {
   const [createOpen, setCreateOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const navigate = useNavigate()
   const addToast = useToastStore((s) => s.add)
   const {
@@ -69,6 +79,13 @@ export default function WorkflowsPage() {
           <span className="text-sm text-muted-foreground">
             {filteredWorkflows.length} of {totalWorkflows}
           </span>
+          <SegmentedControl
+            label="View mode"
+            value={viewMode}
+            onChange={setViewMode}
+            options={VIEW_MODE_OPTIONS}
+            size="sm"
+          />
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-1 size-4" />
             Create Workflow
@@ -88,11 +105,19 @@ export default function WorkflowsPage() {
       )}
 
       <WorkflowFilters />
-      <WorkflowGridView
-        workflows={filteredWorkflows}
-        onDelete={handleDelete}
-        onDuplicate={handleDuplicate}
-      />
+      {viewMode === 'grid' ? (
+        <WorkflowGridView
+          workflows={filteredWorkflows}
+          onDelete={handleDelete}
+          onDuplicate={handleDuplicate}
+        />
+      ) : (
+        <WorkflowTableView
+          workflows={filteredWorkflows}
+          onDelete={handleDelete}
+          onDuplicate={handleDuplicate}
+        />
+      )}
 
       <WorkflowCreateDrawer open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>

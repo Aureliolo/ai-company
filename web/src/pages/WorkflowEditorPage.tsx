@@ -125,22 +125,28 @@ function WorkflowEditorInner() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-        // Only handle if not in an input/textarea
-        const tag = (e.target as HTMLElement).tagName
+        // Only handle in visual mode, not in inputs/textareas/contenteditable
+        const el = e.target as HTMLElement
+        const tag = el.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (el.isContentEditable || el.closest('[contenteditable="true"]')) return
+        if (editorMode !== 'visual') return
         e.preventDefault()
         useWorkflowEditorStore.getState().copySelectedNodes()
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        const tag = (e.target as HTMLElement).tagName
+        const el = e.target as HTMLElement
+        const tag = el.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (el.isContentEditable || el.closest('[contenteditable="true"]')) return
+        if (editorMode !== 'visual') return
         e.preventDefault()
         useWorkflowEditorStore.getState().pasteNodes()
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [editorMode])
 
   const handleAddNode = useCallback(
     (type: WorkflowNodeType) => {
@@ -222,12 +228,28 @@ function WorkflowEditorInner() {
     try {
       const state = useWorkflowEditorStore.getState()
       if (!state.definition) return
+      // Use current editor nodes/edges, not the last persisted definition
+      const nodeData = state.nodes.map((n) => ({
+        id: n.id,
+        type: (n.data as Record<string, unknown>)?.nodeType as string ?? n.type ?? 'task',
+        label: (n.data as Record<string, unknown>)?.label as string ?? n.id,
+        position_x: n.position.x,
+        position_y: n.position.y,
+        config: (n.data as Record<string, unknown>)?.config as Record<string, unknown> ?? {},
+      }))
+      const edgeData = state.edges.map((e) => ({
+        id: e.id,
+        source_node_id: e.source,
+        target_node_id: e.target,
+        type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
+        label: ((e.data as Record<string, unknown>)?.label as string) ?? null,
+      }))
       const created = await useWorkflowsStore.getState().createWorkflow({
         name: `${state.definition.name} (Copy)`,
         description: state.definition.description || undefined,
         workflow_type: state.definition.workflow_type,
-        nodes: state.definition.nodes.map((n) => ({ ...n })),
-        edges: state.definition.edges.map((e) => ({ ...e })),
+        nodes: nodeData,
+        edges: edgeData,
       })
       addToast({ variant: 'success', title: 'Saved as new workflow' })
       navigate(`${ROUTES.WORKFLOW_EDITOR}?id=${encodeURIComponent(created.id)}`)

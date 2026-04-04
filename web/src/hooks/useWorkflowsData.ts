@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useCallback } from 'react'
 import { useWorkflowsStore } from '@/stores/workflows'
 import { usePolling } from '@/hooks/usePolling'
 import type { WorkflowDefinition } from '@/api/types'
@@ -29,9 +29,6 @@ export function useWorkflowsData(): UseWorkflowsDataReturn {
     await useWorkflowsStore.getState().fetchWorkflows()
   }, [])
   const polling = usePolling(pollFn, WORKFLOWS_POLL_INTERVAL)
-
-  const pollingRef = useRef(polling)
-  pollingRef.current = polling
 
   useEffect(() => {
     polling.start()

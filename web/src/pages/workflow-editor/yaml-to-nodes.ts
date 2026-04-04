@@ -3,10 +3,15 @@
  *
  * Reverse of workflow-to-yaml.ts. Reconstructs the visual graph from
  * the flat step list format.
+ *
+ * Uses a two-pass approach:
+ *   Pass 1 -- collect and validate all steps, build seenIds set
+ *   Pass 2 -- emit edges only when both source and target exist
  */
 
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
+import type { WorkflowEdgeType } from '@/api/types'
 
 export interface ParseResult {
   nodes: Node[]
@@ -33,6 +38,14 @@ interface YamlStep {
   depends_on?: string[]
 }
 
+/** Validated step with a guaranteed id and type. */
+interface ValidatedStep {
+  id: string
+  type: string
+  step: YamlStep
+  index: number
+}
+
 const VALID_TYPES = new Set([
   'task',
   'agent_assignment',
@@ -44,6 +57,36 @@ const VALID_TYPES = new Set([
 const AUTO_LAYOUT_X = 250
 const AUTO_LAYOUT_Y_START = 200
 const AUTO_LAYOUT_Y_STEP = 120
+
+/**
+ * Map a backend edge type to the ReactFlow visual edge type used for
+ * custom edge component selection.
+ */
+function edgeTypeToVisualType(edgeType: WorkflowEdgeType): string {
+  if (edgeType === 'conditional_true' || edgeType === 'conditional_false') {
+    return 'conditional'
+  }
+  return edgeType
+}
+
+/**
+ * Infer the backend edge type for a depends_on edge based on the
+ * source step's configuration.
+ *
+ * - If the source is a conditional node (has condition_expression),
+ *   assigns 'conditional_true' for the first branch and
+ *   'conditional_false' for the second.
+ * - Otherwise returns 'sequential'.
+ */
+function inferDependsOnEdgeType(
+  sourceStep: ValidatedStep,
+  branchIndex: number,
+): WorkflowEdgeType {
+  if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
+    return branchIndex === 0 ? 'conditional_true' : 'conditional_false'
+  }
+  return 'sequential'
+}
 
 /**
  * Parse a YAML string into ReactFlow nodes and edges.
@@ -87,22 +130,12 @@ export function parseYamlToNodesEdges(
     return { nodes, edges, errors, warnings }
   }
 
-  // Check for duplicate IDs
+  // ---------------------------------------------------------------
+  // Pass 1: Collect and validate all steps, build seenIds + stepMap
+  // ---------------------------------------------------------------
   const seenIds = new Set<string>()
+  const stepMap = new Map<string, ValidatedStep>()
   let autoIdCounter = 0
-
-  // Add synthetic start node
-  const startId = 'start-1'
-  nodes.push({
-    id: startId,
-    type: 'start',
-    position: existingPositions?.get(startId) ?? { x: AUTO_LAYOUT_X, y: 50 },
-    data: { label: 'Start', config: {} },
-  })
-
-  // Track first step for connecting start node
-  let firstStepId: string | null = null
-  const stepIds: string[] = []
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i] as YamlStep | undefined
@@ -125,53 +158,108 @@ export function parseYamlToNodesEdges(
       continue
     }
 
-    if (firstStepId === null) firstStepId = stepId
+    stepMap.set(stepId, { id: stepId, type: stepType, step, index: i })
+  }
+
+  // ---------------------------------------------------------------
+  // Build nodes from validated steps
+  // ---------------------------------------------------------------
+  const startId = 'start-1'
+  nodes.push({
+    id: startId,
+    type: 'start',
+    position: existingPositions?.get(startId) ?? { x: AUTO_LAYOUT_X, y: 50 },
+    data: { label: 'Start', config: {} },
+  })
+
+  const stepIds: string[] = []
+
+  for (const [stepId, validated] of stepMap) {
     stepIds.push(stepId)
-
-    // Build node config from step fields
-    const config = buildConfig(step, stepType)
-
+    const config = buildConfig(validated.step, validated.type)
     const position = existingPositions?.get(stepId) ?? {
       x: AUTO_LAYOUT_X,
-      y: AUTO_LAYOUT_Y_START + i * AUTO_LAYOUT_Y_STEP,
+      y: AUTO_LAYOUT_Y_START + validated.index * AUTO_LAYOUT_Y_STEP,
     }
 
     nodes.push({
       id: stepId,
-      type: stepType,
+      type: validated.type,
       position,
-      data: { label: step.title ?? stepId, config },
+      data: { label: validated.step.title ?? stepId, config },
     })
+  }
 
-    // Build edges from depends_on
+  // ---------------------------------------------------------------
+  // Pass 2: Emit edges -- only when both source and target are valid
+  // ---------------------------------------------------------------
+
+  // Track how many depends_on edges each conditional source has
+  // emitted so we can alternate true/false branches.
+  const conditionalBranchCounters = new Map<string, number>()
+
+  for (const [stepId, validated] of stepMap) {
+    const { step } = validated
+
+    // Edges from depends_on
     if (step.depends_on && Array.isArray(step.depends_on)) {
-      for (const depId of step.depends_on) {
-        const edgeType = inferEdgeType()
+      for (const rawDepId of step.depends_on) {
+        const depId = String(rawDepId)
+        if (!seenIds.has(depId)) {
+          errors.push(`Step '${stepId}' references unknown dependency '${depId}'`)
+          continue
+        }
+
+        const sourceStep = stepMap.get(depId)!
+        const branchIdx = conditionalBranchCounters.get(depId) ?? 0
+        const edgeType = inferDependsOnEdgeType(sourceStep, branchIdx)
+
+        if (sourceStep.type === 'conditional' && sourceStep.step.condition) {
+          conditionalBranchCounters.set(depId, branchIdx + 1)
+        }
+
+        const visualType = edgeTypeToVisualType(edgeType)
+        const isTrue = edgeType === 'conditional_true'
+        const isFalse = edgeType === 'conditional_false'
+
         edges.push({
           id: `edge-${depId}-${stepId}`,
           source: depId,
           target: stepId,
-          type: edgeType === 'sequential' ? 'sequential' : 'conditional',
-          data: { edgeType },
+          type: visualType,
+          sourceHandle: isTrue ? 'true' : isFalse ? 'false' : undefined,
+          data: {
+            edgeType,
+            branch: isTrue ? 'true' : isFalse ? 'false' : undefined,
+          },
         })
       }
     }
 
-    // Build edges from branches (parallel_split)
+    // Edges from branches (parallel_split)
     if (step.branches && Array.isArray(step.branches)) {
-      for (const branchTarget of step.branches) {
+      for (const rawTarget of step.branches) {
+        const branchTarget = String(rawTarget)
+        if (!seenIds.has(branchTarget)) {
+          errors.push(`Step '${stepId}' references unknown branch target '${branchTarget}'`)
+          continue
+        }
+
+        const edgeType: WorkflowEdgeType = 'parallel_branch'
         edges.push({
           id: `edge-${stepId}-${branchTarget}`,
           source: stepId,
           target: branchTarget,
-          type: 'sequential',
-          data: { edgeType: 'parallel_branch' },
+          type: edgeTypeToVisualType(edgeType),
+          data: { edgeType },
         })
       }
     }
   }
 
-  // Add synthetic end node
+  // ---------------------------------------------------------------
+  // Synthetic end node
+  // ---------------------------------------------------------------
   const endId = 'end-1'
   nodes.push({
     id: endId,
@@ -183,18 +271,23 @@ export function parseYamlToNodesEdges(
     data: { label: 'End', config: {} },
   })
 
-  // Connect start to first step
-  if (firstStepId) {
+  // ---------------------------------------------------------------
+  // Connect start node to root steps (those with no incoming edges)
+  // ---------------------------------------------------------------
+  const hasIncoming = new Set(edges.map((e) => e.target))
+  const rootStepIds = stepIds.filter((id) => !hasIncoming.has(id))
+
+  for (const rootId of rootStepIds) {
     edges.push({
-      id: `edge-${startId}-${firstStepId}`,
+      id: `edge-${startId}-${rootId}`,
       source: startId,
-      target: firstStepId,
+      target: rootId,
       type: 'sequential',
-      data: { edgeType: 'sequential' },
+      data: { edgeType: 'sequential' as WorkflowEdgeType },
     })
   }
 
-  // Connect last step(s) without outgoing edges to end
+  // Connect leaf steps (those with no outgoing edges) to end
   const hasOutgoing = new Set(edges.map((e) => e.source))
   for (const stepId of stepIds) {
     if (!hasOutgoing.has(stepId)) {
@@ -203,7 +296,7 @@ export function parseYamlToNodesEdges(
         source: stepId,
         target: endId,
         type: 'sequential',
-        data: { edgeType: 'sequential' },
+        data: { edgeType: 'sequential' as WorkflowEdgeType },
       })
     }
   }
@@ -233,12 +326,4 @@ function buildConfig(step: YamlStep, stepType: string): Record<string, unknown> 
   }
 
   return config
-}
-
-/**
- * Infer edge type -- defaults to sequential since conditional edge
- * types are resolved at render time by the editor.
- */
-function inferEdgeType(): string {
-  return 'sequential'
 }

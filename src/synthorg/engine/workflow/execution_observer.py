@@ -1,9 +1,9 @@
 """Bridge between TaskEngine events and workflow execution lifecycle.
 
 Registered as a ``TaskEngine`` observer at application startup.
-When a task transitions to COMPLETED or FAILED, delegates to
-``WorkflowExecutionService`` to update the parent workflow
-execution accordingly.
+When a task transitions to a terminal status (COMPLETED, FAILED,
+or CANCELLED), delegates to ``WorkflowExecutionService`` to update
+the parent workflow execution accordingly.
 """
 
 from typing import TYPE_CHECKING
@@ -32,7 +32,7 @@ class WorkflowExecutionObserver:
     Args:
         definition_repo: Repository for reading workflow definitions.
         execution_repo: Repository for persisting execution state.
-        task_engine: Engine for creating concrete tasks.
+        task_engine: Required by the underlying ``WorkflowExecutionService``.
     """
 
     def __init__(

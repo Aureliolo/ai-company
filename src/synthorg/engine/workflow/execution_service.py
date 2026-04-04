@@ -43,6 +43,7 @@ from synthorg.observability.events.workflow_execution import (
     WORKFLOW_EXEC_COMPLETED,
     WORKFLOW_EXEC_FAILED,
     WORKFLOW_EXEC_INVALID_DEFINITION,
+    WORKFLOW_EXEC_INVALID_STATUS,
     WORKFLOW_EXEC_NODE_COMPLETED,
     WORKFLOW_EXEC_NODE_SKIPPED,
     WORKFLOW_EXEC_NODE_TASK_COMPLETED,
@@ -537,7 +538,7 @@ class WorkflowExecutionService:
             },
         )
         await self._execution_repo.save(failed)
-        logger.warning(
+        logger.info(
             WORKFLOW_EXEC_FAILED,
             execution_id=execution_id,
             error=error,
@@ -552,8 +553,9 @@ class WorkflowExecutionService:
 
         Correlates the task to a running workflow execution and
         transitions the execution to COMPLETED or FAILED as
-        appropriate.  Silently ignores events for tasks not
-        belonging to any running execution.
+        appropriate.  Task cancellations are treated as failures
+        at the workflow level.  Silently ignores events for tasks
+        not belonging to any running execution.
 
         Node status update and execution-level transition are
         combined into a single save to avoid version conflicts.
@@ -583,7 +585,7 @@ class WorkflowExecutionService:
         """Handle a task failure or cancellation event.
 
         Updates the node to TASK_FAILED and transitions the
-        execution to FAILED in a single atomic save.
+        execution to FAILED in a single repository save.
         """
         updated = _update_node_status(
             execution,
@@ -609,7 +611,7 @@ class WorkflowExecutionService:
             execution_id=execution.id,
             task_id=event.task_id,
         )
-        logger.warning(
+        logger.info(
             WORKFLOW_EXEC_FAILED,
             execution_id=execution.id,
             error=error_msg,
@@ -683,7 +685,7 @@ class WorkflowExecutionService:
                 " (expected 'running')"
             )
             logger.warning(
-                WORKFLOW_EXEC_NOT_FOUND,
+                WORKFLOW_EXEC_INVALID_STATUS,
                 execution_id=execution_id,
                 current_status=execution.status.value,
                 error=msg,
@@ -698,7 +700,7 @@ class WorkflowExecutionService:
     ) -> WorkflowExecution | None:
         """Find a RUNNING execution containing a node with the task ID.
 
-        TODO: Replace O(R*N) full scan with an indexed lookup
+        TODO(#1060): Replace O(R*N) full scan with an indexed lookup
         (task_id -> execution_id map or repository method).
         """
         running = await self._execution_repo.list_by_status(

@@ -253,7 +253,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)!.edgeType as string,
+          type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
           label: (e.label as string) ?? null,
         })),
         expected_version: definition.version,
@@ -484,7 +484,7 @@ export const useWorkflowEditorStore = create<WorkflowEditorState>()((set, get) =
           id: e.id,
           source_node_id: e.source,
           target_node_id: e.target,
-          type: (e.data as Record<string, unknown>)!.edgeType as string,
+          type: ((e.data as Record<string, unknown>)?.edgeType as string) ?? 'sequential',
           label: (e.label as string) ?? null,
         })),
       })
