@@ -1,7 +1,7 @@
 """Unit tests for ReviewGateService -- IN_REVIEW task transitions."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -74,9 +74,17 @@ def _make_mock_decision_repo(
 
 
 def _make_mock_persistence(repo: MagicMock) -> MagicMock:
-    """Build a mock PersistenceBackend with a decision_records property."""
+    """Build a mock PersistenceBackend with a decision_records attribute.
+
+    Each call builds a dedicated ``MagicMock`` instance and attaches
+    the repo directly to it.  Using ``type(persistence).decision_records
+    = PropertyMock(...)`` would mutate a class-level descriptor shared
+    across parallel tests and cause cross-test coupling under
+    pytest-xdist; per-instance attribute assignment keeps each fake
+    isolated.
+    """
     persistence = MagicMock()
-    type(persistence).decision_records = PropertyMock(return_value=repo)
+    persistence.decision_records = repo
     return persistence
 
 
@@ -353,8 +361,25 @@ class TestReviewGateServiceDecisionRecording:
         assert kwargs["reason"] == "needs rework"
 
     async def test_decision_includes_criteria_snapshot(self) -> None:
-        """Decision record includes acceptance criteria descriptions."""
-        task = _make_task(criteria=("JWT login", "Refresh works"))
+        """Decision record includes deduped acceptance-criteria descriptions.
+
+        ``Task.acceptance_criteria`` does not enforce uniqueness, but
+        ``DecisionRecord.criteria_snapshot`` rejects duplicates via
+        the unique-strings validator.  The service de-dupes at the
+        boundary while preserving original order; this regression
+        test pins that behavior so a future refactor that drops the
+        dedup step does not silently surface as a ValidationError
+        propagating out of ``complete_review``.
+
+        Blank / whitespace-only descriptions are not tested here
+        because ``AcceptanceCriterion.description`` is a
+        ``NotBlankStr`` and rejects them at Task construction time --
+        the ``.strip()`` guard in ``_record_decision`` is defensive
+        against an unreachable state.
+        """
+        task = _make_task(
+            criteria=("JWT login", "JWT login", "Refresh works", "Refresh works")
+        )
         mock_te = _make_mock_task_engine(task=task)
         repo = _make_mock_decision_repo()
         service = ReviewGateService(
@@ -369,6 +394,7 @@ class TestReviewGateServiceDecisionRecording:
         )
 
         kwargs = repo.append_with_next_version.call_args.kwargs
+        # Deduped, order preserved from first occurrence.
         assert kwargs["criteria_snapshot"] == ("JWT login", "Refresh works")
 
     async def test_decision_version_assigned_by_repository(self) -> None:

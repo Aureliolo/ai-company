@@ -27,6 +27,27 @@ from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.immutable import deep_copy_mapping
 
 
+def _freeze_recursive(value: object) -> object:
+    """Recursively convert mutable containers into immutable forms.
+
+    - ``dict`` -> ``MappingProxyType`` (read-only view of a frozen dict)
+    - ``list`` -> ``tuple`` with elements recursively frozen
+    - ``set``  -> ``frozenset`` with elements recursively frozen
+    - anything else is returned unchanged
+
+    The input is already a deep copy produced by ``deep_copy_mapping``,
+    so nested containers can be freely transformed in place before
+    being re-wrapped for the frozen Pydantic model field.
+    """
+    if isinstance(value, dict):
+        return MappingProxyType({k: _freeze_recursive(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze_recursive(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze_recursive(item) for item in value)
+    return value
+
+
 class DecisionRecord(BaseModel):
     """Immutable record of a review gate decision.
 
@@ -104,22 +125,25 @@ class DecisionRecord(BaseModel):
     @field_validator("metadata", mode="before")
     @classmethod
     def _deep_copy_and_freeze_metadata(cls, value: object) -> object:
-        """Deep-copy and wrap metadata in ``MappingProxyType``.
+        """Deep-copy and recursively freeze metadata.
 
-        Wrapping in a read-only proxy blocks post-construction mutation
-        via ``record.metadata["key"] = ...``, preserving the
-        append-only audit-record contract.  If the input is already a
-        ``MappingProxyType`` (e.g. passed to ``model_copy``), we rebuild
-        from the underlying dict so the deep-copy step still runs.
+        Wrapping the top-level mapping in ``MappingProxyType`` blocks
+        ``record.metadata["key"] = ...``; recursing into nested
+        containers also blocks ``record.metadata["nested"]["key"] =
+        ...`` by converting ``dict`` -> ``MappingProxyType``,
+        ``list`` -> ``tuple``, and ``set`` -> ``frozenset``.  Together
+        these preserve the append-only audit-record contract even for
+        forward-compatible metadata payloads that carry nested
+        structures.  If the input is already a ``MappingProxyType``
+        (e.g. passed to ``model_copy``), we rebuild from the
+        underlying dict so the deep-copy + freeze steps still run.
         """
         if isinstance(value, MappingProxyType):
             # Unwrap so deep_copy_mapping sees a dict and actually
             # produces an independent copy before we re-wrap.
             value = dict(value)
         copied = deep_copy_mapping(value)
-        if isinstance(copied, dict):
-            return MappingProxyType(copied)
-        return copied
+        return _freeze_recursive(copied)
 
     @field_validator("criteria_snapshot", mode="after")
     @classmethod

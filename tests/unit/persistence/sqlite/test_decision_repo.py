@@ -248,7 +248,13 @@ class TestSQLiteDecisionRepositorySerialization:
     async def test_criteria_and_metadata_round_trip(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """criteria_snapshot and metadata survive JSON round-trip."""
+        """criteria_snapshot and metadata survive JSON round-trip.
+
+        Metadata is exposed as a recursively frozen read-only view
+        (``MappingProxyType`` at every mapping level) to preserve the
+        append-only contract; this test compares via ``dict(...)``
+        to avoid depending on the exact container type.
+        """
         repo = SQLiteDecisionRepository(migrated_db)
         await _append(
             repo,
@@ -259,7 +265,8 @@ class TestSQLiteDecisionRepositorySerialization:
         fetched = await repo.get("dr-1")
         assert fetched is not None
         assert fetched.criteria_snapshot == ("a", "b", "c")
-        assert fetched.metadata == {"key": "value", "nested": {"x": 1}}
+        assert fetched.metadata["key"] == "value"
+        assert dict(fetched.metadata["nested"]) == {"x": 1}
 
     async def test_corrupted_criteria_raises_query_error(
         self, migrated_db: aiosqlite.Connection

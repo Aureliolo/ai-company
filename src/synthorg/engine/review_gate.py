@@ -149,6 +149,14 @@ class ReviewGateService:
         """
         task = await self.check_can_decide(task_id=task_id, decided_by=decided_by)
 
+        # Normalize the reason once at the service boundary: empty or
+        # whitespace-only strings collapse to None so the task
+        # transition history and DecisionRecord.reason both carry the
+        # same canonical value.  ``_record_decision`` previously
+        # re-normalized, which allowed the transition reason and the
+        # audit record to drift (e.g. "Review rejected by bob:   ").
+        normalized_reason = reason.strip() if reason and reason.strip() else None
+
         if approved:
             target = TaskStatus.COMPLETED
             transition_reason = f"Review approved by {decided_by}"
@@ -156,8 +164,8 @@ class ReviewGateService:
         else:
             target = TaskStatus.IN_PROGRESS
             transition_reason = f"Review rejected by {decided_by}"
-            if reason:
-                transition_reason += f": {reason}"
+            if normalized_reason is not None:
+                transition_reason += f": {normalized_reason}"
             event = APPROVAL_GATE_REVIEW_REWORK
 
         await sync_to_task_engine(
@@ -182,7 +190,7 @@ class ReviewGateService:
             task=task,
             decided_by=decided_by,
             approved=approved,
-            reason=reason,
+            reason=normalized_reason,
             approval_id=approval_id,
         )
 
@@ -265,7 +273,9 @@ class ReviewGateService:
             )
             return
 
-        normalized_reason = reason if reason and reason.strip() else None
+        # ``reason`` has already been normalized by ``complete_review``
+        # (trimmed; empty/whitespace-only values coerced to ``None``),
+        # so the audit record and the transition reason stay in sync.
         decision = DecisionOutcome.APPROVED if approved else DecisionOutcome.REJECTED
         # Dedupe acceptance criteria descriptions while preserving order.
         # ``Task.acceptance_criteria`` does not enforce uniqueness, but
@@ -290,7 +300,7 @@ class ReviewGateService:
                 executing_agent_id=task.assigned_to,
                 reviewer_agent_id=decided_by,
                 decision=decision,
-                reason=normalized_reason,
+                reason=reason,
                 criteria_snapshot=criteria_snapshot,
                 recorded_at=datetime.now(UTC),
             )

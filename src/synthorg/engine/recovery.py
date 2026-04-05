@@ -33,7 +33,6 @@ from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_COMPLETE,
-    EXECUTION_RECOVERY_DIAGNOSIS,
     EXECUTION_RECOVERY_SNAPSHOT,
     EXECUTION_RECOVERY_START,
 )
@@ -418,12 +417,11 @@ class FailAndReassignStrategy:
             },
         )
 
-        logger.info(
-            EXECUTION_RECOVERY_DIAGNOSIS,
-            task_id=task_execution.task.id,
-            failure_category=category.value,
-            criteria_failed_count=len(result.criteria_failed),
-        )
+        # EXECUTION_RECOVERY_DIAGNOSIS is emitted by the caller
+        # (``AgentEngine._post_execution_pipeline``), which has the
+        # ``agent_id`` context this strategy lacks.  Logging it here
+        # too would duplicate the event and make dashboard counts
+        # ambiguous.
         logger.info(
             EXECUTION_RECOVERY_COMPLETE,
             task_id=task_execution.task.id,

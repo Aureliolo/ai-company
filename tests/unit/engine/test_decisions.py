@@ -53,16 +53,29 @@ class TestDecisionRecordConstruction:
         with pytest.raises(ValidationError):
             record.decision = DecisionOutcome.REJECTED  # type: ignore[misc]
 
-    def test_metadata_deep_copied(self) -> None:
-        """Mutating the source dict does not affect the record."""
+    def test_metadata_deep_copied_and_frozen(self) -> None:
+        """Source mutation does not leak into the record; nested dicts frozen.
+
+        ``record.metadata`` is a ``MappingProxyType`` (read-only view)
+        and nested dicts are recursively frozen to ``MappingProxyType``
+        so ``record.metadata["nested"]["key"] = ...`` also fails.
+        """
+        from collections.abc import Mapping
+        from types import MappingProxyType
+
         nested: dict[str, int] = {"a": 1}
         original: dict[str, object] = {"key": "value", "nested": nested}
         record = _make_record(metadata=original)
+        # Mutating the source dict must not leak into the record.
         original["key"] = "mutated"
         nested["a"] = 999
         assert record.metadata["key"] == "value"
+        # Top-level is a read-only proxy.
+        assert isinstance(record.metadata, MappingProxyType)
+        # Nested dict is recursively frozen.
         nested_copy = record.metadata["nested"]
-        assert isinstance(nested_copy, dict)
+        assert isinstance(nested_copy, Mapping)
+        assert isinstance(nested_copy, MappingProxyType)
         assert nested_copy["a"] == 1
 
     def test_metadata_defaults_to_empty_dict(self) -> None:

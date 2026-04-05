@@ -5,6 +5,8 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
+from pydantic import AwareDatetime
+
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
@@ -34,6 +36,7 @@ from synthorg.hr.performance.models import (
 )
 from synthorg.persistence.errors import DuplicateRecordError, QueryError
 from synthorg.persistence.preset_repository import PresetListRow, PresetRow
+from synthorg.persistence.repositories_decisions import DecisionRole
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 from tests.unit.api.fakes_workflow import (
@@ -316,7 +319,7 @@ class FakeDecisionRepository:
         decision: DecisionOutcome,
         reason: str | None,
         criteria_snapshot: tuple[NotBlankStr, ...],
-        recorded_at: datetime,
+        recorded_at: AwareDatetime,
         metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
         if record_id in self._records:
@@ -356,7 +359,7 @@ class FakeDecisionRepository:
         self,
         agent_id: NotBlankStr,
         *,
-        role: str,
+        role: DecisionRole,
     ) -> tuple[DecisionRecord, ...]:
         if role not in {"executor", "reviewer"}:
             msg = f"role must be 'executor' or 'reviewer', got {role!r}"

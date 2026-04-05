@@ -89,8 +89,25 @@ def _build_insert_params(  # noqa: PLR0913
         "reason": reason,
         "criteria_snapshot": json.dumps(list(criteria_snapshot)),
         "recorded_at": recorded_at.astimezone(UTC).isoformat(),
-        "metadata": json.dumps(metadata),
+        # ``metadata`` may contain ``MappingProxyType`` (from the draft
+        # record's frozen view) at arbitrary nesting depth; unwrap
+        # recursively so ``json.dumps`` only sees plain dicts and
+        # lists.
+        "metadata": json.dumps(_unfreeze_for_json(metadata)),
     }
+
+
+def _unfreeze_for_json(value: object) -> object:
+    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives."""
+    if isinstance(value, MappingProxyType):
+        return {k: _unfreeze_for_json(v) for k, v in value.items()}
+    if isinstance(value, dict):
+        return {k: _unfreeze_for_json(v) for k, v in value.items()}
+    if isinstance(value, tuple | list):
+        return [_unfreeze_for_json(item) for item in value]
+    if isinstance(value, frozenset | set):
+        return [_unfreeze_for_json(item) for item in value]
+    return value
 
 
 def _is_unique_constraint_error(exc: sqlite3.IntegrityError) -> bool:
@@ -166,6 +183,14 @@ class SQLiteDecisionRepository:
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
             dict(metadata or {})
         )
+        # Normalize recorded_at to UTC up-front so the draft record,
+        # the INSERT parameters, and any subsequent read-back through
+        # ``get``/``list_by_task``/``list_by_agent`` all carry the same
+        # timestamp.  Without this, a non-UTC input would cause
+        # ``append_with_next_version`` to return a record whose
+        # ``recorded_at`` disagrees with what ``get(record_id)`` later
+        # reads back from the UTC-normalized row.
+        recorded_at_utc = recorded_at.astimezone(UTC)
         try:
             draft_record = DecisionRecord(
                 id=record_id,
@@ -176,7 +201,7 @@ class SQLiteDecisionRepository:
                 decision=decision,
                 reason=reason,
                 criteria_snapshot=criteria_snapshot,
-                recorded_at=recorded_at,
+                recorded_at=recorded_at_utc,
                 version=1,  # placeholder; overwritten after insert
                 metadata=metadata_view,
             )
