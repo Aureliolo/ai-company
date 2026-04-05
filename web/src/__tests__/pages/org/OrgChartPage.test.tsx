@@ -75,9 +75,13 @@ vi.mock('@/hooks/useOrgChartData', () => ({
   useOrgChartData: mockUseOrgChartData,
 }))
 
-vi.mock('@/lib/motion', () => ({
-  prefersReducedMotion: () => true,
-}))
+vi.mock('@/lib/motion', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/motion')>()
+  return {
+    ...actual,
+    prefersReducedMotion: () => true,
+  }
+})
 
 // Import after mocks
 import OrgChartPage from '@/pages/OrgChartPage'
