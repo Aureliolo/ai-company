@@ -139,3 +139,4 @@ MEMORY_REFORMULATION_SUFFICIENT: Final[str] = "memory.reformulation.sufficient"
 # ── Diversity re-ranking ─────────────────────────────────────────
 
 MEMORY_DIVERSITY_RERANKED: Final[str] = "memory.ranking.diversity_reranked"
+MEMORY_DIVERSITY_RERANK_FAILED: Final[str] = "memory.ranking.diversity_rerank_failed"

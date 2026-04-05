@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_DIVERSITY_RERANK_FAILED,
     MEMORY_DIVERSITY_RERANKED,
     MEMORY_RANKING_COMPLETE,
     MEMORY_RRF_FUSION_COMPLETE,
@@ -472,7 +473,7 @@ def apply_diversity_penalty(
     if diversity_lambda < 0.0 or diversity_lambda > 1.0:
         msg = f"diversity_lambda must be in [0.0, 1.0], got {diversity_lambda}"
         logger.warning(
-            MEMORY_DIVERSITY_RERANKED,
+            MEMORY_DIVERSITY_RERANK_FAILED,
             param="diversity_lambda",
             value=diversity_lambda,
             reason=msg,

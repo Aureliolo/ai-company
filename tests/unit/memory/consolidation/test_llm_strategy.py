@@ -264,6 +264,38 @@ class TestLLMConsolidationStrategyErrorHandling:
         with pytest.raises(AuthenticationError):
             await strategy.consolidate(entries, agent_id="agent-1")
 
+    async def test_no_deletes_on_synthesis_failure(self) -> None:
+        """Non-retryable synthesis error must not delete any originals.
+
+        Verifies the synthesize-before-delete ordering: if ``_synthesize``
+        raises a non-retryable ``ProviderError``, no entries are deleted
+        and data is preserved for the next consolidation pass.
+        """
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=AuthenticationError("bad key"))
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+
+        with pytest.raises(AuthenticationError):
+            await strategy.consolidate(entries, agent_id="agent-1")
+
+        # Synthesis raised before any deletes -- originals must be intact.
+        backend.delete.assert_not_called()
+        backend.store.assert_not_called()
+
     async def test_memory_error_propagates(self) -> None:
         provider = AsyncMock()
         provider.complete = AsyncMock(side_effect=MemoryError("oom"))

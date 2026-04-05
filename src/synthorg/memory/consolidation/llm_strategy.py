@@ -277,11 +277,21 @@ class LLMConsolidationStrategy:
     ) -> tuple[NotBlankStr, list[NotBlankStr]]:
         """Process a single category group for consolidation.
 
-        Deletes originals BEFORE storing the summary so a mid-delete
-        failure aborts before creating an orphan summary.  Individual
-        delete failures are tolerated best-effort: the loop continues,
-        logs the failure, and only successfully-deleted entry IDs are
-        returned in ``removed_ids``.
+        Synthesizes and stores the summary FIRST, then deletes the
+        originals.  This ordering prevents data loss: if synthesis or
+        the store call fails (including non-retryable ProviderError),
+        no originals are deleted and the caller sees the exception
+        without losing any data.
+
+        If the store succeeds but some individual deletes fail, the
+        affected originals remain alongside the summary (duplicated
+        data, recoverable on the next consolidation pass).  This is
+        preferable to the alternative (delete-first) where a synthesis
+        failure causes permanent data loss of already-deleted entries.
+
+        Individual delete failures are tolerated best-effort: the loop
+        continues, logs the failure, and only successfully-deleted
+        entry IDs are returned in ``removed_ids``.
 
         Args:
             category: The memory category.
@@ -295,6 +305,25 @@ class LLMConsolidationStrategy:
             Tuple of (summary_id, removed_ids).
         """
         _, to_remove = self._select_entries(group)
+
+        # Synthesize and store BEFORE deleting so that a synthesis or
+        # store failure leaves originals intact (no data loss).
+        synthesized, used_llm = await self._synthesize(
+            to_remove,
+            agent_id=agent_id,
+            category=category,
+            trajectory_context=trajectory_context,
+        )
+        tag = _LLM_SYNTHESIZED_TAG if used_llm else _CONCAT_FALLBACK_TAG
+        store_request = MemoryStoreRequest(
+            category=category,
+            content=synthesized,
+            metadata=MemoryMetadata(
+                source="consolidation",
+                tags=("consolidated", tag),
+            ),
+        )
+        new_id = await self._backend.store(agent_id, store_request)
 
         removed_ids: list[NotBlankStr] = []
         for entry in to_remove:
@@ -315,23 +344,6 @@ class LLMConsolidationStrategy:
                 )
                 continue
             removed_ids.append(entry.id)
-
-        synthesized, used_llm = await self._synthesize(
-            to_remove,
-            agent_id=agent_id,
-            category=category,
-            trajectory_context=trajectory_context,
-        )
-        tag = _LLM_SYNTHESIZED_TAG if used_llm else _CONCAT_FALLBACK_TAG
-        store_request = MemoryStoreRequest(
-            category=category,
-            content=synthesized,
-            metadata=MemoryMetadata(
-                source="consolidation",
-                tags=("consolidated", tag),
-            ),
-        )
-        new_id = await self._backend.store(agent_id, store_request)
 
         return new_id, removed_ids
 
@@ -390,7 +402,7 @@ class LLMConsolidationStrategy:
                 config=self._completion_config,
             )
             if response.content and response.content.strip():
-                logger.debug(
+                logger.info(
                     LLM_STRATEGY_SYNTHESIZED,
                     agent_id=agent_id,
                     category=category.value,
