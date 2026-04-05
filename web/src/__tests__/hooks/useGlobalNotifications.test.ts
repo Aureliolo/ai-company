@@ -24,6 +24,14 @@ describe('useGlobalNotifications', () => {
     useToastStore.getState().dismissAll()
   })
 
+  afterEach(() => {
+    // Restore any vi.spyOn spies created during the test.  If a test
+    // fails before its inline `.mockRestore()` call runs, the spy would
+    // leak into subsequent tests; this unconditional restore keeps the
+    // suite isolated regardless of where a failure occurs.
+    vi.restoreAllMocks()
+  })
+
   it('subscribes to the agents channel', () => {
     renderHook(() => useGlobalNotifications())
 

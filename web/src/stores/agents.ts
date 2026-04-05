@@ -287,8 +287,18 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       // nonsense like "-1 -> 3.14 tokens".
       const isTokenCount = (v: unknown): v is number =>
         typeof v === 'number' && Number.isInteger(v) && v >= 0
-      const before = isTokenCount(beforeRaw) ? beforeRaw : null
-      const after = isTokenCount(afterRaw) ? afterRaw : null
+      const beforeValid = isTokenCount(beforeRaw) ? beforeRaw : null
+      const afterValid = isTokenCount(afterRaw) ? afterRaw : null
+      // Monotonicity: trimming must reduce token count.  A payload where
+      // after_tokens > before_tokens is contradictory (we would be
+      // "trimming" to a larger size), so fall through to the generic
+      // fallback copy instead of rendering the swapped numbers.
+      const monotonic =
+        beforeValid !== null && afterValid !== null
+          ? afterValid <= beforeValid
+          : true
+      const before = monotonic ? beforeValid : null
+      const after = monotonic ? afterValid : null
 
       if (agentName === null || before === null || after === null) {
         log.warn('personality.trimmed payload has missing/invalid fields', {

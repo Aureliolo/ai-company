@@ -150,7 +150,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       overlayClassName="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
       contentClassName={cn(
         'fixed left-1/2 top-[15vh] z-50 w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] -translate-x-1/2',
-        'rounded-xl border border-border-bright bg-surface shadow-lg',
+        'rounded-xl border border-border-bright bg-surface shadow-[var(--so-shadow-card-hover)]',
         // Tailwind v4 uses dedicated `translate:`/`scale:` CSS properties
         // rather than the legacy `transform:` shorthand, so the transition
         // property list must name each one explicitly for the animation to

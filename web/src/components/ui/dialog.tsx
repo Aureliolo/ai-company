@@ -31,7 +31,7 @@ export function DialogContent({ className, children }: DialogContentProps) {
       <BaseDialog.Popup
         className={cn(
           'fixed top-1/2 left-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2',
-          'rounded-xl border border-border bg-background shadow-lg',
+          'rounded-xl border border-border bg-background shadow-[var(--so-shadow-card-hover)]',
           'max-h-[80vh] overflow-hidden',
           'transition-[opacity,translate,scale] duration-200 ease-out',
           'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
