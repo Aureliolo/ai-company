@@ -34,19 +34,23 @@ URL_TAG = f"{{{SITEMAP_NS}}}url"
 LOC_TAG = f"{{{SITEMAP_NS}}}loc"
 
 # Static artifacts that should be discoverable but live outside the
-# Markdown-driven nav tree. Paths are absolute URLs on the deployed site.
-EXTRA_URLS: tuple[str, ...] = (
-    "https://synthorg.io/docs/openapi/reference.html",
-    "https://synthorg.io/docs/openapi/openapi.json",
+# Markdown-driven nav tree. Paths are relative to the docs root URL,
+# which is derived at runtime from the existing sitemap entries so the
+# script stays in sync with whatever `site_url` mkdocs.yml resolves to
+# (production, staging, PR previews).
+EXTRA_PATHS: tuple[str, ...] = (
+    "openapi/reference.html",
+    "openapi/openapi.json",
 )
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0911 -- one return per distinct failure mode
     """Patch the built sitemap to include the static OpenAPI artifact URLs.
 
     Idempotent: on rerun (when all URLs are already present) the file is
     not rewritten. Returns 1 if the sitemap file is missing, malformed,
-    has an unexpected root element, or cannot be written back; 0 otherwise.
+    has an unexpected root element, has no entries to derive a base URL
+    from, or cannot be written back; 0 otherwise.
     """
     if not SITEMAP_FILE.exists():
         print(
@@ -96,8 +100,21 @@ def main() -> int:
     }
     existing.discard("")
 
+    if not existing:
+        print(
+            "Error: sitemap has no <url> entries; cannot derive base URL.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The shortest existing URL is the docs root (index.md always maps
+    # to the shortest path in a mkdocs-generated sitemap). Stripping the
+    # trailing slash gives us a base we can concatenate paths onto.
+    base_url = min(existing, key=len).rstrip("/")
+
     added = 0
-    for url in EXTRA_URLS:
+    for path in EXTRA_PATHS:
+        url = f"{base_url}/{path}"
         if url in existing:
             print(f"  skip (already present): {url}")
             continue

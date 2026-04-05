@@ -11,7 +11,7 @@ SynthOrg exposes a REST + WebSocket API built on [Litestar](https://litestar.dev
 
 All endpoints live under a version-prefixed path:
 
-```
+```text
 https://<your-host>/api/v1
 ```
 
@@ -42,11 +42,11 @@ The static snapshot on this page is produced by `scripts/export_openapi.py`, whi
 SynthOrg uses **JWT session tokens** issued by the auth controller. The typical flow:
 
 1. **First-run setup.** On a fresh install, `POST /api/v1/auth/setup` creates the initial CEO account. After setup completes, this endpoint returns a conflict error.
-2. **Login.** `POST /api/v1/auth/login` with a username and password returns a signed JWT plus a session record. Include the token on subsequent requests as `Authorization: Bearer <token>`.
+2. **Login.** `POST /api/v1/auth/login` with a username and password returns a `TokenResponse` carrying a signed JWT, its `expires_in` (seconds), and a `must_change_password` flag. Include the token on subsequent requests as `Authorization: Bearer <token>`. A server-side session record is created as a side effect and is retrievable via `GET /api/v1/auth/sessions`.
 3. **Password change.** New users are forced through `POST /api/v1/auth/change-password` before any other endpoint accepts their token -- the `require_password_changed` guard blocks everything else until the temporary password is rotated.
-4. **Current identity.** `GET /api/v1/auth/me` returns the authenticated user, role, and session metadata.
+4. **Current identity.** `GET /api/v1/auth/me` returns the caller's `id`, `username`, `role`, and `must_change_password` flag (no session metadata).
 5. **WebSocket tickets.** Browsers can't set `Authorization` headers on WebSocket connections, so `POST /api/v1/auth/ws-ticket` mints a short-lived single-use ticket. The **preferred** way to present it is as the first WebSocket message (`{"action": "auth", "ticket": "<ticket>"}`) so the ticket never lands in URLs, access logs, or browser history. A legacy `/api/v1/ws?ticket=<ticket>` query-param form is also accepted and is validated before the WebSocket upgrade.
-6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` revokes the session backing the current token (the normal "log out of this browser" action). There is no bulk "revoke all" endpoint.
+6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions by default; CEOs can pass `?scope=all` to list every user's sessions across the organization. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` revokes the session backing the current token (the normal "log out of this browser" action). There is no bulk "revoke all" endpoint.
 
 Passwords are hashed with Argon2id. The server performs a constant-time dummy verification on unknown usernames to prevent timing-based user enumeration.
 
@@ -106,7 +106,7 @@ The API is organised into resource controllers. Every controller is mounted unde
 | Providers | `/providers` | LLM provider runtime CRUD, model auto-discovery, health |
 | Budget | `/budget` | Cost tracking, spend reports, budget enforcement, risk budget |
 | Analytics | `/analytics` | Aggregated metrics across agents, tasks, and providers |
-| Reports | `/reports` | On-demand and scheduled report generation |
+| Reports | `/reports` | On-demand report generation (`POST /generate`) and period listing (`GET /periods`) |
 | Memory Admin | `/admin/memory` | Fine-tuning pipeline, checkpoint management, embedder queries |
 | Backups | `/admin/backups` | Backup orchestration, scheduling, retention |
 | Settings | `/settings` | Runtime-editable settings (DB > env > YAML > code) |
@@ -137,7 +137,9 @@ List endpoints accept `limit` and `offset` query parameters and return a `Pagina
 
 ### Optimistic concurrency
 
-The following resources return an `ETag` header on reads: workflow definitions, workflow versions, workflow executions, tasks, and runtime-editable settings. To update them without trampling a concurrent write, pass the ETag back via `If-Match`. A mismatch produces a `409 Conflict` with error code `VERSION_CONFLICT` (4002).
+Runtime-editable settings emit an `ETag` header on reads and honor `If-Match` on writes. To update a setting without trampling a concurrent write, pass the previously-received ETag back via `If-Match`; a mismatch produces a `409 Conflict` with `error_code` `VERSION_CONFLICT` (4002).
+
+Workflow definitions, workflow versions, workflow executions, and tasks use a different optimistic-concurrency mechanism: an `expected_version: int` field in the **request body** (not an HTTP header). The server rejects the update with the same `VERSION_CONFLICT` code when the stored version differs from the value supplied. Both mechanisms produce identical error shapes on conflict; only the input channel differs.
 
 ### WebSocket events
 
@@ -147,23 +149,47 @@ Real-time updates (approval requests, meeting state, task transitions, routing d
 
 ## Error Format
 
-Errors use [RFC 9457 Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc9457):
+Errors use [RFC 9457 Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc9457). The server supports two response shapes, selected via content negotiation:
+
+**Bare `application/problem+json`** -- returned when the client sends `Accept: application/problem+json`:
 
 ```json
 {
-  "type": "https://synthorg.io/docs/errors/#validation-error",
-  "title": "Validation failed",
+  "type": "https://synthorg.io/docs/errors#validation",
+  "title": "Validation Error",
   "status": 422,
   "detail": "Field 'name' is required",
-  "code": 2001,
-  "category": "validation",
-  "instance": "/api/v1/agents"
+  "instance": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "error_code": 2001,
+  "error_category": "validation",
+  "retryable": false,
+  "retry_after": null
 }
 ```
 
-The `code` field is a 4-digit machine-readable error code grouped by category:
+**Envelope form** (`ApiResponse[T]`) -- the default, returned for `application/json` or no explicit `Accept` header:
 
-| Range | Category | Examples |
+```json
+{
+  "data": null,
+  "error": "Field 'name' is required",
+  "error_detail": {
+    "detail": "Field 'name' is required",
+    "error_code": 2001,
+    "error_category": "validation",
+    "retryable": false,
+    "retry_after": null,
+    "instance": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "title": "Validation Error",
+    "type": "https://synthorg.io/docs/errors#validation"
+  },
+  "success": false
+}
+```
+
+In both shapes, `instance` is the **request correlation ID** used for log tracing -- not the request URL path. The `error_code` field is a 4-digit machine-readable code grouped by category, and `error_category` is the lowercase category identifier:
+
+| Range | `error_category` | Examples (`error_code` name) |
 |---|---|---|
 | 1xxx | `auth` | `UNAUTHORIZED`, `FORBIDDEN`, `SESSION_REVOKED` |
 | 2xxx | `validation` | `VALIDATION_ERROR`, `REQUEST_VALIDATION_ERROR` |
@@ -174,13 +200,13 @@ The `code` field is a 4-digit machine-readable error code grouped by category:
 | 7xxx | `provider_error` | Upstream LLM provider failures |
 | 8xxx | `internal` | Unhandled server errors |
 
-The full error taxonomy lives in the [Error Reference](../errors.md).
+The `type` URI points to the category section of the [Error Reference](../errors.md), using the pattern `https://synthorg.io/docs/errors#<category>`. The full error taxonomy, including `retryable` semantics and `retry_after` behavior, lives there.
 
 ---
 
 ## Rate Limiting
 
-The API applies per-IP rate limiting via Litestar's built-in `RateLimitConfig`. Limits are configurable per deployment. Clients that exceed the limit receive `429 Too Many Requests` with code `RATE_LIMITED` (5000) and a `Retry-After` header.
+The API applies per-IP rate limiting via Litestar's built-in `RateLimitConfig`. Limits are configurable per deployment. Clients that exceed the limit receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
 
 ---
 
