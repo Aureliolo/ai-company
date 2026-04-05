@@ -76,6 +76,12 @@ def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
             timeout=30,
         )
         return json.loads(result.stdout)
+    except subprocess.TimeoutExpired as e:
+        print(
+            f"Error: timed out fetching issues after {e.timeout}s",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     except FileNotFoundError:
         print(
             "Error: 'gh' CLI not found. Please install GitHub CLI: https://cli.github.com",
@@ -143,6 +149,67 @@ def analyze_scope(body: str, title: str) -> dict[str, bool | int]:
     }
 
 
+def _determine_priority(
+    num: int, current_prio: str, issue_type: str
+) -> tuple[str, str, str]:
+    """Determine recommended priority and scope override for an issue.
+
+    Args:
+        num: Issue number.
+        current_prio: Current priority label value.
+        issue_type: Issue type label value.
+
+    Returns:
+        Tuple of (recommended_prio, scope_override, reason).
+        scope_override is empty string if no override.
+    """
+    if num in CRITICAL_ISSUES:
+        scope, reason = CRITICAL_ISSUES[num]
+        return "critical", scope, reason
+    if num in HIGH_QUICK_WIN_ISSUES:
+        scope, reason = HIGH_QUICK_WIN_ISSUES[num]
+        return "high", scope, reason
+    if issue_type == "research":
+        return "low", "", "Needs evaluation before implementation"
+    if num in DEFERRED_ISSUES:
+        return "low", "", "Aspirational features - revisit later"
+    return current_prio, "", ""
+
+
+def _reassess_scope(
+    current_scope: str,
+    analysis: dict[str, bool | int],
+    reason: str,
+) -> tuple[str, str]:
+    """Re-assess scope based on technical analysis.
+
+    Args:
+        current_scope: Current scope label value.
+        analysis: Scope analysis dict from analyze_scope().
+        reason: Existing reason string (may be empty).
+
+    Returns:
+        Tuple of (recommended_scope, updated_reason).
+    """
+    if current_scope != "large":
+        return current_scope, reason
+
+    if analysis["ac_count"] == 0 and not analysis["has_complex_logic"]:
+        scope_reason = "No complex logic or acceptance criteria - likely medium"
+        updated = f"{reason}; {scope_reason}" if reason else scope_reason
+        return "medium", updated
+
+    if (
+        analysis["has_endpoints"]
+        and analysis["ac_count"] < ACCEPTANCE_CRITERIA_THRESHOLD
+    ):
+        scope_reason = "Standard CRUD endpoints, not complex architecture"
+        updated = f"{reason}; {scope_reason}" if reason else scope_reason
+        return "medium", updated
+
+    return current_scope, reason
+
+
 def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
     """Categorize an issue by priority and scope.
 
@@ -164,53 +231,19 @@ def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
     versions = [label["name"] for label in labels if label["name"].startswith("v0.")]
 
     analysis = analyze_scope(body, title)
-
-    # Re-assess priority based on actual product value
-    recommended_prio = current_prio
-    recommended_scope = current_scope
-    reason = ""
-
-    # CRITICAL: Core editing is broken
-    if num in CRITICAL_ISSUES:
-        recommended_prio = "critical"
-        recommended_scope, reason = CRITICAL_ISSUES[num]
-
-    # HIGH: Quick wins with major value
-    elif num in HIGH_QUICK_WIN_ISSUES:
-        recommended_prio = "high"
-        recommended_scope, reason = HIGH_QUICK_WIN_ISSUES[num]
-
-    # Research items - deferrable
-    elif issue_type == "research":
-        recommended_prio = "low"
-        reason = "Needs evaluation before implementation"
-
-    # Speculative features - future
-    elif num in DEFERRED_ISSUES:
-        recommended_prio = "low"
-        reason = "Aspirational features - revisit later"
-
-    # Scope re-assessments
-    if current_scope == "large":
-        if analysis["ac_count"] == 0 and not analysis["has_complex_logic"]:
-            recommended_scope = "medium"
-            scope_reason = "No complex logic or acceptance criteria - likely medium"
-            reason = f"{reason}; {scope_reason}" if reason else scope_reason
-        elif (
-            analysis["has_endpoints"]
-            and analysis["ac_count"] < ACCEPTANCE_CRITERIA_THRESHOLD
-        ):
-            recommended_scope = "medium"
-            scope_reason = "Standard CRUD endpoints, not complex architecture"
-            reason = f"{reason}; {scope_reason}" if reason else scope_reason
+    rec_prio, scope_override, reason = _determine_priority(
+        num, current_prio, issue_type
+    )
+    rec_scope = scope_override or current_scope
+    rec_scope, reason = _reassess_scope(rec_scope, analysis, reason)
 
     return {
         "num": num,
         "title": title,
         "current_prio": current_prio,
         "current_scope": current_scope,
-        "recommended_prio": recommended_prio,
-        "recommended_scope": recommended_scope,
+        "recommended_prio": rec_prio,
+        "recommended_scope": rec_scope,
         "versions": versions,
         "issue_type": issue_type,
         "reason": reason,
@@ -300,8 +333,16 @@ def print_summary(issues: list[dict]) -> None:
     Args:
         issues: List of issue dictionaries from GitHub API.
     """
-    version_counts = defaultdict(
-        lambda: {"total": 0, "high": 0, "medium": 0, "low": 0, "unscoped": 0}
+    known_prios = {"critical", "high", "medium", "low"}
+    version_counts: dict[str, dict[str, int]] = defaultdict(
+        lambda: {
+            "total": 0,
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "other": 0,
+        }
     )
 
     for issue in issues:
@@ -313,34 +354,31 @@ def print_summary(issues: list[dict]) -> None:
             label["name"] for label in labels if label["name"].startswith("v0.")
         ]
         prio = get_label_value(labels, "prio")
+        bucket = prio if prio in known_prios else "other"
 
         if not versions:
             version_counts["NO_VERSION"]["total"] += 1
-            version_counts["NO_VERSION"][
-                prio if prio in ["high", "medium", "low"] else "unscoped"
-            ] += 1
+            version_counts["NO_VERSION"][bucket] += 1
         else:
             for v in versions:
                 version_counts[v]["total"] += 1
-                version_counts[v][
-                    prio if prio in ["high", "medium", "low"] else "unscoped"
-                ] += 1
+                version_counts[v][bucket] += 1
 
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     print("ISSUE COUNT BY VERSION")
-    print("=" * 70)
+    print("=" * 80)
     print(
-        f"{'Version':<12} {'Total':>6} {'High':>6} {'Medium':>6}"
-        f" {'Low':>6} {'Other':>6}"
+        f"{'Version':<12} {'Total':>6} {'Crit':>6} {'High':>6}"
+        f" {'Med':>6} {'Low':>6} {'Other':>6}"
     )
-    print("-" * 70)
+    print("-" * 80)
 
     for version in sorted(version_counts.keys()):
-        counts = version_counts[version]
+        c = version_counts[version]
         print(
-            f"{version:<12} {counts['total']:>6} {counts['high']:>6}"
-            f" {counts['medium']:>6} {counts['low']:>6}"
-            f" {counts['unscoped']:>6}"
+            f"{version:<12} {c['total']:>6} {c['critical']:>6}"
+            f" {c['high']:>6} {c['medium']:>6} {c['low']:>6}"
+            f" {c['other']:>6}"
         )
 
 
