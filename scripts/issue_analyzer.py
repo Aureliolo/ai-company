@@ -24,7 +24,21 @@ ACCEPTANCE_CRITERIA_THRESHOLD = 10
 MAX_DISPLAY_ISSUES = 12
 MIN_CLI_ARGS = 2
 
-# Issue analyzer for SynthOrg - no external dependencies needed
+# Issue-number overrides for priority/scope re-assessment.
+# These are point-in-time heuristics -- update as the project evolves.
+CRITICAL_ISSUES: dict[int, tuple[str, str]] = {
+    # number -> (scope, reason)
+    1081: ("medium", "Blocking core functionality - dashboard editing doesn't work"),
+    1082: ("medium", "Blocking core functionality - dashboard editing doesn't work"),
+}
+HIGH_QUICK_WIN_ISSUES: dict[int, tuple[str, str]] = {
+    1080: ("small", "Fast implementation, high user value"),
+    1079: ("small", "Fast implementation, high user value"),
+    1077: ("small", "Fast implementation, high user value"),
+}
+DEFERRED_ISSUES: frozenset[int] = frozenset(
+    {251, 252, 253, 254, 255, 242, 241, 250, 249, 248, 246, 1012, 1005}
+)
 
 
 def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
@@ -157,16 +171,14 @@ def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
     reason = ""
 
     # CRITICAL: Core editing is broken
-    if num in [1081, 1082]:
+    if num in CRITICAL_ISSUES:
         recommended_prio = "critical"
-        recommended_scope = "medium"
-        reason = "Blocking core functionality - dashboard editing doesn't work"
+        recommended_scope, reason = CRITICAL_ISSUES[num]
 
     # HIGH: Quick wins with major value
-    elif num in [1080, 1079, 1077]:
+    elif num in HIGH_QUICK_WIN_ISSUES:
         recommended_prio = "high"
-        recommended_scope = "small"
-        reason = "Fast implementation, high user value"
+        recommended_scope, reason = HIGH_QUICK_WIN_ISSUES[num]
 
     # Research items - deferrable
     elif issue_type == "research":
@@ -174,7 +186,7 @@ def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
         reason = "Needs evaluation before implementation"
 
     # Speculative features - future
-    elif num in [251, 252, 253, 254, 255, 242, 241, 250, 249, 248, 246, 1012, 1005]:
+    elif num in DEFERRED_ISSUES:
         recommended_prio = "low"
         reason = "Aspirational features - revisit later"
 
@@ -314,16 +326,21 @@ def print_summary(issues: list[dict]) -> None:
                     prio if prio in ["high", "medium", "low"] else "unscoped"
                 ] += 1
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print("ISSUE COUNT BY VERSION")
-    print("=" * 60)
-    print(f"{'Version':<12} {'Total':>6} {'High':>6} {'Medium':>6} {'Low':>6}")
-    print("-" * 60)
+    print("=" * 70)
+    print(
+        f"{'Version':<12} {'Total':>6} {'High':>6} {'Medium':>6}"
+        f" {'Low':>6} {'Other':>6}"
+    )
+    print("-" * 70)
 
     for version in sorted(version_counts.keys()):
         counts = version_counts[version]
         print(
-            f"{version:<12} {counts['total']:>6} {counts['high']:>6} {counts['medium']:>6} {counts['low']:>6}"
+            f"{version:<12} {counts['total']:>6} {counts['high']:>6}"
+            f" {counts['medium']:>6} {counts['low']:>6}"
+            f" {counts['unscoped']:>6}"
         )
 
 
