@@ -44,12 +44,20 @@ class TestEngineSettingDefinitions:
         assert defn.yaml_path == "engine.personality_trimming_notify"
         assert defn.group == "Personality Trimming"
 
-    def test_engine_settings_count(self) -> None:
-        """Engine namespace has exactly 3 settings."""
+    def test_engine_settings_contain_expected_keys(self) -> None:
+        """Engine namespace registers the expected personality-trim settings.
+
+        Uses set containment (``>=``) rather than an exact count so the test
+        remains green when unrelated engine settings are added in future
+        work.  The three keys below are the contract for this PR and must
+        always be present.
+        """
         registry = get_registry()
-        engine_defs = [
-            d
-            for d in registry.list_all()
-            if d.namespace == SettingNamespace.ENGINE.value
-        ]
-        assert len(engine_defs) == 3
+        engine_keys = {
+            d.key for d in registry.list_all() if d.namespace == SettingNamespace.ENGINE
+        }
+        assert engine_keys >= {
+            "personality_trimming_enabled",
+            "personality_max_tokens_override",
+            "personality_trimming_notify",
+        }

@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import time
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
@@ -156,21 +156,43 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
 
-type PersonalityTrimNotifier = Callable[[dict[str, object]], Awaitable[None]]
+
+class PersonalityTrimPayload(TypedDict):
+    """Structured payload forwarded to :data:`PersonalityTrimNotifier` callbacks.
+
+    All keys are always present when the engine invokes the notifier from
+    :meth:`AgentEngine._prepare_context`.  ``trim_tier`` is one of ``1``, ``2``,
+    or ``3`` (enforced upstream by
+    :class:`synthorg.engine.prompt_helpers.PersonalityTrimInfo`).
+    """
+
+    agent_id: str
+    agent_name: str
+    task_id: str
+    before_tokens: int
+    after_tokens: int
+    max_tokens: int
+    trim_tier: int
+    budget_met: bool
+
+
+type PersonalityTrimNotifier = Callable[[PersonalityTrimPayload], Awaitable[None]]
 """Async callback invoked when an agent's personality section is trimmed.
 
-The callback receives a payload dict with keys ``agent_id``, ``agent_name``,
-``task_id``, ``before_tokens``, ``after_tokens``, ``max_tokens``, ``trim_tier``,
-and ``budget_met``.  External runners (e.g. an API server hosting an
-``AgentEngine``) should wire this to ``channels_plugin.publish(...)`` with a
-``WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED, channel=CHANNEL_AGENTS,
-...)`` so the dashboard can show a live toast when trimming activates.
-Failures inside the callback are logged and swallowed -- they never break task
-execution.
+Contract: the engine invokes this callback best-effort from
+:meth:`AgentEngine._prepare_context`.  Any exception the callback raises
+(except :class:`MemoryError` and :class:`RecursionError`, which propagate) is
+logged via ``PROMPT_PERSONALITY_NOTIFY_FAILED`` and swallowed so the trim
+notification never blocks task execution.  :class:`asyncio.CancelledError`
+propagates naturally because it is a :class:`BaseException` subclass.
 
-API-layer integrations should use the factory function
-``synthorg.api.app.make_personality_trim_notifier(channels_plugin)``, which
-returns a ready-to-wire callback matching this contract.
+External runners (e.g. an API server hosting an ``AgentEngine``) should wire
+this to ``channels_plugin.publish(...)`` with a ``WsEvent(event_type=
+WsEventType.PERSONALITY_TRIMMED, channel=CHANNEL_AGENTS, ...)`` so the
+dashboard can show a live toast when trimming activates.  API-layer
+integrations should use the factory function
+:func:`synthorg.api.app.make_personality_trim_notifier`, which returns a
+ready-to-wire callback matching this contract.
 """
 
 
@@ -983,7 +1005,13 @@ class AgentEngine:
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    msg="failed to read ENGINE settings, using defaults",
+                    note="failed to read ENGINE settings, using defaults",
+                    failed_keys=(
+                        "personality_trimming_enabled",
+                        "personality_max_tokens_override",
+                    ),
+                    fallback_trimming_enabled=True,
+                    fallback_tokens_override=None,
                     exc_info=True,
                 )
             else:
@@ -1003,7 +1031,7 @@ class AgentEngine:
 
         if system_prompt.personality_trim_info is not None:
             ti = system_prompt.personality_trim_info
-            trim_payload: dict[str, object] = {
+            trim_payload: PersonalityTrimPayload = {
                 "agent_id": agent_id,
                 "agent_name": identity.name,
                 "task_id": task_id,
@@ -1043,20 +1071,30 @@ class AgentEngine:
 
     async def _maybe_notify_personality_trim(
         self,
-        payload: dict[str, object],
+        payload: PersonalityTrimPayload,
     ) -> None:
         """Publish a personality-trim WebSocket notification, best-effort.
 
         Reads the ``engine.personality_trimming_notify`` setting and, when
         enabled and a ``personality_trim_notifier`` callback is wired, invokes
-        the callback with the trim payload.  Failures inside the callback are
-        logged (``PROMPT_PERSONALITY_NOTIFY_FAILED``) and swallowed --
-        notification never blocks task execution.
+        the callback with the trim payload.
+
+        Emits ``PROMPT_PERSONALITY_NOTIFY_FAILED`` on two paths: (1) the setting
+        read raised an exception (``reason="failed to read
+        personality_trimming_notify setting; fail-open with default
+        notify_enabled=True"``), in which case the method proceeds with the
+        built-in default and still invokes the notifier; (2) the notifier
+        callback itself raised (``reason="notifier callback raised"``).  In
+        both cases :class:`MemoryError`, :class:`RecursionError`, and
+        :class:`asyncio.CancelledError` propagate per the best-effort publisher
+        contract -- notification never silently blocks task execution.
+
+        When ``config_resolver`` is ``None``, the setting is treated as
+        enabled (``notify_enabled=True``) so the callback fires unconditionally.
 
         Args:
             payload: The trim info dict logged via ``PROMPT_PERSONALITY_TRIMMED``.
-                Keys: ``agent_id``, ``agent_name``, ``task_id``, ``before_tokens``,
-                ``after_tokens``, ``max_tokens``, ``trim_tier``, ``budget_met``.
+                See :class:`PersonalityTrimPayload` for the key contract.
         """
         if self._personality_trim_notifier is None:
             return
@@ -1064,6 +1102,9 @@ class AgentEngine:
         agent_name = payload["agent_name"]
         task_id = payload["task_id"]
         trim_tier = payload["trim_tier"]
+        # Fail-open: default is True, and a transient resolver failure must not
+        # silently disable notifications that the operator enabled. If the
+        # setting read fails we log and proceed with the built-in default.
         notify_enabled = True
         if self._config_resolver is not None:
             try:
@@ -1080,10 +1121,12 @@ class AgentEngine:
                     agent_name=agent_name,
                     task_id=task_id,
                     trim_tier=trim_tier,
-                    reason="failed to read personality_trimming_notify setting",
+                    reason=(
+                        "failed to read personality_trimming_notify setting;"
+                        " fail-open with default notify_enabled=True"
+                    ),
                     exc_info=True,
                 )
-                return
         if not notify_enabled:
             return
         try:

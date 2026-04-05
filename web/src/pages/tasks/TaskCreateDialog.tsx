@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
@@ -94,6 +94,17 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Reset form state on close (render-phase check mirroring AgentCreateDialog /
+  // DepartmentCreateDialog / PackSelectionDialog so reopening does not show
+  // stale input from the previous session).
+  const prevOpenRef = useRef(open)
+  if (!open && prevOpenRef.current) {
+    setForm(INITIAL_FORM)
+    setErrors({})
+    setSubmitError(null)
+  }
+  prevOpenRef.current = open
+
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
@@ -142,14 +153,22 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   }, [form, onCreate, onOpenChange])
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next: boolean) => {
+        // Prevent backdrop click / Escape from closing the dialog while a
+        // create request is in flight, matching the guard pattern used by
+        // the other create dialogs.
+        if (!submitting) onOpenChange(next)
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-card shadow-lg',
-            'transition-[opacity,transform,scale] duration-200 ease-out',
+            'transition-[opacity,translate,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             'max-h-[85vh] overflow-y-auto',
@@ -171,7 +190,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
           <div className="space-y-4">
             {/* Template suggestions */}
             <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+              <label className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
                 Start from template
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -180,7 +199,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
                     key={tpl.label}
                     type="button"
                     onClick={() => setForm((prev) => ({ ...prev, ...tpl.defaults }))}
-                    className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-accent hover:text-foreground"
+                    className="rounded-full border border-border bg-surface px-2.5 py-1 text-compact text-text-secondary transition-colors hover:border-accent hover:text-foreground"
                     title={tpl.description}
                   >
                     {tpl.label}
@@ -272,17 +291,17 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
   )
 }
 
-const INPUT_CLASSES = cn('w-full h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-foreground outline-none', FOCUS_RING)
-const TEXTAREA_CLASSES = cn('w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-foreground outline-none resize-y', FOCUS_RING)
+const INPUT_CLASSES = cn('w-full h-8 rounded-md border border-border bg-surface px-2 text-body-sm text-foreground outline-none', FOCUS_RING)
+const TEXTAREA_CLASSES = cn('w-full rounded-md border border-border bg-surface px-2 py-1.5 text-body-sm text-foreground outline-none resize-y', FOCUS_RING)
 
 function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+      <label className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
         {label}{required && <span className="text-danger"> *</span>}
       </label>
       {children}
-      {error && <p className="mt-0.5 text-[10px] text-danger">{error}</p>}
+      {error && <p className="mt-0.5 text-micro text-danger">{error}</p>}
     </div>
   )
 }

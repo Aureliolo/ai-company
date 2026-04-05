@@ -69,7 +69,7 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
 
           <Menu.Portal>
             <Menu.Positioner align="end" sideOffset={4}>
-              <Menu.Popup className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,transform,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
+              <Menu.Popup className="z-50 w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
                 <Menu.Item
                   className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
                   onClick={() => { void navigate(editorUrl) }}
@@ -99,10 +99,11 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
 
       <ConfirmDialog
         open={confirmDelete}
-        onOpenChange={(open) => { if (!open) setConfirmDelete(false) }}
+        onOpenChange={setConfirmDelete}
         onConfirm={() => {
+          // ConfirmDialog auto-closes on a successful confirm via its own
+          // onOpenChange(false) path; we only need to perform the action.
           onDelete(workflow.id)
-          setConfirmDelete(false)
         }}
         title="Delete workflow"
         description={`Are you sure you want to delete "${workflow.name}"? This action cannot be undone.`}

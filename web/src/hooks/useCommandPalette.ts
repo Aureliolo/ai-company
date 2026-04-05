@@ -23,7 +23,7 @@ export interface CommandItem {
 
 type RegistrationKey = string
 
-const commandGroups = new Map<RegistrationKey, CommandItem[]>()
+const commandGroups = new Map<RegistrationKey, readonly CommandItem[]>()
 const listeners = new Set<() => void>()
 let openState = false
 let registrationCounter = 0
@@ -68,7 +68,7 @@ function getOpenSnapshot() {
 // Public API
 // ---------------------------------------------------------------------------
 
-function registerCommands(commands: CommandItem[]): () => void {
+function registerCommands(commands: readonly CommandItem[]): () => void {
   const key = String(++registrationCounter)
   commandGroups.set(key, commands)
   updateCommandsSnapshot()
@@ -120,10 +120,12 @@ export function useCommandPalette() {
 /**
  * Hook that registers commands on mount and cleans up on unmount.
  *
- * Note: `commands` should be memoized (e.g., via `useMemo` or a module-level constant)
- * to avoid re-registration on every render.
+ * Note: `commands` should be memoized (e.g., via `useMemo` or a module-level
+ * constant) to avoid re-registration on every render -- the effect has
+ * `[commands]` as its dependency, so an unmemoized caller array causes
+ * registration thrash that cascades into every command-palette subscriber.
  */
-export function useRegisterCommands(commands: CommandItem[]) {
+export function useRegisterCommands(commands: readonly CommandItem[]): void {
   useEffect(() => {
     const cleanup = registerCommands(commands)
     return cleanup

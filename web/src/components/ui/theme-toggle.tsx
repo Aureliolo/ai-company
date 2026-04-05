@@ -112,7 +112,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
           <Popover.Popup
             className={cn(
               'z-50 w-80 rounded-xl border border-border-bright bg-surface p-card shadow-lg',
-              'transition-[opacity,transform,scale] duration-200 ease-out',
+              'transition-[opacity,translate,scale] duration-200 ease-out',
               'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
               'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             )}

@@ -42,9 +42,9 @@ import { StatusBar } from './StatusBar'
 
 function PageLoadingFallback() {
   return (
-    <div className="space-y-4 p-2" role="status" aria-live="polite">
+    <div className="space-y-section-gap p-2" role="status" aria-live="polite">
       <SkeletonCard header lines={2} />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-grid-gap">
         <SkeletonCard lines={1} />
         <SkeletonCard lines={1} />
         <SkeletonCard lines={1} />
@@ -135,7 +135,7 @@ export default function AppLayout() {
       <StatusBar onHamburgerClick={openSidebarOverlay} sidebarOverlayOpen={sidebarOverlayOpen} />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-card">
           <ErrorBoundary level="page" onReset={() => navigate(ROUTES.DASHBOARD)}>
             <Suspense fallback={<PageLoadingFallback />}>
               <AnimatedPresence routeKey={location.pathname}>

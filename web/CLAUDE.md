@@ -114,7 +114,7 @@ When a new shared component is needed (not covered by the inventory above):
 6. **For primitives backed by Base UI** (Dialog, Popover, Menu, Tabs, Select, Combobox, etc.):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
-   - For Dialog/AlertDialog/Popover: use `Portal` + `Backdrop` + `Popup` (not Radix's `Overlay` + `Content`). Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`.
+   - For Dialog/AlertDialog/Popover: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`.
    - Animation state attributes are `data-[open]`, `data-[closed]`, `data-[starting-style]`, `data-[ending-style]` (not `data-[state=open]` / `data-[state=closed]`). Tabs Tab uses `data-[active]` (not `data-[state=active]`).
    - In Tailwind v4, `translate-*` and `scale-*` compile to the dedicated CSS `translate:` and `scale:` properties, not `transform:`. Transition property lists must name each one explicitly: `transition-[opacity,translate]` or `transition-[opacity,scale]`, not just `transition-[opacity,transform]`.
    - The local `<Slot>` helper in `components/ui/slot.tsx` is reserved for `<Button asChild>` -- all other polymorphism goes through Base UI's `render` prop.

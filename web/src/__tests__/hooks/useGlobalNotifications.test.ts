@@ -24,14 +24,14 @@ describe('useGlobalNotifications', () => {
     useToastStore.getState().dismissAll()
   })
 
-  it('subscribes to the agents channel with a single binding', () => {
+  it('subscribes to the agents channel', () => {
     renderHook(() => useGlobalNotifications())
 
     expect(mockUseWebSocket).toHaveBeenCalledTimes(1)
     const [options] = mockUseWebSocket.mock.calls[0]!
     const bindings = (options as { bindings: Array<{ channel: string }> }).bindings
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.channel).toBe('agents')
+    // Shape assertion (not count) so adding channels does not break the test.
+    expect(bindings.some((b) => b.channel === 'agents')).toBe(true)
   })
 
   it('dispatches WS events to the agents store', () => {
@@ -82,38 +82,110 @@ describe('useGlobalNotifications', () => {
     expect(toasts[0]!.variant).toBe('info')
   })
 
-  it('renders a warning toast when WebSocket setup fails', () => {
+  it.each([
+    {
+      name: 'warning toast when WebSocket setup fails',
+      wsState: {
+        connected: false,
+        reconnectExhausted: false,
+        setupError: 'WebSocket connection failed.',
+      },
+      expectedVariant: 'warning' as const,
+      expectedTitle: 'Live notifications unavailable',
+    },
+    {
+      name: 'error toast when reconnect is exhausted',
+      wsState: {
+        connected: false,
+        reconnectExhausted: true,
+        setupError: null,
+      },
+      expectedVariant: 'error' as const,
+      expectedTitle: 'Live notifications disconnected',
+    },
+  ])('renders a $name', ({ wsState, expectedVariant, expectedTitle }) => {
+    mockUseWebSocket.mockReturnValue(wsState)
+
+    renderHook(() => useGlobalNotifications())
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0]!.variant).toBe(expectedVariant)
+    expect(toasts[0]!.title).toBe(expectedTitle)
+  })
+
+  it('does not emit a toast when everything is healthy', () => {
+    renderHook(() => useGlobalNotifications())
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('deduplicates identical setupError values across re-renders', () => {
     mockUseWebSocket.mockReturnValue({
       connected: false,
       reconnectExhausted: false,
       setupError: 'WebSocket connection failed.',
     })
 
-    renderHook(() => useGlobalNotifications())
+    const { rerender } = renderHook(() => useGlobalNotifications())
+    rerender()
+    rerender()
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.variant).toBe('warning')
-    expect(toasts[0]!.title).toBe('Live notifications unavailable')
+    // lastSetupErrorRef dedupes identical errors across re-renders -- only a
+    // single toast should have been emitted.
+    expect(useToastStore.getState().toasts).toHaveLength(1)
   })
 
-  it('renders an error toast when reconnect is exhausted', () => {
+  it('resets dedupe refs when the WS successfully reconnects', () => {
+    // 1. WS down with setup error -> one warning toast.
+    mockUseWebSocket.mockReturnValue({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: 'First failure',
+    })
+    const { rerender } = renderHook(() => useGlobalNotifications())
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+    useToastStore.getState().dismissAll()
+
+    // 2. Reconnect succeeds -> no toast, but refs should reset so a future
+    // failure fires a fresh warning instead of being silently deduped.
+    mockUseWebSocket.mockReturnValue({
+      connected: true,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+    rerender()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+
+    // 3. Second failure with an IDENTICAL string to the first one.  If refs
+    // were not reset, dedupe would suppress the toast.
+    mockUseWebSocket.mockReturnValue({
+      connected: false,
+      reconnectExhausted: false,
+      setupError: 'First failure',
+    })
+    rerender()
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+  })
+
+  it('stops emitting toasts after unmount', () => {
+    mockUseWebSocket.mockReturnValue({
+      connected: true,
+      reconnectExhausted: false,
+      setupError: null,
+    })
+
+    const { unmount } = renderHook(() => useGlobalNotifications())
+    unmount()
+
+    // After unmount, changing the mock's return value and not re-rendering
+    // should not produce any new toasts. This guards against effect re-runs
+    // that could occur if the hook leaked a subscription.
     mockUseWebSocket.mockReturnValue({
       connected: false,
       reconnectExhausted: true,
       setupError: null,
     })
 
-    renderHook(() => useGlobalNotifications())
-
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.variant).toBe('error')
-    expect(toasts[0]!.title).toBe('Live notifications disconnected')
-  })
-
-  it('does not emit a toast when everything is healthy', () => {
-    renderHook(() => useGlobalNotifications())
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

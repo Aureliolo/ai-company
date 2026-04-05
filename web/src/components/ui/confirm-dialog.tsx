@@ -1,7 +1,10 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createLogger } from '@/lib/logger'
 import { Button } from './button'
+
+const log = createLogger('ConfirmDialog')
 
 export interface ConfirmDialogProps {
   open: boolean
@@ -45,7 +48,7 @@ export function ConfirmDialog({
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
             'rounded-xl border border-border-bright bg-surface p-card shadow-lg',
-            'transition-[opacity,transform,scale] duration-200 ease-out',
+            'transition-[opacity,translate,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
             className,
@@ -70,14 +73,17 @@ export function ConfirmDialog({
             />
             <Button
               variant={variant === 'destructive' ? 'destructive' : 'default'}
+              data-variant={variant}
               disabled={loading}
-              onClick={async (e) => {
-                e.preventDefault()
+              onClick={async () => {
                 try {
                   await onConfirm()
                   onOpenChange(false)
-                } catch {
-                  // Dialog stays open on error -- caller can surface the error.
+                } catch (err) {
+                  // Dialog stays open on error so the caller can retry from
+                  // the same surface. Log the cause so the failure is not
+                  // invisible if the caller forgets to toast its own error.
+                  log.warn('ConfirmDialog onConfirm threw', { title }, err)
                 }
               }}
             >

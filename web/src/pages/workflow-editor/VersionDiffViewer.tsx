@@ -126,12 +126,12 @@ export function VersionDiffViewer() {
             </DialogHeader>
 
             {/* Summary */}
-            <div className="border-b border-border px-6 py-3">
+            <div className="border-b border-border p-card">
               <p className="text-sm text-muted">{diffResult.summary}</p>
             </div>
 
             {/* Changes list */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="flex-1 overflow-y-auto p-card">
               {/* Metadata changes */}
               {diffResult.metadata_changes.length > 0 && (
                 <section className="mb-4">

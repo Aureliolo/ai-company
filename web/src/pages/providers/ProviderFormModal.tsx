@@ -250,14 +250,14 @@ export function ProviderFormModal({
             className={cn(
               'fixed top-1/2 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2',
               'rounded-xl border border-border bg-card shadow-[var(--so-shadow-card-hover)]',
-              'transition-[opacity,transform,scale] duration-200 ease-out',
+              'transition-[opacity,translate,scale] duration-200 ease-out',
               'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
               'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
               'flex max-h-[85vh] flex-col',
             )}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex items-center justify-between border-b border-border p-card">
               <Dialog.Title className="text-base font-semibold text-foreground">
                 {dialogTitle}
               </Dialog.Title>
@@ -273,7 +273,7 @@ export function ProviderFormModal({
               />
             </div>
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="flex-1 overflow-y-auto p-card">
               <div className="flex flex-col gap-section-gap">
                 {/* Presets error banner */}
                 {presetsError && (

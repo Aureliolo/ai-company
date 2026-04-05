@@ -1,6 +1,9 @@
 import { Children, cloneElement, isValidElement } from 'react'
 import type { HTMLAttributes, ReactNode, Ref, MutableRefObject } from 'react'
 import { mergeProps } from '@base-ui/react/merge-props'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('slot')
 
 /**
  * Local polymorphism primitive used by {@link Button} for its `asChild` prop.
@@ -15,7 +18,8 @@ import { mergeProps } from '@base-ui/react/merge-props'
  *
  * `Children.only` and `cloneElement` are intentional here -- they are the only
  * way to implement Slot semantics. The helper is tightly scoped to `<Button
- * asChild>`, so the "fragility" lint warnings do not apply.
+ * asChild>`, so the `@eslint-react/no-children-only` and
+ * `@eslint-react/no-clone-element` warnings are intentionally suppressed.
  */
 export interface SlotProps extends HTMLAttributes<HTMLElement> {
   children?: ReactNode
@@ -40,12 +44,10 @@ export function Slot({ children, ref, ...slotProps }: SlotProps) {
   // eslint-disable-next-line @eslint-react/no-children-only -- Slot requires exactly one child
   const child = Children.only(children)
   if (!isValidElement<Record<string, unknown>>(child)) {
-    if (import.meta.env.DEV) {
-      console.warn(
-        '[Slot] asChild received a non-element child. Props were not forwarded. ' +
-          'Wrap the content in a single React element.',
-      )
-    }
+    log.warn(
+      'asChild received a non-element child. Props were not forwarded. ' +
+        'Wrap the content in a single React element.',
+    )
     return child
   }
 
@@ -53,8 +55,10 @@ export function Slot({ children, ref, ...slotProps }: SlotProps) {
   const merged = mergeProps(slotProps as Record<string, unknown>, childProps)
 
   // Compose the Slot's own ref with any ref the child element carries so
-  // neither is silently dropped when both are provided (React 19 exposes
-  // child refs via `child.props.ref`).
+  // neither is silently dropped when both are provided. React 19+ no longer
+  // hides `ref` from `child.props`; we read it explicitly so a forwardRef
+  // child does not lose its own ref in favour of the Slot's. If React's
+  // ref placement changes in a future major, revisit this composition.
   const childRef = (childProps.ref ?? undefined) as Ref<HTMLElement> | undefined
   const mergedRef = composeRefs<HTMLElement>(ref, childRef)
 
