@@ -419,5 +419,4 @@ class TestDecisionRecordSelfReviewInvariant:
                 decision=DecisionOutcome.APPROVED,
                 recorded_at=datetime.now(UTC),
                 version=1,
-                metadata={},
             )

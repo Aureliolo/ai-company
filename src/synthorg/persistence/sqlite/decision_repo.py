@@ -10,6 +10,7 @@ create under concurrent review gate decisions.
 import json
 import sqlite3
 from datetime import UTC
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 import aiosqlite
@@ -155,8 +156,40 @@ class SQLiteDecisionRepository:
             DuplicateRecordError: If a record with ``record_id`` exists
                 OR a concurrent write won the ``UNIQUE(task_id, version)``
                 race.
-            QueryError: If the operation fails.
+            QueryError: If the operation fails OR the model-level
+                validation (blank ``reason`` -> ``None``, duplicate
+                ``criteria_snapshot``, blank ``NotBlankStr`` inputs,
+                non-UTC ``recorded_at``) rejects the input.  Validation
+                runs BEFORE the insert so invalid data never reaches
+                the durable log.
         """
+        metadata_view: MappingProxyType[str, object] = MappingProxyType(
+            dict(metadata or {})
+        )
+        try:
+            draft_record = DecisionRecord(
+                id=record_id,
+                task_id=task_id,
+                approval_id=approval_id,
+                executing_agent_id=executing_agent_id,
+                reviewer_agent_id=reviewer_agent_id,
+                decision=decision,
+                reason=reason,
+                criteria_snapshot=criteria_snapshot,
+                recorded_at=recorded_at,
+                version=1,  # placeholder; overwritten after insert
+                metadata=metadata_view,
+            )
+        except ValidationError as exc:
+            msg = f"Invalid decision record {record_id!r}: {exc}"
+            logger.warning(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=record_id,
+                task_id=task_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+
         params = _build_insert_params(
             record_id=record_id,
             task_id=task_id,
@@ -164,25 +197,13 @@ class SQLiteDecisionRepository:
             executing_agent_id=executing_agent_id,
             reviewer_agent_id=reviewer_agent_id,
             decision=decision,
-            reason=reason,
-            criteria_snapshot=criteria_snapshot,
-            recorded_at=recorded_at,
-            metadata=metadata or {},
+            reason=draft_record.reason,
+            criteria_snapshot=draft_record.criteria_snapshot,
+            recorded_at=draft_record.recorded_at,
+            metadata=dict(draft_record.metadata),
         )
         assigned_version = await self._execute_insert(record_id, params)
-        record = DecisionRecord(
-            id=record_id,
-            task_id=task_id,
-            approval_id=approval_id,
-            executing_agent_id=executing_agent_id,
-            reviewer_agent_id=reviewer_agent_id,
-            decision=decision,
-            reason=reason,
-            criteria_snapshot=criteria_snapshot,
-            recorded_at=recorded_at,
-            version=assigned_version,
-            metadata=metadata or {},
-        )
+        record = draft_record.model_copy(update={"version": assigned_version})
         logger.debug(
             PERSISTENCE_DECISION_RECORD_SAVED,
             record_id=record_id,

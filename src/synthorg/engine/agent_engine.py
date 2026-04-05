@@ -154,6 +154,12 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 """Prompt-to-total token ratio above which a warning is emitted."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
+
+# Cap on the number of failed acceptance criteria embedded in the
+# post-recovery transition reason.  Criteria beyond this limit are
+# summarised as "+N more" so the status history does not grow
+# unbounded on tasks with many criteria.
+_TRANSITION_REASON_CRITERIA_CAP = 5
 """Module-level default instance for the recovery strategy."""
 
 
@@ -689,6 +695,26 @@ class AgentEngine:
                 # strategy ran and produced a result.
                 assert recovery_result is not None  # noqa: S101
                 category = recovery_result.failure_category.value
+                # When the category is QUALITY_GATE_FAILED (or any other
+                # category that collected criteria_failed), preserve a
+                # sanitized summary of the failing criteria in the
+                # transition reason so downstream routing/history does
+                # not lose them.  Capped at the first ~5 criteria and
+                # each sanitized via sanitize_message() to strip
+                # paths/URLs/injection markers before the string hits
+                # the task status history.
+                criteria_suffix = ""
+                if recovery_result.criteria_failed:
+                    capped = recovery_result.criteria_failed[
+                        :_TRANSITION_REASON_CRITERIA_CAP
+                    ]
+                    sanitized = "; ".join(sanitize_message(c) for c in capped)
+                    overflow = (
+                        len(recovery_result.criteria_failed)
+                        - _TRANSITION_REASON_CRITERIA_CAP
+                    )
+                    more = f" +{overflow} more" if overflow > 0 else ""
+                    criteria_suffix = f", unmet_criteria={sanitized}{more}"
                 await sync_to_task_engine(
                     self._task_engine,
                     target_status=ctx.task_execution.status,
@@ -696,7 +722,7 @@ class AgentEngine:
                     agent_id=agent_id,
                     reason=(
                         f"Post-recovery status: {ctx.task_execution.status.value} "
-                        f"(failure_category={category})"
+                        f"(failure_category={category}{criteria_suffix})"
                     ),
                 )
         # Clean up checkpoints and heartbeat on non-ERROR exits.

@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
 if TYPE_CHECKING:
     from synthorg.engine.coordination.models import CoordinationPhaseResult
 
@@ -187,13 +189,12 @@ class SelfReviewError(EngineError):
         agent_id: The agent identifier that is both executor and reviewer.
     """
 
-    def __init__(self, *, task_id: str, agent_id: str) -> None:
-        if not task_id or not task_id.strip():
-            error = "task_id must be non-empty"
-            raise ValueError(error)
-        if not agent_id or not agent_id.strip():
-            error = "agent_id must be non-empty"
-            raise ValueError(error)
+    def __init__(
+        self,
+        *,
+        task_id: NotBlankStr,
+        agent_id: NotBlankStr,
+    ) -> None:
         super().__init__("Self-review is not permitted")
-        self.task_id = task_id
-        self.agent_id = agent_id
+        self.task_id: NotBlankStr = task_id
+        self.agent_id: NotBlankStr = agent_id

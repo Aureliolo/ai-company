@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any
 
 from synthorg.api.auth.models import ApiKey, User
@@ -307,14 +308,14 @@ class FakeDecisionRepository:
     async def append_with_next_version(  # noqa: PLR0913
         self,
         *,
-        record_id: str,
-        task_id: str,
-        approval_id: str | None,
-        executing_agent_id: str,
-        reviewer_agent_id: str,
+        record_id: NotBlankStr,
+        task_id: NotBlankStr,
+        approval_id: NotBlankStr | None,
+        executing_agent_id: NotBlankStr,
+        reviewer_agent_id: NotBlankStr,
         decision: DecisionOutcome,
         reason: str | None,
-        criteria_snapshot: tuple[str, ...],
+        criteria_snapshot: tuple[NotBlankStr, ...],
         recorded_at: datetime,
         metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
@@ -339,21 +340,21 @@ class FakeDecisionRepository:
             criteria_snapshot=criteria_snapshot,
             recorded_at=recorded_at,
             version=next_version,
-            metadata=metadata or {},
+            metadata=MappingProxyType(dict(metadata or {})),
         )
         self._records[record_id] = record
         return record
 
-    async def get(self, record_id: str) -> DecisionRecord | None:
+    async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
         return self._records.get(record_id)
 
-    async def list_by_task(self, task_id: str) -> tuple[DecisionRecord, ...]:
+    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
         matching = [r for r in self._records.values() if r.task_id == task_id]
         return tuple(sorted(matching, key=lambda r: r.version))
 
     async def list_by_agent(
         self,
-        agent_id: str,
+        agent_id: NotBlankStr,
         *,
         role: str,
     ) -> tuple[DecisionRecord, ...]:

@@ -47,21 +47,26 @@ class ReviewGateService:
     Called by the approval controller when a review-gate approval
     is approved or rejected.  Enforces no-self-review (the decider
     must not be the original executing agent) and records every
-    decision to the decisions drop-box.
+    decision to the decisions drop-box (best effort).
 
     Args:
         task_engine: Centralized task engine for status sync and
             task lookup (required for self-review enforcement).
-        persistence: Persistence backend -- ``decision_records`` is
-            accessed lazily so the backend may be constructed before
-            ``persistence.connect()`` is called.
+        persistence: Optional persistence backend -- ``decision_records``
+            is accessed lazily so the backend may be constructed before
+            ``persistence.connect()`` is called.  When ``None``, the
+            preflight and state-transition paths still run (they only
+            need ``task_engine``); decision recording degrades to a
+            WARNING-level no-op so the self-review / missing-task
+            fail-fast guarantee still holds in backends that do not
+            have a persistence layer wired up.
     """
 
     def __init__(
         self,
         *,
         task_engine: TaskEngine,
-        persistence: PersistenceBackend,
+        persistence: PersistenceBackend | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._persistence = persistence
@@ -232,6 +237,20 @@ class ReviewGateService:
         This is logged at ERROR because reaching the review gate
         without an assignee is an anomalous operational state.
         """
+        if self._persistence is None:
+            logger.warning(
+                APPROVAL_GATE_DECISION_RECORD_FAILED,
+                task_id=task.id,
+                decided_by=decided_by,
+                approved=approved,
+                error_type="NoPersistence",
+                error=(
+                    "Decision recording skipped: no persistence backend "
+                    "configured on ReviewGateService"
+                ),
+            )
+            return
+
         if task.assigned_to is None:
             logger.error(
                 APPROVAL_GATE_DECISION_RECORD_FAILED,
@@ -248,11 +267,23 @@ class ReviewGateService:
 
         normalized_reason = reason if reason and reason.strip() else None
         decision = DecisionOutcome.APPROVED if approved else DecisionOutcome.REJECTED
-        criteria_snapshot = tuple(
-            c.description for c in task.acceptance_criteria if c.description.strip()
-        )
+        # Dedupe acceptance criteria descriptions while preserving order.
+        # ``Task.acceptance_criteria`` does not enforce uniqueness, but
+        # ``DecisionRecord.criteria_snapshot`` rejects duplicates via the
+        # unique-strings validator.  Without deduping here a task with
+        # repeated criteria would raise ``ValidationError`` inside the
+        # repo and propagate out of the narrowed except clause.
+        seen: set[str] = set()
+        criteria_snapshot: tuple[str, ...] = ()
+        for c in task.acceptance_criteria:
+            stripped = c.description.strip()
+            if stripped and stripped not in seen:
+                seen.add(stripped)
+                criteria_snapshot = (*criteria_snapshot, stripped)
+        persistence = self._persistence
+        assert persistence is not None  # noqa: S101  # narrowed above
         try:
-            record = await self._persistence.decision_records.append_with_next_version(
+            record = await persistence.decision_records.append_with_next_version(
                 record_id=str(uuid.uuid4()),
                 task_id=task.id,
                 approval_id=approval_id,

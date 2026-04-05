@@ -64,7 +64,6 @@ def _make_mock_decision_repo(
             criteria_snapshot=kwargs["criteria_snapshot"],  # type: ignore[arg-type]
             recorded_at=kwargs["recorded_at"],  # type: ignore[arg-type]
             version=version,
-            metadata=kwargs.get("metadata") or {},  # type: ignore[arg-type]
         )
 
     repo.append_with_next_version = AsyncMock(side_effect=_append)
@@ -237,8 +236,22 @@ class TestReviewGateServiceSelfReview:
                 decided_by="bob",
             )
 
-    async def test_task_without_assignee_proceeds(self) -> None:
-        """When task.assigned_to is None, self-review check is skipped."""
+    async def test_task_without_assignee_proceeds_and_skips_decision_record(
+        self,
+    ) -> None:
+        """When task.assigned_to is None, the state transition runs but
+        no decision record is persisted.
+
+        The ``Task`` model itself rejects ``assigned_to=None`` for
+        statuses that require an assignee (IN_REVIEW, IN_PROGRESS), so
+        the only way to reach the unassigned-executor defensive code
+        in ``_record_decision`` is through a ``CREATED`` task that
+        somehow gets routed through the review gate.  This test
+        exercises that defensive branch and asserts the new invariant:
+        the service refuses to write an audit row for an unassigned
+        executor rather than jamming a sentinel string through the
+        ``NotBlankStr`` ``executing_agent_id`` field.
+        """
         task = _make_task(assigned_to=None, status=TaskStatus.CREATED)
         mock_te = _make_mock_task_engine(task=task)
         repo = _make_mock_decision_repo()
@@ -246,7 +259,42 @@ class TestReviewGateServiceSelfReview:
             task_engine=mock_te, persistence=_make_mock_persistence(repo)
         )
 
-        # Should not raise (no assignee to enforce against)
+        # Should not raise (no assignee to enforce self-review against)
+        await service.complete_review(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+        )
+        mock_te.submit.assert_awaited_once()
+        # No audit record is persisted for unassigned tasks.
+        repo.append_with_next_version.assert_not_awaited()
+
+    async def test_no_persistence_preflight_still_enforces_self_review(
+        self,
+    ) -> None:
+        """Preflight still runs when persistence is None.
+
+        Regression guard for the CodeRabbit finding: gating
+        ``ReviewGateService`` construction on persistence would
+        disable the self-review / missing-task fail-fast in
+        task-engine-only deployments.
+        """
+        task = _make_task(assigned_to="alice")
+        mock_te = _make_mock_task_engine(task=task)
+        service = ReviewGateService(task_engine=mock_te, persistence=None)
+
+        with pytest.raises(SelfReviewError):
+            await service.check_can_decide(task_id="task-1", decided_by="alice")
+
+    async def test_no_persistence_complete_review_skips_decision_record(
+        self,
+    ) -> None:
+        """With persistence=None, complete_review transitions but skips audit."""
+        task = _make_task(assigned_to="alice")
+        mock_te = _make_mock_task_engine(task=task)
+        service = ReviewGateService(task_engine=mock_te, persistence=None)
+
         await service.complete_review(
             task_id="task-1",
             requested_by="bob",
@@ -339,7 +387,6 @@ class TestReviewGateServiceDecisionRecording:
                 decision=DecisionOutcome.REJECTED,
                 recorded_at=datetime(2026, 4, 4, 10, 0, tzinfo=UTC),
                 version=1,
-                metadata={},
             ),
         )
         task = _make_task()

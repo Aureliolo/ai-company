@@ -33,8 +33,14 @@ _URL_PATTERN = re.compile(
 # We strip these on best-effort: the goal is to make it harder for
 # LLM-authored free text (error messages, acceptance criteria) to
 # redirect a resumed agent's context.  Not a security boundary on its
-# own -- pair with dedicated prompt-injection defenses at higher
-# layers.
+# own -- pair with dedicated prompt-injection defenses at higher layers.
+#
+# NOTE: ``{{ }}`` / ``{% %}`` templating delimiters are deliberately
+# NOT filtered here.  They are legitimate structured content in
+# acceptance criteria, assistant snippets, and procedural-memory
+# payloads that downstream LLM flows expect to preserve -- redacting
+# them would corrupt valid input with no meaningful injection-defense
+# benefit.
 _PROMPT_INJECTION_PATTERN = re.compile(
     r"(?i)"
     r"(?:ignore\s+(?:all\s+|any\s+|the\s+|your\s+|previous\s+|above\s+)+"
@@ -42,7 +48,6 @@ _PROMPT_INJECTION_PATTERN = re.compile(
     r"|\[/?(?:INST|SYS|SYSTEM|USER|ASSISTANT)\]"
     r"|<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
     r"|<\|/?(?:system|user|assistant)\|>"
-    r"|\{\{|\}\}|\{%|%\}"
 )
 
 

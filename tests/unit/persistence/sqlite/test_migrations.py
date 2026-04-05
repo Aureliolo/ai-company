@@ -161,6 +161,46 @@ class TestApplySchema:
         assert pk_columns["namespace"] == 1
         assert pk_columns["key"] == 2
 
+    async def test_decision_records_enforces_audit_constraints(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """decision_records table enforces the audit invariants.
+
+        Guards against silent regressions of the three load-bearing
+        constraints documented in the PR:
+
+        - ``CHECK(reviewer_agent_id != executing_agent_id)`` enforces
+          no-self-review at the database boundary.
+        - ``REFERENCES tasks(id) ON DELETE RESTRICT`` preserves the
+          audit trail when a task is deleted.
+        - ``UNIQUE(task_id, version)`` backs up the server-assigned
+          monotonic version scheme.
+        """
+        await apply_schema(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type='table' AND name='decision_records'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        ddl = row[0]
+        assert "CHECK(reviewer_agent_id != executing_agent_id)" in ddl
+        assert "REFERENCES tasks(id) ON DELETE RESTRICT" in ddl
+        assert "UNIQUE(task_id, version)" in ddl
+        assert "CHECK(version >= 1)" in ddl
+
+        # Verify the FK actually resolves to tasks(id) with RESTRICT
+        # via PRAGMA so a future DDL-only refactor that loses the FK
+        # clause is detected.
+        fk_cursor = await memory_db.execute(
+            "PRAGMA foreign_key_list('decision_records')"
+        )
+        fks = await fk_cursor.fetchall()
+        # Format: id, seq, table, from, to, on_update, on_delete, match
+        task_fks = [fk for fk in fks if fk[2] == "tasks" and fk[3] == "task_id"]
+        assert len(task_fks) == 1
+        assert task_fks[0][6] == "RESTRICT"  # on_delete
+
     async def test_agent_states_ddl_has_check_constraints(
         self, memory_db: aiosqlite.Connection
     ) -> None:

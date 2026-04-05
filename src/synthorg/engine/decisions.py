@@ -10,6 +10,7 @@ section of ``docs/design/operations.md`` for how decisions flow
 through the approval lifecycle.
 """
 
+from types import MappingProxyType
 from typing import Any, Self
 
 from pydantic import (
@@ -51,10 +52,15 @@ class DecisionRecord(BaseModel):
             assigned by the persistence layer; the service never picks
             the value itself to avoid TOCTOU races.
         metadata: Forward-compatible structured metadata (deep-copied
-            at construction).
+            AND wrapped in ``MappingProxyType`` at construction to
+            block post-construction mutation of the audit record).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(
+        frozen=True,
+        allow_inf_nan=False,
+        arbitrary_types_allowed=True,
+    )
 
     id: NotBlankStr = Field(description="Unique decision record identifier")
     task_id: NotBlankStr = Field(description="Task that was reviewed")
@@ -82,9 +88,9 @@ class DecisionRecord(BaseModel):
     )
     recorded_at: AwareDatetime = Field(description="When the decision was recorded")
     version: int = Field(ge=1, description="Monotonic version per task")
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Forward-compatible metadata",
+    metadata: MappingProxyType[str, Any] = Field(
+        default_factory=lambda: MappingProxyType({}),
+        description="Forward-compatible metadata (read-only view)",
     )
 
     @field_validator("reason", mode="before")
@@ -97,9 +103,23 @@ class DecisionRecord(BaseModel):
 
     @field_validator("metadata", mode="before")
     @classmethod
-    def _deep_copy_metadata(cls, value: object) -> object:
-        """Deep-copy metadata at construction boundary."""
-        return deep_copy_mapping(value)
+    def _deep_copy_and_freeze_metadata(cls, value: object) -> object:
+        """Deep-copy and wrap metadata in ``MappingProxyType``.
+
+        Wrapping in a read-only proxy blocks post-construction mutation
+        via ``record.metadata["key"] = ...``, preserving the
+        append-only audit-record contract.  If the input is already a
+        ``MappingProxyType`` (e.g. passed to ``model_copy``), we rebuild
+        from the underlying dict so the deep-copy step still runs.
+        """
+        if isinstance(value, MappingProxyType):
+            # Unwrap so deep_copy_mapping sees a dict and actually
+            # produces an independent copy before we re-wrap.
+            value = dict(value)
+        copied = deep_copy_mapping(value)
+        if isinstance(copied, dict):
+            return MappingProxyType(copied)
+        return copied
 
     @field_validator("criteria_snapshot", mode="after")
     @classmethod

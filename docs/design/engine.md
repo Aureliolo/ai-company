@@ -718,14 +718,21 @@ async run(
       and ``TaskVersionConflictError`` to 409, both with generic
       messages to avoid leaking task UUIDs via error bodies.
 
-      Every completed review is appended to the auditable decisions
-      drop-box (``DecisionRepository``) as an immutable
-      ``DecisionRecord`` capturing executor, reviewer, outcome,
-      approval-ID cross-reference, and an acceptance-criteria
-      snapshot.  See the "Review Gate Invariants" section of
-      ``docs/design/operations.md`` for the full three-layer
-      enforcement model (service preflight, Pydantic validator, SQL
-      CHECK constraint).
+      The service attempts to append a ``DecisionRecord`` to the
+      auditable decisions drop-box (``DecisionRepository``) for every
+      completed review -- capturing executor, reviewer, outcome,
+      approval-ID cross-reference, and an acceptance-criteria snapshot.
+      This append is **best-effort**: known transient persistence
+      failures (``QueryError`` / ``DuplicateRecordError``) are logged
+      via ``logger.exception`` and do NOT roll back the state
+      transition (the transition is the source of truth; the drop-box
+      is the audit trail).  Programming errors (``ValidationError``,
+      ``TypeError``, ``AttributeError``) are deliberately NOT caught --
+      they propagate loudly so schema drift surfaces in dev/CI instead
+      of being masked as silent audit loss.  See the "Review Gate
+      Invariants" section of ``docs/design/operations.md`` for the
+      full three-layer enforcement model (service preflight, Pydantic
+      validator, SQL CHECK constraint).
 
       **Future work (#1076):** versioning agent identities/charters
       as first-class artifacts so a ``DecisionRecord`` can carry a

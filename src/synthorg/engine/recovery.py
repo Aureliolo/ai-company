@@ -42,16 +42,23 @@ logger = get_logger(__name__)
 
 
 # Keyword rules for inferring failure category from error messages.
-# Evaluated in order; first match wins.  Order is load-bearing: BUDGET_EXCEEDED
-# takes precedence over TIMEOUT/STAGNATION/etc. in ambiguous messages because
-# budget exhaustion is the most operationally actionable signal.  Reordering
-# this tuple changes classification for ambiguous messages.
+# Evaluated in order; first match wins.  Order is load-bearing:
+# BUDGET_EXCEEDED takes precedence over TIMEOUT/STAGNATION/etc. in
+# ambiguous messages because budget exhaustion is the most operationally
+# actionable signal.  DELEGATION comes before TOOL_FAILURE so messages
+# like "delegation failed: tool unavailable" classify as DELEGATION,
+# not TOOL_FAILURE.  Reordering this tuple changes classification for
+# ambiguous messages.
 _FAILURE_CATEGORY_RULES: tuple[tuple[tuple[str, ...], FailureCategory], ...] = (
     (("budget",), FailureCategory.BUDGET_EXCEEDED),
     (("timeout", "timed out"), FailureCategory.TIMEOUT),
     (("stagnation",), FailureCategory.STAGNATION),
     (("delegation",), FailureCategory.DELEGATION_FAILED),
     (("quality", "criteria"), FailureCategory.QUALITY_GATE_FAILED),
+    (
+        ("tool invocation", "tool execution", "tool error", "mcp tool"),
+        FailureCategory.TOOL_FAILURE,
+    ),
 )
 
 
