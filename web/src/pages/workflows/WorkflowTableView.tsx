@@ -9,7 +9,7 @@ import type { WorkflowDefinition } from '@/api/types'
 
 interface WorkflowTableViewProps {
   workflows: readonly WorkflowDefinition[]
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
 }
 
@@ -130,10 +130,10 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
         open={confirmDeleteId !== null}
         onOpenChange={(open) => { if (!open) setConfirmDeleteId(null) }}
         onConfirm={() => {
-          // ConfirmDialog auto-closes via its own onOpenChange(false) on
-          // successful confirm, which will clear confirmDeleteId above --
-          // no need to null it manually here.
-          if (confirmDeleteId) onDelete(confirmDeleteId)
+          // Forward the promise so ConfirmDialog's onConfirm handler can
+          // observe rejection and keep the dialog open for retry.
+          if (confirmDeleteId) return onDelete(confirmDeleteId)
+          return undefined
         }}
         title="Delete workflow"
         description="This action cannot be undone. The workflow definition will be permanently deleted."

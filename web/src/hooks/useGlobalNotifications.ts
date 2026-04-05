@@ -3,6 +3,7 @@ import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { WsChannel } from '@/api/types'
 
 const log = createLogger('useGlobalNotifications')
@@ -43,7 +44,12 @@ export function useGlobalNotifications(): void {
   useEffect(() => {
     if (setupError && setupError !== lastSetupErrorRef.current) {
       lastSetupErrorRef.current = setupError
-      log.warn('Global notifications WebSocket setup failed', { setupError })
+      // `setupError` originates from WebSocket transport errors, which can
+      // surface messages derived from untrusted response bodies; sanitize
+      // before embedding in the structured log.
+      log.warn('Global notifications WebSocket setup failed', {
+        setupError: sanitizeForLog(setupError),
+      })
       useToastStore.getState().add({
         variant: 'warning',
         title: 'Live notifications unavailable',

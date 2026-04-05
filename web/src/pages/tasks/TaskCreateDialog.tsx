@@ -295,14 +295,19 @@ const INPUT_CLASSES = cn('w-full h-8 rounded-md border border-border bg-surface 
 const TEXTAREA_CLASSES = cn('w-full rounded-md border border-border bg-surface px-2 py-1.5 text-body-sm text-foreground outline-none resize-y', FOCUS_RING)
 
 function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
+  // Use the implicit-association form of <label> (the label element wraps
+  // the form control) so screen readers and getByLabelText resolve the
+  // label-to-input link without needing an explicit htmlFor/id pair on
+  // every call site.  This is the WHATWG-spec form of implicit
+  // association and works with any form control rendered as a descendant.
   return (
-    <div>
-      <label className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
+    <label className="block">
+      <span className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
         {label}{required && <span className="text-danger"> *</span>}
-      </label>
+      </span>
       {children}
       {error && <p className="mt-0.5 text-micro text-danger">{error}</p>}
-    </div>
+    </label>
   )
 }
 

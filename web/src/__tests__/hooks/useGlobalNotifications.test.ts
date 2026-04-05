@@ -56,19 +56,24 @@ describe('useGlobalNotifications', () => {
     expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('active')
   })
 
-  it('forwards personality.trimmed events to the toast queue', () => {
+  it('delegates personality.trimmed events to the agents store', () => {
+    // This hook is only responsible for wiring the `agents` binding.  The
+    // toast contents (title, variant, description) are built inside
+    // `useAgentsStore.updateFromWsEvent` and are covered by the agents
+    // store test suite.  Spying on the store method here keeps this test
+    // focused on the delegation contract so unrelated copy changes in the
+    // store do not cascade into this file.
+    const spy = vi.spyOn(useAgentsStore.getState(), 'updateFromWsEvent')
     renderHook(() => useGlobalNotifications())
 
     const [options] = mockUseWebSocket.mock.calls[0]!
     const { bindings } = options as {
       bindings: Array<{ channel: string; handler: (event: WsEvent) => void }>
     }
-    // Resolve by channel name rather than index so adding unrelated
-    // subscriptions upstream cannot silently break this test.
     const agentsBinding = bindings.find((b) => b.channel === 'agents')
     expect(agentsBinding).toBeDefined()
 
-    agentsBinding!.handler({
+    const event: WsEvent = {
       event_type: 'personality.trimmed',
       channel: 'agents',
       timestamp: '2026-04-05T10:00:00Z',
@@ -82,12 +87,11 @@ describe('useGlobalNotifications', () => {
         trim_tier: 2,
         budget_met: true,
       },
-    })
+    }
+    agentsBinding!.handler(event)
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.title).toBe('Personality trimmed')
-    expect(toasts[0]!.variant).toBe('info')
+    expect(spy).toHaveBeenCalledWith(event)
+    spy.mockRestore()
   })
 
   it.each([

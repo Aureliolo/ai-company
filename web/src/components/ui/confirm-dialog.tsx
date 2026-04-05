@@ -39,7 +39,19 @@ export function ConfirmDialog({
   children,
 }: ConfirmDialogProps) {
   return (
-    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(nextOpen: boolean) => {
+        // Lock the dialog while a confirm action is in flight: without this,
+        // Escape and backdrop clicks flow straight through to `onOpenChange`
+        // and callers that clear state on close (e.g. ApprovalDetailDrawer
+        // resetting its `comment` state) would drop the user's retry context
+        // mid-operation, even though this component's intent is to stay open
+        // on failure so the caller can retry from the same surface.
+        if (loading && !nextOpen) return
+        onOpenChange(nextOpen)
+      }}
+    >
       <AlertDialog.Portal>
         <AlertDialog.Backdrop
           className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
