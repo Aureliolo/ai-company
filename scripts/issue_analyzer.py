@@ -16,6 +16,7 @@ import json
 import re
 import subprocess
 import sys
+from collections import defaultdict
 
 # Constants
 ZAP_REPORT_ISSUE_NUMBER = 760
@@ -27,7 +28,18 @@ MIN_CLI_ARGS = 2
 
 
 def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
-    """Fetch issues from GitHub CLI."""
+    """Fetch issues from GitHub CLI.
+
+    Args:
+        limit: Maximum number of issues to fetch.
+        state: Issue state filter ("open", "closed", "all").
+
+    Returns:
+        List of issue dictionaries from GitHub API.
+
+    Raises:
+        SystemExit: If the gh CLI is not installed or the API call fails.
+    """
     cmd = [
         "gh",
         "issue",
@@ -47,18 +59,33 @@ def run_gh_issue_list(limit: int = 200, state: str = "open") -> list[dict]:
             check=True,
             encoding="utf-8",
             errors="replace",
+            timeout=30,
         )
         return json.loads(result.stdout)
+    except FileNotFoundError:
+        print(
+            "Error: 'gh' CLI not found. Please install GitHub CLI: https://cli.github.com",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     except subprocess.CalledProcessError as e:
         print(f"Error fetching issues: {e}", file=sys.stderr)
-        return []
+        sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON: {e}", file=sys.stderr)
-        return []
+        sys.exit(1)
 
 
 def get_label_value(labels: list[dict], prefix: str) -> str:
-    """Extract label value by prefix."""
+    """Extract label value by prefix.
+
+    Args:
+        labels: List of label dictionaries from GitHub API.
+        prefix: Label prefix to search for (e.g., "scope", "prio").
+
+    Returns:
+        The label value after the prefix, or "unknown" if not found.
+    """
     for label in labels:
         name = label["name"]
         if name.startswith(prefix + ":"):
@@ -66,8 +93,16 @@ def get_label_value(labels: list[dict], prefix: str) -> str:
     return "unknown"
 
 
-def analyze_scope(body: str, title: str) -> dict:
-    """Analyze technical scope from body."""
+def analyze_scope(body: str, title: str) -> dict[str, bool | int]:
+    """Analyze technical scope from issue body.
+
+    Args:
+        body: Issue body text.
+        title: Issue title (for future analysis use).
+
+    Returns:
+        Dictionary with scope analysis flags and acceptance criteria count.
+    """
     body_lower = body.lower()
     _ = title  # title may be used for future analysis
     return {
@@ -94,8 +129,16 @@ def analyze_scope(body: str, title: str) -> dict:
     }
 
 
-def categorize_issue(issue: dict) -> dict:
-    """Categorize an issue by priority and scope."""
+def categorize_issue(issue: dict) -> dict[str, str | int | list[str]]:
+    """Categorize an issue by priority and scope.
+
+    Args:
+        issue: Issue dictionary from GitHub API.
+
+    Returns:
+        Dictionary with original and recommended priority/scope,
+        along with analysis metadata.
+    """
     num = issue["number"]
     title = issue["title"]
     labels = issue.get("labels", [])
@@ -139,13 +182,15 @@ def categorize_issue(issue: dict) -> dict:
     if current_scope == "large":
         if analysis["ac_count"] == 0 and not analysis["has_complex_logic"]:
             recommended_scope = "medium"
-            reason += "; No complex logic or acceptance criteria - likely medium"
+            scope_reason = "No complex logic or acceptance criteria - likely medium"
+            reason = f"{reason}; {scope_reason}" if reason else scope_reason
         elif (
             analysis["has_endpoints"]
             and analysis["ac_count"] < ACCEPTANCE_CRITERIA_THRESHOLD
         ):
             recommended_scope = "medium"
-            reason += "; Standard CRUD endpoints, not complex architecture"
+            scope_reason = "Standard CRUD endpoints, not complex architecture"
+            reason = f"{reason}; {scope_reason}" if reason else scope_reason
 
     return {
         "num": num,
@@ -193,8 +238,12 @@ def _print_issue_details(issue: dict) -> None:
         print(f"    Tags: {tags}")
 
 
-def print_full_analysis(issues: list[dict]):
-    """Print detailed analysis."""
+def print_full_analysis(issues: list[dict]) -> None:
+    """Print detailed analysis of all issues grouped by priority.
+
+    Args:
+        issues: List of issue dictionaries from GitHub API.
+    """
     categorized = [
         categorize_issue(i) for i in issues if i["number"] != ZAP_REPORT_ISSUE_NUMBER
     ]  # Skip ZAP report
@@ -205,18 +254,22 @@ def print_full_analysis(issues: list[dict]):
     print()
 
     # Group by recommended priority
-    groups = {
+    groups: dict[str, list[dict]] = {
         "critical": [],
         "high": [],
         "medium": [],
         "low": [],
+        "unknown": [],
     }
 
     for c in categorized:
-        groups.get(c["recommended_prio"], []).append(c)
+        prio = c["recommended_prio"]
+        if prio not in groups:
+            prio = "unknown"
+        groups[prio].append(c)
 
     # Print groups
-    for prio in ["critical", "high", "medium", "low"]:
+    for prio in ["critical", "high", "medium", "low", "unknown"]:
         prio_issues = groups[prio]
         if not prio_issues:
             continue
@@ -229,10 +282,12 @@ def print_full_analysis(issues: list[dict]):
             _print_issue_details(issue)
 
 
-def print_summary(issues: list[dict]):
-    """Print brief summary by version."""
-    from collections import defaultdict
+def print_summary(issues: list[dict]) -> None:
+    """Print brief summary by version.
 
+    Args:
+        issues: List of issue dictionaries from GitHub API.
+    """
     version_counts = defaultdict(
         lambda: {"total": 0, "high": 0, "medium": 0, "low": 0, "unscoped": 0}
     )
@@ -272,8 +327,12 @@ def print_summary(issues: list[dict]):
         )
 
 
-def print_critical(issues: list[dict]):
-    """Print only critical/high priority issues."""
+def print_critical(issues: list[dict]) -> None:
+    """Print only critical/high priority issues.
+
+    Args:
+        issues: List of issue dictionaries from GitHub API.
+    """
     categorized = [
         categorize_issue(i) for i in issues if i["number"] != ZAP_REPORT_ISSUE_NUMBER
     ]
@@ -293,8 +352,15 @@ def print_critical(issues: list[dict]):
             print(f"  Why: {issue['reason']}")
 
 
-def find_dependencies(issues: list[dict]):
-    """Find dependency chains in issue bodies."""
+def find_dependencies(issues: list[dict]) -> list[tuple[int, int]]:
+    """Find dependency chains in issue bodies.
+
+    Args:
+        issues: List of issue dictionaries from GitHub API.
+
+    Returns:
+        List of (source_issue, target_issue) dependency tuples.
+    """
     deps = []
 
     for issue in issues:
@@ -303,7 +369,7 @@ def find_dependencies(issues: list[dict]):
         # Common dependency patterns
         patterns = [
             r"(?:depends?\s+(?:on|upon)|blocked\s+(?:by|on)|requires?|needs?|builds?\s+on)\s*[:\s]*#(\d+)",
-            r"(?:follow(?:s|ing|[- ]up)|extends?|extends?)\s*[:\s]*#(\d+)",
+            r"(?:follow(?:s|ing|[- ]up)|extends?)\s*[:\s]*#(\d+)",
         ]
 
         for pattern in patterns:
@@ -323,8 +389,12 @@ def find_dependencies(issues: list[dict]):
     return deps
 
 
-def propose_reorganization(issues: list[dict]):
-    """Propose new version organization."""
+def propose_reorganization(issues: list[dict]) -> None:
+    """Propose new version organization based on priority analysis.
+
+    Args:
+        issues: List of issue dictionaries from GitHub API.
+    """
     categorized = [
         categorize_issue(i) for i in issues if i["number"] != ZAP_REPORT_ISSUE_NUMBER
     ]
@@ -349,7 +419,7 @@ def propose_reorganization(issues: list[dict]):
         else:
             v080.append(c)
 
-    print("\n### v0.6.4 (CRITICAL - 2 issues)")
+    print(f"\n### v0.6.4 (CRITICAL - {len(v064)} issue{'s' if len(v064) != 1 else ''})")
     print("Theme: Foundation - dashboard editing actually works\n")
     for c in sorted(v064, key=lambda x: x["num"]):
         print(f"  #{c['num']}: {c['title'][:55]} [{c['recommended_scope']}]")
@@ -372,13 +442,20 @@ def propose_reorganization(issues: list[dict]):
     print("Theme: Research and aspirational features")
 
 
-def main():
+def main() -> None:
     """Main entry point for the issue analyzer."""
     if len(sys.argv) < MIN_CLI_ARGS:
         print(__doc__)
         sys.exit(1)
 
     command = sys.argv[1]
+
+    # Validate command before fetching issues (fail fast)
+    valid_commands = {"analyze", "summary", "critical", "deps", "propose"}
+    if command not in valid_commands:
+        print(f"Unknown command: {command}")
+        print(__doc__)
+        sys.exit(1)
 
     # Fetch issues
     print("Fetching issues from GitHub...", file=sys.stderr)
@@ -395,10 +472,6 @@ def main():
         find_dependencies(issues)
     elif command == "propose":
         propose_reorganization(issues)
-    else:
-        print(f"Unknown command: {command}")
-        print(__doc__)
-        sys.exit(1)
 
 
 if __name__ == "__main__":
