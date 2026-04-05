@@ -8,7 +8,15 @@ export interface CommandItem {
   icon?: LucideIcon
   /** Keyboard shortcut display (e.g. ["ctrl", "n"]). */
   shortcut?: string[]
-  action: () => void
+  /**
+   * Action to run when the palette item is selected.  Return types are
+   * intentionally permissive (`unknown` / `Promise<unknown>`) so call
+   * sites can pass through third-party imperative handles like
+   * `fitView()` from @xyflow/react (which returns `Promise<boolean>`)
+   * without hand-wrapping them in a `() => { ... }`.  The return value
+   * is discarded -- the palette only cares about success vs rejection.
+   */
+  action: () => unknown | Promise<unknown>
   /** Group heading in the palette. */
   group: string
   /** Additional search terms. */

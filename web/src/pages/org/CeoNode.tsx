@@ -7,27 +7,38 @@ import type { CeoNodeData } from './build-org-tree'
 
 export type CeoNodeType = Node<CeoNodeData, 'ceo'>
 
+/*
+ * Handles are transparent by default, revealed on hover to reduce
+ * visual clutter in read-only mode.  Same pattern as AgentNode.
+ */
+const HANDLE_CLASSES = cn(
+  '!size-1.5 !border-0 !bg-accent',
+  '!opacity-0 group-hover/ceo:!opacity-100',
+  'transition-opacity duration-150',
+)
+
 function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
   const isActive = data.runtimeStatus === 'active'
 
   return (
     <div
       className={cn(
-        'rounded-lg border border-accent/30 bg-card px-4 py-3',
-        'min-w-[180px] max-w-[220px]',
-        'shadow-sm shadow-accent/15',
+        'group/ceo relative rounded-lg border-2 border-accent/40 bg-card px-4 py-3',
+        'min-w-[200px] max-w-[240px]',
+        'shadow-md shadow-accent/20 transition-all duration-200',
+        'hover:shadow-lg hover:shadow-accent/30',
       )}
       data-testid="ceo-node"
       aria-label={`CEO: ${data.name}, ${data.companyName}`}
     >
-      <Handle type="target" position={Position.Top} className="bg-accent! size-1.5!" />
+      <Handle type="target" position={Position.Top} className={HANDLE_CLASSES} />
 
-      <div className="mb-1 text-center font-sans text-micro font-medium tracking-wide text-accent">
+      <div className="mb-1 text-center font-sans text-micro font-medium uppercase tracking-wider text-accent">
         {data.companyName}
       </div>
 
       <div className="flex items-center gap-2.5">
-        <Avatar name={data.name} size="md" borderColor="border-accent/40" />
+        <Avatar name={data.name} size="md" borderColor="border-accent/50" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate font-sans text-sm font-semibold text-foreground">
@@ -44,7 +55,7 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="bg-accent! size-1.5!" />
+      <Handle type="source" position={Position.Bottom} className={HANDLE_CLASSES} />
     </div>
   )
 }

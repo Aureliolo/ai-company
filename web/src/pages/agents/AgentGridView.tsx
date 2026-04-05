@@ -18,7 +18,7 @@ function AgentGridItem({ agent }: { agent: AgentConfig }) {
   return (
     <StaggerItem>
       <Link
-        to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agent.name))}
+        to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(agent.id ?? agent.name))}
         className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded-lg"
       >
         <AgentCard

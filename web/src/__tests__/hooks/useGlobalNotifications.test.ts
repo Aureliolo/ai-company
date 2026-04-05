@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
 import { useAgentsStore } from '@/stores/agents'
 import { useToastStore } from '@/stores/toast'

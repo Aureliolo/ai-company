@@ -53,9 +53,14 @@ export function CommandPalette({ className }: CommandPaletteProps) {
 
   // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog inside
   // cmdk-base's Command.Dialog, so we no longer need a manual Escape handler.
+  //
+  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on (or
+  // AZERTY layouts that remap the key), `e.key` reports 'K' for the same
+  // physical keystroke. The sibling useSettingsKeyboard.ts hook follows
+  // the same convention for its Ctrl+S/ handlers.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         toggle()
       }
@@ -109,10 +114,14 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   )
 
   const handleSelect = useCallback(
-    (cmd: CommandItem) => {
+    async (cmd: CommandItem) => {
       addRecentId(cmd.id)
       try {
-        cmd.action()
+        // Await via Promise.resolve so both sync and async actions are
+        // handled. A promise rejection from an async action would otherwise
+        // escape the try/catch and close() below would run as if the action
+        // succeeded -- the opposite of the "user sees failures" contract.
+        await Promise.resolve(cmd.action())
       } catch (err) {
         // Always log + toast so users see when a destructive command (e.g.
         // "Delete agent") fails instead of the palette closing silently as
@@ -124,8 +133,11 @@ export function CommandPalette({ className }: CommandPaletteProps) {
           title: 'Command failed',
           description: `"${cmd.label}" did not complete: ${getErrorMessage(err)}`,
         })
+      } finally {
+        // Close in finally so the palette dismisses after the action
+        // resolves (or rejects), not before the awaited work completes.
+        close()
       }
-      close()
     },
     [close],
   )

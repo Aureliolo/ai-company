@@ -13,7 +13,7 @@ interface ProjectTeamSectionProps {
 function TeamMemberRow({ agentId, isLead }: { agentId: string; isLead: boolean }) {
   return (
     <Link
-      to={ROUTES.AGENT_DETAIL.replace(':agentName', encodeURIComponent(agentId))}
+      to={ROUTES.AGENT_DETAIL.replace(':agentId', encodeURIComponent(agentId))}
       className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/5"
     >
       <Avatar name={agentId} />

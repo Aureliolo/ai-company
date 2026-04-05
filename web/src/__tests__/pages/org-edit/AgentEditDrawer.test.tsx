@@ -1,6 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentEditDrawer } from '@/pages/org-edit/AgentEditDrawer'
 import { makeAgent, makeDepartment } from '../../helpers/factories'
+
+// Save + Delete are disabled while the backend CRUD endpoints are
+// pending (#1081).  When the endpoints land, remove the
+// "disables Save+Delete" test and restore the click-behaviour tests
+// that were here previously -- see git history on this file.
 
 describe('AgentEditDrawer', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(makeAgent('alice'))
@@ -32,27 +37,9 @@ describe('AgentEditDrawer', () => {
     expect(screen.getByDisplayValue('Lead Developer')).toBeInTheDocument()
   })
 
-  it('calls onUpdate with form data when Save is clicked', async () => {
-    renderDrawer()
-    fireEvent.change(screen.getByDisplayValue('Lead Developer'), { target: { value: 'Senior Dev' } })
-    fireEvent.click(screen.getByText('Save'))
-
-    await waitFor(() => {
-      expect(mockOnUpdate).toHaveBeenCalledWith('alice', expect.objectContaining({
-        role: 'Senior Dev',
-      }))
-    })
-  })
-
   it('renders Delete button', () => {
     renderDrawer()
     expect(screen.getByText('Delete')).toBeInTheDocument()
-  })
-
-  it('opens confirmation dialog on Delete click', () => {
-    renderDrawer()
-    fireEvent.click(screen.getByText('Delete'))
-    expect(screen.getByText('Delete alice?')).toBeInTheDocument()
   })
 
   it('shows model info as read-only', () => {
@@ -61,36 +48,18 @@ describe('AgentEditDrawer', () => {
     expect(screen.getByText(/test-medium-001/)).toBeInTheDocument()
   })
 
-  it('displays save error when onUpdate rejects', async () => {
-    const failingOnUpdate = vi.fn().mockRejectedValue(new Error('Update failed'))
-    render(
-      <AgentEditDrawer
-        open={true}
-        onClose={mockOnClose}
-        agent={agent}
-        departments={departments}
-        onUpdate={failingOnUpdate}
-        onDelete={mockOnDelete}
-        saving={false}
-      />,
-    )
-    fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => {
-      expect(screen.getByText('Update failed')).toBeInTheDocument()
-    })
-  })
-
-  it('calls onDelete with agent name after confirming delete', async () => {
+  it('disables Save and Delete buttons with #1081 tooltip', () => {
     renderDrawer()
-    fireEvent.click(screen.getByText('Delete'))
-    // Confirmation dialog opens
-    expect(screen.getByText('Delete alice?')).toBeInTheDocument()
-    // Click the destructive confirm button inside the dialog
-    const confirmButtons = screen.getAllByText('Delete')
-    // The last "Delete" button is the confirm button in the dialog
-    fireEvent.click(confirmButtons[confirmButtons.length - 1]!)
-    await waitFor(() => {
-      expect(mockOnDelete).toHaveBeenCalledWith('alice')
-    })
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    const deleteButton = screen.getByRole('button', { name: /delete/i })
+    expect(saveButton).toBeDisabled()
+    expect(deleteButton).toBeDisabled()
+    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
+    expect(deleteButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled buttons must not call the mutation props.
+    fireEvent.click(saveButton)
+    fireEvent.click(deleteButton)
+    expect(mockOnUpdate).not.toHaveBeenCalled()
+    expect(mockOnDelete).not.toHaveBeenCalled()
   })
 })

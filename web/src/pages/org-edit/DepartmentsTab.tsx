@@ -12,7 +12,8 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, rectSortingStrategy, sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Building2, PackagePlus, Plus } from 'lucide-react'
+import { AlertTriangle, Building2, PackagePlus, Plus, Users } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type {
   CompanyConfig,
   CreateDepartmentRequest,
@@ -20,7 +21,6 @@ import type {
   DepartmentHealth,
   UpdateDepartmentRequest,
 } from '@/api/types'
-import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,7 @@ import { useToastStore } from '@/stores/toast'
 import { DepartmentCreateDialog } from './DepartmentCreateDialog'
 import { DepartmentEditDrawer } from './DepartmentEditDrawer'
 import { PackSelectionDialog } from './PackSelectionDialog'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface DepartmentsTabProps {
   config: CompanyConfig | null
@@ -43,13 +44,11 @@ export interface DepartmentsTabProps {
 
 function SortableDepartmentCard({
   dept,
-  health,
   agentCount,
   onClick,
   disabled,
 }: {
   dept: Department
-  health: DepartmentHealth | null
   agentCount: number
   onClick: () => void
   disabled?: boolean
@@ -66,6 +65,15 @@ function SortableDepartmentCard({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  // Edit-time metadata shown on the card.  The previous design also
+  // rendered a runtime `utilization_percent` gauge via DeptHealthBar,
+  // but a live health bar is out of place on an editor surface -- the
+  // user is here to configure the department, not to monitor it.  The
+  // gauge remains on the Org Chart and Dashboard pages where it is
+  // actually actionable.
+  const teamCount = dept.teams.length
+  const budgetPercent = dept.budget_percent
+
   return (
     <div ref={setNodeRef} style={style} {...(disabled ? {} : { ...attributes, ...listeners })}>
       <button
@@ -76,16 +84,30 @@ function SortableDepartmentCard({
         aria-label={`Edit department ${dept.display_name ?? dept.name}`}
       >
         <SectionCard title={dept.display_name ?? dept.name} icon={Building2}>
-          <DeptHealthBar
-            name={dept.display_name ?? dept.name}
-            health={health?.utilization_percent}
-            agentCount={agentCount}
-          />
-          {dept.teams.length > 0 && (
-            <p className="mt-2 text-xs text-text-secondary">
-              {dept.teams.length} team{dept.teams.length !== 1 ? 's' : ''}
-            </p>
-          )}
+          <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="size-3.5" aria-hidden="true" />
+              {agentCount} agent{agentCount === 1 ? '' : 's'}
+            </span>
+            {teamCount > 0 && (
+              <>
+                <span aria-hidden="true" className="text-border">
+                  &middot;
+                </span>
+                <span>
+                  {teamCount} team{teamCount === 1 ? '' : 's'}
+                </span>
+              </>
+            )}
+            {typeof budgetPercent === 'number' && budgetPercent > 0 && (
+              <>
+                <span aria-hidden="true" className="text-border">
+                  &middot;
+                </span>
+                <span>{budgetPercent}% budget</span>
+              </>
+            )}
+          </div>
         </SectionCard>
       </button>
     </div>
@@ -155,15 +177,44 @@ export function DepartmentsTab({
 
   const editHealth = editDept ? (healthMap.get(editDept.name) ?? null) : null
 
+  // Total budget allocation across departments.  `budget_percent` is a
+  // loose convention on Department (no backend validation that the sum
+  // equals 100), so the Add Team / Add Department flows can silently
+  // push the total above 100% -- e.g. an Add Team pack that appends an
+  // 8% `security` department onto an already-100% org leaves the total
+  // at 108.  We compute it here (before the early return so the hook
+  // is unconditional) and surface a warning banner + running total
+  // chip below so the miscount is visible at a glance.
+  const budgetTotal = useMemo(
+    () =>
+      (config?.departments ?? []).reduce(
+        (sum, d) => sum + (typeof d.budget_percent === 'number' ? d.budget_percent : 0),
+        0,
+      ),
+    [config?.departments],
+  )
+
   if (!config || config.departments.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex justify-end gap-2">
+          {/*
+           * Add Team Pack stays enabled -- the backend's
+           * /template-packs/apply endpoint is live and lets operators
+           * populate a fresh org while the general CRUD endpoints
+           * (#1081) are pending.
+           */}
           <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
             <PackagePlus className="mr-1.5 size-3.5" />
-            Add Team
+            Add Team Pack
           </Button>
-          <Button onClick={() => setCreateOpen(true)} disabled={saving}>
+          {/* Add Department disabled until backend CRUD lands -- #1081 */}
+          <Button
+            onClick={() => setCreateOpen(true)}
+            disabled
+            aria-disabled="true"
+            title={ORG_EDIT_COMING_SOON_TOOLTIP}
+          >
             <Plus className="mr-1.5 size-3.5" />
             Add Department
           </Button>
@@ -178,25 +229,92 @@ export function DepartmentsTab({
           onOpenChange={setCreateOpen}
           existingNames={[]}
           onCreate={onCreateDepartment}
-          disabled={saving}
         />
         <PackSelectionDialog open={packOpen} onOpenChange={setPackOpen} disabled={saving} />
       </div>
     )
   }
 
+  const budgetTotalRounded = Math.round(budgetTotal * 10) / 10
+  const budgetIsOver = budgetTotal > 100.01
+  const budgetIsUnder = budgetTotal < 99.99
+  const budgetOff = budgetIsOver || budgetIsUnder
+
   return (
     <div className="space-y-section-gap">
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
-          <PackagePlus className="mr-1.5 size-3.5" />
-          Add Team
-        </Button>
-        <Button onClick={() => setCreateOpen(true)} disabled={saving}>
-          <Plus className="mr-1.5 size-3.5" />
-          Add Department
-        </Button>
+      <div className="flex items-center justify-between gap-3">
+        <div
+          className={cn(
+            'inline-flex items-center gap-2 rounded-md border px-card py-1 text-compact font-medium',
+            budgetIsOver && 'border-danger/40 bg-danger/5 text-danger',
+            budgetIsUnder && 'border-warning/40 bg-warning/5 text-warning',
+            !budgetOff && 'border-border bg-card text-text-secondary',
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <span>Total budget allocated: {budgetTotalRounded}%</span>
+          {budgetOff && (
+            <AlertTriangle className="size-3.5" aria-hidden="true" />
+          )}
+        </div>
+        <div className="flex gap-2">
+          {/* Add Team Pack stays enabled -- see comment on empty-state branch. */}
+          <Button variant="outline" onClick={() => setPackOpen(true)} disabled={saving}>
+            <PackagePlus className="mr-1.5 size-3.5" />
+            Add Team Pack
+          </Button>
+          {/* Add Department disabled until backend CRUD lands -- #1081 */}
+          <Button
+            onClick={() => setCreateOpen(true)}
+            disabled
+            aria-disabled="true"
+            title={ORG_EDIT_COMING_SOON_TOOLTIP}
+          >
+            <Plus className="mr-1.5 size-3.5" />
+            Add Department
+          </Button>
+        </div>
       </div>
+      {budgetOff && (
+        <div
+          role="alert"
+          className={cn(
+            'flex items-start gap-3 rounded-lg border p-card text-sm',
+            budgetIsOver
+              ? 'border-danger/40 bg-danger/5 text-danger'
+              : 'border-warning/40 bg-warning/5 text-warning',
+          )}
+        >
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          <div className="flex-1">
+            {budgetIsOver ? (
+              <>
+                <div className="font-semibold">
+                  Department budgets sum to {budgetTotalRounded}% (over 100%).
+                </div>
+                <p className="mt-1 text-compact text-danger/80">
+                  This usually happens after adding a team pack or a new
+                  department without rebalancing the existing allocations.
+                  Open the departments below and reduce their budget percents
+                  so the total is 100%.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold">
+                  Department budgets sum to {budgetTotalRounded}% (under 100%).
+                </div>
+                <p className="mt-1 text-compact text-warning/80">
+                  The remaining {Math.round((100 - budgetTotal) * 10) / 10}% is
+                  unallocated. Increase one of the departments below or add a
+                  new one to cover the gap.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <DndContext
         sensors={sensors}
@@ -209,12 +327,17 @@ export function DepartmentsTab({
           <StaggerGroup className="grid grid-cols-2 gap-grid-gap max-[1023px]:grid-cols-1">
             {config.departments.map((dept) => (
               <StaggerItem key={dept.name}>
+                {/*
+                 * Drag-drop reorder is disabled until the backend CRUD
+                 * endpoints land -- see #1081. The card stays clickable
+                 * so operators can still open the drawer and view the
+                 * department's current configuration.
+                 */}
                 <SortableDepartmentCard
                   dept={dept}
-                  health={healthMap.get(dept.name) ?? null}
                   agentCount={getAgentCount(dept.name)}
                   onClick={() => setEditDept(dept)}
-                  disabled={saving}
+                  disabled
                 />
               </StaggerItem>
             ))}
@@ -235,7 +358,6 @@ export function DepartmentsTab({
         onOpenChange={setCreateOpen}
         existingNames={config.departments.map((d) => d.name)}
         onCreate={onCreateDepartment}
-        disabled={saving}
       />
 
       <DepartmentEditDrawer

@@ -102,6 +102,18 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     return 'text'
   }, [definition.type, definition.sensitive])
 
+  // Strip trailing ".0" / ".00" / ... from float values so the input shows
+  // `10` instead of `10.0` when the backend serializes an integer-valued
+  // float. Only the display changes -- the user's subsequent edits flow
+  // straight through to the parent as-is, and the backend continues to
+  // accept and store the value as a float.
+  const displayValue = useMemo(() => {
+    if (definition.type === 'float' && /^-?\d+\.0+$/.test(value)) {
+      return value.replace(/\.0+$/, '')
+    }
+    return value
+  }, [definition.type, value])
+
   if (definition.type === 'bool') {
     const checked = value.toLowerCase() === 'true' || value === '1'
     return (
@@ -168,7 +180,7 @@ export function SettingField({ definition, value, onChange, disabled }: SettingF
     <InputField
       label=""
       type={inputType}
-      value={value}
+      value={displayValue}
       onChange={(e) => {
         onChange(e.target.value)
         setValidationError(null)

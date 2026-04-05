@@ -45,7 +45,7 @@ Metric cards, sparklines, and trend indicators use colors dynamically based on d
 | Data state | Color token | Rationale |
 |------------|-------------|-----------|
 | Improving / rising | `success` | Green = things getting better |
-| Stable / nominal | `accent` or `text-muted` | Neutral -- no action needed |
+| Stable / normal | `accent` or `text-muted` | Neutral -- no action needed |
 | Declining / degrading | `warning` | Amber = attention warranted |
 | Critical / threshold | `danger` | Red = act now |
 

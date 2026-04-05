@@ -1,7 +1,11 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import fc from 'fast-check'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { GeneralTab } from '@/pages/org-edit/GeneralTab'
 import { makeCompanyConfig } from '../../helpers/factories'
+
+// Save is disabled while the backend CRUD endpoints are pending
+// (#1081).  When the endpoints land, remove the "disables Save" test
+// and restore the click-behaviour + property-based disablement tests
+// that were here previously -- see git history on this file.
 
 describe('GeneralTab', () => {
   const mockOnUpdate = vi.fn().mockResolvedValue(undefined)
@@ -46,55 +50,20 @@ describe('GeneralTab', () => {
     expect(screen.getByText('Save Settings')).toBeInTheDocument()
   })
 
-  it('calls onUpdate with correct payload when save is clicked', async () => {
+  it('disables Save Settings button with #1081 tooltip even when form is dirty', () => {
     const config = makeCompanyConfig()
     render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
-    // Modify a field to make the form dirty so the Save button is enabled.
-    const nameInput = screen.getByLabelText(/company name/i)
-    fireEvent.change(nameInput, { target: { value: 'Updated Corp' } })
-    fireEvent.click(screen.getByText('Save Settings'))
-    expect(mockOnUpdate).toHaveBeenCalledTimes(1)
-    expect(mockOnUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      company_name: 'Updated Corp',
-      autonomy_level: 'semi',
-      budget_monthly: 100,
-      communication_pattern: 'hybrid',
-    }))
-  })
-
-  it('disables save button when form is pristine', () => {
-    const config = makeCompanyConfig()
-    render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={false} />)
-    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
-  })
-
-  it('save button disablement follows invariant across states', () => {
-    fc.assert(
-      fc.property(fc.boolean(), fc.string({ minLength: 1 }), (saving, nextName) => {
-        cleanup()
-        const config = makeCompanyConfig()
-        render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={saving} />)
-        if (nextName !== config.company_name) {
-          fireEvent.change(screen.getByLabelText(/company name/i), {
-            target: { value: nextName },
-          })
-        }
-        const button = screen.getByRole('button', { name: /save settings/i })
-        const isPristine = nextName === config.company_name
-        const shouldBeDisabled = isPristine || saving
-        if (shouldBeDisabled) {
-          expect(button).toBeDisabled()
-        } else {
-          expect(button).toBeEnabled()
-        }
-      }),
-      { numRuns: 20 },
-    )
-  })
-
-  it('disables save button when saving', () => {
-    const config = makeCompanyConfig()
-    render(<GeneralTab config={config} onUpdate={mockOnUpdate} saving={true} />)
-    expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
+    // Make the form dirty.  Before the backend gate, this would have
+    // enabled the Save button; with the gate in place it must stay
+    // disabled regardless of form state.
+    fireEvent.change(screen.getByLabelText(/company name/i), {
+      target: { value: 'Updated Corp' },
+    })
+    const saveButton = screen.getByRole('button', { name: /save settings/i })
+    expect(saveButton).toBeDisabled()
+    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled button must not call onUpdate.
+    fireEvent.click(saveButton)
+    expect(mockOnUpdate).not.toHaveBeenCalled()
   })
 })

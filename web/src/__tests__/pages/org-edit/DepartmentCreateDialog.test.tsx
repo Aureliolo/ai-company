@@ -1,5 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { DepartmentCreateDialog } from '@/pages/org-edit/DepartmentCreateDialog'
+
+// Create is disabled while the backend CRUD endpoints are pending
+// (#1081).  When the endpoints land, remove the "disables Create"
+// test and restore the submit/validation click-behaviour tests that
+// were here previously -- see git history on this file.
 
 describe('DepartmentCreateDialog', () => {
   const mockOnCreate = vi.fn().mockResolvedValue({ name: 'design', display_name: 'Design', teams: [] })
@@ -25,43 +30,13 @@ describe('DepartmentCreateDialog', () => {
     expect(screen.getByPlaceholderText('e.g. Engineering')).toBeInTheDocument()
   })
 
-  it('shows validation errors for empty required fields', async () => {
+  it('disables Create Department button with #1081 tooltip', () => {
     renderDialog()
-    fireEvent.click(screen.getByText('Create Department'))
-    expect(await screen.findByText('Name is required')).toBeInTheDocument()
-    expect(screen.getByText('Display name is required')).toBeInTheDocument()
+    const createButton = screen.getByRole('button', { name: /create department/i })
+    expect(createButton).toBeDisabled()
+    expect(createButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled button must not call onCreate.
+    fireEvent.click(createButton)
     expect(mockOnCreate).not.toHaveBeenCalled()
-  })
-
-  it('shows error for duplicate department name', async () => {
-    renderDialog()
-    fireEvent.change(screen.getByPlaceholderText('e.g. engineering'), { target: { value: 'Engineering' } })
-    fireEvent.change(screen.getByPlaceholderText('e.g. Engineering'), { target: { value: 'Eng' } })
-    fireEvent.click(screen.getByText('Create Department'))
-    expect(await screen.findByText('Department already exists')).toBeInTheDocument()
-  })
-
-  it('calls onCreate with correct payload on valid submit', async () => {
-    renderDialog()
-    fireEvent.change(screen.getByPlaceholderText('e.g. engineering'), { target: { value: 'design' } })
-    fireEvent.change(screen.getByPlaceholderText('e.g. Engineering'), { target: { value: 'Design' } })
-    fireEvent.click(screen.getByText('Create Department'))
-
-    await waitFor(() => {
-      expect(mockOnCreate).toHaveBeenCalledWith({
-        name: 'design',
-        display_name: 'Design',
-        budget_percent: 0,
-      })
-    })
-  })
-
-  it('shows error when onCreate fails', async () => {
-    mockOnCreate.mockRejectedValueOnce(new Error('Conflict'))
-    renderDialog()
-    fireEvent.change(screen.getByPlaceholderText('e.g. engineering'), { target: { value: 'design' } })
-    fireEvent.change(screen.getByPlaceholderText('e.g. Engineering'), { target: { value: 'Design' } })
-    fireEvent.click(screen.getByText('Create Department'))
-    expect(await screen.findByText('Conflict')).toBeInTheDocument()
   })
 })

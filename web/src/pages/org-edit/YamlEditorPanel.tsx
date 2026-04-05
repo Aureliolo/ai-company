@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { CompanyConfig } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { serializeToYaml, parseYaml, validateCompanyYaml } from '@/utils/yaml'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface YamlEditorPanelProps {
   config: CompanyConfig | null
@@ -69,7 +70,13 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
         <p className="text-xs text-danger" role="alert">{parseError}</p>
       )}
       <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={!dirty || saving}>
+        {/* Save YAML disabled until backend CRUD lands -- #1081 */}
+        <Button
+          onClick={handleSave}
+          disabled
+          aria-disabled="true"
+          title={ORG_EDIT_COMING_SOON_TOOLTIP}
+        >
           {saving ? 'Saving...' : 'Save YAML'}
         </Button>
         <Button variant="outline" onClick={handleReset} disabled={!dirty || saving}>

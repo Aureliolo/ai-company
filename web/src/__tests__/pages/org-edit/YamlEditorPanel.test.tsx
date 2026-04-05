@@ -1,6 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { YamlEditorPanel } from '@/pages/org-edit/YamlEditorPanel'
 import { makeCompanyConfig } from '../../helpers/factories'
+
+// Save is disabled while the backend CRUD endpoints are pending
+// (#1081).  When the endpoints land, remove the "disables Save" test
+// and restore the parse/validation/save click-behaviour tests that
+// were here previously -- see git history on this file.
 
 describe('YamlEditorPanel', () => {
   const mockOnSave = vi.fn().mockResolvedValue(undefined)
@@ -21,18 +26,6 @@ describe('YamlEditorPanel', () => {
     expect(screen.getByText('Reset')).toBeInTheDocument()
   })
 
-  it('disables Save button when not dirty', () => {
-    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
-    expect(screen.getByText('Save YAML').closest('button')).toBeDisabled()
-  })
-
-  it('enables Save button after editing', () => {
-    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
-    const textarea = screen.getByLabelText('YAML editor')
-    fireEvent.change(textarea, { target: { value: 'company_name: Changed\n' } })
-    expect(screen.getByText('Save YAML').closest('button')).not.toBeDisabled()
-  })
-
   it('shows unsaved changes indicator after editing', () => {
     render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
     const textarea = screen.getByLabelText('YAML editor')
@@ -40,32 +33,17 @@ describe('YamlEditorPanel', () => {
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
   })
 
-  it('shows parse error for invalid YAML', async () => {
+  it('disables Save YAML button with #1081 tooltip even when dirty', () => {
     render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
     const textarea = screen.getByLabelText('YAML editor')
-    fireEvent.change(textarea, { target: { value: '- just an array\n' } })
-    fireEvent.click(screen.getByText('Save YAML'))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
-  })
-
-  it('shows validation error for missing company_name', async () => {
-    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
-    const textarea = screen.getByLabelText('YAML editor')
-    fireEvent.change(textarea, { target: { value: 'agents: []\n' } })
-    fireEvent.click(screen.getByText('Save YAML'))
-    expect(await screen.findByText(/company_name/)).toBeInTheDocument()
-  })
-
-  it('calls onSave with parsed object on valid YAML', async () => {
-    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={false} />)
-    const textarea = screen.getByLabelText('YAML editor')
+    // Make the panel dirty.  The Save button must stay disabled.
     fireEvent.change(textarea, { target: { value: 'company_name: Updated\nagents: []\ndepartments: []\n' } })
-    fireEvent.click(screen.getByText('Save YAML'))
-    await waitFor(() => {
-      expect(mockOnSave).toHaveBeenCalledWith(expect.objectContaining({
-        company_name: 'Updated',
-      }))
-    })
+    const saveButton = screen.getByText('Save YAML').closest('button')!
+    expect(saveButton).toBeDisabled()
+    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled button must not call onSave.
+    fireEvent.click(saveButton)
+    expect(mockOnSave).not.toHaveBeenCalled()
   })
 
   it('resets textarea to original config on Reset click', () => {
@@ -77,10 +55,5 @@ describe('YamlEditorPanel', () => {
     expect(textarea.value).toBe('company_name: Changed\n')
     fireEvent.click(screen.getByText('Reset'))
     expect(textarea.value).toBe(original)
-  })
-
-  it('disables buttons when saving', () => {
-    render(<YamlEditorPanel config={makeCompanyConfig()} onSave={mockOnSave} saving={true} />)
-    expect(screen.getByText('Saving...').closest('button')).toBeDisabled()
   })
 })

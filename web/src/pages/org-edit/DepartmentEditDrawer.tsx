@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, Users } from 'lucide-react'
 import type { CeremonyPolicyConfig, Department, DepartmentHealth, UpdateDepartmentRequest } from '@/api/types'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
-import { DeptHealthBar } from '@/components/ui/dept-health-bar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { getErrorMessage } from '@/utils/errors'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface DepartmentEditDrawerProps {
   open: boolean
@@ -91,11 +91,17 @@ export function DepartmentEditDrawer({
       <Drawer open={open} onClose={onClose} title={department ? `Edit: ${department.display_name ?? department.name}` : 'Edit Department'}>
         {department && (
           <div className="space-y-5">
-            <DeptHealthBar
-              name={department.display_name ?? department.name}
-              health={health?.utilization_percent}
-              agentCount={health?.agent_count ?? 0}
-            />
+            {/*
+             * Previously the drawer opened with a runtime utilization
+             * gauge (utilization_percent via DeptHealthBar).  It was
+             * confusing on an editor surface because the user is here
+             * to configure the department, not to monitor it.  The
+             * live gauge remains on the Dashboard / Org Chart views.
+             */}
+            <div className="inline-flex items-center gap-1.5 text-compact text-text-secondary">
+              <Users className="size-3.5" aria-hidden="true" />
+              {(health?.agent_count ?? 0)} agent{(health?.agent_count ?? 0) === 1 ? '' : 's'}
+            </div>
 
             <InputField
               label="Display Name"
@@ -118,11 +124,24 @@ export function DepartmentEditDrawer({
               disabled={saving}
             />
 
-            {/* Teams summary */}
+            {/* Teams summary (read-only -- team editing is tracked as a
+              * deferred item in docs/design/page-structure.md:38 -- "nested
+              * teams/reporting/policies editing is deferred") */}
             <div className="border-t border-border pt-4 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Teams</p>
+              <p className="text-xs text-text-secondary">
+                Teams are named sub-groups inside a department, each with a lead
+                and a set of member agents. They let you model reporting lines
+                more granularly than department alone (for example, a Frontend
+                and a Backend team inside Engineering).
+              </p>
               {department.teams.length === 0 ? (
-                <p className="text-xs text-text-secondary">No teams configured</p>
+                <p className="text-xs text-text-secondary">
+                  No teams yet. Add one from the Departments tab via the
+                  <span className="mx-1 font-medium text-foreground">Add Team</span>
+                  button -- it picks from pre-built team template packs. In-drawer
+                  team editing is not yet available.
+                </p>
               ) : (
                 <ul className="space-y-1">
                   {department.teams.map((team) => (
@@ -140,18 +159,31 @@ export function DepartmentEditDrawer({
               <p className="text-xs text-danger">{submitError}</p>
             )}
 
+            {/*
+             * Save + Delete are disabled until the backend CRUD
+             * endpoints land -- see #1081.  The drawer stays open for
+             * read-only inspection of the department's current config.
+             */}
             <div className="flex items-center justify-between pt-2">
               <Button
                 variant="outline"
                 onClick={() => setDeleteOpen(true)}
                 className="text-danger hover:text-danger"
+                disabled
+                aria-disabled="true"
+                title={ORG_EDIT_COMING_SOON_TOOLTIP}
               >
                 <Trash2 className="mr-1.5 size-3.5" />
                 Delete
               </Button>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={onClose}>Cancel</Button>
-                <Button onClick={handleSave} disabled={saving}>
+                <Button
+                  onClick={handleSave}
+                  disabled
+                  aria-disabled="true"
+                  title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                >
                   {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
                   Save
                 </Button>

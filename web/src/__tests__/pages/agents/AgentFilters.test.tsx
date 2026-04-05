@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AgentFilters } from '@/pages/agents/AgentFilters'
 import { useAgentsStore } from '@/stores/agents'
+import { useCompanyStore } from '@/stores/company'
+import { makeCompanyConfig } from '../../helpers/factories'
 
 const mockSetSearchQuery = vi.fn()
 const mockSetDepartmentFilter = vi.fn()
@@ -22,6 +24,12 @@ function resetStore() {
     setLevelFilter: mockSetLevelFilter,
     setStatusFilter: mockSetStatusFilter,
     setSortBy: mockSetSortBy,
+  })
+  // The filter's department dropdown now pulls from the live
+  // company config, so tests that exercise the dropdown need to
+  // seed the company store with at least one department.
+  useCompanyStore.setState({
+    config: makeCompanyConfig(),
   })
 }
 

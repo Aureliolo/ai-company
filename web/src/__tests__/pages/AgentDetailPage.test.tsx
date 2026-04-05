@@ -62,11 +62,11 @@ vi.mock('@/hooks/useAgentDetailData', () => {
 // Static import: vi.mock is hoisted so the mock is applied before import
 import AgentDetailPage from '@/pages/AgentDetailPage'
 
-function renderDetail(name = 'alice') {
+function renderDetail(id = 'alice') {
   return render(
-    <MemoryRouter initialEntries={[`/agents/${name}`]}>
+    <MemoryRouter initialEntries={[`/agents/${id}`]}>
       <Routes>
-        <Route path="/agents/:agentName" element={<AgentDetailPage />} />
+        <Route path="/agents/:agentId" element={<AgentDetailPage />} />
       </Routes>
     </MemoryRouter>,
   )

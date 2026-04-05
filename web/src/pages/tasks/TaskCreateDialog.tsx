@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { cloneElement, isValidElement, useCallback, useId, useRef, useState } from 'react'
 import { Dialog } from '@base-ui/react/dialog'
 import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
@@ -180,7 +180,12 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
             </Dialog.Title>
             <Dialog.Close
               render={
-                <Button variant="ghost" size="icon" aria-label="Close">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close"
+                  disabled={submitting}
+                >
                   <X className="size-4" />
                 </Button>
               }
@@ -295,19 +300,43 @@ const INPUT_CLASSES = cn('w-full h-8 rounded-md border border-border bg-surface 
 const TEXTAREA_CLASSES = cn('w-full rounded-md border border-border bg-surface px-2 py-1.5 text-body-sm text-foreground outline-none resize-y', FOCUS_RING)
 
 function FormField({ label, error, required, children }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
-  // Use the implicit-association form of <label> (the label element wraps
-  // the form control) so screen readers and getByLabelText resolve the
-  // label-to-input link without needing an explicit htmlFor/id pair on
-  // every call site.  This is the WHATWG-spec form of implicit
-  // association and works with any form control rendered as a descendant.
+  // Accessibility:
+  // - The <label> wraps only the visible text and the form control so
+  //   screen readers resolve label-to-input via implicit association
+  //   without the error text leaking into the control's accessible name.
+  // - The error <p> is rendered as a sibling of the label (outside it)
+  //   with a stable id, and the form control is cloned with an
+  //   `aria-describedby` pointing at that id so AT announces the error
+  //   as separate help text rather than as part of the label.
+  const errorId = useId()
+  // Inject aria-describedby / aria-invalid onto the wrapped form control
+  // when an error is present so AT announces the error as separate help
+  // text. cloneElement is the only way to do this for an arbitrary
+  // children prop without binding every call site to a specific input
+  // component; the wrapping `isValidElement` guard keeps the clone safe
+  // for the single-element case this FormField is actually used for.
+  const controlWithAria =
+    error && isValidElement<{ 'aria-describedby'?: string; 'aria-invalid'?: boolean }>(children)
+      ? // eslint-disable-next-line @eslint-react/no-clone-element -- see comment above
+        cloneElement(children, {
+          'aria-describedby': errorId,
+          'aria-invalid': true,
+        })
+      : children
   return (
-    <label className="block">
-      <span className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
-        {label}{required && <span className="text-danger"> *</span>}
-      </span>
-      {children}
-      {error && <p className="mt-0.5 text-micro text-danger">{error}</p>}
-    </label>
+    <div className="block">
+      <label className="block">
+        <span className="mb-1 block text-compact font-semibold uppercase tracking-wider text-text-muted">
+          {label}{required && <span className="text-danger"> *</span>}
+        </span>
+        {controlWithAria}
+      </label>
+      {error && (
+        <p id={errorId} className="mt-0.5 text-micro text-danger">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 

@@ -1,6 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { AgentCreateDialog } from '@/pages/org-edit/AgentCreateDialog'
 import { makeDepartment } from '../../helpers/factories'
+
+// Create is disabled while the backend CRUD endpoints are pending
+// (#1081).  When the endpoints land, remove the "disables Create"
+// test and restore the submit/validation click-behaviour tests that
+// were here previously -- see git history on this file.
 
 describe('AgentCreateDialog', () => {
   const mockOnCreate = vi.fn().mockResolvedValue({ id: 'new-agent', name: 'test' })
@@ -28,41 +33,14 @@ describe('AgentCreateDialog', () => {
     expect(screen.getByLabelText(/level/i)).toBeInTheDocument()
   })
 
-  it('shows validation errors for empty required fields', async () => {
+  it('disables Create Agent button with #1081 tooltip', () => {
     renderDialog()
-    fireEvent.click(screen.getByText('Create Agent'))
-    expect(await screen.findByText('Name is required')).toBeInTheDocument()
-    expect(screen.getByText('Role is required')).toBeInTheDocument()
-    expect(screen.getByText('Department is required')).toBeInTheDocument()
+    const createButton = screen.getByRole('button', { name: /create agent/i })
+    expect(createButton).toBeDisabled()
+    expect(createButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled button must not call onCreate.
+    fireEvent.click(createButton)
     expect(mockOnCreate).not.toHaveBeenCalled()
-  })
-
-  it('calls onCreate with correct payload on valid submit', async () => {
-    renderDialog()
-    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'alice' } })
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'Developer' } })
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'engineering' } })
-    fireEvent.click(screen.getByText('Create Agent'))
-
-    await waitFor(() => {
-      expect(mockOnCreate).toHaveBeenCalledWith({
-        name: 'alice',
-        role: 'Developer',
-        department: 'engineering',
-        level: 'mid',
-      })
-    })
-  })
-
-  it('shows error when onCreate fails', async () => {
-    mockOnCreate.mockRejectedValueOnce(new Error('Server error'))
-    renderDialog()
-    fireEvent.change(screen.getByLabelText(/name/i), { target: { value: 'alice' } })
-    fireEvent.change(screen.getByLabelText(/role/i), { target: { value: 'Dev' } })
-    fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'engineering' } })
-    fireEvent.click(screen.getByText('Create Agent'))
-
-    expect(await screen.findByText('Server error')).toBeInTheDocument()
   })
 
   it('does not render when closed', () => {

@@ -8,6 +8,7 @@ import { SelectField } from '@/components/ui/select-field'
 import { getErrorMessage } from '@/utils/errors'
 import type { AgentConfig, CreateAgentOrgRequest, Department, SeniorityLevel } from '@/api/types'
 import { SENIORITY_LEVEL_VALUES } from '@/api/types'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface AgentCreateDialogProps {
   open: boolean
@@ -102,7 +103,12 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
             </Dialog.Title>
             <Dialog.Close
               render={
-                <Button variant="ghost" size="icon" aria-label="Close">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close"
+                  disabled={submitting}
+                >
                   <X className="size-4" />
                 </Button>
               }
@@ -156,7 +162,19 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
                   <Button variant="outline" disabled={submitting}>Cancel</Button>
                 }
               />
-              <Button disabled={submitting} onClick={handleSubmit}>
+              {/*
+               * Create is disabled until the backend CRUD endpoints
+               * land -- see #1081.  The trigger button on AgentsTab is
+               * also disabled so this dialog should rarely be
+               * reachable; the extra gate here is a defense-in-depth
+               * safety net.
+               */}
+              <Button
+                disabled
+                aria-disabled="true"
+                title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                onClick={handleSubmit}
+              >
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create Agent
               </Button>

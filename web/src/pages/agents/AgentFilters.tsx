@@ -1,7 +1,8 @@
+import { useMemo } from 'react'
 import { Search } from 'lucide-react'
 import { useAgentsStore } from '@/stores/agents'
+import { useCompanyStore } from '@/stores/company'
 import {
-  DEPARTMENT_NAME_VALUES,
   SENIORITY_LEVEL_VALUES,
   AGENT_STATUS_VALUES,
   type DepartmentName,
@@ -12,7 +13,6 @@ import { formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'
 
-const VALID_DEPARTMENTS = new Set<string>(DEPARTMENT_NAME_VALUES)
 const VALID_LEVELS = new Set<string>(SENIORITY_LEVEL_VALUES)
 const VALID_STATUSES = new Set<string>(AGENT_STATUS_VALUES)
 const VALID_SORT_KEYS = new Set<string>(['name', 'department', 'level', 'status', 'hiring_date'])
@@ -23,6 +23,26 @@ export function AgentFilters({ className }: { className?: string }) {
   const levelFilter = useAgentsStore((s) => s.levelFilter)
   const statusFilter = useAgentsStore((s) => s.statusFilter)
   const sortBy = useAgentsStore((s) => s.sortBy)
+
+  // Department list comes from the LIVE company config, not the
+  // hardcoded `DEPARTMENT_NAME_VALUES` enum.  Users create their
+  // own departments via the setup wizard / packs, and the filter
+  // dropdown needs to match what they actually have -- not a
+  // static list of every enum member we support.
+  const configDepartments = useCompanyStore((s) => s.config?.departments)
+  const departmentOptions = useMemo<
+    ReadonlyArray<{ value: DepartmentName; label: string }>
+  >(() => {
+    if (!configDepartments || configDepartments.length === 0) return []
+    return configDepartments.map((d) => ({
+      value: d.name as DepartmentName,
+      label: d.display_name ?? formatLabel(d.name),
+    }))
+  }, [configDepartments])
+  const validDepartmentNames = useMemo(
+    () => new Set<DepartmentName>(departmentOptions.map((o) => o.value)),
+    [departmentOptions],
+  )
 
   const setSearchQuery = useAgentsStore((s) => s.setSearchQuery)
   const setDepartmentFilter = useAgentsStore((s) => s.setDepartmentFilter)
@@ -45,19 +65,19 @@ export function AgentFilters({ className }: { className?: string }) {
         />
       </div>
 
-      {/* Department */}
+      {/* Department -- list comes from the live company config */}
       <select
         value={departmentFilter ?? ''}
         onChange={(e) => {
-          const v = e.target.value
-          setDepartmentFilter(v && VALID_DEPARTMENTS.has(v) ? v as DepartmentName : null)
+          const v = e.target.value as DepartmentName
+          setDepartmentFilter(v && validDepartmentNames.has(v) ? v : null)
         }}
         className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-accent focus:outline-none"
         aria-label="Filter by department"
       >
         <option value="">All departments</option>
-        {DEPARTMENT_NAME_VALUES.map((d) => (
-          <option key={d} value={d}>{formatLabel(d)}</option>
+        {departmentOptions.map((d) => (
+          <option key={d.value} value={d.value}>{d.label}</option>
         ))}
       </select>
 

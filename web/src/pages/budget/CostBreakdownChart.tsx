@@ -92,7 +92,10 @@ export function CostBreakdownChart({
       ) : (
         <div className="flex flex-col items-center gap-4">
           <div className="h-[200px] w-full" data-testid="cost-breakdown-chart" role="img" aria-label="Cost breakdown pie chart">
-            <ResponsiveContainer width="100%" height="100%">
+            {/* `initialDimension` silences recharts' first-paint
+                "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
+                for the full explanation. */}
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
               <PieChart>
                 <Pie
                   data={chartData}

@@ -8,16 +8,53 @@ import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency } from '@/utils/format'
 import { HEALTH_POLL_INTERVAL } from '@/utils/constants'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { HealthPopover } from '@/components/ui/health-popover'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { HealthStatus } from '@/api/types'
 
 type SystemStatus = 'unknown' | 'ok' | 'degraded' | 'down'
 
-const STATUS_CONFIG: Record<SystemStatus, { color: string; label: string }> = {
-  unknown: { color: 'bg-muted-foreground', label: 'checking...' },
-  ok: { color: 'bg-success', label: 'all systems nominal' },
-  degraded: { color: 'bg-warning', label: 'system degraded' },
-  down: { color: 'bg-danger', label: 'system down' },
+/**
+ * Combine the HTTP health-probe status and the WebSocket connection
+ * state into a single operator-facing pill.  Previously this was split
+ * into two pills ("live" from the WS state and "all systems normal"
+ * from the health probe) which were pure redundancy in the happy path
+ * and only distinguished themselves when one signal was green and the
+ * other was red.  The single pill applies a strict priority order so
+ * the worst signal always wins, which is what an operator actually
+ * wants to see.
+ *
+ * Priority (worst first):
+ * 1. HTTP health reports ``down``      -> red    "system down"
+ * 2. HTTP health reports ``degraded``  -> amber  "system degraded"
+ * 3. HTTP health still ``unknown``     -> grey   "checking..." (initial
+ *    mount -- do not escalate a disconnected WS to "reconnecting"
+ *    before we have even confirmed the backend is up)
+ * 4. WS reconnect budget exhausted     -> red    "live stream offline"
+ * 5. WS still reconnecting             -> amber  "reconnecting"
+ * 6. HTTP healthy AND WS connected     -> green  "all systems normal"
+ */
+function resolveCombinedStatus(
+  healthStatus: SystemStatus,
+  wsConnected: boolean,
+  wsReconnectExhausted: boolean,
+): { color: string; label: string } {
+  if (healthStatus === 'down') {
+    return { color: 'bg-danger', label: 'system down' }
+  }
+  if (healthStatus === 'degraded') {
+    return { color: 'bg-warning', label: 'system degraded' }
+  }
+  if (healthStatus === 'unknown') {
+    return { color: 'bg-muted-foreground', label: 'checking...' }
+  }
+  if (wsReconnectExhausted) {
+    return { color: 'bg-danger', label: 'live stream offline' }
+  }
+  if (!wsConnected) {
+    return { color: 'bg-warning animate-pulse', label: 'reconnecting' }
+  }
+  return { color: 'bg-success', label: 'all systems normal' }
 }
 
 interface StatusBarProps {
@@ -31,6 +68,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   const { isTablet } = useBreakpoint()
   const totalAgents = useAnalyticsStore((s) => s.overview?.total_agents)
   const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count)
+  const idleAgents = useAnalyticsStore((s) => s.overview?.idle_agents_count)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks)
   const dataLoaded = useAnalyticsStore((s) => s.overview !== null)
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost_usd)
@@ -70,7 +108,7 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 
-  const statusCfg = STATUS_CONFIG[healthStatus]
+  const statusCfg = resolveCombinedStatus(healthStatus, wsConnected, wsReconnectExhausted)
   const costDisplay =
     totalCost !== undefined && totalCost !== null
       ? formatCurrency(totalCost, currency)
@@ -97,12 +135,6 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
         </button>
       )}
 
-      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-        SynthOrg
-      </span>
-
-      <Divider />
-
       <StatusItem>
         <Dot color="bg-accent" />
         <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
@@ -111,6 +143,11 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
       <StatusItem>
         <Dot color="bg-success" />
         <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
+      </StatusItem>
+
+      <StatusItem>
+        <Dot color="bg-muted-foreground" />
+        <span>{dataLoaded ? `${idleAgents} idle` : '--'}</span>
       </StatusItem>
 
       <StatusItem>
@@ -144,25 +181,16 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
 
       <div className="flex-1" />
 
-      <StatusItem>
-        <Dot
-          color={
-            wsConnected
-              ? 'bg-success'
-              : wsReconnectExhausted
-                ? 'bg-danger'
-                : 'bg-warning animate-pulse'
-          }
-        />
-        <span className="text-muted-foreground" aria-live="polite">
-          {wsConnected ? 'live' : wsReconnectExhausted ? 'offline' : 'reconnecting'}
-        </span>
-      </StatusItem>
-
-      <StatusItem>
-        <Dot color={statusCfg.color} />
-        <span className="text-muted-foreground" aria-live="polite">{statusCfg.label}</span>
-      </StatusItem>
+      <HealthPopover align="end">
+        <button
+          type="button"
+          aria-label={`System health: ${statusCfg.label}. Click for details.`}
+          className="flex items-center whitespace-nowrap rounded px-1 -mx-1 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <Dot color={statusCfg.color} />
+          <span className="text-muted-foreground" aria-live="polite">{statusCfg.label}</span>
+        </button>
+      </HealthPopover>
 
       <Divider />
 

@@ -38,18 +38,19 @@ describe('DepartmentsTab', () => {
 
   it('renders department cards', () => {
     renderTab()
-    // Each dept name appears in both SectionCard title and DeptHealthBar
+    // Runtime health bars were removed from this editor view in the
+    // Base UI migration -- department cards now show only edit-time
+    // metadata (agent count, team count, optional budget percent).
     expect(screen.getAllByText('Engineering').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Product').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders health bars for departments with correct values', () => {
+  it('does not render runtime utilization meters on the editor surface', () => {
     renderTab()
-    // DeptHealthBar uses role="meter"
-    const meters = screen.getAllByRole('meter')
-    expect(meters.length).toBeGreaterThanOrEqual(2)
-    // Verify the product department's utilization_percent (72) actually renders
-    expect(screen.getByText('72%')).toBeInTheDocument()
+    // Editor cards intentionally omit the live utilization gauge so
+    // the page stays focused on configuration -- the live health view
+    // lives on the Dashboard and Org Chart pages.
+    expect(screen.queryAllByRole('meter')).toHaveLength(0)
   })
 
   it('renders empty state when config is null', () => {

@@ -33,6 +33,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useWebSocketStore } from '@/stores/websocket'
 import { ROUTES } from '@/router/routes'
 import { Drawer } from '@/components/ui/drawer'
+import { HealthPopover } from '@/components/ui/health-popover'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { SidebarNavItem } from './SidebarNavItem'
 
@@ -286,17 +287,37 @@ function SidebarFooter({
           </button>
         )}
 
+        {/*
+         * Placeholder for the planned Notifications drawer feature tracked
+         * in #1078 (in-dashboard notifications system: drawer + browser
+         * notifications + toast unification).  The sidebar entry is
+         * rendered as a disabled control with a "Coming soon" tooltip so
+         * operators stop clicking a dead button -- see #1078 for the full
+         * design and phase plan.
+         */}
         <button
           type="button"
-          title="Notifications"
-          aria-label="Notifications"
-          className={SIDEBAR_BUTTON_CLASS}
+          title="Notifications -- coming soon (#1078)"
+          aria-label="Notifications (coming soon)"
+          disabled
+          aria-disabled="true"
+          className={cn(
+            SIDEBAR_BUTTON_CLASS,
+            'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-text-secondary',
+          )}
         >
           <Bell
             className={cn('size-5 shrink-0', collapsed && 'mx-auto')}
             aria-hidden="true"
           />
-          {!collapsed && <span>Notifications</span>}
+          {!collapsed && (
+            <span className="flex flex-1 items-center justify-between gap-2">
+              <span>Notifications</span>
+              <span className="rounded border border-border px-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Soon
+              </span>
+            </span>
+          )}
         </button>
 
         <button
@@ -317,35 +338,46 @@ function SidebarFooter({
           )}
         </button>
 
-        {/* WebSocket connection status */}
-        <div
-          className={cn(
-            'flex items-center gap-3 px-3 py-1',
-            collapsed && 'justify-center',
-          )}
-        >
-          <StatusBadge
-            status={wsConnected ? 'active' : wsReconnectExhausted ? 'error' : 'idle'}
-            pulse={!wsConnected && !wsReconnectExhausted}
-          />
-          {!collapsed && (
-            <span className="text-xs text-muted-foreground">
-              {wsConnected
-                ? 'Connected'
+        {/* WebSocket connection status -- click to open the full health popover */}
+        <HealthPopover side="top" align="start">
+          <button
+            type="button"
+            aria-label={
+              wsConnected
+                ? 'Connection status: connected. Click for system health details.'
                 : wsReconnectExhausted
-                  ? 'Disconnected'
-                  : 'Reconnecting...'}
+                  ? 'Connection status: disconnected. Click for system health details.'
+                  : 'Connection status: reconnecting. Click for system health details.'
+            }
+            className={cn(
+              'flex items-center gap-3 px-3 py-1 rounded-md',
+              'transition-colors hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              collapsed && 'justify-center',
+            )}
+          >
+            <StatusBadge
+              status={wsConnected ? 'active' : wsReconnectExhausted ? 'error' : 'idle'}
+              pulse={!wsConnected && !wsReconnectExhausted}
+            />
+            {!collapsed && (
+              <span className="text-xs text-muted-foreground">
+                {wsConnected
+                  ? 'Connected'
+                  : wsReconnectExhausted
+                    ? 'Disconnected'
+                    : 'Reconnecting...'}
+              </span>
+            )}
+            {/* Screen reader live announcement for status changes */}
+            <span className="sr-only" role="status" aria-live="polite">
+              {wsConnected
+                ? 'Connection status: connected'
+                : wsReconnectExhausted
+                  ? 'Connection status: disconnected'
+                  : 'Connection status: reconnecting'}
             </span>
-          )}
-          {/* Screen reader live announcement for status changes */}
-          <span className="sr-only" role="status" aria-live="polite">
-            {wsConnected
-              ? 'Connection status: connected'
-              : wsReconnectExhausted
-                ? 'Connection status: disconnected'
-                : 'Connection status: reconnecting'}
-          </span>
-        </div>
+          </button>
+        </HealthPopover>
 
         {user && (
           <div

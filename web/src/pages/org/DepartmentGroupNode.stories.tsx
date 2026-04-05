@@ -44,44 +44,63 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Healthy: Story = {
+export const Populated: Story = {
   args: {
     data: {
       departmentName: 'engineering',
       displayName: 'Engineering',
-      healthPercent: 92,
       agentCount: 5,
       activeCount: 4,
+      budgetPercent: 40,
+      utilizationPercent: 60,
       cost7d: 45.8,
       currency: 'EUR',
+      statusDots: [
+        { agentId: 'a1', runtimeStatus: 'active' },
+        { agentId: 'a2', runtimeStatus: 'active' },
+        { agentId: 'a3', runtimeStatus: 'active' },
+        { agentId: 'a4', runtimeStatus: 'idle' },
+        { agentId: 'a5', runtimeStatus: 'idle' },
+      ],
+      isEmpty: false,
     },
   },
 }
 
-export const Warning: Story = {
+export const OverBudget: Story = {
   args: {
     data: {
       departmentName: 'product',
       displayName: 'Product',
-      healthPercent: 45,
       agentCount: 3,
       activeCount: 1,
+      budgetPercent: 20,
+      utilizationPercent: 95,
       cost7d: 22.3,
       currency: 'EUR',
+      statusDots: [
+        { agentId: 'p1', runtimeStatus: 'active' },
+        { agentId: 'p2', runtimeStatus: 'error' },
+        { agentId: 'p3', runtimeStatus: 'idle' },
+      ],
+      isEmpty: false,
     },
   },
 }
 
-export const Critical: Story = {
+export const EmptyDepartment: Story = {
   args: {
     data: {
-      departmentName: 'operations',
-      displayName: 'Operations',
-      healthPercent: 15,
-      agentCount: 2,
+      departmentName: 'security',
+      displayName: 'Security',
+      agentCount: 0,
       activeCount: 0,
+      budgetPercent: 8,
+      utilizationPercent: null,
       cost7d: null,
       currency: null,
+      statusDots: [],
+      isEmpty: true,
     },
   },
 }
@@ -91,11 +110,20 @@ export const DropTargetActive: Story = {
     data: {
       departmentName: 'engineering',
       displayName: 'Engineering',
-      healthPercent: 85,
       agentCount: 5,
       activeCount: 3,
+      budgetPercent: 40,
+      utilizationPercent: 70,
       cost7d: 38.5,
       currency: 'EUR',
+      statusDots: [
+        { agentId: 'a1', runtimeStatus: 'active' },
+        { agentId: 'a2', runtimeStatus: 'active' },
+        { agentId: 'a3', runtimeStatus: 'active' },
+        { agentId: 'a4', runtimeStatus: 'idle' },
+        { agentId: 'a5', runtimeStatus: 'idle' },
+      ],
+      isEmpty: false,
       isDropTarget: true,
     },
   },

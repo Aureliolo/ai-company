@@ -21,10 +21,14 @@ describe('AgentGridView', () => {
     expect(screen.getByText('bob')).toBeInTheDocument()
   })
 
-  it('links to correct agent detail URL with encoded name', () => {
+  it('links to agent detail URL by agent id (not name)', () => {
+    // Agent URLs are id-based now -- display names can contain
+    // arbitrary characters and URL-encoding them caused backend
+    // lookup failures.  The factory assigns `id: 'agent-{name}'`,
+    // so the link should point at the id, not the name.
     const agents = [makeAgent('alice doe')]
     renderWithRouter(<AgentGridView agents={agents} />)
     const link = screen.getByRole('link', { name: /alice doe/i })
-    expect(link).toHaveAttribute('href', '/agents/alice%20doe')
+    expect(link).toHaveAttribute('href', '/agents/agent-alice%20doe')
   })
 })

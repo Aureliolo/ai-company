@@ -3,10 +3,12 @@ import { createLogger } from '@/lib/logger'
 import type { Node, Edge } from '@xyflow/react'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentsStore } from '@/stores/agents'
+import { useAuthStore } from '@/stores/auth'
+import { useOrgChartPrefs } from '@/stores/org-chart-prefs'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useCommunicationEdges } from '@/hooks/useCommunicationEdges'
-import { buildOrgTree } from '@/pages/org/build-org-tree'
+import { buildOrgTree, type OwnerInfo } from '@/pages/org/build-org-tree'
 import { applyDagreLayout } from '@/pages/org/layout'
 import { computeForceLayout } from '@/pages/org/force-layout'
 import type { CommunicationLink } from '@/pages/org/aggregate-messages'
@@ -31,6 +33,17 @@ export interface UseOrgChartDataReturn {
   wsSetupError: string | null
 }
 
+export interface UseOrgChartDataOptions {
+  viewMode?: ViewMode
+  /**
+   * Department group IDs that are currently collapsed.  Child agents
+   * of collapsed depts are filtered out BEFORE the dagre layout pass
+   * so the dept box's computed height shrinks to header-only -- no
+   * wasted space below the header where agents would have been.
+   */
+  collapsedDeptIds?: ReadonlySet<string>
+}
+
 function buildCommunicationEdges(
   links: CommunicationLink[],
 ): Edge[] {
@@ -48,12 +61,34 @@ function buildCommunicationEdges(
   }))
 }
 
-export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDataReturn {
+export function useOrgChartData(
+  viewMode: ViewMode = 'hierarchy',
+  collapsedDeptIds?: ReadonlySet<string>,
+): UseOrgChartDataReturn {
   const config = useCompanyStore((s) => s.config)
   const departmentHealths = useCompanyStore((s) => s.departmentHealths)
   const loading = useCompanyStore((s) => s.loading)
   const error = useCompanyStore((s) => s.error)
   const runtimeStatuses = useAgentsStore((s) => s.runtimeStatuses)
+  const currentUser = useAuthStore((s) => s.user)
+
+  // Visual prefs that affect how much space the dept card chrome
+  // takes up.  Passed through to `applyDagreLayout` so the reserved
+  // header/footer space matches whatever the user currently has
+  // toggled on -- no dead whitespace when budget bar / status dots
+  // / add agent are off.
+  const showBudgetBar = useOrgChartPrefs((s) => s.showBudgetBar)
+  const showStatusDots = useOrgChartPrefs((s) => s.showStatusDots)
+  const showAddAgentButton = useOrgChartPrefs((s) => s.showAddAgentButton)
+
+  // Synthesise owner list from the current session user.  Designed
+  // as an array so #1082 (multi-user ownership + per-dept admins)
+  // can pass multiple owners without changing this shape -- today
+  // it is exactly one element.
+  const owners = useMemo<OwnerInfo[]>(() => {
+    if (!currentUser) return []
+    return [{ id: currentUser.id, displayName: currentUser.username }]
+  }, [currentUser])
 
   // Polling for department health refresh
   const pollFn = useCallback(async () => {
@@ -106,10 +141,34 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
   const { nodes, edges } = useMemo(() => {
     if (!config) return { nodes: [], edges: [] }
 
-    const tree = buildOrgTree(config, runtimeStatuses, departmentHealths)
+    const tree = buildOrgTree(config, runtimeStatuses, departmentHealths, owners)
+
+    // Filter out child agents of collapsed departments BEFORE layout
+    // so the dagre pass computes correct (smaller) dept box sizes.
+    // The dept group nodes themselves stay, with an `isCollapsed`
+    // flag injected into their data so the UI can render the correct
+    // chevron state.
+    if (collapsedDeptIds && collapsedDeptIds.size > 0) {
+      tree.nodes = tree.nodes
+        .filter((n) => !(n.parentId && collapsedDeptIds.has(n.parentId)))
+        .map((n) =>
+          n.type === 'department' && collapsedDeptIds.has(n.id)
+            ? { ...n, data: { ...n.data, isCollapsed: true } }
+            : n,
+        )
+      tree.edges = tree.edges.filter((e) => {
+        // Drop edges pointing at or from filtered-out child agents.
+        const source = tree.nodes.find((n) => n.id === e.source)
+        const target = tree.nodes.find((n) => n.id === e.target)
+        return source !== undefined && target !== undefined
+      })
+    }
 
     if (viewMode === 'force') {
-      // Force view: only agent/ceo nodes (no department groups), communication edges
+      // Force view: only agent/ceo nodes (no department groups, no
+      // owner nodes, no hidden layout edges).  Communication view is
+      // about agent-to-agent message flow, so the hierarchy scaffold
+      // is intentionally stripped.
       const agentNodes = tree.nodes.filter((n) => n.type === 'agent' || n.type === 'ceo')
       // Remove parentId so nodes are not grouped inside departments
       const freeNodes = agentNodes.map((n) => ({ ...n, parentId: undefined }))
@@ -124,9 +183,24 @@ export function useOrgChartData(viewMode: ViewMode = 'hierarchy'): UseOrgChartDa
     }
 
     // Hierarchy view: dagre layout with department groups
-    const layoutNodes = applyDagreLayout(tree.nodes, tree.edges)
+    const layoutNodes = applyDagreLayout(tree.nodes, tree.edges, {
+      showBudgetBar,
+      showStatusDots,
+      showAddAgentButton,
+    })
     return { nodes: layoutNodes, edges: tree.edges }
-  }, [config, runtimeStatuses, departmentHealths, viewMode, commLinks])
+  }, [
+    config,
+    runtimeStatuses,
+    departmentHealths,
+    viewMode,
+    commLinks,
+    owners,
+    collapsedDeptIds,
+    showBudgetBar,
+    showStatusDots,
+    showAddAgentButton,
+  ])
 
   return {
     nodes,

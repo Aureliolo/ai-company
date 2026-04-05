@@ -133,7 +133,10 @@ export function SpendBurnChart({
         />
       ) : (
         <div className="h-80 w-full" data-testid="spend-burn-chart" role="img" aria-label="Spend over time chart">
-          <ResponsiveContainer width="100%" height="100%">
+          {/* `initialDimension` silences recharts' first-paint
+              "width(-1) height(-1)" warning -- see BudgetBurnChart.tsx
+              for the full explanation. */}
+          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
             <AreaChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid
                 strokeDasharray="3 3"

@@ -266,7 +266,12 @@ export function ProviderFormModal({
               </Dialog.Description>
               <Dialog.Close
                 render={
-                  <Button variant="ghost" size="icon" aria-label="Close">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Close"
+                    disabled={submitting}
+                  >
                     <X className="size-4" />
                   </Button>
                 }

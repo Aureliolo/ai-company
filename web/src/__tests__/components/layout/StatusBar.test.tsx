@@ -56,9 +56,12 @@ describe('StatusBar', () => {
     resetStore()
   })
 
-  it('renders SynthOrg brand text', () => {
+  it('does not duplicate the SynthOrg brand text (sidebar already shows it)', () => {
     render(<StatusBar />)
-    expect(screen.getByText('SynthOrg')).toBeInTheDocument()
+    // The SynthOrg brand text lives in the sidebar header -- the top
+    // StatusBar intentionally omits it so the row can carry status
+    // counters without visual redundancy.
+    expect(screen.queryByText('SynthOrg')).not.toBeInTheDocument()
   })
 
   it('shows placeholder values when no data loaded', () => {
@@ -84,6 +87,7 @@ describe('StatusBar', () => {
     render(<StatusBar />)
     expect(screen.getByText('12 agents')).toBeInTheDocument()
     expect(screen.getByText('8 active')).toBeInTheDocument()
+    expect(screen.getByText('3 idle')).toBeInTheDocument()
     expect(screen.getByText('42 tasks')).toBeInTheDocument()
   })
 

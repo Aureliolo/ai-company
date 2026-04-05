@@ -17,7 +17,7 @@ export const ROUTES = {
   BUDGET_FORECAST: '/budget/forecast',
   APPROVALS: '/approvals',
   AGENTS: '/agents',
-  AGENT_DETAIL: '/agents/:agentName',
+  AGENT_DETAIL: '/agents/:agentId',
   MESSAGES: '/messages',
   MEETINGS: '/meetings',
   MEETING_DETAIL: '/meetings/:meetingId',

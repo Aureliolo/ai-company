@@ -17,6 +17,10 @@ function MockBackground() {
   return <div data-testid="react-flow-background" />
 }
 
+function MockMiniMap() {
+  return <div data-testid="react-flow-minimap" />
+}
+
 function mockUseReactFlow() {
   return { fitView: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn() }
 }
@@ -54,6 +58,7 @@ vi.mock('@xyflow/react', () => ({
   ReactFlow: MockReactFlow,
   ReactFlowProvider: MockReactFlowProvider,
   Background: MockBackground,
+  MiniMap: MockMiniMap,
   useReactFlow: mockUseReactFlow,
   Handle: () => null,
   Position: { Top: 'top', Bottom: 'bottom' },

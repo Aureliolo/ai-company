@@ -6,13 +6,17 @@ import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
 import { getErrorMessage } from '@/utils/errors'
 import type { CreateDepartmentRequest, Department } from '@/api/types'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface DepartmentCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   existingNames: readonly string[]
   onCreate: (data: CreateDepartmentRequest) => Promise<Department>
-  disabled?: boolean
+  // `disabled` prop removed temporarily -- the Create button is now
+  // unconditionally disabled while the backend CRUD endpoints are
+  // pending (#1081).  Restore this optional prop once #1081 lands and
+  // the caller's `saving` state needs to be threaded through again.
 }
 
 interface FormState {
@@ -27,7 +31,7 @@ const INITIAL_FORM: FormState = {
   budget_percent: '0',
 }
 
-export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCreate, disabled }: DepartmentCreateDialogProps) {
+export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCreate }: DepartmentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -98,7 +102,12 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
             </Dialog.Title>
             <Dialog.Close
               render={
-                <Button variant="ghost" size="icon" aria-label="Close">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close"
+                  disabled={submitting}
+                >
                   <X className="size-4" />
                 </Button>
               }
@@ -144,7 +153,19 @@ export function DepartmentCreateDialog({ open, onOpenChange, existingNames, onCr
                   <Button variant="outline" disabled={submitting}>Cancel</Button>
                 }
               />
-              <Button disabled={submitting || disabled} onClick={handleSubmit}>
+              {/*
+               * Create is disabled until the backend CRUD endpoints
+               * land -- see #1081.  The trigger button on DepartmentsTab
+               * is also disabled so this dialog should rarely be
+               * reachable; the extra gate here is a defense-in-depth
+               * safety net.
+               */}
+              <Button
+                disabled
+                aria-disabled="true"
+                title={ORG_EDIT_COMING_SOON_TOOLTIP}
+                onClick={handleSubmit}
+              >
                 {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
                 Create Department
               </Button>

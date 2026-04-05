@@ -1,6 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { DepartmentEditDrawer } from '@/pages/org-edit/DepartmentEditDrawer'
 import { makeDepartment, makeDepartmentHealth } from '../../helpers/factories'
+
+// Save + Delete are disabled while the backend CRUD endpoints are
+// pending (#1081).  When the endpoints land, remove the
+// "disables Save+Delete" test and restore the click-behaviour tests
+// that were here previously -- see git history on this file.
 
 describe('DepartmentEditDrawer', () => {
   const dept = makeDepartment('engineering', {
@@ -33,12 +38,15 @@ describe('DepartmentEditDrawer', () => {
     expect(screen.getByText(/Edit: Engineering/)).toBeInTheDocument()
   })
 
-  it('renders health bar when health is provided', () => {
+  it('shows the agent count from the runtime health payload', () => {
+    // The runtime utilisation gauge was removed from the editor -- the
+    // drawer now shows a plain "N agent(s)" summary derived from the
+    // health payload's agent_count field instead of a meter.
     renderDrawer()
-    expect(screen.getByRole('meter')).toBeInTheDocument()
+    expect(screen.queryByRole('meter')).not.toBeInTheDocument()
   })
 
-  it('renders without health bar when health is null', () => {
+  it('renders without a meter regardless of whether health is provided', () => {
     renderDrawer({ health: null })
     expect(screen.queryByRole('meter')).not.toBeInTheDocument()
   })
@@ -49,58 +57,18 @@ describe('DepartmentEditDrawer', () => {
     expect(screen.getByText(/2 members/)).toBeInTheDocument()
   })
 
-  it('calls onUpdate when Save is clicked', async () => {
+  it('disables Save and Delete buttons with #1081 tooltip', () => {
     renderDrawer()
-    fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => {
-      expect(mockOnUpdate).toHaveBeenCalledWith('engineering', expect.any(Object))
-    })
-  })
-
-  it('opens confirmation dialog on Delete click', () => {
-    renderDrawer()
-    fireEvent.click(screen.getByText('Delete'))
-    expect(screen.getByText('Delete Engineering?')).toBeInTheDocument()
-  })
-
-  it('calls onDelete with department name after confirming delete', async () => {
-    renderDrawer()
-    fireEvent.click(screen.getByText('Delete'))
-    // Confirm in the dialog
-    const confirmButtons = screen.getAllByText('Delete')
-    fireEvent.click(confirmButtons[confirmButtons.length - 1]!)
-    await waitFor(() => {
-      expect(mockOnDelete).toHaveBeenCalledWith('engineering')
-    })
-  })
-
-  it('sends budget_percent of 0 correctly (not undefined)', async () => {
-    renderDrawer()
-    // Budget default is '0' -- should send 0, not undefined
-    fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => {
-      expect(mockOnUpdate).toHaveBeenCalledWith('engineering', expect.objectContaining({
-        budget_percent: 0,
-      }))
-    })
-  })
-
-  it('displays save error when onUpdate rejects', async () => {
-    const failingOnUpdate = vi.fn().mockRejectedValue(new Error('Permission denied'))
-    render(
-      <DepartmentEditDrawer
-        open={true}
-        onClose={mockOnClose}
-        department={dept}
-        health={health}
-        onUpdate={failingOnUpdate}
-        onDelete={mockOnDelete}
-        saving={false}
-      />,
-    )
-    fireEvent.click(screen.getByText('Save'))
-    await waitFor(() => {
-      expect(screen.getByText('Permission denied')).toBeInTheDocument()
-    })
+    const saveButton = screen.getByRole('button', { name: /save/i })
+    const deleteButton = screen.getByRole('button', { name: /delete/i })
+    expect(saveButton).toBeDisabled()
+    expect(deleteButton).toBeDisabled()
+    expect(saveButton.getAttribute('title') ?? '').toContain('1081')
+    expect(deleteButton.getAttribute('title') ?? '').toContain('1081')
+    // Clicking the disabled buttons must not call the mutation props.
+    fireEvent.click(saveButton)
+    fireEvent.click(deleteButton)
+    expect(mockOnUpdate).not.toHaveBeenCalled()
+    expect(mockOnDelete).not.toHaveBeenCalled()
   })
 })

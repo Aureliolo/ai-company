@@ -5,8 +5,8 @@ import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
-import { SliderField } from '@/components/ui/slider-field'
 import { Button } from '@/components/ui/button'
+import { ORG_EDIT_COMING_SOON_TOOLTIP } from './coming-soon'
 
 export interface GeneralTabProps {
   config: CompanyConfig | null
@@ -23,20 +23,27 @@ const AUTONOMY_OPTIONS = [
 
 const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_OPTIONS.map((o) => o.value))
 
+/**
+ * Mirrors `synthorg.communication.enums.CommunicationPattern` on the
+ * backend.  Keep this list in sync -- the backend rejects any value not
+ * in the enum, so the dashboard must only offer known values.
+ */
+const COMMUNICATION_PATTERN_OPTIONS = [
+  { value: 'hybrid', label: 'Hybrid -- mix of event-driven, hierarchical, and meeting-based' },
+  { value: 'event_driven', label: 'Event-driven -- async messages on topic channels' },
+  { value: 'hierarchical', label: 'Hierarchical -- chain-of-command routing' },
+  { value: 'meeting_based', label: 'Meeting-based -- scheduled synchronous ceremonies' },
+] as const
+
+const VALID_COMM_PATTERNS: ReadonlySet<string> = new Set(
+  COMMUNICATION_PATTERN_OPTIONS.map((o) => o.value),
+)
+
 interface FormState {
   company_name: string
   autonomy_level: AutonomyLevel
   budget_monthly: number
   communication_pattern: string
-}
-
-const budgetFormatter = new Intl.NumberFormat(undefined, {
-  style: 'decimal',
-  maximumFractionDigits: 0,
-})
-
-function formatBudget(value: number): string {
-  return `${budgetFormatter.format(value)} EUR`
 }
 
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
@@ -107,28 +114,58 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
           }}
         />
 
-        <SliderField
-          label="Monthly Budget"
-          value={form.budget_monthly}
-          onChange={(value) => updateForm('budget_monthly', value)}
-          min={0}
-          max={10000}
-          step={50}
-          formatValue={formatBudget}
+        <InputField
+          label="Monthly Budget (EUR)"
+          type="number"
+          value={String(form.budget_monthly)}
+          onChange={(e) => {
+            const raw = e.target.value
+            if (raw === '') {
+              updateForm('budget_monthly', 0)
+              return
+            }
+            const parsed = Number(raw)
+            // Accept any non-negative finite number.  There is no
+            // upper bound here -- the operator is the one choosing
+            // how much to spend, and a v0.5 dashboard that capped at
+            // 10k was silently excluding legitimate larger budgets.
+            if (Number.isFinite(parsed) && parsed >= 0) {
+              updateForm('budget_monthly', parsed)
+            }
+          }}
+          min="0"
+          step="any"
+          hint="Monthly spending cap for the whole company."
         />
 
-        <InputField
+        <SelectField
           label="Communication Pattern"
-          value={form.communication_pattern}
-          onChange={(e) => updateForm('communication_pattern', e.target.value)}
-          hint="e.g. hybrid, broadcast, hierarchical"
+          options={COMMUNICATION_PATTERN_OPTIONS}
+          value={
+            VALID_COMM_PATTERNS.has(form.communication_pattern)
+              ? form.communication_pattern
+              : 'hybrid'
+          }
+          onChange={(value) => {
+            if (VALID_COMM_PATTERNS.has(value)) updateForm('communication_pattern', value)
+          }}
         />
 
         {submitError && (
           <p role="alert" className="text-xs text-danger">{submitError}</p>
         )}
 
-        <Button onClick={handleSave} disabled={!dirty || saving}>
+        {/*
+         * Save is disabled until the backend CRUD endpoints land -- see
+         * #1081.  The form stays editable so operators can still see
+         * which fields exist and plan changes.
+         */}
+        <Button
+          onClick={handleSave}
+          disabled
+          aria-disabled="true"
+          title={ORG_EDIT_COMING_SOON_TOOLTIP}
+        >
           {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
           Save Settings
         </Button>

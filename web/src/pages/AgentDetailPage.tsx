@@ -2,6 +2,7 @@ import { useParams } from 'react-router'
 import { AlertTriangle, WifiOff } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { useAgentDetailData } from '@/hooks/useAgentDetailData'
+import { useCompanyStore } from '@/stores/company'
 import { AgentDetailSkeleton } from './agents/AgentDetailSkeleton'
 import { AgentIdentityHeader } from './agents/AgentIdentityHeader'
 import { ProseInsight } from './agents/ProseInsight'
@@ -13,7 +14,19 @@ import { ActivityLog } from './agents/ActivityLog'
 import { QualityScoreOverride } from './agents/QualityScoreOverride'
 
 export default function AgentDetailPage() {
-  const { agentName } = useParams<{ agentName: string }>()
+  // URLs use the agent's stable ID (or name as a fallback when an
+  // agent has no explicit id), NOT the display name.  Display names
+  // can contain arbitrary characters -- unicode, quotes, slashes --
+  // and URL-encoding them produced failed backend lookups because
+  // of case/trim normalisation quirks.  The id is URL-safe by
+  // construction.  We resolve it back to the agent's name for the
+  // data hook since the backend API is still name-keyed.
+  const { agentId } = useParams<{ agentId: string }>()
+
+  const configAgent = useCompanyStore((s) =>
+    s.config?.agents.find((a) => (a.id ?? a.name) === agentId),
+  )
+  const resolvedAgentName = configAgent?.name ?? ''
 
   const {
     agent,
@@ -28,7 +41,7 @@ export default function AgentDetailPage() {
     wsConnected,
     wsSetupError,
     fetchMoreActivity,
-  } = useAgentDetailData(agentName ?? '')
+  } = useAgentDetailData(resolvedAgentName)
 
   if (loading && !agent) {
     return <AgentDetailSkeleton />

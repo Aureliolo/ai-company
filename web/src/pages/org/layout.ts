@@ -3,7 +3,20 @@ import type { Node, Edge } from '@xyflow/react'
 
 export type LayoutDirection = 'TB' | 'LR'
 
-export interface LayoutOptions {
+/**
+ * Per-render visual preferences that affect how much space the
+ * dept card chrome takes up.  Passed through from
+ * `useOrgChartData` so the layout reserves exactly the space that
+ * will actually be rendered -- no more "100 px of empty space when
+ * the user turns toggles off" bug.
+ */
+export interface LayoutVisualPrefs {
+  showBudgetBar?: boolean
+  showStatusDots?: boolean
+  showAddAgentButton?: boolean
+}
+
+export interface LayoutOptions extends LayoutVisualPrefs {
   direction?: LayoutDirection
   nodeSep?: number
   rankSep?: number
@@ -11,9 +24,41 @@ export interface LayoutOptions {
 
 const DEFAULT_NODE_WIDTH = 160
 const DEFAULT_NODE_HEIGHT = 80
-const DEFAULT_GROUP_PADDING = 40
-const GROUP_NODE_HEADER_HEIGHT = 40
-const EMPTY_GROUP_HEIGHT = 120 // matches DepartmentGroupNode min-h-[120px]
+const DEFAULT_GROUP_PADDING = 16
+
+// Fixed header pieces on every dept card (inner padding + title row + bottom margin)
+const HEADER_BASE = 48
+// Added when budget bar is on (label + 1 px bar + spacing)
+const HEADER_BUDGET_BAR = 26
+// Added when status dots are on.  The dots are `size-2.5` (10 px) +
+// `ring-2` (4 px per side) and sit on a `pt-1` (4 px) padding line,
+// so the row occupies roughly 18 px of vertical space inside the
+// card header.
+const HEADER_STATUS_DOTS = 20
+// Bottom footer chip ("+ Add agent")
+const FOOTER_ADD_AGENT = 34
+
+function computeHeaderHeight(prefs: LayoutVisualPrefs): number {
+  let h = HEADER_BASE
+  if (prefs.showBudgetBar) h += HEADER_BUDGET_BAR
+  if (prefs.showStatusDots) h += HEADER_STATUS_DOTS
+  return h
+}
+
+function computeFooterHeight(prefs: LayoutVisualPrefs): number {
+  return prefs.showAddAgentButton ? FOOTER_ADD_AGENT : 0
+}
+
+const EMPTY_GROUP_MIN_WIDTH = 240
+// Matches the empty-state card's min-h -- header + "No agents yet"
+// icon + label + (optional) add agent chip.
+const EMPTY_GROUP_HEIGHT = 180
+
+function getNodeDim(node: Node): { w: number; h: number } {
+  const w = node.measured?.width ?? (node.width as number | undefined) ?? DEFAULT_NODE_WIDTH
+  const h = node.measured?.height ?? (node.height as number | undefined) ?? DEFAULT_NODE_HEIGHT
+  return { w, h }
+}
 
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.
@@ -28,51 +73,82 @@ export function applyDagreLayout(
   options: LayoutOptions = {},
 ): Node[] {
   const { direction = 'TB' } = options
-  let { nodeSep = 60, rankSep = 100 } = options
+  let { nodeSep = 60 } = options
+  const { rankSep = 50 } = options
 
-  // Separate group nodes from leaf nodes
+  // Dynamic header/footer sizes based on what's actually rendered.
+  // When the user toggles off budget bar / status dots, the card
+  // chrome shrinks and the reserved space shrinks with it -- so
+  // there is no dead whitespace inside the box.
+  const headerHeight = computeHeaderHeight(options)
+  const footerHeight = computeFooterHeight(options)
+
+  // Target visible gap between any two adjacent dept boxes in the
+  // hierarchy.  The gap is enforced AFTER dagre by a manual shift
+  // pass (see below), not by dagre's minlen -- dagre uses integer
+  // ranks which quantize into 50 px jumps depending on how close
+  // the header chrome size is to a rankSep boundary, causing the
+  // gap to change when the user toggles status dots on/off.
+  const DESIRED_INTER_DEPT_GAP = 48
+  // Static minlens used only to keep dagre's ranking correct (so
+  // it doesn't compact the graph into a single rank).  Actual
+  // spacing comes from the post-shift pass.
+  const ownerToRootMinlen = 2
+  const ceoToChildMinlen = 2
+
   const groupNodes = nodes.filter((n) => n.type === 'department')
   const leafNodes = nodes.filter((n) => n.type !== 'department')
 
-  // Increase spacing to account for department group chrome (padding + header)
   if (groupNodes.length > 0) {
     nodeSep += DEFAULT_GROUP_PADDING * 2
-    rankSep += GROUP_NODE_HEADER_HEIGHT + DEFAULT_GROUP_PADDING
   }
 
   if (leafNodes.length === 0) {
-    // No agent nodes -- place department groups on a grid respecting direction
     const isLR = direction === 'LR'
     return nodes.map((n, i) => {
       const major = i % 3
       const minor = Math.floor(i / 3)
-      const x = isLR ? minor * 240 : major * 240
-      const y = isLR ? major * 160 : minor * 160
-      return { ...n, position: { x, y }, style: { ...n.style, width: 200, height: EMPTY_GROUP_HEIGHT } }
+      const x = isLR ? minor * 260 : major * 260
+      const y = isLR ? major * 180 : minor * 180
+      return {
+        ...n,
+        position: { x, y },
+        width: EMPTY_GROUP_MIN_WIDTH,
+        height: EMPTY_GROUP_HEIGHT,
+        style: { ...n.style, width: EMPTY_GROUP_MIN_WIDTH, height: EMPTY_GROUP_HEIGHT },
+      }
     })
   }
 
-  // Build dagre graph from leaf nodes only
+  // ── Build + run dagre on leaf nodes only ─────────────────
   const g = new Graph()
   g.setGraph({ rankdir: direction, nodesep: nodeSep, ranksep: rankSep })
   g.setDefaultEdgeLabel(() => ({}))
 
   for (const node of leafNodes) {
-    g.setNode(node.id, {
-      width: node.measured?.width ?? DEFAULT_NODE_WIDTH,
-      height: node.measured?.height ?? DEFAULT_NODE_HEIGHT,
-    })
+    const { w, h } = getNodeDim(node)
+    g.setNode(node.id, { width: w, height: h })
   }
 
   for (const edge of edges) {
     if (g.hasNode(edge.source) && g.hasNode(edge.target)) {
-      g.setEdge(edge.source, edge.target)
+      // Cross-dept edges are tagged by build-org-tree with
+      // `data.crossDeptKind` -- look up the dynamic minlen for
+      // that kind (owner-to-root is shorter, ceo-to-child is
+      // longer because it needs to clear more chrome).  Edges
+      // without a tag are intra-dept (head→member) and keep
+      // dagre's default minlen of 1.
+      const kind = (edge.data as { crossDeptKind?: string } | undefined)?.crossDeptKind
+      let minlen: number | undefined
+      if (kind === 'owner-to-root') minlen = ownerToRootMinlen
+      else if (kind === 'ceo-to-child') minlen = ceoToChildMinlen
+      g.setEdge(edge.source, edge.target, minlen ? { minlen } : {})
     }
   }
 
   layout(g)
 
-  // Map positioned leaf nodes (dagre returns center coords; React Flow uses top-left)
+  // Map positioned leaf nodes (dagre returns center coords; RF uses top-left)
   const positionedLeafMap = new Map<string, Node>()
   for (const node of leafNodes) {
     const dagreNode = g.node(node.id) as { x: number; y: number; width: number; height: number }
@@ -85,33 +161,35 @@ export function applyDagreLayout(
     })
   }
 
-  // Compute laid-out content bounds for offsetting empty groups
-  let contentMaxX = 0
-  let contentMaxY = 0
-  for (const node of positionedLeafMap.values()) {
-    const w = node.measured?.width ?? DEFAULT_NODE_WIDTH
-    const h = node.measured?.height ?? DEFAULT_NODE_HEIGHT
-    contentMaxX = Math.max(contentMaxX, node.position.x + w)
-    contentMaxY = Math.max(contentMaxY, node.position.y + h)
+  // Identify the root department (the one flagged by build-org-tree).
+  const rootGroupIds = new Set<string>()
+  for (const group of groupNodes) {
+    if ((group.data as { isRootDepartment?: boolean }).isRootDepartment) {
+      rootGroupIds.add(group.id)
+    }
   }
 
-  // Step 1: Compute group positions and dimensions (pure, no side effects)
-  let emptyGroupIndex = 0
-  const groupResults = groupNodes.map((group) => {
+  // ── Step 1: compute POPULATED dept group positions ───────
+  //
+  // Pure from-children bounds (dagre doesn't know about group nodes,
+  // so group positions/dimensions are derived after leaf layout).
+  interface GroupResult {
+    node: Node
+    children: Node[]
+    groupX: number
+    groupY: number
+    groupWidth: number
+    groupHeight: number
+  }
+
+  const populatedResults: GroupResult[] = []
+  const emptyGroups: Node[] = []
+
+  for (const group of groupNodes) {
     const children = [...positionedLeafMap.values()].filter((n) => n.parentId === group.id)
     if (children.length === 0) {
-      const isLR = direction === 'LR'
-      const major = emptyGroupIndex % 3
-      const minor = Math.floor(emptyGroupIndex / 3)
-      emptyGroupIndex++
-      const xOffset = isLR ? minor * 240 : contentMaxX + DEFAULT_GROUP_PADDING * 2 + major * 240
-      const yOffset = isLR ? contentMaxY + DEFAULT_GROUP_PADDING * 2 + major * 160 : minor * 160
-      return {
-        node: { ...group, position: { x: xOffset, y: yOffset }, style: { ...group.style, width: 200, height: EMPTY_GROUP_HEIGHT } },
-        children: [] as Node[],
-        groupX: 0,
-        groupY: 0,
-      }
+      emptyGroups.push(group)
+      continue
     }
 
     const padding = DEFAULT_GROUP_PADDING
@@ -119,31 +197,47 @@ export function applyDagreLayout(
     let minY = Infinity
     let maxX = -Infinity
     let maxY = -Infinity
-
     for (const child of children) {
-      const w = child.measured?.width ?? DEFAULT_NODE_WIDTH
-      const h = child.measured?.height ?? DEFAULT_NODE_HEIGHT
+      const { w, h } = getNodeDim(child)
       minX = Math.min(minX, child.position.x)
       minY = Math.min(minY, child.position.y)
       maxX = Math.max(maxX, child.position.x + w)
       maxY = Math.max(maxY, child.position.y + h)
     }
 
-    const groupX = minX - padding
-    const groupY = minY - padding - GROUP_NODE_HEADER_HEIGHT
-    const groupWidth = maxX - minX + padding * 2
-    const groupHeight = maxY - minY + padding * 2 + GROUP_NODE_HEADER_HEIGHT
+    const contentWidth = maxX - minX
+    const desiredWidth = Math.max(contentWidth + padding * 2, EMPTY_GROUP_MIN_WIDTH)
+    const extraWidth = desiredWidth - (contentWidth + padding * 2)
+    const leftPad = padding + extraWidth / 2
 
-    return {
-      node: { ...group, position: { x: groupX, y: groupY }, style: { ...group.style, width: groupWidth, height: groupHeight } },
+    const groupX = minX - leftPad
+    const groupY = minY - padding - headerHeight
+    const groupWidth = desiredWidth
+    const groupHeight =
+      maxY - minY + padding * 2 + headerHeight + footerHeight
+
+    populatedResults.push({
+      node: {
+        ...group,
+        position: { x: groupX, y: groupY },
+        width: groupWidth,
+        height: groupHeight,
+        style: { ...group.style, width: groupWidth, height: groupHeight },
+      },
       children,
       groupX,
       groupY,
-    }
-  })
+      groupWidth,
+      groupHeight,
+    })
+  }
 
-  // Step 2: Adjust children to group-relative positions
-  for (const { children, groupX, groupY } of groupResults) {
+  // ── Step 2: convert populated children to group-relative ────
+  //
+  // Children are stored in group-relative coords from here on, so
+  // any subsequent shift of the group position automatically moves
+  // the children along with it -- no per-child bookkeeping needed.
+  for (const { children, groupX, groupY } of populatedResults) {
     for (const child of children) {
       positionedLeafMap.set(child.id, {
         ...child,
@@ -155,7 +249,205 @@ export function applyDagreLayout(
     }
   }
 
-  const positionedGroups = groupResults.map((r) => r.node)
+  const rootPopulated = populatedResults.find((r) => rootGroupIds.has(r.node.id))
 
-  return [...positionedGroups, ...positionedLeafMap.values()]
+  // ── Step 3: place EMPTY dept groups into the non-root row ────
+  //
+  // Done BEFORE the centering pass so empty depts are part of the
+  // cluster that gets centered, not appended asymmetrically after
+  // the fact.  That way a row like [Product, Engineering, Security]
+  // (where Security is empty) is treated as a single block when we
+  // align it below the root dept.
+  const emptyResults: GroupResult[] = []
+  const populatedNonRoot = populatedResults.filter((r) => !rootGroupIds.has(r.node.id))
+
+  // Row Y + right edge for placing empty depts come from the
+  // populated non-root cluster's current dagre-provided position.
+  let nonRootRowY = 0
+  let nonRootRowRightEdge = 0
+  if (populatedNonRoot.length > 0) {
+    nonRootRowY = Math.min(...populatedNonRoot.map((r) => r.node.position.y))
+    nonRootRowRightEdge = Math.max(
+      ...populatedNonRoot.map((r) => r.node.position.x + r.groupWidth),
+    )
+  } else if (rootPopulated) {
+    // No populated non-root depts -- fall back to placing empty
+    // depts below the root dept (edge case: org with only a CEO).
+    nonRootRowY = rootPopulated.node.position.y + rootPopulated.groupHeight + headerHeight + DEFAULT_GROUP_PADDING
+    nonRootRowRightEdge = rootPopulated.node.position.x + rootPopulated.groupWidth
+  }
+
+  for (const group of emptyGroups) {
+    const isRoot = rootGroupIds.has(group.id)
+    let groupX: number
+    let groupY: number
+    if (isRoot) {
+      // Empty ROOT dept (no CEO, very unusual).  Anchor above row.
+      groupX = nonRootRowRightEdge - EMPTY_GROUP_MIN_WIDTH
+      groupY = nonRootRowY - EMPTY_GROUP_HEIGHT - DEFAULT_GROUP_PADDING * 2
+    } else {
+      groupX = nonRootRowRightEdge + DEFAULT_GROUP_PADDING
+      groupY = nonRootRowY
+      nonRootRowRightEdge = groupX + EMPTY_GROUP_MIN_WIDTH
+    }
+    emptyResults.push({
+      node: {
+        ...group,
+        position: { x: groupX, y: groupY },
+        width: EMPTY_GROUP_MIN_WIDTH,
+        height: EMPTY_GROUP_HEIGHT,
+        style: { ...group.style, width: EMPTY_GROUP_MIN_WIDTH, height: EMPTY_GROUP_HEIGHT },
+      },
+      children: [],
+      groupX,
+      groupY,
+      groupWidth: EMPTY_GROUP_MIN_WIDTH,
+      groupHeight: EMPTY_GROUP_HEIGHT,
+    })
+  }
+
+  const allGroupResults = [...populatedResults, ...emptyResults]
+
+  // ── Step 4: center the MEDIAN non-root dept under root ─────
+  //
+  // For an odd number of siblings the "visual middle" is the
+  // median-x dept, not the bounding-box midpoint -- because the
+  // siblings typically have different widths, the bbox midpoint
+  // drifts off the median item's centre and Engineering ends up
+  // slightly left/right of Executive even though it IS the middle
+  // child.  Shifting by `rootCenterX - medianCenterX` puts the
+  // middle dept's x exactly under the root dept.
+  //
+  // For even counts we average the two middle items, which is the
+  // equivalent of bbox centring for a symmetric pair.
+  const nonRootResults = allGroupResults.filter((r) => !rootGroupIds.has(r.node.id))
+  if (rootPopulated && nonRootResults.length > 0) {
+    const rootCenterX = rootPopulated.node.position.x + rootPopulated.groupWidth / 2
+    const sortedByX = [...nonRootResults].sort(
+      (a, b) => (a.node.position.x + a.groupWidth / 2) - (b.node.position.x + b.groupWidth / 2),
+    )
+    let targetCenterX: number
+    if (sortedByX.length % 2 === 1) {
+      const mid = sortedByX[(sortedByX.length - 1) / 2]!
+      targetCenterX = mid.node.position.x + mid.groupWidth / 2
+    } else {
+      const left = sortedByX[sortedByX.length / 2 - 1]!
+      const right = sortedByX[sortedByX.length / 2]!
+      const leftCentre = left.node.position.x + left.groupWidth / 2
+      const rightCentre = right.node.position.x + right.groupWidth / 2
+      targetCenterX = (leftCentre + rightCentre) / 2
+    }
+    const deltaX = rootCenterX - targetCenterX
+    if (Math.abs(deltaX) > 0.5) {
+      for (const result of nonRootResults) {
+        result.node = {
+          ...result.node,
+          position: {
+            x: result.node.position.x + deltaX,
+            y: result.node.position.y,
+          },
+        }
+      }
+    }
+  }
+
+  // ── Step 4.5: enforce constant vertical gaps ───────────────
+  //
+  // Dagre lays out agents by integer ranks * rankSep, which gives
+  // us a coarse vertical spacing but cannot produce a constant
+  // pixel gap between dept boxes when the box chrome (header +
+  // footer) changes size.  Every time the user toggled status
+  // dots / budget bar, the header grew or shrank and the visible
+  // gap between Executive and its children jumped because
+  // `ceil(chrome / rankSep)` quantized into 50 px increments.
+  //
+  // This pass sidesteps that by SHIFTING dept box positions
+  // directly so the visible gaps are exactly `DESIRED_INTER_DEPT_GAP`
+  // pixels regardless of chrome size.  Children of each group
+  // move automatically because they are stored in group-relative
+  // coordinates (see Step 2), so the whole subtree translates
+  // when we change a group's `position.y`.
+  //
+  // Order:
+  //   1. Shift the root dept so its top is `owner.bottom + GAP`.
+  //   2. Shift every non-root dept so its top is `root.bottom + GAP`.
+
+  // Find owner bottom (use the lowest-positioned owner node).
+  let ownerBottomY: number | null = null
+  for (const node of positionedLeafMap.values()) {
+    if (node.type !== 'owner') continue
+    const { h: ownerH } = getNodeDim(node)
+    const bottom = node.position.y + ownerH
+    if (ownerBottomY === null || bottom > ownerBottomY) ownerBottomY = bottom
+  }
+
+  // Step 4.5a: anchor root dept below owner.
+  const rootResult = allGroupResults.find((r) => rootGroupIds.has(r.node.id))
+  if (rootResult && ownerBottomY !== null) {
+    const desiredRootTop = ownerBottomY + DESIRED_INTER_DEPT_GAP
+    const deltaY = desiredRootTop - rootResult.node.position.y
+    if (Math.abs(deltaY) > 0.5) {
+      rootResult.node = {
+        ...rootResult.node,
+        position: {
+          x: rootResult.node.position.x,
+          y: rootResult.node.position.y + deltaY,
+        },
+      }
+    }
+  }
+
+  // Step 4.5b: anchor non-root dept row below the root.
+  if (rootResult) {
+    const rootBottom = rootResult.node.position.y + rootResult.groupHeight
+    const desiredNonRootTop = rootBottom + DESIRED_INTER_DEPT_GAP
+    const nonRootResultsForShift = allGroupResults.filter(
+      (r) => !rootGroupIds.has(r.node.id),
+    )
+    // Use the min of current non-root ys as the row's reference.
+    // Every non-root dept shifts by the same delta so the row
+    // stays visually aligned.
+    if (nonRootResultsForShift.length > 0) {
+      const currentRowTop = Math.min(
+        ...nonRootResultsForShift.map((r) => r.node.position.y),
+      )
+      const deltaY = desiredNonRootTop - currentRowTop
+      if (Math.abs(deltaY) > 0.5) {
+        for (const result of nonRootResultsForShift) {
+          result.node = {
+            ...result.node,
+            position: {
+              x: result.node.position.x,
+              y: result.node.position.y + deltaY,
+            },
+          }
+        }
+      }
+    }
+  }
+
+  // ── Step 5: center top-level owner nodes over the root dept ──
+  //
+  // Shift horizontally so the owner sits dead-centre above the
+  // root dept -- owner→root-dept edge becomes a straight vertical
+  // drop with no kinks.  Uses the OWNER node's explicit width from
+  // build-org-tree (220 px) rather than the 160 px default so the
+  // centering math is accurate on first paint, before React Flow
+  // has measured the rendered card.
+  if (rootPopulated) {
+    const rootCenterX = rootPopulated.node.position.x + rootPopulated.groupWidth / 2
+    for (const node of positionedLeafMap.values()) {
+      if (node.type !== 'owner') continue
+      const { w: ownerWidth } = getNodeDim(node)
+      positionedLeafMap.set(node.id, {
+        ...node,
+        position: {
+          x: rootCenterX - ownerWidth / 2,
+          y: node.position.y,
+        },
+      })
+    }
+  }
+
+  return [...allGroupResults.map((r) => r.node), ...positionedLeafMap.values()]
 }

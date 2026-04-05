@@ -154,7 +154,12 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
             </Dialog.Title>
             <Dialog.Close
               render={
-                <Button variant="ghost" size="icon" aria-label="Close">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Close"
+                  disabled={busy}
+                >
                   <X className="size-4" />
                 </Button>
               }
