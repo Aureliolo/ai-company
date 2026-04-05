@@ -1094,7 +1094,7 @@ class AgentEngine:
                 "before_tokens": ti.before_tokens,
                 "after_tokens": ti.after_tokens,
                 "max_tokens": ti.max_tokens,
-                "trim_tier": ti.trim_tier,
+                "trim_tier": ti.trim_tier,  # type: ignore[typeddict-item]  # validated 1|2|3 by PersonalityTrimInfo
                 "budget_met": ti.budget_met,
             }
             logger.info(PROMPT_PERSONALITY_TRIMMED, **trim_payload)
