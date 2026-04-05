@@ -561,6 +561,8 @@ class LLMConsolidationStrategy:
         Returns:
             Concatenated summary text.
         """
+        if not entries:
+            return ""
         lines = [f"Consolidated {entries[0].category.value} memories:"]
         for entry in entries:
             truncated = (

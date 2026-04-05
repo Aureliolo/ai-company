@@ -731,14 +731,16 @@ class AgentEngine:
             return
         if self._memory_backend is None:
             return
-        from synthorg.memory.consolidation import (  # noqa: PLC0415
-            capture_distillation,
-        )
+        from pydantic import TypeAdapter  # noqa: PLC0415
 
+        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
+        from synthorg.memory.consolidation import capture_distillation  # noqa: PLC0415
+
+        _nb = TypeAdapter(NotBlankStr)
         await capture_distillation(
             execution_result,
-            agent_id=agent_id,
-            task_id=task_id,
+            agent_id=_nb.validate_python(agent_id),
+            task_id=_nb.validate_python(task_id),
             backend=self._memory_backend,
         )
 
