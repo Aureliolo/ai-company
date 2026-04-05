@@ -196,8 +196,23 @@ class LLMConsolidationStrategy:
             strategy="llm",
         )
 
-        trajectory_context = await self._fetch_trajectory_context(agent_id)
+        # Build groups BEFORE any backend calls so a below-threshold
+        # batch short-circuits without hitting the distillation
+        # lookup.  Otherwise a batch with nothing to consolidate would
+        # still pay a round-trip and could trip the trajectory-fetch
+        # degradation logger on what should be a pure no-op.
         groups_to_process = self._build_groups(entries)
+        if not groups_to_process:
+            logger.info(
+                STRATEGY_COMPLETE,
+                agent_id=agent_id,
+                consolidated_count=0,
+                summary_count=0,
+                strategy="llm",
+            )
+            return ConsolidationResult()
+
+        trajectory_context = await self._fetch_trajectory_context(agent_id)
         group_results = await self._run_groups(
             groups_to_process,
             agent_id,

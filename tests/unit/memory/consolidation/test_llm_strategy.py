@@ -1,5 +1,6 @@
 """Tests for LLM consolidation strategy."""
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -741,13 +742,42 @@ class TestLLMConsolidationStrategyDetails:
         assert "x" * _MAX_TRAJECTORY_CHARS_PER_ENTRY in system_prompt
 
     async def test_multi_category_groups_processed_in_parallel(self) -> None:
-        """Multiple category groups are dispatched via TaskGroup."""
+        """Multiple category groups are actually processed concurrently.
+
+        Uses an ``asyncio.Event`` barrier: each provider call increments
+        a counter and then waits for the counter to reach the expected
+        concurrency level before returning.  A sequential
+        implementation would deadlock here (the second call never
+        starts until the first returns, and the first waits forever for
+        the second), so the test will time out; a parallel
+        ``TaskGroup`` implementation satisfies the barrier and the test
+        passes.
+        """
+        expected_concurrent = 2
+        barrier = asyncio.Event()
+        in_flight = 0
+        max_in_flight = 0
+
+        async def _barrier_complete(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            if in_flight >= expected_concurrent:
+                barrier.set()
+            # Wait until every expected call has entered before any
+            # returns.  Sequential execution fails this because
+            # ``barrier`` never gets set by a second caller.
+            await barrier.wait()
+            in_flight -= 1
+            return _make_response()
+
         backend = AsyncMock()
         store_ids = iter(["sum-a", "sum-b"])
         backend.store = AsyncMock(side_effect=lambda *_a, **_kw: next(store_ids))
         backend.delete = AsyncMock(return_value=True)
         provider = AsyncMock()
-        provider.complete = AsyncMock(return_value=_make_response())
+        provider.complete = _barrier_complete
 
         strategy = LLMConsolidationStrategy(
             backend=backend,
@@ -781,6 +811,10 @@ class TestLLMConsolidationStrategyDetails:
             agent_id="agent-1",
         )
 
-        assert provider.complete.call_count == 2
-        assert backend.store.call_count == 2
+        assert max_in_flight == expected_concurrent, (
+            f"expected {expected_concurrent} provider calls in-flight "
+            f"concurrently, saw peak={max_in_flight} -- groups were "
+            "processed sequentially, not via TaskGroup"
+        )
+        assert backend.store.call_count == expected_concurrent
         assert result.consolidated_count == 4

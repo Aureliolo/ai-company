@@ -181,7 +181,6 @@ class ConsolidationResult(BaseModel):
         """Number of memories consolidated (derived from ``removed_ids``)."""
         return len(self.removed_ids)
 
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def summary_id(self) -> NotBlankStr | None:
         """Representative summary id (last one produced, or ``None``).
@@ -189,6 +188,13 @@ class ConsolidationResult(BaseModel):
         Derived from ``summary_ids``.  Callers that need every summary
         (e.g. multi-category ``LLMConsolidationStrategy`` runs) should
         read ``summary_ids`` directly.
+
+        Exposed as a plain ``@property`` (not ``@computed_field``) so
+        it is NOT emitted by ``model_dump()``.  Otherwise the serialized
+        payload would include ``summary_id`` and a round-trip through
+        ``model_validate(result.model_dump())`` would fail against the
+        ``extra='forbid'`` guard -- a nasty surprise for any
+        persistence or copy-through-JSON path.
         """
         return self.summary_ids[-1] if self.summary_ids else None
 

@@ -228,7 +228,18 @@ class TestApplyDiversityPenalty:
         result = apply_diversity_penalty(entries, diversity_lambda=0.5)
         assert len(result) == len(entries)
 
-    @pytest.mark.parametrize("bad_lambda", [-0.1, 1.1, -1.0, 2.0])
+    @pytest.mark.parametrize(
+        "bad_lambda",
+        [
+            -0.1,
+            1.1,
+            -1.0,
+            2.0,
+            float("nan"),
+            float("inf"),
+            -float("inf"),
+        ],
+    )
     def test_invalid_lambda_raises(self, bad_lambda: float) -> None:
         with pytest.raises(ValueError, match=r"diversity_lambda must be"):
             apply_diversity_penalty((), diversity_lambda=bad_lambda)
