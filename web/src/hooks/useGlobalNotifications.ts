@@ -35,7 +35,7 @@ export function useGlobalNotifications(): void {
     [],
   )
 
-  const { setupError, reconnectExhausted } = useWebSocket({ bindings })
+  const { setupError, reconnectExhausted, connected } = useWebSocket({ bindings })
 
   // Surface setup errors via a one-time warning toast. Without this, a failed
   // WS connection silently kills the entire global notifications pipeline.
@@ -66,4 +66,14 @@ export function useGlobalNotifications(): void {
       })
     }
   }, [reconnectExhausted])
+
+  // Reset the one-shot refs when the WS successfully reconnects so a flapping
+  // connection (transient network loss, backend restart) can emit a fresh
+  // toast on the next failure instead of staying silent forever.
+  useEffect(() => {
+    if (connected) {
+      reconnectExhaustedRef.current = false
+      lastSetupErrorRef.current = null
+    }
+  }, [connected])
 }

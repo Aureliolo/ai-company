@@ -32,7 +32,7 @@ export function DialogContent({ className, children }: DialogContentProps) {
           'fixed top-1/2 left-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2',
           'rounded-xl border border-border bg-background shadow-lg',
           'max-h-[80vh] overflow-hidden',
-          'transition-[opacity,transform,scale] duration-200 ease-out',
+          'transition-[opacity,translate,scale] duration-200 ease-out',
           'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
           'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
           className,
@@ -51,7 +51,7 @@ export interface DialogHeaderProps {
 
 export function DialogHeader({ className, children }: DialogHeaderProps) {
   return (
-    <div className={cn('flex items-center justify-between border-b border-border px-6 py-4', className)}>
+    <div className={cn('flex items-center justify-between border-b border-border p-card', className)}>
       {children}
     </div>
   )

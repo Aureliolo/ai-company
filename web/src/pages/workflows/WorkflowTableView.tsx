@@ -92,23 +92,23 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
                       />
                       <Menu.Portal>
                         <Menu.Positioner align="end" sideOffset={4}>
-                          <Menu.Popup className="z-50 min-w-36 rounded-md border border-border bg-popover p-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,transform,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
+                          <Menu.Popup className="z-50 min-w-36 rounded-lg border border-border bg-card py-1 shadow-[var(--so-shadow-card-hover)] transition-[opacity,translate,scale] duration-150 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95">
                             <Menu.Item
-                              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-accent/10"
+                              className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
                               onClick={() => { void navigate(editorUrl) }}
                             >
                               <Pencil className="size-3.5" />
                               Edit
                             </Menu.Item>
                             <Menu.Item
-                              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-accent/10"
+                              className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface"
                               onClick={() => onDuplicate(w.id)}
                             >
                               <Copy className="size-3.5" />
                               Duplicate
                             </Menu.Item>
                             <Menu.Item
-                              className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-danger outline-none data-[highlighted]:bg-danger/10"
+                              className="flex w-full cursor-default items-center gap-2 px-3 py-1.5 text-sm text-danger outline-none data-[highlighted]:bg-surface"
                               onClick={() => setConfirmDeleteId(w.id)}
                             >
                               <Trash2 className="size-3.5" />
@@ -130,8 +130,10 @@ export function WorkflowTableView({ workflows, onDelete, onDuplicate }: Workflow
         open={confirmDeleteId !== null}
         onOpenChange={(open) => { if (!open) setConfirmDeleteId(null) }}
         onConfirm={() => {
+          // ConfirmDialog auto-closes via its own onOpenChange(false) on
+          // successful confirm, which will clear confirmDeleteId above --
+          // no need to null it manually here.
           if (confirmDeleteId) onDelete(confirmDeleteId)
-          setConfirmDeleteId(null)
         }}
         title="Delete workflow"
         description="This action cannot be undone. The workflow definition will be permanently deleted."

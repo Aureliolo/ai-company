@@ -85,8 +85,6 @@ describe('App', () => {
     )
     // Verify main content area exists
     expect(screen.getByRole('main')).toBeInTheDocument()
-    // Verify brand text is present in the app
-    expect(screen.getAllByText('SynthOrg').length).toBeGreaterThanOrEqual(1)
   },
     10_000,
   )

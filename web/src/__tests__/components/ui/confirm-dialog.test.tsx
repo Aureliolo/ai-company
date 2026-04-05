@@ -71,8 +71,10 @@ describe('ConfirmDialog', () => {
   it('destructive variant applies danger styling to confirm', () => {
     render(<ConfirmDialog {...defaultProps} variant="destructive" />)
     const confirmBtn = screen.getByRole('button', { name: /confirm/i })
-    // Destructive buttons have the destructive variant class
-    expect(confirmBtn.className).toContain('destructive')
+    // Use the explicit data-variant attribute rather than a className
+    // substring check -- the latter breaks if the Tailwind class scheme
+    // changes even though the variant contract is preserved.
+    expect(confirmBtn).toHaveAttribute('data-variant', 'destructive')
   })
 
   it('loading state disables both buttons', () => {

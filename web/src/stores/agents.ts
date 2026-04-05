@@ -112,6 +112,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         listLoading: false,
       })
     } catch (err) {
+      log.warn('Failed to load agents', err)
       set({ listLoading: false, listError: getErrorMessage(err) })
     }
   },
@@ -160,6 +161,7 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       })
     } catch (err) {
       if (_detailRequestName !== name) return
+      log.warn('Failed to load agent detail', { agent: name }, err)
       set({ detailLoading: false, detailError: getErrorMessage(err) })
     }
   },

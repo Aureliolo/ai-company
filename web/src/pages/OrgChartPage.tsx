@@ -221,17 +221,24 @@ function OrgChartInner() {
       }))
   }, [transition.displayNodes])
 
-  useRegisterCommands([
-    {
-      id: 'org-fit-view',
-      label: 'Fit to View',
-      description: 'Reset zoom to fit all nodes',
-      icon: GitBranch,
-      action: () => fitView({ padding: 0.2 }),
-      group: 'Org Chart',
-      scope: 'local',
-    },
-  ])
+  // Memoized so the registration effect inside useRegisterCommands does not
+  // tear down and re-create the command on every render (which would thrash
+  // the command palette's subscriber set and trigger cascading re-renders).
+  const orgChartCommands = useMemo(
+    () => [
+      {
+        id: 'org-fit-view',
+        label: 'Fit to View',
+        description: 'Reset zoom to fit all nodes',
+        icon: GitBranch,
+        action: () => fitView({ padding: 0.2 }),
+        group: 'Org Chart',
+        scope: 'local' as const,
+      },
+    ],
+    [fitView],
+  )
+  useRegisterCommands(orgChartCommands)
 
   // Animate transitions between view modes using reducer (avoids set-state-in-effect)
   useEffect(() => {

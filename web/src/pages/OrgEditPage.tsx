@@ -18,7 +18,9 @@ import { YamlEditorPanel } from './org-edit/YamlEditorPanel'
 
 type TabValue = 'general' | 'agents' | 'departments'
 
-const VALID_TABS: ReadonlySet<string> = new Set<string>(['general', 'agents', 'departments'])
+const isTabValue = (value: string): value is TabValue =>
+  value === 'general' || value === 'agents' || value === 'departments'
+
 
 const TRIGGER_CLASSES = cn(
   'px-4 py-2 text-sm font-medium text-text-secondary transition-colors',
@@ -53,10 +55,10 @@ export default function OrgEditPage() {
   } = useOrgEditData()
 
   const rawTab = searchParams.get('tab') ?? 'general'
-  const activeTab: TabValue = VALID_TABS.has(rawTab) ? (rawTab as TabValue) : 'general'
+  const activeTab: TabValue = isTabValue(rawTab) ? rawTab : 'general'
 
   const handleTabChange = useCallback(
-    (value: string) => {
+    (value: TabValue) => {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev)
         if (value === 'general') {
@@ -150,7 +152,14 @@ export default function OrgEditPage() {
       {yamlMode ? (
         <YamlEditorPanel config={config} onSave={handleYamlSave} saving={saving} />
       ) : (
-        <Tabs.Root value={activeTab} onValueChange={(value: string) => handleTabChange(value as TabValue)}>
+        <Tabs.Root
+          value={activeTab}
+          onValueChange={(value: string) => {
+            if (isTabValue(value)) {
+              handleTabChange(value)
+            }
+          }}
+        >
           <Tabs.List className="flex border-b border-border" aria-label="Organization sections">
             <Tabs.Tab value="general" className={TRIGGER_CLASSES}>
               <span className="flex items-center gap-1.5">
@@ -172,7 +181,7 @@ export default function OrgEditPage() {
             </Tabs.Tab>
           </Tabs.List>
 
-          <div className="pt-6">
+          <div className="pt-section-gap">
             <Tabs.Panel value="general">
               <ErrorBoundary level="section">
                 <GeneralTab config={config} onUpdate={updateCompany} saving={saving} />

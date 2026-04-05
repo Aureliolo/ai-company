@@ -3,8 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
+import { getErrorMessage } from '@/utils/errors'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useCommandPalette } from '@/hooks/useCommandPalette'
+import { useToastStore } from '@/stores/toast'
 
 const log = createLogger('CommandPalette')
 
@@ -22,9 +24,7 @@ function getRecentIds(): string[] {
       .filter((v): v is string => typeof v === 'string' && v.length <= 64 && VALID_ID.test(v))
       .slice(0, MAX_RECENT)
   } catch (err) {
-    if (import.meta.env.DEV) {
-      log.warn('Failed to read recent commands from localStorage:', err)
-    }
+    log.warn('Failed to read recent commands from localStorage', err)
     return []
   }
 }
@@ -34,8 +34,11 @@ function addRecentId(id: string) {
     const recent = getRecentIds().filter((r) => r !== id)
     recent.unshift(id)
     localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
-  } catch {
-    // Best-effort convenience feature -- never block command execution
+  } catch (err) {
+    // Best-effort convenience feature -- never block command execution, but
+    // surface the diagnostic so quota/security errors can be correlated with
+    // "my recent commands stopped persisting" bug reports.
+    log.debug('Failed to persist recent commands to localStorage', err)
   }
 }
 
@@ -111,9 +114,16 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       try {
         cmd.action()
       } catch (err) {
-        if (import.meta.env.DEV) {
-          log.error('Command action failed:', err)
-        }
+        // Always log + toast so users see when a destructive command (e.g.
+        // "Delete agent") fails instead of the palette closing silently as
+        // if the action succeeded. Getting this wrong would mean users
+        // believe destructive actions completed when they did not.
+        log.error('Command action failed', { commandId: cmd.id, label: cmd.label }, err)
+        useToastStore.getState().add({
+          variant: 'error',
+          title: 'Command failed',
+          description: `"${cmd.label}" did not complete: ${getErrorMessage(err)}`,
+        })
       }
       close()
     },

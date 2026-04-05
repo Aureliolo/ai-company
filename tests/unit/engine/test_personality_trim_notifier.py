@@ -8,7 +8,7 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
-from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_engine import AgentEngine, PersonalityTrimPayload
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -44,17 +44,85 @@ def _make_resolver(
     return resolver
 
 
+def _make_sample_payload() -> PersonalityTrimPayload:
+    """Build a representative ``PersonalityTrimPayload`` for unit-level tests."""
+    return {
+        "agent_id": "agent-1",
+        "agent_name": "Test Agent",
+        "task_id": "task-1",
+        "before_tokens": 600,
+        "after_tokens": 200,
+        "max_tokens": 300,
+        "trim_tier": 2,
+        "budget_met": True,
+    }
+
+
 @pytest.mark.unit
 class TestPersonalityTrimNotifier:
     """Tests for the personality_trim_notifier callback in AgentEngine.run()."""
 
-    async def test_notifier_fires_when_trimming_and_setting_enabled(
+    @pytest.mark.parametrize(
+        (
+            "trimming_enabled",
+            "max_tokens_override",
+            "notify_enabled",
+            "notifier_provided",
+            "expected_await_count",
+        ),
+        [
+            # Trim fires + notify setting enabled => notifier awaited once.
+            (True, 10, True, True, 1),
+            # Trim fires + notify setting disabled => notifier suppressed.
+            (True, 10, False, True, 0),
+            # No trimming (override=0 keeps default profile budget) => no notify.
+            (True, 0, True, True, 0),
+            # No notifier wired => run still succeeds, trimming proceeds silently.
+            (True, 10, True, False, 0),
+        ],
+    )
+    async def test_run_notifier_matrix(  # noqa: PLR0913
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+        *,
+        trimming_enabled: bool,
+        max_tokens_override: int,
+        notify_enabled: bool,
+        notifier_provided: bool,
+        expected_await_count: int,
+    ) -> None:
+        """End-to-end ``run()`` matrix for the notifier/setting combinations."""
+        notifier = AsyncMock() if notifier_provided else None
+        resolver = _make_resolver(
+            trimming_enabled=trimming_enabled,
+            max_tokens_override=max_tokens_override,
+            notify_enabled=notify_enabled,
+        )
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(
+            provider=provider,
+            config_resolver=resolver,
+            personality_trim_notifier=notifier,
+        )
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.is_success is True
+        if notifier is not None:
+            assert notifier.await_count == expected_await_count
+
+    async def test_notifier_payload_shape_when_trimming_fires(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Notifier is awaited with the trim payload when trimming fires."""
+        """The forwarded payload has all 8 ``PersonalityTrimPayload`` keys."""
         notifier = AsyncMock()
         resolver = _make_resolver(
             trimming_enabled=True,
@@ -90,62 +158,13 @@ class TestPersonalityTrimNotifier:
         assert payload["max_tokens"] == 10
         assert isinstance(payload["before_tokens"], int)
         assert isinstance(payload["after_tokens"], int)
-
-    async def test_notifier_suppressed_when_notify_setting_disabled(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """When personality_trimming_notify=False, the callback is not invoked."""
-        notifier = AsyncMock()
-        resolver = _make_resolver(
-            trimming_enabled=True,
-            max_tokens_override=10,
-            notify_enabled=False,
-        )
-        provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(
-            provider=provider,
-            config_resolver=resolver,
-            personality_trim_notifier=notifier,
-        )
-
-        await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        notifier.assert_not_awaited()
-
-    async def test_notifier_not_called_when_no_trimming_happens(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        """No trim info => notifier is never called even when setting is true."""
-        notifier = AsyncMock()
-        # override=0 => profile default (500 for large tier), normal personality
-        # does not trigger trimming.
-        resolver = _make_resolver(
-            trimming_enabled=True,
-            max_tokens_override=0,
-            notify_enabled=True,
-        )
-        provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(
-            provider=provider,
-            config_resolver=resolver,
-            personality_trim_notifier=notifier,
-        )
-
-        await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        notifier.assert_not_awaited()
+        # Trimming must actually reduce tokens -- guards against swapping
+        # ``before_tokens``/``after_tokens`` keys in the payload builder.
+        # Note: ``after_tokens`` may still exceed ``max_tokens`` when
+        # trimming reaches tier 3 without meeting the budget
+        # (``budget_met=False``), so we cannot assert the ``<=`` relation.
+        assert payload["before_tokens"] > payload["after_tokens"]
+        assert payload["trim_tier"] in {1, 2, 3}
 
     async def test_notifier_failure_is_swallowed(
         self,
@@ -176,31 +195,37 @@ class TestPersonalityTrimNotifier:
         assert notifier.await_count == 1
         assert result.is_success is True
 
-    async def test_no_notifier_wired_is_noop(
+    async def test_notifier_fail_open_when_setting_read_fails(
         self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """When no notifier callback is provided, trimming still proceeds normally."""
-        resolver = _make_resolver(
-            trimming_enabled=True,
-            max_tokens_override=10,
-            notify_enabled=True,
-        )
+        """When ``config_resolver.get_bool`` raises, the notifier still fires.
+
+        The fail-open contract: a transient settings-store failure must not
+        silently disable notifications that the operator enabled.  The method
+        logs ``PROMPT_PERSONALITY_NOTIFY_FAILED`` with a ``fail-open`` reason
+        and proceeds with the built-in default ``notify_enabled=True``.
+        """
+        notifier = AsyncMock()
+        resolver = MagicMock()
+        resolver.get_bool = AsyncMock(side_effect=RuntimeError("db down"))
+        resolver.get_int = AsyncMock(return_value=10)
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(
             provider=provider,
             config_resolver=resolver,
-            # personality_trim_notifier intentionally omitted
+            personality_trim_notifier=notifier,
         )
 
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
+        # Note: this test exercises the private method directly to cover the
+        # setting-read-failure branch deterministically.  An equivalent
+        # end-to-end test via engine.run() would require a resolver that
+        # raises only for ``personality_trimming_notify`` while succeeding
+        # for ``personality_trimming_enabled`` -- the direct call is simpler
+        # and documented as a private-API coupling in the docstring above.
+        await engine._maybe_notify_personality_trim(_make_sample_payload())
 
-        assert result.is_success is True
+        assert notifier.await_count == 1
 
     async def test_notifier_fires_without_config_resolver(
         self,
@@ -211,6 +236,12 @@ class TestPersonalityTrimNotifier:
         Covers the ``self._config_resolver is None`` branch in
         ``_maybe_notify_personality_trim`` -- without a resolver the default
         behavior is to fire the notifier (opt-out only via explicit setting).
+
+        Note: calls the private ``_maybe_notify_personality_trim`` method
+        directly to test the no-resolver branch deterministically.  If the
+        method is ever renamed or inlined, this test will break at import
+        time and is straightforward to fix; the trade-off is accepted for
+        branch coverage.
         """
         notifier = AsyncMock()
         provider = mock_provider_factory([_make_completion_response()])
@@ -220,49 +251,70 @@ class TestPersonalityTrimNotifier:
             # config_resolver intentionally omitted
         )
 
-        payload: dict[str, object] = {
-            "agent_id": "agent-1",
-            "agent_name": "Test Agent",
-            "task_id": "task-1",
-            "before_tokens": 600,
-            "after_tokens": 200,
-            "max_tokens": 300,
-            "trim_tier": 2,
-            "budget_met": True,
-        }
+        payload = _make_sample_payload()
         await engine._maybe_notify_personality_trim(payload)
 
         assert notifier.await_count == 1
         assert notifier.await_args is not None
         assert notifier.await_args.args[0] == payload
 
-    async def test_cancelled_error_propagates(
+    @pytest.mark.parametrize(
+        "exc_type",
+        [asyncio.CancelledError, MemoryError, RecursionError],
+    )
+    async def test_base_exceptions_propagate_through_notifier(
         self,
         mock_provider_factory: type[MockCompletionProvider],
+        exc_type: type[BaseException],
     ) -> None:
-        """asyncio.CancelledError raised inside the notifier must propagate.
+        """``BaseException`` subclasses raised by the notifier must propagate.
 
-        BaseException subclasses (CancelledError, MemoryError, RecursionError)
-        must never be swallowed by the best-effort try/except, so that task
-        cancellation propagates correctly through the engine.
+        ``asyncio.CancelledError``, ``MemoryError``, and ``RecursionError``
+        are all ``BaseException`` subclasses (or explicitly re-raised in the
+        case of ``MemoryError``/``RecursionError``) and must never be
+        swallowed by the best-effort ``except Exception`` guard, so that
+        task cancellation and low-level runtime failures propagate correctly
+        through the engine.
         """
-        notifier = AsyncMock(side_effect=asyncio.CancelledError())
+        notifier = AsyncMock(side_effect=exc_type())
         provider = mock_provider_factory([_make_completion_response()])
         engine = AgentEngine(
             provider=provider,
             personality_trim_notifier=notifier,
         )
 
-        payload: dict[str, object] = {
-            "agent_id": "agent-1",
-            "agent_name": "Test Agent",
-            "task_id": "task-1",
-            "before_tokens": 600,
-            "after_tokens": 200,
-            "max_tokens": 300,
-            "trim_tier": 2,
-            "budget_met": True,
-        }
+        with pytest.raises(exc_type):
+            await engine._maybe_notify_personality_trim(
+                _make_sample_payload(),
+            )
 
-        with pytest.raises(asyncio.CancelledError):
-            await engine._maybe_notify_personality_trim(payload)
+    @pytest.mark.parametrize(
+        "exc_type",
+        [asyncio.CancelledError, MemoryError, RecursionError],
+    )
+    async def test_base_exceptions_propagate_through_setting_read(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+        exc_type: type[BaseException],
+    ) -> None:
+        """``BaseException`` raised by the setting read must propagate.
+
+        Covers the second ``except MemoryError, RecursionError:`` / fall-through
+        branch in ``_maybe_notify_personality_trim``: when ``get_bool`` raises
+        a ``BaseException`` subclass, the method must not swallow it.
+        """
+        notifier = AsyncMock()
+        resolver = MagicMock()
+        resolver.get_bool = AsyncMock(side_effect=exc_type())
+        resolver.get_int = AsyncMock(return_value=10)
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(
+            provider=provider,
+            config_resolver=resolver,
+            personality_trim_notifier=notifier,
+        )
+
+        with pytest.raises(exc_type):
+            await engine._maybe_notify_personality_trim(
+                _make_sample_payload(),
+            )
