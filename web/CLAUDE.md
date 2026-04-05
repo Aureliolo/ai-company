@@ -142,11 +142,11 @@ Fix all violations before proceeding -- do not suppress or ignore hook output.
 
 ## Base UI Adoption Decisions
 
-The dashboard uses Base UI as its primitive layer via shadcn/ui. Base UI ships several components that overlap with our existing custom implementations -- these are the current adoption decisions:
+The dashboard's primitive layer is [Base UI](https://base-ui.com).  `components.json` is set to the `base-vega` shadcn style so that any component generated via the shadcn CLI targets Base UI internals, but the adopted primitives below are **imported directly** from `@base-ui/react/*` subpaths (for example `import { Dialog } from '@base-ui/react/dialog'`) with no shadcn wrapper layer in between.  When adding a new primitive, prefer the direct-import path -- do not introduce a shadcn wrapper unless there is a concrete reason to diverge.
 
 | Component | Decision | Rationale |
 |-----------|----------|-----------|
-| `Dialog`, `AlertDialog`, `Popover`, `Tabs`, `Menu` | **Adopted** | Used directly (no shadcn wrapper layer) across the dashboard's primitive files and page-level dialogs. |
+| `Dialog`, `AlertDialog`, `Popover`, `Tabs`, `Menu` | **Adopted** | Imported directly from `@base-ui/react/*` subpaths across the dashboard's primitive files and page-level dialogs. |
 | `CSPProvider` | **Adopted** | Wired in `App.tsx` alongside `MotionConfig` for end-to-end nonce propagation. |
 | `merge-props` | **Adopted** | Powers the local `<Slot>` helper in `components/ui/slot.tsx` (preserves the `asChild` ergonomic for `<Button>`). |
 | `Toast` | **Not adopted** | Our custom `components/ui/toast.tsx` is a Zustand-backed queue that integrates with the rest of the state stack; Base UI's Toast doesn't couple to external stores. |
