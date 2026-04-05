@@ -1079,15 +1079,19 @@ class AgentEngine:
         enabled and a ``personality_trim_notifier`` callback is wired, invokes
         the callback with the trim payload.
 
-        Emits ``PROMPT_PERSONALITY_NOTIFY_FAILED`` on two paths: (1) the setting
-        read raised an exception (``reason="failed to read
+        Emits ``PROMPT_PERSONALITY_NOTIFY_FAILED`` on three paths: (1) the
+        setting read raised an exception (``reason="failed to read
         personality_trimming_notify setting; fail-open with default
         notify_enabled=True"``), in which case the method proceeds with the
         built-in default and still invokes the notifier; (2) the notifier
-        callback itself raised (``reason="notifier callback raised"``).  In
-        both cases :class:`MemoryError`, :class:`RecursionError`, and
-        :class:`asyncio.CancelledError` propagate per the best-effort publisher
-        contract -- notification never silently blocks task execution.
+        callback exceeded its 2-second execution budget
+        (``reason="notifier callback timed out (>2s)"``); (3) the notifier
+        callback raised (``reason="notifier callback raised"``).  In all
+        cases :class:`MemoryError`, :class:`RecursionError`, and
+        :class:`asyncio.CancelledError` propagate per the best-effort
+        publisher contract -- notification never silently blocks task
+        execution.  The 2-second timeout guards against a slow or hung
+        external runner stalling the main execution path.
 
         When ``config_resolver`` is ``None``, the setting is treated as
         enabled (``notify_enabled=True``) so the callback fires unconditionally.
@@ -1129,8 +1133,26 @@ class AgentEngine:
                 )
         if not notify_enabled:
             return
+        # Bound the notifier call so a slow or hung implementation cannot
+        # stall ``run()``.  Trim notifications are best-effort and
+        # explicitly documented as non-critical, so a misbehaving external
+        # runner must not block prompt preparation on the main execution
+        # path.  2 seconds is comfortably above any legitimate
+        # fire-and-forget enqueue (``ChannelsPlugin.publish`` is
+        # microseconds) and still short enough that a real production
+        # stall surfaces loudly via the warning log below.
         try:
-            await self._personality_trim_notifier(payload)
+            async with asyncio.timeout(2.0):
+                await self._personality_trim_notifier(payload)
+        except TimeoutError:
+            logger.warning(
+                PROMPT_PERSONALITY_NOTIFY_FAILED,
+                agent_id=agent_id,
+                agent_name=agent_name,
+                task_id=task_id,
+                trim_tier=trim_tier,
+                reason="notifier callback timed out (>2s)",
+            )
         except MemoryError, RecursionError:
             raise
         except Exception:

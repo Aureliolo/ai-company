@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -21,19 +21,32 @@ export function ModelPullDialog({ providerName, open, onClose }: ModelPullDialog
   const cancelPull = useProvidersStore((s) => s.cancelPull)
 
   // Two-phase close: while a pull is in flight we only dispatch the cancel
-  // action (which asks the store to abort the pull). The dialog stays open
-  // until the store clears `pullingModel`, at which point the next
-  // onOpenChange(false) (triggered by the user or by pullingModel becoming
-  // null) falls through to `onClose()`. This is intentional UX -- we surface
-  // the "cancelling..." state in the progress region rather than snapping
-  // the dialog shut while the backend is still tearing down the pull.
+  // action (which asks the store to abort the pull). We latch
+  // `closeAfterCancelRef` so the effect below can close the dialog once the
+  // store clears `pullingModel` -- the user sees a "cancelling..." progress
+  // state during the teardown roundtrip rather than the dialog snapping
+  // shut mid-cancel. A ref is used instead of state so that the latch does
+  // not trigger its own re-render (which would also trip
+  // `@eslint-react/set-state-in-effect`).
+  const closeAfterCancelRef = useRef(false)
+
   const handleCancel = () => {
     if (pullingModel) {
+      closeAfterCancelRef.current = true
       cancelPull()
     } else {
       onClose()
     }
   }
+
+  // Bridge the two-phase close: when `pullingModel` transitions to null and
+  // the ref latch is set, dispatch the actual close.
+  useEffect(() => {
+    if (closeAfterCancelRef.current && !pullingModel) {
+      closeAfterCancelRef.current = false
+      onClose()
+    }
+  }, [pullingModel, onClose])
 
   const handlePull = async () => {
     if (!modelName.trim()) return

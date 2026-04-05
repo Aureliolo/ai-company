@@ -279,6 +279,14 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
         })
       }
 
+      // If every field is missing or invalid the toast would carry zero
+      // actionable information ("An agent personality was trimmed" with no
+      // name or numbers), so suppress it entirely. The warn log above is
+      // retained as the diagnostic signal for the dropped event.
+      if (agentName === null && before === null && after === null) {
+        return
+      }
+
       const displayName = agentName ?? 'An agent'
       const description =
         before !== null && after !== null
