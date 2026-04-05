@@ -457,9 +457,15 @@ CREATE INDEX IF NOT EXISTS idx_wdv_definition_saved
     ON workflow_definition_versions(definition_id, saved_at DESC);
 
 -- ── Decision records (auditable decisions drop-box) ─────────────
+-- Append-only audit trail.  ON DELETE RESTRICT on the tasks FK is
+-- deliberate: preserving the audit trail takes priority over task
+-- cleanup, so tasks with decision records cannot be deleted until
+-- their audit entries are explicitly archived or purged.  Dropping
+-- this RESTRICT would silently cascade-delete audit data and violate
+-- issue #700's append-only guarantee.
 CREATE TABLE IF NOT EXISTS decision_records (
     id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES tasks(id),
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE RESTRICT,
     approval_id TEXT,
     executing_agent_id TEXT NOT NULL,
     reviewer_agent_id TEXT NOT NULL CHECK(reviewer_agent_id != executing_agent_id),
@@ -468,7 +474,14 @@ CREATE TABLE IF NOT EXISTS decision_records (
     )),
     reason TEXT,
     criteria_snapshot TEXT NOT NULL DEFAULT '[]',
-    recorded_at TEXT NOT NULL,
+    -- recorded_at must be ISO 8601 with a UTC offset ('+00:00' or 'Z')
+    -- so lexicographic ordering equals chronological ordering.  The
+    -- repository normalizes to UTC via .astimezone(UTC).isoformat()
+    -- before inserting; the CHECK here enforces the invariant against
+    -- raw SQL callers and migrations.
+    recorded_at TEXT NOT NULL CHECK(
+        recorded_at LIKE '%+00:00' OR recorded_at LIKE '%Z'
+    ),
     version INTEGER NOT NULL CHECK(version >= 1),
     metadata TEXT NOT NULL DEFAULT '{}',
     UNIQUE(task_id, version)

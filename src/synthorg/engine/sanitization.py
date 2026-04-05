@@ -1,8 +1,9 @@
 """Message sanitization helpers for engine subsystems.
 
-Provides pattern-based redaction of file paths and URLs, stripping
-of non-printable characters, and length limiting for messages
-before they are injected into LLM context.
+Provides pattern-based redaction of file paths, URLs, and prompt
+injection markers, plus stripping of non-printable characters and
+length limiting for messages before they are injected into LLM
+context.
 """
 
 import re
@@ -28,16 +29,32 @@ _URL_PATTERN = re.compile(
     r"://[^\s,;)\"']+"
 )
 
+# Prompt-injection markers commonly used to escape system/user frames.
+# We strip these on best-effort: the goal is to make it harder for
+# LLM-authored free text (error messages, acceptance criteria) to
+# redirect a resumed agent's context.  Not a security boundary on its
+# own -- pair with dedicated prompt-injection defenses at higher
+# layers.
+_PROMPT_INJECTION_PATTERN = re.compile(
+    r"(?i)"
+    r"(?:ignore\s+(?:all\s+|any\s+|the\s+|your\s+|previous\s+|above\s+)+"
+    r"(?:instructions?|rules?|commands?|directives?))"
+    r"|\[/?(?:INST|SYS|SYSTEM|USER|ASSISTANT)\]"
+    r"|<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>"
+    r"|<\|/?(?:system|user|assistant)\|>"
+    r"|\{\{|\}\}|\{%|%\}"
+)
+
 
 def sanitize_message(raw: str, *, max_length: int = 200) -> str:
-    """Redact paths/URLs, strip non-printable chars, and limit length.
+    """Redact paths/URLs/injection markers, strip non-printable chars, cap length.
 
     Args:
         raw: The raw message to sanitize.
         max_length: Upper bound on raw input length in characters.
-            Applied before path/URL redaction and non-printable
-            stripping. Redaction tokens may cause the output to
-            slightly exceed this limit.
+            Applied before path/URL/injection-marker redaction and
+            non-printable stripping. Redaction tokens may cause the
+            output to slightly exceed this limit.
 
     Returns:
         Sanitized message safe for inclusion in LLM context.
@@ -53,6 +70,7 @@ def sanitize_message(raw: str, *, max_length: int = 200) -> str:
     capped = raw[:max_length]
     sanitized = _URL_PATTERN.sub("[REDACTED_URL]", capped)
     sanitized = _PATH_PATTERN.sub("[REDACTED_PATH]", sanitized)
+    sanitized = _PROMPT_INJECTION_PATTERN.sub("[FILTERED]", sanitized)
     sanitized = "".join(c for c in sanitized if c.isprintable())
     if not any(c.isalnum() for c in sanitized):
         return "details redacted"

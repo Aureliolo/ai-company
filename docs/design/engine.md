@@ -701,13 +701,36 @@ async run(
       ``ApprovalTimeoutScheduler`` applies a configured timeout policy
       (auto-approve, auto-deny, or escalate).  Both paths delegate to
       ``ReviewGateService`` for the actual state transition.
-      ``ReviewGateService`` structurally enforces no-self-review: if the
-      decider equals ``task.assigned_to``, it raises ``SelfReviewError``
-      (surfaced as HTTP 403 at the approval controller) and no
-      transition occurs.  Every completed review is appended to the
-      auditable decisions drop-box (``DecisionRepository``) as an
-      immutable ``DecisionRecord`` capturing executor, reviewer,
-      outcome, and acceptance-criteria snapshot.
+
+      ``ReviewGateService`` structurally enforces no-self-review: if
+      the decider equals ``task.assigned_to``, it raises
+      ``SelfReviewError`` (surfaced as HTTP 403 at the approval
+      controller, with a generic message that never echoes internal
+      agent/task identifiers) and no transition occurs.  The check
+      runs in two phases: the approval controller calls
+      ``check_can_decide`` as a **preflight** *before*
+      ``approval_store.save_if_pending`` -- this guarantees a rejected
+      self-review attempt never leaves a decided approval row or a
+      broadcast WebSocket event behind.  ``complete_review``
+      independently re-runs the check as defense-in-depth at the
+      service boundary; the service makes no assumption that the
+      caller ran the preflight.  ``TaskNotFoundError`` maps to 404
+      and ``TaskVersionConflictError`` to 409, both with generic
+      messages to avoid leaking task UUIDs via error bodies.
+
+      Every completed review is appended to the auditable decisions
+      drop-box (``DecisionRepository``) as an immutable
+      ``DecisionRecord`` capturing executor, reviewer, outcome,
+      approval-ID cross-reference, and an acceptance-criteria
+      snapshot.  See the "Review Gate Invariants" section of
+      ``docs/design/operations.md`` for the full three-layer
+      enforcement model (service preflight, Pydantic validator, SQL
+      CHECK constraint).
+
+      **Future work (#1076):** versioning agent identities/charters
+      as first-class artifacts so a ``DecisionRecord`` can carry a
+      ``charter_version`` back-reference -- tracked as a separate
+      design discussion spun out from #700 action 4.
     - `SHUTDOWN` termination: current status -> INTERRUPTED
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default
@@ -989,16 +1012,25 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `strategy_type` | `NotBlankStr` | Strategy identifier |
 | `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns -- no message contents) |
 | `error_message` | `NotBlankStr` | Error that triggered recovery |
-| `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`) |
-| `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction) |
-| `criteria_failed` | `tuple[str, ...]` | Acceptance criteria that were not met |
+| `failure_category` | `FailureCategory` | Machine-readable classification (`TOOL_FAILURE`, `STAGNATION`, `BUDGET_EXCEEDED`, `QUALITY_GATE_FAILED`, `TIMEOUT`, `DELEGATION_FAILED`, `UNKNOWN`) |
+| `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction; defaults to `{}`) |
+| `criteria_failed` | `tuple[NotBlankStr, ...]` | Acceptance criteria that were not met (unique; validated on construction) |
 | `stagnation_evidence` | `StagnationResult \| None` | Stagnation detection result when applicable |
 | `checkpoint_context_json` | `str \| None` | Serialized `AgentContext` for resume (`None` for non-checkpoint strategies) |
 | `resume_attempt` | `int` (ge=0) | Current resume attempt number (0 when not resuming) |
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
-`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  Both `FailAndReassignStrategy` and `CheckpointRecoveryStrategy` populate it on every result.  Checkpoint reconciliation messages include the category and any unmet criteria so the resumed agent has structured context about what failed.
+`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches -- an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts.  Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
+
+**Cross-field invariants.** `RecoveryResult` enforces two cross-field rules at construction:
+
+- `stagnation_evidence` is set iff `failure_category` is `STAGNATION` (and the evidence verdict must not be `NO_STAGNATION` -- evidence that the detector ruled out stagnation cannot back a STAGNATION result).
+- `criteria_failed` must be non-empty when `failure_category` is `QUALITY_GATE_FAILED`.
+
+Strategies that only have an error string (`FailAndReassignStrategy`, `CheckpointRecoveryStrategy._build_resume_result`) use `infer_failure_category_without_evidence()`, which clamps `STAGNATION` / `QUALITY_GATE_FAILED` to `UNKNOWN` -- the unclamped helper would crash construction on any error message containing the keywords "stagnation", "quality", or "criteria" because those strategies cannot supply the required sidecar data.
+
+**Transition-reason wire format.** After a recovery, the post-execution pipeline embeds `failure_category` into the task-status transition reason as `"Post-recovery status: <status> (failure_category=<value>)"`.  The `(failure_category=<value>)` suffix is a stable wire-format contract: downstream consumers (task router, reassignment selector) parse it from status history to make routing decisions (e.g. `TOOL_FAILURE` -> agent with different tool access, `BUDGET_EXCEEDED` -> cheaper tier).  Changing the key name or the value format silently breaks those consumers and requires a coordinated rollout.
 
 ### Recovery Strategies
 

@@ -4,16 +4,32 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from synthorg.api.controllers._approval_review_gate import (
+    preflight_review_gate,
+    try_review_gate_transition,
+)
 from synthorg.api.controllers.approvals import (
     _log_approval_decision,
     _publish_approval_event,
     _resolve_decision,
     _signal_resume_intent,
 )
-from synthorg.api.errors import ConflictError, UnauthorizedError
+from synthorg.api.errors import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+)
 from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.engine.errors import (
+    SelfReviewError,
+    TaskInternalError,
+    TaskNotFoundError,
+    TaskVersionConflictError,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -164,6 +180,7 @@ class TestSignalResumeIntent:
             approved=True,
             decided_by="admin",
             reason=None,
+            approval_id="approval-1",
         )
 
     async def test_flow1_exception_returns_early(self) -> None:
@@ -215,6 +232,7 @@ class TestSignalResumeIntent:
             approved=False,
             decided_by="reviewer",
             reason="Needs rework",
+            approval_id="approval-1",
         )
 
     async def test_flow2_skipped_when_no_task_id(self) -> None:
@@ -318,6 +336,191 @@ class TestSignalResumeIntent:
                 approved=True,
                 decided_by="admin",
                 task_id="task-1",
+            )
+
+
+class TestPreflightReviewGate:
+    """preflight_review_gate maps engine errors to API errors.
+
+    Coverage guard for the self-review enforcement pathway: validates
+    that the preflight runs BEFORE the approval is persisted and that
+    each engine error is translated to the correct HTTP status code
+    with a generic user-facing message that never leaks internal
+    identifiers.
+    """
+
+    async def test_passes_through_when_authorized(self) -> None:
+        """Happy path: preflight returns without raising."""
+        review_gate = MagicMock()
+        review_gate.check_can_decide = AsyncMock(return_value=MagicMock())
+
+        await preflight_review_gate(
+            review_gate,
+            "approval-1",
+            "task-1",
+            decided_by="bob",
+        )
+        review_gate.check_can_decide.assert_awaited_once_with(
+            task_id="task-1",
+            decided_by="bob",
+        )
+
+    async def test_self_review_raises_forbidden(self) -> None:
+        """SelfReviewError maps to ForbiddenError with a generic message."""
+        review_gate = MagicMock()
+        review_gate.check_can_decide = AsyncMock(
+            side_effect=SelfReviewError(task_id="task-1", agent_id="alice"),
+        )
+
+        with pytest.raises(ForbiddenError) as exc_info:
+            await preflight_review_gate(
+                review_gate,
+                "approval-1",
+                "task-1",
+                decided_by="alice",
+            )
+        # Generic message -- never leak task_id or agent_id to the client.
+        msg = str(exc_info.value)
+        assert "Self-review is not permitted" in msg
+        assert "task-1" not in msg
+        assert "alice" not in msg
+
+    async def test_task_not_found_raises_404(self) -> None:
+        """TaskNotFoundError maps to NotFoundError with a generic message."""
+        review_gate = MagicMock()
+        review_gate.check_can_decide = AsyncMock(
+            side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
+        )
+
+        with pytest.raises(NotFoundError) as exc_info:
+            await preflight_review_gate(
+                review_gate,
+                "approval-1",
+                "task-xyz",
+                decided_by="bob",
+            )
+        # Generic message -- never leak task_id via 404.
+        assert "task-xyz" not in str(exc_info.value)
+
+    async def test_task_internal_error_raises_503(self) -> None:
+        """TaskInternalError maps to ServiceUnavailableError (503)."""
+        review_gate = MagicMock()
+        review_gate.check_can_decide = AsyncMock(
+            side_effect=TaskInternalError("Persistence backend offline"),
+        )
+
+        with pytest.raises(ServiceUnavailableError):
+            await preflight_review_gate(
+                review_gate,
+                "approval-1",
+                "task-1",
+                decided_by="bob",
+            )
+
+
+class TestTryReviewGateTransition:
+    """try_review_gate_transition maps engine errors to API errors.
+
+    Regression guard for the narrow-exception-handling refactor: each
+    typed engine error must surface as the correct HTTP status code.
+    Anything else (e.g., RuntimeError) propagates to the caller
+    instead of being silently swallowed as 200 OK.
+    """
+
+    async def test_passes_approval_id_to_service(self) -> None:
+        """approval_id is threaded through for audit cross-reference."""
+        review_gate = MagicMock()
+        review_gate.complete_review = AsyncMock()
+
+        await try_review_gate_transition(
+            review_gate,
+            "approval-42",
+            "task-1",
+            approved=True,
+            decided_by="bob",
+            decision_reason=None,
+        )
+        review_gate.complete_review.assert_awaited_once_with(
+            task_id="task-1",
+            requested_by="bob",
+            approved=True,
+            decided_by="bob",
+            reason=None,
+            approval_id="approval-42",
+        )
+
+    async def test_self_review_race_raises_forbidden(self) -> None:
+        """Late SelfReviewError (reassignment between preflight and transition)."""
+        review_gate = MagicMock()
+        review_gate.complete_review = AsyncMock(
+            side_effect=SelfReviewError(task_id="task-1", agent_id="alice"),
+        )
+
+        with pytest.raises(ForbiddenError) as exc_info:
+            await try_review_gate_transition(
+                review_gate,
+                "approval-1",
+                "task-1",
+                approved=True,
+                decided_by="alice",
+                decision_reason=None,
+            )
+        msg = str(exc_info.value)
+        assert "task-1" not in msg
+        assert "alice" not in msg
+
+    async def test_task_version_conflict_raises_409(self) -> None:
+        """TaskVersionConflictError maps to ConflictError (409)."""
+        review_gate = MagicMock()
+        review_gate.complete_review = AsyncMock(
+            side_effect=TaskVersionConflictError("Version 3 != 2"),
+        )
+
+        with pytest.raises(ConflictError) as exc_info:
+            await try_review_gate_transition(
+                review_gate,
+                "approval-1",
+                "task-1",
+                approved=True,
+                decided_by="bob",
+                decision_reason=None,
+            )
+        # Generic message -- never leak task_id via 409.
+        assert "task-1" not in str(exc_info.value)
+
+    async def test_task_not_found_raises_404(self) -> None:
+        """TaskNotFoundError maps to NotFoundError with a generic message."""
+        review_gate = MagicMock()
+        review_gate.complete_review = AsyncMock(
+            side_effect=TaskNotFoundError("Task 'task-xyz' not found"),
+        )
+
+        with pytest.raises(NotFoundError) as exc_info:
+            await try_review_gate_transition(
+                review_gate,
+                "approval-1",
+                "task-xyz",
+                approved=True,
+                decided_by="bob",
+                decision_reason=None,
+            )
+        assert "task-xyz" not in str(exc_info.value)
+
+    async def test_task_internal_error_raises_503(self) -> None:
+        """TaskInternalError maps to ServiceUnavailableError."""
+        review_gate = MagicMock()
+        review_gate.complete_review = AsyncMock(
+            side_effect=TaskInternalError("Persistence backend offline"),
+        )
+
+        with pytest.raises(ServiceUnavailableError):
+            await try_review_gate_transition(
+                review_gate,
+                "approval-1",
+                "task-1",
+                approved=True,
+                decided_by="bob",
+                decision_reason=None,
             )
 
 

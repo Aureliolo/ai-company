@@ -1061,6 +1061,65 @@ Policy selection is declarative via `SecurityConfig.output_scan_policy_type`
 enum to a concrete policy instance. The policy is applied *after* audit recording, preserving
 audit fidelity regardless of policy outcome.
 
+### Review Gate Invariants
+
+Review gates enforce no-self-review as a structural invariant, not a convention.
+An agent must never act as reviewer on a task it executed. The invariant is enforced
+at three layers, each independently sufficient:
+
+1. **Service-layer preflight** -- `ReviewGateService.check_can_decide()` runs before
+   the approval row is persisted. A `SelfReviewError` at preflight raises `403
+   Forbidden` with a generic message (the error's `task_id` and `agent_id`
+   attributes are available for structured logs but never leaked in the HTTP body).
+   The preflight-before-persist ordering ensures a rejected self-review attempt
+   never leaves a decided approval row or a broadcast WebSocket event behind.
+2. **Pydantic model validator** -- `DecisionRecord._forbid_self_review` rejects
+   construction when `executing_agent_id == reviewer_agent_id`. Type-level invariants
+   catch bugs in any caller that bypasses the service layer.
+3. **SQL `CHECK` constraint** -- the `decision_records` table carries
+   `CHECK(reviewer_agent_id != executing_agent_id)`, providing a last-resort
+   defense at the database boundary. If a direct SQL caller somehow bypasses
+   both the service and the model, the DB rejects the write.
+
+#### Auditable Decisions Drop-Box
+
+Every completed review appends an immutable `DecisionRecord` to the drop-box
+(`DecisionRepository`) capturing full context at decision time: executor,
+reviewer, outcome (`DecisionOutcome`: `APPROVED` / `REJECTED` / `AUTO_APPROVED`
+/ `AUTO_REJECTED` / `ESCALATED`), reason, acceptance-criteria snapshot, approval
+ID cross-reference, and a server-assigned monotonic version per task.
+
+- **Append-only** -- the protocol exposes no update or delete operations; the
+  SQL schema backs this up by enforcing a `FOREIGN KEY ... ON DELETE RESTRICT`
+  on `task_id`, preventing cascade-deletes that would erase audit trails.
+- **Atomic versioning** -- `append_with_next_version` computes the next version
+  inside a single `INSERT ... (SELECT COALESCE(MAX(version), 0) + 1 ...)`
+  statement, eliminating the TOCTOU race that a read-then-write pattern would
+  create under concurrent reviewers. The `UNIQUE(task_id, version)` constraint
+  rejects any residual collision as `DuplicateRecordError`.
+- **Best-effort append after transition** -- a failed append is logged at ERROR
+  (via `logger.exception`) for audit forensics but does not roll back the review
+  transition itself. Only known transient persistence errors (`QueryError`,
+  `DuplicateRecordError`) are treated as non-fatal; programming errors
+  (`ValidationError`, `TypeError`, etc.) propagate loudly so schema drift
+  surfaces in dev/CI instead of being masked as silent audit loss.
+- **Unassigned executor -- no record** -- when a task reaches the review gate
+  without an assigned executor (an anomalous operational state), the service
+  logs an ERROR event and refuses to write a decision record rather than
+  smuggling a sentinel string through the `NotBlankStr` `executing_agent_id`
+  field and contaminating the audit trail.
+
+#### Design Rationale: Append-Only vs Consolidation
+
+The drop-box is deliberately append-only, not consolidated into org memory.
+Org-memory consolidation is lossy by design (it summarises, compresses, and
+discards detail for context-window efficiency) -- appropriate for conversational
+knowledge but unsuitable for compliance-grade audit data, where every decision
+must be reproducible and verifiable after the fact. Keeping the decision log as
+a dedicated append-only store avoids coupling audit integrity to memory
+consolidation heuristics and makes tamper-evident review trivial (any record
+ever written stays written, verbatim).
+
 ### Approval Timeout Policy
 
 When an action requires human approval (per autonomy level), the agent must wait. The

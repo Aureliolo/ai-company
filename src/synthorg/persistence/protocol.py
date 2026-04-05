@@ -69,6 +69,8 @@ class PersistenceBackend(Protocol):
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
+        decision_records: Repository for DecisionRecord persistence
+            (auditable approval-gate decisions drop-box).
     """
 
     async def connect(self) -> None:

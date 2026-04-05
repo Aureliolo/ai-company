@@ -19,7 +19,7 @@ from synthorg.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
     RecoveryStrategy,
-    infer_failure_category,
+    infer_failure_category_without_evidence,
 )
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
 from synthorg.observability import get_logger
@@ -271,12 +271,18 @@ class CheckpointRecoveryStrategy:
             max_resume_attempts=self._config.max_resume_attempts,
         )
 
+        # Use the _without_evidence variant: checkpoint resume only has
+        # an error string, not structured stagnation evidence or
+        # acceptance-criteria data, so inferring STAGNATION or
+        # QUALITY_GATE_FAILED here would violate RecoveryResult's
+        # cross-field invariants.
+        category = infer_failure_category_without_evidence(error_message)
         return RecoveryResult(
             task_execution=task_execution,
             strategy_type=self.STRATEGY_TYPE,
             context_snapshot=snapshot,
             error_message=error_message,
-            failure_category=infer_failure_category(error_message),
+            failure_category=category,
             failure_context={
                 "strategy_type": self.STRATEGY_TYPE,
                 "checkpoint_id": checkpoint.id,

@@ -31,6 +31,7 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -81,8 +82,10 @@ class ReviewGateService:
             decided_by: The identity attempting the decision.
 
         Returns:
-            The task (cached so the caller can reuse it for
-            ``complete_review`` without re-fetching).
+            The validated ``Task`` fetched from the engine.  Returned
+            for callers that want to inspect task metadata (status,
+            assignee) right after the preflight; ``complete_review``
+            independently re-fetches the task as defense-in-depth.
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
@@ -102,7 +105,7 @@ class ReviewGateService:
         self._check_self_review(task, decided_by=decided_by)
         return task
 
-    async def complete_review(
+    async def complete_review(  # noqa: PLR0913
         self,
         *,
         task_id: str,
@@ -110,14 +113,29 @@ class ReviewGateService:
         approved: bool,
         decided_by: str,
         reason: str | None = None,
+        approval_id: str | None = None,
     ) -> None:
         """Transition a task out of IN_REVIEW and record the decision.
 
         On approve: IN_REVIEW -> COMPLETED.
         On reject: IN_REVIEW -> IN_PROGRESS (rework).
 
-        The self-review check runs again here defensively; callers that
-        already invoked ``check_can_decide`` will pass through quickly.
+        The self-review check runs a second time here as defense in
+        depth.  This is a full DB round-trip through the task engine,
+        not a cached pass-through -- the service intentionally does
+        not trust that the caller ran the preflight, because the
+        preflight is an HTTP-layer optimization and this method is
+        the authoritative boundary.
+
+        Args:
+            task_id: The task under review.
+            requested_by: Agent that requested the review (for logging).
+            approved: True for approve, False for reject/rework.
+            decided_by: Agent that made the decision.
+            reason: Optional rationale, required-free text.
+            approval_id: Optional foreign key to the approval item that
+                triggered this decision -- persisted on the
+                ``DecisionRecord`` for cross-referencing audit trails.
 
         Raises:
             TaskNotFoundError: If the task cannot be found.
@@ -137,14 +155,6 @@ class ReviewGateService:
                 transition_reason += f": {reason}"
             event = APPROVAL_GATE_REVIEW_REWORK
 
-        logger.info(
-            event,
-            task_id=task_id,
-            requested_by=requested_by,
-            decided_by=decided_by,
-            target_status=target.value,
-        )
-
         await sync_to_task_engine(
             self._task_engine,
             target_status=target,
@@ -153,11 +163,22 @@ class ReviewGateService:
             reason=transition_reason,
         )
 
+        # Log the state transition AFTER sync_to_task_engine succeeds so
+        # audit logs reflect actual transitions, not intended ones.
+        logger.info(
+            event,
+            task_id=task_id,
+            requested_by=requested_by,
+            decided_by=decided_by,
+            target_status=target.value,
+        )
+
         await self._record_decision(
             task=task,
             decided_by=decided_by,
             approved=approved,
             reason=reason,
+            approval_id=approval_id,
         )
 
     def _check_self_review(self, task: Task, *, decided_by: str) -> None:
@@ -190,6 +211,7 @@ class ReviewGateService:
         decided_by: str,
         approved: bool,
         reason: str | None,
+        approval_id: str | None,
     ) -> None:
         """Append a decision record to the drop-box (best-effort).
 
@@ -197,9 +219,33 @@ class ReviewGateService:
         atomically in SQL -- no TOCTOU race across concurrent reviewers.
 
         The transition has already happened at this point, so a failed
-        append is logged at ERROR (audit integrity is the whole point
-        of this drop-box) but does not raise.
+        append is logged via ``logger.exception`` (ERROR level with
+        traceback) for audit forensics without propagating.  Only
+        ``QueryError`` and ``DuplicateRecordError`` are treated as
+        non-fatal persistence failures -- programming errors
+        (``ValidationError``, ``TypeError``, ``AttributeError``) still
+        propagate loudly so schema drift surfaces in dev/CI instead
+        of being masked as a transient audit loss.
+
+        If the task has no assigned executor, no decision record is
+        written (the contract requires a real executor identity).
+        This is logged at ERROR because reaching the review gate
+        without an assignee is an anomalous operational state.
         """
+        if task.assigned_to is None:
+            logger.error(
+                APPROVAL_GATE_DECISION_RECORD_FAILED,
+                task_id=task.id,
+                decided_by=decided_by,
+                approved=approved,
+                error_type="UnassignedExecutor",
+                error=(
+                    "Cannot record decision: task reached review gate "
+                    "without an assigned executor"
+                ),
+            )
+            return
+
         normalized_reason = reason if reason and reason.strip() else None
         decision = DecisionOutcome.APPROVED if approved else DecisionOutcome.REJECTED
         criteria_snapshot = tuple(
@@ -209,14 +255,13 @@ class ReviewGateService:
             record = await self._persistence.decision_records.append_with_next_version(
                 record_id=str(uuid.uuid4()),
                 task_id=task.id,
-                approval_id=None,
-                executing_agent_id=task.assigned_to or "unassigned",
+                approval_id=approval_id,
+                executing_agent_id=task.assigned_to,
                 reviewer_agent_id=decided_by,
                 decision=decision,
                 reason=normalized_reason,
                 criteria_snapshot=criteria_snapshot,
                 recorded_at=datetime.now(UTC),
-                metadata={},
             )
             logger.info(
                 APPROVAL_GATE_DECISION_RECORDED,
@@ -224,12 +269,17 @@ class ReviewGateService:
                 decision=record.decision.value,
                 version=record.version,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
+        except (QueryError, DuplicateRecordError) as exc:
+            # Known transient persistence failures: log loudly but do
+            # not unwind the review transition.  Programming errors
+            # (ValidationError, TypeError, AttributeError, etc.) are
+            # deliberately NOT caught here -- they should surface in
+            # dev/CI rather than being masked as silent audit loss.
             logger.exception(
                 APPROVAL_GATE_DECISION_RECORD_FAILED,
                 task_id=task.id,
+                decided_by=decided_by,
+                approved=approved,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )

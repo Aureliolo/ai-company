@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 from litestar import Controller, Request, get, post
@@ -13,6 +13,12 @@ from pydantic import ConfigDict, Field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
+from synthorg.api.controllers._approval_review_gate import (
+    preflight_review_gate,
+    signal_resume_intent,
+    try_mid_execution_resume,
+    try_review_gate_transition,
+)
 from synthorg.api.dto import (
     ApiResponse,
     ApproveRequest,
@@ -23,7 +29,6 @@ from synthorg.api.dto import (
 from synthorg.api.errors import (
     ApiValidationError,
     ConflictError,
-    ForbiddenError,
     NotFoundError,
     UnauthorizedError,
 )
@@ -41,11 +46,6 @@ from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
-from synthorg.engine.errors import (
-    SelfReviewError,
-    TaskNotFoundError,
-    TaskVersionConflictError,
-)
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APPROVAL_APPROVED,
@@ -57,18 +57,6 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_RESUME_CONTEXT_LOADED,
-    APPROVAL_GATE_RESUME_FAILED,
-    APPROVAL_GATE_RESUME_TRIGGERED,
-    APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-    APPROVAL_GATE_SELF_REVIEW_PREVENTED,
-    APPROVAL_GATE_TASK_NOT_FOUND,
-)
-
-if TYPE_CHECKING:
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
 
@@ -270,205 +258,13 @@ def _log_approval_decision(
     )
 
 
-async def _try_mid_execution_resume(
-    approval_gate: ApprovalGate,
-    approval_id: str,
-    *,
-    approved: bool,
-) -> bool:
-    """Attempt to resume a mid-execution parked context.
-
-    Returns ``True`` if the flow was handled (context found or
-    error -- caller should not fall through to the review gate).
-    Returns ``False`` if no parked context exists.
-    """
-    try:
-        resumed = await approval_gate.resume_context(approval_id)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.warning(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            error="Failed to resume parked context",
-            exc_info=True,
-        )
-        # Resume lookup failed -- do NOT fall through to review
-        # gate, because the parked context may still exist.
-        return True
-
-    if resumed is not None:
-        _context, parked_id = resumed
-        logger.info(
-            APPROVAL_GATE_RESUME_CONTEXT_LOADED,
-            approval_id=approval_id,
-            parked_id=parked_id,
-            approved=approved,
-            note=(
-                "Parked context loaded -- agent re-execution "
-                "requires external orchestration"
-            ),
-        )
-        return True
-    return False
-
-
-async def _preflight_review_gate(
-    review_gate: ReviewGateService,
-    approval_id: str,
-    task_id: str,
-    *,
-    decided_by: str,
-) -> None:
-    """Run the review-gate preflight check before persisting a decision.
-
-    Fails fast so that a rejected self-review attempt or a missing task
-    never leaves a decided approval row or a broadcast WebSocket event
-    behind.
-
-    Raises:
-        ForbiddenError: When the decider is the original executing
-            agent (mapped from ``SelfReviewError``; a generic message
-            is returned to avoid leaking internal identifiers).
-        NotFoundError: When the task does not exist
-            (mapped from ``TaskNotFoundError``).
-    """
-    try:
-        await review_gate.check_can_decide(task_id=task_id, decided_by=decided_by)
-    except SelfReviewError:
-        logger.warning(
-            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
-            approval_id=approval_id,
-            task_id=task_id,
-            decided_by=decided_by,
-        )
-        forbidden_msg = "Self-review is not permitted"
-        raise ForbiddenError(forbidden_msg) from None
-    except TaskNotFoundError:
-        msg = f"Task for approval {approval_id!r} not found"
-        logger.warning(
-            APPROVAL_GATE_TASK_NOT_FOUND,
-            approval_id=approval_id,
-            task_id=task_id,
-            decided_by=decided_by,
-        )
-        raise NotFoundError(msg) from None
-
-
-async def _try_review_gate_transition(  # noqa: PLR0913
-    review_gate: ReviewGateService,
-    approval_id: str,
-    task_id: str,
-    *,
-    approved: bool,
-    decided_by: str,
-    decision_reason: str | None,
-) -> None:
-    """Delegate a review decision to the review gate service.
-
-    Assumes ``_preflight_review_gate`` has already validated self-review
-    and task existence.  Surfaces engine-layer failures (task mutation,
-    version conflict, persistence) as API errors so the caller sees a
-    meaningful status code instead of a silent 200 OK with no state
-    change.
-
-    Raises:
-        ConflictError: When optimistic concurrency fails.
-        NotFoundError: When the task disappears between preflight and
-            transition.
-        ForbiddenError: When a late self-review race is detected.
-    """
-    try:
-        await review_gate.complete_review(
-            task_id=task_id,
-            requested_by=decided_by,
-            approved=approved,
-            decided_by=decided_by,
-            reason=decision_reason,
-        )
-    except SelfReviewError:
-        logger.warning(
-            APPROVAL_GATE_SELF_REVIEW_PREVENTED,
-            approval_id=approval_id,
-            task_id=task_id,
-            decided_by=decided_by,
-        )
-        forbidden_msg = "Self-review is not permitted"
-        raise ForbiddenError(forbidden_msg) from None
-    except TaskNotFoundError as exc:
-        logger.warning(
-            APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-            approval_id=approval_id,
-            task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
-        )
-        not_found_msg = f"Task {task_id!r} not found"
-        raise NotFoundError(not_found_msg) from exc
-    except TaskVersionConflictError as exc:
-        logger.warning(
-            APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
-            approval_id=approval_id,
-            task_id=task_id,
-            error=f"{type(exc).__name__}: {exc}",
-        )
-        conflict_msg = f"Task {task_id!r} version conflict during review transition"
-        raise ConflictError(conflict_msg) from exc
-
-
-async def _signal_resume_intent(  # noqa: PLR0913
-    app_state: AppState,
-    approval_id: str,
-    *,
-    approved: bool,
-    decided_by: str,
-    decision_reason: str | None = None,
-    task_id: str | None = None,
-) -> None:
-    """Execute the resume or review-gate flow for a decided approval.
-
-    Two flows depending on whether a parked context exists:
-
-    1. **Mid-execution parking** (``_try_mid_execution_resume``):
-       resume a parked context if one exists.
-    2. **Review gate** (``_try_review_gate_transition``):
-       transition the task from IN_REVIEW on approval/rejection.
-
-    Args:
-        app_state: Application state containing services.
-        approval_id: The approval item identifier.
-        approved: Whether the action was approved.
-        decided_by: Who made the decision.
-        decision_reason: Optional reason for the decision.
-        task_id: Optional task identifier for review-gate flow.
-    """
-    logger.info(
-        APPROVAL_GATE_RESUME_TRIGGERED,
-        approval_id=approval_id,
-        approved=approved,
-        decided_by=decided_by,
-        has_reason=decision_reason is not None,
-    )
-
-    # Flow 1: mid-execution parking.
-    approval_gate = app_state.approval_gate
-    if approval_gate is not None:
-        handled = await _try_mid_execution_resume(
-            approval_gate, approval_id, approved=approved
-        )
-        if handled:
-            return
-
-    # Flow 2: review gate -- transition task status.
-    review_gate = app_state.review_gate_service
-    if review_gate is not None and task_id is not None:
-        await _try_review_gate_transition(
-            review_gate,
-            approval_id,
-            task_id,
-            approved=approved,
-            decided_by=decided_by,
-            decision_reason=decision_reason,
-        )
+# Review-gate flow helpers live in a sibling module to keep this file
+# under the 800-line limit.  Re-aliased with leading underscore here to
+# preserve the internal API shape for the controller's callers.
+_try_mid_execution_resume = try_mid_execution_resume
+_preflight_review_gate = preflight_review_gate
+_try_review_gate_transition = try_review_gate_transition
+_signal_resume_intent = signal_resume_intent
 
 
 async def _get_approval_or_404(

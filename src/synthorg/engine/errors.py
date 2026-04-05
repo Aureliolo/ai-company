@@ -175,13 +175,25 @@ class SelfReviewError(EngineError):
     Structurally prevents an agent from acting as reviewer on a task
     they executed, enforcing separation of duties at the approval gate.
 
+    The exception message is deliberately generic ("Self-review is not
+    permitted") to avoid leaking internal agent/task identifiers across
+    authorization boundaries when the message is surfaced via an HTTP
+    error response.  The ``task_id`` and ``agent_id`` attributes are
+    available for structured logs but must NOT be passed to user-facing
+    error responses.
+
     Attributes:
         task_id: The task identifier the self-review was attempted on.
         agent_id: The agent identifier that is both executor and reviewer.
     """
 
     def __init__(self, *, task_id: str, agent_id: str) -> None:
-        msg = f"Agent {agent_id!r} cannot review their own task {task_id!r}"
-        super().__init__(msg)
+        if not task_id or not task_id.strip():
+            error = "task_id must be non-empty"
+            raise ValueError(error)
+        if not agent_id or not agent_id.strip():
+            error = "agent_id must be non-empty"
+            raise ValueError(error)
+        super().__init__("Self-review is not permitted")
         self.task_id = task_id
         self.agent_id = agent_id

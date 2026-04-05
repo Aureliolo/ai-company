@@ -4,8 +4,10 @@ Immutable, append-only records of every approval gate decision. Each
 record captures full context at decision time -- executing agent,
 reviewer, criteria snapshot, and outcome -- for audit and analytics.
 
-See the security and approval gate sections of the Operations design
-page.
+See the Review Gate section of ``docs/design/engine.md`` for the
+drop-box design rationale, and the "Security and Approval System"
+section of ``docs/design/operations.md`` for how decisions flow
+through the approval lifecycle.
 """
 
 from typing import Any, Self
@@ -20,7 +22,7 @@ from pydantic import (
 )
 
 from synthorg.core.enums import DecisionOutcome  # noqa: TC001
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import NotBlankStr, validate_unique_strings
 from synthorg.engine.immutable import deep_copy_mapping
 
 
@@ -69,15 +71,21 @@ class DecisionRecord(BaseModel):
     decision: DecisionOutcome = Field(description="Outcome of the review")
     reason: NotBlankStr | None = Field(
         default=None,
-        description="Optional rationale for the decision",
+        description=(
+            "Optional rationale for the decision; empty or whitespace-only "
+            "strings are coerced to None at construction."
+        ),
     )
     criteria_snapshot: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Acceptance criteria at decision time",
+        description="Acceptance criteria at decision time (unique)",
     )
     recorded_at: AwareDatetime = Field(description="When the decision was recorded")
     version: int = Field(ge=1, description="Monotonic version per task")
-    metadata: dict[str, Any] = Field(description="Forward-compatible metadata")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Forward-compatible metadata",
+    )
 
     @field_validator("reason", mode="before")
     @classmethod
@@ -92,6 +100,16 @@ class DecisionRecord(BaseModel):
     def _deep_copy_metadata(cls, value: object) -> object:
         """Deep-copy metadata at construction boundary."""
         return deep_copy_mapping(value)
+
+    @field_validator("criteria_snapshot", mode="after")
+    @classmethod
+    def _validate_criteria_snapshot_unique(
+        cls,
+        value: tuple[NotBlankStr, ...],
+    ) -> tuple[NotBlankStr, ...]:
+        """Reject duplicate criteria -- they represent unique rules."""
+        validate_unique_strings(value, "criteria_snapshot")
+        return value
 
     @model_validator(mode="after")
     def _forbid_self_review(self) -> Self:

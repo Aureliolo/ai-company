@@ -295,7 +295,10 @@ class FakeDecisionRepository:
 
     Mirrors the SQLite implementation's server-assigned monotonic
     version contract: ``append_with_next_version`` computes the next
-    version for each ``task_id`` atomically.
+    version for each ``task_id`` as ``max(existing.version) + 1``,
+    matching the real repo's ``COALESCE(MAX(version), 0) + 1`` SQL.
+    Using ``max(...)`` instead of ``len(...)`` keeps the fake
+    resilient to tests that seed non-contiguous version histories.
     """
 
     def __init__(self) -> None:
@@ -313,13 +316,18 @@ class FakeDecisionRepository:
         reason: str | None,
         criteria_snapshot: tuple[str, ...],
         recorded_at: datetime,
-        metadata: dict[str, object],
+        metadata: dict[str, object] | None = None,
     ) -> DecisionRecord:
         if record_id in self._records:
             msg = f"Duplicate decision record {record_id!r}"
             raise DuplicateRecordError(msg)
-        existing_for_task = [r for r in self._records.values() if r.task_id == task_id]
-        next_version = len(existing_for_task) + 1
+        next_version = (
+            max(
+                (r.version for r in self._records.values() if r.task_id == task_id),
+                default=0,
+            )
+            + 1
+        )
         record = DecisionRecord(
             id=record_id,
             task_id=task_id,
@@ -331,7 +339,7 @@ class FakeDecisionRepository:
             criteria_snapshot=criteria_snapshot,
             recorded_at=recorded_at,
             version=next_version,
-            metadata=metadata,
+            metadata=metadata or {},
         )
         self._records[record_id] = record
         return record

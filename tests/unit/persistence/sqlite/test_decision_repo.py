@@ -289,27 +289,93 @@ class TestSQLiteDecisionRepositorySerialization:
         with pytest.raises(QueryError):
             await repo.get("dr-1")
 
-    async def test_invalid_decision_value_raises_query_error(
-        self, migrated_db: aiosqlite.Connection
+    async def test_schema_check_rejects_bogus_decision_value(
+        self,
+        migrated_db: aiosqlite.Connection,
     ) -> None:
-        """Invalid decision enum value raises QueryError (schema drift guard)."""
+        """DB-level CHECK constraint fires on UPDATE with unknown enum value.
+
+        The CHECK(decision IN (...)) constraint is the write-time
+        guard against schema drift -- an invalid decision value can
+        never reach the DB in the first place.
+        """
+        import sqlite3
+
         repo = SQLiteDecisionRepository(migrated_db)
         await _append(repo, record_id="dr-1")
-        # CHECK constraint should also reject this at write time, but
-        # we bypass it via raw UPDATE to simulate pre-constraint rows.
+
+        async def _attempt_bogus_update() -> None:
+            await migrated_db.execute(
+                "UPDATE decision_records SET decision = 'bogus' WHERE id = ?",
+                ("dr-1",),
+            )
+            await migrated_db.commit()
+
+        with pytest.raises(sqlite3.IntegrityError) as exc_info:
+            await _attempt_bogus_update()
+        assert exc_info.value.sqlite_errorname == "SQLITE_CONSTRAINT_CHECK"
+
+    async def test_read_time_guard_wraps_deserialization_errors(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """Corrupted rows surface as QueryError on read.
+
+        Uses `PRAGMA ignore_check_constraints = ON` to bypass the
+        write-time CHECK and inject a bogus decision value, then
+        verifies the read-time guard wraps the resulting
+        ValidationError as QueryError.
+        """
+        repo = SQLiteDecisionRepository(migrated_db)
+        await _append(repo, record_id="dr-1")
+        # Disable CHECK constraints only for this direct UPDATE so we
+        # can inject an invalid enum value and exercise the read-time
+        # deserialization guard.
+        await migrated_db.execute("PRAGMA ignore_check_constraints = ON")
         try:
             await migrated_db.execute(
                 "UPDATE decision_records SET decision = 'bogus' WHERE id = ?",
                 ("dr-1",),
             )
             await migrated_db.commit()
-        except Exception:
-            # The CHECK constraint rejects the bogus value, which is
-            # the correct behavior -- the write is prevented and no
-            # read-time corruption can occur.  Test passes.
-            return
+        finally:
+            await migrated_db.execute("PRAGMA ignore_check_constraints = OFF")
         with pytest.raises(QueryError):
             await repo.get("dr-1")
+
+    async def test_concurrent_appends_yield_distinct_versions(
+        self,
+        migrated_db: aiosqlite.Connection,
+    ) -> None:
+        """Regression for the TOCTOU-safe version contract.
+
+        Fires many append_with_next_version calls concurrently via
+        asyncio.gather and asserts every call receives a distinct
+        monotonic version with no UNIQUE(task_id, version)
+        collisions.  This pins the invariant that justifies the
+        atomic ``COALESCE(MAX(version), 0) + 1`` subquery inside the
+        INSERT statement.
+        """
+        import asyncio
+
+        repo = SQLiteDecisionRepository(migrated_db)
+        writer_count = 20
+
+        async def _one(i: int) -> int:
+            record = await _append(
+                repo,
+                record_id=f"dr-{i}",
+                task_id="task-concurrent",
+                reviewer_agent_id=f"reviewer-{i}",
+            )
+            return record.version
+
+        versions = await asyncio.gather(
+            *(_one(i) for i in range(writer_count)),
+        )
+        assert sorted(versions) == list(range(1, writer_count + 1))
+        stored = await repo.list_by_task("task-concurrent")
+        assert [r.version for r in stored] == list(range(1, writer_count + 1))
 
 
 @pytest.mark.unit

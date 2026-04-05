@@ -683,12 +683,12 @@ class AgentEngine:
                 # read it from the task's status history and make a more
                 # informed decision (e.g. route TOOL_FAILURE retries to
                 # an agent with different tool access, BUDGET_EXCEEDED to
-                # a cheaper tier, etc.).
-                category = (
-                    recovery_result.failure_category.value
-                    if recovery_result is not None
-                    else "unknown"
-                )
+                # a cheaper tier, etc.).  recovery_result is guaranteed
+                # non-None here: reaching this block requires the status
+                # to have changed, which only happens when a recovery
+                # strategy ran and produced a result.
+                assert recovery_result is not None  # noqa: S101
+                category = recovery_result.failure_category.value
                 await sync_to_task_engine(
                     self._task_engine,
                     target_status=ctx.task_execution.status,

@@ -4,9 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.enums import FailureCategory, TaskStatus
-from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
-from synthorg.engine.recovery import RecoveryResult, infer_failure_category
+from synthorg.engine.recovery import (
+    RecoveryResult,
+    infer_failure_category,
+    infer_failure_category_without_evidence,
+)
 from synthorg.engine.stagnation.models import StagnationResult, StagnationVerdict
 
 
@@ -46,7 +49,6 @@ class TestRecoveryResultDiagnosisFields:
     def test_failure_category_required(
         self,
         sample_agent_context: AgentContext,
-        sample_task_with_criteria: Task,
     ) -> None:
         """failure_category is required -- omitting it raises ValidationError."""
         ctx = sample_agent_context.with_task_transition(
@@ -60,28 +62,26 @@ class TestRecoveryResultDiagnosisFields:
                 strategy_type="fail_reassign",
                 context_snapshot=ctx.to_snapshot(),
                 error_message="crash",
-                failure_context={},
             )
 
-    def test_failure_context_required(
+    def test_failure_context_defaults_to_empty_dict(
         self,
         sample_agent_context: AgentContext,
-        sample_task_with_criteria: Task,
     ) -> None:
-        """failure_context is required -- omitting it raises ValidationError."""
+        """failure_context has a default_factory -- callers don't pass {}."""
         ctx = sample_agent_context.with_task_transition(
             TaskStatus.IN_PROGRESS, reason="starting"
         )
         assert ctx.task_execution is not None
         failed = ctx.task_execution.with_transition(TaskStatus.FAILED, reason="crash")
-        with pytest.raises(ValidationError, match="failure_context"):
-            RecoveryResult(  # type: ignore[call-arg]
-                task_execution=failed,
-                strategy_type="fail_reassign",
-                context_snapshot=ctx.to_snapshot(),
-                error_message="crash",
-                failure_category=FailureCategory.TOOL_FAILURE,
-            )
+        result = RecoveryResult(
+            task_execution=failed,
+            strategy_type="fail_reassign",
+            context_snapshot=ctx.to_snapshot(),
+            error_message="crash",
+            failure_category=FailureCategory.TOOL_FAILURE,
+        )
+        assert result.failure_context == {}
 
     def test_stagnation_category_requires_evidence(
         self,
@@ -130,6 +130,47 @@ class TestRecoveryResultDiagnosisFields:
                 ctx,
                 failure_category=FailureCategory.QUALITY_GATE_FAILED,
                 criteria_failed=(),
+            )
+
+    def test_stagnation_rejects_no_stagnation_verdict(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """STAGNATION category with NO_STAGNATION evidence is self-contradicting.
+
+        The verdict must be a positive stagnation finding (TERMINATE,
+        INJECT_PROMPT) to back a STAGNATION recovery result.
+        """
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        evidence = StagnationResult(
+            verdict=StagnationVerdict.NO_STAGNATION,
+            repetition_ratio=0.0,
+        )
+        with pytest.raises(
+            ValidationError,
+            match="verdict cannot be NO_STAGNATION",
+        ):
+            _make_recovery_result(
+                ctx,
+                failure_category=FailureCategory.STAGNATION,
+                stagnation_evidence=evidence,
+            )
+
+    def test_criteria_failed_rejects_duplicates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """Duplicate criteria are rejected (set semantics)."""
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        with pytest.raises(ValidationError, match="Duplicate entries"):
+            _make_recovery_result(
+                ctx,
+                failure_category=FailureCategory.QUALITY_GATE_FAILED,
+                criteria_failed=("JWT login", "JWT login"),
             )
 
     def test_all_fields_populated(
@@ -290,3 +331,109 @@ class TestInferFailureCategory:
     ) -> None:
         """Each keyword maps to the correct category."""
         assert infer_failure_category(error_message) == expected
+
+
+@pytest.mark.unit
+class TestInferFailureCategoryWithoutEvidence:
+    """Tests for ``infer_failure_category_without_evidence``.
+
+    This helper exists so callers that build a ``RecoveryResult``
+    without sidecar data (``stagnation_evidence``, ``criteria_failed``)
+    can safely classify error messages without triggering the
+    cross-field validator.  It should clamp STAGNATION and
+    QUALITY_GATE_FAILED -> UNKNOWN while passing other categories
+    through unchanged.
+    """
+
+    @pytest.mark.parametrize(
+        ("error_message", "expected"),
+        [
+            pytest.param(
+                "Stagnation detected: repetitive tool calls",
+                FailureCategory.UNKNOWN,
+                id="stagnation-clamped-to-unknown",
+            ),
+            pytest.param(
+                "quality gate failed",
+                FailureCategory.UNKNOWN,
+                id="quality-clamped-to-unknown",
+            ),
+            pytest.param(
+                "Acceptance criteria not satisfied",
+                FailureCategory.UNKNOWN,
+                id="criteria-clamped-to-unknown",
+            ),
+            pytest.param(
+                "Budget limit exceeded",
+                FailureCategory.BUDGET_EXCEEDED,
+                id="budget-preserved",
+            ),
+            pytest.param(
+                "Connection timed out",
+                FailureCategory.TIMEOUT,
+                id="timeout-preserved",
+            ),
+            pytest.param(
+                "Delegation failed: no capable agent",
+                FailureCategory.DELEGATION_FAILED,
+                id="delegation-preserved",
+            ),
+            pytest.param(
+                "NullPointerException in handler",
+                FailureCategory.UNKNOWN,
+                id="unknown-passthrough",
+            ),
+        ],
+    )
+    def test_clamping_behavior(
+        self,
+        error_message: str,
+        expected: FailureCategory,
+    ) -> None:
+        """Evidence-required categories clamp to UNKNOWN."""
+        assert infer_failure_category_without_evidence(error_message) == expected
+
+    def test_builds_valid_recovery_result_for_stagnation_message(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """Regression for C1: error messages with 'stagnation' must not crash.
+
+        The original bug: ``FailAndReassignStrategy.recover`` passed
+        ``infer_failure_category(error_message)`` directly to
+        ``RecoveryResult`` without supplying ``stagnation_evidence``,
+        causing any error message containing ``stagnation`` to crash
+        the recovery path with ``ValidationError``.  Using the
+        ``_without_evidence`` variant clamps STAGNATION to UNKNOWN
+        so construction succeeds.
+        """
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        category = infer_failure_category_without_evidence(
+            "Stagnation detected: repetitive tool calls"
+        )
+        # Must not raise: we're building a real RecoveryResult.
+        result = _make_recovery_result(ctx, failure_category=category)
+        assert result.failure_category is FailureCategory.UNKNOWN
+
+    @pytest.mark.parametrize(
+        "error_message",
+        [
+            "Stagnation detected: repetitive tool calls",
+            "quality gate failed",
+            "Acceptance criteria not satisfied",
+            "Tool output quality degraded",
+        ],
+    )
+    def test_no_validation_error_on_heuristic_keywords(
+        self,
+        sample_agent_context: AgentContext,
+        error_message: str,
+    ) -> None:
+        """Regression for C1: evidence-requiring keywords must not crash."""
+        ctx = sample_agent_context.with_task_transition(
+            TaskStatus.IN_PROGRESS, reason="starting"
+        )
+        category = infer_failure_category_without_evidence(error_message)
+        _make_recovery_result(ctx, failure_category=category)

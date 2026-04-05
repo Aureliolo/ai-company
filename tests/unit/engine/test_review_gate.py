@@ -64,7 +64,7 @@ def _make_mock_decision_repo(
             criteria_snapshot=kwargs["criteria_snapshot"],  # type: ignore[arg-type]
             recorded_at=kwargs["recorded_at"],  # type: ignore[arg-type]
             version=version,
-            metadata=kwargs["metadata"],  # type: ignore[arg-type]
+            metadata=kwargs.get("metadata") or {},  # type: ignore[arg-type]
         )
 
     repo.append_with_next_version = AsyncMock(side_effect=_append)
@@ -361,11 +361,21 @@ class TestReviewGateServiceDecisionRecording:
         repo.append_with_next_version.assert_awaited_once()
 
     async def test_decision_record_failure_is_non_fatal(self) -> None:
-        """If the decision repo append fails, the review still completes."""
+        """Known persistence errors don't unwind the review transition.
+
+        Narrowed to ``QueryError`` / ``DuplicateRecordError`` -- these
+        are the transient audit-write failures the service treats as
+        non-fatal.  Programming errors (ValidationError, TypeError)
+        still propagate so schema drift surfaces loudly.
+        """
+        from synthorg.persistence.errors import QueryError
+
         task = _make_task()
         mock_te = _make_mock_task_engine(task=task)
         repo = _make_mock_decision_repo()
-        repo.append_with_next_version = AsyncMock(side_effect=RuntimeError("disk full"))
+        repo.append_with_next_version = AsyncMock(
+            side_effect=QueryError("disk full"),
+        )
         service = ReviewGateService(
             task_engine=mock_te, persistence=_make_mock_persistence(repo)
         )
@@ -379,3 +389,29 @@ class TestReviewGateServiceDecisionRecording:
         )
         # Transition still happened
         mock_te.submit.assert_awaited_once()
+
+    async def test_decision_record_programming_error_propagates(self) -> None:
+        """Programming errors in the audit append MUST propagate.
+
+        Regression guard: narrowing the except clause in
+        ``_record_decision`` must not silently swallow
+        ``ValidationError`` / ``TypeError`` / ``AttributeError``
+        from schema drift or a broken ``DecisionRecord`` constructor.
+        """
+        task = _make_task()
+        mock_te = _make_mock_task_engine(task=task)
+        repo = _make_mock_decision_repo()
+        repo.append_with_next_version = AsyncMock(
+            side_effect=TypeError("unexpected keyword argument 'bogus'"),
+        )
+        service = ReviewGateService(
+            task_engine=mock_te, persistence=_make_mock_persistence(repo)
+        )
+
+        with pytest.raises(TypeError, match="bogus"):
+            await service.complete_review(
+                task_id="task-1",
+                requested_by="bob",
+                approved=True,
+                decided_by="bob",
+            )

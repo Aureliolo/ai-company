@@ -65,18 +65,18 @@ class TestDecisionRecordConstruction:
         assert isinstance(nested_copy, dict)
         assert nested_copy["a"] == 1
 
-    def test_metadata_required(self) -> None:
-        """metadata is required -- omitting it raises ValidationError."""
-        with pytest.raises(ValidationError, match="metadata"):
-            DecisionRecord(  # type: ignore[call-arg]
-                id="decision-001",
-                task_id="task-1",
-                executing_agent_id="alice",
-                reviewer_agent_id="bob",
-                decision=DecisionOutcome.APPROVED,
-                recorded_at=datetime(2026, 4, 4, 12, 0, tzinfo=UTC),
-                version=1,
-            )
+    def test_metadata_defaults_to_empty_dict(self) -> None:
+        """metadata has a default_factory -- omitting it yields {}."""
+        record = DecisionRecord(
+            id="decision-001",
+            task_id="task-1",
+            executing_agent_id="alice",
+            reviewer_agent_id="bob",
+            decision=DecisionOutcome.APPROVED,
+            recorded_at=datetime(2026, 4, 4, 12, 0, tzinfo=UTC),
+            version=1,
+        )
+        assert record.metadata == {}
 
     def test_version_must_be_at_least_one(self) -> None:
         """version < 1 raises ValidationError."""
@@ -120,3 +120,26 @@ class TestDecisionRecordConstruction:
         """REJECTED decision is valid."""
         record = _make_record(decision=DecisionOutcome.REJECTED)
         assert record.decision is DecisionOutcome.REJECTED
+
+    def test_self_review_rejected(self) -> None:
+        """executing_agent_id and reviewer_agent_id must differ.
+
+        No-self-review is a type-level invariant; the model validator
+        rejects construction when the two identifiers match.
+        """
+        with pytest.raises(
+            ValidationError,
+            match="executing_agent_id and reviewer_agent_id must differ",
+        ):
+            _make_record(executing_agent_id="alice", reviewer_agent_id="alice")
+
+    def test_self_review_error_contains_offending_id(self) -> None:
+        """The validator error names the offending identifier."""
+        with pytest.raises(ValidationError) as exc_info:
+            _make_record(executing_agent_id="alice", reviewer_agent_id="alice")
+        assert "alice" in str(exc_info.value)
+
+    def test_criteria_snapshot_rejects_duplicates(self) -> None:
+        """Duplicate acceptance criteria are rejected (set semantics)."""
+        with pytest.raises(ValidationError, match="Duplicate entries"):
+            _make_record(criteria_snapshot=("Login works", "Login works"))

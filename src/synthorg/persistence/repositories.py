@@ -4,7 +4,7 @@ Each entity type has its own protocol so that application code depends
 only on abstract interfaces, never on a concrete backend.
 """
 
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002
 
@@ -14,7 +14,6 @@ from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,  # noqa: TC001
-    DecisionOutcome,  # noqa: TC001
     TaskStatus,  # noqa: TC001
 )
 from synthorg.core.task import Task  # noqa: TC001
@@ -29,8 +28,6 @@ from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC00
 
 if TYPE_CHECKING:
     from synthorg.engine.agent_state import AgentRuntimeState
-    from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
-    from synthorg.engine.decisions import DecisionRecord
 
 __all__ = [
     "AgentStateRepository",
@@ -41,6 +38,7 @@ __all__ = [
     "CollaborationMetricRepository",
     "CostRecordRepository",
     "DecisionRepository",
+    "DecisionRole",
     "HeartbeatRepository",
     "LifecycleEventRepository",
     "MessageRepository",
@@ -340,113 +338,6 @@ class AuditRepository(Protocol):
         ...
 
 
-DecisionRole = Literal["executor", "reviewer"]
-"""Valid role filters for ``DecisionRepository.list_by_agent``."""
-
-
-@runtime_checkable
-class DecisionRepository(Protocol):
-    """Append-only persistence + query interface for ``DecisionRecord``.
-
-    Decision records are immutable audit entries of review gate
-    decisions.  No update or delete operations are provided to preserve
-    audit integrity.
-    """
-
-    async def append_with_next_version(  # noqa: PLR0913
-        self,
-        *,
-        record_id: NotBlankStr,
-        task_id: NotBlankStr,
-        approval_id: NotBlankStr | None,
-        executing_agent_id: NotBlankStr,
-        reviewer_agent_id: NotBlankStr,
-        decision: DecisionOutcome,
-        reason: str | None,
-        criteria_snapshot: tuple[NotBlankStr, ...],
-        recorded_at: AwareDatetime,
-        metadata: dict[str, object],
-    ) -> DecisionRecord:
-        """Atomically append a decision record computing version in SQL.
-
-        Computes ``version = COALESCE(MAX(version), 0) + 1`` for the
-        given ``task_id`` inside a single transaction, eliminating the
-        TOCTOU race that a ``list_by_task`` + ``len(...) + 1`` pattern
-        would create under concurrent reviewers.
-
-        Args:
-            record_id: Unique record identifier (UUID recommended).
-            task_id: Task that was reviewed.
-            approval_id: Associated ``ApprovalItem`` identifier, or ``None``.
-            executing_agent_id: Agent that performed the work.
-            reviewer_agent_id: Agent or human that reviewed.
-            decision: Outcome of the review.
-            reason: Optional rationale.
-            criteria_snapshot: Acceptance criteria at decision time.
-            recorded_at: Decision timestamp (must be timezone-aware).
-            metadata: Forward-compatible metadata.
-
-        Returns:
-            The persisted ``DecisionRecord`` with the server-assigned
-            ``version``.
-
-        Raises:
-            DuplicateRecordError: If a record with ``record_id`` already
-                exists.
-            QueryError: If the operation fails.
-        """
-        ...
-
-    async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
-        """Retrieve a decision record by ID.
-
-        Args:
-            record_id: The record identifier.
-
-        Returns:
-            The record, or ``None`` if not found.
-
-        Raises:
-            QueryError: If the operation fails.
-        """
-        ...
-
-    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
-        """List decision records for a task, ordered by version ascending.
-
-        Args:
-            task_id: The task identifier.
-
-        Returns:
-            Matching records as a tuple (oldest first).
-
-        Raises:
-            QueryError: If the operation fails.
-        """
-        ...
-
-    async def list_by_agent(
-        self,
-        agent_id: NotBlankStr,
-        *,
-        role: DecisionRole,
-    ) -> tuple[DecisionRecord, ...]:
-        """List decision records where the agent acted in the given role.
-
-        Args:
-            agent_id: The agent identifier.
-            role: Either ``"executor"`` or ``"reviewer"``.
-
-        Returns:
-            Matching records as a tuple, ordered by ``recorded_at`` DESC.
-
-        Raises:
-            QueryError: If the operation fails.
-            ValueError: If ``role`` is not a recognised value.
-        """
-        ...
-
-
 @runtime_checkable
 class UserRepository(Protocol):
     """CRUD interface for User persistence."""
@@ -603,121 +494,6 @@ class ApiKeyRepository(Protocol):
 
         Args:
             key_id: The key identifier.
-
-        Returns:
-            ``True`` if deleted, ``False`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-
-@runtime_checkable
-class CheckpointRepository(Protocol):
-    """CRUD interface for checkpoint persistence."""
-
-    async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (insert or replace by ID).
-
-        Args:
-            checkpoint: The checkpoint to persist.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get_latest(
-        self,
-        *,
-        execution_id: NotBlankStr | None = None,
-        task_id: NotBlankStr | None = None,
-    ) -> Checkpoint | None:
-        """Retrieve the latest checkpoint by turn_number.
-
-        At least one filter (``execution_id`` or ``task_id``) is required.
-
-        Args:
-            execution_id: Filter by execution identifier.
-            task_id: Filter by task identifier.
-
-        Returns:
-            The checkpoint with the highest turn_number, or ``None``.
-
-        Raises:
-            PersistenceError: If the operation fails.
-            ValueError: If neither filter is provided.
-        """
-        ...
-
-    async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution.
-
-        Args:
-            execution_id: The execution identifier.
-
-        Returns:
-            Number of checkpoints deleted.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-
-@runtime_checkable
-class HeartbeatRepository(Protocol):
-    """CRUD interface for heartbeat persistence."""
-
-    async def save(self, heartbeat: Heartbeat) -> None:
-        """Persist a heartbeat (upsert by execution_id).
-
-        Args:
-            heartbeat: The heartbeat to persist.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
-        """Retrieve a heartbeat by execution ID.
-
-        Args:
-            execution_id: The execution identifier.
-
-        Returns:
-            The heartbeat, or ``None`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get_stale(
-        self,
-        threshold: AwareDatetime,
-    ) -> tuple[Heartbeat, ...]:
-        """Retrieve heartbeats older than the threshold.
-
-        Args:
-            threshold: Heartbeats with ``last_heartbeat_at`` before
-                this timestamp are considered stale.
-
-        Returns:
-            Stale heartbeats as a tuple.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def delete(self, execution_id: NotBlankStr) -> bool:
-        """Delete a heartbeat by execution ID.
-
-        Args:
-            execution_id: The execution identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
@@ -909,10 +685,19 @@ class SettingsRepository(Protocol):
         ...
 
 
-# ArtifactRepository and ProjectRepository live in a separate module
+# ArtifactRepository, ProjectRepository, DecisionRepository, DecisionRole,
+# CheckpointRepository, and HeartbeatRepository live in separate modules
 # to keep this file under the 800-line limit.  Re-exported here for
 # backwards-compatible imports.
 from synthorg.persistence.artifact_project_repos import (  # noqa: E402, I001
     ArtifactRepository as ArtifactRepository,  # noqa: PLC0414
     ProjectRepository as ProjectRepository,  # noqa: PLC0414
+)
+from synthorg.persistence.repositories_checkpoint import (  # noqa: E402
+    CheckpointRepository as CheckpointRepository,  # noqa: PLC0414
+    HeartbeatRepository as HeartbeatRepository,  # noqa: PLC0414
+)
+from synthorg.persistence.repositories_decisions import (  # noqa: E402
+    DecisionRepository as DecisionRepository,  # noqa: PLC0414
+    DecisionRole as DecisionRole,  # noqa: PLC0414
 )
