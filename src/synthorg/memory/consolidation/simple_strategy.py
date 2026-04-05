@@ -88,7 +88,7 @@ class SimpleConsolidationStrategy:
         )
 
         removed_ids: list[NotBlankStr] = []
-        summary_id: NotBlankStr | None = None
+        summary_ids: list[NotBlankStr] = []
 
         sorted_entries = sorted(entries, key=attrgetter("category"))
         groups = groupby(sorted_entries, key=attrgetter("category"))
@@ -110,8 +110,7 @@ class SimpleConsolidationStrategy:
                 ),
             )
             new_id = await self._backend.store(agent_id, store_request)
-            if summary_id is None:
-                summary_id = new_id
+            summary_ids.append(new_id)
 
             for entry in to_remove:
                 await self._backend.delete(agent_id, entry.id)
@@ -119,7 +118,7 @@ class SimpleConsolidationStrategy:
 
         result = ConsolidationResult(
             removed_ids=tuple(removed_ids),
-            summary_id=summary_id,
+            summary_ids=tuple(summary_ids),
         )
 
         logger.info(

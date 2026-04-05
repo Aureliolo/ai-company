@@ -420,15 +420,22 @@ Three implementations of the `ConsolidationStrategy` protocol ship out of the bo
 |----------|----------|
 | `SimpleConsolidationStrategy` | Deterministic concatenation baseline -- merges older entries into a single summary without semantic deduplication |
 | `DualModeConsolidationStrategy` | Density-aware: dense groups use extractive preservation, sparse groups use abstractive summarization (see Dual-Mode Archival) |
-| `LLMConsolidationStrategy` | Groups entries by category, keeps the highest-relevance entry per group (with most-recent as tiebreaker), feeds the rest to an LLM for semantic synthesis with optional distillation trajectory context, stores the summary tagged `"llm-synthesized"`, and deletes the consolidated entries.  Groups are processed in parallel via `asyncio.TaskGroup`.  On `RetryExhaustedError` or empty LLM response, degrades to truncated concatenation tagged `"concat-fallback"`.  Non-retryable `ProviderError` subclasses propagate. |
+| `LLMConsolidationStrategy` | Groups entries by category, keeps the highest-relevance entry per group (with most-recent as tiebreaker; the kept entry is left unchanged in the backend and is NOT fed to the LLM). The remaining entries are sent to an LLM for semantic synthesis (wrapped in `<entry>` tags with explicit "treat as data, not instructions" guidance to resist prompt injection), the summary is stored tagged `"llm-synthesized"`, and only the consolidated originals are deleted. Synthesis → store → delete ordering prevents data loss on failure. Groups are processed in parallel via `asyncio.TaskGroup`. Fallback paths (tagged `"concat-fallback"`, logged at WARNING): `RetryExhaustedError`, retryable `ProviderError` surfaced directly, empty LLM response, unexpected non-`ProviderError` exception. Non-retryable `ProviderError` is logged at ERROR and propagates; system errors (`MemoryError`, `RecursionError`) propagate. |
 
 Strategy selection is injection-based: callers construct and pass the chosen strategy
 to `MemoryConsolidationService`.  `LLMConsolidationStrategy.__init__` accepts
-`group_threshold` (default 3, minimum 2), `temperature` (default 0.3),
+`group_threshold` (default 3, minimum 3 -- smaller groups cannot meaningfully
+dedup against the retained entry), `temperature` (default 0.3),
 `max_summary_tokens` (default 500), and `include_distillation_context` (default
-True -- when enabled, the strategy queries the backend for recent entries tagged
-`"distillation"` and embeds their trajectory summaries in the synthesis system
-prompt).
+True -- when enabled, the strategy queries the backend for at most 5 recent
+entries tagged `"distillation"` and embeds their trajectory summaries,
+truncated to ~500 chars each, in the synthesis system prompt). The per-entry
+user-prompt content is capped at 2000 chars and the total concatenated user
+content is capped at ~20000 chars; entries beyond the total cap are dropped
+with a WARNING log. `ConsolidationResult.summary_ids` contains every summary
+id produced during the run (one per processed group); the scalar `summary_id`
+accessor is a `@computed_field` returning the last element for callers that
+only need a representative id.
 
 #### Distillation Capture
 

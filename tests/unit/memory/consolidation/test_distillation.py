@@ -183,7 +183,7 @@ class TestBuildOutcome:
 
 
 @pytest.mark.unit
-class TestExtractMemoryIds:
+class TestExtractMemoryToolInvocations:
     def test_no_tool_calls(self) -> None:
         turns = (_make_turn(),)
         result = extract_memory_tool_invocations(turns)
@@ -326,5 +326,6 @@ class TestCaptureDistillation:
         assert store_request.category == MemoryCategory.EPISODIC
         assert store_request.metadata.source == "distillation"
         assert "distillation" in store_request.metadata.tags
+        assert "Task ID: task-7" in store_request.content
         assert "Trajectory:" in store_request.content
-        assert "Memory lookups: search_memory" in store_request.content
+        assert "Memory tool invocations: search_memory" in store_request.content

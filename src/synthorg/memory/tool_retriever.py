@@ -16,6 +16,7 @@ from synthorg.memory.errors import MemoryError as DomainMemoryError
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
+    MEMORY_REFORMULATION_EXHAUSTED,
     MEMORY_REFORMULATION_FAILED,
     MEMORY_REFORMULATION_ROUND,
     MEMORY_REFORMULATION_SUFFICIENT,
@@ -199,6 +200,22 @@ def _merge_results(
     return tuple(merged[eid] for eid in order)
 
 
+def _truncate_entries(
+    entries: tuple[MemoryEntry, ...],
+    limit: int,
+) -> tuple[MemoryEntry, ...]:
+    """Truncate a cumulative result list to the caller-requested limit.
+
+    The Search-and-Ask loop can accumulate more than ``limit`` entries
+    when later rounds add unseen results; the tool contract promises
+    ``limit`` entries, so truncate on return regardless of how many
+    rounds ran.
+    """
+    if limit < 1 or len(entries) <= limit:
+        return entries
+    return entries[:limit]
+
+
 def _parse_search_args(
     arguments: dict[str, Any],
     config_max_memories: int,
@@ -299,6 +316,17 @@ class ToolBasedInjectionStrategy:
         reformulator: QueryReformulator | None = None,
         sufficiency_checker: SufficiencyChecker | None = None,
     ) -> None:
+        if config.query_reformulation_enabled and (
+            reformulator is None or sufficiency_checker is None
+        ):
+            msg = (
+                "config.query_reformulation_enabled is True but "
+                "reformulator and sufficiency_checker must both be "
+                "provided to ToolBasedInjectionStrategy; got "
+                f"reformulator={reformulator!r}, "
+                f"sufficiency_checker={sufficiency_checker!r}"
+            )
+            raise ValueError(msg)
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
@@ -406,16 +434,49 @@ class ToolBasedInjectionStrategy:
         )
         if query_text is None:
             return f"{ERROR_PREFIX} query must be a non-empty string."
-
         logger.info(
             MEMORY_RETRIEVAL_START,
             agent_id=agent_id,
             tool=SEARCH_MEMORY_TOOL_NAME,
             query_length=len(query_text),
         )
+        entries_or_error = await self._safe_search(
+            query_text=query_text,
+            limit=limit,
+            categories=categories,
+            agent_id=agent_id,
+        )
+        if isinstance(entries_or_error, str):
+            return entries_or_error
+        logger.info(
+            MEMORY_RETRIEVAL_COMPLETE,
+            agent_id=agent_id,
+            tool=SEARCH_MEMORY_TOOL_NAME,
+            ranked_count=len(entries_or_error),
+        )
+        formatted = _format_entries(entries_or_error)
+        if rejected_categories:
+            formatted += (
+                f"\n\n(Ignored invalid categories: {', '.join(rejected_categories)})"
+            )
+        return formatted
 
+    async def _safe_search(
+        self,
+        *,
+        query_text: str,
+        limit: int,
+        categories: frozenset[MemoryCategory] | None,
+        agent_id: str,
+    ) -> tuple[MemoryEntry, ...] | str:
+        """Run the search with error isolation.
+
+        Returns the entries on success, or a user-facing error string
+        on ``DomainMemoryError`` / unexpected ``Exception``.  System
+        errors (``MemoryError``, ``RecursionError``) propagate.
+        """
         try:
-            entries = await self._retrieve_with_reformulation(
+            return await self._retrieve_with_reformulation(
                 query_text=query_text,
                 limit=limit,
                 categories=categories,
@@ -441,20 +502,6 @@ class ToolBasedInjectionStrategy:
                 exc_info=True,
             )
             return SEARCH_UNEXPECTED
-
-        logger.info(
-            MEMORY_RETRIEVAL_COMPLETE,
-            agent_id=agent_id,
-            tool=SEARCH_MEMORY_TOOL_NAME,
-            ranked_count=len(entries),
-        )
-
-        formatted = _format_entries(entries)
-        if rejected_categories:
-            formatted += (
-                f"\n\n(Ignored invalid categories: {', '.join(rejected_categories)})"
-            )
-        return formatted
 
     async def _retrieve_with_reformulation(
         self,
@@ -515,116 +562,222 @@ class ToolBasedInjectionStrategy:
         reformulates if insufficient, and re-retrieves -- up to
         ``config.max_reformulation_rounds`` rounds.  Results across
         rounds are merged by ID, keeping the higher-relevance version
-        of any duplicate.
+        of any duplicate and truncating to ``limit`` on return so the
+        tool contract is honoured regardless of how many rounds ran.
 
-        Reformulator and sufficiency checker calls are wrapped in
-        error isolation: if either raises, the loop logs the failure
-        (``MEMORY_REFORMULATION_FAILED`` /
-        ``MEMORY_SUFFICIENCY_CHECK_FAILED``) and returns the current
-        cumulative entries rather than propagating.  System errors
+        Reformulator, sufficiency checker, and mid-loop backend
+        retrieve calls are all wrapped in error isolation: if any
+        raises a non-system exception, the round helper returns
+        ``None`` and the loop returns the current cumulative entries
+        rather than propagating.  System errors
         (builtins.MemoryError, RecursionError) still propagate.
         """
         max_rounds = self._config.max_reformulation_rounds
         current_query = query_text
-
-        initial_query = MemoryQuery(
-            text=current_query,
-            limit=limit,
-            categories=categories,
-        )
         entries = await self._backend.retrieve(
             NotBlankStr(agent_id),
-            initial_query,
+            MemoryQuery(text=current_query, limit=limit, categories=categories),
         )
-
         for round_idx in range(max_rounds):
-            try:
-                is_sufficient = await sufficiency_checker.check_sufficiency(
-                    current_query,
-                    entries,
-                )
-            except builtins.MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    MEMORY_SUFFICIENCY_CHECK_FAILED,
-                    agent_id=agent_id,
-                    round=round_idx,
-                    error=str(exc),
-                    error_type=type(exc).__qualname__,
-                    exc_info=True,
-                )
-                return entries
-
-            if is_sufficient:
-                logger.info(
-                    MEMORY_REFORMULATION_SUFFICIENT,
-                    agent_id=agent_id,
-                    round=round_idx,
-                    result_count=len(entries),
-                )
-                return entries
-
-            try:
-                new_query = await reformulator.reformulate(
-                    current_query,
-                    entries,
-                )
-            except builtins.MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    MEMORY_REFORMULATION_FAILED,
-                    agent_id=agent_id,
-                    round=round_idx,
-                    error=str(exc),
-                    error_type=type(exc).__qualname__,
-                    exc_info=True,
-                )
-                return entries
-
-            if new_query is None or new_query == current_query:
-                logger.debug(
-                    MEMORY_REFORMULATION_ROUND,
-                    agent_id=agent_id,
-                    round=round_idx + 1,
-                    result_count=len(entries),
-                    reason=(
-                        "reformulator_stable"
-                        if new_query == current_query
-                        else "reformulator_gave_up"
-                    ),
-                )
-                return entries
-
-            logger.debug(
-                MEMORY_REFORMULATION_ROUND,
-                agent_id=agent_id,
-                round=round_idx + 1,
-                original_length=len(current_query),
-                new_length=len(new_query),
-            )
-
-            next_query = MemoryQuery(
-                text=new_query,
+            step = await self._run_reformulation_step(
+                reformulator=reformulator,
+                sufficiency_checker=sufficiency_checker,
+                current_query=current_query,
+                entries=entries,
                 limit=limit,
                 categories=categories,
+                agent_id=agent_id,
+                round_idx=round_idx,
             )
-            new_entries = await self._backend.retrieve(
-                NotBlankStr(agent_id),
-                next_query,
-            )
-            entries = _merge_results(entries, new_entries)
-            current_query = new_query
-
+            if step is None:
+                return _truncate_entries(entries, limit)
+            entries, current_query = step
         logger.info(
-            MEMORY_REFORMULATION_ROUND,
+            MEMORY_REFORMULATION_EXHAUSTED,
             agent_id=agent_id,
             rounds_exhausted=max_rounds,
             result_count=len(entries),
             reason="max_rounds_reached",
         )
-        return entries
+        return _truncate_entries(entries, limit)
+
+    async def _run_reformulation_step(  # noqa: PLR0913
+        self,
+        *,
+        reformulator: QueryReformulator,
+        sufficiency_checker: SufficiencyChecker,
+        current_query: str,
+        entries: tuple[MemoryEntry, ...],
+        limit: int,
+        categories: frozenset[MemoryCategory] | None,
+        agent_id: str,
+        round_idx: int,
+    ) -> tuple[tuple[MemoryEntry, ...], str] | None:
+        """Execute one round of the Search-and-Ask loop.
+
+        Returns ``(new_entries, new_query)`` when the loop should
+        continue, or ``None`` when it should terminate with the
+        current ``entries`` (sufficiency met, reformulator exhausted,
+        or non-system error in any sub-step).
+        """
+        sufficient = await self._check_sufficiency(
+            sufficiency_checker,
+            current_query,
+            entries,
+            agent_id=agent_id,
+            round_idx=round_idx,
+        )
+        if sufficient is None:
+            return None
+        if sufficient:
+            logger.info(
+                MEMORY_REFORMULATION_SUFFICIENT,
+                agent_id=agent_id,
+                round=round_idx,
+                result_count=len(entries),
+            )
+            return None
+        new_query = await self._reformulate(
+            reformulator,
+            current_query,
+            entries,
+            agent_id=agent_id,
+            round_idx=round_idx,
+        )
+        if new_query is None or new_query == current_query:
+            logger.info(
+                MEMORY_REFORMULATION_EXHAUSTED,
+                agent_id=agent_id,
+                round=round_idx + 1,
+                result_count=len(entries),
+                reason=(
+                    "reformulator_stable"
+                    if new_query == current_query
+                    else "reformulator_gave_up"
+                ),
+            )
+            return None
+        logger.info(
+            MEMORY_REFORMULATION_ROUND,
+            agent_id=agent_id,
+            round=round_idx + 1,
+            original_length=len(current_query),
+            new_length=len(new_query),
+        )
+        new_entries = await self._retrieve_round(
+            agent_id=agent_id,
+            query=new_query,
+            limit=limit,
+            categories=categories,
+            round_idx=round_idx,
+        )
+        if new_entries is None:
+            return None
+        return _merge_results(entries, new_entries), new_query
+
+    @staticmethod
+    async def _check_sufficiency(
+        sufficiency_checker: SufficiencyChecker,
+        query: str,
+        entries: tuple[MemoryEntry, ...],
+        *,
+        agent_id: str,
+        round_idx: int,
+    ) -> bool | None:
+        """Run the sufficiency checker with error isolation.
+
+        Returns ``True``/``False`` on success, or ``None`` when the
+        check raised a non-system exception (caller should exit the
+        loop and return current cumulative entries).
+        """
+        try:
+            return await sufficiency_checker.check_sufficiency(query, entries)
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEMORY_SUFFICIENCY_CHECK_FAILED,
+                agent_id=agent_id,
+                round=round_idx,
+                error=str(exc),
+                error_type=type(exc).__qualname__,
+                exc_info=True,
+            )
+            return None
+
+    @staticmethod
+    async def _reformulate(
+        reformulator: QueryReformulator,
+        current_query: str,
+        entries: tuple[MemoryEntry, ...],
+        *,
+        agent_id: str,
+        round_idx: int,
+    ) -> str | None:
+        """Run the reformulator with error isolation.
+
+        Returns the new query string, ``None`` when the reformulator
+        gave up, or ``None`` when it raised a non-system exception
+        (caller cannot distinguish these two cases -- both terminate
+        the loop).
+        """
+        try:
+            return await reformulator.reformulate(current_query, entries)
+        except builtins.MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                MEMORY_REFORMULATION_FAILED,
+                agent_id=agent_id,
+                round=round_idx,
+                error=str(exc),
+                error_type=type(exc).__qualname__,
+                exc_info=True,
+            )
+            return None
+
+    async def _retrieve_round(
+        self,
+        *,
+        agent_id: str,
+        query: str,
+        limit: int,
+        categories: frozenset[MemoryCategory] | None,
+        round_idx: int,
+    ) -> tuple[MemoryEntry, ...] | None:
+        """Retrieve for a reformulated round with error isolation.
+
+        Returns the new entries, or ``None`` on non-system failure so
+        the loop can degrade gracefully to the accumulated results.
+        """
+        try:
+            return await self._backend.retrieve(
+                NotBlankStr(agent_id),
+                MemoryQuery(text=query, limit=limit, categories=categories),
+            )
+        except builtins.MemoryError, RecursionError:
+            raise
+        except DomainMemoryError as exc:
+            logger.warning(
+                MEMORY_RETRIEVAL_DEGRADED,
+                agent_id=agent_id,
+                round=round_idx + 1,
+                reason="retrieve_failed_mid_loop",
+                error=str(exc),
+                error_type=type(exc).__qualname__,
+            )
+            return None
+        except Exception as exc:
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                agent_id=agent_id,
+                round=round_idx + 1,
+                reason="unexpected_retrieve_failure_mid_loop",
+                error=str(exc),
+                error_type=type(exc).__qualname__,
+                exc_info=True,
+            )
+            return None
 
     async def _handle_recall(
         self,

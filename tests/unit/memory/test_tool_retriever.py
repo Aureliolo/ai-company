@@ -377,24 +377,38 @@ class TestSearchWithReformulation:
         sufficiency.check_sufficiency.assert_not_called()
         reformulator.reformulate.assert_not_called()
 
-    async def test_no_reformulator_is_single_shot(self) -> None:
-        """Reformulation skipped when reformulator is None."""
+    async def test_missing_reformulator_raises(self) -> None:
+        """ToolBasedInjectionStrategy fails fast when the reformulation
+        config flag is set but ``reformulator`` is missing -- the silent
+        no-op fallback is a configuration trap.
+        """
         entries = (_make_entry(entry_id="a"),)
         backend = _make_backend(entries)
+        with pytest.raises(
+            ValueError,
+            match=r"reformulator and sufficiency_checker must both be provided",
+        ):
+            ToolBasedInjectionStrategy(
+                backend=backend,
+                config=_reformulation_config(),
+                reformulator=None,
+                sufficiency_checker=AsyncMock(),
+            )
 
-        strategy = ToolBasedInjectionStrategy(
-            backend=backend,
-            config=_reformulation_config(),
-            reformulator=None,
-            sufficiency_checker=AsyncMock(),
-        )
-
-        await strategy.handle_tool_call(
-            tool_name="search_memory",
-            arguments={"query": "find me memories"},
-            agent_id="agent-1",
-        )
-        assert backend.retrieve.call_count == 1
+    async def test_missing_sufficiency_checker_raises(self) -> None:
+        """Symmetric: a missing sufficiency_checker is also a hard error."""
+        entries = (_make_entry(entry_id="a"),)
+        backend = _make_backend(entries)
+        with pytest.raises(
+            ValueError,
+            match=r"reformulator and sufficiency_checker must both be provided",
+        ):
+            ToolBasedInjectionStrategy(
+                backend=backend,
+                config=_reformulation_config(),
+                reformulator=AsyncMock(),
+                sufficiency_checker=None,
+            )
 
     async def test_sufficient_on_first_try_no_reformulation(self) -> None:
         """When results are sufficient, no reformulation is performed."""

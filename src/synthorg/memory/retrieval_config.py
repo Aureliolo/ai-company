@@ -39,6 +39,24 @@ class MemoryRetrievalConfig(BaseModel):
         fusion_strategy: Ranking fusion strategy -- LINEAR for single-source
             relevance+recency, RRF for multi-source ranked list merging.
         rrf_k: RRF smoothing constant (1-1000, only used with RRF strategy).
+        diversity_penalty_enabled: When True, apply MMR-style diversity
+            penalty to re-rank retrieval results, reducing redundancy.
+            Only consumed by ``ContextInjectionStrategy``; a validator
+            raises if combined with another strategy.  Defaults to
+            False.
+        diversity_lambda: MMR trade-off parameter (0.0-1.0).  ``1.0``
+            means pure relevance (no diversity), ``0.0`` means maximum
+            diversity.  Defaults to 0.7.  Only consulted when
+            ``diversity_penalty_enabled`` is True.
+        query_reformulation_enabled: When True, enables the
+            Search-and-Ask iterative query-reformulation loop in the
+            TOOL_BASED strategy.  Requires ``ToolBasedInjectionStrategy``
+            to be constructed with both ``reformulator`` and
+            ``sufficiency_checker``; the strategy constructor raises
+            when the flag is set but either dependency is missing.
+            Defaults to False.
+        max_reformulation_rounds: Maximum rounds of query reformulation
+            in the Search-and-Ask loop (1-5).  Defaults to 2.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -210,22 +228,28 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_diversity_strategy_consistency(self) -> Self:
-        """Warn when diversity penalty is enabled with a strategy that ignores it."""
+        """Reject diversity penalty combined with a strategy that ignores it.
+
+        Symmetric with ``_validate_reformulation_requires_tool_based``: a
+        silent no-op is worse than a hard error because the
+        misconfiguration survives deployment unnoticed.
+        """
         if (
             self.diversity_penalty_enabled
             and self.strategy != InjectionStrategy.CONTEXT
         ):
+            msg = (
+                "diversity_penalty_enabled is only applied by "
+                f"ContextInjectionStrategy; got strategy={self.strategy.value!r}"
+            )
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
                 field="diversity_penalty_enabled",
                 value=self.diversity_penalty_enabled,
                 strategy=self.strategy.value,
-                reason=(
-                    "diversity_penalty_enabled is only applied by "
-                    "ContextInjectionStrategy; other strategies "
-                    "silently skip the MMR re-ranking step"
-                ),
+                reason=msg,
             )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

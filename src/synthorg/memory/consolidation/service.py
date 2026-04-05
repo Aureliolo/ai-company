@@ -115,7 +115,7 @@ class MemoryConsolidationService:
                 )
                 result = ConsolidationResult(
                     removed_ids=result.removed_ids,
-                    summary_id=result.summary_id,
+                    summary_ids=result.summary_ids,
                     archived_count=archived,
                     mode_assignments=result.mode_assignments,
                     archival_index=index,

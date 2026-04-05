@@ -33,11 +33,29 @@ class TestConsolidationResult:
     def test_full(self) -> None:
         result = ConsolidationResult(
             removed_ids=("m1", "m2", "m3"),
-            summary_id="summary-1",
+            summary_ids=("summary-1",),
             archived_count=2,
         )
         assert result.consolidated_count == 3
         assert len(result.removed_ids) == 3
+        assert result.summary_id == "summary-1"
+        assert result.summary_ids == ("summary-1",)
+
+    def test_multi_summary(self) -> None:
+        """``summary_id`` resolves to the last summary when multiple are produced."""
+        result = ConsolidationResult(
+            removed_ids=("m1", "m2", "m3"),
+            summary_ids=("sum-a", "sum-b", "sum-c"),
+        )
+        assert result.summary_id == "sum-c"
+        assert result.summary_ids == ("sum-a", "sum-b", "sum-c")
+
+    def test_summary_ids_reject_duplicates(self) -> None:
+        with pytest.raises(ValidationError, match="summary_ids contains duplicates"):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                summary_ids=("dup", "dup"),
+            )
 
     def test_consolidated_count_is_computed(self) -> None:
         """consolidated_count always equals len(removed_ids)."""

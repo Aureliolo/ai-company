@@ -363,14 +363,28 @@ class TestPersonalBoostRRFWarning:
 
 @pytest.mark.unit
 class TestDiversityStrategyConsistency:
-    def test_diversity_with_tool_based_warns(self) -> None:
-        """Diversity penalty only applies to CONTEXT; warn on TOOL_BASED."""
-        with structlog.testing.capture_logs() as cap:
-            c = MemoryRetrievalConfig(
+    def test_diversity_with_tool_based_raises(self) -> None:
+        """Diversity penalty only applies to CONTEXT; raise on TOOL_BASED.
+
+        Symmetric enforcement with
+        ``_validate_reformulation_requires_tool_based``: a silent no-op
+        is worse than a hard error because the misconfiguration would
+        survive deployment unnoticed.
+        """
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(
+                ValueError,
+                match=(
+                    r"diversity_penalty_enabled is only applied by "
+                    r"ContextInjectionStrategy"
+                ),
+            ),
+        ):
+            MemoryRetrievalConfig(
                 strategy=InjectionStrategy.TOOL_BASED,
                 diversity_penalty_enabled=True,
             )
-        assert c.diversity_penalty_enabled is True
         events = [
             e
             for e in cap

@@ -84,7 +84,7 @@ class TestRunConsolidation:
         strategy.consolidate = AsyncMock(
             return_value=ConsolidationResult(
                 removed_ids=("m1",),
-                summary_id="summary-1",
+                summary_ids=("summary-1",),
             ),
         )
 

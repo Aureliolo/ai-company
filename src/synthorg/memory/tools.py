@@ -14,13 +14,8 @@ from synthorg.memory.tool_retriever import (
     ERROR_PREFIX,
     RECALL_MEMORY_SCHEMA,
     RECALL_MEMORY_TOOL_NAME,
-    RECALL_NOT_FOUND_PREFIX,
-    RECALL_UNAVAILABLE,
-    RECALL_UNEXPECTED,
     SEARCH_MEMORY_SCHEMA,
     SEARCH_MEMORY_TOOL_NAME,
-    SEARCH_UNAVAILABLE,
-    SEARCH_UNEXPECTED,
     ToolBasedInjectionStrategy,
 )
 from synthorg.observability import get_logger
@@ -38,22 +33,16 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Error prefixes imported from tool_retriever -- single source of truth.
-# Any new error return value in tool_retriever MUST use one of these
-# prefixes or be added here for correct is_error classification.
-_ERROR_PREFIXES = (
-    ERROR_PREFIX,
-    SEARCH_UNAVAILABLE,
-    SEARCH_UNEXPECTED,
-    RECALL_UNAVAILABLE,
-    RECALL_UNEXPECTED,
-    RECALL_NOT_FOUND_PREFIX,
-)
-
 
 def _is_error_response(text: str) -> bool:
-    """Check whether the strategy response indicates an error."""
-    return any(text.startswith(prefix) for prefix in _ERROR_PREFIXES)
+    """Check whether the strategy response indicates an error.
+
+    All user-facing error return values in ``tool_retriever`` are
+    prefixed with :data:`ERROR_PREFIX` (the single source of truth), so
+    a direct ``startswith`` check is both sufficient and cheaper than
+    iterating a redundant tuple of specific prefixes.
+    """
+    return text.startswith(ERROR_PREFIX)
 
 
 class SearchMemoryTool(BaseTool):

@@ -80,12 +80,16 @@ class TestLLMConsolidationStrategyProtocol:
 @pytest.mark.unit
 class TestLLMConsolidationStrategyInit:
     def test_group_threshold_below_min_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"group_threshold must be >= 2"):
+        with pytest.raises(ValueError, match=r"group_threshold must be >= 3"):
+            _make_strategy(group_threshold=2)
+
+    def test_group_threshold_one_rejected(self) -> None:
+        with pytest.raises(ValueError, match=r"group_threshold must be >= 3"):
             _make_strategy(group_threshold=1)
 
-    def test_group_threshold_two_accepted(self) -> None:
-        strategy = _make_strategy(group_threshold=2)
-        assert strategy._group_threshold == 2
+    def test_group_threshold_three_accepted(self) -> None:
+        strategy = _make_strategy(group_threshold=3)
+        assert strategy._group_threshold == 3
 
 
 @pytest.mark.unit
@@ -295,6 +299,32 @@ class TestLLMConsolidationStrategyErrorHandling:
         # Synthesis raised before any deletes -- originals must be intact.
         backend.delete.assert_not_called()
         backend.store.assert_not_called()
+
+    async def test_store_failure_after_synthesis_propagates_no_deletes(self) -> None:
+        """If ``backend.store`` fails after successful synthesis, no deletes run.
+
+        The synthesize-before-delete ordering is specifically designed
+        so a ``store`` failure leaves originals intact.  Regression guard
+        against future refactors that would reorder delete/store.
+        """
+        backend = AsyncMock()
+        backend.store = AsyncMock(side_effect=RuntimeError("store crashed"))
+        backend.delete = AsyncMock(return_value=True)
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=False,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        with pytest.raises(RuntimeError, match="store crashed"):
+            await strategy.consolidate(entries, agent_id="agent-1")
+        backend.delete.assert_not_called()
 
     async def test_memory_error_propagates(self) -> None:
         provider = AsyncMock()
@@ -656,6 +686,57 @@ class TestLLMConsolidationStrategyDetails:
 
         # Consolidation still succeeds -- lookup failure degraded quietly.
         assert result.consolidated_count == 2
+
+    async def test_trajectory_context_entry_limit_and_truncation(self) -> None:
+        """``_MAX_TRAJECTORY_CONTEXT_ENTRIES`` and per-entry char cap are enforced.
+
+        The backend query asks for at most 5 entries, and each snippet
+        is truncated to ~500 chars before being embedded in the system
+        prompt.  Regression guard against silent prompt-size blowups.
+        """
+        from synthorg.memory.consolidation.llm_strategy import (
+            _MAX_TRAJECTORY_CHARS_PER_ENTRY,
+            _MAX_TRAJECTORY_CONTEXT_ENTRIES,
+        )
+
+        # Build an oversized trajectory entry (1000 chars) to verify truncation.
+        long_content = "x" * 1000
+        oversized = _make_entry(
+            entry_id="dist-big",
+            content=long_content,
+        )
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="sum-1")
+        backend.delete = AsyncMock(return_value=True)
+        backend.retrieve = AsyncMock(return_value=(oversized,))
+        provider = AsyncMock()
+        provider.complete = AsyncMock(return_value=_make_response())
+
+        strategy = LLMConsolidationStrategy(
+            backend=backend,
+            provider=provider,
+            model="test-model",
+            group_threshold=3,
+            include_distillation_context=True,
+        )
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
+        )
+        await strategy.consolidate(entries, agent_id="agent-1")
+
+        # Backend was queried with the 5-entry cap, not an unbounded limit.
+        retrieve_args = backend.retrieve.call_args
+        query = retrieve_args[0][1]
+        assert query.limit == _MAX_TRAJECTORY_CONTEXT_ENTRIES
+
+        # The embedded snippet was truncated to the per-entry char cap.
+        messages = provider.complete.call_args[0][0]
+        system_prompt = messages[0].content
+        assert system_prompt is not None
+        # The full 1000-char run of 'x' should NOT appear in the prompt;
+        # only the truncated 500-char prefix should.
+        assert "x" * 1000 not in system_prompt
+        assert "x" * _MAX_TRAJECTORY_CHARS_PER_ENTRY in system_prompt
 
     async def test_multi_category_groups_processed_in_parallel(self) -> None:
         """Multiple category groups are dispatched via TaskGroup."""

@@ -526,10 +526,11 @@ def _mmr_rerank_bigram_cached(
 
         selected_indices.append(remaining_indices.pop(best_position))
 
-    logger.debug(
+    logger.info(
         MEMORY_DIVERSITY_RERANKED,
         input_count=len(scored),
         diversity_lambda=diversity_lambda,
+        similarity="bigram_jaccard_cached",
     )
 
     return tuple(scored[i] for i in selected_indices)
@@ -577,10 +578,11 @@ def _mmr_rerank_generic(
 
         selected.append(remaining.pop(best_idx))
 
-    logger.debug(
+    logger.info(
         MEMORY_DIVERSITY_RERANKED,
         input_count=len(scored),
         diversity_lambda=diversity_lambda,
+        similarity="custom",
     )
 
     return tuple(selected)

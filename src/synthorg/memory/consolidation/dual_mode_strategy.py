@@ -120,7 +120,7 @@ class DualModeConsolidationStrategy:
         )
 
         removed_ids: list[NotBlankStr] = []
-        summary_id: NotBlankStr | None = None
+        summary_ids: list[NotBlankStr] = []
         mode_assignments: list[ArchivalModeAssignment] = []
 
         sorted_entries = sorted(entries, key=attrgetter("category"))
@@ -135,14 +135,13 @@ class DualModeConsolidationStrategy:
                 group,
                 agent_id,
             )
-            if summary_id is None:
-                summary_id = new_id
+            summary_ids.append(new_id)
             removed_ids.extend(group_removed)
             mode_assignments.extend(group_modes)
 
         result = ConsolidationResult(
             removed_ids=tuple(removed_ids),
-            summary_id=summary_id,
+            summary_ids=tuple(summary_ids),
             mode_assignments=tuple(mode_assignments),
         )
 

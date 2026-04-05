@@ -255,34 +255,16 @@ class ContextInjectionStrategy:
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ChatMessage, ...]:
-        """Execute the retrieval → rank → format pipeline.
-
-        Args:
-            agent_id: Agent identifier.
-            query_text: Semantic search text.
-            token_budget: Token budget.
-            categories: Category filter.
-
-        Returns:
-            Formatted memory messages.
-        """
+        """Execute the retrieval → rank → filter → diversity → format pipeline."""
         query = MemoryQuery(
             text=query_text,
             categories=categories,
             limit=self._config.max_memories,
         )
-
         if self._config.fusion_strategy == FusionStrategy.RRF:
-            ranked = await self._execute_rrf_pipeline(
-                agent_id=agent_id,
-                query=query,
-            )
+            ranked = await self._execute_rrf_pipeline(agent_id=agent_id, query=query)
         else:
-            ranked = await self._execute_linear_pipeline(
-                agent_id=agent_id,
-                query=query,
-            )
-
+            ranked = await self._execute_linear_pipeline(agent_id=agent_id, query=query)
         if not ranked:
             logger.info(
                 MEMORY_RETRIEVAL_SKIPPED,
@@ -290,61 +272,20 @@ class ContextInjectionStrategy:
                 reason="all below min_relevance",
             )
             return ()
-
-        # Filter BEFORE diversity re-ranking so that entries excluded by
-        # the privacy/non-inferability filter are not used as MMR anchors.
-        # Anchoring on filtered-out entries would suppress diverse but
-        # visible candidates that happen to be textually similar to them.
-        if self._memory_filter is not None:
-            try:
-                ranked = self._memory_filter.filter_for_injection(ranked)
-            except builtins.MemoryError, RecursionError:
-                logger.error(
-                    MEMORY_RETRIEVAL_DEGRADED,
-                    source="memory_filter",
-                    agent_id=agent_id,
-                    error_type="system",
-                    exc_info=True,
-                )
-                raise
-            except Exception as exc:
-                # Fail closed: a filter failure must not silently
-                # bypass a privacy / non-inferability filter.  Callers
-                # that configured a filter rely on it; if it raises we
-                # return nothing rather than leaking unfiltered memories.
-                logger.error(
-                    MEMORY_RETRIEVAL_DEGRADED,
-                    source="memory_filter",
-                    agent_id=agent_id,
-                    error_type=type(exc).__qualname__,
-                    filter_strategy=getattr(
-                        self._memory_filter, "strategy_name", "unknown"
-                    ),
-                    reason="filter_failed_failing_closed",
-                    exc_info=True,
-                )
-                return ()
-            if not ranked:
-                logger.info(
-                    MEMORY_RETRIEVAL_SKIPPED,
-                    agent_id=agent_id,
-                    reason="all filtered by memory filter",
-                )
-                return ()
-
+        ranked = self._filter_or_fail_closed(ranked, agent_id=agent_id)
+        if not ranked:
+            return ()
         if self._config.diversity_penalty_enabled:
             ranked = apply_diversity_penalty(
                 ranked,
                 diversity_lambda=self._config.diversity_lambda,
             )
-
         result = format_memory_context(
             ranked,
             estimator=self._estimator,
             token_budget=token_budget,
             injection_point=self._config.injection_point,
         )
-
         logger.info(
             MEMORY_RETRIEVAL_COMPLETE,
             agent_id=agent_id,
@@ -352,8 +293,60 @@ class ContextInjectionStrategy:
             messages_produced=len(result),
             fusion_strategy=self._config.fusion_strategy.value,
         )
-
         return result
+
+    def _filter_or_fail_closed(
+        self,
+        ranked: tuple[ScoredMemory, ...],
+        *,
+        agent_id: NotBlankStr,
+    ) -> tuple[ScoredMemory, ...]:
+        """Apply the configured memory filter, failing closed on errors.
+
+        Runs BEFORE diversity re-ranking so entries excluded by the
+        privacy/non-inferability filter are not used as MMR anchors --
+        anchoring on filtered-out entries would suppress diverse but
+        visible candidates textually similar to them.
+
+        Fail-closed semantics: if the filter raises a non-system
+        exception, we log at ERROR and return ``()`` rather than leak
+        unfiltered memories.  System errors (``MemoryError``,
+        ``RecursionError``) propagate.  When no filter is configured,
+        ``ranked`` is returned unchanged.
+        """
+        if self._memory_filter is None:
+            return ranked
+        try:
+            filtered = self._memory_filter.filter_for_injection(ranked)
+        except builtins.MemoryError, RecursionError:
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="memory_filter",
+                agent_id=agent_id,
+                error_type="system",
+                exc_info=True,
+            )
+            raise
+        except Exception as exc:
+            logger.error(
+                MEMORY_RETRIEVAL_DEGRADED,
+                source="memory_filter",
+                agent_id=agent_id,
+                error_type=type(exc).__qualname__,
+                filter_strategy=getattr(
+                    self._memory_filter, "strategy_name", "unknown"
+                ),
+                reason="filter_failed_failing_closed",
+                exc_info=True,
+            )
+            return ()
+        if not filtered:
+            logger.info(
+                MEMORY_RETRIEVAL_SKIPPED,
+                agent_id=agent_id,
+                reason="all filtered by memory filter",
+            )
+        return filtered
 
     async def _execute_linear_pipeline(
         self,
