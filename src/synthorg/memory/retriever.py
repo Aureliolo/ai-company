@@ -291,12 +291,10 @@ class ContextInjectionStrategy:
             )
             return ()
 
-        if self._config.diversity_penalty_enabled:
-            ranked = apply_diversity_penalty(
-                ranked,
-                diversity_lambda=self._config.diversity_lambda,
-            )
-
+        # Filter BEFORE diversity re-ranking so that entries excluded by
+        # the privacy/non-inferability filter are not used as MMR anchors.
+        # Anchoring on filtered-out entries would suppress diverse but
+        # visible candidates that happen to be textually similar to them.
         if self._memory_filter is not None:
             try:
                 ranked = self._memory_filter.filter_for_injection(ranked)
@@ -333,6 +331,12 @@ class ContextInjectionStrategy:
                     reason="all filtered by memory filter",
                 )
                 return ()
+
+        if self._config.diversity_penalty_enabled:
+            ranked = apply_diversity_penalty(
+                ranked,
+                diversity_lambda=self._config.diversity_lambda,
+            )
 
         result = format_memory_context(
             ranked,

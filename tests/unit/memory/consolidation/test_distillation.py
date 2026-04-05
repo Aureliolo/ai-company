@@ -328,4 +328,4 @@ class TestCaptureDistillation:
         assert store_request.metadata.source == "distillation"
         assert "distillation" in store_request.metadata.tags
         assert "Trajectory:" in store_request.content
-        assert "Memory lookups: 1" in store_request.content
+        assert "Memory lookups: search_memory" in store_request.content

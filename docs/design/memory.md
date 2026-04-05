@@ -738,10 +738,12 @@ the agent during execution.
     1. `MemoryBackend.retrieve()` -- fetch candidate memories (dense vector search)
     2. Rank by relevance + recency via linear combination
     3. Filter by `min_relevance` threshold
-    4. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`
+    4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content (fails **closed** on filter exceptions: returns empty to avoid bypassing privacy filters)
+    5. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`
        -- balances relevance vs redundancy via Maximal Marginal Relevance with
-       word-bigram Jaccard similarity (see **Diversity Re-ranking** below)
-    5. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content (fails **closed** on filter exceptions: returns empty to avoid bypassing privacy filters)
+       word-bigram Jaccard similarity (see **Diversity Re-ranking** below).
+       Filtering runs first so excluded entries do not act as MMR anchors and
+       suppress diverse-but-visible candidates.
     6. Greedy token-budget packing
     7. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
 
@@ -754,8 +756,8 @@ the agent during execution.
     2. Sparse BM25 search: `MemoryBackend.retrieve_sparse()` for personal (shared sparse disabled until `SharedKnowledgeStore` adds the method)
     3. Fuse via `fuse_ranked_lists()` with configurable `rrf_k` smoothing constant
     4. Post-RRF `min_relevance` filter on `combined_score`
-    5. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`
-    6. Apply `MemoryFilterStrategy` (optional, fails closed)
+    5. Apply `MemoryFilterStrategy` (optional, fails closed)
+    6. **Optional MMR diversity re-ranking** when `diversity_penalty_enabled: true`
     7. Greedy token-budget packing
     8. Format as `ChatMessage`
 
@@ -793,7 +795,10 @@ the agent during execution.
 
     When `diversity_penalty_enabled: true` is set on the config, the
     `ContextInjectionStrategy` pipeline runs `apply_diversity_penalty()` after
-    ranking and before filtering.  The re-ranker uses Maximal Marginal Relevance:
+    filtering and before token-budget packing.  Running the filter first ensures
+    that privacy-excluded entries are not used as MMR anchors (which could
+    otherwise suppress visible candidates that happen to be textually similar to
+    excluded ones).  The re-ranker uses Maximal Marginal Relevance:
 
         MMR(candidate) = lambda * combined_score - (1 - lambda) * max_sim_to_selected
 

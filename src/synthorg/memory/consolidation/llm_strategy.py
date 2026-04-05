@@ -205,15 +205,45 @@ class LLMConsolidationStrategy:
                         for category, group in groups_to_process
                     ]
             # TaskGroup wraps task exceptions in ExceptionGroup.
-            # Unwrap single exceptions so callers see the original
-            # error type they would have seen from sequential processing.
+            # Log the full group before unwrapping so operators can
+            # diagnose multi-task failures, then re-raise the first
+            # exception so callers see the original error type they
+            # would have seen from sequential processing.
             except* MemoryError as eg:
+                logger.error(
+                    LLM_STRATEGY_FALLBACK,
+                    agent_id=agent_id,
+                    reason="task_group_memory_error",
+                    exception_count=len(eg.exceptions),
+                    exc_info=True,
+                )
                 raise eg.exceptions[0] from eg
             except* RecursionError as eg:
+                logger.error(
+                    LLM_STRATEGY_FALLBACK,
+                    agent_id=agent_id,
+                    reason="task_group_recursion_error",
+                    exception_count=len(eg.exceptions),
+                    exc_info=True,
+                )
                 raise eg.exceptions[0] from eg
             except* ProviderError as eg:
+                logger.error(
+                    LLM_STRATEGY_FALLBACK,
+                    agent_id=agent_id,
+                    reason="task_group_provider_error",
+                    exception_count=len(eg.exceptions),
+                    exc_info=True,
+                )
                 raise eg.exceptions[0] from eg
             except* Exception as eg:
+                logger.error(
+                    LLM_STRATEGY_FALLBACK,
+                    agent_id=agent_id,
+                    reason="task_group_unexpected_error",
+                    exception_count=len(eg.exceptions),
+                    exc_info=True,
+                )
                 raise eg.exceptions[0] from eg
             group_results = [task.result() for task in tasks]
 

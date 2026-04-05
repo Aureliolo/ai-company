@@ -193,10 +193,11 @@ async def capture_distillation(
             created_at=datetime.now(UTC),
         )
 
+        tool_names = ", ".join(tool_invocations) if tool_invocations else "none"
         store_content = (
             f"Distillation: {outcome}\n"
             f"Trajectory: {trajectory}\n"
-            f"Memory lookups: {len(tool_invocations)}"
+            f"Memory lookups: {tool_names}"
         )
 
         store_request = MemoryStoreRequest(
