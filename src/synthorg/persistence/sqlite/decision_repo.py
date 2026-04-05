@@ -201,13 +201,24 @@ class SQLiteDecisionRepository:
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
             dict(metadata or {})
         )
+        # Reject naive datetimes explicitly.  The parameter type is
+        # ``AwareDatetime``, which Pydantic validates at model
+        # boundaries -- but this function accepts it as a raw
+        # argument, so there's no runtime enforcement until the
+        # draft ``DecisionRecord`` is constructed.  A naive datetime
+        # passed through ``astimezone(UTC)`` would silently convert
+        # assuming local time, producing a timestamp that disagrees
+        # with the caller's actual wall clock.  Fail fast instead.
+        if recorded_at.tzinfo is None:
+            msg = (
+                f"recorded_at must be timezone-aware, got a naive "
+                f"datetime for decision record {record_id!r}"
+            )
+            raise ValueError(msg)
         # Normalize recorded_at to UTC up-front so the draft record,
         # the INSERT parameters, and any subsequent read-back through
         # ``get``/``list_by_task``/``list_by_agent`` all carry the same
-        # timestamp.  Without this, a non-UTC input would cause
-        # ``append_with_next_version`` to return a record whose
-        # ``recorded_at`` disagrees with what ``get(record_id)`` later
-        # reads back from the UTC-normalized row.
+        # timestamp.
         recorded_at_utc = recorded_at.astimezone(UTC)
         try:
             draft_record = DecisionRecord(

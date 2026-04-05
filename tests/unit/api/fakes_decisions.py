@@ -6,6 +6,7 @@ the 800-line budget.  ``FakeDecisionRepository`` is re-exported from
 continue to work.
 """
 
+from copy import deepcopy
 from datetime import UTC
 from types import MappingProxyType
 
@@ -55,12 +56,33 @@ class FakeDecisionRepository:
         if record_id in self._records:
             msg = f"Duplicate decision record {record_id!r}"
             raise DuplicateRecordError(msg)
+        # Reject naive datetimes explicitly to match the production
+        # ``SQLiteDecisionRepository`` contract (see
+        # ``synthorg/persistence/sqlite/decision_repo.py``).
+        if recorded_at.tzinfo is None:
+            msg = (
+                f"recorded_at must be timezone-aware, got a naive "
+                f"datetime for decision record {record_id!r}"
+            )
+            raise ValueError(msg)
         next_version = (
             max(
                 (r.version for r in self._records.values() if r.task_id == task_id),
                 default=0,
             )
             + 1
+        )
+        # Deep-copy the metadata (matching production behavior where
+        # ``_build_insert_params`` serializes via json.dumps, yielding
+        # an independent snapshot) so mutations to the caller's dict
+        # do not leak into the stored record.  Wrapping in
+        # ``MappingProxyType`` then blocks direct
+        # ``record.metadata["k"] = ...`` mutation.  The
+        # ``DecisionRecord`` field validator recursively freezes
+        # nested containers; we only need to make sure a shared-ref
+        # original dict cannot be aliased here.
+        snapshot_metadata: MappingProxyType[str, object] = MappingProxyType(
+            deepcopy(dict(metadata or {}))
         )
         # Normalize recorded_at to UTC to match
         # ``SQLiteDecisionRepository.append_with_next_version``; tests
@@ -78,7 +100,7 @@ class FakeDecisionRepository:
             criteria_snapshot=criteria_snapshot,
             recorded_at=recorded_at.astimezone(UTC),
             version=next_version,
-            metadata=MappingProxyType(dict(metadata or {})),
+            metadata=snapshot_metadata,
         )
         self._records[record_id] = record
         return record
