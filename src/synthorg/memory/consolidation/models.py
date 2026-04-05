@@ -87,11 +87,14 @@ class ConsolidationResult(BaseModel):
             one-element tuple; strategies that produce per-group
             summaries (e.g. ``LLMConsolidationStrategy``) populate one
             entry per group so callers see every summary, not just the
-            last one.
+            last one.  Callers that previously passed a scalar
+            ``summary_id=`` keyword (now a derived ``@computed_field``)
+            will hit a hard ``ValidationError`` because the model uses
+            ``extra='forbid'`` -- no silent data loss.
         summary_id: Derived from ``summary_ids[-1]`` when any summary
             was produced, otherwise ``None``.  Kept as a
-            ``@computed_field`` for backward compatibility with callers
-            reading a single representative id.
+            ``@computed_field`` so callers that only need a single
+            representative id keep working.
         archived_count: Number of entries archived.
         consolidated_count: Derived from ``len(removed_ids)``.
         mode_assignments: Per-entry archival mode assignments (set by
@@ -100,7 +103,7 @@ class ConsolidationResult(BaseModel):
             (built by service after archival completes).
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     removed_ids: tuple[NotBlankStr, ...] = Field(
         default=(),

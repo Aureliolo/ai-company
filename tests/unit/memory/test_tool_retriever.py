@@ -688,22 +688,43 @@ class TestMergeResults:
         ids = [e.id for e in result]
         assert ids == ["a", "b"]
 
-    def test_higher_relevance_wins_on_collision(self) -> None:
-        low = _make_entry(entry_id="dup", relevance_score=0.3)
-        high = _make_entry(entry_id="dup", relevance_score=0.9)
-        result = _merge_results((low,), (high,))
+    @pytest.mark.parametrize(
+        ("existing_rel", "new_rel", "expected_rel"),
+        [
+            # Higher relevance wins regardless of which side it came from.
+            pytest.param(0.3, 0.9, 0.9, id="new_wins"),
+            pytest.param(0.9, 0.3, 0.9, id="existing_wins"),
+            # None on either side is treated as 0.0.
+            pytest.param(None, 0.1, 0.1, id="none_existing_vs_scored_new"),
+            pytest.param(0.1, None, 0.1, id="scored_existing_vs_none_new"),
+            # Exact tie keeps the existing entry (first-seen wins).
+            pytest.param(0.5, 0.5, 0.5, id="tie_keeps_existing"),
+        ],
+    )
+    def test_collision_keeps_higher_relevance(
+        self,
+        existing_rel: float | None,
+        new_rel: float | None,
+        expected_rel: float,
+    ) -> None:
+        existing = _make_entry(entry_id="dup", relevance_score=existing_rel)
+        new = _make_entry(entry_id="dup", relevance_score=new_rel)
+        result = _merge_results((existing,), (new,))
         assert len(result) == 1
-        assert result[0].relevance_score == 0.9
+        assert result[0].relevance_score == expected_rel
 
-    def test_existing_wins_when_new_is_lower(self) -> None:
-        high = _make_entry(entry_id="dup", relevance_score=0.9)
-        low = _make_entry(entry_id="dup", relevance_score=0.3)
-        result = _merge_results((high,), (low,))
-        assert len(result) == 1
-        assert result[0].relevance_score == 0.9
+    def test_merge_reorders_by_relevance(self) -> None:
+        """Merged output is sorted by relevance so later rounds can surface.
 
-    def test_none_relevance_treated_as_zero(self) -> None:
-        none_rel = _make_entry(entry_id="dup", relevance_score=None)
-        with_rel = _make_entry(entry_id="dup", relevance_score=0.1)
-        result = _merge_results((none_rel,), (with_rel,))
-        assert result[0].relevance_score == 0.1
+        Regression guard against the "first-round wins" merge policy
+        that prevented Search-and-Ask from surfacing improved matches
+        in reformulation rounds.
+        """
+        low_first = _make_entry(entry_id="low", relevance_score=0.2)
+        high_later = _make_entry(entry_id="high", relevance_score=0.9)
+        result = _merge_results((low_first,), (high_later,))
+        ids = [e.id for e in result]
+        assert ids == ["high", "low"], (
+            "merge must sort by relevance so later unseen high-relevance "
+            f"entries displace earlier low-relevance ones; got {ids}"
+        )

@@ -1,14 +1,16 @@
 """Integration tests for ``ContextInjectionStrategy`` diversity re-ranking.
 
-These tests verify that the retrieval pipeline actually wires
+Verifies that the retrieval pipeline actually wires
 ``apply_diversity_penalty`` into ``_execute_pipeline`` when
-``diversity_penalty_enabled=True``, and that ordering is not equivalent
-to the plain relevance sort.  Kept in a dedicated file (split from
-``test_retriever.py``) to avoid growing the already-over-800-line main
-file.
+``diversity_penalty_enabled=True``.  Uses ``monkeypatch`` to stub the
+diversity function directly so the test does not depend on the
+tie-breaking details of the real MMR algorithm.  Kept in a dedicated
+file (split from ``test_retriever.py``) to avoid growing the
+already-over-800-line main file.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -47,121 +49,121 @@ def _make_backend(entries: tuple[MemoryEntry, ...]) -> AsyncMock:
 class TestDiversityPenaltyPipelineIntegration:
     """End-to-end wiring of ``diversity_penalty_enabled`` in the pipeline."""
 
-    async def test_diversity_penalty_changes_order_vs_disabled(self) -> None:
-        """MMR promotes a diverse candidate above a near-duplicate.
+    async def test_diversity_penalty_enabled_invokes_mmr_and_respects_ordering(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MMR is invoked and its output ordering is respected.
 
-        Two entries have identical high relevance scores and nearly
-        identical content.  A third has slightly lower relevance but
-        completely different content.  With diversity disabled the
-        output follows relevance ordering (both near-duplicates first,
-        distinct last).  With diversity enabled, MMR should promote the
-        distinct entry above at least one of the near-duplicates so the
-        returned order is not identical to the relevance-only order.
+        Installs a stub ``apply_diversity_penalty`` that (a) records
+        its call arguments and (b) reverses the input order, then
+        asserts both.  Stubbing avoids dependency on the tie-breaking
+        details of the real MMR algorithm while still proving the
+        pipeline calls the right function with the right parameters
+        and uses its output.
         """
-        e_shared_a = _make_entry(
-            entry_id="shared-a",
-            content="shared foo bar common phrase",
+        e_alpha = _make_entry(
+            entry_id="alpha",
+            content="first alpha content",
             relevance_score=0.9,
         )
-        e_shared_b = _make_entry(
-            entry_id="shared-b",
-            content="shared foo bar common phrase alt",
-            relevance_score=0.9,
+        e_beta = _make_entry(
+            entry_id="beta",
+            content="second beta content",
+            relevance_score=0.8,
         )
-        e_distinct = _make_entry(
-            entry_id="distinct",
-            content="alpha beta gamma delta",
-            relevance_score=0.85,
+        e_gamma = _make_entry(
+            entry_id="gamma",
+            content="third gamma content",
+            relevance_score=0.7,
         )
-        entries = (e_shared_a, e_shared_b, e_distinct)
+        entries = (e_alpha, e_beta, e_gamma)
 
-        disabled_config = MemoryRetrievalConfig(
-            diversity_penalty_enabled=False,
-            min_relevance=0.0,
-            max_memories=20,
+        calls: list[tuple[int, float]] = []
+
+        def _stub_diversity_penalty(
+            scored: Any,
+            *,
+            diversity_lambda: float,
+            similarity_fn: Any = None,
+        ) -> Any:
+            del similarity_fn  # intentionally unused in the stub
+            calls.append((len(scored), diversity_lambda))
+            return tuple(reversed(scored))
+
+        monkeypatch.setattr(
+            "synthorg.memory.retriever.apply_diversity_penalty",
+            _stub_diversity_penalty,
         )
-        disabled_strategy = ContextInjectionStrategy(
+
+        strategy = ContextInjectionStrategy(
             backend=_make_backend(entries),
-            config=disabled_config,
+            config=MemoryRetrievalConfig(
+                diversity_penalty_enabled=True,
+                diversity_lambda=0.4,
+                min_relevance=0.0,
+                max_memories=20,
+            ),
         )
-        disabled_messages = await disabled_strategy.prepare_messages(
+        messages = await strategy.prepare_messages(
             "agent-1", "query", token_budget=2000
         )
 
-        enabled_config = MemoryRetrievalConfig(
-            diversity_penalty_enabled=True,
-            diversity_lambda=0.3,
-            min_relevance=0.0,
-            max_memories=20,
-        )
-        enabled_strategy = ContextInjectionStrategy(
-            backend=_make_backend(entries),
-            config=enabled_config,
-        )
-        enabled_messages = await enabled_strategy.prepare_messages(
-            "agent-1", "query", token_budget=2000
-        )
+        assert calls, "enabled pipeline did not call apply_diversity_penalty"
+        assert calls[0] == (3, 0.4)
 
-        assert disabled_messages, "disabled pipeline produced no messages"
-        assert enabled_messages, "enabled pipeline produced no messages"
-
-        disabled_content = "\n".join((m.content or "") for m in disabled_messages)
-        enabled_content = "\n".join((m.content or "") for m in enabled_messages)
-
-        def _position(content: str, needle: str) -> int:
-            pos = content.find(needle)
-            assert pos >= 0, f"expected {needle!r} in {content!r}"
-            return pos
-
-        disabled_distinct_pos = _position(disabled_content, "alpha beta gamma")
-        # The two shared entries share the "shared foo bar common phrase"
-        # prefix; use the unique "alt" suffix to locate shared-b deterministically.
-        disabled_shared_b_pos = _position(
-            disabled_content, "shared foo bar common phrase alt"
-        )
-        enabled_distinct_pos = _position(enabled_content, "alpha beta gamma")
-        enabled_shared_a_pos = enabled_content.find("shared foo bar common phrase\n")
-
-        # With diversity DISABLED the distinct entry (lower relevance)
-        # sits after the near-duplicate pair (natural relevance order).
-        assert disabled_distinct_pos > disabled_shared_b_pos, (
-            "disabled pipeline should preserve relevance ordering: "
-            f"distinct should come AFTER shared-b\n{disabled_content}"
+        content = "\n".join((m.content or "") for m in messages)
+        alpha_pos = content.find("first alpha")
+        beta_pos = content.find("second beta")
+        gamma_pos = content.find("third gamma")
+        assert alpha_pos >= 0
+        assert beta_pos >= 0
+        assert gamma_pos >= 0
+        # Stub reversed the order so gamma now comes before alpha.
+        assert gamma_pos < beta_pos < alpha_pos, (
+            "Pipeline must respect the MMR output ordering, not the "
+            f"original relevance order.  Got:\n{content}"
         )
 
-        # With diversity ENABLED the distinct entry is promoted above at
-        # least one shared duplicate (MMR picks it second, ahead of the
-        # near-duplicate it would otherwise rank identically).
-        assert enabled_shared_a_pos >= 0, (
-            f"expected 'shared-a' content in enabled output\n{enabled_content}"
-        )
-        assert enabled_distinct_pos < enabled_shared_a_pos, (
-            "MMR should promote the diverse entry above the second "
-            f"near-duplicate.  Got:\n{enabled_content}"
-        )
+    async def test_diversity_penalty_disabled_does_not_invoke_mmr(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pipeline must not call ``apply_diversity_penalty`` when the flag is off.
 
-        # And the enabled vs disabled orderings must differ.
-        assert enabled_content != disabled_content
-
-    async def test_diversity_penalty_disabled_skips_mmr(self) -> None:
-        """Pipeline must not call ``apply_diversity_penalty`` when the flag is off."""
+        Installs a stub that raises if invoked, so any accidental call
+        during the disabled path fails the test loudly (rather than
+        silently returning a re-ordered tuple that happens to match
+        the disabled-path expectation).
+        """
         entries = (
             _make_entry(entry_id="a", content="one two three", relevance_score=0.9),
             _make_entry(entry_id="b", content="four five six", relevance_score=0.8),
         )
-        config = MemoryRetrievalConfig(
-            diversity_penalty_enabled=False,
-            min_relevance=0.0,
+
+        _disabled_mmr_msg = (
+            "apply_diversity_penalty must not be called when "
+            "diversity_penalty_enabled=False"
         )
+
+        def _boom(*args: Any, **kwargs: Any) -> Any:
+            del args, kwargs  # intentionally unused
+            raise AssertionError(_disabled_mmr_msg)
+
+        monkeypatch.setattr(
+            "synthorg.memory.retriever.apply_diversity_penalty",
+            _boom,
+        )
+
         strategy = ContextInjectionStrategy(
             backend=_make_backend(entries),
-            config=config,
+            config=MemoryRetrievalConfig(
+                diversity_penalty_enabled=False,
+                min_relevance=0.0,
+            ),
         )
         messages = await strategy.prepare_messages(
             "agent-1", "query", token_budget=2000
         )
         content = "\n".join((m.content or "") for m in messages)
-        # Both entries present in original order.
         pos_a = content.find("one two three")
         pos_b = content.find("four five six")
         assert pos_a >= 0

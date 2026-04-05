@@ -724,10 +724,12 @@ class TestLLMConsolidationStrategyDetails:
         )
         await strategy.consolidate(entries, agent_id="agent-1")
 
-        # Backend was queried with the 5-entry cap, not an unbounded limit.
+        # Backend query uses an over-fetch factor so the local sort by
+        # created_at has enough candidates to pick the N most recent;
+        # the final slice still caps at _MAX_TRAJECTORY_CONTEXT_ENTRIES.
         retrieve_args = backend.retrieve.call_args
         query = retrieve_args[0][1]
-        assert query.limit == _MAX_TRAJECTORY_CONTEXT_ENTRIES
+        assert query.limit >= _MAX_TRAJECTORY_CONTEXT_ENTRIES
 
         # The embedded snippet was truncated to the per-entry char cap.
         messages = provider.complete.call_args[0][0]

@@ -328,11 +328,21 @@ class LLMConsolidationStrategy:
         if not self._include_distillation_context:
             return ()
         try:
+            # Backend.retrieve is relevance-ordered by contract; sort
+            # locally by created_at descending and slice to the N most
+            # recent entries so the synthesis prompt sees the latest
+            # trajectory context regardless of backend ordering.
             query = MemoryQuery(
                 tags=(_DISTILLATION_TAG,),
-                limit=_MAX_TRAJECTORY_CONTEXT_ENTRIES,
+                limit=_MAX_TRAJECTORY_CONTEXT_ENTRIES * 4,
             )
-            return await self._backend.retrieve(agent_id, query)
+            raw = await self._backend.retrieve(agent_id, query)
+            by_recency = sorted(
+                raw,
+                key=attrgetter("created_at"),
+                reverse=True,
+            )
+            return tuple(by_recency[:_MAX_TRAJECTORY_CONTEXT_ENTRIES])
         except MemoryError, RecursionError:
             logger.error(
                 LLM_STRATEGY_ERROR,
@@ -368,6 +378,11 @@ class LLMConsolidationStrategy:
         no originals are deleted and the caller sees the exception
         without losing any data.
 
+        When ``_build_user_prompt`` truncates the input (total char cap
+        reached), only the entries that were actually summarized are
+        eligible for deletion -- dropped entries remain in the backend
+        so their facts are not lost on the next consolidation pass.
+
         If the store succeeds but some individual deletes fail, the
         affected originals remain alongside the summary (duplicated
         data, recoverable on the next consolidation pass).
@@ -376,7 +391,7 @@ class LLMConsolidationStrategy:
             Tuple of (summary_id, removed_ids).
         """
         _, to_remove = self._select_entries(group)
-        synthesized, used_llm = await self._synthesize(
+        synthesized, used_llm, summarized = await self._synthesize(
             to_remove,
             agent_id=agent_id,
             category=category,
@@ -393,13 +408,13 @@ class LLMConsolidationStrategy:
                 LLM_STRATEGY_SYNTHESIZED,
                 agent_id=agent_id,
                 category=category.value,
-                entry_count=len(to_remove),
+                entry_count=len(summarized),
                 summary_id=new_id,
                 model=self._model,
                 trajectory_context_count=len(trajectory_context),
             )
         removed_ids = await self._delete_consolidated(
-            to_remove,
+            summarized,
             agent_id=agent_id,
             category=category,
         )
@@ -475,7 +490,7 @@ class LLMConsolidationStrategy:
         agent_id: NotBlankStr,
         category: MemoryCategory,
         trajectory_context: tuple[MemoryEntry, ...],
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, list[MemoryEntry]]:
         """Synthesize multiple entries into a single summary via LLM.
 
         The per-entry content is truncated to ``_MAX_ENTRY_INPUT_CHARS``
@@ -486,18 +501,26 @@ class LLMConsolidationStrategy:
         distillation entry trajectories are included in the system
         prompt.
 
-        Returns a ``(summary, used_llm)`` pair so the caller can tag
-        the stored entry correctly.  ``used_llm`` is ``True`` only when
-        the LLM returned non-empty content; any fallback path returns
-        ``False``.
+        Returns a ``(summary, used_llm, summarized_entries)`` triple:
 
-        Fallback paths (return ``(fallback, False)``):
-            - ``RetryExhaustedError`` (all retries exhausted)
-            - Retryable ``ProviderError`` surfaced directly (tests,
-              edge configurations that bypass the retry handler)
-            - Empty or whitespace-only LLM response
-            - Unexpected non-``ProviderError`` exception (logged WARNING
-              with full traceback)
+        - ``summary`` is the text to store on the backend.
+        - ``used_llm`` is ``True`` only when the LLM returned non-empty
+          content; any fallback path returns ``False``.
+        - ``summarized_entries`` is the subset of ``entries`` that was
+          actually represented in the summary.  When the user prompt is
+          truncated at ``_MAX_TOTAL_USER_CONTENT_CHARS``, dropped
+          entries are NOT in this list and the caller MUST NOT delete
+          them (they remain on the backend for the next consolidation
+          pass).
+
+        Fallback paths (return ``(fallback, False, entries)``):
+
+        - ``RetryExhaustedError`` (all retries exhausted)
+        - Retryable ``ProviderError`` surfaced directly (tests,
+          edge configurations that bypass the retry handler)
+        - Empty or whitespace-only LLM response
+        - Unexpected non-``ProviderError`` exception (logged WARNING
+          with full traceback)
 
         Non-retryable ``ProviderError`` subclasses are logged at ERROR
         and propagated to the caller.
@@ -510,27 +533,32 @@ class LLMConsolidationStrategy:
                 context (may be empty).
 
         Returns:
-            ``(summary, used_llm)`` tuple.
+            ``(summary, used_llm, summarized_entries)`` triple.
         """
-        user_content = self._build_user_prompt(entries, agent_id, category)
+        user_content, summarized = self._build_user_prompt(entries, agent_id, category)
         system_prompt = self._build_system_prompt(trajectory_context)
         response_content = await self._call_llm(
             system_prompt,
             user_content,
             agent_id=agent_id,
             category=category,
-            entry_count=len(entries),
+            entry_count=len(summarized),
         )
         if response_content is not None:
-            return response_content, True
-        return self._fallback_summary(entries), False
+            return response_content, True, summarized
+        # Fallback path: concatenate every input entry (no truncation
+        # tradeoffs on the concat path -- a terse per-entry summary is
+        # safe even for oversized groups), and allow the caller to
+        # delete all of them since each one is represented in the
+        # concatenation summary.
+        return self._fallback_summary(entries), False, list(entries)
 
     def _build_user_prompt(
         self,
         entries: list[MemoryEntry],
         agent_id: NotBlankStr,
         category: MemoryCategory,
-    ) -> str:
+    ) -> tuple[str, list[MemoryEntry]]:
         """Build the user prompt with delimiter-escaped entry content.
 
         Each entry is wrapped in ``<entry>...</entry>`` so the model can
@@ -538,11 +566,18 @@ class LLMConsolidationStrategy:
         the tags are escaped so untrusted memory content cannot close
         the delimiter.  The total concatenated length is capped at
         ``_MAX_TOTAL_USER_CONTENT_CHARS``; if the cap is reached,
-        remaining entries are dropped and the truncation is logged.
+        remaining entries are dropped, the truncation is logged, and
+        they are omitted from the returned ``included`` list so the
+        caller can avoid deleting memories that were never summarized.
+
+        Returns:
+            ``(prompt_text, included_entries)`` -- the second element
+            is a list of the entries that actually made it into the
+            prompt, in prompt order.
         """
         parts: list[str] = []
+        included: list[MemoryEntry] = []
         total_chars = 0
-        dropped = 0
         for entry in entries:
             snippet = entry.content[:_MAX_ENTRY_INPUT_CHARS]
             # Escape embedded delimiters so untrusted content cannot
@@ -552,21 +587,22 @@ class LLMConsolidationStrategy:
             )
             piece = f'<entry category="{entry.category.value}">{snippet}</entry>'
             if total_chars + len(piece) > _MAX_TOTAL_USER_CONTENT_CHARS:
-                dropped = len(entries) - len(parts)
                 break
             parts.append(piece)
+            included.append(entry)
             total_chars += len(piece) + 1  # +1 for the joining newline
+        dropped = len(entries) - len(included)
         if dropped > 0:
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
                 agent_id=agent_id,
                 category=category.value,
                 reason="user_prompt_truncated",
-                kept_entries=len(parts),
+                kept_entries=len(included),
                 dropped_entries=dropped,
                 total_chars=total_chars,
             )
-        return "\n".join(parts)
+        return "\n".join(parts), included
 
     async def _call_llm(
         self,

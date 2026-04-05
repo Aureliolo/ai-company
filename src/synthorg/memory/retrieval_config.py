@@ -154,11 +154,13 @@ class MemoryRetrievalConfig(BaseModel):
             "strategy.  When True, ``ToolBasedInjectionStrategy`` "
             "runs a Search-and-Ask loop (retrieve -> check sufficiency "
             "-> reformulate -> re-retrieve) up to "
-            "``max_reformulation_rounds`` rounds.  Requires "
-            "``reformulator`` and ``sufficiency_checker`` to be "
-            "provided at strategy construction; silently no-ops if "
-            "either is missing.  A validator rejects this flag with "
-            "strategies other than TOOL_BASED."
+            "``max_reformulation_rounds`` rounds.  Requires both "
+            "``reformulator`` AND ``sufficiency_checker`` to be passed "
+            "to the strategy constructor -- the constructor raises "
+            "``ValueError`` when the flag is set but either collaborator "
+            "is missing (fail-fast at wiring time rather than silent "
+            "no-op at retrieval time).  A config-level validator also "
+            "rejects this flag with strategies other than TOOL_BASED."
         ),
     )
     max_reformulation_rounds: int = Field(

@@ -470,8 +470,15 @@ def apply_diversity_penalty(
     Raises:
         ValueError: If ``diversity_lambda`` is outside [0.0, 1.0].
     """
-    if diversity_lambda < 0.0 or diversity_lambda > 1.0:
-        msg = f"diversity_lambda must be in [0.0, 1.0], got {diversity_lambda}"
+    if (
+        not math.isfinite(diversity_lambda)
+        or diversity_lambda < 0.0
+        or diversity_lambda > 1.0
+    ):
+        msg = (
+            f"diversity_lambda must be a finite float in [0.0, 1.0], "
+            f"got {diversity_lambda}"
+        )
         logger.warning(
             MEMORY_DIVERSITY_RERANK_FAILED,
             param="diversity_lambda",

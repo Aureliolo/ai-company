@@ -166,38 +166,49 @@ def _merge_results(
     existing: tuple[MemoryEntry, ...],
     new: tuple[MemoryEntry, ...],
 ) -> tuple[MemoryEntry, ...]:
-    """Merge two entry tuples by ID, keeping higher-relevance entries.
+    """Merge two entry tuples by ID and re-sort by relevance.
 
-    Preserves the order of *existing* and appends unseen entries from
-    *new* at the end.  When the same ID appears in both, the entry
-    with the higher ``relevance_score`` is kept (treating ``None`` as
-    ``0.0``).
+    De-duplicates by ``entry.id``, keeping the higher ``relevance_score``
+    copy when the same id appears in both inputs (``None`` treated as
+    ``0.0``).  The returned tuple is sorted by relevance descending so
+    that later reformulation rounds can actually surface better matches
+    even when the first round already hit the tool's ``limit`` -- if we
+    preserved first-round order, later unseen results would always land
+    past the final truncation and Search-and-Ask would have no effect.
+    Ties are broken by first-seen order for determinism.
 
     Args:
-        existing: Current entries (order preserved).
+        existing: Current entries.
         new: New entries to merge in.
 
     Returns:
-        Merged tuple with stable ordering.
+        Merged tuple sorted by relevance (highest first).
     """
+
+    def _rel(entry: MemoryEntry) -> float:
+        return entry.relevance_score if entry.relevance_score is not None else 0.0
+
     merged: dict[str, MemoryEntry] = {}
-    order: list[str] = []
-    for entry in existing:
+    first_seen: dict[str, int] = {}
+    for idx, entry in enumerate(existing):
         merged[entry.id] = entry
-        order.append(entry.id)
+        first_seen.setdefault(entry.id, idx)
 
-    for entry in new:
+    offset = len(existing)
+    for idx, entry in enumerate(new):
         if entry.id in merged:
-            current = merged[entry.id]
-            current_rel = current.relevance_score or 0.0
-            new_rel = entry.relevance_score or 0.0
-            if new_rel > current_rel:
+            if _rel(entry) > _rel(merged[entry.id]):
                 merged[entry.id] = entry
-        else:
-            merged[entry.id] = entry
-            order.append(entry.id)
+            continue
+        merged[entry.id] = entry
+        first_seen[entry.id] = offset + idx
 
-    return tuple(merged[eid] for eid in order)
+    return tuple(
+        sorted(
+            merged.values(),
+            key=lambda e: (-_rel(e), first_seen[e.id]),
+        )
+    )
 
 
 def _truncate_entries(

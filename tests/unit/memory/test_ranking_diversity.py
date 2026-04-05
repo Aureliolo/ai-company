@@ -177,18 +177,44 @@ class TestApplyDiversityPenalty:
         assert result[1].entry.id == "different"
 
     def test_custom_similarity_fn_used(self) -> None:
-        """Custom similarity function is used instead of default."""
-        a = _make_scored(entry_id="a", content="x", combined_score=0.9)
-        b = _make_scored(entry_id="b", content="y", combined_score=0.8)
+        """Custom similarity function is actually consulted by MMR.
 
-        # Custom fn always returns 1.0 (max similarity)
+        For single-word inputs the default bigram Jaccard is ``0.0``,
+        which means an override that also returns ``0.0`` would pass
+        whether it was called or not -- a false positive.  This test
+        uses a spy that records calls and returns a distinguishing
+        value, and then asserts on both the call record and the
+        reordering effect.
+        """
+        a = _make_scored(entry_id="a", content="x", combined_score=0.9)
+        b = _make_scored(entry_id="b", content="y", combined_score=0.89)
+        c = _make_scored(entry_id="c", content="z", combined_score=0.88)
+
+        call_log: list[tuple[str, str]] = []
+
+        def _spy_similarity(left: str, right: str) -> float:
+            call_log.append((left, right))
+            # Make 'b' look like a near-duplicate of 'a' (similarity
+            # 0.99) and 'c' completely orthogonal (similarity 0.0).
+            # With lambda=0.3 this pushes 'c' ahead of 'b' despite
+            # lower combined_score.
+            if {left, right} == {"x", "y"}:
+                return 0.99
+            return 0.0
+
         result = apply_diversity_penalty(
-            (a, b),
-            diversity_lambda=0.5,
-            similarity_fn=lambda _x, _y: 1.0,
+            (a, b, c),
+            diversity_lambda=0.3,
+            similarity_fn=_spy_similarity,
         )
-        assert len(result) == 2
-        assert result[0].entry.id == "a"
+        assert len(result) == 3
+        assert call_log, "custom similarity_fn was never invoked"
+        ids = [r.entry.id for r in result]
+        assert ids[0] == "a", f"'a' should be picked first (highest score): {ids}"
+        assert ids.index("c") < ids.index("b"), (
+            f"MMR should prefer the diverse 'c' over the near-duplicate 'b' "
+            f"when similarity_fn treats them as highly similar: {ids}"
+        )
 
     def test_result_length_equals_input(self) -> None:
         entries = tuple(
