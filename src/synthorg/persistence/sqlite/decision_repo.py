@@ -321,7 +321,9 @@ class SQLiteDecisionRepository:
 
         Keeps ``append_with_next_version`` under the 50-line budget and
         centralizes the error-mapping / rollback logic for the write
-        path.
+        path.  Commit is delayed until AFTER the read-back guard
+        succeeds so a defective fetchone() result never leaves a
+        durable "ghost" row behind.
         """
         try:
             await self._db.execute(_INSERT_SQL, params)
@@ -330,7 +332,6 @@ class SQLiteDecisionRepository:
                 {"id": record_id},
             )
             row = await cursor.fetchone()
-            await self._db.commit()
         except sqlite3.IntegrityError as exc:
             await self._rollback_quietly()
             if _is_unique_constraint_error(exc):
@@ -362,8 +363,11 @@ class SQLiteDecisionRepository:
         if row is None:
             # Defensive: fetchone can return None under aiosqlite's
             # type signature even though a successful INSERT + SELECT
-            # of the same id should always find the row.  Surface the
-            # anomaly loudly rather than silently swallowing it.
+            # of the same id should always find the row.  Roll back
+            # the uncommitted INSERT so no ghost row survives, then
+            # surface the anomaly loudly rather than silently
+            # swallowing it.
+            await self._rollback_quietly()
             msg = (
                 f"Failed to read back decision record {record_id!r} "
                 "immediately after insert"
@@ -376,6 +380,20 @@ class SQLiteDecisionRepository:
                 error=msg,
             )
             raise QueryError(msg)
+        # Only commit once the read-back guard succeeds; a failed
+        # guard would otherwise leave a durable record with no
+        # corresponding service-layer caller signal.
+        try:
+            await self._db.commit()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            await self._rollback_quietly()
+            msg = f"Failed to commit decision record {record_id!r}"
+            logger.exception(
+                PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
+                record_id=record_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         return int(row["version"])
 
     async def _rollback_quietly(self) -> None:
@@ -537,10 +555,15 @@ class SQLiteDecisionRepository:
     def _row_to_record(self, row: dict[str, object]) -> DecisionRecord:
         """Convert a database row to a ``DecisionRecord`` model.
 
-        ``KeyError`` is deliberately NOT caught -- a missing required
-        column indicates schema drift, a programming error that must
-        surface loudly.  Direct ``row["col"]`` access (rather than
-        ``.get()``) on ``NOT NULL`` columns preserves this behavior.
+        A missing required column indicates schema drift, a
+        programming error that must surface loudly as ``KeyError`` --
+        but we now log the missing column name first via
+        ``PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED`` so
+        operators investigating the failure have context before
+        tracing the stack.  The ``KeyError`` is then re-raised
+        unchanged to preserve the existing contract.  Direct
+        ``row["col"]`` access (rather than ``.get()``) on ``NOT NULL``
+        columns keeps the semantics aligned with the schema.
 
         The JSON-encoded ``criteria_snapshot`` column is shape-checked
         after deserialization: a row that somehow stores a non-array
@@ -552,8 +575,18 @@ class SQLiteDecisionRepository:
         """
         try:
             parsed: dict[str, object] = dict(row)
-            raw_criteria = row["criteria_snapshot"]
-            raw_metadata = row["metadata"]
+            try:
+                raw_criteria = row["criteria_snapshot"]
+                raw_metadata = row["metadata"]
+            except KeyError as exc:
+                logger.exception(
+                    PERSISTENCE_DECISION_RECORD_DESERIALIZE_FAILED,
+                    record_id=row.get("id"),
+                    missing_column=str(exc).strip("'\""),
+                    error_type="KeyError",
+                    error=f"schema drift: missing column {exc}",
+                )
+                raise
             if isinstance(raw_criteria, str):
                 decoded_criteria = json.loads(raw_criteria)
                 if not isinstance(decoded_criteria, list):
