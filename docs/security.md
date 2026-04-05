@@ -96,8 +96,14 @@ retain the narrowly-scoped `'unsafe-inline'` permission they need for layout pos
 #### How the nonce flows end-to-end
 
 1. **Generation.** `web/nginx.conf` defines `map $request_id $csp_nonce { default $request_id; }`.
-   nginx's built-in `$request_id` is a cryptographically random 32-hex-character identifier
-   generated per request -- sufficient entropy for CSP use.
+   nginx's built-in `$request_id` is a 32-hex-character (128-bit) pseudo-random identifier
+   generated per request -- sufficient uniqueness for CSP nonce use. When nginx is built
+   against OpenSSL (the case for the Chainguard / nginx-unprivileged distros this project
+   ships), `$request_id` is sourced from `RAND_bytes` and is cryptographically random;
+   on builds without OpenSSL it falls back to a seeded PRNG, which still provides 128-bit
+   uniqueness but is not a CSPRNG. The CSP threat model only requires per-request
+   uniqueness against an attacker who does not observe prior responses, which both paths
+   satisfy.
 2. **Injection.** A server-level `sub_filter '__CSP_NONCE__' '$csp_nonce';` substitutes the
    placeholder inside `web/index.html` at response time, so every HTML response ships with a
    unique nonce in `<meta name="csp-nonce" content="...">`.
