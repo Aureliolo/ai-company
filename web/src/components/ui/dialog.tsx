@@ -25,7 +25,7 @@ export function DialogContent({ className, children }: DialogContentProps) {
   return (
     <BaseDialog.Portal>
       <BaseDialog.Backdrop
-        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-[opacity,backdrop-filter] duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
+        className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
       />
       <BaseDialog.Popup
         className={cn(

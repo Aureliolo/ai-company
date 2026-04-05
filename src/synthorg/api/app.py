@@ -34,6 +34,7 @@ from synthorg.api.auto_wire import (
 )
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
+    CHANNEL_AGENTS,
     CHANNEL_APPROVALS,
     CHANNEL_MEETINGS,
     create_channels_plugin,
@@ -110,7 +111,7 @@ from synthorg.settings.subscribers import (
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import Awaitable, Callable, Coroutine, Sequence
 
     from litestar.channels import ChannelsPlugin
     from litestar.types import Middleware
@@ -206,6 +207,59 @@ def _make_meeting_publisher(
             )
 
     return _on_meeting_event
+
+
+def make_personality_trim_notifier(
+    channels_plugin: ChannelsPlugin,
+) -> Callable[[dict[str, object]], Coroutine[Any, Any, None]]:
+    """Create an async callback that publishes ``personality.trimmed`` events.
+
+    The returned callback matches the ``PersonalityTrimNotifier`` contract in
+    ``synthorg.engine.agent_engine`` and can be passed to ``AgentEngine`` via
+    the ``personality_trim_notifier`` constructor parameter.  It publishes a
+    ``WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED, channel=agents)`` so
+    the dashboard can render a live toast when personality trimming fires.
+
+    External engine runners (CLI workers, Kubernetes jobs, etc.) that host an
+    ``AgentEngine`` should call this factory with their ``ChannelsPlugin``
+    instance and wire the result into the engine constructor.
+
+    Best-effort: publish errors are logged via ``API_WS_SEND_FAILED`` and
+    swallowed so that notification failures never block task execution.
+    ``MemoryError`` and ``RecursionError`` propagate per the project-wide
+    best-effort publisher pattern.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+
+    Returns:
+        Async callback accepting the trim payload dict.
+    """
+
+    async def _on_personality_trimmed(payload: dict[str, object]) -> None:
+        event = WsEvent(
+            event_type=WsEventType.PERSONALITY_TRIMMED,
+            channel=CHANNEL_AGENTS,
+            timestamp=datetime.now(UTC),
+            payload=payload,
+        )
+        try:
+            channels_plugin.publish(
+                event.model_dump_json(),
+                channels=[CHANNEL_AGENTS],
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_WS_SEND_FAILED,
+                note="Failed to publish personality.trimmed WebSocket event",
+                agent_id=payload.get("agent_id"),
+                task_id=payload.get("task_id"),
+                exc_info=True,
+            )
+
+    return _on_personality_trimmed
 
 
 async def _ticket_cleanup_loop(app_state: AppState) -> None:

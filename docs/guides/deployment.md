@@ -133,8 +133,10 @@ The web container sets the following response headers:
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy: geolocation=(), camera=(), microphone=()`
-- `Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'`
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src-elem 'self' 'nonce-$csp_nonce'; style-src-attr 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`
 - `Strict-Transport-Security: max-age=63072000` (2 years)
+
+The CSP uses Level 3 directive splitting: `style-src-elem` locks `<style>` elements to the per-request nonce (injected by nginx `sub_filter` substituting `$request_id` into `<meta name="csp-nonce">`), while `style-src-attr 'unsafe-inline'` covers the transient inline positioning styles set by Floating UI (used internally by Base UI). See [`docs/security.md` → CSP Nonce Infrastructure](../security.md#csp-nonce-infrastructure) for the full flow -- any reverse proxy in front of the web container must preserve `sub_filter` substitution and the matching CSP header, otherwise inline styles will be blocked.
 
 ---
 

@@ -148,7 +148,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
         <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
-            'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
+            'rounded-xl border border-border-bright bg-surface p-card shadow-lg',
             'transition-[opacity,transform,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
@@ -210,7 +210,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
               />
             </FormField>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-grid-gap">
               <FormField label="Type">
                 <select value={form.type} onChange={(e) => updateField('type', e.target.value as TaskType)} className={INPUT_CLASSES}>
                   {TASK_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -224,7 +224,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
               </FormField>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-grid-gap">
               <FormField label="Project" error={errors.project} required>
                 <input type="text" value={form.project} onChange={(e) => updateField('project', e.target.value)} className={INPUT_CLASSES} placeholder="Project name" />
               </FormField>
@@ -234,7 +234,7 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
               </FormField>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-grid-gap">
               <FormField label="Assigned To">
                 <input type="text" value={form.assigned_to} onChange={(e) => updateField('assigned_to', e.target.value)} className={INPUT_CLASSES} placeholder="Agent name (optional)" />
               </FormField>

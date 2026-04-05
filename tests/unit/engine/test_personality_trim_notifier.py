@@ -1,5 +1,6 @@
 """Unit tests for AgentEngine personality-trim WebSocket notifier."""
 
+import asyncio
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
@@ -200,3 +201,68 @@ class TestPersonalityTrimNotifier:
         )
 
         assert result.is_success is True
+
+    async def test_notifier_fires_without_config_resolver(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """When config_resolver is None, the notify setting defaults to enabled.
+
+        Covers the ``self._config_resolver is None`` branch in
+        ``_maybe_notify_personality_trim`` -- without a resolver the default
+        behavior is to fire the notifier (opt-out only via explicit setting).
+        """
+        notifier = AsyncMock()
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(
+            provider=provider,
+            personality_trim_notifier=notifier,
+            # config_resolver intentionally omitted
+        )
+
+        payload: dict[str, object] = {
+            "agent_id": "agent-1",
+            "agent_name": "Test Agent",
+            "task_id": "task-1",
+            "before_tokens": 600,
+            "after_tokens": 200,
+            "max_tokens": 300,
+            "trim_tier": 2,
+            "budget_met": True,
+        }
+        await engine._maybe_notify_personality_trim(payload)
+
+        assert notifier.await_count == 1
+        assert notifier.await_args is not None
+        assert notifier.await_args.args[0] == payload
+
+    async def test_cancelled_error_propagates(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """asyncio.CancelledError raised inside the notifier must propagate.
+
+        BaseException subclasses (CancelledError, MemoryError, RecursionError)
+        must never be swallowed by the best-effort try/except, so that task
+        cancellation propagates correctly through the engine.
+        """
+        notifier = AsyncMock(side_effect=asyncio.CancelledError())
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(
+            provider=provider,
+            personality_trim_notifier=notifier,
+        )
+
+        payload: dict[str, object] = {
+            "agent_id": "agent-1",
+            "agent_name": "Test Agent",
+            "task_id": "task-1",
+            "before_tokens": 600,
+            "after_tokens": 200,
+            "max_tokens": 300,
+            "trim_tier": 2,
+            "budget_met": True,
+        }
+
+        with pytest.raises(asyncio.CancelledError):
+            await engine._maybe_notify_personality_trim(payload)

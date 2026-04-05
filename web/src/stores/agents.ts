@@ -228,8 +228,20 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
       const payload = event.payload as Record<string, unknown>
       const agentId = payload.agent_id
       const status = payload.status
-      if (typeof agentId !== 'string' || typeof status !== 'string') return
-      if (!VALID_RUNTIME_STATUSES.has(status)) return
+      if (typeof agentId !== 'string' || typeof status !== 'string') {
+        log.warn('agent.status_changed payload missing required fields', {
+          hasAgentId: typeof agentId === 'string',
+          hasStatus: typeof status === 'string',
+        })
+        return
+      }
+      if (!VALID_RUNTIME_STATUSES.has(status)) {
+        log.warn('agent.status_changed received unknown status', {
+          status,
+          knownStatuses: [...VALID_RUNTIME_STATUSES],
+        })
+        return
+      }
       set((state) => ({
         runtimeStatuses: {
           ...state.runtimeStatuses,
@@ -240,18 +252,42 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
     }
     if (event.event_type === 'personality.trimmed') {
       const payload = event.payload as Record<string, unknown>
-      const agentName = typeof payload.agent_name === 'string' ? payload.agent_name : 'An agent'
-      const before = typeof payload.before_tokens === 'number' ? payload.before_tokens : null
-      const after = typeof payload.after_tokens === 'number' ? payload.after_tokens : null
+      const agentNameRaw = payload.agent_name
+      const beforeRaw = payload.before_tokens
+      const afterRaw = payload.after_tokens
+
+      const agentName =
+        typeof agentNameRaw === 'string'
+          // Length-bound defence-in-depth: the backend payload is trusted but
+          // bounding the visual blast radius of a malformed or oversized
+          // agent_name is cheap insurance. React escapes text content, so
+          // there is no XSS risk -- this is purely display hygiene.
+          ? agentNameRaw.slice(0, 64)
+          : null
+      const before =
+        typeof beforeRaw === 'number' && Number.isFinite(beforeRaw) ? beforeRaw : null
+      const after =
+        typeof afterRaw === 'number' && Number.isFinite(afterRaw) ? afterRaw : null
+
+      if (agentName === null || before === null || after === null) {
+        log.warn('personality.trimmed payload has missing/invalid fields', {
+          hasAgentName: agentName !== null,
+          hasBeforeTokens: before !== null,
+          hasAfterTokens: after !== null,
+        })
+      }
+
+      const displayName = agentName ?? 'An agent'
       const description =
         before !== null && after !== null
-          ? `${agentName} personality trimmed: ${before} → ${after} tokens`
-          : `${agentName} personality was trimmed to fit token budget`
+          ? `${displayName} personality trimmed: ${before} → ${after} tokens`
+          : `${displayName} personality was trimmed to fit token budget`
       useToastStore.getState().add({
         variant: 'info',
         title: 'Personality trimmed',
         description,
       })
+      return
     }
   },
 }))

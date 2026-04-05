@@ -811,7 +811,23 @@ Trimming metadata is attached to `SystemPrompt.personality_trim_info`
 (`PersonalityTrimInfo` model with `before_tokens`, `after_tokens`,
 `max_tokens`, `trim_tier`, and `budget_met` computed field). Runtime
 settings in the `ENGINE` namespace control trimming
-(`personality_trimming_enabled`, `personality_max_tokens_override`).
+(`personality_trimming_enabled`, `personality_max_tokens_override`,
+`personality_trimming_notify`).
+
+**Dashboard notification**: when trimming activates and
+`personality_trimming_notify` is enabled (default `true`), `AgentEngine`
+publishes a `WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED)` on the
+`agents` WebSocket channel. The payload carries `agent_id`, `agent_name`,
+`task_id`, `before_tokens`, `after_tokens`, `max_tokens`, `trim_tier`, and
+`budget_met`. The dashboard subscribes via the global `useGlobalNotifications`
+hook and renders a live toast so operators see token-budget pressure in
+real time. Publishing is best-effort: failures log
+`prompt.personality.notify_failed` at WARNING and never block task
+execution (`MemoryError`, `RecursionError`, and `asyncio.CancelledError`
+propagate per the standard best-effort publisher contract). Wiring the
+notifier callback is the responsibility of the engine host; API-layer
+integrations use the `synthorg.api.app.make_personality_trim_notifier`
+factory to build a callback bound to the live `ChannelsPlugin`.
 
 ### Tier Flow
 

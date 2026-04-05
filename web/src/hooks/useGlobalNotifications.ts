@@ -1,7 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { useAgentsStore } from '@/stores/agents'
+import { useToastStore } from '@/stores/toast'
+import { createLogger } from '@/lib/logger'
 import type { WsChannel } from '@/api/types'
+
+const log = createLogger('useGlobalNotifications')
 
 /**
  * Subscribe globally to WebSocket channels that drive app-wide notifications.
@@ -10,6 +14,9 @@ import type { WsChannel } from '@/api/types'
  * of which page the user is currently viewing. Dispatches events to the stores
  * that own the user-facing behaviour (e.g. the agents store forwards
  * `personality.trimmed` events to the toast queue).
+ *
+ * Connection failures surface to the user via toast notifications so a silent
+ * WebSocket death does not leave users wondering why toasts stopped arriving.
  *
  * This hook is intentionally minimal -- it only covers *global* notifications.
  * Page-scoped WebSocket handling remains in the per-page data hooks.
@@ -28,5 +35,35 @@ export function useGlobalNotifications(): void {
     [],
   )
 
-  useWebSocket({ bindings })
+  const { setupError, reconnectExhausted } = useWebSocket({ bindings })
+
+  // Surface setup errors via a one-time warning toast. Without this, a failed
+  // WS connection silently kills the entire global notifications pipeline.
+  const lastSetupErrorRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (setupError && setupError !== lastSetupErrorRef.current) {
+      lastSetupErrorRef.current = setupError
+      log.warn('Global notifications WebSocket setup failed', { setupError })
+      useToastStore.getState().add({
+        variant: 'warning',
+        title: 'Live notifications unavailable',
+        description: 'You may miss real-time updates. Try refreshing the page.',
+      })
+    }
+  }, [setupError])
+
+  // Surface reconnect exhaustion as a more severe error toast -- the WS is
+  // permanently dead until the user refreshes.
+  const reconnectExhaustedRef = useRef(false)
+  useEffect(() => {
+    if (reconnectExhausted && !reconnectExhaustedRef.current) {
+      reconnectExhaustedRef.current = true
+      log.error('Global notifications reconnect exhausted')
+      useToastStore.getState().add({
+        variant: 'error',
+        title: 'Live notifications disconnected',
+        description: 'Reconnect attempts exhausted. Refresh to restore.',
+      })
+    }
+  }, [reconnectExhausted])
 }
