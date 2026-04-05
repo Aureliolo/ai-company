@@ -75,8 +75,11 @@ class TestPersonalityTrimNotifier:
             (True, 10, True, True, 1),
             # Trim fires + notify setting disabled => notifier suppressed.
             (True, 10, False, True, 0),
-            # No trimming (override=0 keeps default profile budget) => no notify.
-            (True, 0, True, True, 0),
+            # Trimming globally disabled => no trim info, no notify.  This
+            # branch makes the "no notify" case independent of profile
+            # default budgets: tightening the default personality budget
+            # later cannot silently flip this matrix row.
+            (False, 10, True, True, 0),
             # No notifier wired => run still succeeds, trimming proceeds silently.
             (True, 10, True, False, 0),
         ],
@@ -194,6 +197,46 @@ class TestPersonalityTrimNotifier:
 
         assert notifier.await_count == 1
         assert result.is_success is True
+
+    async def test_notifier_timeout_is_swallowed(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A notifier that exceeds the 2-second budget is cancelled and logged.
+
+        The engine wraps the callback in :func:`asyncio.timeout` so a slow or
+        hung external runner cannot stall the main execution path.  The
+        timeout branch emits ``PROMPT_PERSONALITY_NOTIFY_FAILED`` with a
+        distinct ``reason="notifier callback timed out"`` marker and does
+        not re-raise.
+
+        We patch the production 2s budget down to a small value so the test
+        completes in milliseconds instead of waiting the real budget.  The
+        patch targets ``asyncio.timeout`` on the global ``asyncio`` module
+        because the engine code imports and uses it as ``asyncio.timeout``.
+        """
+        real_timeout = asyncio.timeout
+
+        def fast_timeout(_seconds: float) -> object:
+            return real_timeout(0.01)
+
+        monkeypatch.setattr(asyncio, "timeout", fast_timeout)
+
+        # Notifier that blocks indefinitely until cancelled -- use
+        # asyncio.Event().wait() per CLAUDE.md guidance for
+        # cancellation-safe "blocks forever" semantics.
+        async def slow_notifier(_payload: PersonalityTrimPayload) -> None:
+            await asyncio.Event().wait()
+
+        provider = mock_provider_factory([_make_completion_response()])
+        engine = AgentEngine(
+            provider=provider,
+            personality_trim_notifier=slow_notifier,
+        )
+
+        # Must not raise -- TimeoutError is swallowed by the best-effort guard.
+        await engine._maybe_notify_personality_trim(_make_sample_payload())
 
     async def test_notifier_fail_open_when_setting_read_fails(
         self,

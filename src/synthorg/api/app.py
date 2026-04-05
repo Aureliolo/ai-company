@@ -246,13 +246,18 @@ def make_personality_trim_notifier(
     actual ``await`` point to cancel at.  Without the ``to_thread`` hop a
     synchronous stall would bypass the timeout entirely.
 
-    Best-effort: publish errors are logged via
-    ``PROMPT_PERSONALITY_NOTIFY_FAILED`` and swallowed so that notification
-    failures never block task execution.  ``MemoryError`` and
-    ``RecursionError`` propagate per the project-wide best-effort publisher
-    pattern; :class:`asyncio.CancelledError` propagates naturally because it
-    is a :class:`BaseException` subclass and is not caught by ``except
-    Exception``.
+    Best-effort error handling distinguishes ordinary transport failures
+    from system-level or cancellation conditions:
+
+    * Ordinary ``Exception`` subclasses raised during the publish (broken
+      channel, serialization error, backend unavailable) are logged via
+      ``PROMPT_PERSONALITY_NOTIFY_FAILED`` and **swallowed** so a broken
+      notification pipeline never blocks task execution.
+    * :class:`MemoryError` and :class:`RecursionError` are re-raised so the
+      enclosing task can tear down cleanly under resource exhaustion.
+    * :class:`asyncio.CancelledError` propagates naturally because it is a
+      :class:`BaseException` subclass and is not caught by ``except
+      Exception``, preserving structured cancellation.
 
     Args:
         channels_plugin: Litestar channels plugin for WebSocket delivery.

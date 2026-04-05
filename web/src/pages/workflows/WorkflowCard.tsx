@@ -10,7 +10,7 @@ import type { WorkflowDefinition } from '@/api/types'
 
 interface WorkflowCardProps {
   workflow: WorkflowDefinition
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void | Promise<void>
   onDuplicate: (id: string) => void
 }
 
@@ -100,11 +100,7 @@ export function WorkflowCard({ workflow, onDelete, onDuplicate }: WorkflowCardPr
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        onConfirm={() => {
-          // ConfirmDialog auto-closes on a successful confirm via its own
-          // onOpenChange(false) path; we only need to perform the action.
-          onDelete(workflow.id)
-        }}
+        onConfirm={() => onDelete(workflow.id)}
         title="Delete workflow"
         description={`Are you sure you want to delete "${workflow.name}"? This action cannot be undone.`}
         variant="destructive"

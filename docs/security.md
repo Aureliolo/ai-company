@@ -130,10 +130,17 @@ elements and `style` attributes. CSP Level 3 separates these into two directives
 - Unlike `<script>` or `<style>` elements, a `style` attribute **cannot execute JavaScript**.
 - Data exfiltration via a `style` attribute is limited to single-element visual manipulation
   -- no CSS selectors, no `@import`. `url(...)` loads are still gated by `img-src`/`font-src`.
-- The primary theoretical risk -- UI redress/clickjacking via `position: fixed; z-index:
-  99999` -- is already mitigated by `X-Frame-Options: DENY`.
-- The higher-risk CSS-injection vector (attribute-selector exfiltration via a malicious
-  `<style>` element) is eliminated by `style-src-elem 'self' 'nonce-...'`.
+- Same-page UI redress via a malicious `position: fixed; z-index: 99999` is a
+  limited-surface attack -- an attacker who already has a way to inject a style
+  attribute into the dashboard has broader problems, and every interactive
+  surface the dashboard exposes is either gated by React event handlers (not
+  redressable by a sibling element) or a server-side confirmation step. Note
+  that `X-Frame-Options: DENY` does NOT mitigate this case; it prevents the
+  dashboard from being framed by a foreign origin, which is a different
+  threat.
+- The higher-risk CSS-injection vector (attribute-selector exfiltration via a
+  malicious `<style>` element) is eliminated by
+  `style-src-elem 'self' 'nonce-...'`.
 - `script-src` remains locked to `'self'` with no `'unsafe-inline'`.
 
 #### Browser support for directive splitting

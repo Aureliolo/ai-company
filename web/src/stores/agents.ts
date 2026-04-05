@@ -281,10 +281,14 @@ export const useAgentsStore = create<AgentsState>()((set, get) => ({
           // there is no XSS risk -- this is purely display hygiene.
           ? agentNameRaw.slice(0, 64)
           : null
-      const before =
-        typeof beforeRaw === 'number' && Number.isFinite(beforeRaw) ? beforeRaw : null
-      const after =
-        typeof afterRaw === 'number' && Number.isFinite(afterRaw) ? afterRaw : null
+      // Token counts must be non-negative integers -- reject anything else
+      // so a malformed payload (negative, fractional, Infinity, NaN) falls
+      // through to the generic fallback description instead of rendering
+      // nonsense like "-1 -> 3.14 tokens".
+      const isTokenCount = (v: unknown): v is number =>
+        typeof v === 'number' && Number.isInteger(v) && v >= 0
+      const before = isTokenCount(beforeRaw) ? beforeRaw : null
+      const after = isTokenCount(afterRaw) ? afterRaw : null
 
       if (agentName === null || before === null || after === null) {
         log.warn('personality.trimmed payload has missing/invalid fields', {
