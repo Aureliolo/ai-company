@@ -171,6 +171,12 @@ class TestBuildOutcome:
         result = build_outcome(TerminationReason.BUDGET_EXHAUSTED, None)
         assert "budget_exhausted" in result
 
+    def test_error_without_message_falls_through(self) -> None:
+        """ERROR termination without error_message hits the fallback branch."""
+        result = build_outcome(TerminationReason.ERROR, None)
+        assert "terminated" in result.lower()
+        assert "error" in result.lower()
+
 
 # ── extract_memory_tool_invocations ──────────────────────────────────────────
 
@@ -295,12 +301,6 @@ class TestCaptureDistillation:
                 task_id="task-1",
                 backend=backend,
             )
-
-    async def test_error_without_message_falls_through(self) -> None:
-        """ERROR termination without error_message hits the fallback branch."""
-        result = build_outcome(TerminationReason.ERROR, None)
-        assert "terminated" in result.lower()
-        assert "error" in result.lower()
 
     async def test_store_request_shape(self) -> None:
         """Verify capture_distillation stores the expected EPISODIC tag shape."""

@@ -257,6 +257,13 @@ class LLMConsolidationStrategy:
             )
             return await self._backend.retrieve(agent_id, query)
         except MemoryError, RecursionError:
+            logger.error(
+                LLM_STRATEGY_FALLBACK,
+                agent_id=agent_id,
+                reason="system_error_in_trajectory_fetch",
+                error_type="system",
+                exc_info=True,
+            )
             raise
         except Exception as exc:
             logger.debug(
@@ -330,6 +337,15 @@ class LLMConsolidationStrategy:
             try:
                 await self._backend.delete(agent_id, entry.id)
             except MemoryError, RecursionError:
+                logger.error(
+                    LLM_STRATEGY_FALLBACK,
+                    agent_id=agent_id,
+                    category=category.value,
+                    entry_id=entry.id,
+                    reason="system_error_in_delete",
+                    error_type="system",
+                    exc_info=True,
+                )
                 raise
             except Exception as exc:
                 logger.warning(

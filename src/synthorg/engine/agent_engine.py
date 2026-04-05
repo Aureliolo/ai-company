@@ -729,7 +729,7 @@ class AgentEngine:
         """
         if not self._distillation_capture_enabled:
             return
-        if self._memory_backend is None:  # pragma: no cover -- guarded by opt-in
+        if self._memory_backend is None:
             return
         from synthorg.memory.consolidation import (  # noqa: PLC0415
             capture_distillation,
