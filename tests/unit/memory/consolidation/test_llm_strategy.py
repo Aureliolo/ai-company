@@ -314,38 +314,17 @@ class TestLLMConsolidationStrategyErrorHandling:
         with pytest.raises(MemoryError):
             await strategy.consolidate(entries, agent_id="agent-1")
 
-    async def test_empty_llm_response_falls_back(self) -> None:
-        backend = AsyncMock()
-        backend.store = AsyncMock(return_value="sum-1")
-        backend.delete = AsyncMock(return_value=True)
-        provider = AsyncMock()
-        provider.complete = AsyncMock(return_value=_make_response(content=""))
-
-        strategy = LLMConsolidationStrategy(
-            backend=backend,
-            provider=provider,
-            model="test-model",
-            group_threshold=3,
-        )
-
-        entries = tuple(
-            _make_entry(entry_id=f"e{i}", relevance_score=0.5) for i in range(3)
-        )
-
-        result = await strategy.consolidate(entries, agent_id="agent-1")
-        assert result.consolidated_count == 2
-
-        # Verify fallback content was stored
-        stored_request = backend.store.call_args[0][1]
-        assert stored_request.content.startswith("Consolidated")
-
-    async def test_whitespace_llm_response_falls_back(self) -> None:
+    @pytest.mark.parametrize("empty_content", ["", "   \n  "])
+    async def test_empty_or_whitespace_llm_response_falls_back(
+        self,
+        empty_content: str,
+    ) -> None:
         backend = AsyncMock()
         backend.store = AsyncMock(return_value="sum-1")
         backend.delete = AsyncMock(return_value=True)
         provider = AsyncMock()
         provider.complete = AsyncMock(
-            return_value=_make_response(content="   \n  "),
+            return_value=_make_response(content=empty_content),
         )
 
         strategy = LLMConsolidationStrategy(

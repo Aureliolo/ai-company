@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.enums import MemoryCategory
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -127,7 +128,7 @@ class TestBuildTrajectorySummary:
     def test_single_turn_no_tools(self) -> None:
         turns = (_make_turn(),)
         result = build_trajectory_summary(turns)
-        assert "1 turns" in result
+        assert "1 turn" in result
         assert "150 tokens" in result
 
     def test_multiple_turns_with_tools(self) -> None:
@@ -304,8 +305,6 @@ class TestCaptureDistillation:
 
     async def test_store_request_shape(self) -> None:
         """Verify capture_distillation stores the expected EPISODIC tag shape."""
-        from synthorg.core.enums import MemoryCategory
-
         backend = AsyncMock()
         backend.store = AsyncMock(return_value="dist-3")
 

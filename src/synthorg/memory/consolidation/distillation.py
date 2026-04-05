@@ -93,7 +93,8 @@ def build_trajectory_summary(turns: tuple[TurnRecord, ...]) -> str:
     tool_call_count = sum(len(turn.tool_calls_made) for turn in turns)
     unique_tools = sorted({tool for turn in turns for tool in turn.tool_calls_made})
 
-    parts = [f"{len(turns)} turns, {total_tokens} tokens"]
+    turn_word = "turn" if len(turns) == 1 else "turns"
+    parts = [f"{len(turns)} {turn_word}, {total_tokens} tokens"]
     if unique_tools:
         parts.append(f"tools: {', '.join(unique_tools)}")
     if tool_call_count:

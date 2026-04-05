@@ -9,7 +9,7 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.injection import InjectionStrategy, MemoryInjectionStrategy
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
-from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
+from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy, _merge_results
 
 
 def _make_entry(
@@ -664,13 +664,9 @@ class TestInvalidCategoryHandling:
 @pytest.mark.unit
 class TestMergeResults:
     def test_empty_inputs(self) -> None:
-        from synthorg.memory.tool_retriever import _merge_results
-
         assert _merge_results((), ()) == ()
 
     def test_disjoint_entries_concatenated(self) -> None:
-        from synthorg.memory.tool_retriever import _merge_results
-
         a = _make_entry(entry_id="a")
         b = _make_entry(entry_id="b")
         result = _merge_results((a,), (b,))
@@ -679,8 +675,6 @@ class TestMergeResults:
         assert ids == ["a", "b"]
 
     def test_higher_relevance_wins_on_collision(self) -> None:
-        from synthorg.memory.tool_retriever import _merge_results
-
         low = _make_entry(entry_id="dup", relevance_score=0.3)
         high = _make_entry(entry_id="dup", relevance_score=0.9)
         result = _merge_results((low,), (high,))
@@ -688,8 +682,6 @@ class TestMergeResults:
         assert result[0].relevance_score == 0.9
 
     def test_existing_wins_when_new_is_lower(self) -> None:
-        from synthorg.memory.tool_retriever import _merge_results
-
         high = _make_entry(entry_id="dup", relevance_score=0.9)
         low = _make_entry(entry_id="dup", relevance_score=0.3)
         result = _merge_results((high,), (low,))
@@ -697,8 +689,6 @@ class TestMergeResults:
         assert result[0].relevance_score == 0.9
 
     def test_none_relevance_treated_as_zero(self) -> None:
-        from synthorg.memory.tool_retriever import _merge_results
-
         none_rel = _make_entry(entry_id="dup", relevance_score=None)
         with_rel = _make_entry(entry_id="dup", relevance_score=0.1)
         result = _merge_results((none_rel,), (with_rel,))
