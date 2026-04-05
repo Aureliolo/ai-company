@@ -95,7 +95,7 @@ from synthorg.observability.events.procedural_memory import (
     PROCEDURAL_MEMORY_ERROR,
 )
 from synthorg.observability.events.prompt import (
-    PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
+    PROMPT_PERSONALITY_NOTIFY_FAILED,
     PROMPT_PERSONALITY_TRIMMED,
     PROMPT_TOKEN_RATIO_HIGH,
 )
@@ -163,9 +163,14 @@ The callback receives a payload dict with keys ``agent_id``, ``agent_name``,
 ``task_id``, ``before_tokens``, ``after_tokens``, ``max_tokens``, ``trim_tier``,
 and ``budget_met``.  External runners (e.g. an API server hosting an
 ``AgentEngine``) should wire this to ``channels_plugin.publish(...)`` with a
-``WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED, ...)`` so the dashboard
-can show a live toast when trimming activates.  Failures inside the callback
-are logged and swallowed -- they never break task execution.
+``WsEvent(event_type=WsEventType.PERSONALITY_TRIMMED, channel=CHANNEL_AGENTS,
+...)`` so the dashboard can show a live toast when trimming activates.
+Failures inside the callback are logged and swallowed -- they never break task
+execution.
+
+API-layer integrations should use the factory function
+``synthorg.api.app.make_personality_trim_notifier(channels_plugin)``, which
+returns a ready-to-wire callback matching this contract.
 """
 
 
@@ -395,6 +400,7 @@ class AgentEngine:
             has_compaction_callback=self._compaction_callback is not None,
             has_plan_execute_config=self._plan_execute_config is not None,
             has_hybrid_loop_config=self._hybrid_loop_config is not None,
+            has_personality_trim_notifier=(self._personality_trim_notifier is not None),
         )
 
     @property
@@ -1044,7 +1050,7 @@ class AgentEngine:
         Reads the ``engine.personality_trimming_notify`` setting and, when
         enabled and a ``personality_trim_notifier`` callback is wired, invokes
         the callback with the trim payload.  Failures inside the callback are
-        logged (``PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED``) and swallowed --
+        logged (``PROMPT_PERSONALITY_NOTIFY_FAILED``) and swallowed --
         notification never blocks task execution.
 
         Args:
@@ -1054,6 +1060,10 @@ class AgentEngine:
         """
         if self._personality_trim_notifier is None:
             return
+        agent_id = payload["agent_id"]
+        agent_name = payload["agent_name"]
+        task_id = payload["task_id"]
+        trim_tier = payload["trim_tier"]
         notify_enabled = True
         if self._config_resolver is not None:
             try:
@@ -1065,9 +1075,11 @@ class AgentEngine:
                 raise
             except Exception:
                 logger.warning(
-                    PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
-                    agent_id=payload.get("agent_id"),
-                    task_id=payload.get("task_id"),
+                    PROMPT_PERSONALITY_NOTIFY_FAILED,
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    task_id=task_id,
+                    trim_tier=trim_tier,
                     reason="failed to read personality_trimming_notify setting",
                     exc_info=True,
                 )
@@ -1080,9 +1092,12 @@ class AgentEngine:
             raise
         except Exception:
             logger.warning(
-                PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED,
-                agent_id=payload.get("agent_id"),
-                task_id=payload.get("task_id"),
+                PROMPT_PERSONALITY_NOTIFY_FAILED,
+                agent_id=agent_id,
+                agent_name=agent_name,
+                task_id=task_id,
+                trim_tier=trim_tier,
+                reason="notifier callback raised",
                 exc_info=True,
             )
 

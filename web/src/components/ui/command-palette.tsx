@@ -141,7 +141,11 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       contentClassName={cn(
         'fixed left-1/2 top-[15vh] z-50 w-full max-w-[640px] max-[1023px]:max-w-[calc(100vw-2rem)] -translate-x-1/2',
         'rounded-xl border border-border-bright bg-surface shadow-lg',
-        'transition-[opacity,transform] duration-150 ease-out',
+        // Tailwind v4 uses dedicated `translate:`/`scale:` CSS properties
+        // rather than the legacy `transform:` shorthand, so the transition
+        // property list must name each one explicitly for the animation to
+        // play.
+        'transition-[opacity,translate] duration-150 ease-out',
         'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
         'data-[closed]:-translate-y-2 data-[starting-style]:-translate-y-2 data-[ending-style]:-translate-y-2',
         className,

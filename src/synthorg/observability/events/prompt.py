@@ -15,7 +15,5 @@ PROMPT_POLICY_VALIDATION_FAILED: Final[str] = "prompt.policy.validation_failed"
 PROMPT_TOKEN_RATIO_HIGH: Final[str] = "prompt.token_ratio.high"  # noqa: S105 -- event name, not a credential
 PROMPT_PROFILE_SELECTED: Final[str] = "prompt.profile.selected"
 PROMPT_PERSONALITY_TRIMMED: Final[str] = "prompt.personality.trimmed"
-PROMPT_PERSONALITY_TRIM_NOTIFY_FAILED: Final[str] = (
-    "prompt.personality.trim_notify_failed"
-)
+PROMPT_PERSONALITY_NOTIFY_FAILED: Final[str] = "prompt.personality.notify_failed"
 PROMPT_PROFILE_DEFAULT: Final[str] = "prompt.profile.default"

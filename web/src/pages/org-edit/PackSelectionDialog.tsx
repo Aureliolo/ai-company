@@ -141,7 +141,7 @@ export function PackSelectionDialog({ open, onOpenChange, disabled }: PackSelect
         <Dialog.Popup
           className={cn(
             'fixed top-1/2 left-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
-            'rounded-xl border border-border-bright bg-surface p-6 shadow-lg',
+            'rounded-xl border border-border-bright bg-surface p-card shadow-lg',
             'transition-[opacity,transform,scale] duration-200 ease-out',
             'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
             'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',

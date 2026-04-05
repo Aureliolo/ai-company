@@ -331,7 +331,7 @@ For task board kanban columns and org chart hierarchy view:
 
 ### 3.5 Command Palette (Cmd+K)
 
-Built with the `cmdk` library.
+Built with the `cmdk-base` library (cmdk port on Base UI Dialog).
 
 | Property | Spec |
 |----------|------|

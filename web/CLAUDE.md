@@ -2,7 +2,7 @@
 
 React 19 + shadcn/ui + Base UI + Tailwind CSS 4 + Framer Motion + Zustand
 
-`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Framer Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive (replaces the old `asChild`); the local `<Slot>` in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to keep `<Button asChild>` working for existing call sites.
+`App.tsx` wraps the app in `<CSPProvider nonce={getCspNonce()}>` + `<MotionConfig nonce>` so every inline `<style>` tag injected by Base UI and Framer Motion carries the per-request CSP nonce. See `docs/security.md` → CSP Nonce Infrastructure for the full flow. Base UI's `render` prop is the polymorphism primitive used throughout the dashboard; the local `<Slot>` helper in `components/ui/slot.tsx` uses `@base-ui/react/merge-props` to support the `<Button asChild>` ergonomic (the only component that uses this helper -- all other primitives use Base UI's native `render` prop directly).
 
 ## Quick Commands
 
@@ -111,6 +111,13 @@ When a new shared component is needed (not covered by the inventory above):
 3. Export props as a TypeScript interface
 4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
 5. Import `cn` from `@/lib/utils` for conditional class merging
+6. **For primitives backed by Base UI** (Dialog, Popover, Menu, Tabs, Select, Combobox, etc.):
+   - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
+   - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
+   - For Dialog/AlertDialog/Popover: use `Portal` + `Backdrop` + `Popup` (not Radix's `Overlay` + `Content`). Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`.
+   - Animation state attributes are `data-[open]`, `data-[closed]`, `data-[starting-style]`, `data-[ending-style]` (not `data-[state=open]` / `data-[state=closed]`). Tabs Tab uses `data-[active]` (not `data-[state=active]`).
+   - In Tailwind v4, `translate-*` and `scale-*` compile to the dedicated CSS `translate:` and `scale:` properties, not `transform:`. Transition property lists must name each one explicitly: `transition-[opacity,translate]` or `transition-[opacity,scale]`, not just `transition-[opacity,transform]`.
+   - The local `<Slot>` helper in `components/ui/slot.tsx` is reserved for `<Button asChild>` -- all other polymorphism goes through Base UI's `render` prop.
 
 ### What NOT to Do
 

@@ -247,7 +247,7 @@ Not pages -- triggered by user interaction, rendered over current page.
 #### Command Palette
 
 **Trigger**: Cmd+K (macOS) / Ctrl+K (Windows/Linux)
-Global search overlay: navigate to any page, search agents by name, search tasks, jump to settings namespaces. Built with `cmdk` library.
+Global search overlay: navigate to any page, search agents by name, search tasks, jump to settings namespaces. Built with `cmdk-base` (cmdk port on Base UI Dialog).
 
 #### Notifications Panel
 
