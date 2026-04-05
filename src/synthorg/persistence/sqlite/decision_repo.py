@@ -173,12 +173,19 @@ class SQLiteDecisionRepository:
             DuplicateRecordError: If a record with ``record_id`` exists
                 OR a concurrent write won the ``UNIQUE(task_id, version)``
                 race.
-            QueryError: If the operation fails OR the model-level
-                validation (blank ``reason`` -> ``None``, duplicate
-                ``criteria_snapshot``, blank ``NotBlankStr`` inputs,
-                non-UTC ``recorded_at``) rejects the input.  Validation
-                runs BEFORE the insert so invalid data never reaches
-                the durable log.
+            ValidationError: If the model-level normalization (blank
+                ``reason`` -> ``None``, duplicate ``criteria_snapshot``,
+                blank ``NotBlankStr`` inputs, non-UTC ``recorded_at``)
+                rejects the input.  Validation runs BEFORE the insert
+                so invalid data never reaches the durable log.  We
+                deliberately do NOT wrap ``ValidationError`` as
+                ``QueryError`` -- malformed inputs are programming
+                errors / schema drift that must surface loudly rather
+                than being masked as a transient persistence failure
+                the review-gate service's narrowed except would
+                silently swallow.
+            QueryError: If the SQL operation fails (connection dropped,
+                schema mismatch, rollback failure, etc.).
         """
         metadata_view: MappingProxyType[str, object] = MappingProxyType(
             dict(metadata or {})
@@ -205,15 +212,19 @@ class SQLiteDecisionRepository:
                 version=1,  # placeholder; overwritten after insert
                 metadata=metadata_view,
             )
-        except ValidationError as exc:
-            msg = f"Invalid decision record {record_id!r}: {exc}"
+        except ValidationError:
+            # Log contextual detail for operators, then re-raise the
+            # original ValidationError.  Wrapping as QueryError would
+            # let the review-gate service's narrowed
+            # ``except (QueryError, DuplicateRecordError)`` catch
+            # schema drift and treat it as silent audit loss.
             logger.warning(
                 PERSISTENCE_DECISION_RECORD_SAVE_FAILED,
                 record_id=record_id,
                 task_id=task_id,
-                error=str(exc),
+                error_type="ValidationError",
             )
-            raise QueryError(msg) from exc
+            raise
 
         params = _build_insert_params(
             record_id=record_id,

@@ -1,7 +1,7 @@
 """In-memory fake implementations for API unit tests."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Any
 
@@ -332,6 +332,11 @@ class FakeDecisionRepository:
             )
             + 1
         )
+        # Normalize recorded_at to UTC to match
+        # ``SQLiteDecisionRepository.append_with_next_version``; tests
+        # that pass a non-UTC timezone-aware datetime should observe
+        # the same UTC-normalized value from the fake as from the
+        # real repo.
         record = DecisionRecord(
             id=record_id,
             task_id=task_id,
@@ -341,7 +346,7 @@ class FakeDecisionRepository:
             decision=decision,
             reason=reason,
             criteria_snapshot=criteria_snapshot,
-            recorded_at=recorded_at,
+            recorded_at=recorded_at.astimezone(UTC),
             version=next_version,
             metadata=MappingProxyType(dict(metadata or {})),
         )

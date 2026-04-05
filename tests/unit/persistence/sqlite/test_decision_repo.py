@@ -390,23 +390,34 @@ class TestDecisionRecordSelfReviewInvariant:
     async def test_self_review_rejected_at_db_check_constraint(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
-        """A record with executor == reviewer is rejected by the DB CHECK.
+        """A direct INSERT with executor == reviewer is rejected by the DB CHECK.
 
-        Defense in depth: the ``DecisionRecord`` Pydantic model also
-        rejects self-review at construction time, but since
-        ``append_with_next_version`` writes to the DB before
-        re-constructing the model, the DB ``CHECK(reviewer !=
-        executor)`` constraint fires first and the error surfaces as a
-        ``QueryError``.
+        Defense-in-depth: the ``DecisionRecord`` Pydantic model
+        rejects self-review at construction time, so the service path
+        (``append_with_next_version``) never reaches the SQL layer
+        with a self-review row.  This test bypasses the Pydantic
+        validator via direct SQL to exercise the schema-level
+        ``CHECK(reviewer_agent_id != executing_agent_id)`` constraint
+        explicitly -- guarding against any future code path (raw
+        SQL, migrations, third-party backends) that might bypass the
+        model layer.
         """
-        repo = SQLiteDecisionRepository(migrated_db)
-        with pytest.raises(QueryError):
-            await _append(
-                repo,
-                record_id="dr-self",
-                executing_agent_id="alice",
-                reviewer_agent_id="alice",
+        import sqlite3
+
+        async def _insert_self_review() -> None:
+            await migrated_db.execute(
+                "INSERT INTO decision_records (id, task_id, "
+                "executing_agent_id, reviewer_agent_id, decision, "
+                "criteria_snapshot, recorded_at, version, metadata) "
+                "VALUES (?, ?, ?, ?, 'approved', '[]', "
+                "'2026-04-04T12:00:00+00:00', 1, '{}')",
+                ("dr-self", "task-1", "alice", "alice"),
             )
+            await migrated_db.commit()
+
+        with pytest.raises(sqlite3.IntegrityError) as exc_info:
+            await _insert_self_review()
+        assert exc_info.value.sqlite_errorname == "SQLITE_CONSTRAINT_CHECK"
 
     def test_self_review_rejected_at_pydantic_model(self) -> None:
         """``DecisionRecord`` model validator also rejects self-review.

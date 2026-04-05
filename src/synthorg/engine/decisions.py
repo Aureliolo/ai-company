@@ -32,6 +32,9 @@ def _freeze_recursive(value: object) -> object:
 
     - ``dict`` -> ``MappingProxyType`` (read-only view of a frozen dict)
     - ``list`` -> ``tuple`` with elements recursively frozen
+    - ``tuple`` -> ``tuple`` with elements recursively frozen (tuples
+      are themselves immutable but their *elements* can still be
+      mutable dicts/lists/sets, so we still recurse)
     - ``set``  -> ``frozenset`` with elements recursively frozen
     - anything else is returned unchanged
 
@@ -42,6 +45,8 @@ def _freeze_recursive(value: object) -> object:
     if isinstance(value, dict):
         return MappingProxyType({k: _freeze_recursive(v) for k, v in value.items()})
     if isinstance(value, list):
+        return tuple(_freeze_recursive(item) for item in value)
+    if isinstance(value, tuple):
         return tuple(_freeze_recursive(item) for item in value)
     if isinstance(value, set):
         return frozenset(_freeze_recursive(item) for item in value)
