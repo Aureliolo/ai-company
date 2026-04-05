@@ -111,7 +111,7 @@ When a new shared component is needed (not covered by the inventory above):
 3. Export props as a TypeScript interface
 4. Use design tokens exclusively -- no hardcoded colors, fonts, or spacing
 5. Import `cn` from `@/lib/utils` for conditional class merging
-6. **For primitives backed by Base UI** (Dialog, Popover, Menu, Tabs, Select, Combobox, etc.):
+6. **For primitives backed by Base UI** (Dialog, Popover, Menu, Tabs, Tooltip, etc. -- see the Adoption Decisions table below for the canonical list; `Select`, `Toast`, `Drawer`, `Meter`, `Combobox` are intentionally **not** adopted):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
    - For Dialog/AlertDialog/Popover: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`.
@@ -155,7 +155,7 @@ The dashboard uses Base UI as its primitive layer via shadcn/ui. Base UI ships s
 | `Select` | **Not adopted** | `SelectField` is a native `<select>` -- we intentionally keep the native mobile picker for iOS/Android UX. Replacing with a custom dropdown would lose that. |
 | `Combobox`, `Autocomplete` | **Not adopted (for now)** | No current typeahead call sites in the dashboard that would benefit. Re-evaluate when filterable selects become a feature requirement. |
 
-When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, Menu, Popover, Tabs, Select, Tooltip, etc.) and keep the custom Framer-Motion-based components (Drawer, Toast, animations) where they are.
+When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, Menu, Popover, Tabs, Tooltip, etc.) and keep the existing custom components (`SelectField`, `Drawer`, `Toast`, `ProgressGauge`, animations) where they are -- see the Adoption Decisions table above for the canonical rationale.
 
 ## Post-Training Reference (TypeScript 6 & Storybook 10)
 

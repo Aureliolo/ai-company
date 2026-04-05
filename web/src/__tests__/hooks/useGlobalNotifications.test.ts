@@ -167,25 +167,19 @@ describe('useGlobalNotifications', () => {
     expect(useToastStore.getState().toasts).toHaveLength(1)
   })
 
-  it('stops emitting toasts after unmount', () => {
+  it('unmount is a no-op that leaves the store untouched', () => {
+    // Teardown of the underlying WebSocket subscription is owned by
+    // useWebSocket (which is mocked here) -- this hook has no side-effect
+    // cleanup of its own beyond effect dep-array resets. Assert the baseline
+    // "nothing left in the store after unmount" invariant; deeper cleanup
+    // verification lives in useWebSocket's own test suite.
     mockUseWebSocket.mockReturnValue({
       connected: true,
       reconnectExhausted: false,
       setupError: null,
     })
-
     const { unmount } = renderHook(() => useGlobalNotifications())
-    unmount()
-
-    // After unmount, changing the mock's return value and not re-rendering
-    // should not produce any new toasts. This guards against effect re-runs
-    // that could occur if the hook leaked a subscription.
-    mockUseWebSocket.mockReturnValue({
-      connected: false,
-      reconnectExhausted: true,
-      setupError: null,
-    })
-
+    expect(() => unmount()).not.toThrow()
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })

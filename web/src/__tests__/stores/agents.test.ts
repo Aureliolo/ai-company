@@ -514,7 +514,10 @@ describe('personality.trimmed toast dispatch', () => {
     expect(toasts[0]!.description).toBe('Bob personality was trimmed to fit token budget')
   })
 
-  it('uses default label when agent_name is missing', () => {
+  it('suppresses the toast when every payload field is missing', () => {
+    // Fully-empty payload carries zero actionable info ("An agent personality
+    // was trimmed" with no name or numbers), so the store should drop it --
+    // the warn log inside updateFromWsEvent retains the diagnostic signal.
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'personality.trimmed',
       channel: 'agents',
@@ -522,9 +525,7 @@ describe('personality.trimmed toast dispatch', () => {
       payload: {},
     })
 
-    const toasts = useToastStore.getState().toasts
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]!.description).toBe('An agent personality was trimmed to fit token budget')
+    expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 
   it('does not affect runtimeStatuses', () => {

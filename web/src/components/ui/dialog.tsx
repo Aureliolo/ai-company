@@ -77,7 +77,7 @@ export interface DialogDescriptionProps {
 
 export function DialogDescription({ className, children }: DialogDescriptionProps) {
   return (
-    <BaseDialog.Description className={cn('text-sm text-muted', className)}>
+    <BaseDialog.Description className={cn('text-sm text-muted-foreground', className)}>
       {children}
     </BaseDialog.Description>
   )
